@@ -404,6 +404,115 @@ describe('buildFlowDiff', () => {
             expect(entry.status).toBe('unchanged');
         });
 
+        it.each([
+            { version: 'the stored rows', storedKindFields: true },
+            { version: 'a version saved before System One (no kind or System One fields)', storedKindFields: false },
+        ])('Classification table prompts as the editor created them match $version', ({ storedKindFields }) => {
+            const liveFlow = updateNode(loadLive(), NodeType.CLASSIFICATION_TABLE, (node) => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    table: {
+                        ...node.data.table,
+                        prompts: {
+                            // As `addPrompt` creates it: no kind, no System One fields, no schema.
+                            triage: {
+                                prompt_text: 'Which team?',
+                                llm_config: 3,
+                                output_schema: null,
+                                result_variable: 'team',
+                                variable_mappings: {},
+                            },
+                            ...(storedKindFields && {
+                                check: {
+                                    kind: 'system_one' as const,
+                                    system_one_config: 4,
+                                    questions: {
+                                        correct: {
+                                            type: 'noul' as const,
+                                            instructions: 'Is it correct?',
+                                            criteria: { true: 'Yes' },
+                                        },
+                                    },
+                                    input_map: { text: 'variables.text' },
+                                    prompt_text: '',
+                                    llm_config: null,
+                                    output_schema: null,
+                                    result_variable: 'checked',
+                                    variable_mappings: {},
+                                },
+                            }),
+                        },
+                    },
+                },
+            }));
+            const storedTriage = {
+                id: 70,
+                prompt_key: 'triage',
+                prompt_text: 'Which team?',
+                llm_config: 3,
+                output_schema: {},
+                result_variable: 'team',
+                variable_mappings: {},
+            };
+            const version = withSnapshotNode(snapshot, ID.classificationTable, {
+                prompt_configs: storedKindFields
+                    ? [
+                          { ...storedTriage, kind: 'llm', system_one_config: null, questions: {}, input_map: {} },
+                          {
+                              id: 71,
+                              prompt_key: 'check',
+                              kind: 'system_one',
+                              system_one_config: 4,
+                              questions: {
+                                  correct: { type: 'noul', instructions: 'Is it correct?', criteria: { true: 'Yes' } },
+                              },
+                              input_map: { text: 'variables.text' },
+                              prompt_text: '',
+                              llm_config: null,
+                              output_schema: {},
+                              result_variable: 'checked',
+                              variable_mappings: {},
+                          },
+                      ]
+                    : [storedTriage],
+            });
+
+            const entry = entryOf(diffVersion(version, { liveFlow }), UUID.classificationTable);
+
+            expect(entry.fields).toEqual([]);
+            expect(entry.status).toBe('unchanged');
+        });
+
+        it.each([
+            { typed: 'Which team?\n', changed: false },
+            { typed: 'Which team, really?', changed: true },
+        ])('Classification table prompt text typed as $typed: changed $changed', ({ typed, changed }) => {
+            const prompt = {
+                prompt_text: 'Which team?',
+                llm_config: 3,
+                output_schema: {},
+                result_variable: 'team',
+                variable_mappings: {},
+            };
+            const liveFlow = updateNode(loadLive(), NodeType.CLASSIFICATION_TABLE, (node) => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    table: { ...node.data.table, prompts: { triage: { ...prompt, prompt_text: typed } } },
+                },
+            }));
+            const version = withSnapshotNode(snapshot, ID.classificationTable, {
+                prompt_configs: [{ id: 70, prompt_key: 'triage', ...prompt }],
+            });
+
+            const entry = entryOf(diffVersion(version, { liveFlow }), UUID.classificationTable);
+
+            expect(entry.fields.map((change) => change.path)).toEqual(
+                changed ? ['prompts[key=triage].prompt_text'] : []
+            );
+        });
+
         it('Classification table loaded again: its stored timeouts match the version', () => {
             const liveFlow = updateNode(loadLive(), NodeType.CLASSIFICATION_TABLE, (node) => ({
                 ...node,
@@ -894,6 +1003,32 @@ describe('buildFlowDiff', () => {
             'condition_groups[name=yes].next_node',
             'condition_groups[].next_node',
             404,
+        ],
+        [
+            'system_one_config_ref_cleared',
+            ID.classificationTable,
+            UUID.classificationTable,
+            {
+                prompt_configs: [
+                    {
+                        id: 71,
+                        prompt_key: 'Company check',
+                        kind: 'system_one',
+                        system_one_config: null,
+                        questions: {},
+                        input_map: {},
+                        prompt_text: '',
+                        llm_config: null,
+                        output_schema: {},
+                        result_variable: 'checked',
+                        variable_mappings: {},
+                    },
+                ],
+            },
+            { prompt_key: 'Company check', missing_id: 9 },
+            'prompts[key=Company check].system_one_config',
+            'prompts[].system_one_config',
+            9,
         ],
     ])(
         '%s: the warning becomes a missing reference on its node, with the id the version had',

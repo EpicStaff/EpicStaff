@@ -20,6 +20,9 @@
 @use 'sass:list';
 
 $context: '.diff-value-marked';
+// Set next to `$context` by a mark whose field sits inside a marked card that carries the badge (`diffBadge`): the
+// value box then gets the border and the focus ring only.
+$no-badge-context: '.diff-value-marked--no-badge';
 
 $badge-size: 16px;
 
@@ -48,6 +51,7 @@ $badge-size: 16px;
     @include -marked-rules(
         ':host-context(#{$context})',
         ':host-context(#{$context}:focus-visible)',
+        ':host-context(#{$no-badge-context})',
         $box,
         $badge-anchor,
         $draws-box,
@@ -59,10 +63,18 @@ $badge-size: 16px;
 /// trigger button it projects into a dropdown, or a list it draws itself), so the box is not in a component's own
 /// view. Same parameters as `marked()`.
 @mixin marked-inside($box, $badge-anchor: $box, $draws-box: false, $display: null) {
-    @include -marked-rules($context, '#{$context}:focus-visible', $box, $badge-anchor, $draws-box, $display);
+    @include -marked-rules(
+        $context,
+        '#{$context}:focus-visible',
+        $no-badge-context,
+        $box,
+        $badge-anchor,
+        $draws-box,
+        $display
+    );
 }
 
-@mixin -marked-rules($marked, $focused, $box, $badge-anchor, $draws-box, $display) {
+@mixin -marked-rules($marked, $focused, $no-badge, $box, $badge-anchor, $draws-box, $display) {
     #{$marked} #{$box} {
         display: $display;
 
@@ -86,6 +98,11 @@ $badge-size: 16px;
     #{$marked} #{$badge-anchor} {
         position: relative;
         @include corner-badge;
+    }
+
+    // After the badge, so it wins at the same specificity.
+    #{$no-badge} #{$badge-anchor}::after {
+        content: none;
     }
 }
 

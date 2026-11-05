@@ -38,6 +38,7 @@ export {
 export type { FieldName } from './field-display';
 export { FIELD_DISPLAY, fieldKind } from './field-display';
 export { buildFrontendFoundReferences, buildVersionMissingReferences } from './missing-references';
+export { isSameValue } from './normalize';
 export { conditionGroupDiffKeys } from './semantic-projections';
 export type {
     EdgeDiffEntry,

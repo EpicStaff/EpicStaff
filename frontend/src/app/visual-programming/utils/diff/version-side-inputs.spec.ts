@@ -115,6 +115,47 @@ describe('buildVersionWarningReferences', () => {
         expect(references).toEqual(new Map());
     });
 
+    it('turns a cleared System One config into a missing reference on the config of the prompt it names, by id', () => {
+        const references = buildVersionWarningReferences(
+            [
+                warning('system_one_config_ref_cleared', { node_id: 13, prompt_key: 'Company check', missing_id: 9 }),
+                warning('system_one_config_ref_cleared', { node_id: 13, prompt_key: 'Tone', missing_id: 10 }),
+            ],
+            snapshotIdToCanvasId
+        );
+
+        expect(references).toEqual(
+            new Map([
+                [
+                    'node-c-canvas-id',
+                    [
+                        {
+                            path: 'prompts[key=Company check].system_one_config',
+                            field: 'prompts[].system_one_config',
+                            missing: 9,
+                            source: 'warning',
+                        },
+                        {
+                            path: 'prompts[key=Tone].system_one_config',
+                            field: 'prompts[].system_one_config',
+                            missing: 10,
+                            source: 'warning',
+                        },
+                    ],
+                ],
+            ])
+        );
+    });
+
+    it('skips a cleared System One config whose warning names no prompt', () => {
+        const references = buildVersionWarningReferences(
+            [warning('system_one_config_ref_cleared', { node_id: 13, missing_id: 9 })],
+            snapshotIdToCanvasId
+        );
+
+        expect(references).toEqual(new Map());
+    });
+
     // The backend nulls exactly these foreign keys today (its `NullFkHandler` subclasses). A new handler
     // must be added here, and its field must be a projected `FieldName`, or its reference gets no label.
     const BACKEND_FK_NULLED_FIELDS = [

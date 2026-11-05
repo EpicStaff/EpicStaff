@@ -124,6 +124,10 @@ export const FIELD_DISPLAY = {
     'prompts[].output_schema': { label: 'Prompt output schema' },
     'prompts[].result_variable': { label: 'Prompt result variable' },
     'prompts[].variable_mappings': { label: 'Prompt variable mappings' },
+    'prompts[].kind': { label: 'Prompt kind' },
+    'prompts[].system_one_config': { label: 'Prompt System One config', kind: 'entityRef' },
+    'prompts[].input_map': { label: 'Prompt input to classify' },
+    'prompts[].questions': { label: 'Prompt questions' },
 } as const satisfies Record<string, FieldDisplay>;
 
 /** A field the diff can report. Code that names a field literally uses this type, so a typo does not build. */

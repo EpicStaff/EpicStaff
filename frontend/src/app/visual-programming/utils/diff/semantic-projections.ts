@@ -1,8 +1,14 @@
-import { CustomPythonCode, effectiveExecutionTimeoutSeconds, ExecutionTimeoutLimits, NodeType } from '@shared/models';
+import {
+    CustomPythonCode,
+    effectiveExecutionTimeoutSeconds,
+    ExecutionTimeoutLimits,
+    NodeType,
+    SystemOneQuestion,
+} from '@shared/models';
 
 import { DEFAULT_KEY_VALUE_MODE, MISSING_END_OUTPUT_MAP } from '../../core/constants/default-node-data';
 import { findCdtSection } from '../../core/models/cdt-section.model';
-import { ComputationConfig } from '../../core/models/classification-decision-table.model';
+import { ComputationConfig, PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../core/models/decision-table.model';
 import { AgentNodeModel, BaseNodeModel, NodeModel, NoteLinkedRegion } from '../../core/models/node.model';
 import { ScheduleTriggerNodeData } from '../../core/models/schedule-trigger.model';
@@ -167,9 +173,9 @@ export const SEMANTIC_PROJECTIONS = {
             webhook_trigger: node.data.webhook_trigger,
             fields: sortByCanonicalJson(
                 (node.data.fields ?? []).map(({ parent, field_name, variable_path }) => ({
-                    parent,
-                    field_name,
-                    variable_path,
+                    parent: storedText(parent ?? ''),
+                    field_name: storedText(field_name ?? ''),
+                    variable_path: storedText(variable_path ?? ''),
                 }))
             ),
         }),
@@ -189,7 +195,7 @@ export const SEMANTIC_PROJECTIONS = {
     [NodeType.TASK]: {
         project: (node) => ({
             node_name: nodeName(node),
-            instructions: node.data.instructions,
+            instructions: storedText(node.data.instructions ?? ''),
             output_schema: node.data.output_schema ?? {},
             remember_output: node.data.remember_output ?? false,
             agent_definition: node.data.agent_definition,
@@ -229,7 +235,7 @@ export const SEMANTIC_PROJECTIONS = {
             source_collection: node.data?.source_collection,
             rag_type: node.data?.rag_type,
             rag_id: node.data?.rag_id,
-            query: node.data?.query ?? '',
+            query: storedText(node.data?.query ?? ''),
             search_method: node.data?.search_method,
             search_configs: normalizeSearchConfigs(node.data?.search_configs),
         }),
@@ -306,11 +312,12 @@ export const SEMANTIC_PROJECTIONS = {
                     ({ key }) => key,
                     ({ group }, index) => ({
                         position: index + 1,
-                        expression: emptyToNull(group.expression),
+                        // Stored trimmed (the bulk save validates the groups with their serializer).
+                        expression: emptyToNull(storedText(group.expression ?? '')),
                         prompt_id: emptyToNull(group.prompt_id),
-                        manipulation: emptyToNull(group.manipulation),
+                        manipulation: emptyToNull(storedText(group.manipulation ?? '')),
                         continue_flag: !!(group.continue_flag ?? group.continue),
-                        route_code: emptyToNull(group.route_code),
+                        route_code: emptyToNull(storedText(group.route_code ?? '')),
                         // Section ids are internal; colour is layout.
                         section: findCdtSection(sections, group.section)?.name ?? null,
                         next_node: context.nodeKey(group.next_node),
@@ -322,13 +329,7 @@ export const SEMANTIC_PROJECTIONS = {
                 prompts: keyedBy(
                     Object.keys(prompts).sort(),
                     (promptKey) => promptKey,
-                    (promptKey) => ({
-                        prompt_text: prompts[promptKey].prompt_text ?? '',
-                        llm_config: prompts[promptKey].llm_config,
-                        output_schema: prompts[promptKey].output_schema,
-                        result_variable: prompts[promptKey].result_variable ?? '',
-                        variable_mappings: prompts[promptKey].variable_mappings ?? {},
-                    })
+                    (promptKey) => promptProjection(prompts[promptKey])
                 ),
                 default_llm_config: table.default_llm_config,
                 default_next_node: context.nodeKey(table.default_next_node),
@@ -358,13 +359,16 @@ function prefixKeys(prefix: string, record: Readonly<Record<string, string>>): R
     return Object.fromEntries(Object.entries(record).map(([key, value]) => [`${prefix}${key}`, value]));
 }
 
-/** Restore and import renumber nodes, so the ` #N` suffix is not part of the name. */
+/** Restore and import renumber nodes, so the ` #N` suffix is not part of the name. Stored trimmed. */
 function nodeName(node: BaseNodeModel): string {
-    return stripNodeNumberSuffix(node.node_name);
+    return stripNodeNumberSuffix(storedText(node.node_name ?? ''));
 }
 
 function inputOutput(node: BaseNodeModel): Projection {
-    return { input_map: node.input_map ?? {}, output_variable_path: emptyToNull(node.output_variable_path) };
+    return {
+        input_map: node.input_map ?? {},
+        output_variable_path: emptyToNull(storedText(node.output_variable_path ?? '')),
+    };
 }
 
 /**
@@ -460,7 +464,7 @@ function scheduleSettings(data: ScheduleTriggerNodeData): Projection {
 function inlineSurface(surface: InlineSurface | null | undefined): Projection | null {
     if (!surface) return null;
     return {
-        instructions: surface.instructions ?? '',
+        instructions: storedText(surface.instructions ?? ''),
         python_tools: sortByCanonicalJson(surface.python_tools),
         mcp_tools: sortByCanonicalJson(surface.mcp_tools),
     };
@@ -478,8 +482,8 @@ function agentTasks(tasks: AgentNodeModel['data']['tasks']): Record<string, Proj
         tasks.map((task, index) => ({ task, position: String(index + 1) })),
         ({ position }) => position,
         ({ task }) => ({
-            name: task.name,
-            instructions: task.instructions,
+            name: storedText(task.name ?? ''),
+            instructions: storedText(task.instructions ?? ''),
             output_schema: task.output_schema ?? {},
             context_tasks: sortedNumbers(
                 (task.contextRefs ?? []).map(positionOf).filter((position): position is number => position !== null)
@@ -537,6 +541,74 @@ function sortedByOrder<TGroup extends { order?: number }>(groups: readonly TGrou
         .map(({ group }) => group);
 }
 
+/**
+ * A prompt of a Classification Decision Table, as its kind runs it: an LLM prompt reads its text, LLM and output
+ * schema; a System One entry its config, input map and questions; both store the result under the result variable and
+ * apply the variable mappings. The other kind's fields are projected as their empty values, whatever is stored, so a
+ * value a kind switch left behind is not a change, and a prompt whose kind changes shows only the values it really
+ * gains or loses. All fields are read up front, though: whether one counts depends on the kind (as in
+ * `scheduleSettings`).
+ */
+function promptProjection(prompt: PromptConfig): Projection {
+    const {
+        kind,
+        prompt_text,
+        llm_config,
+        output_schema,
+        result_variable,
+        variable_mappings,
+        system_one_config,
+        questions,
+        input_map,
+    } = prompt;
+    // A prompt saved before System One has no kind: it is an LLM prompt.
+    const isSystemOne = (kind ?? 'llm') === 'system_one';
+    return {
+        kind: isSystemOne ? 'system_one' : 'llm',
+        prompt_text: isSystemOne ? '' : storedText(prompt_text ?? ''),
+        llm_config: isSystemOne ? null : (llm_config ?? null),
+        // The run reads a missing schema as an empty one (`output_schema or {}`).
+        output_schema: isSystemOne ? {} : (output_schema ?? {}),
+        result_variable: storedText(result_variable ?? ''),
+        variable_mappings: variable_mappings ?? {},
+        system_one_config: isSystemOne ? (system_one_config ?? null) : null,
+        input_map: isSystemOne ? (input_map ?? {}) : {},
+        questions: isSystemOne ? systemOneQuestions(questions ?? {}) : {},
+    };
+}
+
+/**
+ * System One questions by name, each as the run reads it. A Choice question's options are a map, so their order does
+ * not count; a Score question's levels are a list in order (the index is the score). A Noul question with no meaning
+ * for true or false stores no `criteria` (or `null`, or a blank meaning): all mean the same.
+ */
+function systemOneQuestions(questions: Readonly<Record<string, SystemOneQuestion>>): Record<string, Projection> {
+    const projected: Record<string, Projection> = Object.create(null);
+    for (const [name, question] of Object.entries(questions)) {
+        projected[name] = {
+            type: question.type,
+            instructions: question.instructions ?? '',
+            criteria: questionCriteria(question),
+        };
+    }
+    return projected;
+}
+
+function questionCriteria(question: SystemOneQuestion): unknown {
+    switch (question.type) {
+        case 'noul':
+            return Object.fromEntries(
+                Object.entries(question.criteria ?? {}).filter(
+                    ([, meaning]) => typeof meaning === 'string' && meaning.trim() !== ''
+                )
+            );
+        case 'choice':
+            return question.criteria ?? {};
+        case 'score':
+            return question.criteria ?? [];
+    }
+}
+
 /** The nested computation block wins over the flat legacy columns, as in the save comparable. */
 function computation(
     block: ComputationConfig | undefined,
@@ -550,7 +622,7 @@ function computation(
     return {
         code: emptyToNull(storedText(block?.code || flat.code || '')),
         input_map: block?.input_map || flat.inputMap || {},
-        output_variable_path: block?.output_variable_path || flat.outputVariablePath || null,
+        output_variable_path: emptyToNull(storedText(block?.output_variable_path || flat.outputVariablePath || '')),
         secret_names: sortedStrings(block?.secret_names),
         execution_timeout: storedExecutionTimeout(block?.execution_timeout, context),
     };

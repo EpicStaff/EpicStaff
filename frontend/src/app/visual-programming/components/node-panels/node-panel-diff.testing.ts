@@ -26,8 +26,8 @@ import { provideChangesTabDiff } from '../missing-reference-note/missing-referen
 import { TestPayloadSectionComponent } from './shared/test-payload-section/test-payload-section.component';
 
 /**
- * Everything a version diff shows on a field of a node panel: a field mark (element or row form), an Input List or
- * Key-Value row a restore adds or removes, the note that a restore reorders the Key-Value entries, the row marks of a
+ * Everything a version diff shows on a field of a node panel: a field mark (element or row form), an Input List,
+ * Key-Value or System One question row a restore adds or removes, the note that a restore reorders the Key-Value entries, the row marks of a
  * decision table grid, and a code diff.
  */
 export const SHOWN_DIFF_MARKS = [
@@ -41,6 +41,8 @@ export const SHOWN_DIFF_MARKS = [
     '.att-row--removed',
     '.prompt-card--added',
     '.prompt-card--removed',
+    '.question--added',
+    '.question--removed',
     // A decision table grid given row changes; ag-grid draws the rows themselves later (the grid specs check them).
     '.decision-grid--diff-rows',
     'app-code-diff-view',

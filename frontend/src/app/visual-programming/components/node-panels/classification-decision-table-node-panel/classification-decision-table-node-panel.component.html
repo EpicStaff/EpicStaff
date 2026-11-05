@@ -712,6 +712,9 @@
                                             <span class="visually-hidden">Restore removes this prompt: </span>
                                             <div class="prompt-card-header">
                                                 <div class="prompt-card-title">
+                                                    @if (removed.isSystemOne) {
+                                                        <span class="prompt-kind-tag">S1</span>
+                                                    }
                                                     <span class="prompt-id">{{ removed.id }}</span>
                                                     @if (removed.resultVariable) {
                                                         <span class="result-badge">{{ removed.resultVariable }}</span>

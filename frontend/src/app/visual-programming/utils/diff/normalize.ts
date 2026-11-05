@@ -16,7 +16,8 @@ export function orNull<T>(value: T | null | undefined): T | null {
 
 /**
  * Text as the backend stores it: without its surrounding whitespace, which a DRF `CharField` trims on every write
- * (code, note content). The canvas keeps the text as typed, also after a save, so `"x\n"` there is the `"x"` stored.
+ * (code, note content, node names, output paths, instructions, prompt texts, Classification Decision Table
+ * expressions). The canvas keeps the text as typed, also after a save, so `"x\n"` there is the `"x"` stored.
  */
 export function storedText(text: string): string {
     return text.trim();

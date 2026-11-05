@@ -99,12 +99,17 @@ export function showsFieldMarks(diff: Pick<UnionNodeDiffState, 'status'> | null)
 }
 
 /**
- * What a restore does to each key of a map field (like `input_map`, which the diff compares as one value), for
- * per-row marks; `null` when the node shows no field marks or the field is unchanged.
+ * What a restore does to each key of a map field (like `input_map`, which the diff compares as one value), or of that
+ * field of one item when `path` is given (`prompts[key=triage].input_map`), for per-row marks; `null` when the node
+ * shows no field marks or the field is unchanged.
  */
-export function mapFieldRowChanges(diff: UnionNodeDiffState | null, field: FieldName): MapKeyChange[] | null {
+export function mapFieldRowChanges(
+    diff: UnionNodeDiffState | null,
+    field: FieldName,
+    path: string = field
+): MapKeyChange[] | null {
     if (!showsFieldMarks(diff)) return null;
-    const change = fieldChangeFor(diff, field);
+    const change = fieldChangeFor(diff, field, path);
     return change ? mapKeyChanges(change.current, change.version) : null;
 }
 

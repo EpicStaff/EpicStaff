@@ -2,7 +2,16 @@ import { NodeType } from '@shared/models';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { TEST_EXECUTION_TIMEOUT_LIMITS } from '../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
-import { NodeModel, ScheduleTriggerNodeModel } from '../../core/models/node.model';
+import { PromptConfig } from '../../core/models/classification-decision-table.model';
+import {
+    AgentNodeModel,
+    ClassificationDecisionTableNodeModel,
+    KnowledgeRetrieverNodeModel,
+    NodeModel,
+    ScheduleTriggerNodeModel,
+    TaskNodeModel,
+    TelegramTriggerNodeModel,
+} from '../../core/models/node.model';
 import { ScheduleTriggerNodeData } from '../../core/models/schedule-trigger.model';
 import { buildFlowModelFromGraphDto } from '../load';
 import { getNodeDiff } from '../save';
@@ -60,6 +69,23 @@ const richGraph: GraphDto = {
                     system_one_config: null,
                     questions: {},
                     input_map: {},
+                },
+                {
+                    id: 8,
+                    prompt_key: 'check',
+                    prompt_text: '',
+                    llm_config: null,
+                    output_schema: {},
+                    result_variable: 'checked',
+                    variable_mappings: {},
+                    kind: 'system_one',
+                    system_one_config: 4,
+                    questions: {
+                        correct: { type: 'noul', instructions: 'Is it correct?', criteria: { true: 'yes' } },
+                        tone: { type: 'choice', instructions: 'Which tone?', criteria: { calm: 'Calm' } },
+                        quality: { type: 'score', instructions: 'How good?', criteria: ['low', 'high'] },
+                    },
+                    input_map: { text: 'variables.text' },
                 },
             ],
             sections: [{ id: 'section-1', name: 'Main', metadata: { color: '#685FFF' } }],
@@ -272,5 +298,299 @@ describe('schedule projection', () => {
         ],
     ])('%s', (_case, current, version, expected) => {
         expect(changedFields(current, version)).toEqual(expected);
+    });
+});
+
+describe('classification decision table prompt projection', () => {
+    const table = buildFlowModelFromGraphDto(liveGraph).nodes.find(
+        (node): node is ClassificationDecisionTableNodeModel => node.type === NodeType.CLASSIFICATION_TABLE
+    )!;
+    // As the editor creates them: an LLM prompt has no kind or System One fields; a System One entry has them all.
+    const llmPrompt: PromptConfig = {
+        prompt_text: 'Which team?',
+        llm_config: 3,
+        output_schema: null,
+        result_variable: 'team',
+        variable_mappings: {},
+    };
+    const systemOneEntry: PromptConfig = {
+        kind: 'system_one',
+        system_one_config: 4,
+        questions: {
+            correct: { type: 'noul', instructions: 'Is it correct?' },
+            tone: { type: 'choice', instructions: 'Which tone?', criteria: { calm: 'Calm', angry: 'Angry' } },
+            quality: { type: 'score', instructions: 'How good?', criteria: ['low', 'mid', 'high'] },
+        },
+        input_map: { text: 'variables.text' },
+        prompt_text: '',
+        llm_config: null,
+        output_schema: null,
+        result_variable: 'checked',
+        variable_mappings: {},
+    };
+
+    /** The prompt fields a restore changes when the canvas prompt is `current` and the version's `version`. */
+    function changedFields(current: PromptConfig, version: PromptConfig): string[] {
+        const project = (prompt: PromptConfig) =>
+            projectNode(
+                { ...table, data: { ...table.data, table: { ...table.data.table, prompts: { check: prompt } } } },
+                stubContext
+            );
+        return diffProjections(project(current), project(version)).map((change) => change.path);
+    }
+
+    const questionsWith = (changes: Record<string, unknown>): PromptConfig['questions'] =>
+        ({ ...systemOneEntry.questions, ...changes }) as PromptConfig['questions'];
+
+    it.each<[string, PromptConfig, PromptConfig, string[]]>([
+        // Load paths and stored defaults: the same prompt, never a change.
+        [
+            'an LLM prompt saved before System One (no kind) and one the editor holds as llm',
+            llmPrompt,
+            { ...llmPrompt, kind: 'llm', system_one_config: null, questions: {}, input_map: {} },
+            [],
+        ],
+        ['an output schema stored empty and one never set', llmPrompt, { ...llmPrompt, output_schema: {} }, []],
+        [
+            'stale System One values on an LLM prompt',
+            llmPrompt,
+            { ...llmPrompt, kind: 'llm', system_one_config: 9, questions: questionsWith({}), input_map: { a: 'b' } },
+            [],
+        ],
+        [
+            'stale LLM values on a System One entry',
+            systemOneEntry,
+            { ...systemOneEntry, prompt_text: 'Old prompt', llm_config: 5, output_schema: { type: 'object' } },
+            [],
+        ],
+        [
+            'an input map stored empty and one never set',
+            { ...systemOneEntry, input_map: undefined },
+            { ...systemOneEntry, input_map: {} },
+            [],
+        ],
+        [
+            'no config stored as null and one never set',
+            { ...systemOneEntry, system_one_config: undefined },
+            { ...systemOneEntry, system_one_config: null },
+            [],
+        ],
+        [
+            'Choice options in another order',
+            systemOneEntry,
+            questionsEntry({
+                tone: { type: 'choice', instructions: 'Which tone?', criteria: { angry: 'Angry', calm: 'Calm' } },
+            }),
+            [],
+        ],
+        [
+            'a Noul question without meanings: none, null, empty or blank',
+            questionsEntry({ correct: { type: 'noul', instructions: 'Is it correct?', criteria: null } }),
+            questionsEntry({ correct: { type: 'noul', instructions: 'Is it correct?', criteria: { true: ' ' } } }),
+            [],
+        ],
+        // Real changes.
+        [
+            'the kind: an LLM prompt becomes a System One entry',
+            llmPrompt,
+            systemOneEntry,
+            [
+                'prompts[key=check].kind',
+                'prompts[key=check].prompt_text',
+                'prompts[key=check].llm_config',
+                'prompts[key=check].result_variable',
+                'prompts[key=check].system_one_config',
+                'prompts[key=check].input_map',
+                'prompts[key=check].questions',
+            ],
+        ],
+        [
+            'the kind: a System One entry becomes an LLM prompt',
+            systemOneEntry,
+            llmPrompt,
+            [
+                'prompts[key=check].kind',
+                'prompts[key=check].prompt_text',
+                'prompts[key=check].llm_config',
+                'prompts[key=check].result_variable',
+                'prompts[key=check].system_one_config',
+                'prompts[key=check].input_map',
+                'prompts[key=check].questions',
+            ],
+        ],
+        [
+            'the config',
+            systemOneEntry,
+            { ...systemOneEntry, system_one_config: 6 },
+            ['prompts[key=check].system_one_config'],
+        ],
+        [
+            'an input map row',
+            systemOneEntry,
+            { ...systemOneEntry, input_map: { text: 'variables.body' } },
+            ['prompts[key=check].input_map'],
+        ],
+        [
+            'the instructions of a question',
+            systemOneEntry,
+            questionsEntry({ correct: { type: 'noul', instructions: 'Is it right?' } }),
+            ['prompts[key=check].questions'],
+        ],
+        [
+            'a Noul meaning',
+            systemOneEntry,
+            questionsEntry({ correct: { type: 'noul', instructions: 'Is it correct?', criteria: { false: 'no' } } }),
+            ['prompts[key=check].questions'],
+        ],
+        [
+            'a Choice option',
+            systemOneEntry,
+            questionsEntry({ tone: { type: 'choice', instructions: 'Which tone?', criteria: { calm: 'Calm' } } }),
+            ['prompts[key=check].questions'],
+        ],
+        [
+            'the order of Score levels',
+            systemOneEntry,
+            questionsEntry({ quality: { type: 'score', instructions: 'How good?', criteria: ['high', 'mid', 'low'] } }),
+            ['prompts[key=check].questions'],
+        ],
+    ])('%s', (_case, current, version, expected) => {
+        expect(changedFields(current, version)).toEqual(expected);
+    });
+
+    function questionsEntry(changes: Record<string, unknown>): PromptConfig {
+        return { ...systemOneEntry, questions: questionsWith(changes) };
+    }
+});
+
+describe('text the backend stores trimmed', () => {
+    const flow = buildFlowModelFromGraphDto(richGraph);
+    const nodeOf = <TNode extends NodeModel>(type: NodeType): TNode =>
+        flow.nodes.find((node) => node.type === type) as TNode;
+
+    /** The fields a restore changes when the canvas node is `edit(node)` and the version the stored `node`. */
+    function changedPaths(node: NodeModel, edit: (text: (value: string) => string) => NodeModel): string[] {
+        const canvas = (append: string) => edit((value) => `${value}${append}`);
+        const typed = diffProjections(projectNode(canvas('\n'), stubContext), projectNode(node, stubContext));
+        const edited = diffProjections(projectNode(canvas(' edited'), stubContext), projectNode(node, stubContext));
+        expect(edited.length, 'a real edit is still a change').toBeGreaterThan(0);
+        return typed.map((change) => change.path);
+    }
+
+    const task = nodeOf<TaskNodeModel>(NodeType.TASK);
+    const agent = nodeOf<AgentNodeModel>(NodeType.AGENT);
+    const knowledge = nodeOf<KnowledgeRetrieverNodeModel>(NodeType.KNOWLEDGE_RETRIEVER);
+    const telegram = nodeOf<TelegramTriggerNodeModel>(NodeType.TELEGRAM_TRIGGER);
+    const classification = nodeOf<ClassificationDecisionTableNodeModel>(NodeType.CLASSIFICATION_TABLE);
+    const withTable = (table: Partial<ClassificationDecisionTableNodeModel['data']['table']>): NodeModel => ({
+        ...classification,
+        data: { ...classification.data, table: { ...classification.data.table, ...table } },
+    });
+    const storedClassification = withTable({
+        pre_output_variable_path: 'variables.pre',
+        pre_computation: { ...classification.data.table.pre_computation!, output_variable_path: 'variables.pre' },
+        condition_groups: classification.data.table.condition_groups.map((group) => ({
+            ...group,
+            expression: 'x > 1',
+            manipulation: 'y = 1',
+            route_code: 'A',
+        })),
+    }) as ClassificationDecisionTableNodeModel;
+    const [group] = storedClassification.data.table.condition_groups;
+    const prompt = storedClassification.data.table.prompts!['classify'];
+
+    it.each<[string, NodeModel, (text: (value: string) => string) => NodeModel]>([
+        ['a node name', task, (text) => ({ ...task, node_name: text(task.node_name) })],
+        [
+            'an output variable path',
+            { ...task, output_variable_path: 'variables.out' },
+            (text) => ({ ...task, output_variable_path: text('variables.out') }),
+        ],
+        ['Task instructions', task, (text) => ({ ...task, data: { ...task.data, instructions: text('Do it') } })],
+        [
+            'local surface instructions',
+            task,
+            (text) => ({
+                ...task,
+                data: {
+                    ...task.data,
+                    inline_surface: { ...task.data.inline_surface!, instructions: text('Be brief') },
+                },
+            }),
+        ],
+        [
+            'an Agent task name and instructions',
+            agent,
+            (text) => ({
+                ...agent,
+                data: {
+                    ...agent.data,
+                    tasks: agent.data.tasks.map((agentTask) => ({
+                        ...agentTask,
+                        name: text(agentTask.name),
+                        instructions: text(agentTask.instructions),
+                    })),
+                },
+            }),
+        ],
+        ['a Knowledge query', knowledge, (text) => ({ ...knowledge, data: { ...knowledge.data, query: text('q') } })],
+        [
+            'a Telegram field',
+            telegram,
+            (text) => ({
+                ...telegram,
+                data: {
+                    ...telegram.data,
+                    fields: telegram.data.fields.map((field) => ({
+                        ...field,
+                        field_name: text(field.field_name),
+                        variable_path: text(field.variable_path),
+                    })),
+                },
+            }),
+        ],
+        [
+            'a Classification table output path, expression, manipulation and route code',
+            storedClassification,
+            (text) =>
+                withTable({
+                    pre_output_variable_path: text('variables.pre'),
+                    pre_computation: {
+                        ...classification.data.table.pre_computation!,
+                        output_variable_path: text('variables.pre'),
+                    },
+                    condition_groups: [
+                        {
+                            ...group,
+                            expression: text('x > 1'),
+                            manipulation: text('y = 1'),
+                            route_code: text('A'),
+                        },
+                    ],
+                }),
+        ],
+        [
+            'a prompt text and result variable',
+            storedClassification,
+            (text) => ({
+                ...storedClassification,
+                data: {
+                    ...storedClassification.data,
+                    table: {
+                        ...storedClassification.data.table,
+                        prompts: {
+                            ...storedClassification.data.table.prompts,
+                            classify: {
+                                ...prompt,
+                                prompt_text: text(prompt.prompt_text),
+                                result_variable: text(prompt.result_variable),
+                            },
+                        },
+                    },
+                },
+            }),
+        ],
+    ])('%s typed with a trailing newline is not a change; an edit is', (_case, stored, edit) => {
+        expect(changedPaths(stored, edit)).toEqual([]);
     });
 });

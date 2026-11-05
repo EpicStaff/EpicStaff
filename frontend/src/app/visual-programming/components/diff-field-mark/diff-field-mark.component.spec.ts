@@ -37,6 +37,15 @@ import { DiffFieldMarkChange, DiffFieldMarkComponent } from './diff-field-mark.c
         >
             <span>user_id</span>
         </div>
+        <div
+            id="table-row"
+            role="row"
+            appDiffFieldMark
+            diffLabel="Restore changes this input"
+            [diffChange]="rowChange()"
+        >
+            <span>user_id</span>
+        </div>
         <app-diff-field-mark
             id="subflow"
             [diffField]="'subgraph'"
@@ -136,6 +145,16 @@ describe('DiffFieldMarkComponent', () => {
         );
         expect(readerVisible.map((child) => child.textContent)).toEqual(['user_id']);
         expect(descriptionOf('row')).toBe('Restore changes this field. Current canvas: variables.user');
+    });
+
+    it("keeps a marked row's own role and names the row by its label", () => {
+        render([onDiff('changed', [])], { current: 'variables.user', version: 'variables.account' });
+
+        expect(element('table-row').getAttribute('role')).toBe('row');
+        expect(descriptionOf('table-row')).toBe('Restore changes this input. Current canvas: variables.user');
+        expect(element('table-row').querySelector('.diff-field-mark__badge')?.getAttribute('title')).toBe(
+            'Restore changes this input'
+        );
     });
 
     it('leaves a field the diff does not change unmarked', () => {

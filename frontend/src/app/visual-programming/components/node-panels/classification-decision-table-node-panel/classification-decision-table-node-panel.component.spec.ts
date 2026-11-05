@@ -1020,6 +1020,42 @@ describe('ClassificationDecisionTableNodePanelComponent — the prompts and the 
         );
     });
 
+    it('lists a kind change and the System One fields a restore changes in the card tooltip', () => {
+        const root = open({
+            status: 'changed',
+            fields: [
+                promptChange('kind', 'system_one', 'llm'),
+                promptChange('prompt_text', '', 'Sort the ticket'),
+                promptChange('system_one_config', 4, null),
+                promptChange('input_map', { text: 'variables.text' }, {}),
+                promptChange('questions', { correct: { type: 'noul', instructions: 'Right?', criteria: {} } }, {}),
+            ],
+        });
+
+        expect(descriptionOf(card(root, 'triage').querySelector('.prompt-card-header'))).toBe(
+            'Restore changes this field. Changed fields: Kind, Prompt text, System One config, Input to classify, Questions.'
+        );
+    });
+
+    it('tags a System One entry a restore removes as the other System One cards are', () => {
+        const root = open({
+            status: 'changed',
+            fields: [
+                {
+                    path: 'prompts[key=Company check]',
+                    field: 'prompts[]',
+                    status: 'deleted',
+                    current: { kind: 'system_one', result_variable: 'checked' },
+                    version: null,
+                },
+            ],
+        });
+
+        const removed = card(root, 'Company check');
+        expect(removed.classList).toContain('prompt-card--removed');
+        expect(removed.querySelector('.prompt-kind-tag')?.textContent?.trim()).toBe('S1');
+    });
+
     it.each(['Enter', ' '])(
         'opens and closes a marked card from the keyboard (%j), as its header is focusable',
         (key) => {

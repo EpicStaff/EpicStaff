@@ -39,6 +39,8 @@ const VENV_PATHS: ReadonlyMap<string, string> = new Map<string, string>([
  * - `inline_tool_dropped`: the whole `inline_surface` (the warning names no field) and the tool id
  * - `secret_declaration_dropped`: the secret field of the code (or bot key) it names and `missing_name`
  * - `venv_ref_cleared`: the venv of the code it names and `missing_id`
+ * - `system_one_config_ref_cleared`: the config of the Classification Decision Table prompt it names (`prompt_key`)
+ *   and `missing_id`
  *
  * `secret_in_recycle_bin` is deliberately not a missing reference: a restore links the binned secret.
  */
@@ -90,6 +92,12 @@ function referenceOf(warning: RestoreWarning): MissingReference | null {
         case 'venv_ref_cleared': {
             const path = warning.field ? VENV_PATHS.get(warning.field) : undefined;
             return path ? fromWarning(path, path, warning.missing_id) : null;
+        }
+        case 'system_one_config_ref_cleared': {
+            if (warning.prompt_key == null) return null;
+            const field: FieldName = 'prompts[].system_one_config';
+            const path = `prompts[key=${warning.prompt_key}].system_one_config`;
+            return fromWarning(path, field, warning.missing_id);
         }
         default:
             return null;

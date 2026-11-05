@@ -60,7 +60,7 @@ const BADGE_LABEL = 'Restore changes this field';
                 <span
                     class="diff-field-mark__badge"
                     aria-hidden="true"
-                    [attr.title]="badgeLabel"
+                    [attr.title]="diffLabel()"
                 >
                     <i
                         class="ti ti-pencil"
@@ -71,7 +71,7 @@ const BADGE_LABEL = 'Restore changes this field';
                 <span
                     class="visually-hidden"
                     [id]="labelId"
-                    >{{ badgeLabel }}</span
+                    >{{ diffLabel() }}</span
                 >
             }
         }
@@ -94,10 +94,11 @@ const BADGE_LABEL = 'Restore changes this field';
         '[class.diff-field-mark--shown]': 'change() !== null',
         // The hook the wrapped form component styles its value box by (see the class docs).
         '[class.diff-value-marked]': 'change() !== null && !isRow && !diffGroup()',
+        '[class.diff-value-marked--no-badge]': 'change() !== null && !isRow && !diffGroup() && !diffBadge()',
         '[class.diff-field-mark--draws-badge]': 'change() !== null && !isRow && diffDrawsBadge()',
         '[class.diff-field-mark--group]': 'change() !== null && !isRow && diffGroup()',
         '[attr.tabindex]': 'change() !== null ? 0 : null',
-        '[attr.role]': 'change() !== null && !isRow ? "group" : null',
+        '[attr.role]': 'change() !== null && !isRow ? "group" : ownRole',
         '[attr.aria-labelledby]': 'change() !== null && !isRow ? labelId : null',
         '(mouseenter)': 'open()',
         '(mouseleave)': 'close()',
@@ -134,6 +135,17 @@ export class DiffFieldMarkComponent {
      * components inside are not marked one by one. Element form only.
      */
     readonly diffGroup = input(false);
+    /**
+     * Whether the wrapped form component draws the pen badge; `false` for a field inside a marked card that carries
+     * the badge (a prompt card of a Classification Decision Table): the value box then gets the border and the focus
+     * ring only. Element form, plain (not `diffGroup`, not `diffDrawsBadge`) only.
+     */
+    readonly diffBadge = input(true);
+    /**
+     * What the mark is called for screen readers and on its badge: "Restore changes this field" unless the marked
+     * element is something else, e.g. "Restore changes this question" for a row that holds a whole question.
+     */
+    readonly diffLabel = input(BADGE_LABEL);
 
     /** The change shown; `null` when there is none, or off the Changes tab, or on an added or removed node. */
     protected readonly change = computed<DiffFieldMarkChange | null>(() => {
@@ -155,18 +167,19 @@ export class DiffFieldMarkComponent {
     private readonly description = computed(() => {
         if (this.change() === null) return null;
         const hint = this.diffHint();
-        if (hint !== null) return this.isRow ? `${BADGE_LABEL}. ${hint}` : hint;
+        if (hint !== null) return this.isRow ? `${this.diffLabel()}. ${hint}` : hint;
         const currentValue = currentValueDescription(this.segments());
-        return this.isRow ? `${BADGE_LABEL}. ${currentValue}` : currentValue;
+        return this.isRow ? `${this.diffLabel()}. ${currentValue}` : currentValue;
     });
     protected readonly isOpen = signal(false);
 
-    protected readonly badgeLabel = BADGE_LABEL;
     protected readonly tooltipPositions = DIFF_MARK_TOOLTIP_POSITIONS;
     protected readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
     protected readonly labelId = inject(_IdGenerator).getId('diff-field-mark-label-');
     /** The attribute form, e.g. on a table row (the element form is `<app-diff-field-mark>`). */
     protected readonly isRow = this.host.nativeElement.tagName.toLowerCase() !== 'app-diff-field-mark';
+    /** The role the marked element has of its own (a table row's `row`); the role binding must not remove it. */
+    protected readonly ownRole = this.host.nativeElement.getAttribute('role');
 
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private readonly ariaDescriber = inject(AriaDescriber);

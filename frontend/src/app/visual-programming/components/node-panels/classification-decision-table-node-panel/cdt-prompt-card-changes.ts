@@ -17,6 +17,8 @@ export const KEPT_PROMPT_CARD: CdtPromptCardMark = { added: false, change: null,
 export interface RemovedCdtPrompt {
     id: string;
     resultVariable: string;
+    /** A System One entry, tagged as the other cards are. */
+    isSystemOne: boolean;
 }
 
 /** What a restore does to the prompt cards of a Classification Decision Table. */
@@ -27,12 +29,19 @@ export interface CdtPromptCardChanges {
     removed: RemovedCdtPrompt[];
 }
 
-/** The prompt fields the diff compares, by the words the card's tooltip uses, in the card's order. */
+/**
+ * The prompt fields the diff compares, by the words the card's tooltip uses, in the card's order: the kind (shown by
+ * the card's form, which is the version's), then an LLM prompt's fields, then a System One entry's.
+ */
 const LABEL_BY_FIELD: Readonly<Record<string, string>> = {
+    kind: 'Kind',
     llm_config: 'LLM',
     result_variable: 'Result variable',
     prompt_text: 'Prompt text',
     output_schema: 'Output schema',
+    system_one_config: 'System One config',
+    input_map: 'Input to classify',
+    questions: 'Questions',
     // No field of its own in the card: the card's mark is its only one.
     variable_mappings: 'Variable mappings',
 };
@@ -70,5 +79,9 @@ function changedFields(item: KeyedItemChange): string[] {
 function removedPrompt(item: KeyedItemChange): RemovedCdtPrompt {
     const prompt = (item.current ?? {}) as Partial<Record<string, unknown>>;
     const resultVariable = prompt['result_variable'];
-    return { id: item.key, resultVariable: typeof resultVariable === 'string' ? resultVariable : '' };
+    return {
+        id: item.key,
+        resultVariable: typeof resultVariable === 'string' ? resultVariable : '',
+        isSystemOne: prompt['kind'] === 'system_one',
+    };
 }

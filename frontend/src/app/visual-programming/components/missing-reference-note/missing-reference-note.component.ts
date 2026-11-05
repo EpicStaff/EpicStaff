@@ -31,11 +31,19 @@ const ROUTE_GROUP_PATH = /^condition_groups\[name=(.*)\]\.next_node$/;
 export class MissingReferenceNoteComponent {
     /** The fields this note covers (`MissingReference.field`, the path without item keys). */
     readonly fields = input.required<readonly FieldName[]>();
+    /**
+     * The one item this note covers, by its path (`MissingReference.path`, e.g.
+     * `prompts[key=triage].system_one_config`), for a field shown once per item. Not set: every item of `fields`.
+     */
+    readonly path = input<string | null>(null);
 
     protected readonly texts = computed(() => {
         const fields: readonly string[] = this.fields();
+        const path = this.path();
         const references = this.panelDiff()?.missingReferences ?? [];
-        return references.filter((reference) => fields.includes(reference.field)).map(describeMissingReference);
+        return references
+            .filter((reference) => fields.includes(reference.field) && (path === null || reference.path === path))
+            .map(describeMissingReference);
     });
 
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
@@ -60,6 +68,8 @@ function describeMissingReference(reference: MissingReference): string {
             return usesNumbered('flow', 'a flow', missing);
         case 'python_code.venv_id':
             return usesNumbered('venv', 'a venv', missing);
+        case 'prompts[].system_one_config':
+            return usesNumbered('System One config', 'a System One config', missing);
         case 'surface_list':
             return usesNumbered('surface', 'a surface', missing);
         // The warning names the tool's id only, not whether it is a Python or an MCP tool.

@@ -18,8 +18,13 @@ import { FullLLMConfigService, SystemOneConfigStorageService } from '@shared/ser
 import { deepEqual } from '@shared/utils';
 
 import { PromptConfig } from '../../../../core/models/classification-decision-table.model';
+import { NODE_PANEL_DIFF } from '../../../../core/providers/node-panel-diff.token';
+import { linkedEntityFormat, mapFieldRowChanges } from '../../../../utils/diff';
+import { DiffFieldMarkComponent } from '../../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../../input-map/input-map.component';
+import { MissingReferenceNoteComponent } from '../../../missing-reference-note/missing-reference-note.component';
 import { isCompleteQuestion, isValidQuestionName } from './question-name.util';
+import { KEPT_QUESTION_ROW, QuestionRowMark, systemOneQuestionRowChanges } from './system-one-question-row-changes';
 
 type QuestionType = SystemOneQuestion['type'];
 
@@ -70,9 +75,11 @@ const TYPE_HELP: Record<SystemOneQuestion['type'], string> = {
         ChipsInputComponent,
         CustomInputComponent,
         DeleteButtonComponent,
+        DiffFieldMarkComponent,
         HintMessageComponent,
         InputMapComponent,
         KeyValueListComponent,
+        MissingReferenceNoteComponent,
         SelectComponent,
         TextareaComponent,
         TooltipComponent,
@@ -85,18 +92,7 @@ export class CdtSystemOneEntryComponent implements OnInit {
     readonly readOnly = input(false);
     readonly promptChange = output<Partial<PromptConfig>>();
 
-    protected readonly typeItems = QUESTION_TYPE_ITEMS;
-    protected readonly typeHelp = TYPE_HELP;
-    protected readonly inputMapForm = new FormGroup({
-        input_map: new FormArray<FormGroup>([]),
-        test_input: new FormArray<FormGroup>([]),
-    });
-
     private readonly rows = signal<QuestionRow[]>([]);
-    private readonly destroyRef = inject(DestroyRef);
-    private readonly configStorage = inject(SystemOneConfigStorageService);
-    private readonly llmConfigs = inject(FullLLMConfigService);
-    private nextRowUid = 0;
 
     protected readonly configItems = computed<SelectItem<number>[]>(() =>
         this.configStorage.configs().map((config) => ({ name: this.configLabel(config), value: config.id }))
@@ -119,6 +115,44 @@ export class CdtSystemOneEntryComponent implements OnInit {
         };
     });
 
+    // Version diff (Changes tab of a version preview): the fields of this entry a restore changes. The card around the
+    // entry carries the badge, so its fields get the border only.
+    /** The diff path of one field of this entry, as its field mark looks it up. */
+    protected readonly configPath = computed(() => this.promptFieldPath('system_one_config'));
+    protected readonly resultVariablePath = computed(() => this.promptFieldPath('result_variable'));
+    /** What a restore does to each row of the input map, which the diff compares as one value; `null` anywhere else. */
+    protected readonly inputMapRowChanges = computed(() =>
+        mapFieldRowChanges(this.panelDiff(), 'prompts[].input_map', this.promptFieldPath('input_map'))
+    );
+    private readonly questionRowChanges = computed(() =>
+        systemOneQuestionRowChanges(this.panelDiff(), this.prompt().id)
+    );
+    /** The canvas questions a restore removes, listed after the version's, read-only. */
+    protected readonly removedQuestions = computed(() =>
+        (this.questionRowChanges()?.removed ?? []).map((question) => ({
+            ...question,
+            type: QUESTION_TYPE_ITEMS.find((item) => item.value === question.type)?.name ?? question.type,
+        }))
+    );
+
+    protected readonly typeItems = QUESTION_TYPE_ITEMS;
+    protected readonly typeHelp = TYPE_HELP;
+    protected readonly inputMapForm = new FormGroup({
+        input_map: new FormArray<FormGroup>([]),
+        test_input: new FormArray<FormGroup>([]),
+    });
+    /** How a diff tooltip names a config: as the select does, else as "System One config #id" (deleted since). */
+    protected readonly configFormat = linkedEntityFormat('System One config', (id) => {
+        const config = this.configStorage.configs().find((candidate) => candidate.id === id);
+        return config ? this.configLabel(config) : undefined;
+    });
+
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly configStorage = inject(SystemOneConfigStorageService);
+    private readonly llmConfigs = inject(FullLLMConfigService);
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    private nextRowUid = 0;
+
     ngOnInit(): void {
         this.configStorage.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
 
@@ -135,6 +169,11 @@ export class CdtSystemOneEntryComponent implements OnInit {
             });
         }
         pairs.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.emitInputMap());
+    }
+
+    /** What a restore does to the question named `name` (a version question). */
+    protected questionRowMark(name: string): QuestionRowMark {
+        return this.questionRowChanges()?.rows.get(name) ?? KEPT_QUESTION_ROW;
     }
 
     protected onConfigChange(configId: unknown): void {
@@ -284,6 +323,10 @@ export class CdtSystemOneEntryComponent implements OnInit {
         );
         if (deepEqual(inputMap, this.prompt().input_map ?? {})) return;
         this.promptChange.emit({ input_map: inputMap });
+    }
+
+    private promptFieldPath(field: string): string {
+        return `prompts[key=${this.prompt().id}].${field}`;
     }
 
     private configLabel(config: SystemOneConfig): string {
