@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 from foundation.transport.http import errors
@@ -75,6 +77,51 @@ def test_other_upstream_failures_render_as_502_with_the_upstream_body(error_type
         "code": "upstream_service_error",
         "message": "Sandbox said no.",
     }
+
+
+def test_upstream_error_envelope_is_unwrapped_into_its_message():
+    body = json.dumps(
+        {
+            "type": "client_error",
+            "errors": [
+                {
+                    "code": "conflict",
+                    "detail": "CustomLibrary(id=3) is still used by a venv.",
+                    "attr": None,
+                }
+            ],
+        }
+    )
+    exc = _status_error(errors.ClientConflictError, 409, body)
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.data["message"] == "CustomLibrary(id=3) is still used by a venv."
+
+
+def test_several_upstream_errors_are_joined():
+    body = json.dumps(
+        {
+            "type": "client_error",
+            "errors": [
+                {"code": "validation_error", "detail": "name: must not be empty", "attr": "name"},
+                {"code": "validation_error", "detail": "libs: must be a list", "attr": "libs"},
+            ],
+        }
+    )
+    exc = _status_error(errors.ClientValidationError, 400, body)
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.data["message"] == "name: must not be empty; libs: must be a list"
+
+
+def test_upstream_body_that_is_not_the_envelope_is_passed_through():
+    exc = _status_error(errors.ClientNotFoundError, 404, "Venv 42 does not exist.")
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.data["message"] == "Venv 42 does not exist."
 
 
 def test_unreachable_dependency_renders_as_503():
