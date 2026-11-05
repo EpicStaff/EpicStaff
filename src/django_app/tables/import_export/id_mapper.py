@@ -62,6 +62,9 @@ class IDMapper:
         summary = {}
 
         for entity_type in self._mappings:
+            if not registry.has_strategy(entity_type):
+                continue
+
             strategy = registry.get_strategy(entity_type)
 
             created_mappings = [m for m in self._mappings[entity_type].values() if m.was_created]
