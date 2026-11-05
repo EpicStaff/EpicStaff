@@ -132,7 +132,8 @@ class ImportArchive:
         Raises:
             InvalidArchiveError: The file is not a zip, or it has too many entries,
                 an unsafe or duplicate member name, a link, an encrypted member, a
-                total unpacked size past the cap, or no `export.json`.
+                total unpacked size past the cap, an `export.json` past its own cap,
+                or no `export.json`.
         """
         # ImportArchive owns the file from here and closes it in close().
         file = open(path, "rb")  # noqa: SIM115
@@ -182,6 +183,13 @@ class ImportArchive:
                 raise invalid_archive(f"member {info.filename!r} is encrypted")
             if info.filename in seen_names:
                 raise invalid_archive(f"member {info.filename!r} appears twice")
+            if (
+                info.filename == ENVELOPE_MEMBER
+                and info.file_size > settings.MAX_EXPORT_ENVELOPE_SIZE
+            ):
+                raise invalid_archive(
+                    f"{ENVELOPE_MEMBER} unpacks to more than {settings.MAX_EXPORT_ENVELOPE_SIZE} bytes"
+                )
             # zipfile stops reading a member at its declared size, so the declared sizes
             # are a safe upper bound of what the import can unpack.
             total_size += info.file_size
@@ -197,11 +205,18 @@ class ImportArchive:
     def envelope(self) -> dict:
         """Return the parsed `export.json`.
 
+        It is parsed whole, so at most `MAX_EXPORT_ENVELOPE_SIZE` bytes are read,
+        whatever size the member declares.
+
         Raises:
-            InvalidArchiveError: `export.json` is not valid UTF-8 JSON.
+            InvalidArchiveError: `export.json` is larger than the cap, or is not valid
+                UTF-8 JSON.
         """
+        cap = settings.MAX_EXPORT_ENVELOPE_SIZE
         with self.open_member(ENVELOPE_MEMBER) as member:
-            data = member.read()
+            data = member.read(cap + 1)
+        if len(data) > cap:
+            raise invalid_archive(f"{ENVELOPE_MEMBER} unpacks to more than {cap} bytes")
         try:
             return json.loads(data)
         except (json.JSONDecodeError, UnicodeDecodeError) as error:

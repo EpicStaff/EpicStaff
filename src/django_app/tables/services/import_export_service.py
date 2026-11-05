@@ -1,9 +1,15 @@
 import json
-import shutil
+from typing import BinaryIO
 
+from django.conf import settings as django_settings
 from rbac.access.resolver import PermissionResolver
 from rest_framework.exceptions import ValidationError
-from tables.import_export.archive import ImportArchive, detect_file_kind, temporary_archive
+from tables.import_export.archive import (
+    ImportArchive,
+    detect_file_kind,
+    invalid_archive,
+    temporary_archive,
+)
 from tables.import_export.constants import ARCHIVE_IMPORT_VERSION, MAIN_ENTITY_KEY
 from tables.import_export.export_format_strategies import JsonExportFormatStrategy
 from tables.import_export.permissions import ExportAccessPolicy
@@ -15,6 +21,7 @@ from tables.import_export.version_conversions.base import VersionConverter
 from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
 
 _ZIP_HEAD_SIZE = 4
+_COPY_CHUNK_SIZE = 1024 * 1024
 
 
 def _file_version(envelope: dict) -> int:
@@ -165,6 +172,10 @@ class ViewSetImportExportService:
         """Review a `.json` export or the `export.json` of a `.zip` one.
 
         Only the envelope is read; the files an archive carries are not.
+
+        Raises:
+            InvalidArchiveError: The archive is larger than `MAX_KNOWLEDGE_ARCHIVE_SIZE`
+                (checked before it is copied to disk), or `ImportArchive` refuses it.
         """
         head = file.read(_ZIP_HEAD_SIZE)
         file.seek(0)
@@ -176,9 +187,23 @@ class ViewSetImportExportService:
 
     @staticmethod
     def _read_archive_envelope(file) -> dict:
+        max_size = django_settings.MAX_KNOWLEDGE_ARCHIVE_SIZE
+        size = getattr(file, "size", None)
+        if size is not None and size > max_size:
+            raise invalid_archive(f"the archive is larger than {max_size} bytes")
         # ImportArchive checks a file on disk; an upload may only be in memory.
         with (
-            temporary_archive(lambda copy: shutil.copyfileobj(file, copy)) as path,
+            temporary_archive(lambda copy: _copy_at_most(file, copy, max_size)) as path,
             ImportArchive.open(path) as archive,
         ):
             return archive.envelope()
+
+
+def _copy_at_most(source: BinaryIO, target: BinaryIO, max_size: int) -> None:
+    # Covers a source that reports no size, or a wrong one: copying stops at the cap.
+    copied = 0
+    while chunk := source.read(_COPY_CHUNK_SIZE):
+        copied += len(chunk)
+        if copied > max_size:
+            raise invalid_archive(f"the archive is larger than {max_size} bytes")
+        target.write(chunk)

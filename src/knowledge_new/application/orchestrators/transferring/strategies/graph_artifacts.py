@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import anyio
+import pyarrow as pa
 import pyarrow.parquet as pq
 from application.commands import (
     ExportGraphArtifacts,
@@ -23,8 +24,8 @@ from domain.errors import (
     RagInProcessingError,
     RagNotFoundError,
 )
-from infrastructure.graphrag.artifact_tar import read_members, stream_tar
-from infrastructure.graphrag.document_id_rewrite import rewrite_document_ids
+from infrastructure.graphrag.artifact_tar import open_artifact_tar, read_members, stream_tar
+from infrastructure.graphrag.document_id_rewrite import DocumentIdRewriter
 
 # Slot folders that make up an index; `update_output/` only holds a run's scratch data.
 _EXPORTED_FOLDERS = frozenset({"input", "lancedb", "output"})
@@ -35,6 +36,14 @@ _DOCUMENT_ID_TABLES = (
 )
 # Django creates an imported RAG with this slot, so a restore always writes to it.
 _RESTORE_SLOT = SlotEnum.A
+# Rows one document may have in a rewritten table: documents.parquet holds one per
+# document, text_units.parquet one per chunk. 100 000 chunks of the default 1200 tokens is
+# about half a GB of text in one document. Scaled by the documents Django sends, so a small
+# collection cannot carry a huge table: parquet compresses a repeated value to almost
+# nothing, so the row count, not the file size, bounds the work.
+_MAX_ROWS_PER_DOCUMENT = 100_000
+# Rows rewritten at once; a text unit row carries its chunk text, so this bounds memory.
+_REWRITE_BATCH_ROWS = 10_000
 
 
 def _rag_prefix(rag_id: int) -> str:
@@ -87,7 +96,7 @@ class GraphArtifactRestoreOrchestrator(AbstractArtifactRestoreOrchestrator):
         # tarfile reads the temp file synchronously inside the event loop. Accepted:
         # the endpoint is internal and rare, and miniopy reads `source` synchronously too.
         try:
-            with tarfile.open(command.archive_path, mode="r:") as tar:
+            with open_artifact_tar(command.archive_path) as tar:
                 # Validate every member before deleting or writing anything.
                 members = read_members(tar)
                 await self.artifact_store.clear(rag_prefix)
@@ -130,7 +139,12 @@ class GraphDocumentIdRewriteOrchestrator(AbstractDocumentIdRewriteOrchestrator):
                 output = Path(directory, f"{position}-rewritten.parquet")
                 await self._download(key, original)
                 await anyio.to_thread.run_sync(
-                    _rewrite_table_file, original, output, column, command.document_id_map
+                    _rewrite_table_file,
+                    original,
+                    output,
+                    table_name,
+                    column,
+                    command.document_id_map,
                 )
                 await anyio.Path(original).unlink()
                 rewritten.append((key, output))
@@ -151,7 +165,29 @@ class GraphDocumentIdRewriteOrchestrator(AbstractDocumentIdRewriteOrchestrator):
 
 
 def _rewrite_table_file(
-    source: Path, destination: Path, column: str, document_id_map: Mapping[str, int]
+    source: Path,
+    destination: Path,
+    table_name: str,
+    column: str,
+    document_id_map: Mapping[str, int],
 ) -> None:
-    table = rewrite_document_ids(pq.read_table(source), column, document_id_map)
-    pq.write_table(table, destination)
+    """Write `source` to `destination` with the document ids in `column` rewritten.
+
+    The row count comes from the parquet footer and is checked before any row is
+    read; the rows are then streamed in batches, so only one batch is in memory.
+    On a refused id `destination` is left half written: the caller discards it.
+
+    Raises:
+        InvalidArtifactArchiveError: The table has more rows than the documents in
+            the map can account for, or holds an id the map lacks.
+    """
+    max_rows = len(document_id_map) * _MAX_ROWS_PER_DOCUMENT
+    with pq.ParquetFile(source) as parquet_file:
+        if parquet_file.metadata.num_rows > max_rows:
+            raise InvalidArtifactArchiveError(
+                reason=f"{table_name} has more than {max_rows} rows for {len(document_id_map)} documents"
+            )
+        rewriter = DocumentIdRewriter(document_id_map)
+        with pq.ParquetWriter(destination, parquet_file.schema_arrow) as writer:
+            for batch in parquet_file.iter_batches(batch_size=_REWRITE_BATCH_ROWS):
+                writer.write_table(rewriter.rewrite(pa.Table.from_batches([batch]), column))

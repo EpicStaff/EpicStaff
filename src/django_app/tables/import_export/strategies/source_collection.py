@@ -76,6 +76,10 @@ _INDEXED_GRAPH_DOCUMENT_STATUSES = frozenset(
     {GraphRagDocument.Status.COMPLETED, GraphRagDocument.Status.FAILED}
 )
 _LINE_READ_SIZE = 1024 * 1024
+# One line of a chunks file is one chunk with its vector: a chunk size of at most 8000
+# tokens or characters plus a few thousand floats stays well under 1 MiB, even with every
+# character escaped. A longer line is refused before it is parsed.
+_MAX_LINE_SIZE = 4 * 1024 * 1024
 # IDMapper keys for the RAGs inside a collection; knowledge links remap rag ids through them.
 NAIVE_RAG_KEY = "NaiveRag"
 GRAPH_RAG_KEY = "GraphRag"
@@ -110,15 +114,28 @@ def remove_restored_graph_indexes(graph_rag_ids: list[int]) -> None:
                 logger.exception("Could not remove restored graph index {}", rag_id)
 
 
-def _iter_lines(member):
-    """Yield the lines of a member without holding it whole in memory."""
+def _iter_lines(member, name: str):
+    """Yield the lines of a member without holding it whole in memory.
+
+    Raises:
+        InvalidArchiveError: A line of member `name` is longer than `_MAX_LINE_SIZE`.
+    """
     pending = b""
     while chunk := member.read(_LINE_READ_SIZE):
         pending += chunk
         *lines, pending = pending.split(b"\n")
-        yield from lines
+        for line in lines:
+            _ensure_line_size(line, name)
+            yield line
+        # A member without line breaks is refused here, never accumulated whole.
+        _ensure_line_size(pending, name)
     if pending:
         yield pending
+
+
+def _ensure_line_size(line: bytes, name: str) -> None:
+    if len(line) > _MAX_LINE_SIZE:
+        raise invalid_archive(f"{name} holds a line longer than {_MAX_LINE_SIZE} bytes")
 
 
 def _is_non_negative_int(value) -> bool:
@@ -533,7 +550,7 @@ class SourceCollectionStrategy(EntityImportExportStrategy):
             batch.clear()
 
         with archive.open_member(path) as member:
-            for line in _iter_lines(member):
+            for line in _iter_lines(member, path):
                 try:
                     row = json.loads(line)
                     vector = row.get("vector")
