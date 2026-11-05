@@ -6,9 +6,36 @@ produced by domain errors travelling through the registered handlers rather than
 controller itself, so they are worth asserting over HTTP rather than in isolation.
 """
 
+import io
+import tarfile
+import zipfile
+
 from litestar import status_codes
 
 from manager.domain.models import CustomLibrary
+
+WHEEL_NAME = "My_Library-1.0.0-py3-none-any.whl"
+
+
+def wheel_bytes(package: str = "my_library") -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as bundle:
+        bundle.writestr(f"{package}/__init__.py", "V = 1")
+    return buffer.getvalue()
+
+
+def archive_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as bundle:
+        payload = b'[project]\nname = "my-library"\n'
+        info = tarfile.TarInfo("my-library-1.0.0/pyproject.toml")
+        info.size = len(payload)
+        bundle.addfile(info, io.BytesIO(payload))
+    return buffer.getvalue()
+
+
+def upload(filename: str, payload: bytes) -> dict:
+    return {"file": (filename, payload, "application/octet-stream")}
 
 
 def test_list_returns_the_paging_envelope(client, uow):
@@ -37,30 +64,48 @@ def test_list_applies_ids_limit_and_offset(client, uow):
     assert [library["name"] for library in body["result"]] == ["b"]
 
 
-def test_create_answers_201_with_the_id_a_client_addresses_it_by(client, uow):
-    response = client.post("/custom-libraries", json={"name": "My_Library"})
+def test_create_answers_201_with_the_library_named_after_the_wheel(client, uow, file_storage):
+    response = client.post("/custom-libraries", files=upload(WHEEL_NAME, wheel_bytes()))
 
     assert response.status_code == status_codes.HTTP_201_CREATED
     body = response.json()
     assert body["id"] in uow.custom_library_repo.rows
     assert body["name"] == "my-library"
     assert body["created_at"] is not None
+    assert len(file_storage.objects) == 1
 
 
-def test_create_answers_400_for_a_name_no_distribution_could_have(client):
-    response = client.post("/custom-libraries", json={"name": "my lib"})
+def test_create_answers_201_with_an_unnamed_library_for_a_source_archive(client, uow, file_storage):
+    """The distribution a source archive builds is not known until it does, so the
+    library it creates has no name yet, and a background build is what names it."""
+    response = client.post("/custom-libraries", files=upload("archive.tar.gz", archive_bytes()))
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+    body = response.json()
+    assert body["id"] in uow.custom_library_repo.rows
+    assert body["name"] is None
+    assert len(file_storage.objects) == 1
+
+
+def test_create_answers_400_for_an_upload_that_is_neither_a_wheel_nor_an_archive(client):
+    response = client.post("/custom-libraries", files=upload("notes.txt", b"hello"))
 
     assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
-    assert response.json()["errors"][0]["attr"] == "name"
+    assert response.json()["errors"][0]["attr"] == "file"
 
 
-def test_create_answers_409_for_a_name_already_taken(client):
-    client.post("/custom-libraries", json={"name": "my-library"})
+def test_create_answers_409_for_a_name_already_taken(client, uow):
+    client.post("/custom-libraries", files=upload(WHEEL_NAME, wheel_bytes()))
 
-    response = client.post("/custom-libraries", json={"name": "MY.LIBRARY"})
+    response = client.post(
+        "/custom-libraries", files=upload("my_library-2.0.0-py3-none-any.whl", wheel_bytes())
+    )
 
     assert response.status_code == status_codes.HTTP_409_CONFLICT
     assert response.json()["errors"][0]["code"] == "conflict"
+    # Refused before the second wheel is stored, and the first library and its file
+    # are untouched.
+    assert len(uow.custom_library_repo.rows) == 1
 
 
 def test_retrieve_answers_200(client, uow):
@@ -77,44 +122,6 @@ def test_retrieve_answers_404_for_a_library_that_is_not_there(client):
 
     assert response.status_code == status_codes.HTTP_404_NOT_FOUND
     assert response.json()["errors"][0]["code"] == "not_found"
-
-
-def test_update_answers_200_and_stores_the_new_name(client, uow):
-    stored = uow.custom_library_repo.seed(CustomLibrary(name="before"))[0]
-
-    response = client.patch(f"/custom-libraries/{stored.id}", json={"name": "After_Rename"})
-
-    assert response.status_code == status_codes.HTTP_200_OK
-    assert response.json()["name"] == "after-rename"
-    assert uow.custom_library_repo.rows[stored.id].name == "after-rename"
-
-
-def test_update_without_a_name_is_accepted_and_changes_nothing(client, uow):
-    """`name` is the only field, so an empty body is what a client sends to change
-    nothing; refusing it would make PATCH behave unlike the venv resource beside it."""
-    stored = uow.custom_library_repo.seed(CustomLibrary(name="unchanged"))[0]
-
-    response = client.patch(f"/custom-libraries/{stored.id}", json={})
-
-    assert response.status_code == status_codes.HTTP_200_OK
-    assert response.json()["name"] == "unchanged"
-
-
-def test_update_answers_409_for_a_name_another_library_has(client, uow):
-    first, second = uow.custom_library_repo.seed(
-        CustomLibrary(name="first"), CustomLibrary(name="second")
-    )
-
-    response = client.patch(f"/custom-libraries/{second.id}", json={"name": "FIRST"})
-
-    assert response.status_code == status_codes.HTTP_409_CONFLICT
-
-
-def test_update_answers_404_for_a_library_that_is_not_there(client):
-    assert (
-        client.patch("/custom-libraries/404", json={"name": "whatever"}).status_code
-        == status_codes.HTTP_404_NOT_FOUND
-    )
 
 
 def test_remove_answers_204_and_the_library_stops_answering(client, uow):

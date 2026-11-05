@@ -452,31 +452,42 @@ class CustomLibraryCRUDOrchestrator:
         async with self.uow:
             return await self._retrieve(id)
 
-    async def create(self, name: str) -> CustomLibrary:
+    async def create(self, name: str | None) -> CustomLibrary:
+        """Create a library, named or not.
+
+        Raises:
+            CustomLibraryNameTakenError: Some library already has this name.
+        """
         obj = CustomLibrary(name=name)
         async with self.uow:
             # Against `obj.name`, not `name`: the domain canonicalizes on construction,
-            # and it is the canonical spelling that has to be unique.
-            await self._reject_taken_name(obj.name)
+            # and it is the canonical spelling that has to be unique. An unnamed library
+            # never clashes with anything -- the partial unique index does not even
+            # look at a null name -- so there is nothing to check for one.
+            if obj.name is not None:
+                await self._reject_taken_name(obj.name)
             obj = await self.uow.custom_library_repo.create(obj)
             await self.uow.commit()
-        logger.info("Created custom library {} ({})", obj.id, obj.name)
+        logger.info("Created custom library {} ({})", obj.id, obj.name or "unnamed")
         return obj
 
-    async def update(self, id: int, name: str | None) -> CustomLibrary:
-        """Apply a partial change. An absent `name` leaves the library as it is."""
-        async with self.uow:
-            obj = await self._retrieve(id)
-            if name is not None:
-                previous_name = obj.name
-                obj.rename(name)
-                # A rename onto the spelling it already had is not a clash with itself.
-                if obj.name != previous_name:
-                    await self._reject_taken_name(obj.name)
-            obj = await self.uow.custom_library_repo.update(obj)
-            await self.uow.commit()
-        logger.info("Updated custom library {} ({})", obj.id, obj.name)
-        return obj
+    async def create_for(self, filename: str) -> CustomLibrary:
+        """Create a library for an upload: a wheel names it at once, no name ever
+        typed; a source archive's distribution is not known until it builds, so it
+        starts unnamed and a later build names it.
+
+        Raises:
+            UnsupportedUploadError: The filename ends in a wheel's suffix but does not
+                parse as one.
+            CustomLibraryNameTakenError: A wheel's name is already another library's.
+        """
+        if not filename.lower().endswith(WHEEL_SUFFIX):
+            return await self.create(None)
+        try:
+            name, _, _, _ = parse_wheel_filename(filename)
+        except InvalidWheelFilename as error:
+            raise UnsupportedUploadError(str(error)) from error
+        return await self.create(str(name))
 
     async def remove(self, id: int):
         """Mark the library and every wheel of it deleted.
@@ -577,8 +588,10 @@ class WheelCRUDOrchestrator:
             CustomLibraryNotFoundError: No library with this id. Rendered as 404.
             UnsupportedUploadError: Not a wheel or a source archive, or a wheel whose
                 name does not parse. Rendered as 400.
-            WheelNameMismatchError: An uploaded wheel built for another distribution.
-                Rendered as 400.
+            WheelNameMismatchError: An uploaded wheel built for another distribution
+                than the library's name, or than an earlier wheel's. Rendered as 400.
+            CustomLibraryNameTakenError: This is the library's first wheel, and its
+                name is already another library's. Rendered as 409.
             WheelSourceAlreadyUploadedError: This library already holds this exact file.
                 Rendered as 409.
             WheelVersionTakenError: This library already holds that version.
@@ -595,7 +608,9 @@ class WheelCRUDOrchestrator:
                     custom_library_id=library_id, wheel_id=duplicate.id
                 )
 
-            obj, version = self._declare(library, filename, checksum)
+            obj, version, name = self._declare(library, filename, checksum)
+            if name is not None:
+                await self._name_or_match(library, name)
             if version is not None:
                 await self._reject_taken_version(library_id, version)
             obj = await self.uow.wheel_repo.create(obj)
@@ -629,16 +644,17 @@ class WheelCRUDOrchestrator:
 
     def _declare(
         self, library: CustomLibrary, filename: str, checksum: str
-    ) -> tuple[Wheel, str | None]:
-        """Build the row for an upload, and the version it carries when it is a wheel.
+    ) -> tuple[Wheel, str | None, str | None]:
+        """Build the row for an upload, and what it tells about the distribution.
 
-        The version is handed back rather than stored: a wheel reaches a version only by
-        completing, and the source archive below has none to give until it is built.
+        The version and the name are handed back rather than checked here: a wheel
+        carries both in its own filename, while the source archive below has neither
+        until it is built, and whether either agrees with the library is the caller's
+        question to put to both kinds the same way.
 
         Raises:
             UnsupportedUploadError: The name is neither a wheel nor a source archive, or
                 is a wheel the packaging rules cannot read.
-            WheelNameMismatchError: The wheel was built for another distribution.
         """
         lowered = filename.lower()
         if lowered.endswith(WHEEL_SUFFIX):
@@ -646,21 +662,13 @@ class WheelCRUDOrchestrator:
                 name, version, _, _ = parse_wheel_filename(filename)
             except InvalidWheelFilename as error:
                 raise UnsupportedUploadError(str(error)) from error
-            # Both sides are canonical: `parse_wheel_filename` normalizes, and so does
-            # the library on construction.
-            if name != library.name:
-                raise WheelNameMismatchError(
-                    wheel_name=name,
-                    custom_library_id=library.id,
-                    library_name=library.name,
-                )
             obj = Wheel(
                 library_id=library.id,
                 wheel_filename=filename,
                 upload_sha256=checksum,
                 status=WheelStatus.PROCESSING,
             )
-            return obj, str(version)
+            return obj, str(version), str(name)
 
         if lowered.endswith(SOURCE_ARCHIVE_SUFFIXES):
             obj = Wheel(
@@ -669,9 +677,33 @@ class WheelCRUDOrchestrator:
                 upload_sha256=checksum,
                 status=WheelStatus.PROCESSING,
             )
-            return obj, None
+            return obj, None, None
 
         raise UnsupportedUploadError(filename=filename)
+
+    async def _name_or_match(self, library: CustomLibrary, name: str):
+        """Name the library the first time a wheel reveals its distribution, or check
+        that a later one agrees with the name an earlier wheel or build already gave it.
+
+        Both sides are canonical: `parse_wheel_filename` normalizes, and so does the
+        library on construction.
+
+        Raises:
+            CustomLibraryNameTakenError: Some other library already has this name.
+            WheelNameMismatchError: The wheel was built for another distribution.
+        """
+        if library.name is None:
+            library.assign_name(name)
+            if await self.uow.custom_library_repo.retrieve_by_name(library.name) is not None:
+                raise CustomLibraryNameTakenError(name=library.name)
+            await self.uow.custom_library_repo.update(library)
+            return
+        if name != library.name:
+            raise WheelNameMismatchError(
+                wheel_name=name,
+                custom_library_id=library.id,
+                library_name=library.name,
+            )
 
     @staticmethod
     async def _checksum(file: UploadFile) -> str:
@@ -828,23 +860,38 @@ class WheelBuildOrchestrator:
 
         The archive's own metadata decides the name and the version, and nothing checked
         either before the build: a source may declare any distribution, and the version
-        it carries only becomes known here.
+        it carries only becomes known here. The first build a library sees names it, the
+        same as a wheel uploaded directly; a later one must agree with the name a build
+        or a wheel already gave it.
 
         Raises:
-            WheelNameMismatchError: The source builds a different distribution.
+            CustomLibraryNameTakenError: This is the library's first build, and the
+                distribution it builds is already another library's.
+            WheelNameMismatchError: The source builds a different distribution than the
+                one a wheel or an earlier build already named the library.
             WheelVersionTakenError: This library already holds that version.
         """
         async with self.uow:
             library = await self.uow.custom_library_repo.retrieve(wheel.library_id)
-            if library is not None and name != library.name:
-                raise WheelNameMismatchError(
-                    wheel_name=name,
-                    custom_library_id=wheel.library_id,
-                    library_name=library.name,
-                )
+            if library is not None:
+                if library.name is None:
+                    library.assign_name(name)
+                    if (
+                        await self.uow.custom_library_repo.retrieve_by_name(library.name)
+                        is not None
+                    ):
+                        raise CustomLibraryNameTakenError(name=library.name)
+                    await self.uow.custom_library_repo.update(library)
+                elif name != library.name:
+                    raise WheelNameMismatchError(
+                        wheel_name=name,
+                        custom_library_id=wheel.library_id,
+                        library_name=library.name,
+                    )
             taken = await self.uow.wheel_repo.retrieve_by_version(wheel.library_id, version)
             if taken is not None and taken.id != wheel.id:
                 raise WheelVersionTakenError(custom_library_id=wheel.library_id, version=version)
+            await self.uow.commit()
 
     @staticmethod
     def _unpack(archive: bytes, filename: str, destination: Path):

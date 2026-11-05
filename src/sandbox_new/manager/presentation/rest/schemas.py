@@ -23,7 +23,6 @@ __all__ = [
     "CustomLibraryCreateSchema",
     "CustomLibraryListSchema",
     "CustomLibraryRetrieveSchema",
-    "CustomLibraryUpdateSchema",
     "ExecutionAcceptedSchema",
     "ExecutionSubmitSchema",
     "LibraryRetrieveSchema",
@@ -270,14 +269,22 @@ class CustomLibraryListSchema(Schema):
     result: list["CustomLibraryRetrieveSchema"]
 
 
-class CustomLibraryCreateSchema(Schema):
-    name: str = Field(min_length=1)
+class CustomLibraryCreateSchema(WheelUploadSchema):
+    """A new custom library, created from its first version.
+
+    A wheel names the library at once; a source archive's distribution is not known
+    until it builds, so the library it creates starts unnamed and takes the name its
+    first successful build produces. The upload itself is validated exactly like any
+    other version's.
+    """
 
 
 class CustomLibraryRetrieveSchema(Schema):
     id: int
     # As stored, which is the canonical spelling of what was sent, not what was sent.
-    name: str
+    # Null until a wheel -- uploaded directly, or built from a source archive -- names
+    # the library.
+    name: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -289,8 +296,3 @@ class CustomLibraryRetrieveSchema(Schema):
             created_at=library.created_at,
             updated_at=library.updated_at,
         )
-
-
-class CustomLibraryUpdateSchema(Schema):
-    # An absent `name` leaves the library as it is.
-    name: str | None = Field(default=None, min_length=1)

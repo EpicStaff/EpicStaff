@@ -1,3 +1,5 @@
+from pathlib import PurePosixPath
+
 from foundation.schemas import ErrorResponseSchema
 from litestar import Controller, Response, delete, get, patch, post, status_codes
 from litestar.datastructures import State
@@ -325,58 +327,47 @@ class CustomLibraryController(Controller):
         status_code=status_codes.HTTP_201_CREATED,
         summary="Create a custom library",
         description=(
-            "Records a library for versions to be uploaded to. It holds no files itself "
-            "until a wheel or a source archive is uploaded under it.\n\n"
-            "The name is normalized the way a package index normalizes one, so "
-            "`My_Library`, `my.library` and `my-library` all name the same library and "
-            "the `name` that comes back may not be the one that was sent. It must read "
-            "as a distribution name -- letters, digits, `-`, `_` and `.`, starting and "
-            "ending with a letter or digit -- because it is matched against the name "
-            "inside every wheel uploaded to it."
+            "Creates a library from its first version: a wheel, or a source archive to "
+            "build into one. No name is ever typed; a wheel names the library at once, "
+            "the way a package index would spell it -- `My_Library` and `my.library` "
+            "both store as `my-library` -- while a source archive's distribution is not "
+            "known until it builds, so the library is created unnamed and takes the name "
+            "its first successful build produces. Either way the name, once set, cannot "
+            "be changed afterwards."
         ),
-        response_description="The stored library.",
+        response_description=(
+            "The stored library, with its first version uploaded. `name` is null when "
+            "it was created from a source archive still waiting to build."
+        ),
         responses=error_responses(conflict="A library with this name already exists."),
     )
     async def create(
-        self, data: schemas.CustomLibraryCreateSchema, uow: AbstractUnitOfWork
+        self,
+        data: MultipartBody[schemas.CustomLibraryCreateSchema],
+        uow: AbstractUnitOfWork,
+        file_storage: AbstractFileStorage,
     ) -> schemas.CustomLibraryRetrieveSchema:
-        """Store a new custom library.
+        """Store a new custom library, from the wheel or the source archive that
+        creates it.
 
         Raises:
-            pydantic.ValidationError: The name does not read as a distribution name.
+            pydantic.ValidationError: The upload is not a wheel or a source archive.
                 Rendered as 400.
-            CustomLibraryNameTakenError: Some library already has this name, rendered as 409.
+            UnsupportedUploadError: The filename ends in a wheel's suffix but does not
+                parse as one. Rendered as 400.
+            CustomLibraryNameTakenError: A wheel's name is already another library's,
+                rendered as 409.
         """
-        orchestrator = CustomLibraryCRUDOrchestrator(uow)
-        obj = await orchestrator.create(name=data.name)
-        return schemas.CustomLibraryRetrieveSchema.from_domain(obj)
-
-    @patch(
-        path="/{id:int}",
-        summary="Change a custom library",
-        description=(
-            "Applies the fields present in the body and leaves the rest untouched. A new "
-            "`name` is normalized like the original, so a rename that only changes the "
-            "spelling of the current name is accepted and stores nothing new. The "
-            "versions already uploaded are not renamed or revalidated against it."
-        ),
-        response_description="The library as stored after the change.",
-        responses=error_responses(
-            not_found="No custom library with this id.",
-            conflict="Another library already has this name.",
-        ),
-    )
-    async def update(
-        self, id: int, data: schemas.CustomLibraryUpdateSchema, uow: AbstractUnitOfWork
-    ) -> schemas.CustomLibraryRetrieveSchema:
-        """Apply a partial change to a custom library.
-
-        Raises:
-            CustomLibraryNotFoundError: No library with this id, rendered as 404.
-            CustomLibraryNameTakenError: Another library has this name, rendered as 409.
-        """
-        orchestrator = CustomLibraryCRUDOrchestrator(uow)
-        obj = await orchestrator.update(id=id, name=data.name)
+        filename = PurePosixPath(data.file.filename or "").name
+        library_orchestrator = CustomLibraryCRUDOrchestrator(uow)
+        obj = await library_orchestrator.create_for(filename)
+        try:
+            await WheelCRUDOrchestrator(uow, file_storage).upload(library_id=obj.id, file=data.file)
+        except Exception:
+            # The library was just created and nothing could name it yet, so removing
+            # it here is safe and frees the name for the next attempt.
+            await library_orchestrator.remove(obj.id)
+            raise
         return schemas.CustomLibraryRetrieveSchema.from_domain(obj)
 
     @delete(

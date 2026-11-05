@@ -40,21 +40,6 @@ def test_a_name_that_no_distribution_could_have_is_refused(name):
 
 
 @pytest.mark.parametrize(("written", "stored"), EQUIVALENT_SPELLINGS)
-def test_a_rename_is_held_to_the_same_spelling_rule(written, stored):
-    library = CustomLibrary(name="before")
-    library.rename(written)
-    assert library.name == stored
-
-
-@pytest.mark.parametrize("name", NOT_DISTRIBUTION_NAMES)
-def test_a_rename_to_a_name_no_distribution_could_have_is_refused(name):
-    library = CustomLibrary(name="before")
-    with pytest.raises(ValidationError):
-        library.rename(name)
-    assert library.name == "before"
-
-
-@pytest.mark.parametrize(("written", "stored"), EQUIVALENT_SPELLINGS)
 def test_a_stored_name_is_what_a_wheel_filename_parses_to(written, stored):
     """The point of the rule above: an upload is accepted by comparing the stored name
     with the name inside the wheel, so a name that cannot come out of a wheel filename
@@ -63,3 +48,31 @@ def test_a_stored_name_is_what_a_wheel_filename_parses_to(written, stored):
     parsed, _, _, _ = parse_wheel_filename(wheel)
 
     assert parsed == CustomLibrary(name=written).name
+
+
+def test_a_library_starts_unnamed_until_a_wheel_names_it():
+    """A source archive's distribution is not known until it builds, so the library it
+    creates has no name yet."""
+    library = CustomLibrary(name=None)
+
+    assert library.name is None
+
+
+@pytest.mark.parametrize(("written", "stored"), EQUIVALENT_SPELLINGS)
+def test_assign_name_names_an_unnamed_library(written, stored):
+    library = CustomLibrary(name=None)
+
+    library.assign_name(written)
+
+    assert library.name == stored
+
+
+def test_assign_name_refuses_a_library_that_already_has_one():
+    """No rename: the name is read off the wheel that creates the library, and
+    changing it afterwards would desync it from the wheels already stored under it."""
+    library = CustomLibrary(name="my-library")
+
+    with pytest.raises(ValueError, match="already has a name"):
+        library.assign_name("another-library")
+
+    assert library.name == "my-library"

@@ -202,6 +202,42 @@ async def test_a_source_that_builds_another_distribution_is_refused(
     assert "other-lib" in stored.error
 
 
+async def test_a_build_names_a_library_that_has_none_yet(orchestrator, uow, file_storage):
+    """The same rule as a wheel uploaded directly: the first build a library sees names
+    it, because an archive at creation has no name to give the library until it does."""
+    unnamed = uow.custom_library_repo.seed(CustomLibrary(name=None))[0]
+    wheel = uow.wheel_repo.seed(
+        Wheel(library_id=unnamed.id, source_filename="archive.tar.gz", upload_sha256="c" * 64)
+    )[0]
+    file_storage.objects[wheel.source_key] = tar_archive(
+        {"my-library-1.4.2/pyproject.toml": PYPROJECT}
+    )
+
+    await orchestrator.build(wheel)
+
+    stored = await uow.wheel_repo.retrieve(unnamed.id, wheel.id)
+    assert stored.status is WheelStatus.COMPLETED
+    assert uow.custom_library_repo.rows[unnamed.id].name == "my-library"
+
+
+async def test_a_build_refuses_to_name_a_library_after_another_librarys_name(
+    orchestrator, uow, file_storage, library
+):
+    unnamed = uow.custom_library_repo.seed(CustomLibrary(name=None))[0]
+    wheel = uow.wheel_repo.seed(
+        Wheel(library_id=unnamed.id, source_filename="archive.tar.gz", upload_sha256="d" * 64)
+    )[0]
+    file_storage.objects[wheel.source_key] = tar_archive(
+        {"my-library-1.4.2/pyproject.toml": PYPROJECT}
+    )
+
+    await orchestrator.build(wheel)
+
+    stored = await uow.wheel_repo.retrieve(unnamed.id, wheel.id)
+    assert stored.status is WheelStatus.FAILED
+    assert uow.custom_library_repo.rows[unnamed.id].name is None
+
+
 async def test_a_source_that_builds_a_published_version_is_refused(
     orchestrator, uow, declared, library
 ):

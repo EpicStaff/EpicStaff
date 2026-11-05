@@ -15,6 +15,7 @@ from litestar.datastructures import UploadFile
 from manager.application.orchestrators import WheelCRUDOrchestrator
 from manager.domain.enums import WheelStatus
 from manager.domain.errors import (
+    CustomLibraryNameTakenError,
     CustomLibraryNotFoundError,
     UnsupportedUploadError,
     WheelNameMismatchError,
@@ -126,6 +127,27 @@ async def test_a_different_file_claiming_a_published_version_is_refused(orchestr
 async def test_a_wheel_built_for_another_distribution_is_refused(orchestrator, library):
     with pytest.raises(WheelNameMismatchError):
         await orchestrator.upload(library.id, upload("other_lib-1.0.0-py3-none-any.whl"))
+
+
+async def test_a_wheel_names_a_library_that_has_none_yet(orchestrator, uow):
+    """The same rule as creation: the first wheel a library sees names it, whether that
+    wheel arrives at creation or as a later version of a library a source archive
+    already made, but left unnamed until a build decides its distribution."""
+    unnamed = uow.custom_library_repo.seed(CustomLibrary(name=None))[0]
+
+    wheel = await orchestrator.upload(unnamed.id, upload(WHEEL_NAME))
+
+    assert wheel.status is WheelStatus.COMPLETED
+    assert uow.custom_library_repo.rows[unnamed.id].name == "my-library"
+
+
+async def test_a_wheel_refuses_to_name_a_library_after_another_librarys_name(orchestrator, uow, library):
+    unnamed = uow.custom_library_repo.seed(CustomLibrary(name=None))[0]
+
+    with pytest.raises(CustomLibraryNameTakenError):
+        await orchestrator.upload(unnamed.id, upload(WHEEL_NAME))
+
+    assert uow.custom_library_repo.rows[unnamed.id].name is None
 
 
 @pytest.mark.parametrize(

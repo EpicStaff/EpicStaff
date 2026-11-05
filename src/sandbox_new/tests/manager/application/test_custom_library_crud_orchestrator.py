@@ -16,6 +16,7 @@ from manager.domain.errors import (
     CustomLibraryInUseError,
     CustomLibraryNameTakenError,
     CustomLibraryNotFoundError,
+    UnsupportedUploadError,
 )
 from manager.domain.models import CustomLibrary, Library, Venv, Wheel
 
@@ -57,47 +58,33 @@ async def test_retrieve_raises_for_a_library_that_is_not_there(uow):
         await CustomLibraryCRUDOrchestrator(uow).retrieve(404)
 
 
-async def test_update_renames_the_library_and_commits(uow):
+async def test_create_for_names_the_library_after_a_wheels_distribution(uow):
+    library = await CustomLibraryCRUDOrchestrator(uow).create_for("My_Library-1.0.0-py3-none-any.whl")
+
+    assert library.name == "my-library"
+    assert uow.custom_library_repo.rows[library.id].name == "my-library"
+
+
+async def test_create_for_refuses_a_wheel_named_after_another_library(uow):
     orchestrator = CustomLibraryCRUDOrchestrator(uow)
-    stored = await orchestrator.create("before")
-
-    library = await orchestrator.update(stored.id, name="After_Rename")
-
-    assert library.name == "after-rename"
-    assert uow.custom_library_repo.rows[stored.id].name == "after-rename"
-
-
-async def test_update_without_a_name_leaves_the_library_as_it_is(uow):
-    orchestrator = CustomLibraryCRUDOrchestrator(uow)
-    stored = await orchestrator.create("unchanged")
-
-    assert (await orchestrator.update(stored.id, name=None)).name == "unchanged"
-
-
-async def test_update_to_another_spelling_of_the_name_it_already_has_is_not_a_clash(uow):
-    """The library would otherwise be found as the holder of the name and clash with
-    itself, which would make the stored spelling impossible to re-send."""
-    orchestrator = CustomLibraryCRUDOrchestrator(uow)
-    stored = await orchestrator.create("my-library")
-
-    assert (await orchestrator.update(stored.id, name="My.Library")).name == "my-library"
-
-
-async def test_update_refuses_a_name_another_library_answers_to(uow):
-    orchestrator = CustomLibraryCRUDOrchestrator(uow)
-    first = await orchestrator.create("first")
-    second = await orchestrator.create("second")
+    await orchestrator.create("my-library")
 
     with pytest.raises(CustomLibraryNameTakenError):
-        await orchestrator.update(second.id, name="FIRST")
-
-    assert uow.custom_library_repo.rows[second.id].name == "second"
-    assert uow.custom_library_repo.rows[first.id].name == "first"
+        await orchestrator.create_for("my_library-2.0.0-py3-none-any.whl")
 
 
-async def test_update_raises_for_a_library_that_is_not_there(uow):
-    with pytest.raises(CustomLibraryNotFoundError):
-        await CustomLibraryCRUDOrchestrator(uow).update(404, name="whatever")
+async def test_create_for_refuses_a_wheel_filename_that_does_not_parse(uow):
+    with pytest.raises(UnsupportedUploadError):
+        await CustomLibraryCRUDOrchestrator(uow).create_for("not-a-wheel.whl")
+
+
+async def test_create_for_a_source_archive_creates_an_unnamed_library(uow):
+    """The distribution a source archive builds is not known until it does, so there is
+    nothing to name the library by yet."""
+    library = await CustomLibraryCRUDOrchestrator(uow).create_for("my-library-1.0.0.tar.gz")
+
+    assert library.name is None
+    assert uow.custom_library_repo.rows[library.id].name is None
 
 
 async def test_remove_marks_the_library_and_every_version_of_it(uow):

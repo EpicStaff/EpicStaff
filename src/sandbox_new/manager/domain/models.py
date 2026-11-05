@@ -224,8 +224,11 @@ class CustomLibrary(Entity):
     """
 
     id: int | None = Field(default=None, frozen=True)
-    # Checked before `normalize_name` runs, so the refusal names what was sent.
-    name: str = Field(min_length=1, pattern=DISTRIBUTION_NAME_PATTERN)
+    # None until a wheel -- uploaded directly, or built from a source archive -- names
+    # the library; `assign_name` is then the only way it ever changes, so a rename can
+    # never desync it from the wheels already stored under it. Checked before
+    # `normalize_name` runs, so the refusal names what was sent.
+    name: str | None = Field(default=None, min_length=1, pattern=DISTRIBUTION_NAME_PATTERN)
     # Deletion is a mark, not a statement: the artifacts in the object store outlive
     # the call, and a background task removes them and the row afterwards.
     is_deleted: bool = False
@@ -235,12 +238,19 @@ class CustomLibrary(Entity):
 
     @field_validator("name")
     @classmethod
-    def normalize_name(cls, value: str) -> str:
+    def normalize_name(cls, value: str | None) -> str | None:
         """Hold the name to the spelling a package index would use, so that `Pydantic`
         and `pydantic` cannot both be stored as separate libraries."""
-        return canonicalize_name(value)
+        return canonicalize_name(value) if value is not None else None
 
-    def rename(self, value: str, /):
+    def assign_name(self, value: str, /):
+        """Name the library for the first time, from the wheel that defines it.
+
+        Raises:
+            ValueError: The library already has a name.
+        """
+        if self.name is not None:
+            raise ValueError("This library already has a name.")
         self.name = value
 
     def mark_as_deleted(self):
