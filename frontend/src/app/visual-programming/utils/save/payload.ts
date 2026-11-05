@@ -205,8 +205,8 @@ function buildCdtNodePayload(
         pre_python_code: isPythonCodeBlockSaved(preCodeValue, preSecretIds)
             ? {
                   code: preCodeValue,
-                  entrypoint: 'main',
-                  global_kwargs: {},
+                  entrypoint: preComp?.entrypoint ?? 'main',
+                  global_kwargs: preComp?.global_kwargs ?? {},
                   secret_ids: preSecretIds,
                   execution_timeout: preComp?.execution_timeout,
               }
@@ -217,8 +217,8 @@ function buildCdtNodePayload(
         post_python_code: isPythonCodeBlockSaved(postCodeValue, postSecretIds)
             ? {
                   code: postCodeValue,
-                  entrypoint: 'main',
-                  global_kwargs: {},
+                  entrypoint: postComp?.entrypoint ?? 'main',
+                  global_kwargs: postComp?.global_kwargs ?? {},
                   secret_ids: postSecretIds,
                   execution_timeout: postComp?.execution_timeout,
               }

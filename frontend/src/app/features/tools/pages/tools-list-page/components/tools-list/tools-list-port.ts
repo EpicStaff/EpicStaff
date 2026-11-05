@@ -32,6 +32,8 @@ export interface ToolsListPort<
 
     // per-tool projections
     isBuiltIn(t: T): boolean;
+    /** Why this user cannot copy the tool, for a kind whose copy can be refused; undefined when it can. */
+    copyBlockedReason?(t: T): string | undefined;
     descriptionOf(t: T): string;
     exportFileName(toolName: string): string;
     bulkExportFileName(): string;

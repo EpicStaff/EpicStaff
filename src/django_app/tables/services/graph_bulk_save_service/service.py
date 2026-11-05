@@ -34,9 +34,10 @@ from tables.services.secrets.request_actor import actor_from_request
 def _stored_secret_prefetches(model) -> list[Prefetch]:
     """Prefetch, once for all of `model`'s rows, the secrets each of its PythonCodes links to.
 
-    The secret Use check reads a node's stored links when the payload changes
-    `secret_ids`, and always for a plugin's service account, which may write only rows
-    whose links it may reference; without this it costs a query per node. Through
+    The secret Use check reads a node's stored PythonCode whenever the payload carries
+    it, and its stored links when the payload changes `secret_ids` or the code, and
+    always for a plugin's service account, which may write only rows whose links it may
+    reference; without this it costs queries per node. Through
     `all_objects`, because the check counts a link to a binned secret as linked.
     These instances are used only to validate and save: the response is serialized
     from a fresh read of the graph, so nothing reads this cache expecting live
