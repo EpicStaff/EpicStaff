@@ -152,11 +152,12 @@ export class ApiKeysTabComponent {
             filterSearchable: true,
             filterServerSide: true,
         },
-        { key: 'name', label: 'Name', width: 'minmax(140px, 1.5fr)' },
+        { key: 'name', label: 'Name', width: 'minmax(140px, 1.5fr)', hideable: false },
         {
             key: 'orgName',
             label: 'Organization',
             width: 'minmax(140px, 1.5fr)',
+            hideable: false,
             filterItems: this.orgFilterItems(),
             filterKind: 'multi',
             filterSearchable: true,
@@ -175,7 +176,7 @@ export class ApiKeysTabComponent {
             filterKind: 'single',
             filterServerSide: true,
         },
-        { key: 'actions', label: 'Actions', width: '110px', pinned: 'end' },
+        { key: 'actions', label: 'Actions', width: 'max-content', pinned: 'end' },
     ]);
 
     /** Revoke is offered only for active keys the caller can retire. */

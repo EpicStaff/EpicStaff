@@ -21,6 +21,7 @@ class PickerHostComponent {
     readonly columns: AppTableColumnDef[] = [
         { key: 'organization', label: 'Organization', width: '200px', pinned: 'start' },
         { key: 'admin', label: 'Admin' },
+        { key: 'members', label: 'Members', hideable: false },
         { key: 'sessions', label: 'Sessions', headerGroup: 'Retention' },
         { key: 'visibility', label: 'Audit visibility', hiddenByDefault: true },
         { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
@@ -79,7 +80,7 @@ describe('TableColumnPickerComponent', () => {
         return { trigger, overlay, open, itemNames, checkedNames, clickItem, clickFooter, headerLabels };
     }
 
-    it('lists the hideable columns by section, with the selected / total count', () => {
+    it('lists the hideable columns by section, with the selected / total count, leaving out the always-shown ones', () => {
         const { open, overlay, itemNames, checkedNames, trigger } = render();
 
         open();
@@ -104,11 +105,11 @@ describe('TableColumnPickerComponent', () => {
 
         clickItem('Admin');
         clickItem('Audit visibility');
-        expect(headerLabels()).toEqual(['Organization', 'Admin', 'Sessions', 'Actions']);
+        expect(headerLabels()).toEqual(['Organization', 'Admin', 'Members', 'Sessions', 'Actions']);
 
         clickFooter('Save Changes');
 
-        expect(headerLabels()).toEqual(['Organization', 'Sessions', 'Audit visibility', 'Actions']);
+        expect(headerLabels()).toEqual(['Organization', 'Members', 'Sessions', 'Audit visibility', 'Actions']);
     });
 
     it('discards the changes on Cancel', () => {
@@ -118,7 +119,7 @@ describe('TableColumnPickerComponent', () => {
         clickItem('Admin');
         clickFooter('Cancel');
 
-        expect(headerLabels()).toEqual(['Organization', 'Admin', 'Sessions', 'Actions']);
+        expect(headerLabels()).toEqual(['Organization', 'Admin', 'Members', 'Sessions', 'Actions']);
         open();
         expect(checkedNames()).toEqual(['Admin', 'Sessions']);
     });
@@ -129,10 +130,10 @@ describe('TableColumnPickerComponent', () => {
 
         clickFooter('Show All');
         expect(checkedNames()).toEqual(['Admin', 'Audit visibility', 'Sessions']);
-        expect(headerLabels()).toEqual(['Organization', 'Admin', 'Sessions', 'Actions']);
+        expect(headerLabels()).toEqual(['Organization', 'Admin', 'Members', 'Sessions', 'Actions']);
 
         clickFooter('Save Changes');
 
-        expect(headerLabels()).toEqual(['Organization', 'Admin', 'Sessions', 'Audit visibility', 'Actions']);
+        expect(headerLabels()).toEqual(['Organization', 'Admin', 'Members', 'Sessions', 'Audit visibility', 'Actions']);
     });
 });

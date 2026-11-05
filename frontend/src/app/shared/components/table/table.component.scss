@@ -173,6 +173,13 @@
         border-bottom: none;
     }
 
+    // Zebra stripes in a customizable table. `:where()` keeps the specificity of `.selected` and of the hover below,
+    // which come later and so win over the stripe.
+    :where(.table-wrapper--customizable) &:nth-child(odd) {
+        background: var(--color-table-row-stripe);
+        --pinned-cell-tint: var(--color-table-row-stripe);
+    }
+
     &.selected {
         background: var(--graphite-750);
         --pinned-cell-tint: var(--graphite-750);
@@ -295,11 +302,12 @@
     touch-action: none;
     outline: none;
 
+    // Reaches 1px below the cell, over the header's bottom border, so the line runs on into the rows unbroken.
     &::after {
         content: '';
         position: absolute;
         top: 0;
-        bottom: 0;
+        bottom: -1px;
         right: 0;
         width: 2px;
         background: transparent;
@@ -308,6 +316,31 @@
 
     &:is(:hover, :focus-visible, :active)::after {
         background: var(--accent-color);
+    }
+}
+
+// The resize line of the header handle, continued down the column's right edge in every row. It reaches 1px below the
+// cell, over the row's bottom border, so the line is solid. Not raised above other cells, so the pinned cells (z-index 1)
+// cover it when the column scrolls beneath them.
+.table-cell.resize-line {
+    &:not(.pinned-start, .pinned-end) {
+        position: relative;
+    }
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: -1px;
+        right: 0;
+        width: 2px;
+        background: var(--accent-color);
+        pointer-events: none;
+    }
+
+    // The last row has no bottom border; 1px more would overflow the table and could flash a scrollbar.
+    .table-row:last-child > &::before {
+        bottom: 0;
     }
 }
 

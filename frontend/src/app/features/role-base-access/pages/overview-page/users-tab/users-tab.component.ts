@@ -138,12 +138,14 @@ export class UsersTabComponent {
             key: 'roles',
             label: 'Role',
             width: 'minmax(150px, 1.5fr)',
+            hideable: false,
             filterItems: this.roleFilterItems(),
         },
         {
             key: 'organization',
             label: 'Organization',
             width: 'minmax(175px, 1.5fr)',
+            hideable: false,
             filterItems: this.orgFilterItems(),
             filterKind: 'multi',
             filterServerSide: true,
@@ -151,7 +153,7 @@ export class UsersTabComponent {
         },
         { key: 'lastActive', label: 'Last Active', width: 'minmax(140px, 1.5fr)' },
         { key: 'status', label: 'Status', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
+        { key: 'actions', label: 'Actions', width: 'max-content', pinned: 'end' },
     ]);
 
     /** Permission-aware; rendered together in the ACTIONS cell (see `actions` ng-template). */

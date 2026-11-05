@@ -85,8 +85,8 @@ export class OrganizationsTabComponent {
 
     readonly columns: AppTableColumnDef[] = [
         { key: 'organization', label: 'Organization', width: '200px', pinned: 'start' },
-        { key: 'admin', label: 'Admin', width: 'minmax(180px, 2fr)' },
-        { key: 'members', label: 'Members', width: 'minmax(100px, 1fr)' },
+        { key: 'admin', label: 'Admin', width: 'minmax(180px, 2fr)', hideable: false },
+        { key: 'members', label: 'Members', width: 'minmax(100px, 1fr)', hideable: false },
         { key: 'sessions', label: 'Sessions', width: 'minmax(120px, 1fr)', headerGroup: 'Retention' },
         { key: 'auditEvents', label: 'Audit Events', width: 'minmax(140px, 1fr)', headerGroup: 'Retention' },
         { key: 'conversations', label: 'Conversations', width: 'minmax(150px, 1fr)', headerGroup: 'Retention' },
@@ -99,7 +99,7 @@ export class OrganizationsTabComponent {
             filterServerSide: true,
         },
         { key: 'auditVisibility', label: 'Audit visibility', width: 'minmax(160px, 1fr)', hiddenByDefault: true },
-        { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
+        { key: 'actions', label: 'Actions', width: 'max-content', pinned: 'end' },
     ];
 
     organizations = this.organizationStorage.organizations;

@@ -24,7 +24,11 @@ export interface AppTableColumnDef {
     key: string;
     /** Header label text */
     label?: string;
-    /** CSS grid column width, e.g. '1fr', '200px', 'auto', '2rem' */
+    /**
+     * CSS grid column width, e.g. '1fr', '200px', 'auto', '2rem'. An `end`-pinned column may use `'max-content'`: it
+     * is then as wide as its widest cell (header included), measured after each data or column change, so every row
+     * keeps the same width.
+     */
     width?: string;
     /** If provided, renders a filter icon in the header opening a dropdown of these items. */
     filterItems?: SelectItem[];
@@ -66,14 +70,19 @@ export interface AppTableColumnDef {
     actions?: AppTableRowAction[];
     /**
      * Keeps the column in view while the table scrolls horizontally: `start` sticks it to the left (after the
-     * checkbox column, which then sticks too), `end` to the right. Give it a fixed `width` (e.g. `'200px'`) — the
-     * offsets of the next pinned columns are built from it. A pinned column can't be hidden. In a table with a
+     * checkbox column, which then sticks too), `end` to the right. Give it a fixed `width` (e.g. `'200px'`, or
+     * `'max-content'` for an `end` column) — the offsets of the next pinned columns are built from it. A pinned column can't be hidden. In a table with a
      * `layoutKey` a `start` column can still be resized (it stays sticky, the offsets follow its new width); an `end`
      * column never is.
      */
     pinned?: 'start' | 'end';
     /** Starts hidden in a table with a `layoutKey` until the user shows it in the column picker. */
     hiddenByDefault?: boolean;
+    /**
+     * `false` keeps the column always shown in a table with a `layoutKey`: the column picker doesn't list it and a
+     * stored hidden state is ignored. It can still be resized.
+     */
+    hideable?: false;
     /**
      * Label of a header spanning this column and its adjacent columns with the same value (e.g. "Retention" over
      * Sessions / Audit Events / Conversations). Also the column's section in the column picker.

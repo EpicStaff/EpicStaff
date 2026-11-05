@@ -1,9 +1,45 @@
-import { Component } from '@angular/core';
+import { ApplicationRef, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 
 import { AppTableComponent } from './table.component';
 import { AppTableColumnDef, TableRow } from './table.model';
 import { AppTableCellDirective } from './table-cell.directive';
+
+/**
+ * jsdom has no ResizeObserver: a stub one lets a spec report the rendered width of each observed header cell, by
+ * its label.
+ */
+function stubResizeObserver(): (widthsByLabel: Record<string, number>) => void {
+    const observers: { observed: Element[]; callback: (entries: Partial<ResizeObserverEntry>[]) => void }[] = [];
+    vi.stubGlobal(
+        'ResizeObserver',
+        class {
+            readonly observed: Element[] = [];
+            constructor(readonly callback: (entries: Partial<ResizeObserverEntry>[]) => void) {
+                observers.push(this);
+            }
+            observe(target: Element): void {
+                this.observed.push(target);
+            }
+            disconnect(): void {}
+        }
+    );
+    return (widthsByLabel) => {
+        const observer = observers
+            .filter((candidate) => candidate.observed.some((target) => target.classList.contains('table-cell')))
+            .at(-1)!;
+        observer.callback(
+            observer.observed
+                .filter((target) => widthsByLabel[target.textContent?.trim() ?? ''] !== undefined)
+                .map((target) => ({
+                    target,
+                    borderBoxSize: [{ inlineSize: widthsByLabel[target.textContent!.trim()], blockSize: 36 }],
+                }))
+        );
+    };
+}
 
 function renderTable(columns: AppTableColumnDef[]) {
     const fixture = TestBed.createComponent(AppTableComponent);
@@ -348,16 +384,45 @@ describe('AppTableComponent customizable columns', () => {
         expect(storedLayout()).toEqual({ visibility: {}, widths: { owner: 96 } });
     });
 
-    it('lets the last scrolling column fill the leftover space, so Actions stays at the end', () => {
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({ visibility: {}, widths: { owner: 100, sessions: 100, audit: 100, actions: 300 } })
-        );
+    it.each([
+        [
+            'the last start-pinned one, once every other column has a px width',
+            COLUMNS,
+            { owner: 100, sessions: 100, audit: 100, actions: 300 },
+            'minmax(200px, 1fr) 100px 100px 100px 130px',
+        ],
+        [
+            'the last start-pinned one, from its stored width',
+            COLUMNS,
+            { name: 260, owner: 100, sessions: 100, audit: 100 },
+            'minmax(260px, 1fr) 100px 100px 100px 130px',
+        ],
+        [
+            'none while another column still flexes',
+            COLUMNS,
+            { owner: 100, sessions: 100 },
+            '200px 100px 100px 1fr 130px',
+        ],
+        [
+            'the first scrolling one when no column is start-pinned',
+            [
+                { key: 'owner', label: 'Owner', width: '150px' },
+                { key: 'sessions', label: 'Sessions' },
+                { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' as const },
+            ],
+            { sessions: 100 },
+            'minmax(150px, 1fr) 100px 130px',
+        ],
+    ])(
+        'lets one column fill the leftover space so Actions stays at the end: %s',
+        (_case, columns, widths, expected) => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ visibility: {}, widths }));
 
-        const { gridTemplate } = render();
+            const { gridTemplate } = render(LAYOUT_KEY, columns);
 
-        expect(gridTemplate()).toBe('200px 100px 100px minmax(100px, 1fr) 130px');
-    });
+            expect(gridTemplate()).toBe(expected);
+        }
+    );
 
     it('raises a stored width below the minimum to 80px and resizes on from there', () => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ visibility: {}, widths: { owner: 20 } }));
@@ -371,30 +436,9 @@ describe('AppTableComponent customizable columns', () => {
     });
 
     it('reports the rendered width and fixes every resizable column in px on the first resize', () => {
-        const observers: ResizeObserverStub[] = [];
-        class ResizeObserverStub {
-            readonly observed: Element[] = [];
-            constructor(readonly callback: (entries: Partial<ResizeObserverEntry>[]) => void) {
-                observers.push(this);
-            }
-            observe(target: Element): void {
-                this.observed.push(target);
-            }
-            disconnect(): void {}
-        }
-        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        const reportWidths = stubResizeObserver();
         const { fixture, handle, gridTemplate, pressOnHandle } = render();
-        const observer = observers.find((candidate) =>
-            candidate.observed.some((target) => target.classList.contains('table-cell'))
-        )!;
-        // Name (pinned start) is observed too, but stays at its defined width when another column is resized.
-        const renderedWidths = [200, 300, 150, 151];
-        observer.callback(
-            observer.observed.map((target, index) => ({
-                target,
-                borderBoxSize: [{ inlineSize: renderedWidths[index], blockSize: 36 }],
-            }))
-        );
+        reportWidths({ Name: 200, Owner: 300, Sessions: 150, Audit: 151 });
         fixture.detectChanges();
         expect(handle('Sessions')!.getAttribute('aria-valuenow')).toBe('150');
         expect(handle('Sessions')!.getAttribute('aria-valuetext')).toBe('150 pixels');
@@ -402,8 +446,133 @@ describe('AppTableComponent customizable columns', () => {
 
         pressOnHandle('Sessions', 'ArrowRight');
 
-        expect(gridTemplate()).toBe('200px 300px 166px minmax(151px, 1fr) 130px');
-        expect(storedLayout()).toEqual({ visibility: {}, widths: { owner: 300, sessions: 166, audit: 151 } });
+        expect(gridTemplate()).toBe('minmax(200px, 1fr) 300px 166px 151px 130px');
+        expect(storedLayout()).toEqual({
+            visibility: {},
+            widths: { name: 200, owner: 300, sessions: 166, audit: 151 },
+        });
+    });
+
+    it('keeps the shown columns at their width when one is hidden, and stretches the first column instead', () => {
+        const reportWidths = stubResizeObserver();
+        const { fixture, gridTemplate } = render();
+        reportWidths({ Name: 200, Owner: 300, Sessions: 150, Audit: 151 });
+
+        fixture.componentInstance.setVisibleColumns(['owner', 'audit']);
+        fixture.detectChanges();
+
+        expect(gridTemplate()).toBe('minmax(200px, 1fr) 300px 151px 130px');
+        expect(storedLayout()).toEqual({
+            visibility: { owner: true, sessions: false, audit: true, visibility: false },
+            widths: { owner: 300, sessions: 150, audit: 151 },
+        });
+    });
+
+    it('keeps the shown columns at their width when one is added, and shrinks the stretched first column back', () => {
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({ visibility: {}, widths: { owner: 300, sessions: 150, audit: 151 } })
+        );
+        const reportWidths = stubResizeObserver();
+        const { fixture, gridTemplate } = render();
+        expect(gridTemplate()).toBe('minmax(200px, 1fr) 300px 150px 151px 130px');
+        reportWidths({ Name: 420, Owner: 300, Sessions: 150, Audit: 151 });
+
+        fixture.componentInstance.setVisibleColumns(['owner', 'sessions', 'audit', 'visibility']);
+        fixture.detectChanges();
+
+        // Visibility has no width yet, so it takes the leftover space Name gives back.
+        expect(gridTemplate()).toBe('200px 300px 150px 151px 1fr 130px');
+        expect(storedLayout()).toEqual({
+            visibility: { owner: true, sessions: true, audit: true, visibility: true },
+            widths: { owner: 300, sessions: 150, audit: 151 },
+        });
+    });
+
+    it('drags the stretched first column from its rendered width, so its edge does not jump', () => {
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({ visibility: {}, widths: { owner: 300, sessions: 150, audit: 151 } })
+        );
+        const reportWidths = stubResizeObserver();
+        const { fixture, handle, gridTemplate } = render();
+        reportWidths({ Name: 420, Owner: 300, Sessions: 150, Audit: 151 });
+        fixture.detectChanges();
+        const nameHandle = handle('Name')!;
+        expect(nameHandle.getAttribute('aria-valuenow')).toBe('420');
+        nameHandle.setPointerCapture = () => undefined;
+
+        nameHandle.dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, button: 0 }));
+        nameHandle.dispatchEvent(new PointerEvent('pointermove', { clientX: 510 }));
+        fixture.detectChanges();
+
+        expect(gridTemplate()).toBe('minmax(430px, 1fr) 300px 150px 151px 130px');
+    });
+
+    it('always shows a column that is not hideable, leaves it out of the picker list and keeps it resizable', () => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ visibility: { owner: false }, widths: {} }));
+        const columns = COLUMNS.map((col) => (col.key === 'owner' ? { ...col, hideable: false as const } : col));
+        const { fixture, headerLabels, handle } = render(LAYOUT_KEY, columns);
+        const table = fixture.componentInstance;
+
+        expect(headerLabels()).toEqual(['Name', 'Owner', 'Sessions', 'Audit', 'Actions']);
+        expect(table.hideableColumns().map((col) => col.key)).toEqual(['sessions', 'audit', 'visibility']);
+        expect(handle('Owner')).not.toBeNull();
+
+        table.setVisibleColumns(['visibility']);
+        fixture.detectChanges();
+
+        expect(headerLabels()).toEqual(['Name', 'Owner', 'Visibility', 'Actions']);
+        expect(storedLayout()).toEqual({
+            visibility: { sessions: false, audit: false, visibility: true },
+            widths: {},
+        });
+    });
+
+    it('draws the resize line down the column while its handle is hovered, focused or dragged', () => {
+        const { fixture, element, handle } = render();
+        const lineColumns = () => {
+            fixture.detectChanges();
+            const cells = [...element.querySelectorAll('.table-body .table-row:first-child > .table-cell')];
+            return cells.flatMap((cell, index) => (cell.classList.contains('resize-line') ? [index] : []));
+        };
+        const ownerHandle = handle('Owner')!;
+        ownerHandle.setPointerCapture = () => undefined;
+
+        ownerHandle.dispatchEvent(new PointerEvent('pointerenter'));
+        expect(lineColumns()).toEqual([1]);
+        ownerHandle.dispatchEvent(new PointerEvent('pointerleave'));
+        expect(lineColumns()).toEqual([]);
+
+        ownerHandle.dispatchEvent(new FocusEvent('focus'));
+        expect(lineColumns()).toEqual([1]);
+        ownerHandle.dispatchEvent(new FocusEvent('blur'));
+        expect(lineColumns()).toEqual([]);
+
+        ownerHandle.dispatchEvent(new PointerEvent('pointerdown', { clientX: 0, button: 0 }));
+        ownerHandle.dispatchEvent(new PointerEvent('pointerleave'));
+        expect(lineColumns()).toEqual([1]);
+        ownerHandle.dispatchEvent(new PointerEvent('pointerup'));
+        expect(lineColumns()).toEqual([]);
+    });
+
+    it('explains the double-click on the resize handle in a tooltip, hidden while dragging', () => {
+        const { fixture, handle } = render();
+        const tooltip = fixture.debugElement
+            .query(By.css('.resize-handle[aria-label="Resize Owner column"]'))
+            .injector.get(MatTooltip);
+        expect(tooltip.message).toBe('Drag to resize. Double-click to fit all columns to the screen.');
+        expect(tooltip.disabled).toBe(false);
+        const ownerHandle = handle('Owner')!;
+        ownerHandle.setPointerCapture = () => undefined;
+
+        ownerHandle.dispatchEvent(new PointerEvent('pointerdown', { clientX: 0, button: 0 }));
+        fixture.detectChanges();
+        expect(tooltip.disabled).toBe(true);
+
+        ownerHandle.dispatchEvent(new PointerEvent('pointerup'));
+        fixture.detectChanges();
+        expect(tooltip.disabled).toBe(false);
     });
 
     it('resizes a start-pinned column, which stays sticky and pushes the offset of the next pinned column', () => {
@@ -476,6 +645,8 @@ describe('AppTableComponent horizontal scroll with pinned columns', () => {
         { key: 'owner', label: 'Owner', width: '600px' },
         { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
     ];
+
+    afterEach(() => vi.restoreAllMocks());
 
     /** jsdom does no layout: the wrapper's geometry is set by hand, and its scrollLeft made writable. */
     function render(columns: AppTableColumnDef[] = COLUMNS) {
@@ -612,6 +783,36 @@ describe('AppTableComponent horizontal scroll with pinned columns', () => {
         expect(wrapper.classList).not.toContain('table-wrapper--shadow-start');
         expect(wheel.defaultPrevented).toBe(false);
     });
+
+    it('sizes a max-content end-pinned column to its widest cell and builds the offsets and scrollbar from it', () => {
+        // A cell sized to `max-content` measures 10px per character of its text plus 24px of padding.
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            const width = this.style.width === 'max-content' ? (this.textContent ?? '').trim().length * 10 + 24 : 0;
+            return { width } as DOMRect;
+        });
+        const { element, scrollWrapperTo, scrollbar } = render([
+            { key: 'name', label: 'Name', width: '200px', pinned: 'start' },
+            { key: 'owner', label: 'Owner', width: '600px' },
+            { key: 'status', label: 'Status', width: '100px', pinned: 'end' },
+            { key: 'actions', label: 'Actions', width: 'max-content', pinned: 'end' },
+        ]);
+
+        TestBed.inject(ApplicationRef).tick();
+        scrollWrapperTo(0);
+
+        // "Actions" is the widest cell: 7 * 10 + 24.
+        expect(element.querySelector<HTMLElement>('.table-header')!.style.gridTemplateColumns).toBe(
+            '2rem 200px 600px 100px 94px'
+        );
+        const headerCell = (label: string) =>
+            [...element.querySelectorAll<HTMLElement>('.table-header .table-cell')].find(
+                (cell) => cell.textContent?.trim() === label
+            )!;
+        expect(headerCell('Actions').style.right).toBe('0px');
+        expect(headerCell('Status').style.right).toBe('calc(94px)');
+        // Actions, Status, and the right border plus vertical scrollbar (7).
+        expect(scrollbar()!.style.marginRight).toBe('calc(201px)');
+    });
 });
 
 @Component({
@@ -693,7 +894,7 @@ describe('AppTableComponent fit columns to the table', () => {
 
         // Content: Name 254 (its widest body cell), Owner 80 (minimum), Sessions 104 (its header), 438 in all.
         // 600 - 130 (Actions) = 470 leaves 32px, shared 11 + 11 + 10.
-        expect(gridTemplate()).toBe('265px 91px minmax(114px, 1fr) 130px');
+        expect(gridTemplate()).toBe('minmax(265px, 1fr) 91px 114px 130px');
         expect(handle('Owner').getAttribute('aria-valuenow')).toBe('91');
         expect(JSON.parse(localStorage.getItem('app-table-layout:fit-spec-table') ?? 'null')).toEqual({
             visibility: {},
