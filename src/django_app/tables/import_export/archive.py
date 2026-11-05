@@ -67,7 +67,8 @@ class ArchiveMemberMissingError(InvalidArchiveError):
     """export.json names a file the archive does not contain."""
 
 
-def _refuse(reason: str) -> InvalidArchiveError:
+def invalid_archive(reason: str) -> InvalidArchiveError:
+    """The error for an archive the import refuses, with the reason the user sees."""
     return InvalidArchiveError({"code": "invalid_archive", "detail": reason})
 
 
@@ -139,11 +140,11 @@ class ImportArchive:
             # Counts the real central directory, so a false declared total cannot hide entries.
             entry_count = zip_entry_count(file, stop_after=settings.MAX_KNOWLEDGE_ARCHIVE_ENTRIES)
             if entry_count > settings.MAX_KNOWLEDGE_ARCHIVE_ENTRIES:
-                raise _refuse(f"more than {settings.MAX_KNOWLEDGE_ARCHIVE_ENTRIES} entries")
+                raise invalid_archive(f"more than {settings.MAX_KNOWLEDGE_ARCHIVE_ENTRIES} entries")
             zip_file = zipfile.ZipFile(file)
         except zipfile.BadZipFile as error:
             file.close()
-            raise _refuse("not a zip archive") from error
+            raise invalid_archive("not a zip archive") from error
         except BaseException:
             file.close()
             raise
@@ -171,27 +172,27 @@ class ImportArchive:
             try:
                 safe_name = sanitize_storage_path(info.filename, allow_empty=False)
             except ValueError as error:
-                raise _refuse(f"unsafe member name {info.filename!r}") from error
+                raise invalid_archive(f"unsafe member name {info.filename!r}") from error
             # A name the check had to normalize (such as "a/./b") is refused, not renamed.
             if safe_name != info.filename:
-                raise _refuse(f"unsafe member name {info.filename!r}")
+                raise invalid_archive(f"unsafe member name {info.filename!r}")
             if (info.external_attr >> 16) & _FILE_TYPE_MASK == _SYMLINK_MODE:
-                raise _refuse(f"member {info.filename!r} is a link")
+                raise invalid_archive(f"member {info.filename!r} is a link")
             if info.flag_bits & _ENCRYPTED_FLAG:
-                raise _refuse(f"member {info.filename!r} is encrypted")
+                raise invalid_archive(f"member {info.filename!r} is encrypted")
             if info.filename in seen_names:
-                raise _refuse(f"member {info.filename!r} appears twice")
+                raise invalid_archive(f"member {info.filename!r} appears twice")
             # zipfile stops reading a member at its declared size, so the declared sizes
             # are a safe upper bound of what the import can unpack.
             total_size += info.file_size
             if total_size > settings.MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE:
-                raise _refuse(
+                raise invalid_archive(
                     f"unpacks to more than {settings.MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE} bytes"
                 )
             seen_names.add(info.filename)
 
         if ENVELOPE_MEMBER not in seen_names:
-            raise _refuse(f"{ENVELOPE_MEMBER} is missing")
+            raise invalid_archive(f"{ENVELOPE_MEMBER} is missing")
 
     def envelope(self) -> dict:
         """Return the parsed `export.json`.
@@ -204,7 +205,19 @@ class ImportArchive:
         try:
             return json.loads(data)
         except (json.JSONDecodeError, UnicodeDecodeError) as error:
-            raise _refuse(f"{ENVELOPE_MEMBER} is not valid JSON") from error
+            raise invalid_archive(f"{ENVELOPE_MEMBER} is not valid JSON") from error
+
+    def member_size(self, member: str) -> int:
+        """Return the unpacked size the archive declares for `member`.
+
+        Reading stops at this size, so it bounds what `open_member` returns.
+
+        Raises:
+            ArchiveMemberMissingError: The archive has no member with this name.
+        """
+        if member not in self._names:
+            raise ArchiveMemberMissingError({"code": "archive_member_missing", "detail": member})
+        return self._zip.getinfo(member).file_size
 
     def open_member(self, member: str) -> GuardedMemberReader:
         """Open one member for reading; close it before opening the next large one.

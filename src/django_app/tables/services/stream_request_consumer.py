@@ -39,6 +39,9 @@ class StreamRequestConsumer(ABC):
     group: str
     # How the consumer names itself in log messages.
     description: str
+    # Entries read per XREADGROUP; None lets Redis return everything new. A consumer
+    # whose entries take long sets 1, so the others are left for other containers.
+    read_count: int | None = None
 
     def __init__(
         self,
@@ -132,7 +135,11 @@ class StreamRequestConsumer(ABC):
 
     def _read_new(self, block_milliseconds: int | None) -> list:
         response = self.redis_client.xreadgroup(
-            self.group, self.consumer_name, {self.stream: ">"}, block=block_milliseconds
+            self.group,
+            self.consumer_name,
+            {self.stream: ">"},
+            count=self.read_count,
+            block=block_milliseconds,
         )
         if not response:
             return []

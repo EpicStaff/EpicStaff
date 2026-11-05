@@ -9,7 +9,7 @@ from django.utils import timezone
 from rbac.access.asserts import assert_org_permission
 from rbac.models.enums import Permission
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
-from tables.clients.errors import ClientError
+from tables.clients.errors import ClientError, ClientValidationError
 from tables.import_export.archive import temporary_archive
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import ArchiveExportFormatStrategy
@@ -25,7 +25,8 @@ from tables.utils.helpers import generate_file_name
 from utils.exception_handler import flatten_error_detail
 from utils.logger import logger
 
-# A job still running after this long was cut off (its container stopped); the sweep fails it.
+# A job still running after this long was cut off (its container stopped), and one still
+# queued after this long lost its stream entry; the sweep fails both.
 TRANSFER_JOB_STALE_AFTER = timedelta(hours=2)
 
 EXPORT_ARCHIVE_NAME = "export.zip"
@@ -47,8 +48,13 @@ class TransferJobError(Exception):
         self.message = message
 
 
-def public_error(error: Exception) -> dict:
-    """Describe `error` for the job's creator: a code and a message, never a traceback."""
+def public_error(error: Exception, kind: str) -> dict:
+    """Describe `error` for the job's creator: a code and a message, never a traceback.
+
+    Args:
+        kind: The job's `TransferJob.Kind`; a refusal from the knowledge service means
+            a bad archive on import and an index being rebuilt on export.
+    """
     if isinstance(error, TransferJobError):
         return {"code": error.code, "message": error.message}
     if isinstance(error, ValidationError):
@@ -59,10 +65,20 @@ def public_error(error: Exception) -> dict:
     # PermissionDenied, and the 403 a creator who left the organization gets.
     if isinstance(error, PermissionDenied) or getattr(error, "status_code", None) == 403:
         return {"code": "permission_denied", "message": str(error.detail)}
+    if isinstance(error, ClientValidationError):
+        if kind == TransferJob.Kind.IMPORT:
+            return {
+                "code": "invalid_archive",
+                "message": "The knowledge service refused the graph index in the archive.",
+            }
+        return {
+            "code": "collection_changed",
+            "message": "A graph index is being rebuilt; export again once it is ready.",
+        }
     if isinstance(error, ClientError):
         return {
             "code": "knowledge_service_unavailable",
-            "message": "The knowledge service could not take the graph index.",
+            "message": "The knowledge service could not be reached.",
         }
     if isinstance(error, APIException):
         return {"code": "invalid_file", "message": str(error.detail)}
@@ -103,22 +119,36 @@ class TransferJobRunner:
         except Exception as error:
             logger.exception("Transfer job {} failed", job_id)
             job.status = TransferJob.Status.FAILED
-            job.error = public_error(error)
+            job.error = public_error(error, job.kind)
         finally:
-            job.finished_at = timezone.now()
-            job.save(
-                update_fields=[
-                    "status",
-                    "archive_key",
-                    "file_name",
-                    "result",
-                    "error",
-                    "finished_at",
-                    "updated_at",
-                ]
+            self._finish(job)
+
+    def _finish(self, job: TransferJob) -> None:
+        """Record the outcome, unless the sweep failed or deleted the job meanwhile.
+
+        Written only over a row still `running`, so an outcome never overwrites the
+        sweep's. An export nobody can reach any more has its stored archive deleted;
+        an import's uploaded archive is deleted either way.
+        """
+        finished_at = timezone.now()
+        # update() skips auto_now, so updated_at is set by hand.
+        recorded = TransferJob.objects.filter(pk=job.id, status=TransferJob.Status.RUNNING).update(
+            status=job.status,
+            archive_key=job.archive_key,
+            file_name=job.file_name,
+            result=job.result,
+            error=job.error,
+            finished_at=finished_at,
+            updated_at=finished_at,
+        )
+        if not recorded:
+            logger.warning(
+                "Transfer job {} was failed or deleted while it ran; its {} outcome is dropped",
+                job.id,
+                job.status,
             )
-            if job.kind == TransferJob.Kind.IMPORT:
-                self._delete_archives(job)
+        if job.kind == TransferJob.Kind.IMPORT or (not recorded and job.archive_key):
+            self._delete_archives(job)
 
     def _export(self, job: TransferJob) -> None:
         entity_type = EntityType(job.main_entity)
@@ -187,19 +217,29 @@ class TransferJobRunner:
 
 
 def sweep_transfer_jobs(now: datetime, store: TransferArchiveStore | None = None) -> dict:
-    """Delete expired jobs with their archives, and fail jobs left running.
+    """Delete expired jobs with their archives, and fail jobs left running or never started.
 
-    Returns how many jobs were deleted and how many were failed.
+    Returns how many jobs were deleted, failed while running, and failed before starting.
     """
     store = store if store is not None else TransferArchiveStore()
+    stale_before = now - TRANSFER_JOB_STALE_AFTER
 
     interrupted = TransferJob.objects.filter(
-        status=TransferJob.Status.RUNNING, started_at__lt=now - TRANSFER_JOB_STALE_AFTER
+        status=TransferJob.Status.RUNNING, started_at__lt=stale_before
     ).update(
         status=TransferJob.Status.FAILED,
         finished_at=now,
         updated_at=now,
         error={"code": "job_interrupted", "message": "The job stopped before it finished."},
+    )
+    # Its stream entry was lost (or is stuck pending under a container that is gone).
+    not_started = TransferJob.objects.filter(
+        status=TransferJob.Status.QUEUED, created_at__lt=stale_before
+    ).update(
+        status=TransferJob.Status.FAILED,
+        finished_at=now,
+        updated_at=now,
+        error={"code": "job_not_started", "message": "The job never started."},
     )
 
     deleted = 0
@@ -213,4 +253,4 @@ def sweep_transfer_jobs(now: datetime, store: TransferArchiveStore | None = None
         TransferJob.objects.filter(pk=job_id).delete()
         deleted += 1
 
-    return {"deleted": deleted, "interrupted": interrupted}
+    return {"deleted": deleted, "interrupted": interrupted, "not_started": not_started}

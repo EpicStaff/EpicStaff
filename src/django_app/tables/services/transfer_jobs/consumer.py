@@ -27,6 +27,9 @@ class TransferJobConsumer(StreamRequestConsumer):
     stream = TRANSFER_JOB_STREAM
     group = TRANSFER_JOB_CONSUMER_GROUP
     description = "Transfer job consumer"
+    # A job can run for minutes; a batch read here would hold the rest of it pending
+    # behind that job instead of letting another container take it.
+    read_count = 1
 
     def __init__(self, *args, runner: TransferJobRunner | None = None, sweep=None, **kwargs):
         super().__init__(*args, **kwargs)

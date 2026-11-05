@@ -68,10 +68,10 @@ class ArchiveExportFormatStrategy:
         strategy = entity_registry.get_strategy(EntityType.SOURCE_COLLECTION)
         with ExportArchiveWriter() as writer:
             writer.write_envelope(result.data)
+            # The files follow the serialized entries, so the archive holds exactly
+            # what export.json names.
             for entry in result.data.get(EntityType.SOURCE_COLLECTION, []):
-                instance = strategy.get_instance(entry["id"])
-                if instance is not None:
-                    strategy.write_archive_members(instance, writer)
+                strategy.write_archive_members(entry, writer)
         return writer.path
 
 

@@ -14,7 +14,7 @@ from tables.clients.errors import (
     ClientValidationError,
 )
 
-_ARTIFACT_TIMEOUT = httpx.Timeout(600.0, connect=10.0)
+ARTIFACT_TIMEOUT = httpx.Timeout(600.0, connect=10.0)
 _UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
@@ -136,7 +136,7 @@ class KnowledgeClient:
         """Write the tar of a completed graph RAG's index into `destination`, chunk by chunk."""
         try:
             with self._client.stream(
-                "GET", f"rags/{RAGStrategy.GRAPH}/{rag_id}/artifacts/", timeout=_ARTIFACT_TIMEOUT
+                "GET", f"rags/{RAGStrategy.GRAPH}/{rag_id}/artifacts/", timeout=ARTIFACT_TIMEOUT
             ) as response:
                 if response.is_error:
                     response.read()
@@ -161,7 +161,7 @@ class KnowledgeClient:
             "put",
             base_url,
             content=iter(lambda: source.read(_UPLOAD_CHUNK_SIZE), b""),
-            timeout=_ARTIFACT_TIMEOUT,
+            timeout=ARTIFACT_TIMEOUT,
         )
         self._request(
             "post",
@@ -171,7 +171,7 @@ class KnowledgeClient:
                     str(old_id): new_id for old_id, new_id in document_id_map.items()
                 }
             },
-            timeout=_ARTIFACT_TIMEOUT,
+            timeout=ARTIFACT_TIMEOUT,
         )
 
     @staticmethod

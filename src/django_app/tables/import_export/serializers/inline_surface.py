@@ -1,5 +1,8 @@
 from tables.import_export.enums import EntityType
-from tables.import_export.serializers.surface_knowledge import serialize_knowledge
+from tables.import_export.serializers.surface_knowledge import (
+    SEARCH_CONFIG_RELATIONS,
+    serialize_knowledge,
+)
 
 
 def serialize_inline_surface(inline_surface) -> dict:
@@ -11,5 +14,7 @@ def serialize_inline_surface(inline_surface) -> dict:
             ),
             EntityType.MCP_TOOL: list(inline_surface.mcp_tools.values("mcp_tool_id", "mode")),
         },
-        "knowledge": serialize_knowledge(inline_surface.knowledge.all()),
+        "knowledge": serialize_knowledge(
+            inline_surface.knowledge.select_related("collection", *SEARCH_CONFIG_RELATIONS)
+        ),
     }
