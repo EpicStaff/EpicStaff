@@ -7,6 +7,7 @@ import { By } from '@angular/platform-browser';
 import { ExecutionTimeoutFormField } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
+import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { Subject } from 'rxjs';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
@@ -120,6 +121,21 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
     function savedTestPayload(): WebhookTriggerNodeModel['data']['test_payload'] {
         return panel.onSaveSilently()!.data.test_payload;
     }
+
+    it('saves the stored entrypoint and global kwargs it does not edit', () => {
+        fixture.componentRef.setInput(
+            'node',
+            mapWebhookTriggerNodeToModel({
+                ...DTO,
+                python_code: { ...DTO.python_code, entrypoint: 'run', global_kwargs: { retries: 3 } },
+            })
+        );
+        fixture.detectChanges();
+
+        const saved = panel.createUpdatedNode().data.python_code;
+
+        expect([saved.entrypoint, saved.global_kwargs]).toEqual(['run', { retries: 3 }]);
+    });
 
     it('shows the saved payload and saves it unchanged while not edited', () => {
         expect(editor().testPayload.text()).toBe(formatTestPayload(SAVED_PAYLOAD));
@@ -445,6 +461,83 @@ describe('WebhookTriggerNodePanelComponent code editor header', () => {
         expect(editors[0].editorHeight()).toBe(220);
         expect(editors[0].compactHeader()).toBe(true);
     });
+});
+
+describe('WebhookTriggerNodePanelComponent code that reads secrets', () => {
+    let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
+
+    /** The real template with the real storage section and an empty code editor, for a node reading a secret. */
+    function open(canUseSecrets: boolean): void {
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ToastService, useValue: {} },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode) => resource !== ResourceCode.Secrets || canUseSecrets,
+                        canAny: () => true,
+                        canEditSecrets: () => canUseSecrets,
+                    },
+                },
+                {
+                    provide: SecretsStorageService,
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
+                },
+                { provide: RuffWasmService, useValue: { check: () => Promise.resolve([]) } },
+                { provide: RuffDiagnosticsService, useValue: { setMarkers: () => {}, hasSyntaxErrors: () => false } },
+            ],
+        });
+        TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
+            set: {
+                imports: [NgTemplateOutlet, CodeEditorComponent, NodeStorageSectionComponent],
+                schemas: [NO_ERRORS_SCHEMA],
+            },
+        });
+        TestBed.overrideComponent(CodeEditorComponent, { set: { template: '', imports: [] } });
+        fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+        fixture.componentRef.setInput(
+            'node',
+            mapWebhookTriggerNodeToModel({
+                ...DTO,
+                python_code: { ...DTO.python_code, secrets: [{ id: 7, name: 'STRIPE_KEY' }] },
+            })
+        );
+        fixture.detectChanges();
+    }
+
+    function codeEditor(): CodeEditorComponent {
+        return fixture.debugElement.query(By.directive(CodeEditorComponent)).componentInstance as CodeEditorComponent;
+    }
+
+    function storageSection(): NodeStorageSectionComponent {
+        return fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
+            .componentInstance as NodeStorageSectionComponent;
+    }
+
+    it.each([
+        { canUseSecrets: false, locked: true },
+        { canUseSecrets: true, locked: false },
+    ])(
+        'locks the code and storage toggle, saying why, without Secrets:Use ($canUseSecrets)',
+        ({ canUseSecrets, locked }) => {
+            open(canUseSecrets);
+
+            expect(codeEditor().readOnly).toBe(locked);
+            expect(storageSection().readonly()).toBe(locked);
+            expect((fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE)).toBe(
+                locked
+            );
+        }
+    );
 });
 
 describe('WebhookTriggerNodePanelComponent run python code', () => {

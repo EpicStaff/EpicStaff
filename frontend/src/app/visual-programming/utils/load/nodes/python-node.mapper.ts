@@ -19,6 +19,7 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
             code: pn.python_code.code,
             entrypoint: pn.python_code.entrypoint,
             venv_id: pn.python_code.venv_id ?? null,
+            global_kwargs: pn.python_code.global_kwargs,
             execution_timeout: pn.python_code.execution_timeout,
             use_storage: pn.use_storage ?? false,
             secret_ids: toSecretIds(pn.python_code.secrets),

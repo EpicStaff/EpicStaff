@@ -1,10 +1,12 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { GetPythonCodeToolRequest } from '@shared/models';
+import { ActionCode, GetPythonCodeToolRequest, ResourceCode, toSecretIds } from '@shared/models';
+import { isSecretCodeLocked, SECRET_CODE_COPY_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { Observable } from 'rxjs';
 
 import { InspectResult } from '../../../../../../core/models/review-item.model';
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { CreateCustomToolDialogComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../../../models/tool-config.model';
 import { CustomToolsService } from '../../../../services/custom-tools/custom-tools.service';
@@ -18,6 +20,7 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
     private readonly service = inject(CustomToolsService);
     private readonly events = inject(ToolsEventsService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly permissions = inject(PermissionsService);
 
     public readonly kind: ToolKind = 'custom';
     public readonly entityLabel = 'custom tool';
@@ -45,6 +48,14 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
 
     public isBuiltIn(t: GetPythonCodeToolRequest): boolean {
         return t.built_in;
+    }
+    public copyBlockedReason(t: GetPythonCodeToolRequest): string | undefined {
+        return isSecretCodeLocked(
+            toSecretIds(t.python_code?.secrets),
+            this.permissions.can(ResourceCode.Secrets, ActionCode.Use)
+        )
+            ? SECRET_CODE_COPY_NEEDS_USE_MESSAGE
+            : undefined;
     }
     public descriptionOf(t: GetPythonCodeToolRequest): string {
         return t.description;

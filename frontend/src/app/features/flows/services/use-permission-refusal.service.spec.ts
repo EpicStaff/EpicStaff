@@ -4,10 +4,10 @@ import { ConfirmationDialogService } from '@shared/components';
 import { Observable, of, throwError } from 'rxjs';
 
 import {
-    FlowUsePermissionRefusalService,
     UsePermissionAction,
     UsePermissionRefusalOperation,
-} from './flow-use-permission-refusal.service';
+    UsePermissionRefusalService,
+} from './use-permission-refusal.service';
 
 const REFUSAL = new HttpErrorResponse({
     status: 403,
@@ -25,16 +25,16 @@ interface Outcome {
     completed: boolean;
 }
 
-describe('FlowUsePermissionRefusalService', () => {
+describe('UsePermissionRefusalService', () => {
     let confirm: ReturnType<typeof vi.fn>;
-    let service: FlowUsePermissionRefusalService;
+    let service: UsePermissionRefusalService;
 
     beforeEach(() => {
         confirm = vi.fn();
         TestBed.configureTestingModule({
             providers: [{ provide: ConfirmationDialogService, useValue: { confirm } }],
         });
-        service = TestBed.inject(FlowUsePermissionRefusalService);
+        service = TestBed.inject(UsePermissionRefusalService);
     });
 
     function run(source: Observable<unknown>): Outcome {
@@ -128,7 +128,64 @@ describe('FlowUsePermissionRefusalService', () => {
         expect(outcome).toEqual({ values: [], error: undefined, completed: true });
     });
 
+    function secretsRefusal(message: string): HttpErrorResponse {
+        return new HttpErrorResponse({
+            status: 403,
+            error: { status_code: 403, code: 'code_with_secrets_requires_secrets_use_permission', message },
+        });
+    }
+
+    it.each<[UsePermissionRefusalOperation, string, string]>([
+        [
+            'copy',
+            'This flow contains code that reads secrets.',
+            '<strong>Copying</strong> it requires the <strong>Use</strong> permission on secrets.',
+        ],
+        [
+            'restore',
+            'This version contains code that reads secrets.',
+            '<strong>Restoring</strong> it requires the <strong>Use</strong> permission on secrets.',
+        ],
+        [
+            'createFromVersion',
+            'This version contains code that reads secrets.',
+            '<strong>Creating a flow</strong> from it requires the <strong>Use</strong> permission on secrets.',
+        ],
+        [
+            'import',
+            'This file contains code that reads secrets.',
+            '<strong>Importing</strong> it requires the <strong>Use</strong> permission on secrets.',
+        ],
+    ])('explains a %s refused over code that reads secrets in an OK-only warning', (operation, message, caution) => {
+        service.showSecretsRefusal(operation);
+
+        expect(confirm).toHaveBeenCalledExactlyOnceWith({
+            title: 'Use permission required',
+            message,
+            caution,
+            type: 'warning',
+            hideConfirm: true,
+            cancelText: 'OK',
+        });
+    });
+
+    it("explains the backend's refusal over code that reads secrets for the given operation and completes", () => {
+        const outcome = run(throwError(() => secretsRefusal('This contains code that reads secrets.')));
+
+        expect(confirm).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+                message: 'This flow contains code that reads secrets.',
+                caution: '<strong>Copying</strong> it requires the <strong>Use</strong> permission on secrets.',
+            })
+        );
+        expect(outcome).toEqual({ values: [], error: undefined, completed: true });
+    });
+
     it.each([
+        [
+            'the secrets refusal code on another status',
+            new HttpErrorResponse({ status: 400, error: secretsRefusal('Refused').error }),
+        ],
         [
             'the bulk-save trigger node 403',
             new HttpErrorResponse({ status: 403, error: { code: 'trigger_nodes_require_use_permission' } }),
