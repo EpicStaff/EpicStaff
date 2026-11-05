@@ -314,14 +314,14 @@ class TestAgentTaskNodeRoundTrip:
         context_task_names = {task.name for task in new_task2.context_tasks.all()}
         assert context_task_names == {"task1"}
 
-    def test_no_storage_or_knowledge_leakage(
+    def test_storage_stays_behind_and_knowledge_relinks_in_the_same_org(
         self, node_graph_seeded_db, export_service, import_service, default_org
     ):
         """
         The fixture seeds one storage item and one knowledge row on each of
-        the AgentInlineSurface and InlineSurface. Import must not recreate
-        them for the new nodes — counts must stay exactly at the pre-import
-        totals contributed by the original fixture data.
+        the AgentInlineSurface and InlineSurface. Storage items never travel,
+        so their counts stay at the fixture's. A knowledge row points at a
+        collection of the importing org, so the new nodes get one each.
         """
         graph = node_graph_seeded_db["graph"]
 
@@ -345,13 +345,13 @@ class TestAgentTaskNodeRoundTrip:
         )
         assert (
             AgentInlineSurfaceKnowledge.objects.count()
-            == agent_inline_knowledge_count_before
+            == agent_inline_knowledge_count_before + 1
         )
         assert (
             InlineSurfaceStorageItem.objects.count() == task_inline_storage_count_before
         )
         assert (
-            InlineSurfaceKnowledge.objects.count() == task_inline_knowledge_count_before
+            InlineSurfaceKnowledge.objects.count() == task_inline_knowledge_count_before + 1
         )
 
 

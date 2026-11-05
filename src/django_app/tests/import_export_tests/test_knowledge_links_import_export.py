@@ -4,6 +4,7 @@ the target org has no such collection."""
 
 import json
 import os
+import uuid
 from decimal import Decimal
 
 import pytest
@@ -100,7 +101,7 @@ def _import_archive(entity_type, entity_id, org, tmp_path) -> IDMapper:
             SourceCollectionStrategy().write_archive_members(
                 SourceCollection.objects.get(pk=entry["id"]), writer
             )
-    path = tmp_path / "export.zip"
+    path = tmp_path / f"export-{uuid.uuid4()}.zip"
     os.replace(writer.path, path)
     with ImportArchive.open(str(path)) as archive:
         id_mapper, _ = ImportService(entity_registry).import_data(
@@ -366,10 +367,11 @@ def test_a_pasted_knowledge_node_relinks_without_carrying_the_collection(
     target_graph = Graph.objects.create(
         name="paste target", metadata={"nodes": [], "edges": []}, org=default_org
     )
-    PartialImportService(entity_registry).import_data(
+    result = PartialImportService(entity_registry).import_data(
         json.loads(json.dumps(export_result.data)), target_graph, org_id=default_org.id
     )
 
     assert EntityType.SOURCE_COLLECTION not in export_result.data
-    pasted = KnowledgeNode.objects.get(graph=target_graph)
-    assert (pasted.source_collection_id, pasted.rag_id) == (collection.collection_id, rag_id)
+    # A paste returns the nodes unsaved; the client saves them with the flow.
+    [pasted] = result.content["knowledge_node_list"]
+    assert (pasted["source_collection"], pasted["rag_id"]) == (collection.collection_id, rag_id)

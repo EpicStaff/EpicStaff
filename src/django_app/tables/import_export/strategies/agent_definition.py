@@ -316,7 +316,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         )
 
     def _entry_surfaces(
-        self, data: dict, id_mapper: IDMapper, org_id: int | None
+        self, data: dict, id_mapper: IDMapper, org_id: int | None = None
     ) -> tuple[dict, tuple]:
         """Return the entry's owned surface content keys and its default rows.
 
