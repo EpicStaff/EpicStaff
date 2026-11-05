@@ -5,13 +5,11 @@ import {
     Component,
     ElementRef,
     inject,
-    linkedSignal,
     output,
     signal,
     viewChild,
 } from '@angular/core';
-import { ButtonComponent,FetchErrorStateComponent, LabelColorPickerComponent } from '@shared/components';
-import { LabelColor, labelColorInTurn } from '@shared/models';
+import { ButtonComponent, FetchErrorStateComponent } from '@shared/components';
 import { extractHttpErrorMessage } from '@shared/utils';
 
 import { BranchTreeNode, nodeKey } from '../../../../../models/tree-node.model';
@@ -26,13 +24,7 @@ import {
 
 @Component({
     selector: 'app-agents-section',
-    imports: [
-        TreeNodeComponent,
-        FetchErrorStateComponent,
-        ExplorerGroupBlockComponent,
-        ButtonComponent,
-        LabelColorPickerComponent,
-    ],
+    imports: [TreeNodeComponent, FetchErrorStateComponent, ExplorerGroupBlockComponent, ButtonComponent],
     templateUrl: './agents-section.component.html',
     styleUrls: ['./agents-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -47,11 +39,6 @@ export class AgentsSectionComponent {
 
     protected readonly newGroupError = signal<string | null>(null);
     protected readonly creatingGroup = signal<boolean>(false);
-    /** Each new draft suggests the next color in turn; the picker can change it. */
-    protected readonly newGroupColor = linkedSignal<LabelColor>(() => {
-        this.store.newGroupDraft();
-        return labelColorInTurn(this.store.groups().length);
-    });
 
     private readonly focusNewGroupInput = afterRenderEffect(() => this.newGroupInput()?.nativeElement.focus());
 
@@ -83,7 +70,7 @@ export class AgentsSectionComponent {
             return;
         }
         this.creatingGroup.set(true);
-        this.store.createGroup(name, draft.assign, this.newGroupColor()).subscribe({
+        this.store.createGroup(name, draft.assign).subscribe({
             next: () => {
                 this.creatingGroup.set(false);
                 this.cancelNewGroup();
@@ -98,23 +85,6 @@ export class AgentsSectionComponent {
         });
     }
 
-    /**
-     * Focus moving to the color picker (its trigger, or its options in the overlay, which takes focus
-     * on open) is still editing the draft, so only leaving for anything else counts as leaving the field.
-     */
-    protected onNewGroupFocusOut(event: FocusEvent, name: string): void {
-        const next = event.relatedTarget as HTMLElement | null;
-        const field = event.currentTarget as HTMLElement;
-        if (next && (field.contains(next) || next.closest('.cdk-overlay-container'))) return;
-        this.onNewGroupBlur(name);
-    }
-
-    /** Picking a color hands focus back to the name, so Enter and leaving the field work as before. */
-    protected onNewGroupColor(color: LabelColor): void {
-        this.newGroupColor.set(color);
-        this.newGroupInput()?.nativeElement.focus();
-    }
-
     protected cancelNewGroup(): void {
         this.newGroupError.set(null);
         this.store.cancelNewGroup();
@@ -124,7 +94,7 @@ export class AgentsSectionComponent {
      * Leaving the input saves a typed name and cancels an empty one. While an error is
      * shown the draft stays as is, so blur never resubmits a name the server just rejected.
      */
-    private onNewGroupBlur(name: string): void {
+    protected onNewGroupBlur(name: string): void {
         if (this.creatingGroup() || this.newGroupError()) return;
         if (!name.trim()) {
             this.cancelNewGroup();

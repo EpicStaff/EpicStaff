@@ -25,7 +25,7 @@ import {
     UnsavedChangesDialogService,
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
-import { ActionCode, getLabelColorOption, LABEL_COLOR_OPTIONS, ResourceCode } from '@shared/models';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml } from '@shared/utils';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -33,6 +33,7 @@ import { map } from 'rxjs/operators';
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
@@ -108,6 +109,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly tourAnchors = CREATE_AGENT_TOUR_ANCHORS;
 
     /** Read-only mode when the active org can't mutate agents/surfaces. */
     protected readonly agentsReadOnly = computed<boolean>(() => {
@@ -372,6 +374,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                     description: payload.description,
                     instruction_list: payload.instruction_list,
                     llm_config: payload.llm_config,
+                    fallback_llm_config: payload.fallback_llm_config,
                     fcm_llm_config: payload.fcm_llm_config,
                 },
                 !!payload.openFirstInstructionInEdit
@@ -381,6 +384,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 name: payload.name,
                 description: payload.description,
                 llm_config: payload.llm_config,
+                fallback_llm_config: payload.fallback_llm_config,
                 fcm_llm_config: payload.fcm_llm_config,
                 max_iter: payload.max_iter,
                 max_rpm: payload.max_rpm,
@@ -558,12 +562,6 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         }
         if (node.kind !== 'group-header') return false;
         const groupId = node.groupId;
-        if (action.startsWith(GROUP_MENU_ACTION.groupColorPrefix)) {
-            const color = action.slice(GROUP_MENU_ACTION.groupColorPrefix.length);
-            const option = LABEL_COLOR_OPTIONS.find((candidate) => candidate.id === color);
-            if (option) this.store.setGroupColor(groupId, option.id);
-            return true;
-        }
         switch (action) {
             case GROUP_MENU_ACTION.newAgentInGroup:
                 this.guardUnsaved(() => {
@@ -618,22 +616,13 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     /**
-     * The group crumb: a picker when `editable` ("Add to group" while ungrouped), else read-only
-     * text of the group, or nothing when there is no group to show.
+     * The group crumb: a picker when `editable`, else read-only text of the group. Nothing while
+     * ungrouped; a group is assigned from the explorer (drag and drop, or Move to group).
      */
     private groupCrumb(groupId: number | null, editable: boolean): DetailCrumb[] {
         const group = groupId === null ? undefined : this.store.groupsById().get(groupId);
-        if (!group && !editable) return [];
-        return [
-            {
-                label: group?.name ?? 'Add to group',
-                group: {
-                    groupId: group?.id ?? null,
-                    editable,
-                    color: group ? getLabelColorOption(group.metadata?.color).circleBg : null,
-                },
-            },
-        ];
+        if (!group) return [];
+        return [{ label: group.name, group: { groupId: group.id, editable } }];
     }
 
     private applyExplorerTreeMenu({ node, action }: ExplorerTreeMenuEvent): void {

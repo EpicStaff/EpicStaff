@@ -1,5 +1,3 @@
-import { LabelColor } from '@shared/models';
-
 export type BranchTreeNode = BranchGroupNode | BranchSurfaceNode | BranchAgentNode | BranchAgentDocNode;
 
 export interface BranchGroupNode {
@@ -58,8 +56,6 @@ export type GroupedSectionId = 'agents' | 'surfaces';
 export interface ExplorerGroupBlock {
     groupId: number | null;
     label: string;
-    /** Null for Ungrouped, which has no color. */
-    color: LabelColor | null;
     /** Items in the block regardless of the search, for the header count. */
     memberCount: number;
     /** The rows to show: every member, or only the ones matching the search. */

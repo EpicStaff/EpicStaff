@@ -373,6 +373,16 @@ export class SelectDropdownComponent {
         return q ? base.filter((i) => i.name.toLowerCase().includes(q)) : base;
     });
 
+    /**
+     * The title shown above the item at `index` of `filteredItems`: its `group`, when the item starts
+     * a run of that group. The caller sorts the items by group; items without one get no title.
+     */
+    sectionTitleAt(index: number): string | null {
+        const items = this.filteredItems();
+        const group = items[index]?.group;
+        return group && group !== items[index - 1]?.group ? group : null;
+    }
+
     tipForItem(item: SelectDropdownListItem): string | null {
         const fn = this.checkedTip();
         if (!fn || !this.isItemSelected(item)) return null;

@@ -26,7 +26,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { getLabelColorOption, LabelColor, labelColorInTurn, LabelTreeNode } from '@shared/models';
+import { LabelColor, LabelTreeNode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
 import { filter } from 'rxjs';
 
@@ -365,10 +365,6 @@ export class LabelDropdownComponent implements OnInit {
         this.close();
     }
 
-    labelColor(node: LabelTreeNode): string {
-        return getLabelColorOption(node.metadata?.color).circleBg;
-    }
-
     toggle(): void {
         this.isOpen() ? this.close() : this.open();
     }
@@ -480,10 +476,8 @@ export class LabelDropdownComponent implements OnInit {
         this.addingChildOf.set(null);
         this.newLabelName.set('');
         this.addLabelError.set('');
-        // `autofocus` does not fire inside the overlay. Single mode also suggests the next color in
-        // turn, so new groups differ unless the user picks one.
+        // `autofocus` does not fire inside the overlay.
         if (this.isSingle()) {
-            this.newLabelColor.set(labelColorInTurn(this.labelsStorage.labels().length));
             setTimeout(() =>
                 this.overlayRef?.overlayElement.querySelector<HTMLInputElement>('.add-label-row input')?.focus()
             );

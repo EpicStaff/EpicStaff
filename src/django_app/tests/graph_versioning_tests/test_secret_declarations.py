@@ -14,13 +14,18 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
+from tables.exceptions import (
+    CodeWithSecretsRequiresSecretsUsePermissionError,
+    FlowWithTriggerNodesRequiresUsePermissionError,
+)
+from tables.models.graph_models import ScheduleTriggerNode
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.graph_versioning.services import GraphVersioningService
 from tables.import_export.id_mapper import IDMapper
 from rbac.models import Organization
 from tables.models import ClassificationDecisionTableNode, Graph, PythonCode, PythonNode, Secret, TelegramTriggerNode, WebhookTriggerNode
 from rbac.models import OrganizationUser, Role, RolePermission
-from rbac.models.enums import Permission, ResourceType
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.services.secrets import secret_service
 from tables.services.secrets.declaration_validator import SecretDeclarationValidator
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
@@ -53,12 +58,25 @@ def _save(*, graph, name="v1"):
     return GraphVersioningService().save_version(graph=graph, name=name)
 
 
+def _org_admin(org):
+    """An Org Admin of `org`, so holding secrets:USE: re-linking a declaration needs it."""
+    user, created = get_user_model().objects.get_or_create(email=f"restorer-{org.pk}@example.com")
+    if created:
+        OrganizationUser.objects.create(
+            user=user,
+            org=org,
+            role=Role.objects.get(name=BuiltInRole.ORG_ADMIN, is_built_in=True, org__isnull=True),
+        )
+    return user
+
+
 def _restore(*, version, graph):
     return GraphVersioningService().restore_version(
         version,
         expected_save_version=Graph.objects.values_list("save_version", flat=True).get(
             pk=graph.pk
         ),
+        user=_org_admin(graph.org),
     )
 
 
@@ -506,7 +524,7 @@ class TestCreateGraphFromVersion:
         _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
         version = _save(graph=graph)
 
-        result = service.create_graph_from_version(version)
+        result = service.create_graph_from_version(version, user=_org_admin(graph.org))
 
         new_graph = Graph.objects.get(pk=result["graph_id"])
         assert new_graph.pk != graph.pk
@@ -521,55 +539,219 @@ class TestCreateGraphFromVersion:
         version = _save(graph=graph)
         _purge(secret)
 
-        result = service.create_graph_from_version(version)
+        result = service.create_graph_from_version(version, user=_org_admin(graph.org))
 
         assert [w["type"] for w in result["warnings"]] == ["secret_declaration_dropped"]
 
 
+def _client_with_secrets_permissions(*, org, email, secrets_bitmask):
+    """An APIClient whose role holds CREATE|READ|UPDATE on flows and `secrets_bitmask` on secrets."""
+    role = Role.objects.create(name=f"role-{email}", org=org, is_built_in=False)
+    RolePermission.objects.create(
+        role=role,
+        resource_type=ResourceType.FLOWS.value,
+        permissions=int(Permission.CREATE | Permission.READ | Permission.UPDATE),
+    )
+    RolePermission.objects.create(
+        role=role, resource_type=ResourceType.SECRETS.value, permissions=secrets_bitmask
+    )
+    user = get_user_model().objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+    return client
+
+
+@pytest.fixture
+def no_use_client(default_org):
+    return _client_with_secrets_permissions(
+        org=default_org, email="restore_nouse@example.com", secrets_bitmask=int(Permission.READ)
+    )
+
+
+@pytest.fixture
+def use_client(default_org):
+    return _client_with_secrets_permissions(
+        org=default_org,
+        email="restore_use@example.com",
+        secrets_bitmask=int(Permission.READ | Permission.USE),
+    )
+
+
 @pytest.mark.django_db
-class TestRestoreDoesNotRequireSecretsUse:
-    """A role holding flows:UPDATE but not secrets:USE must still be able to restore a version that reattaches a declaration."""
+class TestRestoreRequiresSecretsUse:
+    """Restoring a version, or creating a flow from one, re-links its declared secrets to
+    code the caller can then edit and run, so a person without secrets:USE is refused
+    and nothing is written."""
 
-    # Task 8, Check 2 (path 2 of 3): restore reattaches PythonCode.secrets outside any
-    # serializer, and spec sec5 decides that reproducing an existing declaration inside
-    # one org is allowed.
+    def test_restore_without_use_is_refused_and_changes_nothing(
+        self, no_use_client, graph, default_org
+    ):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        node = _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+        graph.refresh_from_db()
+        save_version_before = graph.save_version
 
-    def test_a_use_less_client_can_restore_a_version_that_reattaches_a_declaration(
-        self, graph, default_org
+        response = no_use_client.post(
+            f"/api/graph-versions/{version.id}/restore/?backup=true",
+            {"save_version": save_version_before},
+            format="json",
+        )
+
+        assert response.status_code == 403, response.json()
+        assert response.json()["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
+        graph.refresh_from_db()
+        assert graph.save_version == save_version_before
+        assert list(PythonNode.objects.filter(graph=graph).values_list("pk", flat=True)) == [
+            node.pk
+        ]
+        assert graph.versions.count() == 1, "no backup is written"
+
+    def test_the_trigger_refusal_wins_when_both_apply(self, no_use_client, graph, default_org):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        ScheduleTriggerNode.objects.create(graph=graph, node_name="Hourly")
+        version = _save(graph=graph)
+
+        response = no_use_client.post(
+            f"/api/graph-versions/{version.id}/restore/",
+            {"save_version": Graph.objects.get(pk=graph.pk).save_version},
+            format="json",
+        )
+
+        assert response.status_code == 403, response.json()
+        assert response.json()["code"] == FlowWithTriggerNodesRequiresUsePermissionError.default_code
+
+    def test_create_graph_without_use_is_refused_and_creates_nothing(
+        self, no_use_client, graph, default_org
     ):
         secret = _secret(org=default_org, name="STRIPE_KEY")
         _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
         version = _save(graph=graph)
+        graph_ids_before = set(Graph.objects.values_list("pk", flat=True))
 
-        role = Role.objects.create(
-            name="restore-no-use", org=default_org, is_built_in=False
-        )
-        RolePermission.objects.create(
-            role=role,
-            resource_type=ResourceType.FLOWS.value,
-            permissions=int(Permission.CREATE | Permission.READ | Permission.UPDATE),
-        )
-        RolePermission.objects.create(
-            role=role,
-            resource_type=ResourceType.SECRETS.value,
-            permissions=int(Permission.READ),
-        )
-        user = get_user_model().objects.create_user(
-            email="restore_nouse@example.com", password="StrongPass123!"
-        )
-        OrganizationUser.objects.create(user=user, org=default_org, role=role)
-        client = APIClient()
-        client.force_authenticate(user=user)
-        client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+        response = no_use_client.post(f"/api/graph-versions/{version.id}/create-graph/")
 
-        response = client.post(
+        assert response.status_code == 403, response.json()
+        assert response.json()["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
+        assert set(Graph.objects.values_list("pk", flat=True)) == graph_ids_before
+
+    def test_a_binned_declared_secret_still_needs_use(self, no_use_client, graph, default_org):
+        """A binned secret stays linked, so restoring it re-links it."""
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+        secret.delete()
+
+        response = no_use_client.post(
             f"/api/graph-versions/{version.id}/restore/",
-            {"save_version": graph.save_version},
+            {"save_version": Graph.objects.get(pk=graph.pk).save_version},
+            format="json",
+        )
+
+        assert response.status_code == 403, response.json()
+
+    @pytest.mark.parametrize("action", ["restore", "create-graph"])
+    def test_without_use_a_version_whose_secret_was_purged_is_refused(
+        self, no_use_client, graph, default_org, action
+    ):
+        """The rule must not hang on today's secrets: one purged now can be recreated
+        later under its name, and the restored code reads it again."""
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        node = _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+        _purge(secret)
+        graph_ids_before = set(Graph.objects.values_list("pk", flat=True))
+
+        response = no_use_client.post(
+            f"/api/graph-versions/{version.id}/{action}/",
+            {"save_version": Graph.objects.get(pk=graph.pk).save_version},
+            format="json",
+        )
+
+        assert response.status_code == 403, response.json()
+        assert response.json()["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
+        assert set(Graph.objects.values_list("pk", flat=True)) == graph_ids_before
+        assert list(PythonNode.objects.filter(graph=graph).values_list("pk", flat=True)) == [
+            node.pk
+        ]
+
+    def test_without_use_a_version_declaring_a_name_no_secret_has_is_refused(
+        self, no_use_client, graph
+    ):
+        _python_node(graph=graph, name="NEVER_CREATED")
+        version = _save(graph=graph)
+        [node_id] = PythonNode.objects.filter(graph=graph).values_list("pk", flat=True)
+        version.snapshot["secret_declarations"]["nodes"] = {
+            str(node_id): {"python_code": ["NEVER_CREATED"]}
+        }
+        version.save(update_fields=["snapshot"])
+
+        response = no_use_client.post(
+            f"/api/graph-versions/{version.id}/restore/",
+            {"save_version": Graph.objects.get(pk=graph.pk).save_version},
+            format="json",
+        )
+
+        assert response.status_code == 403, response.json()
+        assert response.json()["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
+
+    def test_with_use_a_version_whose_secret_was_purged_restores_and_warns(
+        self, use_client, graph, default_org
+    ):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+        _purge(secret)
+
+        response = use_client.post(
+            f"/api/graph-versions/{version.id}/restore/",
+            {"save_version": Graph.objects.get(pk=graph.pk).save_version},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+        assert [w["type"] for w in response.json()["warnings"]] == ["secret_declaration_dropped"]
+        assert _declared_names(graph=graph) == []
+
+    def test_without_use_a_version_without_declarations_restores(self, no_use_client, graph):
+        _python_node(graph=graph, name="STRIPE_KEY")
+        version = _save(graph=graph)
+
+        response = no_use_client.post(
+            f"/api/graph-versions/{version.id}/restore/",
+            {"save_version": Graph.objects.get(pk=graph.pk).save_version},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+
+    def test_restore_with_use_relinks_the_declaration(self, use_client, graph, default_org):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+
+        response = use_client.post(
+            f"/api/graph-versions/{version.id}/restore/",
+            {"save_version": Graph.objects.get(pk=graph.pk).save_version},
             format="json",
         )
 
         assert response.status_code == 200, response.json()
         assert _declared_names(graph=graph) == ["STRIPE_KEY"]
+
+    def test_create_graph_with_use_relinks_the_declaration(self, use_client, graph, default_org):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+
+        response = use_client.post(f"/api/graph-versions/{version.id}/create-graph/")
+
+        assert response.status_code == 201, response.json()
+        new_graph = Graph.objects.get(pk=response.json()["graph_id"])
+        assert _declared_names(graph=new_graph) == ["STRIPE_KEY"]
 
 
 @pytest.mark.django_db

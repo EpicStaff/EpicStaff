@@ -1,8 +1,7 @@
-import { OverlayContainer } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { CreateLabelRequest, LabelColor, LabelDto } from '@shared/models';
+import { CreateLabelRequest, LabelDto } from '@shared/models';
 import { Observable, of, throwError } from 'rxjs';
 
 import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
@@ -84,13 +83,9 @@ function type(fixture: ComponentFixture<AgentsSectionComponent>, input: HTMLInpu
     fixture.detectChanges();
 }
 
-/** Focus leaves the input for `next` (nothing focusable when null). */
-function leave(
-    fixture: ComponentFixture<AgentsSectionComponent>,
-    input: HTMLInputElement,
-    next: HTMLElement | null = null
-): void {
-    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: next }));
+/** Focus leaves the input. */
+function leave(fixture: ComponentFixture<AgentsSectionComponent>, input: HTMLInputElement): void {
+    input.dispatchEvent(new FocusEvent('blur'));
     fixture.detectChanges();
 }
 
@@ -140,32 +135,6 @@ describe('AgentsSectionComponent new group input', () => {
 
         expect(groupNames(store)).toEqual(['Sales EMEA']);
         expect(input()).toBeNull();
-    });
-
-    it('keeps the draft while a color is picked, then saves the name with that color', () => {
-        const { fixture, store, api, input } = render();
-        const host = fixture.nativeElement as HTMLElement;
-        const pickerTrigger = host.querySelector<HTMLButtonElement>('.color-trigger-btn')!;
-
-        type(fixture, input()!, 'Sales');
-        leave(fixture, input()!, pickerTrigger);
-        expect(api.createdNames).toEqual([]);
-
-        // Opening the picker moves focus from its trigger into the overlay, outside this field's DOM.
-        pickerTrigger.focus();
-        pickerTrigger.click();
-        fixture.detectChanges();
-        const overlay = TestBed.inject(OverlayContainer).getContainerElement();
-        expect(overlay.contains(document.activeElement)).toBe(true);
-        expect(api.createdNames).toEqual([]);
-
-        overlay.querySelector<HTMLButtonElement>(`.color-option-btn[aria-label="${LabelColor.Green}"]`)!.click();
-        fixture.detectChanges();
-        leave(fixture, input()!);
-
-        expect(store.groups().map((group) => [group.name, group.metadata.color])).toEqual([
-            ['Sales', LabelColor.Green],
-        ]);
     });
 
     it.each([

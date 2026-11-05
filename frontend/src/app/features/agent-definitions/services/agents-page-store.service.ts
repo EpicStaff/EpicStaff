@@ -1,6 +1,6 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActionCode, LabelColor, labelColorInTurn, LabelDto, ResourceCode } from '@shared/models';
+import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 import {
     computeUniqueCopyName,
     computeUniqueName,
@@ -268,6 +268,15 @@ export class AgentsPageStore {
     });
 
     readonly isDraftingAgent = computed<boolean>(() => this.selectedNode().kind === 'draft-agent');
+
+    /** The agent the latest Add Agent draft was saved as; null until one is, and again once another draft begins. */
+    private readonly agentCreatedFromDraftId = signal<number | null>(null);
+
+    /** Whether the agent shown is the one the latest Add Agent draft was saved as. */
+    readonly isSelectedAgentFromLatestDraft = computed<boolean>(() => {
+        const agent = this.selectedAgent();
+        return agent !== null && agent.id === this.agentCreatedFromDraftId();
+    });
 
     readonly isDraftingSurface = computed<boolean>(() => this.selectedNode().kind === 'draft-surface');
 
@@ -555,7 +564,6 @@ export class AgentsPageStore {
             blocks.push({
                 groupId: group.id,
                 label: group.name,
-                color: group.metadata?.color ?? LabelColor.Default,
                 memberCount: members.length,
                 nodes,
             });
@@ -567,7 +575,6 @@ export class AgentsPageStore {
             blocks.push({
                 groupId: null,
                 label: 'Ungrouped',
-                color: null,
                 memberCount: ungrouped.length,
                 nodes: ungroupedNodes,
             });
@@ -670,15 +677,11 @@ export class AgentsPageStore {
     }
 
     /**
-     * Creates a group (flat, next color in turn) and moves `assign` into it. Errors are left to the
+     * Creates a group (flat) and moves `assign` into it. Errors are left to the
      * caller, which shows them next to the name it asked for.
      */
-    createGroup(
-        name: string,
-        assign: GroupAssignTarget | null,
-        color: LabelColor = labelColorInTurn(this.groups().length)
-    ): Observable<LabelDto> {
-        return this.groupsStore.createLabel(name.trim(), null, color).pipe(
+    createGroup(name: string, assign: GroupAssignTarget | null): Observable<LabelDto> {
+        return this.groupsStore.createLabel(name.trim(), null).pipe(
             tap((created) => {
                 if (assign) this.moveToGroup(assign, created.id);
             })
@@ -699,14 +702,8 @@ export class AgentsPageStore {
         const group = this.groupsById().get(groupId);
         const trimmed = name.trim();
         if (!group || !trimmed || trimmed === group.name) return;
-        this.groupsStore.renameLabel(groupId, trimmed, group.metadata?.color ?? LabelColor.Default).subscribe({
+        this.groupsStore.renameLabel(groupId, trimmed).subscribe({
             error: (err) => this.toast.error(this.extractError(err, 'Failed to rename group')),
-        });
-    }
-
-    setGroupColor(groupId: number, color: LabelColor): void {
-        this.groupsStore.updateLabelColor(groupId, color).subscribe({
-            error: (err) => this.toast.error(this.extractError(err, 'Failed to change group color')),
         });
     }
 
@@ -842,6 +839,7 @@ export class AgentsPageStore {
     /** Opens the new-agent form; with `groupId` the agent is created in that group, whose block is expanded. */
     beginCreateAgent(groupId: number | null = null): void {
         if (groupId !== null && this.isGroupCollapsed('agents', groupId)) this.toggleGroupCollapsed('agents', groupId);
+        this.agentCreatedFromDraftId.set(null);
         this.selectedNode.set({ kind: 'draft-agent', id: null, groupId });
     }
 
@@ -1136,6 +1134,7 @@ export class AgentsPageStore {
         this.agentsApi.create({ ...body, name: trimmed, group }).subscribe({
             next: (created) => {
                 this.agents.update((list) => [...list, created]);
+                this.agentCreatedFromDraftId.set(created.id);
                 if (openFirstInstruction) {
                     this.selectAgentDoc(created.id, 0);
                 } else {

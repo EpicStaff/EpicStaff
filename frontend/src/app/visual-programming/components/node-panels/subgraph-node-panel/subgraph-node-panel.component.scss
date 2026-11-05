@@ -43,6 +43,14 @@
     align-items: center;
 }
 
+.missing-flow-hint {
+    margin-top: 4px;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-status-error);
+}
+
 .selected-flow-row app-go-to-button {
     flex: 0 0 auto;
 }

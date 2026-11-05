@@ -30,6 +30,9 @@ function listUrl(bin: string, query = ''): string {
 }
 
 const FLOWS_LIST = listUrl(FLOWS_BIN);
+/** The reason the bin gives for an item it skips for a user without Secrets:Use. */
+const SECRET_CODE_REFUSAL =
+    'This contains code that reads secrets. This action requires the Use permission on secrets.';
 const FILES_LIST = listUrl(`${API_URL}storage/recycle-bin/`);
 
 const ROW_RESTORE = '.table-row app-activate-button button';
@@ -372,6 +375,22 @@ describe('RecycleBinTabComponent', () => {
             httpTesting.expectOne(FILES_LIST).flush(page([]));
         });
 
+        it('shows why a flow holding code that reads secrets was not restored, and reloads', () => {
+            grant(ResourceCode.Flows, ActionCode.Create);
+            const element = openFlowsWith([entry(5, 'Report')]);
+
+            click(element, ROW_RESTORE);
+            httpTesting
+                .expectOne({ method: 'POST', url: `${FLOWS_BIN}restore/` })
+                .flush({ restored: [], failed: [{ id: 5, name: 'Report', message: SECRET_CODE_REFUSAL }] });
+
+            expect(toast.success).not.toHaveBeenCalled();
+            expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+                `Couldn't restore 1 item. "Report": ${SECRET_CODE_REFUSAL}`
+            );
+            httpTesting.expectOne(FLOWS_LIST).flush(page([entry(5, 'Report')]));
+        });
+
         it('names a storage row by its full path in the delete dialog', () => {
             superadmin.set(true);
             grant(ResourceCode.Files);
@@ -458,6 +477,24 @@ describe('RecycleBinTabComponent', () => {
             httpTesting.expectOne(FLOWS_LIST).flush(page([entry(7, 'Sync')]));
             fixture.detectChanges();
             expect(element.querySelector('.bin-toolbar__actions')).toBeNull();
+        });
+
+        it('restores the selected flows it may, and says which one holds code that reads secrets', () => {
+            const element = openFlowsWith([entry(5, 'Report'), entry(6, 'Digest')]);
+            checkRow(element, 0);
+            checkRow(element, 1);
+
+            click(element, RESTORE_SELECTED);
+            httpTesting.expectOne({ method: 'POST', url: `${FLOWS_BIN}restore/` }).flush({
+                restored: [{ id: 5, name: 'Report', renamed_from: null, links_restored: false }],
+                failed: [{ id: 6, name: 'Digest', message: SECRET_CODE_REFUSAL }],
+            });
+
+            expect(toast.success).toHaveBeenCalledOnce();
+            expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+                `Couldn't restore 1 item. "Digest": ${SECRET_CODE_REFUSAL}`
+            );
+            httpTesting.expectOne(FLOWS_LIST).flush(page([entry(6, 'Digest')]));
         });
 
         it('confirms deleting the selected rows without a typed phrase, and lists what failed', () => {

@@ -24,8 +24,6 @@ export function mapKeyValueNodeToModel(dto: GetKeyValueNodeRequest): KeyValueNod
         },
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: dto.input_map ?? {},
         // No key-value mode writes an output; read values go to each entry's own path.
         output_variable_path: null,

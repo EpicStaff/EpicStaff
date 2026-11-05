@@ -16,12 +16,13 @@ import {
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, LlmModelSelectorComponent } from '@shared/components';
+import { AppSvgIconComponent, HelpTooltipComponent, LlmModelSelectorComponent } from '@shared/components';
 import { EnterBlurDirective, HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageDragService } from '../../../../../files/services/storage-drag.service';
 import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../../../models/agent-definition.model';
 import { AgentFocus, AgentSelection } from '../../../../models/explorer.model';
@@ -51,6 +52,7 @@ export interface AgentSavePayload {
     instruction_list?: AgentInstruction[];
     openFirstInstructionInEdit?: boolean;
     llm_config: number | null;
+    fallback_llm_config: number | null;
     fcm_llm_config: number | null;
     max_iter?: number;
     max_rpm?: number;
@@ -83,6 +85,7 @@ interface AgentFormValue {
     name: string;
     description: string;
     llm_config: number | null;
+    fallback_llm_config: number | null;
 }
 
 @Component({
@@ -91,6 +94,7 @@ interface AgentFormValue {
         ReactiveFormsModule,
         AppSvgIconComponent,
         LlmModelSelectorComponent,
+        HelpTooltipComponent,
         HideInlineSubtitleOnOverflowDirective,
         EnterBlurDirective,
         AgentSurfacesPanelComponent,
@@ -124,6 +128,8 @@ export class AgentDetailComponent implements OnInit {
     /** Applied on every new reference, so re-selecting the same agent re-opens and scrolls up. */
     focusRequest = input<AgentSelection | null>(null);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());
+    /** The groups in explorer order, for grouping the shared surfaces offered to attach. */
+    groups = input<LabelDto[]>([]);
     /** When true, disables the reactive form and blocks save/delete/duplicate emissions. */
     readOnly = input<boolean>(false);
 
@@ -159,6 +165,7 @@ export class AgentDetailComponent implements OnInit {
         name: ['', [Validators.required, Validators.maxLength(255)]],
         description: [''],
         llm_config: [null as number | null],
+        fallback_llm_config: [null as number | null],
     });
 
     // Live (unsaved) LLM selection — the Surfaces panel's RAG config needs this
@@ -263,6 +270,15 @@ export class AgentDetailComponent implements OnInit {
         this.persist(false);
     }
 
+    /** The backend rejects a fallback with no primary or equal to it, so drop it in the same save. */
+    onPrimaryLlmSelected(): void {
+        const { llm_config, fallback_llm_config } = this.form.getRawValue();
+        if (fallback_llm_config != null && (llm_config == null || llm_config === fallback_llm_config)) {
+            this.form.controls.fallback_llm_config.setValue(null);
+        }
+        this.persist(false);
+    }
+
     private persist(fromNameBlur: boolean): void {
         if (this.readOnly()) return;
         if (this.saving()) return;
@@ -285,6 +301,7 @@ export class AgentDetailComponent implements OnInit {
             name: effectiveName,
             description: v.description ?? '',
             llm_config: v.llm_config,
+            fallback_llm_config: v.fallback_llm_config,
             fcm_llm_config: a?.fcm_llm_config ?? null,
             max_iter: a?.max_iter,
             max_rpm: a?.max_rpm,
@@ -300,7 +317,7 @@ export class AgentDetailComponent implements OnInit {
     }
 
     private emptyValue(): AgentFormValue {
-        return { name: '', description: '', llm_config: null };
+        return { name: '', description: '', llm_config: null, fallback_llm_config: null };
     }
 
     private valueFromAgent(a: AgentDefinition): AgentFormValue {
@@ -308,12 +325,18 @@ export class AgentDetailComponent implements OnInit {
             name: a.name,
             description: a.description ?? '',
             llm_config: a.llm_config,
+            fallback_llm_config: a.fallback_llm_config,
         };
     }
 
     private sameAsSnapshot(v: AgentFormValue): boolean {
         const s = this.savedSnapshot;
-        return v.name === s.name && v.description === s.description && v.llm_config === s.llm_config;
+        return (
+            v.name === s.name &&
+            v.description === s.description &&
+            v.llm_config === s.llm_config &&
+            v.fallback_llm_config === s.fallback_llm_config
+        );
     }
 
     private revertToSnapshot(): void {
@@ -385,6 +408,7 @@ export class AgentDetailComponent implements OnInit {
             name: v.name.trim() || a.name,
             description: v.description ?? '',
             llm_config: v.llm_config,
+            fallback_llm_config: v.fallback_llm_config,
             fcm_llm_config: result.fcm_llm_config,
             max_iter: result.max_iter,
             max_rpm: result.max_rpm,
@@ -472,6 +496,7 @@ export class AgentDetailComponent implements OnInit {
             instruction_list: instructionList,
             openFirstInstructionInEdit: true,
             llm_config: v.llm_config,
+            fallback_llm_config: v.fallback_llm_config,
             fcm_llm_config: null,
         });
     }
@@ -497,4 +522,5 @@ export class AgentDetailComponent implements OnInit {
 
     protected readonly ActionCode = ActionCode;
     protected readonly ResourceCode = ResourceCode;
+    protected readonly tourAnchors = CREATE_AGENT_TOUR_ANCHORS;
 }

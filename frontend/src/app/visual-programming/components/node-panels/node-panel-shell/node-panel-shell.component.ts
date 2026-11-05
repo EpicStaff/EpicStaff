@@ -11,6 +11,7 @@ import {
     Injector,
     input,
     output,
+    reflectComponentType,
     Signal,
     signal,
     TemplateRef,
@@ -19,7 +20,7 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
-import { NodeType } from '@shared/models';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
 import { COMPACT_HEADER_NODE_TYPES, PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
@@ -68,8 +69,8 @@ interface PanelInstanceView {
                 >
                     <div class="icon-and-title">
                         <i
-                            [class]="node()!.icon"
-                            [style.color]="node()!.color || '#685fff'"
+                            [class]="nodeIcons[node()!.type]"
+                            [style.color]="nodeColors[node()!.type] || '#685fff'"
                         ></i>
                         <span class="title-with-number">
                             <span
@@ -134,11 +135,6 @@ interface PanelInstanceView {
                             </button>
                         }
                         <div class="close-action">
-                            <span
-                                class="esc-label"
-                                aria-hidden="true"
-                                >ESC</span
-                            >
                             <button
                                 #closeButton
                                 type="button"
@@ -243,15 +239,21 @@ export class NodePanelShellComponent {
     protected readonly outlet = viewChild(NgComponentOutlet);
     private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
     private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
+    /** The inputs the open panel declares: setting any other one is an error (NG0303). */
+    private readonly panelInputNames = computed(() => {
+        const component = this.panelComponent();
+        const inputs = component ? (reflectComponentType(component)?.inputs ?? []) : [];
+        return new Set(inputs.map((panelInput) => panelInput.templateName));
+    });
     protected readonly componentInputs = computed(() => {
-        const node = this.node();
-
-        return {
-            node,
+        const offered: Record<string, unknown> = {
+            node: this.node(),
             isExpanded: this.isExpanded(),
             graphId: this.currentFlowId(),
-            ...(node?.type === 'subgraph' ? { currentFlowId: this.currentFlowId() } : {}),
+            currentFlowId: this.currentFlowId(),
         };
+        const declared = this.panelInputNames();
+        return Object.fromEntries(Object.entries(offered).filter(([name]) => declared.has(name)));
     });
 
     protected readonly isShaking = signal(false);
@@ -286,6 +288,8 @@ export class NodePanelShellComponent {
         const panel = this.panelInstanceSig();
         return !!panel?.form?.invalid || !!panel?.isSaving?.();
     });
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
     /** Set while the Save button has the focus: once it is gone after the save, the focus moves to Close. */
     protected saveButtonHasFocus = false;
     private previousNodeId: string | null = null;

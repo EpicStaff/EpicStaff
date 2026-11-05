@@ -60,13 +60,6 @@
         }
     }
 
-    &__dot {
-        flex-shrink: 0;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-    }
-
     &__name {
         min-width: 0;
         overflow: hidden;
@@ -125,12 +118,13 @@
 
 .group-block__hint {
     padding: 4px 12px 4px 32px;
-    color: var(--color-text-secondary);
+    color: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
     font-size: var(--text-body-small-size);
     font-weight: var(--text-body-small-weight);
     line-height: var(--text-body-small-line-height);
 
     &--drop {
         padding-left: 12px;
+        color: var(--color-text-secondary);
     }
 }

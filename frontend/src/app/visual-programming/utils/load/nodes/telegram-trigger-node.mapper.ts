@@ -21,8 +21,6 @@ export function mapTelegramTriggerNodeToModel(tn: GetTelegramTriggerNodeRequest)
         },
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: {} as Record<string, unknown>,
         output_variable_path: null,
         size: ui.size,

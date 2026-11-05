@@ -149,6 +149,56 @@ $field-height: 40px;
     gap: 4px;
 }
 
+.value-field-wrapper {
+    min-width: 0;
+    width: 100%;
+    height: $field-height;
+    display: flex;
+    align-items: center;
+    transition: border-color 0.2s ease;
+
+    // Dim the whole row (prefix + input) when disabled, matching the locked .entry-input opacity.
+    &:has(.entry-input:disabled) {
+        opacity: 0.7;
+    }
+
+    .variables-prefix {
+        padding-right: 0.375rem;
+        font-size: 0.875rem;
+        color: var(--color-text-primary);
+        flex-shrink: 0;
+        user-select: none;
+        pointer-events: none;
+    }
+
+    // Override the shared .entry-input styles for the inner borderless input.
+    .entry-input {
+        height: 100%;
+        width: auto;
+        flex: 1;
+        min-width: 0;
+        padding: 0.5rem;
+        background-color: var(--color-input-background);
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        opacity: 1; // parent wrapper handles disabled opacity
+
+        &:focus {
+            border-color: var(--accent-color);
+        }
+
+        &.duplicate,
+        &.invalid-border {
+            border-color: var(--color-status-error);
+        }
+
+        &:disabled {
+            opacity: 1;
+            cursor: not-allowed;
+        }
+    }
+}
+
 // No flex: 1 here: the variable input is an item of the .entry-field column, where a flex basis would
 // override the height and leave it shorter than the key beside it.
 .entry-input {

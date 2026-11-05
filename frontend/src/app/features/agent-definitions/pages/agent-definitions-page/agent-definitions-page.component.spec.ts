@@ -13,7 +13,9 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { of } from 'rxjs';
 
+import { tourAnchorSelector } from '../../../../core/guided-tour';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
 import { AgentDefinition } from '../../models/agent-definition.model';
 import { AgentGroupsStorageService } from '../../services/agent-groups-storage.service';
@@ -31,6 +33,7 @@ const AGENT: AgentDefinition = {
     instructions: '',
     instruction_list: [],
     llm_config: null,
+    fallback_llm_config: null,
     fcm_llm_config: null,
     agent_definition_realtime_config_id: null,
     has_realtime_definition: false,
@@ -57,6 +60,8 @@ const AGENT: AgentDefinition = {
 function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
     return {
         load: () => undefined,
+        updateAgent: vi.fn(),
+        saveNewAgent: vi.fn(),
         loading: signal(false),
         selectedNode: signal({ kind: 'agent', id: AGENT.id }),
         showSidebar: signal(false),
@@ -69,6 +74,7 @@ function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
         selectedAgentInstructionListError: signal(null),
         isDraftingAgent: signal(false),
         isDraftingSurface: signal(false),
+        isSelectedAgentFromLatestDraft: signal(false),
         saving: signal(false),
         agents: signal([AGENT]),
         surfaces: signal([]),
@@ -76,6 +82,7 @@ function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
         surfaceSaveError: signal(null),
         surfaceCreateErrorTick: signal(0),
         sharedSurfaceIdSet: signal(new Set<number>()),
+        groups: signal([]),
     };
 }
 
@@ -239,6 +246,29 @@ describe('AgentDefinitionsPageComponent agent header menu "View Details"', () =>
     });
 });
 
+describe('AgentDefinitionsPageComponent Create Agent tour anchors', () => {
+    function markedWith(host: HTMLElement, anchor: string): Element | null {
+        return host.querySelector(tourAnchorSelector(anchor));
+    }
+
+    it('marks the Add Agent button', () => {
+        const { host } = render(true);
+
+        expect(markedWith(host, CREATE_AGENT_TOUR_ANCHORS.addAgent)?.textContent?.trim()).toBe('Add Agent');
+    });
+
+    it('marks the agent editor as created only while it shows the agent the latest draft was saved as', () => {
+        const { fixture, host } = render(true);
+        expect(markedWith(host, CREATE_AGENT_TOUR_ANCHORS.createdAgent)).toBeNull();
+
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+        (store.isSelectedAgentFromLatestDraft as WritableSignal<boolean>).set(true);
+        fixture.detectChanges();
+
+        expect(markedWith(host, CREATE_AGENT_TOUR_ANCHORS.createdAgent)?.tagName).toBe('APP-AGENT-DETAIL');
+    });
+});
+
 describe('AgentDefinitionsPageComponent explorer row menu "View Details"', () => {
     const OTHER_AGENT: AgentDefinition = {
         ...AGENT,
@@ -349,5 +379,40 @@ describe('AgentDefinitionsPageComponent agent row menu "Export"', () => {
         });
 
         expect(exportAgent).toHaveBeenCalledExactlyOnceWith(3);
+    });
+});
+
+describe('AgentDefinitionsPageComponent saving the agent', () => {
+    const payload = {
+        id: AGENT.id,
+        name: AGENT.name,
+        description: '',
+        llm_config: 1,
+        fallback_llm_config: 2,
+        fcm_llm_config: null,
+    };
+
+    it('sends the fallback LLM with an update', () => {
+        const { fixture } = render(true);
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+
+        fixture.componentInstance.onSaveAgent(payload);
+
+        expect(store.updateAgent).toHaveBeenCalledWith(
+            AGENT.id,
+            expect.objectContaining({ llm_config: 1, fallback_llm_config: 2 })
+        );
+    });
+
+    it('sends the fallback LLM when creating the agent', () => {
+        const { fixture } = render(true);
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+
+        fixture.componentInstance.onSaveAgent({ ...payload, id: null });
+
+        expect(store.saveNewAgent).toHaveBeenCalledWith(
+            expect.objectContaining({ llm_config: 1, fallback_llm_config: 2 }),
+            false
+        );
     });
 });

@@ -12,7 +12,7 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, getLabelColorOption, ResourceCode } from '@shared/models';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { ExplorerSelection, GroupAssignTarget } from '../../../../../models/explorer.model';
 import { BranchTreeNode, ExplorerGroupBlock, GroupedSectionId, nodeKey } from '../../../../../models/tree-node.model';
@@ -29,7 +29,7 @@ import {
 } from '../tree-node/tree-node.component';
 
 /**
- * One group of the Agents or Shared Surfaces section: a sticky header (color dot, name, count) over
+ * One group of the Agents or Shared Surfaces section: a sticky header (name, count) over
  * its rows. The ungrouped items (`groupId` null) have no header and sit at the groups' level. The whole
  * block is a drop target: dropping the section's kind of item on it moves the item into the group, or
  * out of any group for the ungrouped block.
@@ -59,11 +59,6 @@ export class ExplorerGroupBlockComponent {
     protected readonly renaming = computed<boolean>(() => {
         const groupId = this.block().groupId;
         return groupId !== null && this.store.renamingGroupId() === groupId;
-    });
-
-    protected readonly dotColor = computed<string | null>(() => {
-        const color = this.block().color;
-        return color === null ? null : getLabelColorOption(color).circleBg;
     });
 
     /** The dragged item this block accepts: an agent in the Agents section, a shared surface in Shared Surfaces. */

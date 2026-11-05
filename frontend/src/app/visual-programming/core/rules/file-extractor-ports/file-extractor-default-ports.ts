@@ -1,3 +1,5 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { BasePort } from '../../models/port.model';
 
 export const DEFAULT_FILE_EXTRACTOR_NODE_PORTS: BasePort[] = [
@@ -23,7 +25,7 @@ export const DEFAULT_FILE_EXTRACTOR_NODE_PORTS: BasePort[] = [
             'key-value-out',
         ],
         position: 'left',
-        color: '#2196F3',
+        color: NODE_COLORS[NodeType.FILE_EXTRACTOR],
     },
 
     {
@@ -45,6 +47,6 @@ export const DEFAULT_FILE_EXTRACTOR_NODE_PORTS: BasePort[] = [
             'key-value-in',
         ],
         position: 'right',
-        color: '#2196F3',
+        color: NODE_COLORS[NodeType.FILE_EXTRACTOR],
     },
 ];

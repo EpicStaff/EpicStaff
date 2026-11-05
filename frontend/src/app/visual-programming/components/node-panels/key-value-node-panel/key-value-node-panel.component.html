@@ -152,25 +152,30 @@
                             </ng-template>
                             <ng-template #valueField>
                                 <div class="entry-field">
-                                    <input
-                                        type="text"
-                                        class="entry-input"
-                                        formControlName="value"
-                                        placeholder="variables.user.name"
-                                        aria-label="Variable path"
-                                        matTooltip="Variable path"
-                                        autocomplete="off"
-                                        role="combobox"
-                                        aria-autocomplete="list"
-                                        [class.duplicate]="isConflictingVariable(i)"
-                                        [attr.aria-expanded]="variablePicker.isOpenFor(i)"
-                                        [attr.aria-controls]="variablePicker.listboxIdFor(i)"
-                                        [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
-                                        (focus)="variablePicker.onFocus(i, $event)"
-                                        (input)="variablePicker.onInput(i, $event)"
-                                        (keydown)="onValueKeydown(i, $event)"
-                                        (blur)="variablePicker.onBlur(i, $event)"
-                                    />
+                                    <div class="value-field-wrapper">
+                                        <span class="variables-prefix">&#64;</span>
+                                        <input
+                                            type="text"
+                                            class="entry-input"
+                                            [class.duplicate]="isConflictingVariable(i)"
+                                            [class.invalid-border]="isValueInvalid(i)"
+                                            [value]="getValueDisplayText(i)"
+                                            placeholder="All fields if empty"
+                                            aria-label="Variable path"
+                                            matTooltip="Variable path"
+                                            autocomplete="off"
+                                            role="combobox"
+                                            aria-autocomplete="list"
+                                            [disabled]="entries.at(i).disabled"
+                                            [attr.aria-expanded]="variablePicker.isOpenFor(i)"
+                                            [attr.aria-controls]="variablePicker.listboxIdFor(i)"
+                                            [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
+                                            (focus)="variablePicker.onFocus(i, $event)"
+                                            (input)="onValueInput(i, $event)"
+                                            (keydown)="onValueKeydown(i, $event)"
+                                            (blur)="onValueBlur(i, $event)"
+                                        />
+                                    </div>
                                     @if (valueHintFor(i); as hint) {
                                         <div class="entry-hint">{{ hint }}</div>
                                     }

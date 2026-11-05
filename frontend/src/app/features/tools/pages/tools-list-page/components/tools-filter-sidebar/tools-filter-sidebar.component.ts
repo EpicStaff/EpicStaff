@@ -14,6 +14,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LabelDto } from '@shared/models';
 import { forkJoin } from 'rxjs';
 
@@ -103,6 +104,7 @@ type ToolsFilterTab = 'builder' | 'presets';
         ToolsCheckboxEnumComponent,
         ToolsFilterPresetsComponent,
         MatTooltip,
+        TooltipOnOverflowDirective,
     ],
     providers: [ToolFilterPresetsStorageService],
     templateUrl: './tools-filter-sidebar.component.html',

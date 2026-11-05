@@ -52,7 +52,7 @@ export class GuidedTourService {
 
     /** The tour starting or running; null while none is. */
     readonly activeTour = computed<TourDefinition | null>(() => this.session()?.tour ?? null);
-    /** The tours the user can take now, in registry order (e.g. for the account menu). */
+    /** The tours the user can take now, in registry order (e.g. for the Help menu). */
     readonly replayableTours = computed<readonly TourDefinition[]>(() =>
         this.registry.tours.filter((tour) => this.isTourAvailable(tour))
     );

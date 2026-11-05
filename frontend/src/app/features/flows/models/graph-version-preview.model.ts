@@ -231,6 +231,16 @@ export interface SnapshotSecretDeclarations {
     telegram?: Record<string, string>;
 }
 
+/**
+ * Whether the snapshot's node code declares any secret. Telegram bot tokens do not count: restoring them needs no
+ * Secrets:Use. Every declared name counts, whether or not its secret still exists, matching the backend.
+ */
+export function snapshotDeclaresSecrets(snapshot: GraphVersionSnapshot): boolean {
+    return Object.values(snapshot.secret_declarations?.nodes ?? {}).some((namesByCodeField) =>
+        Object.values(namesByCodeField).some((names) => names.length > 0)
+    );
+}
+
 export interface GraphVersionSnapshot {
     nodes: SnapshotNode[];
     edge_list?: SnapshotEdge[];

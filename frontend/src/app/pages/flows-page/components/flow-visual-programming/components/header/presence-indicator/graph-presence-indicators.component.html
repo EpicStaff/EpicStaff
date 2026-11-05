@@ -2,7 +2,7 @@
     @for (editor of visibleEditors(); track editor.user_id) {
         <div
             class="avatar"
-            [style.background-color]="editor.resolvedAvatarUrl ? 'transparent' : getColor(editor.user_id)"
+            [style.--avatar-color]="getColor(editor.user_id)"
             [matTooltip]="getTooltip(editor)"
             matTooltipPosition="below"
         >

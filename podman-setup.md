@@ -12,11 +12,8 @@ cd EpicStaff/src
 ## 2. Environment Configuration
 
 ```bash
-export $(grep -v '^#' .env | xargs)
-
 # For Windows Users
 # sed -i 's/\r$//' .env
-# export $(grep -v '^#' .env | xargs)
 echo "" >> .env
 echo "DB_NAME=crew" >> .env
 
@@ -76,7 +73,7 @@ Run this from `EpicStaff/src` so `redis.conf` is found. The config file sets the
 ### CrewDB
 
 ```bash
-podman run -d   --name crewdb   --network backend-network   -p ${DB_PORT}:${DB_PORT}   -v crew_pgdata:${PGDATA}   -e POSTGRES_USER=${DB_USER}   -e POSTGRES_DB=${DB_NAME}   -e POSTGRES_PASSWORD=${DB_PASSWORD}   -e PGDATA=${PGDATA}   -e MANAGER_DB_USER=${MANAGER_DB_USER}   -e MANAGER_DB_PASSWORD=${MANAGER_DB_PASSWORD}   -e KNOWLEDGE_DB_USER=${KNOWLEDGE_DB_USER}   -e KNOWLEDGE_DB_PASSWORD=${KNOWLEDGE_DB_PASSWORD}   -e REALTIME_DB_USER=${REALTIME_DB_USER}   -e REALTIME_DB_PASSWORD=${REALTIME_DB_PASSWORD}   -e SANDBOX_DB_USER=${SANDBOX_DB_USER}   -e SANDBOX_DB_PASSWORD=${SANDBOX_DB_PASSWORD}   -e SANDBOX_DB_SCHEMA=${SANDBOX_DB_SCHEMA}   --health-cmd="bash -c 'pg_isready -U postgres || exit 1 && /usr/local/bin/custom-docker-entrypoint.sh healthcheck-users'"   --health-interval=15s   --health-timeout=10s   --health-retries=10   --health-start-period=15s   crewdb
+POSTGRES_PASSWORD="$DB_PASSWORD" podman run -d   --name crewdb   --network backend-network   -p ${DB_PORT}:${DB_PORT}   -v crew_pgdata:${PGDATA}   -e POSTGRES_USER=${DB_USER}   -e POSTGRES_DB=${DB_NAME}   -e POSTGRES_PASSWORD   -e PGDATA=${PGDATA}   -e MANAGER_DB_USER=${MANAGER_DB_USER}   -e MANAGER_DB_PASSWORD   -e KNOWLEDGE_DB_USER=${KNOWLEDGE_DB_USER}   -e KNOWLEDGE_DB_PASSWORD   -e REALTIME_DB_USER=${REALTIME_DB_USER}   -e REALTIME_DB_PASSWORD   -e SANDBOX_DB_USER=${SANDBOX_DB_USER}   -e SANDBOX_DB_PASSWORD   -e SANDBOX_DB_SCHEMA=${SANDBOX_DB_SCHEMA}   --health-cmd="bash -c 'pg_isready -U postgres || exit 1 && /usr/local/bin/custom-docker-entrypoint.sh healthcheck-users'"   --health-interval=15s   --health-timeout=10s   --health-retries=10   --health-start-period=15s   crewdb
 ```
 
 ---

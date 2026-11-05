@@ -386,10 +386,20 @@
     }
 }
 
-// Single-select mode: no title, only "+ New" on the right; the height stays put while it is hidden.
+// Single-select mode: no title, only "+ New" on the right.
 .labels-section-header--single {
     justify-content: flex-end;
     min-height: calc(28px + 2rem);
+}
+
+// Single-select mode: the new label row takes the header's place, aligned with the list below.
+.add-label-row--single {
+    min-height: calc(28px + 2rem);
+    padding: 1.25rem 1.25rem 0.75rem;
+
+    + .label-error {
+        margin: 0 1.25rem 0.75rem;
+    }
 }
 
 // Single-select mode: a pick list, taller than the multi editor's.
@@ -417,16 +427,5 @@
     &:focus-visible {
         outline: none;
         border-color: var(--accent-color);
-    }
-}
-
-.label-dot {
-    flex-shrink: 0;
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 50%;
-
-    &--empty {
-        border: 1px dashed var(--color-text-secondary);
     }
 }

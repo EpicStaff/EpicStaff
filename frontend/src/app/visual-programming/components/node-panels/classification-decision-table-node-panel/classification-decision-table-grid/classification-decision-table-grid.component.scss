@@ -50,9 +50,10 @@ $grid-above-btns-height: 24px;
 }
 
 .grid-header-icon-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
+    // Same 40px height as the default <app-button> beside it.
+    width: 40px;
+    height: 40px;
+    border-radius: 7px;
     border: 1px solid var(--graphite-750);
     background: transparent;
     color: var(--accent-color);

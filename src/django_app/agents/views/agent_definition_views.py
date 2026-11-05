@@ -45,10 +45,10 @@ class AgentDefinitionViewSet(
     }
     recycle_bin_resource_key = RecycleBinSource.AGENT
     queryset = AgentDefinition.objects.select_related(
-        "org", "llm_config", "fcm_llm_config", "realtime_agent"
+        "org", "llm_config", "fallback_llm_config", "fcm_llm_config", "realtime_agent"
     ).prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["llm_config", "fcm_llm_config"]
+    filterset_fields = ["llm_config", "fallback_llm_config", "fcm_llm_config"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
