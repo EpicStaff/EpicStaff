@@ -1,0 +1,140 @@
+<div class="custom-library-dialog">
+    <header class="custom-library-dialog__header">
+        <h2
+            class="custom-library-dialog__title text-h3"
+            appTooltipOnOverflow
+            matTooltipPosition="above"
+            [matTooltip]="title()"
+        >
+            {{ title() }}
+        </h2>
+        <div class="custom-library-dialog__header-actions">
+            @if (isManaging()) {
+                <app-button
+                    type="outline-primary"
+                    (click)="close()"
+                >
+                    Close
+                </app-button>
+            } @else {
+                <app-button
+                    type="outline-primary"
+                    (click)="cancel()"
+                >
+                    Cancel
+                </app-button>
+                <app-button
+                    type="primary"
+                    [disabled]="isSubmitting() || stagedFiles().length === 0"
+                    (click)="submit()"
+                >
+                    {{ submitLabel() }}
+                </app-button>
+            }
+        </div>
+    </header>
+
+    <div class="custom-library-dialog__body">
+        <section class="custom-library-dialog__section">
+            <div class="custom-library-dialog__section-header">
+                <h3 class="text-body">Versions</h3>
+                @if (canUpload()) {
+                    <button
+                        type="button"
+                        class="custom-library-dialog__add text-body-small"
+                        [disabled]="isUploading() || isSubmitting()"
+                        (click)="fileInput.click()"
+                    >
+                        + Add wheel
+                    </button>
+                }
+            </div>
+
+            @if (isManaging()) {
+                @if (isLoadingWheels()) {
+                    <p class="custom-library-dialog__muted text-body-small">Loading versions...</p>
+                } @else if (wheels().length === 0) {
+                    <p class="custom-library-dialog__muted text-body-small">
+                        No versions yet. Add a wheel or a source archive to install this library in a venv.
+                    </p>
+                } @else {
+                    <ul class="custom-library-dialog__rows">
+                        @for (wheel of wheels(); track wheel.id) {
+                            <li class="custom-library-dialog__row text-body-small">
+                                <span class="custom-library-dialog__version">{{ wheel.version ?? '-' }}</span>
+                                <app-venv-status-badge
+                                    [status]="wheel.status"
+                                    [error]="wheel.error"
+                                />
+                                <span
+                                    class="custom-library-dialog__file"
+                                    appTooltipOnOverflow
+                                    matTooltipPosition="above"
+                                    [matTooltip]="wheel.wheel_filename ?? wheel.source_filename ?? ''"
+                                    >{{ wheel.wheel_filename ?? wheel.source_filename }}</span
+                                >
+                                @if (canDeleteWheel()) {
+                                    <button
+                                        type="button"
+                                        class="custom-library-dialog__icon-btn"
+                                        [attr.aria-label]="'Delete version ' + wheelLabel(wheel)"
+                                        matTooltip="Delete version"
+                                        matTooltipPosition="above"
+                                        (click)="onDeleteWheel(wheel)"
+                                    >
+                                        <app-svg-icon
+                                            icon="x"
+                                            size="16px"
+                                        />
+                                    </button>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            } @else if (stagedFiles().length === 0) {
+                <p class="custom-library-dialog__muted text-body-small">
+                    Choose a wheel or a source archive to create the library. A wheel names it at once; a source archive
+                    names it once a background build decides its distribution.
+                </p>
+            } @else {
+                <ul class="custom-library-dialog__rows">
+                    @for (file of stagedFiles(); track file.name + $index; let index = $index) {
+                        <li class="custom-library-dialog__row text-body-small">
+                            <span
+                                class="custom-library-dialog__file"
+                                appTooltipOnOverflow
+                                matTooltipPosition="above"
+                                [matTooltip]="file.name"
+                                >{{ file.name }}</span
+                            >
+                            <button
+                                type="button"
+                                class="custom-library-dialog__icon-btn"
+                                [attr.aria-label]="'Remove ' + file.name"
+                                matTooltip="Remove"
+                                matTooltipPosition="above"
+                                [disabled]="isSubmitting()"
+                                (click)="removeStagedFile(index)"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="16px"
+                                />
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    </div>
+
+    <input
+        #fileInput
+        type="file"
+        class="custom-library-dialog__file-input"
+        multiple
+        [accept]="fileAccept"
+        (change)="onFilesSelected($event)"
+    />
+</div>
