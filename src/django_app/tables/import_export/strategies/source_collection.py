@@ -69,6 +69,7 @@ _LINE_READ_SIZE = 1024 * 1024
 # IDMapper keys for the RAGs inside a collection; knowledge links remap rag ids through them.
 NAIVE_RAG_KEY = "NaiveRag"
 GRAPH_RAG_KEY = "GraphRag"
+RAG_KEYS = {BaseRagType.RagType.NAIVE: NAIVE_RAG_KEY, BaseRagType.RagType.GRAPH: GRAPH_RAG_KEY}
 
 # (count of each (file name, file size), set of RAG types)
 _ReuseKey = tuple[Counter, frozenset]

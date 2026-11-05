@@ -6,7 +6,9 @@ from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.knowledge_node import (
     KnowledgeNodeImportSerializer,
 )
+from tables.import_export.serializers.surface_knowledge import resolve_collection_id
 from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.strategies.source_collection import RAG_KEYS
 from tables.models import KnowledgeNode
 from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.knowledge_models import (
@@ -29,7 +31,10 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
         return {"id": instance.id, "graph": instance.graph_id}
 
     def extract_dependencies_from_instance(self, instance: KnowledgeNode) -> dict:
-        return {EntityType.GRAPH: [instance.graph_id]}
+        deps = {EntityType.GRAPH: [instance.graph_id]}
+        if instance.source_collection_id:
+            deps[EntityType.SOURCE_COLLECTION] = [instance.source_collection_id]
+        return deps
 
     def export_entity(self, instance: KnowledgeNode) -> dict:
         return self.serializer_class(instance).data
@@ -39,14 +44,25 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
 
         configs = {key: data.pop(key, None) for key in self._CONFIG_MODELS}
 
-        source_collection = SourceCollection.objects.filter(
-            pk=data.get("source_collection"), org_id=kwargs.get("org_id")
-        ).first()
-        if source_collection is None:
-            data["source_collection"] = None
+        old_collection_id = data.get("source_collection")
+        collection_id = resolve_collection_id(old_collection_id, id_mapper, kwargs.get("org_id"))
+        source_collection = (
+            SourceCollection.objects.filter(pk=collection_id).first()
+            if collection_id is not None
+            else None
+        )
+        data["source_collection"] = collection_id
 
         rag_type = data.get("rag_type")
         rag_id = data.get("rag_id")
+        # A collection the file carried has new RAG ids; the import recorded the map.
+        if (
+            id_mapper.has_mapping(EntityType.SOURCE_COLLECTION, old_collection_id)
+            and rag_type in RAG_KEYS
+            and rag_id is not None
+        ):
+            rag_id = id_mapper.get_or_none(RAG_KEYS[rag_type], rag_id)
+            data["rag_id"] = rag_id
         rag_ok = False
         if source_collection is not None and rag_type and rag_id is not None:
             try:
