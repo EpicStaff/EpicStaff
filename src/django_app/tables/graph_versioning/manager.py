@@ -1036,6 +1036,10 @@ class GraphVersioningManager:
             id_mapper,
             user=user,
             preserve_node_numbers=True,
+            # The restore service has already required every grant the snapshot applies,
+            # and a not configured slot only replaces one that is not configured either,
+            # so nothing is lowered here.
+            cap_grants=False,
         )
 
         return node_mapper

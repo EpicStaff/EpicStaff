@@ -374,6 +374,7 @@ class GraphStrategy(EntityImportExportStrategy):
         old_graph_id: int | None = None,
         user=None,
         preserve_node_numbers: bool = False,
+        cap_grants: bool = True,
     ) -> IDMapper:
         """Create a graph's nodes and edges from exported data.
 
@@ -385,6 +386,10 @@ class GraphStrategy(EntityImportExportStrategy):
         By default the nodes are numbered from the graph's counter in source order.
         `preserve_node_numbers` keeps each node's stored number instead (version
         restore); see `_create_nodes` for the numbers that cannot be kept.
+
+        By default each node's storage grants are capped to what `user` may hand out.
+        `cap_grants=False` stores them as given, for a caller that has already checked
+        that `user` may apply exactly this data (version restore).
         """
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
@@ -400,6 +405,7 @@ class GraphStrategy(EntityImportExportStrategy):
             old_graph_id,
             user,
             preserve_node_numbers=preserve_node_numbers,
+            cap_grants=cap_grants,
         )
 
         # Pass 2: create edges with remapped node IDs,
@@ -437,6 +443,7 @@ class GraphStrategy(EntityImportExportStrategy):
         old_graph_id: int | None = None,
         user=None,
         preserve_node_numbers: bool = False,
+        cap_grants: bool = True,
     ) -> list:
         supported_nodes = self._supported_nodes(
             sorted(
@@ -467,9 +474,10 @@ class GraphStrategy(EntityImportExportStrategy):
             old_id = node_data.get("id")
 
             strategy = entity_registry.get_strategy(entity_type)
-            node_data = cap_grant_data(
-                node_data, grant_actor, model=strategy.serializer_class.Meta.model
-            )
+            if cap_grants:
+                node_data = cap_grant_data(
+                    node_data, grant_actor, model=strategy.serializer_class.Meta.model
+                )
 
             # Node strategies resolve their parent graph via
             # id_mapper.get_or_none(GRAPH, node_data["graph"]). For a full-graph

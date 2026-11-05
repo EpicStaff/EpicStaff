@@ -29,26 +29,62 @@ def actions_granted_in_snapshot(nodes_data: Iterable[dict]) -> frozenset[Storage
     )
 
 
-def snapshot_has_unconfigured_slot(nodes_data: Iterable[dict]) -> bool:
-    """Whether exported node data holds a grant slot that is not configured.
+def snapshot_unconfigures_explicit_slot(nodes_data: Iterable[dict], graph_id: int) -> bool:
+    """Whether restoring this node data would replace an explicit grant slot with an unconfigured one.
 
-    Such a slot runs with every action, so applying it hands out all three. Only nodes
-    of a type that carries grants count: other node types have no slot to configure.
+    An unconfigured slot runs with every action, so it widens access only over a slot
+    of the flow that is explicit. Over an unconfigured slot, or a node the flow has no
+    counterpart for, it changes nothing. Only nodes of a type that carries grants count.
+
+    A restore deletes and recreates every node, so ids do not identify a node across it.
+    The slot's counterpart is the current node of the same model with the same
+    `node_number`: a graph-scoped number that never changes after a node is created and
+    that a restore hands back to the node it stored it for. A snapshot node without a
+    usable number has no counterpart.
     """
+    explicit_slots = _explicit_slots_of_flow(graph_id)
+    if not explicit_slots:
+        return False
+    for node_data in nodes_data:
+        model = _grant_model_of(node_data)
+        node_number = node_data.get("node_number")
+        if model is None or type(node_number) is not int:
+            continue
+        for slot in STORAGE_GRANT_SLOTS[model]:
+            if (
+                not GrantFlags.of(node_data, slot).configured
+                and (model, node_number, slot.prefix) in explicit_slots
+            ):
+                return True
+    return False
+
+
+def _explicit_slots_of_flow(graph_id: int) -> set[tuple[type, int, str]]:
+    """The (model, node_number, slot prefix) of every configured grant slot of the flow."""
+    explicit_slots = set()
+    for model, slots in STORAGE_GRANT_SLOTS.items():
+        columns = [name for slot in slots for name in slot.flag_names]
+        for row in model.objects.filter(graph_id=graph_id, node_number__isnull=False).values(
+            "node_number", *columns
+        ):
+            explicit_slots.update(
+                (model, row["node_number"], slot.prefix)
+                for slot in slots
+                if GrantFlags.of(row, slot).configured
+            )
+    return explicit_slots
+
+
+def _grant_model_of(node_data: dict) -> type | None:
+    """The node model of exported node data, None for a type that carries no grants."""
     from tables.import_export.registry import entity_registry
     from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
 
-    for node_data in nodes_data:
-        entity_type = NODE_TYPE_TO_ENTITY_TYPE.get(node_data.get("node_type"))
-        if entity_type is None or not entity_registry.has_strategy(entity_type):
-            continue
-        model = entity_registry.get_strategy(entity_type).serializer_class.Meta.model
-        if any(
-            not GrantFlags.of(node_data, slot).configured
-            for slot in STORAGE_GRANT_SLOTS.get(model, ())
-        ):
-            return True
-    return False
+    entity_type = NODE_TYPE_TO_ENTITY_TYPE.get(node_data.get("node_type"))
+    if entity_type is None or not entity_registry.has_strategy(entity_type):
+        return None
+    model = entity_registry.get_strategy(entity_type).serializer_class.Meta.model
+    return model if model in STORAGE_GRANT_SLOTS else None
 
 
 def assert_actor_holds(actor: GrantActor | None, actions: frozenset[StorageAction]) -> None:

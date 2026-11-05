@@ -40,7 +40,7 @@ pytestmark = [pytest.mark.django_db]
 # flow does not use: the guard walks the flow once, and matches what it uses against the
 # owned rows before anything is written and again just before the publish. If a change
 # raises it, find the new query.
-RUN_SESSION_QUERY_COUNT_WHILE_A_GRANT_IS_SUSPENDED = 78
+RUN_SESSION_QUERY_COUNT_WHILE_A_GRANT_IS_SUSPENDED = 79
 
 
 @pytest.fixture

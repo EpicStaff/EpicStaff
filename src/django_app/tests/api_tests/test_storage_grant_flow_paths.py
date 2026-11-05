@@ -376,21 +376,46 @@ def test_another_orgs_version_is_a_404_before_any_grant_check(
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-@pytest.mark.django_db
-def test_restoring_a_version_with_a_not_configured_slot_needs_all_three_grants_and_never_lowers_it(
-    acme, make_files_client
-):
+ALL_FILES = Permission.READ | Permission.CREATE | Permission.UPDATE | Permission.DELETE
+
+
+@pytest.fixture
+def legacy_flow(acme):
     legacy = Graph.objects.create(name="legacy-flow", org=acme)
     StartNode.objects.create(graph=legacy, variables={})
     PythonNode.objects.create(graph=legacy, python_code=_code())
-    version = GraphVersioningService().save_version(graph=legacy, name="legacy")
+    return legacy
+
+
+@pytest.mark.django_db
+def test_restoring_not_configured_over_not_configured_needs_no_files_grant(
+    legacy_flow, make_files_client
+):
+    version = GraphVersioningService().save_version(graph=legacy_flow, name="legacy")
     reader = make_files_client(Permission.READ)
-    everything = make_files_client(
-        Permission.READ | Permission.CREATE | Permission.UPDATE | Permission.DELETE
+
+    response = _restore(reader, version, legacy_flow)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    node = PythonNode.objects.get(graph=legacy_flow)
+    assert (node.storage_grant_read, node.storage_grant_write, node.storage_grant_delete) == (
+        None,
+        None,
+        None,
     )
 
-    refused = _restore(reader, version, legacy)
-    allowed = _restore(everything, version, legacy)
+
+@pytest.mark.django_db
+def test_restoring_not_configured_over_an_explicit_slot_needs_all_three_grants(
+    legacy_flow, make_files_client
+):
+    version = GraphVersioningService().save_version(graph=legacy_flow, name="legacy")
+    PythonNode.objects.filter(graph=legacy_flow).update(**_flags("", (True, False, False)))
+    reader = make_files_client(Permission.READ)
+    everything = make_files_client(ALL_FILES)
+
+    refused = _restore(reader, version, legacy_flow)
+    allowed = _restore(everything, version, legacy_flow)
 
     assert refused.status_code == status.HTTP_403_FORBIDDEN
     assert refused.data["code"] == "storage_grant_denied"
@@ -399,4 +424,38 @@ def test_restoring_a_version_with_a_not_configured_slot_needs_all_three_grants_a
         "Contact an admin to change it."
     )
     assert allowed.status_code == status.HTTP_200_OK, allowed.content
-    assert PythonNode.objects.get(graph=legacy).storage_grant_read is None
+    assert PythonNode.objects.get(graph=legacy_flow).storage_grant_read is None
+
+
+@pytest.mark.django_db
+def test_restoring_not_configured_over_an_explicit_node_added_since_needs_no_extra_grant(
+    legacy_flow, make_files_client
+):
+    version = GraphVersioningService().save_version(graph=legacy_flow, name="legacy")
+    PythonNode.objects.create(
+        graph=legacy_flow, python_code=_code(), **_flags("", (False, False, False))
+    )
+    reader = make_files_client(Permission.READ)
+
+    response = _restore(reader, version, legacy_flow)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+
+
+@pytest.mark.django_db
+def test_restoring_not_configured_over_an_explicit_slot_is_matched_per_node(
+    legacy_flow, make_files_client
+):
+    other = PythonNode.objects.create(
+        graph=legacy_flow, python_code=_code(), **_flags("", (False, False, False))
+    )
+    version = GraphVersioningService().save_version(graph=legacy_flow, name="two-nodes")
+    PythonNode.objects.filter(pk=other.pk).update(storage_grant_read=None, storage_grant_write=None, storage_grant_delete=None)
+    PythonNode.objects.exclude(pk=other.pk).update(**_flags("", (False, False, False)))
+    reader = make_files_client(Permission.READ)
+
+    response = _restore(reader, version, legacy_flow)
+
+    # The version holds the legacy node's slot as not configured, and the flow now has an
+    # explicit slot on that same node (same number), so the restore widens it.
+    assert response.status_code == status.HTTP_403_FORBIDDEN

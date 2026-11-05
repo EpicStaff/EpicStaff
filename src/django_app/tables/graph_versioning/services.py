@@ -17,7 +17,7 @@ from tables.services.storage_grants.flow_checks import (
     actions_granted_in_flows,
     actions_granted_in_snapshot,
     assert_actor_holds,
-    snapshot_has_unconfigured_slot,
+    snapshot_unconfigures_explicit_slot,
 )
 
 # Graph-level ``metadata`` in snapshots saved before the secret FKs landed can carry node data
@@ -248,13 +248,14 @@ class GraphVersioningService:
         prepared = self._prepare(version)
         # Restoring replaces every node, so it hands out the grants of the version and
         # discards those of the flow as it is: the user must hold both sets. A slot of the
-        # version that is not configured runs with every action, so it needs all three:
-        # the restore is refused rather than lowering it.
+        # version that is not configured runs with every action, so where it replaces an
+        # explicit slot of the flow it needs all three: the restore is refused rather than
+        # lowering it. Over a slot that is not configured either, it hands out nothing new.
         snapshot_nodes = prepared.filtered_snapshot["nodes"]
         required = actions_granted_in_snapshot(snapshot_nodes) | actions_granted_in_flows(
             [graph.id]
         )
-        if snapshot_has_unconfigured_slot(snapshot_nodes):
+        if snapshot_unconfigures_explicit_slot(snapshot_nodes, graph.id):
             required |= frozenset(StorageAction)
         # A call with no acting user is internal (the restore endpoint always has one) and
         # has no one whose permissions could be short.
