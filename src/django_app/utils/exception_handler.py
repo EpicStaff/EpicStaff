@@ -1,4 +1,5 @@
 import json
+from http import HTTPStatus
 
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
@@ -106,10 +107,26 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
         unreachable_error.default_code = "upstream_service_unreachable"
         return unreachable_error
 
+    status_code = getattr(getattr(exc, "response", None), "status_code", None)
+    if status_code is not None and status.is_client_error(status_code):
+        client_error = APIException(detail)
+        client_error.status_code = status_code
+        client_error.default_code = _status_code_name(status_code)
+        return client_error
+
     upstream_error = APIException(detail)
     upstream_error.status_code = status.HTTP_502_BAD_GATEWAY
     upstream_error.default_code = "upstream_service_error"
     return upstream_error
+
+
+def _status_code_name(status_code: int) -> str:
+    """The status as a code name, the way every service in the project spells it."""
+    try:
+        return HTTPStatus(status_code).phrase.lower().replace(" ", "_")
+    except ValueError:
+        # A status outside the standard table: there is no phrase to name it with.
+        return "client_error"
 
 
 def _outbound_client_error_as_api_exception(exc: OutboundClientError) -> APIException:

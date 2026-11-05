@@ -52,21 +52,48 @@ def test_upstream_rate_limit_renders_as_429_with_the_upstream_body():
 
 
 @pytest.mark.parametrize(
+    "error_type,status_code,code",
+    [
+        (errors.ClientUnauthorizedError, 401, "unauthorized"),
+        (errors.ClientForbiddenError, 403, "forbidden"),
+        (errors.ClientMethodNotAllowedError, 405, "method_not_allowed"),
+        (errors.ClientConflictError, 409, "conflict"),
+        (errors.ClientHTTPStatusError, 423, "locked"),
+    ],
+)
+def test_upstream_client_errors_keep_their_status(error_type, status_code, code):
+    exc = _status_error(error_type, status_code, "Sandbox said no.")
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.status_code == status_code
+    assert response.data == {
+        "status_code": status_code,
+        "code": code,
+        "message": "Sandbox said no.",
+    }
+
+
+def test_an_upstream_status_outside_the_standard_table_is_still_the_callers():
+    exc = _status_error(errors.ClientHTTPStatusError, 499, "Sandbox said no.")
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.status_code == 499
+    assert response.data["code"] == "client_error"
+
+
+@pytest.mark.parametrize(
     "error_type,status_code",
     [
-        (errors.ClientUnauthorizedError, 401),
-        (errors.ClientForbiddenError, 403),
-        (errors.ClientMethodNotAllowedError, 405),
-        (errors.ClientConflictError, 409),
         (errors.ClientServerError, 500),
         (errors.ClientNotImplementedError, 501),
         (errors.ClientBadGatewayError, 502),
         (errors.ClientUnavailableError, 503),
         (errors.ClientGatewayTimeoutError, 504),
-        (errors.ClientHTTPStatusError, 418),
     ],
 )
-def test_other_upstream_failures_render_as_502_with_the_upstream_body(error_type, status_code):
+def test_upstream_server_failures_render_as_502_with_the_upstream_body(error_type, status_code):
     exc = _status_error(error_type, status_code, "Sandbox said no.")
 
     response = custom_exception_handler(exc, {})
