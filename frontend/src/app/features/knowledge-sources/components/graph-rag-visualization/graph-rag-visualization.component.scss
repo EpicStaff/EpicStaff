@@ -113,6 +113,19 @@
         height: 100%;
     }
 
+    &__hover-tooltip {
+        position: absolute;
+        transform: translate(-50%, -100%);
+        padding: 4px 10px;
+        border-radius: 6px;
+        background-color: var(--accent-color-transparent, rgba(99, 102, 241, 0.8));
+        color: var(--color-text-primary);
+        font-size: 1rem;
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 20;
+    }
+
     &__detail-panel {
         position: absolute;
         bottom: 12px;

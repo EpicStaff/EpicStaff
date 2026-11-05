@@ -31,8 +31,7 @@
             "@shared/material-forms": ["./src/app/shared/material-forms/index.ts"],
             "@shared/services": ["./src/app/shared/services/index.ts"],
             "@shared/utils": ["./src/app/shared/utils/index.ts"],
-            "@shared/models": ["./src/app/shared/models/index.ts"],
-            "@vendor/d3-force-3d": ["./src/vendor/d3-force-3d/index"]
+            "@shared/models": ["./src/app/shared/models/index.ts"]
         }
     },
     "angularCompilerOptions": {

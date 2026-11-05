@@ -7,24 +7,24 @@ type ColorTuple = [number, number, number];
 
 /** Stable color palette for entity types — deterministic hash maps each type to a hue. */
 const TYPE_COLORS: string[] = [
-    '#4fc3f7', // light blue
-    '#81c784', // green
-    '#ffb74d', // orange
-    '#ba68c8', // purple
-    '#e57373', // red
-    '#4db6ac', // teal
-    '#fff176', // yellow
-    '#f06292', // pink
-    '#7986cb', // indigo
-    '#a1887f', // brown
-    '#90a4ae', // blue-grey
-    '#aed581', // light green
+    '#42a5f5', // blue
+    '#66bb6a', // green
+    '#ffa726', // orange
+    '#ab47bc', // purple
+    '#ef5350', // red
+    '#26a69a', // teal
+    '#ffee58', // yellow
+    '#ec407a', // pink
+    '#5c6bc0', // indigo
+    '#8d6e63', // brown
+    '#78909c', // blue-grey
+    '#9ccc65', // light green
 ];
 
 const HIGHLIGHT_COLOR: ColorTuple = [1.0, 0.95, 0.2]; // yellow highlight
 const DIMMED_ALPHA = 0.15;
-const LABEL_FONT_SIZE = 48;
-const LABEL_CANVAS_SIZE = 256;
+const LABEL_FONT_SIZE = 24;
+const LABEL_CANVAS_HEIGHT = 36;
 
 /** Computes a stable index from a string — used for type-to-color mapping. */
 function stableHash(value: string): number {
@@ -69,7 +69,6 @@ import type {
     InstancedMesh,
     LineSegments,
     Material,
-    MeshBasicMaterial,
     OrthographicCamera,
     PerspectiveCamera,
     Raycaster,
@@ -92,7 +91,14 @@ export interface SceneResources {
 interface OrbitControlsLike {
     update(): void;
     dispose(): void;
+    enabled: boolean;
     enableRotate: boolean;
+    enablePan: boolean;
+    enableZoom: boolean;
+    screenSpacePanning: boolean;
+    zoomToCursor: boolean;
+    target: { x: number; y: number; z: number };
+    mouseButtons: { LEFT: number; MIDDLE: number; RIGHT: number };
 }
 
 @Injectable()
@@ -113,6 +119,9 @@ export class GraphSceneService {
     private highlightedIndices: Set<number> | null = null;
     private searchHighlightIndices: Set<number> | null = null;
     private visibleTypeSet: Set<string | null> | null = null;
+    private hoveredNodeIndex: number | null = null;
+    private connectedEdgeIndices: Set<number> = new Set();
+    private wheelHandler: ((event: WheelEvent) => void) | null = null;
 
     /** Lazy-load Three.js and OrbitControls. */
     async loadDependencies(): Promise<void> {
@@ -196,31 +205,39 @@ export class GraphSceneService {
         // Controls
         const controls = new this.orbitControlsModule!.OrbitControls(camera, renderer.domElement) as OrbitControlsLike;
         controls.enableRotate = is3D;
+        controls.screenSpacePanning = true;
+        // LEFT=ROTATE (disabled in 2D, free for node drag), MIDDLE=PAN, RIGHT=PAN
+        controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+        if (is3D) {
+            // Disable built-in zoom (slows with distance); use constant-speed dolly instead
+            controls.enableZoom = false;
+            this.setupConstantDolly(canvas, camera, controls);
+        } else {
+            controls.zoomToCursor = true;
+        }
 
         // Nodes (InstancedMesh)
         const geometry = new THREE.SphereGeometry(1, 16, 12);
-        const material = new THREE.MeshBasicMaterial();
+        const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
         const nodesMesh = new THREE.InstancedMesh(geometry, material, Math.max(this.nodes.length, 1));
         nodesMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-        // Per-instance color
-        const colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(this.nodes.length * 3), 3);
-        nodesMesh.instanceColor = colorAttr;
-        (nodesMesh.material as MeshBasicMaterial).vertexColors = true;
-
         scene.add(nodesMesh);
 
-        // Edges (LineSegments)
+        // Edges (LineSegments) with per-vertex colors for hover highlighting
         const edgePositions = new Float32Array(this.edges.length * 6);
+        const edgeColors = new Float32Array(this.edges.length * 6);
         const edgeGeometry = new THREE.BufferGeometry();
         edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgePositions, 3));
+        edgeGeometry.setAttribute('color', new THREE.Float32BufferAttribute(edgeColors, 3));
         edgeGeometry.setDrawRange(0, this.edges.length * 2);
         const edgeMaterial = new THREE.LineBasicMaterial({
-            color: 0x555555,
+            vertexColors: true,
             transparent: true,
-            opacity: 0.4,
+            opacity: 0.6,
         });
         const edgesLine = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+        edgesLine.frustumCulled = false;
         scene.add(edgesLine);
 
         // Labels
@@ -231,8 +248,9 @@ export class GraphSceneService {
 
         this.resources = { renderer, scene, camera, controls, nodesMesh, edgesLine, labelSprites, raycaster };
 
-        // Initial instance transforms
+        // Initial instance transforms and colors
         this.updateInstanceMatrices();
+        this.updateInstanceColors();
         this.updateEdgePositions();
 
         // Resize observer
@@ -256,11 +274,21 @@ export class GraphSceneService {
 
         // Replace controls
         this.resources.controls.dispose();
+        this.removeConstantDolly();
+        const THREE = this.three!;
         const controls = new this.orbitControlsModule!.OrbitControls(
             newCamera,
             this.resources.renderer.domElement
         ) as OrbitControlsLike;
         controls.enableRotate = is3D;
+        controls.screenSpacePanning = true;
+        controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+        if (is3D) {
+            controls.enableZoom = false;
+            this.setupConstantDolly(this.resources.renderer.domElement, newCamera, controls);
+        } else {
+            controls.zoomToCursor = true;
+        }
         this.resources.controls = controls;
 
         // Reset z for 2D
@@ -347,6 +375,80 @@ export class GraphSceneService {
         return -1;
     }
 
+    /** Temporarily disable/enable OrbitControls entirely (used during node drag). */
+    setControlsEnabled(enabled: boolean): void {
+        if (!this.resources) return;
+        this.resources.controls.enabled = enabled;
+    }
+
+    /** Returns the currently hovered node index, or null. */
+    getHoveredNodeIndex(): number | null {
+        return this.hoveredNodeIndex;
+    }
+
+    /** Project a node position to screen coordinates relative to the container. */
+    projectToScreen(nodeIndex: number, container: HTMLElement): { x: number; y: number } | null {
+        if (!this.resources || !this.three) return null;
+        const node = this.nodes[nodeIndex];
+        if (!node) return null;
+
+        const THREE = this.three;
+        const vector = new THREE.Vector3(node.x, node.y + node.radius + 2, node.z);
+        vector.project(this.resources.camera);
+
+        const rect = container.getBoundingClientRect();
+        return {
+            x: ((vector.x + 1) / 2) * rect.width,
+            y: ((-vector.y + 1) / 2) * rect.height,
+        };
+    }
+
+    /** Set which node is hovered — highlights connected edges and shows a title label. Pass null to clear. */
+    setHoveredNode(nodeIndex: number | null): void {
+        if (nodeIndex === this.hoveredNodeIndex) return;
+        this.hoveredNodeIndex = nodeIndex;
+
+        // Update connected edge set
+        this.connectedEdgeIndices.clear();
+        if (nodeIndex !== null) {
+            for (let i = 0; i < this.edges.length; i++) {
+                const edge = this.edges[i];
+                if (edge.sourceIndex === nodeIndex || edge.targetIndex === nodeIndex) {
+                    this.connectedEdgeIndices.add(i);
+                }
+            }
+        }
+
+        this.updateEdgeColors();
+    }
+
+    /** Convert screen coordinates to world position (projects onto z=0 plane for 2D, or camera plane for 3D). */
+    screenToWorld(
+        screenX: number,
+        screenY: number,
+        container: HTMLElement
+    ): { x: number; y: number; z?: number } | null {
+        if (!this.resources || !this.three) return null;
+        const THREE = this.three;
+
+        const rect = container.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+            ((screenX - rect.left) / rect.width) * 2 - 1,
+            -((screenY - rect.top) / rect.height) * 2 + 1
+        );
+
+        this.resources.raycaster.setFromCamera(mouse, this.resources.camera);
+        const ray = this.resources.raycaster.ray;
+
+        // Intersect with z=0 plane
+        const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+        const intersection = new THREE.Vector3();
+        if (ray.intersectPlane(plane, intersection)) {
+            return { x: intersection.x, y: intersection.y, z: intersection.z };
+        }
+        return null;
+    }
+
     /** Dispose all Three.js resources. */
     dispose(): void {
         if (this.animationFrameId !== null) {
@@ -356,6 +458,7 @@ export class GraphSceneService {
 
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
+        this.removeConstantDolly();
 
         if (this.resources) {
             const { renderer, scene, nodesMesh, edgesLine, labelSprites, controls } = this.resources;
@@ -398,6 +501,42 @@ export class GraphSceneService {
     }
 
     // ---- private ----
+
+    private setupConstantDolly(canvas: HTMLCanvasElement, camera: Camera, controls: OrbitControlsLike): void {
+        const THREE = this.three!;
+        const dollySpeed = 15;
+        const raycaster = new THREE.Raycaster();
+        const mouseNDC = new THREE.Vector2();
+
+        this.wheelHandler = (event: WheelEvent) => {
+            event.preventDefault();
+            const sign = event.deltaY > 0 ? -1 : 1;
+
+            // Compute ray direction towards cursor position
+            const rect = canvas.getBoundingClientRect();
+            mouseNDC.set(
+                ((event.clientX - rect.left) / rect.width) * 2 - 1,
+                -((event.clientY - rect.top) / rect.height) * 2 + 1
+            );
+            raycaster.setFromCamera(mouseNDC, camera);
+            const direction = raycaster.ray.direction.clone().multiplyScalar(sign * dollySpeed);
+
+            camera.position.x += direction.x;
+            camera.position.y += direction.y;
+            camera.position.z += direction.z;
+            controls.target.x += direction.x;
+            controls.target.y += direction.y;
+            controls.target.z += direction.z;
+        };
+        canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
+    }
+
+    private removeConstantDolly(): void {
+        if (this.wheelHandler && this.resources) {
+            this.resources.renderer.domElement.removeEventListener('wheel', this.wheelHandler);
+            this.wheelHandler = null;
+        }
+    }
 
     private createCamera(container: HTMLElement, is3D: boolean): OrthographicCamera | PerspectiveCamera {
         const THREE = this.three!;
@@ -444,12 +583,13 @@ export class GraphSceneService {
             this.resources.nodesMesh.setMatrixAt(i, dummy.matrix);
         }
         this.resources.nodesMesh.instanceMatrix.needsUpdate = true;
+        this.resources.nodesMesh.computeBoundingSphere();
     }
 
     private updateInstanceColors(): void {
-        if (!this.resources) return;
-        const colorAttr = this.resources.nodesMesh.instanceColor;
-        if (!colorAttr) return;
+        if (!this.resources || !this.three) return;
+        const THREE = this.three;
+        const tempColor = new THREE.Color();
 
         for (let i = 0; i < this.nodes.length; i++) {
             const node = this.nodes[i];
@@ -469,9 +609,10 @@ export class GraphSceneService {
                 }
             }
 
-            colorAttr.setXYZ(i, color[0], color[1], color[2]);
+            tempColor.setRGB(color[0], color[1], color[2]);
+            this.resources.nodesMesh.setColorAt(i, tempColor);
         }
-        colorAttr.needsUpdate = true;
+        this.resources.nodesMesh.instanceColor!.needsUpdate = true;
     }
 
     private updateEdgePositions(): void {
@@ -497,6 +638,7 @@ export class GraphSceneService {
 
         this.resources.edgesLine.geometry.setDrawRange(0, visibleCount * 2);
         posAttr.needsUpdate = true;
+        this.updateEdgeColors();
     }
 
     private updateLabelPositions(): void {
@@ -511,33 +653,75 @@ export class GraphSceneService {
 
     private createLabelSprite(text: string): Sprite {
         const THREE = this.three!;
+        const font = `${LABEL_FONT_SIZE}px Inter, sans-serif`;
+
+        // Measure text width first
+        const measureCanvas = document.createElement('canvas');
+        const measureCtx = measureCanvas.getContext('2d')!;
+        measureCtx.font = font;
+        const textWidth = measureCtx.measureText(text).width;
+
+        const padding = 12;
+        const canvasWidth = Math.ceil(textWidth + padding * 2);
+        const canvasHeight = LABEL_CANVAS_HEIGHT;
+
         const canvas = document.createElement('canvas');
-        canvas.width = LABEL_CANVAS_SIZE;
-        canvas.height = LABEL_CANVAS_SIZE / 2;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
         const context = canvas.getContext('2d')!;
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        context.font = `${LABEL_FONT_SIZE}px Inter, sans-serif`;
-        context.fillStyle = '#d9d9de';
+
+        // Background pill
+        context.fillStyle = 'rgba(30, 30, 34, 0.85)';
+        const radius = canvasHeight / 2;
+        context.beginPath();
+        context.roundRect(0, 0, canvasWidth, canvasHeight, radius);
+        context.fill();
+
+        // Text
+        context.font = font;
+        context.fillStyle = '#e8e8ec';
         context.textAlign = 'center';
         context.textBaseline = 'middle';
-
-        // Truncate long labels
-        const maxWidth = canvas.width - 8;
-        let displayText = text;
-        if (context.measureText(text).width > maxWidth) {
-            while (context.measureText(displayText + '...').width > maxWidth && displayText.length > 0) {
-                displayText = displayText.slice(0, -1);
-            }
-            displayText += '...';
-        }
-        context.fillText(displayText, canvas.width / 2, canvas.height / 2);
+        context.fillText(text, canvasWidth / 2, canvasHeight / 2);
 
         const texture = new THREE.CanvasTexture(canvas);
         texture.needsUpdate = true;
         const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
         const sprite = new THREE.Sprite(material);
-        sprite.scale.set(24, 12, 1);
+        // Scale proportional to canvas aspect ratio
+        const spriteHeight = 8;
+        const spriteWidth = spriteHeight * (canvasWidth / canvasHeight);
+        sprite.scale.set(spriteWidth, spriteHeight, 1);
         return sprite;
+    }
+
+    private updateEdgeColors(): void {
+        if (!this.resources) return;
+        const colorAttr = this.resources.edgesLine.geometry.getAttribute('color');
+        const colors = colorAttr.array as Float32Array;
+
+        const defaultColor: ColorTuple = [0.5, 0.5, 0.55];
+        const highlightColor: ColorTuple = [1.0, 0.95, 0.4];
+
+        let visibleIndex = 0;
+        for (let i = 0; i < this.edges.length; i++) {
+            const edge = this.edges[i];
+            const src = this.nodes[edge.sourceIndex];
+            const tgt = this.nodes[edge.targetIndex];
+            if (!this.isNodeVisible(src) || !this.isNodeVisible(tgt)) continue;
+
+            const color: ColorTuple = this.connectedEdgeIndices.has(i) ? highlightColor : defaultColor;
+
+            const offset = visibleIndex * 6;
+            colors[offset] = color[0];
+            colors[offset + 1] = color[1];
+            colors[offset + 2] = color[2];
+            colors[offset + 3] = color[0];
+            colors[offset + 4] = color[1];
+            colors[offset + 5] = color[2];
+            visibleIndex++;
+        }
+        colorAttr.needsUpdate = true;
     }
 
     private handleResize(container: HTMLElement): void {

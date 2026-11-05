@@ -101,8 +101,22 @@
                     #graphCanvas
                     class="visualization__canvas"
                     aria-label="Force-directed graph visualization of knowledge entities and their relationships"
-                    (click)="onCanvasClick($event)"
+                    (pointerdown)="onCanvasPointerDown($event)"
+                    (pointermove)="onCanvasPointerMove($event)"
+                    (pointerup)="onCanvasPointerUp()"
+                    (pointerleave)="onCanvasPointerLeave()"
                 ></canvas>
+
+                <!-- Hover tooltip -->
+                @if (hoveredNodeTitle()) {
+                    <div
+                        class="visualization__hover-tooltip"
+                        [style.left.px]="hoverPosition().x"
+                        [style.top.px]="hoverPosition().y"
+                    >
+                        {{ hoveredNodeTitle() }}
+                    </div>
+                }
 
                 <!-- Node detail panel -->
                 @if (selectedNode(); as node) {

@@ -58,6 +58,8 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
     readonly labelsVisible = signal(false);
     readonly communitySidebarOpen = signal(true);
     readonly selectedNodeIndex = signal<number | null>(null);
+    readonly hoveredNodeTitle = signal<string | null>(null);
+    readonly hoverPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
 
     readonly entityCount = signal(0);
     readonly relationshipCount = signal(0);
@@ -100,9 +102,20 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
     private readonly destroyRef = inject(DestroyRef);
     private readonly sceneService = inject(GraphSceneService);
 
-    private simulation: { stop: () => void } | null = null;
+    private simulation: { stop: () => void; reheat: () => void } | null = null;
     private pendingData: GraphVisualizationData | null = null;
     private initialized = false;
+    private simNodes: Array<{
+        index: number;
+        x: number;
+        y: number;
+        z?: number;
+        fx?: number | null;
+        fy?: number | null;
+        fz?: number | null;
+    }> = [];
+    private draggedNodeIndex: number | null = null;
+    private isDragging = false;
 
     constructor() {
         // Auto-load when the component is created (it is conditionally rendered via @if).
@@ -166,11 +179,75 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         this.applyTypeFilters();
     }
 
-    onCanvasClick(event: MouseEvent): void {
+    onCanvasPointerDown(event: PointerEvent): void {
+        if (event.button !== 0) return; // Only left button for node interaction
         const containerRef = this.canvasContainer();
         if (!containerRef) return;
         const nodeIndex = this.sceneService.pickNode(event.clientX, event.clientY, containerRef.nativeElement);
-        this.selectedNodeIndex.set(nodeIndex >= 0 ? nodeIndex : null);
+        if (nodeIndex >= 0) {
+            this.draggedNodeIndex = nodeIndex;
+            this.isDragging = false;
+            this.sceneService.setControlsEnabled(false);
+            // Fix the node in place during drag
+            const simNode = this.simNodes[nodeIndex];
+            if (simNode) {
+                simNode.fx = simNode.x;
+                simNode.fy = simNode.y;
+                if (this.is3D()) simNode.fz = simNode.z ?? 0;
+            }
+            this.simulation?.reheat();
+        }
+    }
+
+    onCanvasPointerMove(event: PointerEvent): void {
+        const containerRef = this.canvasContainer();
+        if (!containerRef) return;
+
+        if (this.draggedNodeIndex !== null) {
+            this.isDragging = true;
+            this.hoveredNodeTitle.set(null);
+            const worldPos = this.sceneService.screenToWorld(event.clientX, event.clientY, containerRef.nativeElement);
+            if (!worldPos) return;
+
+            const simNode = this.simNodes[this.draggedNodeIndex];
+            if (simNode) {
+                simNode.fx = worldPos.x;
+                simNode.fy = worldPos.y;
+                if (this.is3D() && worldPos.z !== undefined) simNode.fz = worldPos.z;
+            }
+            return;
+        }
+
+        // Hover detection
+        const nodeIndex = this.sceneService.pickNode(event.clientX, event.clientY, containerRef.nativeElement);
+        const hoveredIndex = nodeIndex >= 0 ? nodeIndex : null;
+        this.sceneService.setHoveredNode(hoveredIndex);
+        this.updateHoverTooltip(hoveredIndex, containerRef.nativeElement);
+    }
+
+    onCanvasPointerUp(): void {
+        if (this.draggedNodeIndex !== null) {
+            if (!this.isDragging) {
+                // It was a click, not a drag — select the node
+                this.selectedNodeIndex.set(this.draggedNodeIndex);
+            }
+            // Release the fixed position
+            const simNode = this.simNodes[this.draggedNodeIndex];
+            if (simNode) {
+                simNode.fx = null;
+                simNode.fy = null;
+                simNode.fz = null;
+            }
+            this.draggedNodeIndex = null;
+            this.isDragging = false;
+            this.sceneService.setControlsEnabled(true);
+        }
+    }
+
+    onCanvasPointerLeave(): void {
+        this.onCanvasPointerUp();
+        this.sceneService.setHoveredNode(null);
+        this.hoveredNodeTitle.set(null);
     }
 
     onCommunityClick(communityId: string): void {
@@ -271,56 +348,37 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         const nodes = this.sceneService.getNodes();
         const edges = this.sceneService.getEdges();
 
-        if (this.is3D()) {
-            const d3 = await import('@vendor/d3-force-3d');
-            const simNodes = nodes.map((n) => ({
-                index: n.index,
-                x: n.x,
-                y: n.y,
-                z: n.z,
-            }));
+        const is3D = this.is3D();
+        const numDimensions = is3D ? 3 : 2;
+        const d3 = await import('d3-force-3d');
 
-            const simLinks = edges.map((e) => ({
-                source: e.sourceIndex,
-                target: e.targetIndex,
-            }));
+        const simNodes = nodes.map((n) => ({
+            index: n.index,
+            x: n.x,
+            y: n.y,
+            z: is3D ? (Math.random() - 0.5) * 200 : undefined,
+        }));
 
-            const simulation = d3
-                .forceSimulation(simNodes)
-                .force('link', d3.forceLink(simLinks).distance(40))
-                .force('charge', d3.forceManyBody().strength(-50))
-                .force('center', d3.forceCenter(0, 0, 0));
+        const simLinks = edges.map((e) => ({
+            source: e.sourceIndex,
+            target: e.targetIndex,
+        }));
 
-            simulation.on('tick', () => {
-                this.sceneService.updateNodePositions(simNodes as Array<{ x: number; y: number; z?: number }>);
-            });
+        const simulation = d3
+            .forceSimulation(simNodes, numDimensions)
+            .force('link', d3.forceLink(simLinks).distance(40))
+            .force('charge', d3.forceManyBody().strength(-50))
+            .force('center', d3.forceCenter(0, 0, is3D ? 0 : undefined));
 
-            this.simulation = { stop: () => simulation.stop() };
-        } else {
-            const d3 = await import('d3-force');
-            const simNodes = nodes.map((n) => ({
-                index: n.index,
-                x: n.x,
-                y: n.y,
-            }));
+        simulation.on('tick', () => {
+            this.sceneService.updateNodePositions(simNodes as Array<{ x: number; y: number; z?: number }>);
+        });
 
-            const simLinks = edges.map((e) => ({
-                source: e.sourceIndex,
-                target: e.targetIndex,
-            }));
-
-            const simulation = d3
-                .forceSimulation(simNodes)
-                .force('link', d3.forceLink(simLinks).distance(40))
-                .force('charge', d3.forceManyBody().strength(-50))
-                .force('center', d3.forceCenter(0, 0));
-
-            simulation.on('tick', () => {
-                this.sceneService.updateNodePositions(simNodes as Array<{ x: number; y: number }>);
-            });
-
-            this.simulation = { stop: () => simulation.stop() };
-        }
+        this.simNodes = simNodes;
+        this.simulation = {
+            stop: () => simulation.stop(),
+            reheat: () => simulation.alpha(0.3).restart(),
+        };
     }
 
     private stopSimulation(): void {
@@ -350,6 +408,24 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         }
         filters.sort((a, b) => a.label.localeCompare(b.label));
         this.entityTypeFilters.set(filters);
+    }
+
+    private updateHoverTooltip(nodeIndex: number | null, container: HTMLElement): void {
+        if (nodeIndex === null) {
+            this.hoveredNodeTitle.set(null);
+            return;
+        }
+        const nodes = this.sceneService.getNodes();
+        const node = nodes[nodeIndex];
+        if (!node) {
+            this.hoveredNodeTitle.set(null);
+            return;
+        }
+        this.hoveredNodeTitle.set(node.title);
+        const screenPos = this.sceneService.projectToScreen(nodeIndex, container);
+        if (screenPos) {
+            this.hoverPosition.set(screenPos);
+        }
     }
 
     private applyTypeFilters(): void {
