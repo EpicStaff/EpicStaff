@@ -23,5 +23,5 @@ class FakeKnowledgeService:
     def respond_with(self, *responses) -> None:
         self._responses.extend(responses)
 
-    def client(self) -> KnowledgeClient:
+    def client(self, **_client_options) -> KnowledgeClient:
         return KnowledgeClient(transport=httpx.MockTransport(self))

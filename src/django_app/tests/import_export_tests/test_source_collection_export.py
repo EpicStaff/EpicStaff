@@ -7,7 +7,6 @@ import zipfile
 
 import httpx
 import pytest
-from django.utils import timezone
 
 from rbac.access.effective import EffectivePermissions
 from rbac.models import Organization
@@ -19,21 +18,22 @@ from tables.import_export.strategies import source_collection as strategy_module
 from tables.import_export.strategies.source_collection import SourceCollectionStrategy
 from tables.models import LLMConfig
 from tables.models.knowledge_models import (
-    BaseRagType,
-    DocumentContent,
-    DocumentMetadata,
     GraphRag,
     GraphRagDocument,
     GraphRagIndexConfig,
-    NaiveRag,
-    NaiveRagChunk,
-    NaiveRagDocumentConfig,
-    NaiveRagEmbedding,
     SourceCollection,
+)
+from tests.import_export_tests.knowledge_builders import (
+    COMPLETED_CONFIG,
+    bin_row,
+    make_chunk,
+    make_config,
+    make_document,
+    make_graph_rag,
+    make_naive_rag,
 )
 from tests.knowledge_service_fake import FakeKnowledgeService
 
-COMPLETED_CONFIG = NaiveRagDocumentConfig.NaiveRagDocumentStatus.COMPLETED
 GRAPH_TAR = b"graph index tar" * 1000
 
 
@@ -79,66 +79,6 @@ def export_archive():
         os.unlink(path)
 
 
-def _bin(row) -> None:
-    """Move a row to the recycle bin the way the delete service leaves it."""
-    type(row).all_objects.filter(pk=row.pk).update(active=False, soft_deleted_at=timezone.now())
-
-
-def _document(collection, name: str, content: bytes | None) -> DocumentMetadata:
-    stored = DocumentContent.objects.create(content=content) if content is not None else None
-    return DocumentMetadata.objects.create(
-        source_collection=collection,
-        document_content=stored,
-        file_name=name,
-        file_type="txt",
-        file_size=len(content or b""),
-    )
-
-
-def _naive_rag(collection, embedder=None) -> NaiveRag:
-    base = BaseRagType.objects.create(
-        source_collection=collection, rag_type=BaseRagType.RagType.NAIVE
-    )
-    return NaiveRag.objects.create(base_rag_type=base, embedder=embedder)
-
-
-def _config(naive_rag, document, **fields) -> NaiveRagDocumentConfig:
-    # Creating a NaiveRag already adds a config for every document it can see.
-    config, _ = NaiveRagDocumentConfig.objects.update_or_create(
-        naive_rag=naive_rag, document=document, defaults=fields
-    )
-    return config
-
-
-def _graph_rag(collection, *, status, embedder=None, llm=None, index_config=None) -> GraphRag:
-    base = BaseRagType.objects.create(
-        source_collection=collection, rag_type=BaseRagType.RagType.GRAPH
-    )
-    return GraphRag.objects.create(
-        base_rag_type=base,
-        embedder=embedder,
-        llm=llm,
-        index_config=index_config,
-        rag_status=status,
-    )
-
-
-def _chunk(config, index: int, text: str, vector: list[float] | None) -> None:
-    chunk = NaiveRagChunk.objects.create(
-        naive_rag_document_config=config,
-        chunk_index=index,
-        text=text,
-        token_count=len(text),
-        overlap_start_index=0,
-        overlap_end_index=2,
-        metadata={"page": index + 1},
-    )
-    if vector is not None:
-        NaiveRagEmbedding.objects.create(
-            naive_rag_document_config=config, chunk=chunk, vector=vector
-        )
-
-
 def _paths_in(entry: dict) -> set[str]:
     paths = {document["content_path"] for document in entry["documents"]}
     paths |= {
@@ -153,12 +93,12 @@ def _paths_in(entry: dict) -> set[str]:
 
 @pytest.mark.django_db
 def test_entry_points_only_at_files_that_travel(strategy, collection, embedding_config, llm_config):
-    stored = _document(collection, "policy.txt", b"policy text")
-    empty = _document(collection, "lost.txt", None)
-    naive = _naive_rag(collection, embedder=embedding_config)
-    indexed = _config(naive, stored, status=COMPLETED_CONFIG, indexed_chunk_size=500)
-    pending = _config(naive, empty)
-    graph = _graph_rag(
+    stored = make_document(collection, "policy.txt", b"policy text")
+    empty = make_document(collection, "lost.txt", None)
+    naive = make_naive_rag(collection, embedder=embedding_config)
+    indexed = make_config(naive, stored, status=COMPLETED_CONFIG, indexed_chunk_size=500)
+    pending = make_config(naive, empty)
+    graph = make_graph_rag(
         collection,
         status=GraphRag.GraphRagStatus.COMPLETED,
         embedder=embedding_config,
@@ -166,7 +106,7 @@ def test_entry_points_only_at_files_that_travel(strategy, collection, embedding_
         index_config=GraphRagIndexConfig.objects.create(chunk_size=800),
     )
     graph_document = GraphRagDocument.objects.create(graph_rag=graph, document=stored)
-    unindexed_graph = _graph_rag(collection, status=GraphRag.GraphRagStatus.NEW)
+    unindexed_graph = make_graph_rag(collection, status=GraphRag.GraphRagStatus.NEW)
 
     entry = strategy.export_entity(collection)
 
@@ -213,14 +153,14 @@ def test_entry_points_only_at_files_that_travel(strategy, collection, embedding_
 
 @pytest.mark.django_db
 def test_binned_rows_are_left_out(strategy, collection, export_archive):
-    kept = _document(collection, "kept.txt", b"kept")
-    binned = _document(collection, "binned.txt", b"binned")
-    _bin(binned)
-    naive = _naive_rag(collection)
-    binned_config = _config(naive, kept, status=COMPLETED_CONFIG)
-    _bin(binned_config)
-    graph = _graph_rag(collection, status=GraphRag.GraphRagStatus.NEW)
-    _bin(GraphRagDocument.objects.create(graph_rag=graph, document=kept))
+    kept = make_document(collection, "kept.txt", b"kept")
+    binned = make_document(collection, "binned.txt", b"binned")
+    bin_row(binned)
+    naive = make_naive_rag(collection)
+    binned_config = make_config(naive, kept, status=COMPLETED_CONFIG)
+    bin_row(binned_config)
+    graph = make_graph_rag(collection, status=GraphRag.GraphRagStatus.NEW)
+    bin_row(GraphRagDocument.objects.create(graph_rag=graph, document=kept))
 
     entry = strategy.export_entity(collection)
 
@@ -235,11 +175,11 @@ def test_other_collections_are_not_exported(
     strategy, collection, default_org, knowledge_service, export_archive
 ):
     other = SourceCollection.objects.create(collection_name="Other", org=default_org)
-    other_document = _document(other, "other.txt", b"other")
-    other_config = _config(_naive_rag(other), other_document, status=COMPLETED_CONFIG)
-    _chunk(other_config, 0, "foreign", [1.0, 0.0, 0.0])
+    other_document = make_document(other, "other.txt", b"other")
+    other_config = make_config(make_naive_rag(other), other_document, status=COMPLETED_CONFIG)
+    make_chunk(other_config, 0, "foreign", [1.0, 0.0, 0.0])
     # The fake service has no response queued, so fetching this index fails the test.
-    _graph_rag(other, status=GraphRag.GraphRagStatus.COMPLETED)
+    make_graph_rag(other, status=GraphRag.GraphRagStatus.COMPLETED)
 
     entry = strategy.export_entity(collection)
 
@@ -254,15 +194,15 @@ def test_other_collections_are_not_exported(
 def test_archive_holds_exactly_the_files_the_entry_points_to(
     strategy, collection, knowledge_service, export_archive
 ):
-    stored = _document(collection, "policy.bin", b"\x00policy\xffbytes")
-    _document(collection, "zero.txt", b"")
-    _document(collection, "lost.txt", None)
-    naive = _naive_rag(collection)
-    indexed = _config(naive, stored, status=COMPLETED_CONFIG)
-    pending = _config(_naive_rag(collection), stored)
-    _chunk(pending, 0, "not indexed", [0.5, 0.5, 0.5])
-    graph = _graph_rag(collection, status=GraphRag.GraphRagStatus.COMPLETED)
-    _graph_rag(collection, status=GraphRag.GraphRagStatus.PROCESSING)
+    stored = make_document(collection, "policy.bin", b"\x00policy\xffbytes")
+    make_document(collection, "zero.txt", b"")
+    make_document(collection, "lost.txt", None)
+    naive = make_naive_rag(collection)
+    indexed = make_config(naive, stored, status=COMPLETED_CONFIG)
+    pending = make_config(make_naive_rag(collection), stored)
+    make_chunk(pending, 0, "not indexed", [0.5, 0.5, 0.5])
+    graph = make_graph_rag(collection, status=GraphRag.GraphRagStatus.COMPLETED)
+    make_graph_rag(collection, status=GraphRag.GraphRagStatus.PROCESSING)
     knowledge_service.respond_with(httpx.Response(200, content=GRAPH_TAR))
 
     members = export_archive(strategy, collection)
@@ -280,13 +220,13 @@ def test_archive_holds_exactly_the_files_the_entry_points_to(
 
 @pytest.mark.django_db
 def test_chunks_are_written_one_json_line_each_in_chunk_order(strategy, collection, export_archive):
-    document = _document(collection, "policy.txt", b"policy")
-    naive = _naive_rag(collection)
-    config = _config(naive, document, status=COMPLETED_CONFIG)
+    document = make_document(collection, "policy.txt", b"policy")
+    naive = make_naive_rag(collection)
+    config = make_config(naive, document, status=COMPLETED_CONFIG)
     # Created out of order, so the order in the file has to come from chunk_index.
-    _chunk(config, 1, "second", None)
-    _chunk(config, 0, "first", [0.25, -1.0, 2.5])
-    _chunk(config, 2, "third", [1.0, 0.0, 0.0])
+    make_chunk(config, 1, "second", None)
+    make_chunk(config, 0, "first", [0.25, -1.0, 2.5])
+    make_chunk(config, 2, "third", [1.0, 0.0, 0.0])
 
     members = export_archive(strategy, collection)
     lines = members[f"knowledge/naive/{naive.naive_rag_id}/{config.naive_rag_document_id}.jsonl"]
@@ -326,7 +266,7 @@ def test_chunks_are_written_one_json_line_each_in_chunk_order(strategy, collecti
 def test_no_completed_graph_index_means_no_call_to_the_knowledge_service(
     strategy, collection, knowledge_service, export_archive
 ):
-    _graph_rag(collection, status=GraphRag.GraphRagStatus.FAILED)
+    make_graph_rag(collection, status=GraphRag.GraphRagStatus.FAILED)
 
     export_archive(strategy, collection)
 
@@ -343,14 +283,14 @@ def test_dependencies_name_each_config_once_and_skip_unset_ones(
     second_llm_config = LLMConfig.objects.create(
         custom_name="Second", model=llm_config.model, org=llm_config.org
     )
-    _naive_rag(collection, embedder=embedding_config)
-    _naive_rag(collection)
-    _graph_rag(
+    make_naive_rag(collection, embedder=embedding_config)
+    make_naive_rag(collection)
+    make_graph_rag(
         collection, status=GraphRag.GraphRagStatus.NEW, embedder=embedding_config, llm=llm_config
     )
-    _graph_rag(collection, status=GraphRag.GraphRagStatus.NEW, llm=llm_config)
-    _graph_rag(collection, status=GraphRag.GraphRagStatus.NEW, llm=second_llm_config)
-    _graph_rag(collection, status=GraphRag.GraphRagStatus.NEW)
+    make_graph_rag(collection, status=GraphRag.GraphRagStatus.NEW, llm=llm_config)
+    make_graph_rag(collection, status=GraphRag.GraphRagStatus.NEW, llm=second_llm_config)
+    make_graph_rag(collection, status=GraphRag.GraphRagStatus.NEW)
 
     assert strategy.extract_dependencies_from_instance(collection) == {
         EntityType.EMBEDDING_CONFIG: [embedding_config.id],
