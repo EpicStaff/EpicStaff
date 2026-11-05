@@ -22,7 +22,7 @@
                 [class.code-editor-card--with-terminal]="showCodeTerminal()"
                 [pythonCode]="pythonCode"
                 [secretNames]="secretNames()"
-                [readOnly]="isReadOnly()"
+                [readOnly]="isCodeReadOnly()"
                 [editorHeight]="smallEditorHeight"
                 [allowExpand]="true"
                 [compactHeader]="true"
@@ -148,6 +148,9 @@
                             (valueChange)="onSecretsChange($event)"
                         />
                     </app-diff-field-mark>
+                    @if (isSecretCodeLocked()) {
+                        <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                    }
 
                     <!-- A node without its own timeout shows the default, so the tooltip does too. -->
                     <app-diff-field-mark
@@ -162,7 +165,7 @@
 
                     <app-diff-field-mark [diffField]="'use_storage'">
                         <app-node-storage-section
-                            [readonly]="isReadOnly()"
+                            [readonly]="isCodeReadOnly()"
                             [useStorage]="useStorage()"
                             (onToggleChange)="onStorageToggle($event)"
                             (onInsertCode)="insertStorageCode($event)"
@@ -215,7 +218,7 @@
                                     [class.code-editor-section--with-terminal]="showCodeTerminal()"
                                     [pythonCode]="pythonCode"
                                     [secretNames]="secretNames()"
-                                    [readOnly]="isReadOnly()"
+                                    [readOnly]="isCodeReadOnly()"
                                     [allowExpand]="true"
                                     [compactHeader]="true"
                                     expandLabel="Swap with test payload"

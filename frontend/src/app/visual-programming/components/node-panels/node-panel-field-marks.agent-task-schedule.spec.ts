@@ -487,7 +487,7 @@ describe('Task output schema on the Changes tab', () => {
 
     /** Widened panel: the big pane's own button swaps the instructions it shows for the schema. */
     function showSchemaInBigPane(root: HTMLElement): void {
-        root.querySelector<HTMLButtonElement>('.main-editor-pane button[title="Collapse"]')!.click();
+        root.querySelector<HTMLButtonElement>('.main-editor-pane button[aria-label="Collapse"]')!.click();
         fixture.detectChanges();
     }
 

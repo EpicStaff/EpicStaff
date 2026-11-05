@@ -1,4 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -15,7 +16,7 @@ import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } f
 import { EnterSubmitDirective } from '@shared/directives';
 import { FullMembership, Organization } from '@shared/models';
 import { escapeHtml } from '@shared/utils';
-import { catchError, concat, forkJoin, map, Observable, of, switchMap, toArray } from 'rxjs';
+import { catchError, concat, filter, forkJoin, map, Observable, of, switchMap, toArray } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
@@ -70,11 +71,21 @@ export class CreateUserDialogComponent implements OnInit {
     private hasRoleLessOrg = computed(
         () => !this.superadminActive() && (this.assignToOrgStep()?.hasInvalidRow() ?? false)
     );
-    submitDisabled = computed(
-        () => !(this.userDetailsStep()?.isFormValid() ?? false) || this.isSubmitting() || this.hasRoleLessOrg()
-    );
+    hasInvalidInput = computed(() => !(this.userDetailsStep()?.isFormValid() ?? false) || this.hasRoleLessOrg());
+    submitDisabled = computed(() => this.isSubmitting() || this.hasInvalidInput());
 
     ngOnInit(): void {
+        // disableClose keeps a stray backdrop click from losing the form; Escape is asked for, so it cancels.
+        // A dropdown that closed on this Escape has taken it.
+        this.dialogRef.keydownEvents
+            .pipe(
+                filter((event) => event.key === 'Escape' && !hasModifierKey(event) && !event.defaultPrevented),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((event) => {
+                event.preventDefault();
+                this.onClose();
+            });
         this.loadOrganizations();
     }
 

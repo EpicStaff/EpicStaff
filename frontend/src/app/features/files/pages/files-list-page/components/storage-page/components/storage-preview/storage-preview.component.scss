@@ -46,6 +46,9 @@
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
+        // Room for the keyboard focus ring of a crumb, which this box and the header clip.
+        padding: 4px;
+        margin: -4px;
     }
 
     &__breadcrumb-icon {
@@ -69,7 +72,7 @@
             padding: 0;
             cursor: pointer;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 color: var(--color-text-primary);
                 text-decoration: underline;
             }
@@ -95,7 +98,7 @@
         color: var(--color-text-muted);
         border-radius: 0.25rem;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }
@@ -139,8 +142,13 @@
         line-height: 1;
         text-align: left;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-ghost-btn-hover);
+        }
+
+        // The menu clips anything drawn outside it.
+        &:focus-visible {
+            outline-offset: -2px;
         }
     }
 
@@ -187,9 +195,14 @@
             background: var(--iris-alpha-8);
         }
 
-        &:hover:not(&--active) {
+        &:is(:hover, :focus-visible):not(&--active) {
             border-color: var(--color-text-primary);
             color: var(--color-text-primary);
+        }
+
+        // The header row clips anything drawn outside the button.
+        &:focus-visible {
+            outline-offset: -2px;
         }
     }
 

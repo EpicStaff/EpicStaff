@@ -21,6 +21,7 @@ from rbac.access.gates import (
     HasOrgPermission,
 )
 from rbac.access.org_context import OrgContextService
+from rbac.access.principals import user_api_key_org_id
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
@@ -30,7 +31,7 @@ from rbac.scoping.mixins import (
 )
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.settings import api_settings
 from src.shared.bench_log import BENCH_LEVEL
@@ -474,7 +475,12 @@ class RunSession(APIView):
         graph_id = serializer.validated_data.get("graph_id")
         graph_uuid = serializer.validated_data.get("graph_uuid")
 
-        graph = get_runnable_graph(request.user, graph_id=graph_id, graph_uuid=graph_uuid)
+        graph = get_runnable_graph(
+            request.user,
+            graph_id=graph_id,
+            graph_uuid=graph_uuid,
+            api_key_org_id=user_api_key_org_id(request),
+        )
         graph_id = graph.id
 
         parent_session_id = serializer.validated_data.get("parent_session_id")
@@ -533,9 +539,16 @@ class RunSession(APIView):
         except RunAdmissionRefusedError:
             # A refusal is the caller's answer (409), not a failure to start.
             raise
-        except Exception as e:
-            logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
-            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
+        except APIException as error:
+            # The run path raises its domain errors as APIExceptions. Any 4xx one (such as a
+            # flow without an entry point, an undeclared secret or a deleted LLM provider)
+            # keeps the existing 400 with its message in `error`. A 5xx one, like any other
+            # exception, goes to the global handler, which answers without the internal text
+            # (503 for an exhausted database pool).
+            if status.is_server_error(error.status_code):
+                raise
+            logger.warning("Session for graph_id {} not started: {}", graph_id, error)
+            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(error)})
 
         return Response(
             data={"session_id": session_id},
@@ -599,7 +612,9 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
 class GetUpdates(APIView):
     @extend_schema(**GET_UPDATES_GET)
     def get(self, request, *args, **kwargs):
-        session = get_accessible_session(request.user, kwargs["session_id"])
+        session = get_accessible_session(
+            request.user, kwargs["session_id"], api_key_org_id=user_api_key_org_id(request)
+        )
 
         return Response(
             data={"status": session.status},
@@ -610,7 +625,12 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session = get_accessible_session(request.user, kwargs["session_id"], Permission.USE)
+        session = get_accessible_session(
+            request.user,
+            kwargs["session_id"],
+            Permission.USE,
+            api_key_org_id=user_api_key_org_id(request),
+        )
         session_manager_service.stop_running_session(session=session)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

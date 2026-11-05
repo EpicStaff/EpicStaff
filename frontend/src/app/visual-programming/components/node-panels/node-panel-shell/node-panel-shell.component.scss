@@ -89,7 +89,7 @@ header {
             align-items: center;
             justify-content: center;
 
-            &:hover:not(:disabled) {
+            &:is(:hover, :focus-visible):not(:disabled) {
                 background-color: var(--white-alpha-10);
             }
 
@@ -134,7 +134,7 @@ header {
                 background-color: var(--accent-color);
             }
 
-            &:disabled {
+            &[aria-disabled='true'] {
                 cursor: not-allowed;
                 opacity: 0.7;
             }
@@ -155,16 +155,6 @@ header {
             align-items: center;
             gap: 0.5rem;
 
-            .esc-label {
-                font-size: var(--text-body-small-large-size);
-                color: var(--gray-605);
-                font-weight: var(--text-body-small-large-weight);
-                padding: 0.15rem 0.3rem;
-                border: 1px solid var(--gray-440);
-                border-radius: 4px;
-                background: var(--graphite-780);
-            }
-
             .close-btn {
                 background: none;
                 border: none;
@@ -177,7 +167,7 @@ header {
                 align-items: center;
                 justify-content: center;
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     color: var(--white);
                     background-color: var(--white-alpha-10);
                 }

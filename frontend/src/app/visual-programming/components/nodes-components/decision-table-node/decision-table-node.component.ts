@@ -2,6 +2,7 @@ import { CommonModule, NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
+import { NODE_COLORS, NODE_ICONS } from '@shared/models';
 import { formatNodeLabel } from '@shared/utils';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
@@ -29,6 +30,9 @@ export class DecisionTableNodeComponent {
     private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
     private readonly flowDiffState = inject(FlowDiffStateService);
+
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
 
     public readonly headerHeightPx = DT_HEADER_HEIGHT;
     public readonly rowHeightPx = DT_ROW_HEIGHT;

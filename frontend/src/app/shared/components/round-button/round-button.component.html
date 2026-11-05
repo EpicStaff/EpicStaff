@@ -4,7 +4,10 @@
     [class.round-btn--active]="selected()"
     [class.round-btn--disabled]="disabled()"
     [disabled]="disabled()"
-    [attr.data-tooltip]="tooltip() || null"
+    [attr.aria-pressed]="selected()"
+    [matTooltip]="tooltip()"
+    matTooltipPosition="above"
+    [attr.aria-label]="tooltip() || null"
 >
     {{ label() }}
 </button>

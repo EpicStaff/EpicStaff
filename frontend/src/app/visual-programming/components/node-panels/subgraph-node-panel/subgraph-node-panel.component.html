@@ -38,13 +38,14 @@
             </app-diff-field-mark>
 
             <div class="field">
-                <label>
+                <div class="field-label">
                     Selected Flow
                     <app-help-tooltip
                         text="Select the flow that this node will execute"
+                        ariaLabel="Selected Flow help"
                         size="1rem"
                     />
-                </label>
+                </div>
                 <div class="selected-flow-row">
                     <app-diff-field-mark
                         class="select-field"
@@ -67,6 +68,9 @@
                         [disabled]="!selectedFlowExists()"
                     ></app-go-to-button>
                 </div>
+                @if (missingFlowHint(); as hint) {
+                    <div class="missing-flow-hint">{{ hint }}</div>
+                }
                 <app-missing-reference-note
                     class="missing-reference-note"
                     [fields]="['subgraph']"

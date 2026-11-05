@@ -1,5 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { NgTemplateOutlet } from '@angular/common';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
@@ -30,15 +32,21 @@ import {
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
     HelpTooltipComponent,
+    HintMessageComponent,
     JsonEditorComponent,
     LlmModelSelectorComponent,
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
-import { ExecutionTimeoutLimitsStorageService, FullLLMConfigService, SecretsStorageService } from '@shared/services';
-import { downloadBlob, formatNodeLabel, getProviderIconPath } from '@shared/utils';
+import {
+    ExecutionTimeoutLimitsStorageService,
+    FullLLMConfigService,
+    SecretsStorageService,
+    SystemOneConfigStorageService,
+} from '@shared/services';
+import { downloadBlob, formatNodeLabel, getProviderIconPath, SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -50,7 +58,7 @@ import { CODE_DIFF_HINT_EXPAND_EDITOR, CODE_DIFF_HINT_EXPAND_PANEL } from '../..
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
-import { getClassificationTableVisualHeight } from '../../../core/helpers/node-size.util';
+import { getClassificationTableVisualHeight, TABLE_NODE_WIDTH } from '../../../core/helpers/node-size.util';
 import { CdtSection, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import {
     ClassificationDecisionTableData,
@@ -103,6 +111,7 @@ import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-d
 import { explainKeyMovesForRuleEdit } from './cdt-decision-tree-dialog/cdt-explain.identity';
 import { CdtExportImportService } from './cdt-export-import.service';
 import { cdtPromptCardChanges, CdtPromptCardMark, KEPT_PROMPT_CARD } from './cdt-prompt-card-changes';
+import { CdtSystemOneEntryComponent } from './cdt-system-one-entry/cdt-system-one-entry.component';
 import { cdtRowChanges } from './classification-decision-table-grid/cdt-row-changes';
 import {
     CdtEnableContinueRequest,
@@ -115,10 +124,13 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
 @Component({
     selector: 'app-classification-decision-table-node-panel',
     imports: [
+        TooltipOnOverflowDirective,
         ReactiveFormsModule,
         FormsModule,
+        NgTemplateOutlet,
         CustomInputComponent,
         ClassificationDecisionTableGridComponent,
+        CdtSystemOneEntryComponent,
         LlmModelSelectorComponent,
         InputMapComponent,
         CodeEditorComponent,
@@ -134,6 +146,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         HasPermissionDirective,
         IfFlowEditableDirective,
         ExecutionTimeoutFieldComponent,
+        HintMessageComponent,
         MatTooltipModule,
         MissingReferenceNoteComponent,
         DiffFieldMarkComponent,
@@ -150,6 +163,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public override readonly isExpanded = input<boolean>(true);
     public readonly graphId = input<number | null>(null);
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
+    private readonly addPromptButton = viewChild<ButtonComponent>('addPromptButton');
 
     protected readonly routeDiffFields = ROUTE_DIFF_FIELDS;
     /**
@@ -235,6 +249,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     });
     private cdr = inject(ChangeDetectorRef);
     private fullLlmConfigService = inject(FullLLMConfigService);
+    private readonly systemOneConfigStorage = inject(SystemOneConfigStorageService);
     private sanitizer = inject(DomSanitizer);
 
     public activeTab = signal<TabType>('table');
@@ -293,6 +308,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public newPromptId = '';
     public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
     protected readonly codeDiffHint = CODE_DIFF_HINT_EXPAND_PANEL;
+    protected readonly secretCodeLockedMessage = SECRET_CODE_NEEDS_USE_MESSAGE;
     private readonly schemaDrafts = signal<Record<string, string>>({});
     private readonly schemaErrors = signal<Record<string, string>>({});
 
@@ -319,6 +335,20 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             : this.isReadOnly()
               ? 'Secrets assigned to this post-computation code.'
               : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
+    );
+    /**
+     * A block's code reads secrets and the user lacks Secrets:Use: that code and its storage toggle (which edits
+     * the code) are locked, the rest is not.
+     */
+    protected readonly isPreCodeLocked = computed(
+        () =>
+            !this.isReadOnly() &&
+            this.flowReadOnly.isSecretCodeLocked(this.node().data.table?.pre_computation?.secret_ids ?? [])
+    );
+    protected readonly isPostCodeLocked = computed(
+        () =>
+            !this.isReadOnly() &&
+            this.flowReadOnly.isSecretCodeLocked(this.node().data.table?.post_computation?.secret_ids ?? [])
     );
     public readonly preSelectedSecretIds = signal<number[]>([]);
     public readonly postSelectedSecretIds = signal<number[]>([]);
@@ -444,6 +474,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
         this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.systemOneConfigStorage.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {
@@ -619,6 +650,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             post_computation_code: this.postCode,
             post_use_storage: this.postUseStorage(),
             pre_computation: {
+                // Keeps the stored fields the panel does not edit (entrypoint, global_kwargs).
+                ...currentNode.data.table?.pre_computation,
                 code: this.preCode,
                 input_map: preInputMap,
                 output_variable_path: this.form.value.pre_output_variable_path || undefined,
@@ -627,6 +660,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 execution_timeout: this.preExecutionTimeout.value,
             },
             post_computation: {
+                ...currentNode.data.table?.post_computation,
                 code: this.postCode,
                 input_map: postInputMap,
                 output_variable_path: this.form.value.post_output_variable_path || undefined,
@@ -647,7 +681,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         // or the "No condition groups" placeholder — plus Default and Error), so ports
         // line up horizontally with their connected target nodes. See node-size.util.ts.
         const updatedSize = {
-            width: currentNode.size?.width || 330,
+            width: TABLE_NODE_WIDTH,
             height: getClassificationTableVisualHeight(conditionGroups),
         };
 
@@ -796,9 +830,38 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.prompts.update((p) => ({ ...p, [newId]: newConfig }));
         this.editingPromptId.set(newId);
         this.pendingPromptName.set(newId);
-        if (this.sideEditorPromptId() !== null) {
-            this.sideEditorPromptId.set(newId);
-        }
+        this.followSideEditorTo(newId);
+        this.sidePanelService.triggerAutosave();
+    }
+
+    public addSystemOnePrompt(): void {
+        const existing = this.prompts();
+        let newId = 'System One';
+        for (let nameNumber = 2; newId in existing; nameNumber++) newId = `System One ${nameNumber}`;
+
+        // Conditions read `<result_variable>.answers…`, so this stays an identifier, unlike the name.
+        const takenVariables = new Set([
+            ...Object.keys(existing),
+            ...Object.values(existing).map((prompt) => prompt.result_variable),
+        ]);
+        let variableNumber = 1;
+        while (takenVariables.has(`system_one_${variableNumber}`)) variableNumber++;
+
+        const newConfig: PromptConfig = {
+            kind: 'system_one',
+            system_one_config: null,
+            questions: {},
+            input_map: {},
+            prompt_text: '',
+            llm_config: null,
+            output_schema: null,
+            result_variable: `system_one_${variableNumber}`,
+            variable_mappings: {},
+        };
+        this.prompts.update((p) => ({ ...p, [newId]: newConfig }));
+        this.editingPromptId.set(newId);
+        this.pendingPromptName.set(newId);
+        this.followSideEditorTo(newId);
         this.sidePanelService.triggerAutosave();
     }
 
@@ -842,7 +905,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.updatePromptFields(id, { [field]: value } as Partial<PromptConfig>);
     }
 
-    private updatePromptFields(id: string, fields: Partial<PromptConfig>): void {
+    public updatePromptFields(id: string, fields: Partial<PromptConfig>): void {
         const current = { ...this.prompts() };
         if (!current[id]) return;
         current[id] = { ...current[id], ...fields };
@@ -862,6 +925,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .subscribe((result) => {
                 if (result === true) {
                     this.performDeletePrompt(id);
+                    // The dialog gave the focus back to the prompt's Delete button, which is gone now.
+                    afterNextRender(() => this.addPromptButton()?.focus(), { injector: this.injector });
                 }
             });
     }
@@ -894,12 +959,27 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.editingPromptId.set(newId);
         if (newId) {
             this.pendingPromptName.set(newId);
-            if (this.sideEditorPromptId() !== null) {
-                this.sideEditorPromptId.set(newId);
-            }
+            this.followSideEditorTo(newId);
         } else {
             this.sideEditorPromptId.set(null);
         }
+    }
+
+    /**
+     * Enter or Space on a marked prompt card header (Changes tab), which is focusable, opens or closes the card. A
+     * key on the prompt-id button inside the header is left alone: the button's own click already toggles the card.
+     */
+    protected onPromptCardHeaderKey(event: Event, promptId: string): void {
+        if (event.target !== event.currentTarget) return;
+        // Space would also scroll the panel.
+        if (event instanceof KeyboardEvent && event.key === ' ') event.preventDefault();
+        this.toggleEditPrompt(promptId);
+    }
+
+    /** An open side editor follows the expanded entry; a System One entry has no prompt text or schema to show, so it closes. */
+    private followSideEditorTo(promptId: string): void {
+        if (this.sideEditorPromptId() === null) return;
+        this.sideEditorPromptId.set(this.prompts()[promptId]?.kind === 'system_one' ? null : promptId);
     }
 
     public openSideEditor(promptId: string, view: 'schema' | 'prompt'): void {
@@ -1116,6 +1196,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             nodes: [...this.flowService.nodes()],
             defaultLlmConfig: this.form.value.default_llm_config || null,
             llmConfigOptions: this.llmConfigOptions(),
+            systemOneConfigs: this.systemOneConfigStorage.configs(),
             readOnly: this.isReadOnly(),
         };
     }

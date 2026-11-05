@@ -1,6 +1,7 @@
 import { A11yModule } from '@angular/cdk/a11y';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { Component, ElementRef, input, output, signal, viewChild } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 /** `Id`: the menu's own union of action ids, so a handler for an id the menu never offers does not compile. */
@@ -23,7 +24,7 @@ const BELOW_END: ConnectedPosition[] = [
  */
 @Component({
     selector: 'app-chat-action-menu',
-    imports: [A11yModule, OverlayModule, AppSvgIconComponent],
+    imports: [A11yModule, OverlayModule, MatTooltip, AppSvgIconComponent],
     templateUrl: './chat-action-menu.component.html',
     styleUrl: './chat-action-menu.component.scss',
 })

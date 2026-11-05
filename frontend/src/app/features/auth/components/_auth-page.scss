@@ -59,12 +59,13 @@
     font-size: 1.125rem;
     color: var(--color-ks-secondary);
 
-    span {
+    a {
         cursor: pointer;
         color: var(--accent-color);
+        text-decoration: none;
         transition: opacity 0.3s;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             opacity: 0.7;
         }
     }
@@ -86,9 +87,10 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    text-decoration: none;
     transition: opacity 0.3s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         opacity: 0.7;
     }
 }

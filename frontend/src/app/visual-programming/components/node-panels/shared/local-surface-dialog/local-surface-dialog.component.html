@@ -12,6 +12,7 @@
                 type="button"
                 class="local-surface-dialog__btn local-surface-dialog__btn--cancel"
                 aria-label="Cancel"
+                matTooltip="Cancel"
                 (click)="onCancel()"
             >
                 <app-svg-icon
@@ -23,6 +24,7 @@
                 type="button"
                 class="local-surface-dialog__btn local-surface-dialog__btn--confirm"
                 aria-label="Confirm"
+                matTooltip="Confirm"
                 [disabled]="surfaceCard()?.knowledgeInvalid()"
                 (click)="onConfirm()"
             >

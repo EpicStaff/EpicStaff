@@ -1,5 +1,6 @@
 import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
@@ -10,6 +11,7 @@ import {
     Injector,
     input,
     output,
+    reflectComponentType,
     Signal,
     signal,
     TemplateRef,
@@ -17,7 +19,8 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { TooltipOnOverflowDirective } from '@shared/directives';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
 import { NODE_DIFF_BADGES } from '../../../core/constants/node-diff-badges';
@@ -50,14 +53,18 @@ interface PanelInstanceView {
 
 @Component({
     selector: 'app-node-panel-shell',
-    imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule],
+    imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule, TooltipOnOverflowDirective],
     template: `
         @if (node() && panelComponent()) {
+            <!-- Escape is handled here, ahead of the tooltip of the focused control, which would take the first one, and
+                 ahead of the canvas, which would clear its selection on the same press. -->
             <aside
                 #panel
                 class="node-panel"
+                [attr.aria-label]="nodeNameToDisplay() || 'Node panel'"
                 [class.shake-attention]="isShaking()"
                 [class.expanded]="isExpanded()"
+                (keydown.escape)="onPanelEscape($event)"
             >
                 <header
                     class="dialog-header"
@@ -65,11 +72,17 @@ interface PanelInstanceView {
                 >
                     <div class="icon-and-title">
                         <i
-                            [class]="node()!.icon"
-                            [style.color]="node()!.color || '#685fff'"
+                            [class]="nodeIcons[node()!.type]"
+                            [style.color]="nodeColors[node()!.type] || '#685fff'"
                         ></i>
                         <span class="title-with-number">
-                            <span class="title">{{ nodeNameToDisplay() }}</span>
+                            <span
+                                class="title"
+                                appTooltipOnOverflow
+                                [matTooltip]="nodeNameToDisplay()"
+                                matTooltipPosition="below"
+                                >{{ nodeNameToDisplay() }}</span
+                            >
                             @if (nodeNumberToDisplay(); as nodeNumber) {
                                 <span class="node-number">#{{ nodeNumber }}</span>
                             }
@@ -86,13 +99,17 @@ interface PanelInstanceView {
                             ></ng-container>
                         }
                         @if (showSaveButton()) {
+                            <!-- aria-disabled, not disabled: a disabled button would drop the keyboard focus. -->
                             <button
                                 class="save-btn"
                                 [class.save-btn--icon-only]="!isExpanded()"
                                 type="button"
+                                aria-label="Save"
                                 matTooltip="Save local node changes"
                                 matTooltipPosition="below"
-                                [disabled]="panelInstanceSig()?.form?.invalid || panelInstanceSig()?.isSaving()"
+                                [attr.aria-disabled]="isSaveDisabled() || null"
+                                (focus)="saveButtonHasFocus = true"
+                                (blur)="saveButtonHasFocus = false"
                                 (click)="onHeaderSaveClick()"
                             >
                                 <app-svg-icon
@@ -107,8 +124,9 @@ interface PanelInstanceView {
                         }
                         @if (shouldShowExpandButton()) {
                             <button
+                                type="button"
                                 class="expand-btn"
-                                aria-label="Toggle panel size"
+                                [attr.aria-label]="isExpanded() ? 'Minimize panel' : 'Expand panel'"
                                 [matTooltip]="isExpanded() ? 'Minimize panel' : 'Expand panel'"
                                 matTooltipPosition="below"
                                 (click)="toggleExpanded()"
@@ -120,10 +138,11 @@ interface PanelInstanceView {
                             </button>
                         }
                         <div class="close-action">
-                            <span class="esc-label">ESC</span>
                             <button
+                                #closeButton
+                                type="button"
                                 class="close-btn"
-                                aria-label="Close dialog"
+                                aria-label="Close"
                                 matTooltip="Close"
                                 matTooltipPosition="below"
                                 (click)="onCloseClick()"
@@ -239,15 +258,22 @@ export class NodePanelShellComponent {
 
     protected readonly outlet = viewChild(NgComponentOutlet);
     private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
+    private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
+    /** The inputs the open panel declares: setting any other one is an error (NG0303). */
+    private readonly panelInputNames = computed(() => {
+        const component = this.panelComponent();
+        const inputs = component ? (reflectComponentType(component)?.inputs ?? []) : [];
+        return new Set(inputs.map((panelInput) => panelInput.templateName));
+    });
     protected readonly componentInputs = computed(() => {
-        const node = this.node();
-
-        return {
-            node,
+        const offered: Record<string, unknown> = {
+            node: this.node(),
             isExpanded: this.isExpanded(),
             graphId: this.currentFlowId(),
-            ...(node?.type === 'subgraph' ? { currentFlowId: this.currentFlowId() } : {}),
+            currentFlowId: this.currentFlowId(),
         };
+        const declared = this.panelInputNames();
+        return Object.fromEntries(Object.entries(offered).filter(([name]) => declared.has(name)));
     });
 
     /** The open node's diff on the Changes tab of a version preview; `null` elsewhere. */
@@ -296,6 +322,14 @@ export class NodePanelShellComponent {
         const hasSomethingToSave = (panel?.isDirty?.() ?? false) || (panel?.needsSave?.() ?? false);
         return hasSomethingToSave && !!panel?.onSaveClick;
     });
+    protected readonly isSaveDisabled = computed(() => {
+        const panel = this.panelInstanceSig();
+        return !!panel?.form?.invalid || !!panel?.isSaving?.();
+    });
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
+    /** Set while the Save button has the focus: once it is gone after the save, the focus moves to Close. */
+    protected saveButtonHasFocus = false;
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
     private isAutosaving = false;
@@ -309,6 +343,7 @@ export class NodePanelShellComponent {
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly keymap = inject(KeymapService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     constructor() {
         this.keymap.register('editing.escape', () => this.onEscape(), {
@@ -366,6 +401,13 @@ export class NodePanelShellComponent {
             }
         });
 
+        // The saved node has nothing left to save, so Save goes away: the focus it had stays in the panel.
+        effect(() => {
+            if (this.showSaveButton() || !this.saveButtonHasFocus) return;
+            this.saveButtonHasFocus = false;
+            afterNextRender(() => this.closeButton()?.nativeElement.focus(), { injector: this.injector });
+        });
+
         effect(() => {
             const shouldExpand = this.sidePanelService.expandRequest();
             if (shouldExpand) {
@@ -376,7 +418,15 @@ export class NodePanelShellComponent {
     }
 
     protected onHeaderSaveClick(): void {
+        if (this.isSaveDisabled()) return;
         this.panelInstanceSig()?.onSaveClick?.();
+    }
+
+    /** Escape closes the panel, unless a control inside it already used this Escape (it marks it handled). */
+    protected onPanelEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.saveSidePanel();
     }
 
     protected openNodeDetails(trigger: HTMLElement): void {

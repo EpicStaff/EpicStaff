@@ -20,10 +20,12 @@ from agents.services.node_surface_service import NodeSurfaceService
 from django.db.models import Count, F
 from django.utils.dateparse import parse_datetime
 from src.shared.models import CombinedSurfaceData
+from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND
 from tables.models.base_models import BaseGlobalNode
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     ConditionGroup,
     DecisionTableNode,
     Edge,
@@ -230,6 +232,48 @@ def get_flow_overview(graph_id: int) -> dict:
     }
 
 
+def _serialize_classification_decision_table_prompts(
+    node: ClassificationDecisionTableNode,
+) -> list[dict]:
+    """Return the prompt entries of a ClassificationDecisionTableNode, ordered by key.
+
+    Shape (a System One entry; ``system_one_config`` is null once its config is deleted):
+      {"prompt_key", "kind": "system_one", "result_variable",
+       "system_one_config": {"name", "provider", "model_version"},
+       "input_map": {...}, "questions": {...}}
+    An LLM entry is {"prompt_key", "kind": "llm", "result_variable", "llm_config_id"}.
+    """
+    entries: list[dict] = []
+    prompts = (
+        ClassificationDecisionTablePrompt.objects.filter(cdt_node=node)
+        .select_related("system_one_config")
+        .order_by("prompt_key")
+    )
+    for prompt in prompts:
+        entry = {
+            "prompt_key": prompt.prompt_key,
+            "kind": prompt.kind,
+            "result_variable": prompt.result_variable,
+        }
+        if prompt.kind == SYSTEM_ONE_PROMPT_KIND:
+            config = prompt.system_one_config
+            entry["system_one_config"] = (
+                {
+                    "name": config.custom_name,
+                    "provider": config.provider,
+                    "model_version": config.model_name,
+                }
+                if config
+                else None
+            )
+            entry["input_map"] = prompt.input_map
+            entry["questions"] = prompt.questions
+        else:
+            entry["llm_config_id"] = prompt.llm_config_id
+        entries.append(entry)
+    return entries
+
+
 def get_node(graph_id: int, node_id: str) -> dict:
     """Resolve a node by PK and return its config.
 
@@ -264,6 +308,7 @@ def get_node(graph_id: int, node_id: str) -> dict:
         result["decision_rules"] = _serialize_decision_table_rules(node)
     elif node_type == "classification_decision_table":
         result["decision_rules"] = _serialize_classification_decision_table_rules(node)
+        result["prompt_entries"] = _serialize_classification_decision_table_prompts(node)
         result["pre_python_code_summary"] = _resolve_python_code_summary(
             getattr(node, "pre_python_code_id", None)
         )
@@ -1134,7 +1179,8 @@ TOOL_SPECS: list[ToolSpec] = [
             "Returns the configuration and connectivity of a single node in the flow. "
             "Sensitive fields (api_key, secret, token) are redacted. "
             "For decision_table and classification_decision_table nodes, the response "
-            "includes `decision_rules` with the full branching logic. "
+            "includes `decision_rules` with the full branching logic; classification "
+            "decision tables also include their prompt entries (`prompt_entries`). "
             "For agent and task nodes, the response includes `agent_definition` "
             "(role/instructions/llm_config_summary of the assigned agent), `tools` "
             "(python/mcp tools the node can actually call at runtime, resolved with "

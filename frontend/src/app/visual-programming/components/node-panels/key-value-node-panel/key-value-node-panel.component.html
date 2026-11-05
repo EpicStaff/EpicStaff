@@ -66,7 +66,8 @@
                                     <span
                                         class="dropdown-trigger__label"
                                         [class.dropdown-trigger__label--placeholder]="!selectedTableName()"
-                                        [attr.title]="selectedTableName()"
+                                        appTooltipOnOverflow
+                                        [matTooltip]="selectedTableName() ?? ''"
                                     >
                                         {{ tableTriggerLabel() }}
                                     </span>
@@ -145,6 +146,7 @@
                                                 class="entry-input key-input"
                                                 formControlName="key"
                                                 aria-label="Key"
+                                                matTooltip="Key"
                                                 autocomplete="off"
                                                 role="combobox"
                                                 aria-autocomplete="list"
@@ -178,24 +180,30 @@
                                 </ng-template>
                                 <ng-template #valueField>
                                     <div class="entry-field">
-                                        <input
-                                            type="text"
-                                            class="entry-input"
-                                            formControlName="value"
-                                            placeholder="variables.user.name"
-                                            aria-label="Variable path"
-                                            autocomplete="off"
-                                            role="combobox"
-                                            aria-autocomplete="list"
-                                            [class.duplicate]="isConflictingVariable(i)"
-                                            [attr.aria-expanded]="variablePicker.isOpenFor(i)"
-                                            [attr.aria-controls]="variablePicker.listboxIdFor(i)"
-                                            [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
-                                            (focus)="variablePicker.onFocus(i, $event)"
-                                            (input)="variablePicker.onInput(i, $event)"
-                                            (keydown)="onValueKeydown(i, $event)"
-                                            (blur)="variablePicker.onBlur(i, $event)"
-                                        />
+                                        <div class="value-field-wrapper">
+                                            <span class="variables-prefix">&#64;</span>
+                                            <input
+                                                type="text"
+                                                class="entry-input"
+                                                [class.duplicate]="isConflictingVariable(i)"
+                                                [class.invalid-border]="isValueInvalid(i)"
+                                                [value]="getValueDisplayText(i)"
+                                                placeholder="All fields if empty"
+                                                aria-label="Variable path"
+                                                matTooltip="Variable path"
+                                                autocomplete="off"
+                                                role="combobox"
+                                                aria-autocomplete="list"
+                                                [disabled]="entries.at(i).disabled"
+                                                [attr.aria-expanded]="variablePicker.isOpenFor(i)"
+                                                [attr.aria-controls]="variablePicker.listboxIdFor(i)"
+                                                [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
+                                                (focus)="variablePicker.onFocus(i, $event)"
+                                                (input)="onValueInput(i, $event)"
+                                                (keydown)="onValueKeydown(i, $event)"
+                                                (blur)="onValueBlur(i, $event)"
+                                            />
+                                        </div>
                                         @if (valueHintFor(i); as hint) {
                                             <div class="entry-hint">{{ hint }}</div>
                                         }
@@ -221,7 +229,8 @@
                                     <button
                                         type="button"
                                         class="remove-entry"
-                                        title="Remove"
+                                        aria-label="Remove"
+                                        matTooltip="Remove"
                                         [disabled]="configurationLocked()"
                                         (click)="removeEntry(i)"
                                     >
@@ -235,6 +244,18 @@
                         </div>
                     }
                     <!-- Rows only on the current canvas: the version does not have them, a restore removes them. -->
+                    <!-- The variable path as the value field shows it: the @ prefix, then the path without "variables". -->
+                    <ng-template
+                        #removedValue
+                        let-value
+                    >
+                        <div class="entry-field">
+                            <div class="value-field-wrapper">
+                                <span class="variables-prefix">&#64;</span>
+                                <div class="entry-input entry-input--removed">{{ value }}</div>
+                            </div>
+                        </div>
+                    </ng-template>
                     @for (removed of removedEntries(); track $index) {
                         <div
                             class="entry-row-mark entry-row-mark--removed"
@@ -244,14 +265,20 @@
                             <div class="entry-row">
                                 @switch (mode()) {
                                     @case ('read') {
-                                        <div class="entry-input entry-input--removed">{{ removed.value }}</div>
+                                        <ng-container
+                                            [ngTemplateOutlet]="removedValue"
+                                            [ngTemplateOutletContext]="{ $implicit: removed.value }"
+                                        />
                                         <div class="equals-sign">=</div>
                                         <div class="entry-input entry-input--removed">{{ removed.key }}</div>
                                     }
                                     @case ('write') {
                                         <div class="entry-input entry-input--removed">{{ removed.key }}</div>
                                         <div class="equals-sign">=</div>
-                                        <div class="entry-input entry-input--removed">{{ removed.value }}</div>
+                                        <ng-container
+                                            [ngTemplateOutlet]="removedValue"
+                                            [ngTemplateOutletContext]="{ $implicit: removed.value }"
+                                        />
                                     }
                                     @case ('delete') {
                                         <div class="entry-input entry-input--removed">{{ removed.key }}</div>

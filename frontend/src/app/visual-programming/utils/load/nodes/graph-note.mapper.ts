@@ -2,7 +2,7 @@ import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import { GraphNote } from '../../../core/models/graph-note.model';
-import { GraphNoteModel } from '../../../core/models/node.model';
+import { GraphNoteModel, NoteLinkedRegion } from '../../../core/models/node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapGraphNoteToModel(nn: GraphNote): GraphNoteModel {
@@ -16,11 +16,11 @@ export function mapGraphNoteToModel(nn: GraphNote): GraphNoteModel {
         data: {
             content: nn.content,
             backgroundColor: nn.metadata?.['backgroundColor'] as string | undefined,
+            fontSize: nn.metadata?.['fontSize'] as number | undefined,
+            linkedRegion: nn.metadata?.['linkedRegion'] as NoteLinkedRegion | undefined,
         },
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: {},
         output_variable_path: null,
         size: ui.size,

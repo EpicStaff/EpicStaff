@@ -31,8 +31,10 @@ import {
     GetLlmConfigRequest,
     GraphSessionStatus,
     isTerminalSessionStatus,
+    NODE_COLORS,
     NodeType,
     ResourceCode,
+    SystemOnePromptKind,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, LABELS_STORE, LlmConfigStorageService } from '@shared/services';
 import { escapeHtml, extractHttpErrorMessage, formatNodeLabel, generateUuid } from '@shared/utils';
@@ -76,16 +78,17 @@ import {
     GraphVersionDto,
     RestoreWarning,
 } from '../../../../features/flows/models/graph.model';
+import { snapshotDeclaresSecrets } from '../../../../features/flows/models/graph-version-preview.model';
 import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
-import {
-    FlowUsePermissionRefusalService,
-    UsePermissionAction,
-} from '../../../../features/flows/services/flow-use-permission-refusal.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
+import {
+    UsePermissionAction,
+    UsePermissionRefusalService,
+} from '../../../../features/flows/services/use-permission-refusal.service';
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -153,6 +156,7 @@ import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { PREVIEW_BLOCKED_MESSAGES } from './components/header/flow-header.constants';
+import { FlowSaveStatus } from './components/header/flow-save-status.model';
 import {
     SHORTCUTS_MODAL_HEIGHT_PX,
     ShortcutsModalComponent,
@@ -260,7 +264,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     );
     /** Read-only node id to node-type colour lookup for the snake-game intro; only evaluated while a game runs. */
     protected readonly snakeGameNodeColors = computed<ReadonlyMap<string, string>>(
-        () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
+        () => new Map(this.flowService.nodes().map((node) => [node.id, NODE_COLORS[node.type]]))
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly keymap = inject(KeymapService);
@@ -270,7 +274,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     /** The root instance, as for the live canvas and its panels; the version preview has its own. */
     private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
-    private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
+    private readonly usePermissionRefusal = inject(UsePermissionRefusalService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
@@ -346,6 +350,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /** The version shown instead of the live canvas; null while editing the live flow. */
     public readonly previewedVersion = signal<GraphVersionDto | null>(null);
     public readonly isPreviewing = computed(() => this.previewedVersion() !== null);
+    /** The header's save status chip; none while previewing a version. */
+    protected readonly saveStatus = computed<FlowSaveStatus | null>(() => {
+        if (this.isPreviewing()) return null;
+        if (this.isSaving() || this.sidePanelService.savingNodeId() !== null) return 'saving';
+        const connection = this.wsService.connectionStatus();
+        if (connection === 'lost') return 'connection-lost';
+        if (connection === 'reconnecting') return 'reconnecting';
+        return this.hasUnsavedChangesSignal() ? 'unsaved' : 'saved';
+    });
     /** Live canvas pan/zoom captured on entering a preview, handed back when the live canvas re-mounts. */
     public readonly savedViewport = signal<FlowViewport | null>(null);
     public readonly selectedVersionId = signal<number | null>(null);
@@ -1860,7 +1873,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     data?: {
                         table?: {
                             default_llm_config?: number | null;
-                            prompts?: Record<string, { llm_config: number | null }>;
+                            prompts?: Record<string, { llm_config: number | null; kind?: SystemOnePromptKind }>;
                         };
                     };
                 }
@@ -1870,7 +1883,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             // Any prompt with no LLM config selected counts as missing.
             if (table.prompts) {
                 for (const prompt of Object.values(table.prompts)) {
-                    if (prompt.llm_config == null) return true;
+                    if (prompt.kind !== 'system_one' && prompt.llm_config == null) return true;
                 }
             }
             // Deleted-config references also count as missing.
@@ -1879,7 +1892,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }
             if (table.prompts) {
                 for (const prompt of Object.values(table.prompts)) {
-                    if (prompt.llm_config != null && !availableIds.has(prompt.llm_config)) return true;
+                    if (
+                        prompt.kind !== 'system_one' &&
+                        prompt.llm_config != null &&
+                        !availableIds.has(prompt.llm_config)
+                    )
+                        return true;
                 }
             }
             return false;
@@ -1988,18 +2006,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             : `Restoring <strong>${escapeHtml(version.name)}</strong> will replace the current flow state. Save a backup of the current state first?`;
 
         // A restore this user may not do is refused first: before the backup question, the preview exit or a save.
-        this.refuseRestoreOfTriggerNodes(version)
+        this.refuseRestoreThisUserMayNotDo(version)
             .pipe(
                 filter((refused) => !refused),
                 switchMap(() =>
                     this.unsavedChangesDialog.confirm({
-                        title: 'Restore version',
+                        title: 'Restore Version',
                         message,
                         saveText: 'Save & Restore',
-                        dontSaveText: 'Discard & Restore',
+                        dontSaveText: 'Just restore',
                         cancelText: 'Cancel',
                         type: 'warning',
                         showDontSave: true,
+                        appearance: 'neutral',
                     })
                 ),
                 switchMap((result) => {
@@ -2023,25 +2042,37 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     /**
-     * Restoring creates the version's nodes again, and creating a trigger node needs Flows:Use, so for a user
-     * without it a version with trigger nodes is refused as a whole; emits true when it refused, after telling
-     * the user why. Users with Flows:Use get `false` at once, without fetching the version.
+     * Restoring creates the version's nodes again. Creating a trigger node needs Flows:Use, and getting code that
+     * reads secrets needs Secrets:Use, so for a user without either a version holding such nodes is refused as a
+     * whole; the trigger refusal wins when both apply, as on the backend. Emits true when it refused, after telling
+     * the user why. A user with both permissions gets `false` at once, without fetching the version.
+     *
+     * The secrets check counts every declared name, even one whose secret no longer exists, as the backend does:
+     * a deleted secret can come back later and the restored code would read it again.
      */
-    private refuseRestoreOfTriggerNodes(version: GraphVersionDto): Observable<boolean> {
-        if (this.flowReadOnly.canEditTriggerNodes()) {
+    private refuseRestoreThisUserMayNotDo(version: GraphVersionDto): Observable<boolean> {
+        const checksTriggerNodes = !this.flowReadOnly.canEditTriggerNodes();
+        const checksSecretCode = !this.permissionsService.can(ResourceCode.Secrets, ActionCode.Use);
+        if (!checksTriggerNodes && !checksSecretCode) {
             return of(false);
         }
         return this.flowApiService.previewGraphVersion(version.id).pipe(
-            map(({ snapshot }) =>
-                mapGraphDtoToFlowModel(mapSnapshotToGraphDto(snapshot, new Map())).nodes.some((node) =>
-                    isTriggerNodeType(node.type)
-                )
-            ),
+            map(({ snapshot }): 'triggerNodes' | 'secretCode' | null => {
+                const hasTriggerNodes =
+                    checksTriggerNodes &&
+                    mapGraphDtoToFlowModel(mapSnapshotToGraphDto(snapshot, new Map())).nodes.some((node) =>
+                        isTriggerNodeType(node.type)
+                    );
+                if (hasTriggerNodes) return 'triggerNodes';
+                return checksSecretCode && snapshotDeclaresSecrets(snapshot) ? 'secretCode' : null;
+            }),
             // Unknown (the version could not be read): the restore request decides, through catchRefusal.
-            catchError(() => of(false)),
-            tap((refused) => {
-                if (refused) this.usePermissionRefusal.showRefusal('restore');
-            })
+            catchError(() => of(null)),
+            tap((refusal) => {
+                if (refusal === 'triggerNodes') this.usePermissionRefusal.showRefusal('restore');
+                if (refusal === 'secretCode') this.usePermissionRefusal.showSecretsRefusal('restore');
+            }),
+            map((refusal) => refusal !== null)
         );
     }
 

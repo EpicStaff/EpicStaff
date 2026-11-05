@@ -1,4 +1,5 @@
 // eslint-disable-next-line simple-import-sort/imports
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
@@ -22,8 +23,10 @@ import {
     contentChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Observable } from 'rxjs';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { filter, Observable } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../buttons';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
@@ -51,7 +54,14 @@ interface VisibleRow {
 
 @Component({
     selector: 'app-select-dropdown',
-    imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent],
+    imports: [
+        AppSvgIconComponent,
+        CheckboxComponent,
+        ButtonComponent,
+        CdkTrapFocus,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './select-dropdown.component.html',
     styleUrls: ['./select-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -264,6 +274,13 @@ export class SelectDropdownComponent {
                 .backdropClick()
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe(() => this.close());
+            this.overlayRef
+                .keydownEvents()
+                .pipe(
+                    filter((event) => event.key === 'Escape'),
+                    takeUntilDestroyed(this.destroyRef)
+                )
+                .subscribe(() => this.close());
         }
 
         this.overlayRef.updateSize({
@@ -355,6 +372,16 @@ export class SelectDropdownComponent {
         const base = this.orderedItems();
         return q ? base.filter((i) => i.name.toLowerCase().includes(q)) : base;
     });
+
+    /**
+     * The title shown above the item at `index` of `filteredItems`: its `group`, when the item starts
+     * a run of that group. The caller sorts the items by group; items without one get no title.
+     */
+    sectionTitleAt(index: number): string | null {
+        const items = this.filteredItems();
+        const group = items[index]?.group;
+        return group && group !== items[index - 1]?.group ? group : null;
+    }
 
     tipForItem(item: SelectDropdownListItem): string | null {
         const fn = this.checkedTip();

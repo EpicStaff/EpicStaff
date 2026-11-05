@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ColumnResizeDividerComponent,
@@ -106,6 +107,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         MissingReferenceNoteComponent,
         DiffFieldMarkComponent,
         CodeDiffViewComponent,
+        MatTooltipModule,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -214,6 +216,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
                 value: LOCAL_SURFACE_VALUE,
                 group: 'Local surface',
                 trailingActionIcon: 'edit-label',
+                trailingActionLabel: 'Edit local surface',
             });
         }
 

@@ -285,6 +285,10 @@
     }
 
     &__action {
+        display: flex;
+        padding: 0;
+        border: none;
+        background: none;
         color: var(--fog-alpha-60);
         cursor: pointer;
     }

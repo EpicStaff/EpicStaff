@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FFlowModule } from '@foblex/flow';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
@@ -9,6 +10,7 @@ import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { mapDecisionTableNodeToModel } from '../../../utils/load/nodes/decision-table-node.mapper';
 import { FoblexConnectorStubDirective } from '../../../utils/testing/foblex-connector.stub';
 import { liveDecisionTable } from '../../../utils/testing/live-graph.fixture';
+import { normalizedCssColor, WRONG_APPEARANCE } from '../../../utils/testing/node-appearance.fixture';
 import { DecisionTableNodeComponent } from './decision-table-node.component';
 
 // On a diff canvas, a table on both sides carries the route ports of both; "canvas only" is not in its data.
@@ -90,5 +92,34 @@ describe('DecisionTableNodeComponent', () => {
             expect(row.hasAttribute('aria-label')).toBe(false);
             expect(row.hasAttribute('title')).toBe(false);
         }
+    });
+});
+
+describe('DecisionTableNodeComponent header', () => {
+    it("renders the type icon and colour, not the node's own", () => {
+        TestBed.configureTestingModule({
+            providers: [{ provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false) } }],
+        });
+        const node = {
+            id: 'table',
+            backendId: null,
+            type: NodeType.TABLE,
+            node_name: 'Route',
+            data: { name: 'Route', table: { default_next_node: null, next_error_node: null, condition_groups: [] } },
+            position: { x: 0, y: 0 },
+            ports: [],
+            size: { width: 330, height: 120 },
+            input_map: {},
+            output_variable_path: null,
+            ...WRONG_APPEARANCE,
+        } as unknown as DecisionTableNodeModel;
+        const fixture = TestBed.createComponent(DecisionTableNodeComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+
+        const icon: HTMLElement = fixture.nativeElement.querySelector('.icon-wrapper i');
+
+        expect(icon.className).toBe(NODE_ICONS[NodeType.TABLE]);
+        expect(icon.style.color).toBe(normalizedCssColor(NODE_COLORS[NodeType.TABLE]));
     });
 });

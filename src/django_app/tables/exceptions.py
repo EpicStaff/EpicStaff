@@ -79,6 +79,23 @@ class FlowWithTriggerNodesRequiresUsePermissionError(CustomAPIExeption):
     default_code = "flow_with_trigger_nodes_requires_use_permission"
 
 
+class CodeWithSecretsRequiresSecretsUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on secrets would copy or restore code that reads secrets.
+
+    Covers copying a flow or tool, restoring a flow version or creating a flow from
+    one, and restoring a recycle-bin item that brings such code back: the result is the
+    caller's own code, which reads the secrets for them. The message names no action,
+    as the bulk recycle-bin restore shows it verbatim. Editing such code is a 400 field
+    error of the save instead, so a client can tell the two apart.
+    """
+
+    status_code = 403
+    default_detail = (
+        "This contains code that reads secrets. This action requires the Use permission on secrets."
+    )
+    default_code = "code_with_secrets_requires_secrets_use_permission"
+
+
 class CodeRunTargetNotFoundError(Exception):
     """Raised for a test-run target that is missing, deleted, owned by another org,
     or whose code slot is empty. The caller maps it to the same error as a missing
@@ -148,6 +165,22 @@ class GraphSaveVersionConflictError(CustomAPIExeption):
 class SubGraphValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occured in SubGraphValidator during subgraph validation"
+
+
+class ExportCycleError(CustomAPIExeption):
+    """A cycle was detected among the entities being exported."""
+
+    status_code = 400
+    default_code = "export_cycle_detected"
+
+    def __init__(self, cycle_path: list[tuple[str, int]]):
+        self.cycle_path = cycle_path
+        cycle_str = " → ".join(
+            f"{entity_type}({entity_id})" for entity_type, entity_id in cycle_path
+        )
+        super().__init__(
+            detail=f"Cycle detected in export dependencies: {cycle_str}", code=self.default_code
+        )
 
 
 class BuiltInToolModificationError(CustomAPIExeption):

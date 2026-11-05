@@ -101,6 +101,7 @@
                                 [class.tab-btn--active]="activeTab() === 'table'"
                                 (click)="setActiveTab('table')"
                                 type="button"
+                                [attr.aria-pressed]="activeTab() === 'table'"
                             >
                                 Decision Table
                             </button>
@@ -111,6 +112,7 @@
                                 [class.tab-link--active]="activeTab() === 'precomputation'"
                                 (click)="setActiveTab('precomputation')"
                                 type="button"
+                                [attr.aria-pressed]="activeTab() === 'precomputation'"
                             >
                                 Pre-computation
                                 @if (preComputationChanged()) {
@@ -127,6 +129,7 @@
                                 [class.tab-link--active]="activeTab() === 'postcomputation'"
                                 (click)="setActiveTab('postcomputation')"
                                 type="button"
+                                [attr.aria-pressed]="activeTab() === 'postcomputation'"
                             >
                                 Post-computation
                                 @if (postComputationChanged()) {
@@ -143,6 +146,7 @@
                                 [class.tab-link--active]="activeTab() === 'prompts'"
                                 (click)="setActiveTab('prompts')"
                                 type="button"
+                                [attr.aria-pressed]="activeTab() === 'prompts'"
                             >
                                 Prompt library
                                 @if (promptsChanged()) {
@@ -226,6 +230,9 @@
                                     (valueChange)="onPreSecretsChange($event)"
                                 />
                             </app-diff-field-mark>
+                            @if (isPreCodeLocked()) {
+                                <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                            }
                             <app-diff-field-mark [diffField]="'pre_computation.output_variable_path'">
                                 <app-custom-input
                                     label="Output Variable Path"
@@ -249,7 +256,7 @@
                             </app-diff-field-mark>
                             <app-diff-field-mark [diffField]="'pre_use_storage'">
                                 <app-node-storage-section
-                                    [readonly]="isReadOnly()"
+                                    [readonly]="isReadOnly() || isPreCodeLocked()"
                                     [useStorage]="preUseStorage()"
                                     (onToggleChange)="onPreStorageToggle($event)"
                                     (onInsertCode)="insertPreStorageCode($event)"
@@ -288,7 +295,7 @@
                                         [pythonCode]="preCode"
                                         [secretNames]="preSecretNames()"
                                         [inputMapKeys]="preInputMapKeys()"
-                                        [readOnly]="isReadOnly()"
+                                        [readOnly]="isReadOnly() || isPreCodeLocked()"
                                         (pythonCodeChange)="onPreCodeChange($event)"
                                     ></app-code-editor>
                                 }
@@ -329,6 +336,9 @@
                                     (valueChange)="onPostSecretsChange($event)"
                                 />
                             </app-diff-field-mark>
+                            @if (isPostCodeLocked()) {
+                                <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                            }
                             <app-diff-field-mark [diffField]="'post_computation.output_variable_path'">
                                 <app-custom-input
                                     label="Output Variable Path"
@@ -352,7 +362,7 @@
                             </app-diff-field-mark>
                             <app-diff-field-mark [diffField]="'post_use_storage'">
                                 <app-node-storage-section
-                                    [readonly]="isReadOnly()"
+                                    [readonly]="isReadOnly() || isPostCodeLocked()"
                                     [useStorage]="postUseStorage()"
                                     (onToggleChange)="onPostStorageToggle($event)"
                                     (onInsertCode)="insertPostStorageCode($event)"
@@ -391,7 +401,7 @@
                                         [pythonCode]="postCode"
                                         [secretNames]="postSecretNames()"
                                         [inputMapKeys]="postInputMapKeys()"
-                                        [readOnly]="isReadOnly()"
+                                        [readOnly]="isReadOnly() || isPostCodeLocked()"
                                         (pythonCodeChange)="onPostCodeChange($event)"
                                     ></app-code-editor>
                                 }
@@ -415,14 +425,25 @@
                                         text="Define reusable prompts referenced in decision table rules."
                                     />
                                 </span>
-                                <button
+                                <div
                                     *appIfFlowEditable
-                                    type="button"
-                                    class="add-prompt-header-btn"
-                                    (click)="addPrompt()"
+                                    class="prompt-section-actions"
                                 >
-                                    <i class="ti ti-plus"></i> Add Prompt
-                                </button>
+                                    <app-button
+                                        #addPromptButton
+                                        type="outline-secondary"
+                                        mod="small"
+                                        leftIcon="plus"
+                                        (click)="addPrompt()"
+                                        >LLM prompt</app-button
+                                    >
+                                    <app-button
+                                        mod="small"
+                                        leftIcon="plus"
+                                        (click)="addSystemOnePrompt()"
+                                        >System One</app-button
+                                    >
+                                </div>
                             </div>
 
                             <!-- Prompt List -->
@@ -455,8 +476,8 @@
                                                 [diffChange]="cardMark.change"
                                                 [diffHint]="cardMark.hint"
                                                 (click)="toggleEditPrompt(prompt.id)"
-                                                (keydown.enter)="toggleEditPrompt(prompt.id)"
-                                                (keydown.space)="$event.preventDefault(); toggleEditPrompt(prompt.id)"
+                                                (keydown.enter)="onPromptCardHeaderKey($event, prompt.id)"
+                                                (keydown.space)="onPromptCardHeaderKey($event, prompt.id)"
                                             >
                                                 <div class="prompt-card-title">
                                                     <app-svg-icon
@@ -467,7 +488,19 @@
                                                         icon="play"
                                                         size="8px"
                                                     ></app-svg-icon>
-                                                    <span class="prompt-id">{{ prompt.id }}</span>
+                                                    @if (prompt.kind === 'system_one') {
+                                                        <span class="prompt-kind-tag">S1</span>
+                                                    }
+                                                    <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+                                                    <button
+                                                        type="button"
+                                                        class="prompt-id"
+                                                        [attr.aria-expanded]="editingPromptId() === prompt.id"
+                                                        appTooltipOnOverflow
+                                                        [matTooltip]="prompt.id"
+                                                    >
+                                                        {{ prompt.id }}
+                                                    </button>
                                                     @if (prompt.result_variable) {
                                                         <span class="result-badge">{{ prompt.result_variable }}</span>
                                                     }
@@ -479,7 +512,8 @@
                                                     <button
                                                         type="button"
                                                         class="icon-btn"
-                                                        title="Delete prompt"
+                                                        aria-label="Delete prompt"
+                                                        matTooltip="Delete prompt"
                                                         (click)="deletePrompt(prompt.id); $event.stopPropagation()"
                                                     >
                                                         <app-svg-icon
@@ -493,144 +527,185 @@
 
                                             @if (editingPromptId() === prompt.id) {
                                                 <div class="prompt-card-body">
-                                                    <div class="prompt-field">
-                                                        <label class="field-label"
-                                                            >Name <span class="required-star">*</span></label
-                                                        >
-                                                        <input
-                                                            type="text"
-                                                            class="field-input"
-                                                            [ngModel]="pendingPromptName()"
-                                                            [ngModelOptions]="{ standalone: true }"
-                                                            [readonly]="isReadOnly()"
-                                                            (ngModelChange)="pendingPromptName.set($event)"
-                                                            (blur)="commitPromptRename(prompt.id)"
-                                                            (keydown.enter)="commitPromptRename(prompt.id)"
-                                                            placeholder="Enter prompt name..."
-                                                        />
-                                                    </div>
-
-                                                    <div class="prompt-field">
-                                                        <label class="field-label"
-                                                            >LLM Override <span class="required-star">*</span></label
-                                                        >
-                                                        <app-diff-field-mark
-                                                            class="prompt-field-mark prompt-field-mark--frame"
-                                                            [diffField]="'prompts[].llm_config'"
-                                                            [diffPath]="promptFieldPath(prompt.id, 'llm_config')"
-                                                            [diffFormat]="llmFormat"
-                                                        >
-                                                            <app-llm-model-selector
-                                                                [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
-                                                                [ngModelOptions]="{ standalone: true }"
-                                                                [readonly]="isReadOnly()"
-                                                                (modelSelected)="onPromptLlmChange(prompt.id, $event)"
-                                                                placeholder="Inherit default LLM"
-                                                            ></app-llm-model-selector>
-                                                        </app-diff-field-mark>
-                                                    </div>
-
-                                                    <div class="prompt-field">
-                                                        <label class="field-label">Result Variable</label>
-                                                        <app-diff-field-mark
-                                                            class="prompt-field-mark prompt-field-mark--frame"
-                                                            [diffField]="'prompts[].result_variable'"
-                                                            [diffPath]="promptFieldPath(prompt.id, 'result_variable')"
-                                                        >
+                                                    <ng-template #promptName>
+                                                        <div class="prompt-field">
+                                                            <label class="field-label"
+                                                                >Name <span class="required-star">*</span></label
+                                                            >
                                                             <input
                                                                 type="text"
                                                                 class="field-input"
-                                                                [ngModel]="prompt.result_variable"
+                                                                [ngModel]="pendingPromptName()"
                                                                 [ngModelOptions]="{ standalone: true }"
                                                                 [readonly]="isReadOnly()"
-                                                                (ngModelChange)="
-                                                                    updatePrompt(prompt.id, 'result_variable', $event)
-                                                                "
-                                                                placeholder="e.g. classification"
+                                                                aria-label="Name"
+                                                                (ngModelChange)="pendingPromptName.set($event)"
+                                                                (blur)="commitPromptRename(prompt.id)"
+                                                                (keydown.enter)="commitPromptRename(prompt.id)"
+                                                                placeholder="Enter prompt name..."
                                                             />
-                                                        </app-diff-field-mark>
-                                                    </div>
+                                                        </div>
+                                                    </ng-template>
 
-                                                    @if (
-                                                        sideEditorPromptId() !== prompt.id ||
-                                                        sideEditorView() !== 'prompt'
-                                                    ) {
-                                                        <div class="prompt-field">
-                                                            <div class="field-label-row">
-                                                                <label class="field-label">Prompt</label>
-                                                                <app-svg-icon
-                                                                    class="field-expand-icon"
-                                                                    icon="editor-expand"
-                                                                    size="0.875rem"
-                                                                    title="Expand"
-                                                                    (click)="openSideEditor(prompt.id, 'prompt')"
-                                                                />
+                                                    @if (prompt.kind === 'system_one') {
+                                                        <app-cdt-system-one-entry
+                                                            [prompt]="prompt"
+                                                            [readOnly]="isReadOnly()"
+                                                            (promptChange)="updatePromptFields(prompt.id, $event)"
+                                                        >
+                                                            <div
+                                                                promptName
+                                                                class="prompt-name--paired"
+                                                            >
+                                                                <ng-container *ngTemplateOutlet="promptName" />
                                                             </div>
+                                                        </app-cdt-system-one-entry>
+                                                    } @else {
+                                                        <ng-container *ngTemplateOutlet="promptName" />
+                                                        <div class="prompt-field">
+                                                            <label class="field-label"
+                                                                >LLM Override
+                                                                <span class="required-star">*</span></label
+                                                            >
                                                             <app-diff-field-mark
                                                                 class="prompt-field-mark prompt-field-mark--frame"
-                                                                [diffField]="'prompts[].prompt_text'"
-                                                                [diffPath]="promptFieldPath(prompt.id, 'prompt_text')"
+                                                                [diffField]="'prompts[].llm_config'"
+                                                                [diffPath]="promptFieldPath(prompt.id, 'llm_config')"
+                                                                [diffFormat]="llmFormat"
                                                             >
-                                                                <div class="prompt-textarea-wrapper">
-                                                                    <div
-                                                                        class="prompt-highlight-overlay"
-                                                                        aria-hidden="true"
-                                                                        [innerHTML]="
-                                                                            getHighlightedPromptText(prompt.prompt_text)
-                                                                        "
-                                                                    ></div>
-                                                                    <textarea
-                                                                        class="prompt-textarea prompt-textarea--transparent"
-                                                                        rows="8"
-                                                                        [ngModel]="prompt.prompt_text"
-                                                                        [readonly]="isReadOnly()"
-                                                                        [ngModelOptions]="{ standalone: true }"
-                                                                        (ngModelChange)="
-                                                                            onPromptTextChange(prompt.id, $event)
-                                                                        "
-                                                                        placeholder="Enter prompt template. Use curly braces for variable interpolation."
-                                                                    ></textarea>
-                                                                </div>
+                                                                <app-llm-model-selector
+                                                                    [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
+                                                                    [ngModelOptions]="{ standalone: true }"
+                                                                    [readonly]="isReadOnly()"
+                                                                    (modelSelected)="
+                                                                        onPromptLlmChange(prompt.id, $event)
+                                                                    "
+                                                                    placeholder="Inherit default LLM"
+                                                                ></app-llm-model-selector>
                                                             </app-diff-field-mark>
                                                         </div>
-                                                    }
 
-                                                    @if (
-                                                        sideEditorPromptId() !== prompt.id ||
-                                                        sideEditorView() !== 'schema'
-                                                    ) {
                                                         <div class="prompt-field">
-                                                            <label class="field-label">Output Schema</label>
-                                                            <!-- The editor draws the border; its expand button opens the JSON diff. -->
+                                                            <label class="field-label">Result Variable</label>
                                                             <app-diff-field-mark
-                                                                class="prompt-field-mark"
-                                                                [diffField]="'prompts[].output_schema'"
-                                                                [diffPath]="promptFieldPath(prompt.id, 'output_schema')"
-                                                                [diffHint]="schemaDiffHint"
+                                                                class="prompt-field-mark prompt-field-mark--frame"
+                                                                [diffField]="'prompts[].result_variable'"
+                                                                [diffPath]="
+                                                                    promptFieldPath(prompt.id, 'result_variable')
+                                                                "
                                                             >
-                                                                <app-json-editor
-                                                                    [jsonData]="
-                                                                        getPromptSchemaText(
+                                                                <input
+                                                                    type="text"
+                                                                    class="field-input"
+                                                                    [ngModel]="prompt.result_variable"
+                                                                    [ngModelOptions]="{ standalone: true }"
+                                                                    [readonly]="isReadOnly()"
+                                                                    aria-label="Result Variable"
+                                                                    (ngModelChange)="
+                                                                        updatePrompt(
                                                                             prompt.id,
-                                                                            prompt.output_schema
+                                                                            'result_variable',
+                                                                            $event
                                                                         )
                                                                     "
-                                                                    (jsonChange)="onSchemaChange(prompt.id, $event)"
-                                                                    [showHeader]="true"
-                                                                    [allowCopy]="true"
-                                                                    [allowExpand]="true"
-                                                                    (expand)="openSideEditor(prompt.id, 'schema')"
-                                                                    [editorHeight]="220"
-                                                                    [exampleHint]="outputSchemaExampleHint"
-                                                                    [readonly]="isReadOnly()"
-                                                                ></app-json-editor>
+                                                                    placeholder="e.g. classification"
+                                                                />
                                                             </app-diff-field-mark>
-                                                            @if (getPromptSchemaError(prompt.id)) {
-                                                                <div class="prompt-schema-error">
-                                                                    {{ getPromptSchemaError(prompt.id) }}
-                                                                </div>
-                                                            }
                                                         </div>
+
+                                                        @if (
+                                                            sideEditorPromptId() !== prompt.id ||
+                                                            sideEditorView() !== 'prompt'
+                                                        ) {
+                                                            <div class="prompt-field">
+                                                                <div class="field-label-row">
+                                                                    <label class="field-label">Prompt</label>
+                                                                    <button
+                                                                        type="button"
+                                                                        class="field-expand-icon"
+                                                                        aria-label="Expand prompt"
+                                                                        matTooltip="Expand"
+                                                                        (click)="openSideEditor(prompt.id, 'prompt')"
+                                                                    >
+                                                                        <app-svg-icon
+                                                                            icon="editor-expand"
+                                                                            size="0.875rem"
+                                                                        />
+                                                                    </button>
+                                                                </div>
+                                                                <app-diff-field-mark
+                                                                    class="prompt-field-mark prompt-field-mark--frame"
+                                                                    [diffField]="'prompts[].prompt_text'"
+                                                                    [diffPath]="
+                                                                        promptFieldPath(prompt.id, 'prompt_text')
+                                                                    "
+                                                                >
+                                                                    <div class="prompt-textarea-wrapper">
+                                                                        <div
+                                                                            class="prompt-highlight-overlay"
+                                                                            aria-hidden="true"
+                                                                            [innerHTML]="
+                                                                                getHighlightedPromptText(
+                                                                                    prompt.prompt_text
+                                                                                )
+                                                                            "
+                                                                        ></div>
+                                                                        <textarea
+                                                                            class="prompt-textarea prompt-textarea--transparent"
+                                                                            rows="8"
+                                                                            aria-label="Prompt"
+                                                                            [ngModel]="prompt.prompt_text"
+                                                                            [readonly]="isReadOnly()"
+                                                                            [ngModelOptions]="{ standalone: true }"
+                                                                            (ngModelChange)="
+                                                                                onPromptTextChange(prompt.id, $event)
+                                                                            "
+                                                                            placeholder="Enter prompt template. Use curly braces for variable interpolation."
+                                                                        ></textarea>
+                                                                    </div>
+                                                                </app-diff-field-mark>
+                                                            </div>
+                                                        }
+
+                                                        @if (
+                                                            sideEditorPromptId() !== prompt.id ||
+                                                            sideEditorView() !== 'schema'
+                                                        ) {
+                                                            <div class="prompt-field">
+                                                                <label class="field-label">Output Schema</label>
+                                                                <!-- The editor draws the border; its expand button opens the JSON diff. -->
+                                                                <app-diff-field-mark
+                                                                    class="prompt-field-mark"
+                                                                    [diffField]="'prompts[].output_schema'"
+                                                                    [diffPath]="
+                                                                        promptFieldPath(prompt.id, 'output_schema')
+                                                                    "
+                                                                    [diffHint]="schemaDiffHint"
+                                                                >
+                                                                    <app-json-editor
+                                                                        [jsonData]="
+                                                                            getPromptSchemaText(
+                                                                                prompt.id,
+                                                                                prompt.output_schema
+                                                                            )
+                                                                        "
+                                                                        (jsonChange)="onSchemaChange(prompt.id, $event)"
+                                                                        [showHeader]="true"
+                                                                        [allowCopy]="true"
+                                                                        [allowExpand]="true"
+                                                                        (expand)="openSideEditor(prompt.id, 'schema')"
+                                                                        [editorHeight]="220"
+                                                                        [exampleHint]="outputSchemaExampleHint"
+                                                                        [readonly]="isReadOnly()"
+                                                                    ></app-json-editor>
+                                                                </app-diff-field-mark>
+                                                                @if (getPromptSchemaError(prompt.id)) {
+                                                                    <div class="prompt-schema-error">
+                                                                        {{ getPromptSchemaError(prompt.id) }}
+                                                                    </div>
+                                                                }
+                                                            </div>
+                                                        }
                                                     }
                                                 </div>
                                             }
@@ -689,7 +764,7 @@
                                     <div class="side-editor-pane-actions">
                                         <button
                                             type="button"
-                                            title="Copy"
+                                            matTooltip="Copy"
                                             aria-label="Copy content"
                                             (click)="copySideEditorContent()"
                                         >
@@ -700,7 +775,7 @@
                                         </button>
                                         <button
                                             type="button"
-                                            title="Collapse"
+                                            matTooltip="Collapse"
                                             aria-label="Collapse editor panel"
                                             (click)="closeSideEditor()"
                                         >
@@ -747,6 +822,7 @@
                                                     ></div>
                                                     <textarea
                                                         class="prompt-textarea prompt-textarea--transparent"
+                                                        aria-label="Prompt"
                                                         [ngModel]="prompt.prompt_text"
                                                         [readonly]="isReadOnly()"
                                                         [ngModelOptions]="{ standalone: true }"

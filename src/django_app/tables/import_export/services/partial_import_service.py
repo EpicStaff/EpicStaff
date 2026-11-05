@@ -98,12 +98,14 @@ class PartialImportService:
             serializer_context: Context for the read serializers rendering
                 `content`, normally the view's serializer context.
         """
+        # Nodes are collected from the prepared bundle: preparation may repoint
+        # their surface lists.
+        export_data = prepare_import_data(export_data)
         nodes_data = self._collect_nodes(export_data)
         if not nodes_data:
             raise ValidationError({"detail": "No nodes found in the import file."})
 
         id_mapper = IDMapper()
-        export_data = prepare_import_data(export_data)
         # A trigger node among the imported nodes is live once saved, so the import
         # needs flows:USE; refused here, before the transaction opens, so nothing is
         # written. Only the collected node entries are imported, so only they count.

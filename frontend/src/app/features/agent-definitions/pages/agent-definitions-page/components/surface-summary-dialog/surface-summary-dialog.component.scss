@@ -44,7 +44,7 @@
     color: var(--accent-color);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 }

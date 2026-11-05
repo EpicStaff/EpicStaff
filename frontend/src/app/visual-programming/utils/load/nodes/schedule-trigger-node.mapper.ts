@@ -73,8 +73,6 @@ export function mapScheduleTriggerNodeToModel(dto: GetScheduleTriggerNodeRequest
         data,
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: {},
         output_variable_path: null,
         size: ui.size,

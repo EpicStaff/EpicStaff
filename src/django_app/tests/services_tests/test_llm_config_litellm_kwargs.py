@@ -8,10 +8,14 @@ from tables.models import LLMConfig, Provider
 from tables.models.llm_models import LLMModel
 from tables.services.converter_service import ConverterService
 
-# Fields that configure where and how the request is sent, never generation
-# behaviour. A new LLMConfigData field must be added here or to
-# LITELLM_GENERATION_FIELDS; the completeness test fails until it is.
-TRANSPORT_FIELDS = {
+# Fields that configure where and how the request is sent, label the config or
+# price the call, never generation behaviour. A new LLMConfigData field must be
+# added here or to LITELLM_GENERATION_FIELDS; the completeness test fails until
+# it is.
+NON_GENERATION_FIELDS = {
+    "custom_name",
+    "input_cost_per_token",
+    "output_cost_per_token",
     "model",
     "base_url",
     "api_version",
@@ -23,8 +27,8 @@ TRANSPORT_FIELDS = {
 
 
 def test_every_config_field_is_classified():
-    assert set(LLMConfigData.model_fields) == set(LITELLM_GENERATION_FIELDS) | TRANSPORT_FIELDS
-    assert not set(LITELLM_GENERATION_FIELDS) & TRANSPORT_FIELDS
+    assert set(LLMConfigData.model_fields) == set(LITELLM_GENERATION_FIELDS) | NON_GENERATION_FIELDS
+    assert not set(LITELLM_GENERATION_FIELDS) & NON_GENERATION_FIELDS
 
 
 def test_unset_fields_are_omitted():

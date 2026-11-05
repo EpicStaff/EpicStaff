@@ -1,5 +1,6 @@
 from .job_dispatcher import AbstractJobDispatcher
 from .job_failure_sink import AbstractJobFailureSink
+from .run_capacity import FreeSlotProbe
 from .unit_of_work import AbstractUnitOfWork
 from .uv_provider import AbstractUVProvider
 
@@ -8,4 +9,5 @@ __all__ = [
     "AbstractJobFailureSink",
     "AbstractUVProvider",
     "AbstractUnitOfWork",
+    "FreeSlotProbe",
 ]

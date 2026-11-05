@@ -105,7 +105,8 @@ describe('buildUnionFlowModel', () => {
             const live = load({
                 python_node_list: [{ ...livePython, ...at(0, 0) }],
                 end_node_list: [{ ...liveEnd, ...at(0, 0) }],
-                graph_note_list: [{ ...liveNote, ...at(0, 0) }],
+                // A note keeps its stored size: the one of the other nodes, so both clear the Python node alike.
+                graph_note_list: [{ ...liveNote, ...at(0, 0, { width: 330, height: 60 }) }],
             });
 
             const model = unionOf(version, live);

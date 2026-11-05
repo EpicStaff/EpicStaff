@@ -15,7 +15,7 @@
     transition: background-color 0.2s ease;
 }
 
-.flow-shortcuts-btn:hover {
+.flow-shortcuts-btn:is(:hover, :focus-visible) {
     background-color: var(--graphite-630);
 }
 
@@ -24,7 +24,7 @@
     border-color: var(--accent-color);
 }
 
-.flow-shortcuts-btn--active:hover {
+.flow-shortcuts-btn--active:is(:hover, :focus-visible) {
     background-color: var(--indigo-960);
 }
 

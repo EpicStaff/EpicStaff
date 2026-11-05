@@ -1,16 +1,20 @@
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     ElementRef,
     inject,
+    Injector,
     input,
     output,
     signal,
     ViewChild,
+    viewChild,
     viewChildren,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, MultiSelectComponent, SelectItem } from '@shared/components';
 
 import { ToastService } from '../../../../../services/notifications';
@@ -34,6 +38,7 @@ interface ResolvedTaskRef extends AgentNodeTaskUi {
     imports: [
         DragDropModule,
         AppSvgIconComponent,
+        MatTooltipModule,
         MultiSelectComponent,
         VariableHighlightTextareaComponent,
         DiffFieldMarkComponent,
@@ -95,7 +100,10 @@ export class AgentTasksTableComponent {
     @ViewChild('tableWrapper') private tableWrapper!: ElementRef<HTMLElement>;
     private readonly instructionsTextareas = viewChildren(VariableHighlightTextareaComponent);
 
+    private readonly removeButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeButton');
+    private readonly clearAllButton = viewChild<ElementRef<HTMLButtonElement>>('clearAllButton');
     private readonly toastService = inject(ToastService);
+    private readonly injector = inject(Injector);
 
     trackByTempId(_index: number, task: AgentNodeTaskUi): string {
         return task.tempId;
@@ -204,6 +212,19 @@ export class AgentTasksTableComponent {
             contextRefs: (t.contextRefs ?? []).filter((ref) => !this.refMatchesTask(ref, removed)),
         }));
         this.emit(cleaned);
+    }
+
+    /** The pressed Remove button is gone: the focus goes to the row now in its place, else to Clear all. */
+    protected onRemoveButtonClick(index: number): void {
+        this.removeTask(index);
+        afterNextRender(
+            () => {
+                const buttons = this.removeButtons();
+                const target = buttons[Math.min(index, buttons.length - 1)] ?? this.clearAllButton();
+                target?.nativeElement.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     clearAll(): void {

@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 
 import { FlowAssistantService } from '../../flow-assistant.service';
 import { SessionSummary } from '../../models/flow-assistant.model';
@@ -24,7 +26,7 @@ function formatRelativeDate(isoString: string | null | undefined): string {
 
 @Component({
     selector: 'app-flow-assistant-sidebar',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip, TooltipOnOverflowDirective],
     templateUrl: './flow-assistant-sidebar.component.html',
     styleUrls: ['./flow-assistant-sidebar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

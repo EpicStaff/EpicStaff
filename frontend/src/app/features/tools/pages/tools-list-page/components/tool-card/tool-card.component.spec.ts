@@ -1,6 +1,9 @@
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { signal } from '@angular/core';
+import { getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
+import { LabelDto } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
 import { of } from 'rxjs';
 
@@ -8,6 +11,15 @@ import { PermissionsService } from '../../../../../../services/auth/permissions.
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
 import { ToolCardComponent } from './tool-card.component';
 import { ToolCardMenuActionEvent, ToolCardVM } from './tool-card.model';
+
+// jsdom has no ResizeObserver; the overflow tooltips only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
 
 const CUSTOM_TOOL: ToolCardVM = {
     id: 3,
@@ -27,8 +39,8 @@ interface Rendered {
     emitted: ToolCardMenuActionEvent[];
 }
 
-function render(tool: ToolCardVM, canWrite = true): Rendered {
-    const labels = { labels: signal([]), labelTree: signal([]), loadLabels: () => of([]) };
+function render(tool: ToolCardVM, canWrite = true, storedLabels: LabelDto[] = []): Rendered {
+    const labels = { labels: signal(storedLabels), labelTree: signal([]), loadLabels: () => of([]) };
     TestBed.configureTestingModule({
         providers: [
             { provide: PermissionsService, useValue: { can: () => canWrite } },
@@ -108,5 +120,58 @@ describe('ToolCardComponent "View Details" menu item', () => {
 
         expect(menuItems(overlay).length).toBeGreaterThan(0);
         expect(viewDetailsItem(overlay)).toBeUndefined();
+    });
+});
+
+describe('ToolCardComponent "Duplicate" menu item', () => {
+    function duplicateItem(overlay: HTMLElement): HTMLButtonElement {
+        return menuItems(overlay).find((item) => item.textContent?.trim() === 'Duplicate')!;
+    }
+
+    it('does nothing for a tool this user may not copy, and says why', () => {
+        const reason = 'This code reads secrets. Copying it requires the Use permission on Secrets.';
+        const { fixture, overlay, emitted } = render({ ...CUSTOM_TOOL, copyBlockedReason: reason });
+        openMenu(fixture);
+
+        duplicateItem(overlay).click();
+        fixture.detectChanges();
+
+        expect(emitted).toEqual([]);
+        expect(duplicateItem(overlay).getAttribute('aria-disabled')).toBe('true');
+        const tooltip = fixture.debugElement
+            .queryAll(By.directive(MatTooltip))
+            .find((debugElement) => debugElement.nativeElement === duplicateItem(overlay));
+        expect(tooltip?.injector.get(MatTooltip).message).toBe(reason);
+    });
+
+    it('emits duplicate for a tool this user may copy', () => {
+        const { fixture, overlay, emitted } = render(CUSTOM_TOOL);
+        openMenu(fixture);
+
+        duplicateItem(overlay).click();
+
+        expect(emitted.map((event) => event.action)).toEqual(['duplicate']);
+    });
+});
+
+describe('ToolCardComponent label chips', () => {
+    function label(id: number, name: string, fullPath: string): LabelDto {
+        return { id, name, parent: null, full_path: fullPath, created_at: '', metadata: {} };
+    }
+
+    it('shows the full path on hover only for a nested label', () => {
+        const { fixture } = render({ ...CUSTOM_TOOL, labelIds: [1, 2] }, true, [
+            label(1, 'Search', 'Search'),
+            label(2, 'GitHub', 'Search/GitHub'),
+        ]);
+
+        const tooltips = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.label-chip')).map(
+            (chip) => getDebugNode(chip)!.injector.get(MatTooltip)
+        );
+
+        expect(tooltips.map((tooltip) => [tooltip.message, tooltip.disabled])).toEqual([
+            ['Search', true],
+            ['Search/GitHub', false],
+        ]);
     });
 });

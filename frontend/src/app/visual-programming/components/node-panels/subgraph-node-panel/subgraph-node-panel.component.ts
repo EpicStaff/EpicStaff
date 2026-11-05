@@ -20,6 +20,8 @@ import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.co
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 
+const MISSING_FLOW_MESSAGE = "This node's flow was deleted.";
+
 interface InputMapPair {
     key: string;
     value: string;
@@ -68,6 +70,24 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
 
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
 
+    /**
+     * The chosen flow is one the user can open. `form` is not a signal: `dirtyCheckTick` follows its edits,
+     * and `node()` the new form the base effect builds when this panel instance is given another node.
+     */
+    public readonly selectedFlowExists = computed(() => {
+        this.node();
+        this.dirtyCheckTick();
+        const id = Number(this.form?.get('selectedFlowId')?.value);
+        if (!id) return false;
+        return this.availableFlows().some((flow) => flow.id === id);
+    });
+
+    /** Shown while the node's flow is deleted and no other flow is chosen yet. */
+    protected readonly missingFlowHint = computed(() => {
+        if (!this.node().isBlocked || this.selectedFlowExists()) return null;
+        return this.isReadOnly() ? MISSING_FLOW_MESSAGE : `${MISSING_FLOW_MESSAGE} Select another flow.`;
+    });
+
     constructor() {
         super();
     }
@@ -91,7 +111,8 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
 
     protected initializeForm(): FormGroup {
         const currentFlowId = this.currentFlowId();
-        const selectedId = this.node().data.id ?? null;
+        // A blocked node's flow is gone (its id is null, or not a flow the user has), so the user picks a new one.
+        const selectedId = this.node().isBlocked ? null : (this.node().data.id ?? null);
         const initialSelectedId = currentFlowId && selectedId === currentFlowId ? null : selectedId;
 
         const form = this.fb.group({
@@ -112,7 +133,8 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
         const originalId = this.node().data.id;
 
         let updatedData = this.node().data;
-        if (selectedId !== originalId) {
+        let isBlocked = this.node().isBlocked;
+        if (selectedId !== originalId || isBlocked) {
             const selectedFlow = this.availableFlows().find((f) => f.id === selectedId);
             if (selectedFlow) {
                 updatedData = {
@@ -122,6 +144,7 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
                     description: selectedFlow.description,
                     tags: selectedFlow.tags || [],
                 };
+                isBlocked = false;
             }
         }
 
@@ -134,6 +157,7 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
             input_map: inputMapValue,
             output_variable_path: this.form.value.output_variable_path || null,
             data: updatedData,
+            isBlocked,
         };
     }
 
@@ -181,11 +205,4 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
         if (!id) return null;
         return `/flows/${Number(id)}`;
     }
-
-    readonly selectedFlowExists = computed(() => {
-        const id = Number(this.form?.get('selectedFlowId')?.value);
-        if (!id) return false;
-
-        return this.availableFlows().some((f) => f.id === id);
-    });
 }

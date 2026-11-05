@@ -1,41 +1,40 @@
 <div class="user-menu-panel">
-    <section class="menu-section user-header">
+    <button
+        type="button"
+        class="menu-section user-header"
+        [class.active]="isProfileRoute()"
+        (click)="onProfileClick()"
+    >
         <app-user-avatar
             [name]="user().display_name || user().email"
             [avatarUrl]="user().avatar_url"
         />
         <div class="user-info">
-            <div class="user-name">{{ user().display_name || user().email }}</div>
-            <div class="user-email">{{ user().email }}</div>
+            <div
+                class="user-name"
+                appTooltipOnOverflow
+                [matTooltip]="user().display_name || user().email"
+            >
+                {{ user().display_name || user().email }}
+            </div>
+            <div
+                class="user-email"
+                appTooltipOnOverflow
+                [matTooltip]="user().email"
+            >
+                {{ user().email }}
+            </div>
         </div>
-    </section>
+    </button>
 
     <section class="menu-section">
-        <div class="section-label text-body-small">Organizations</div>
-        <ul class="org-list">
-            @for (org of organizations(); track org.organization.id) {
-                <li
-                    class="org-row"
-                    [class.active]="activeOrgService.activeOrgId() === org.organization.id"
-                    [class.disabled]="switching()"
-                    (click)="onOrgClick(org.organization.id)"
-                >
-                    <app-org-avatar [name]="org.organization.name" />
-                    <div class="org-info">
-                        <div class="org-name text-body-small">{{ org.organization.name }}</div>
-                        <div class="org-role">{{ org.role.name }}</div>
-                    </div>
-                </li>
-            }
-        </ul>
-    </section>
-
-    <section class="menu-section">
-        <div class="section-label text-body-small">Navigation</div>
         @if (canVisitWorkspace()) {
             <button
+                type="button"
                 class="nav-item"
                 [class.active]="isWorkspaceRoute()"
+                appTooltipOnOverflow=".nav-label"
+                matTooltip="Workspace"
                 (click)="onWorkspaceClick()"
             >
                 <app-svg-icon
@@ -51,41 +50,51 @@
                 />
             </button>
         }
-        <button
-            class="nav-item"
-            [class.active]="isProfileRoute()"
-            (click)="onProfileClick()"
-        >
-            <app-svg-icon
-                size="16px"
-                icon="profile"
-                class="nav-icon"
-            />
-            <span class="nav-label text-body-small-large">My Profile</span>
-            <app-svg-icon
-                size="16px"
-                icon="chevron-right"
-                class="nav-chevron"
-            />
-        </button>
     </section>
 
     <section class="menu-section">
-        @for (tour of tours(); track tour.key) {
-            <button
-                class="nav-item"
-                (click)="onTourClick(tour.key)"
-            >
-                <app-svg-icon
-                    size="16px"
-                    [icon]="tour.icon"
-                    class="nav-icon"
-                />
-                <span class="nav-label text-body-small-large">{{ tour.label }}</span>
-            </button>
-        }
+        <div class="section-label text-body-small">Organizations</div>
+        <ul class="org-list">
+            @for (org of organizations(); track org.organization.id) {
+                <li>
+                    <button
+                        type="button"
+                        class="org-row"
+                        [class.active]="activeOrgService.activeOrgId() === org.organization.id"
+                        [class.disabled]="switching()"
+                        [disabled]="switching()"
+                        [attr.aria-current]="activeOrgService.activeOrgId() === org.organization.id || null"
+                        (click)="onOrgClick(org.organization.id)"
+                    >
+                        <app-org-avatar [name]="org.organization.name" />
+                        <span class="org-info">
+                            <span
+                                class="org-name text-body-small"
+                                appTooltipOnOverflow
+                                [matTooltip]="org.organization.name"
+                            >
+                                {{ org.organization.name }}
+                            </span>
+                            <span
+                                class="org-role"
+                                appTooltipOnOverflow
+                                [matTooltip]="org.role.name"
+                            >
+                                {{ org.role.name }}
+                            </span>
+                        </span>
+                    </button>
+                </li>
+            }
+        </ul>
+    </section>
+
+    <section class="menu-section">
         <button
+            type="button"
             class="nav-item"
+            appTooltipOnOverflow=".nav-label"
+            matTooltip="Sign out"
             (click)="onSignOutClick()"
         >
             <app-svg-icon

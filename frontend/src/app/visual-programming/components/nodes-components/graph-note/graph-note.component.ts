@@ -19,6 +19,7 @@ import { FormsModule } from '@angular/forms';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 
 import { GraphNoteModel } from '../../../core/models/node.model';
+import { NOTE_COLORS } from '../../../core/utils/note-colors.util';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { DisplaySegment, fieldValueSegments } from '../../../utils/diff';
 import { DiffFieldMarkChange } from '../../diff-field-mark/diff-field-mark.component';
@@ -37,13 +38,16 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
             class="note-container"
             cdkOverlayOrigin
             #noteOrigin="cdkOverlayOrigin"
-            [style.background-color]="node.data.backgroundColor || '#ffffd1'"
+            [style.--note-bg]="node.data.backgroundColor || defaultNoteColor"
             [attr.tabindex]="contentChange() !== null ? 0 : null"
             (mouseenter)="openTooltip()"
             (mouseleave)="closeTooltip()"
             (keydown.escape)="onEscape($event)"
         >
-            <div class="content-container">
+            <div
+                class="content-container"
+                [style.font-size.px]="node.data.fontSize || 14"
+            >
                 {{ node.data.content || (isReadOnly() ? '' : 'Add note text...') }}
             </div>
             @if (!isReadOnly()) {
@@ -69,8 +73,18 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
                 border-radius: 4px;
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
                 display: flex;
-
                 position: relative;
+                background: transparent;
+            }
+
+            .note-container::before {
+                content: '';
+                position: absolute;
+                inset: 0;
+                border-radius: inherit;
+                background: var(--note-bg);
+                opacity: 0.55;
+                pointer-events: none;
             }
 
             /* Outside the diff status outline the canvas node draws around the note (2px off its edge). */
@@ -80,15 +94,14 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
             }
 
             .content-container {
+                position: relative;
                 width: 100%;
                 height: 100%;
-
                 padding: 8px;
                 overflow: auto;
                 white-space: pre-wrap;
                 word-break: break-word;
-                font-size: 0.875rem;
-                color: black;
+                color: var(--color-text-primary, #fff);
             }
         `,
     ],
@@ -144,6 +157,7 @@ export class GraphNoteComponent implements AfterViewInit {
     private readonly focusMonitor = inject(FocusMonitor);
     private readonly document = inject(DOCUMENT);
     private readonly destroyRef = inject(DestroyRef);
+    protected readonly defaultNoteColor = NOTE_COLORS[0];
 
     /**
      * Focus opens the tooltip only from the keyboard, as matTooltip does: a click focuses the note right after the

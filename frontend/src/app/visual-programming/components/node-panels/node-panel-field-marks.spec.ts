@@ -119,7 +119,18 @@ const END: Panel = { name: 'End', component: EndNodePanelComponent, type: NodeTy
 
 let fixture: ComponentFixture<unknown>;
 
-afterEach(() => fixture?.destroy());
+// jsdom has no ResizeObserver; the Key-Value table name's tooltip, shown only for a cut-short name, needs one.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => {
+    fixture?.destroy();
+    vi.unstubAllGlobals();
+});
 
 function open(panel: Panel, fields: FieldChange[], options: ChangesTabOptions = {}): HTMLElement {
     fixture = openPanelOnChangesTab(panel.component, liveNodeOfType(panel.type), fields, options);
@@ -386,8 +397,9 @@ describe('Key-Value entries on the Changes tab', () => {
                     : 'kept',
             text: [
                 row.querySelector('.visually-hidden')?.textContent?.trim() ?? '',
-                ...Array.from(row.querySelectorAll<HTMLElement>('input.entry-input, .entry-input--removed'), (field) =>
-                    field instanceof HTMLInputElement ? field.value : field.textContent?.trim()
+                ...Array.from(
+                    row.querySelectorAll<HTMLElement>('.variables-prefix, input.entry-input, .entry-input--removed'),
+                    (field) => (field instanceof HTMLInputElement ? field.value : field.textContent?.trim())
                 ),
             ]
                 .filter((part) => part)
@@ -402,12 +414,13 @@ describe('Key-Value entries on the Changes tab', () => {
             { key: 'gone', value: 'variables.gone' },
         ]);
 
-        // Write mode: the key, then the variable it stores.
+        // Write mode: the key, then the variable it stores as its field shows it (@, then the path without
+        // `variables`); a row only the canvas has reads the same.
         expect(entryRows(root)).toEqual([
-            { status: 'changed', text: 'customer variables.customer' },
-            { status: 'added', text: 'Restore adds this key: order variables.order' },
-            { status: 'kept', text: 'kept variables.kept' },
-            { status: 'removed', text: 'Restore removes this key: gone variables.gone' },
+            { status: 'changed', text: 'customer @ .customer' },
+            { status: 'added', text: 'Restore adds this key: order @ .order' },
+            { status: 'kept', text: 'kept @ .kept' },
+            { status: 'removed', text: 'Restore removes this key: gone @ .gone' },
         ]);
         expect(markedFields(root)).toEqual([]);
     });

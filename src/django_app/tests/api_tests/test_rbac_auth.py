@@ -428,9 +428,10 @@ def test_sse_ticket_is_single_use(auth_client, regular_user):
     ticket = r.json()["ticket"]
     assert r.json()["expires_in"] == settings.SSE_TICKET_TTL
 
-    user = sse_ticket_service.consume(ticket)
-    assert user is not None
-    assert user.pk == regular_user.pk
+    holder = sse_ticket_service.consume(ticket)
+    assert holder is not None
+    assert holder.user.pk == regular_user.pk
+    assert holder.api_key_org_id is None
 
     # Second consume fails — GETDEL already removed the ticket atomically.
     assert sse_ticket_service.consume(ticket) is None
@@ -469,7 +470,7 @@ def test_redis_never_holds_the_raw_ticket(regular_user, service, prefix: str):
     assert ticket not in keys[0]
 
     # The raw ticket still resolves; only its storage form changed.
-    assert service.consume(ticket).pk == regular_user.pk
+    assert service.consume(ticket).user.pk == regular_user.pk
 
 
 @pytest.mark.django_db

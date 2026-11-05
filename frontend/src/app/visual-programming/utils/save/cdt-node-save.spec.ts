@@ -1,4 +1,6 @@
-import { CdtExplanation } from '../../core/models/classification-decision-table.model';
+import { SystemOneQuestion } from '@shared/models';
+
+import { CdtExplanation, PromptConfig } from '../../core/models/classification-decision-table.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../core/models/classification-decision-table-node.model';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { ConditionGroup } from '../../core/models/decision-table.model';
@@ -211,6 +213,139 @@ describe('classification decision table save: route targets from connections', (
         const [item] = payloadFor(flow([]), { ...current, nodes: current.nodes.map(asNew(node.id)) });
 
         expect(rowsOf(item)[0]['next_node_id']).toBeNull();
+    });
+});
+
+describe('classification decision table save: System One entries', () => {
+    const SYSTEM_ONE_DTO: GetClassificationDecisionTableNodeRequest = {
+        ...DTO,
+        prompt_configs: [
+            {
+                id: 3,
+                prompt_key: 'company_check',
+                kind: 'system_one',
+                system_one_config: 7,
+                questions: { is_engineering: { type: 'noul', instructions: 'Engineering?' } },
+                input_map: { company: 'variables.company' },
+                prompt_text: '',
+                llm_config: null,
+                output_schema: {},
+                result_variable: 'company_check',
+                variable_mappings: {},
+            },
+        ],
+    };
+
+    function loadSystemOne(): ClassificationDecisionTableNodeModel {
+        return mapClassificationDecisionTableNodeToModel(SYSTEM_ONE_DTO);
+    }
+
+    function withPrompts(node: ClassificationDecisionTableNodeModel, prompts: Record<string, PromptConfig>) {
+        return { ...node, data: { ...node.data, table: { ...node.data.table, prompts } } };
+    }
+
+    function promptConfigsOf(item: Record<string, unknown>): Record<string, unknown>[] {
+        return item['prompt_configs'] as Record<string, unknown>[];
+    }
+
+    it('is not in the diff after a load and an unchanged save', () => {
+        const diff = getNodeDiff(flow([loadSystemOne()]), flow([loadSystemOne()]));
+
+        expect(diff.classificationDecisionTableNodes.toUpdate).toEqual([]);
+    });
+
+    it('sends the entry with its config, questions and input map when a question changes', () => {
+        const before = loadSystemOne();
+        const questions = {
+            is_engineering: { type: 'noul' as const, instructions: 'Is it an engineering firm?' },
+        };
+        const after = withPrompts(before, {
+            company_check: { ...(before.data.table.prompts?.['company_check'] as PromptConfig), questions },
+        });
+
+        const [item] = payloadFor(flow([before]), flow([after]));
+
+        expect(promptConfigsOf(item)[0]).toMatchObject({
+            prompt_key: 'company_check',
+            kind: 'system_one',
+            system_one_config: 7,
+            questions,
+            input_map: { company: 'variables.company' },
+        });
+    });
+
+    it('saves an LLM prompt from a model without kind as an LLM entry', () => {
+        const before = load();
+        const after = withPrompts(before, {
+            classify: {
+                prompt_text: 'Classify',
+                llm_config: 2,
+                output_schema: null,
+                result_variable: 'category',
+                variable_mappings: {},
+            },
+        });
+
+        const [item] = payloadFor(flow([before]), flow([after]));
+
+        expect(promptConfigsOf(item)[0]).toMatchObject({
+            kind: 'llm',
+            system_one_config: null,
+            questions: {},
+            input_map: {},
+        });
+    });
+
+    it("loads questions and a choice question's options sorted by name, whatever order the server sent", () => {
+        const node = mapClassificationDecisionTableNodeToModel({
+            ...SYSTEM_ONE_DTO,
+            prompt_configs: [
+                {
+                    ...SYSTEM_ONE_DTO.prompt_configs[0],
+                    questions: {
+                        b: { type: 'noul', instructions: 'B?' },
+                        a: { type: 'choice', instructions: 'A?', criteria: { zeta: 'last', alpha: 'first' } },
+                    },
+                },
+            ],
+        });
+
+        const questions = node.data.table.prompts?.['company_check'].questions ?? {};
+
+        expect(Object.keys(questions)).toEqual(['a', 'b']);
+        expect(Object.keys((questions['a'] as { criteria: Record<string, string> }).criteria)).toEqual([
+            'alpha',
+            'zeta',
+        ]);
+    });
+
+    it('loads a choice question that came back without criteria instead of failing the whole flow', () => {
+        const choiceWithoutCriteria = { type: 'choice', instructions: 'A?' } as unknown as SystemOneQuestion;
+
+        const node = mapClassificationDecisionTableNodeToModel({
+            ...SYSTEM_ONE_DTO,
+            prompt_configs: [{ ...SYSTEM_ONE_DTO.prompt_configs[0], questions: { a: choiceWithoutCriteria } }],
+        });
+
+        expect(node.data.table.prompts?.['company_check'].questions?.['a']).toMatchObject({ type: 'choice' });
+    });
+
+    it('keeps score levels in the order they were sent', () => {
+        const node = mapClassificationDecisionTableNodeToModel({
+            ...SYSTEM_ONE_DTO,
+            prompt_configs: [
+                {
+                    ...SYSTEM_ONE_DTO.prompt_configs[0],
+                    questions: { fit: { type: 'score', instructions: 'Fit?', criteria: ['low', 'mid', 'high'] } },
+                },
+            ],
+        });
+
+        expect(node.data.table.prompts?.['company_check'].questions?.['fit']).toEqual({
+            type: 'score',
+            instructions: 'Fit?',
+            criteria: ['low', 'mid', 'high'],
+        });
     });
 });
 

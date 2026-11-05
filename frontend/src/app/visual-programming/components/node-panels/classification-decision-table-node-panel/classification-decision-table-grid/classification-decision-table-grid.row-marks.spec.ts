@@ -305,7 +305,7 @@ describe('ClassificationDecisionTableGridComponent — version diff row marks', 
 
         it('moves the open tooltip across the freeze line of frozen columns, with no new tooltip', async () => {
             await render(cellRowChanges, { rules: cellRules() });
-            fixture.componentInstance.toggleFreeze('expression');
+            fixture.componentInstance.toggleFreeze('left', 'expression');
             await settle();
 
             await pointAt(0, 'expression');

@@ -8,12 +8,14 @@ import {
     CustomInputComponent,
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
+    HintMessageComponent,
     SelectComponent,
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { ResourceCode, toSecretIds } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
+import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { merge, Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -77,6 +79,7 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         DiffFieldMarkComponent,
         MissingReferenceNoteComponent,
         CodeDiffViewComponent,
+        HintMessageComponent,
     ],
     templateUrl: './python-node-panel.component.html',
     styleUrls: ['./python-node-panel.component.scss'],
@@ -112,6 +115,11 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
               ? 'Secrets assigned to this Python code.'
               : "Secrets already assigned to this Python code. You don't have permission to change which secrets are selected."
     );
+    /** The code reads secrets and the user lacks Secrets:Use: the code, venv and storage flag (which edits the code) are locked, the rest is not. */
+    protected readonly isSecretCodeLocked = computed(
+        () => !this.isReadOnly() && this.flowReadOnly.isSecretCodeLocked(this.node().data.secret_ids ?? [])
+    );
+    protected readonly isCodeReadOnly = computed(() => this.isReadOnly() || this.isSecretCodeLocked());
     public readonly selectedSecretIds = signal<number[]>([]);
     public readonly secretNames = computed(() =>
         this.canEditSecrets()
@@ -144,6 +152,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     protected readonly codeTestRun = new PythonCodeTestRun();
     protected readonly codeDiffHint = CODE_DIFF_HINT_EXPAND_PANEL;
 
+    protected readonly secretCodeLockedMessage = SECRET_CODE_NEEDS_USE_MESSAGE;
     pythonCode: string = '';
     initialPythonCode: string = '';
     protected executionTimeout!: ExecutionTimeoutFormField;
@@ -448,7 +457,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 ...this.node().data,
                 name: this.form.value.node_name || 'Python Code',
                 code: this.pythonCode,
-                entrypoint: 'main',
+                // A stored entrypoint is kept: the backend refuses changing it for code that reads secrets.
+                entrypoint: this.node().data.entrypoint || 'main',
                 venv_id: this.form.value.venv ?? null,
                 use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
@@ -528,7 +538,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     }
 
     private syncCodeFromInputList(): void {
-        if (this.isApplyingCodeToInputList || this.isReadOnly()) return;
+        if (this.isApplyingCodeToInputList || this.isCodeReadOnly()) return;
         const names = this.activeInputListNames();
         // A key still being typed (not a name yet, or another row's) waits, keeping the last names to diff from.
         if (haveSameNames(names, this.lastInputListNames) || !areValidParameterNames(names)) return;

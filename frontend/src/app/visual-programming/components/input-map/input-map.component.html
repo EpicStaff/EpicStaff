@@ -1,0 +1,320 @@
+<div class="input-map-container">
+    @if (label() || (showTestMode && !readonly())) {
+        <div class="input-map-header">
+            @if (label()) {
+                <label>{{ label() }}</label>
+                <app-help-tooltip
+                    position="right"
+                    [text]="tooltipText()"
+                ></app-help-tooltip>
+            }
+            @if (showTestMode && !readonly()) {
+                <div class="test-mode-header">
+                    <span>Test mode</span>
+                    <app-toggle-switch
+                        ariaLabel="Test mode"
+                        [checked]="testMode"
+                        (checkedChange)="onTestModeToggle($event)"
+                    />
+                </div>
+            }
+        </div>
+    }
+
+    @if (readonly()) {
+        @if (hasNoMeaningfulPairs() && removedRows().length === 0) {
+            <span class="readonly-empty">—</span>
+        } @else {
+            <ng-template
+                #readonlyCells
+                let-key="key"
+                let-value="value"
+                let-statusText="statusText"
+            >
+                <div
+                    class="readonly-cell"
+                    role="cell"
+                    [matTooltip]="key"
+                    matTooltipPosition="above"
+                >
+                    <!-- Inside the cell: a row may hold only cells. -->
+                    @if (statusText) {
+                        <span class="visually-hidden">{{ statusText }}</span>
+                    }
+                    {{ key || '—' }}
+                </div>
+                <div
+                    class="readonly-cell"
+                    role="cell"
+                    [matTooltip]="value"
+                    matTooltipPosition="above"
+                >
+                    {{ value || '—' }}
+                </div>
+            </ng-template>
+            <div
+                class="readonly-table"
+                role="table"
+                aria-label="Input list"
+                [class.readonly-table--diff]="rowChanges() !== null"
+            >
+                <!-- The version may have no rows: then the form holds one blank pair, which is not shown. -->
+                @for (pair of hasNoMeaningfulPairs() ? [] : pairs.controls; track pair) {
+                    @let rowChange = rowChangeFor(pair.value.key);
+                    <!-- Version diff (Changes tab): what a restore does to each row. -->
+                    @switch (rowChange?.status) {
+                        @case ('changed') {
+                            <div
+                                class="readonly-row readonly-row--diff"
+                                role="row"
+                                appDiffFieldMark
+                                [diffChange]="rowChange"
+                            >
+                                <ng-container
+                                    [ngTemplateOutlet]="readonlyCells"
+                                    [ngTemplateOutletContext]="pair.value"
+                                />
+                            </div>
+                        }
+                        @case ('added') {
+                            <div
+                                class="readonly-row readonly-row--diff readonly-row--added"
+                                role="row"
+                                title="Restore adds this input"
+                            >
+                                <ng-container
+                                    [ngTemplateOutlet]="readonlyCells"
+                                    [ngTemplateOutletContext]="{
+                                        key: pair.value.key,
+                                        value: pair.value.value,
+                                        statusText: 'Restore adds this input: ',
+                                    }"
+                                />
+                            </div>
+                        }
+                        @default {
+                            <div
+                                class="readonly-row"
+                                role="row"
+                            >
+                                <ng-container
+                                    [ngTemplateOutlet]="readonlyCells"
+                                    [ngTemplateOutletContext]="pair.value"
+                                />
+                            </div>
+                        }
+                    }
+                }
+                <!-- Rows only on the current canvas: the version does not have them, a restore removes them. -->
+                @for (row of removedRows(); track row.key) {
+                    <div
+                        class="readonly-row readonly-row--diff readonly-row--removed"
+                        role="row"
+                        title="Restore removes this input"
+                    >
+                        <ng-container
+                            [ngTemplateOutlet]="readonlyCells"
+                            [ngTemplateOutletContext]="{
+                                key: row.key,
+                                value: row.current,
+                                statusText: 'Restore removes this input: ',
+                            }"
+                        />
+                    </div>
+                }
+            </div>
+        }
+    } @else if (!testMode) {
+        <!-- Normal mode: input map list -->
+        <div
+            formArrayName="input_map"
+            class="input-map-list"
+        >
+            @for (pair of pairs.controls; let i = $index; track pair) {
+                <div
+                    class="input-map-item"
+                    [formGroupName]="i"
+                >
+                    @if ($first) {
+                        <div class="tooltips-wrapper">
+                            <span class="fields-tooltip">Arguments</span>
+                            <span class="fields-tooltip">Variables</span>
+                        </div>
+                    }
+                    <div class="input-map-fields">
+                        <div class="input-wrapper">
+                            <input
+                                type="text"
+                                formControlName="key"
+                                [placeholder]="keyPlaceholder()"
+                                [attr.aria-label]="keyPlaceholder()"
+                                [style.--active-color]="activeColor"
+                                autocomplete="off"
+                                (keydown.enter)="onEnterKey($event, i)"
+                            />
+                        </div>
+                        <div class="equals-sign">=</div>
+                        <div
+                            class="value-field-wrapper"
+                            [style.--active-color]="activeColor"
+                        >
+                            <span class="variables-prefix">&#64;</span>
+                            <input
+                                type="text"
+                                [value]="getValueDisplayText(pair)"
+                                placeholder="all fields"
+                                [attr.aria-label]="valuePlaceholder()"
+                                autocomplete="off"
+                                role="combobox"
+                                aria-autocomplete="list"
+                                [attr.aria-expanded]="variablePicker.isOpenFor(i)"
+                                [attr.aria-controls]="variablePicker.listboxIdFor(i)"
+                                [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
+                                (keydown)="onValueKeydown(i, $event)"
+                                (focus)="onValueFocus(i, $event)"
+                                (input)="onValueInput(i, $event)"
+                                (blur)="variablePicker.onBlur(i, $event)"
+                            />
+                        </div>
+                        @if (!parentForm.disabled) {
+                            <button
+                                #removeButton
+                                type="button"
+                                class="delete-icon"
+                                aria-label="Remove input"
+                                matTooltip="Remove"
+                                matTooltipPosition="above"
+                                (click)="onRemoveButtonClick(i, false)"
+                            >
+                                <app-svg-icon
+                                    icon="trash"
+                                    size="1rem"
+                                ></app-svg-icon>
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+        @if (!parentForm.disabled) {
+            <button
+                #addButton
+                type="button"
+                class="add-pair-btn"
+                (click)="addPair()"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="16px"
+                ></app-svg-icon>
+                Add Input
+            </button>
+        }
+    } @else {
+        <!-- Test mode: editable test variables backed by parent form 'test_input' FormArray -->
+        <div
+            formArrayName="test_input"
+            class="input-map-list"
+        >
+            @for (pair of testPairs.controls; let i = $index; track pair) {
+                <div
+                    class="input-map-item"
+                    [formGroupName]="i"
+                >
+                    @if ($first) {
+                        <div class="tooltips-wrapper">
+                            <span class="fields-tooltip">Arguments</span>
+                            <span class="fields-tooltip">Variables</span>
+                        </div>
+                    }
+                    <div class="input-map-fields">
+                        <div class="input-wrapper">
+                            <input
+                                type="text"
+                                formControlName="key"
+                                [placeholder]="keyPlaceholder()"
+                                [attr.aria-label]="keyPlaceholder()"
+                                [style.--active-color]="activeColor"
+                                autocomplete="off"
+                            />
+                        </div>
+                        <div class="equals-sign">=</div>
+                        <div class="input-wrapper">
+                            <input
+                                type="text"
+                                formControlName="value"
+                                placeholder="Test value"
+                                aria-label="Test value"
+                                [style.--active-color]="activeColor"
+                                autocomplete="off"
+                            />
+                        </div>
+                        @if (!parentForm.disabled) {
+                            <button
+                                #removeButton
+                                type="button"
+                                class="delete-icon"
+                                aria-label="Remove input"
+                                matTooltip="Remove"
+                                matTooltipPosition="above"
+                                (click)="onRemoveButtonClick(i, true)"
+                            >
+                                <app-svg-icon
+                                    icon="trash"
+                                    size="1rem"
+                                ></app-svg-icon>
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+        <button
+            #addButton
+            type="button"
+            class="add-pair-btn"
+            (click)="addTestVariable()"
+        >
+            <app-svg-icon
+                icon="plus"
+                size="16px"
+            ></app-svg-icon>
+            Add Input
+        </button>
+        <div
+            class="test-input-dirty-warning"
+            [class.visible]="testInputDirty"
+        >
+            <div class="test-input-dirty-warning__inner">Click "Save node" to save test variables.</div>
+        </div>
+        <div class="test-mode-actions">
+            <button
+                type="button"
+                class="btn-secondary"
+                (click)="onClearAll()"
+            >
+                Clear Variables
+            </button>
+            <button
+                type="button"
+                class="btn-secondary"
+                [disabled]="fillLoading() || !pythonNodeId || !hasSuccessfulSession()"
+                [matTooltip]="getButtonTooltip()"
+                matTooltipPosition="above"
+                (click)="onFillVariables()"
+            >
+                {{ fillLoading() ? 'Loading...' : 'Fill Variables' }}
+            </button>
+            <button
+                type="button"
+                class="btn-primary"
+                [disabled]="testRunning || !canRunTest() || !pythonNodeId || runTestBlocker() !== null"
+                [matTooltip]="getRunTestButtonTooltip()"
+                matTooltipPosition="above"
+                (click)="onRunTest()"
+            >
+                Run Test
+            </button>
+        </div>
+    }
+</div>

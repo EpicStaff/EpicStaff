@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, signal, WritableSignal } from '@angular/core';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, getDebugNode, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
     AbstractControl,
@@ -9,6 +9,7 @@ import {
     NG_VALUE_ACCESSOR,
     ReactiveFormsModule,
 } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { SelectDropdownComponent, SelectDropdownTriggerDirective } from '@shared/components';
 import { ActionCode, KEY_VALUE_MODE_COLORS, NodeType } from '@shared/models';
 import { NEVER, Observable, of, Subject } from 'rxjs';
@@ -81,6 +82,11 @@ class FormControlStubComponent implements ControlValueAccessor {
 
 function nodeWith(mode: KeyValueMode, entries: KeyValueEntry[]): KeyValueNodeModel {
     return mapKeyValueNodeToModel({ ...DTO, mode, entries });
+}
+
+/** The text of an element's tooltip. */
+function tooltipOf(element: Element): string {
+    return getDebugNode(element)!.injector.get(MatTooltip).message;
 }
 
 function entriesOf(panel: KeyValueNodePanelComponent): FormArray {
@@ -210,6 +216,7 @@ function createPanel(
                       ReactiveFormsModule,
                       NgTemplateOutlet,
                       FormControlStubComponent,
+                      MatTooltip,
                       SelectDropdownComponent,
                       SelectDropdownTriggerDirective,
                       // Its attribute form sits on every entry row; it shows nothing outside a version diff.
@@ -240,6 +247,17 @@ function flowOf(node: KeyValueNodeModel): FlowModel {
 }
 
 describe('KeyValueNodePanelComponent', () => {
+    // jsdom has no ResizeObserver; the table name's tooltip, shown only for a cut-short name, needs one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
     afterEach(() => vi.useRealTimers());
 
     it('does not turn an unchanged read node into an update', () => {
@@ -334,7 +352,7 @@ describe('KeyValueNodePanelComponent', () => {
                 (fixture.nativeElement.querySelector('.entry-row') as HTMLElement).querySelectorAll(
                     'input, .equals-sign, .remove-entry'
                 ),
-                (element) => element.getAttribute('aria-label') ?? element.getAttribute('title') ?? element.textContent!
+                (element) => element.getAttribute('aria-label') ?? element.textContent!
             );
 
         expect(layout()).toEqual(['Variable path', '=', 'Key', 'Remove']);
@@ -572,8 +590,8 @@ describe('KeyValueNodePanelComponent', () => {
                 fixture.detectChanges();
             };
             const rows: [string, string][] = [
-                ['test1', 'variables.my_key1'],
-                ['test2', 'variables.my_key2'],
+                ['test1', '.my_key1'],
+                ['test2', '.my_key2'],
             ];
             // The node opens on one blank row; Add key adds the rest.
             rows.forEach(([key, value], row) => {
@@ -584,7 +602,7 @@ describe('KeyValueNodePanelComponent', () => {
                 type('Key', row, key);
                 type('Variable path', row, value);
             });
-            const typed = rows.map(([key, value]) => ({ key, value }));
+            const typed = rows.map(([key, displayValue]) => ({ key, value: 'variables' + displayValue }));
 
             switchTo('delete');
             switchTo('write');
@@ -777,6 +795,7 @@ describe('KeyValueNodePanelComponent', () => {
             pressCtrlS();
             expect(saved).toHaveBeenCalledTimes(1);
             expect((saved.mock.calls[0][0] as NodeModel).id).toBe(panel.node().id);
+            vi.unstubAllGlobals();
         });
 
         it('still holds back an invalid node name', () => {
@@ -1768,7 +1787,7 @@ describe('KeyValueNodePanelComponent', () => {
             return input;
         };
         const listed = (): string[] =>
-            Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
+            Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), tooltipOf);
 
         for (const mode of ['read', 'write'] as const) {
             it(`is the Input List's picker under a ${mode} value: opens on focus, filters, fills the clicked path`, () => {
@@ -1778,15 +1797,18 @@ describe('KeyValueNodePanelComponent', () => {
                 });
 
                 const input = focusValue(fixture);
-                // Names a key-value node can't use are left out.
-                expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
+                // Names a key-value node can't use are left out; only top-level shown initially.
+                expect(listed()).toEqual(['variables.user', 'variables.plan']);
                 expect(input.getAttribute('role')).toBe('combobox');
                 expect(input.getAttribute('aria-expanded')).toBe('true');
 
-                typeValue(fixture, 'variables.US');
-                expect(listed()).toEqual(['variables.user', 'variables.user.id']);
+                typeValue(fixture, '.US');
+                expect(listed()).toEqual(['variables.user']);
 
-                document.querySelectorAll<HTMLElement>('.vpf-item')[1].click();
+                typeValue(fixture, '.user.');
+                expect(listed()).toEqual(['variables.user.id']);
+
+                document.querySelectorAll<HTMLElement>('.vpf-item')[0].click();
                 fixture.detectChanges();
 
                 expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.user.id');
@@ -1802,18 +1824,18 @@ describe('KeyValueNodePanelComponent', () => {
                 initialState,
             });
 
-            typeValue(fixture, 'variables.plan');
+            typeValue(fixture, '.plan');
             expect(listed()).toEqual([]);
 
-            typeValue(fixture, 'variables.pl');
+            typeValue(fixture, '.pl');
             expect(listed()).toEqual(['variables.plan']);
             typeValue(fixture, 'plan');
             expect(listed()).toEqual([]);
 
             // The path before a |default is what counts.
-            typeValue(fixture, 'variables.plan|free');
+            typeValue(fixture, '.plan|free');
             expect(listed()).toEqual([]);
-            typeValue(fixture, 'variables.pl|free');
+            typeValue(fixture, '.pl|free');
             expect(listed()).toEqual(['variables.plan']);
         });
 
@@ -1838,7 +1860,7 @@ describe('KeyValueNodePanelComponent', () => {
 
             try {
                 const input = focusValue(fixture);
-                expect(listed().length).toBe(3);
+                expect(listed().length).toBe(2);
 
                 input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
                 fixture.detectChanges();
@@ -1853,24 +1875,23 @@ describe('KeyValueNodePanelComponent', () => {
         });
 
         for (const mode of ['read', 'write'] as const) {
-            it(`lists an object before its fields in ${mode}, as the Input List does, also when a filter matches only the fields, and only its fields once typed`, () => {
+            it(`shows only top-level on focus in ${mode}, scopes into children on separator, and only its fields once typed`, () => {
                 const { panel, fixture } = createPanel(nodeWith(mode, [{ key: 'profile', value: 'variables.' }]), {
                     renderTemplate: true,
                     initialState: {
                         variables: { my_object: { user_id: 'asdasdasdadadsa', user_email: 'test@mail.com' } },
                     },
                 });
-                const all = ['variables.my_object', 'variables.my_object.user_id', 'variables.my_object.user_email'];
 
                 focusValue(fixture);
-                expect(listed()).toEqual(all);
-                typeValue(fixture, 'variables.user');
-                expect(listed()).toEqual(all);
-                typeValue(fixture, 'variables.my_object.');
+                expect(listed()).toEqual(['variables.my_object']);
+                typeValue(fixture, '.my');
+                expect(listed()).toEqual(['variables.my_object']);
+                typeValue(fixture, '.my_object.');
                 expect(listed()).toEqual(['variables.my_object.user_id', 'variables.my_object.user_email']);
 
                 // The object itself is a valid read target and write source.
-                typeValue(fixture, 'variables.');
+                typeValue(fixture, '');
                 document.querySelector<HTMLElement>('.vpf-item')!.click();
                 fixture.detectChanges();
                 expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.my_object');
@@ -1890,7 +1911,7 @@ describe('KeyValueNodePanelComponent', () => {
 
             focusValue(fixture);
 
-            expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
+            expect(listed()).toEqual(['variables.user', 'variables.plan']);
             expect(document.querySelectorAll('.vpf-item:disabled').length).toBe(0);
         });
 
@@ -1903,7 +1924,7 @@ describe('KeyValueNodePanelComponent', () => {
 
                 focusValue(fixture);
 
-                expect(listed()).toEqual(['variables.cart', 'variables.cart.total', 'variables.plan']);
+                expect(listed()).toEqual(['variables.cart', 'variables.plan']);
             });
         }
 
@@ -1920,17 +1941,17 @@ describe('KeyValueNodePanelComponent', () => {
             focusValue(fixture);
             expect(listed()).toEqual([]);
 
-            // The input shows only the prefix while the row still holds variables.user.
-            valueInput(fixture).value = 'variables.';
+            // The input shows nothing while the row still holds variables.user.
+            valueInput(fixture).value = '';
             focusValue(fixture);
-            expect(listed()).toEqual(['variables.user', 'variables.user.id']);
+            expect(listed()).toEqual(['variables.user']);
             expect(document.querySelectorAll('.vpf-item:disabled').length).toBe(0);
         });
 
         describe('in read, around a variable another row fills', () => {
             const nested = { variables: { user: { id: 1, name: 'n' }, username: 'u', plan: 'free' } };
             const disabled = (): string[] =>
-                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), (item) => item.title);
+                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), tooltipOf);
 
             it('leaves out the object and its fields when another row fills the object', () => {
                 const { fixture } = createPanel(
@@ -1946,7 +1967,7 @@ describe('KeyValueNodePanelComponent', () => {
                 expect(listed()).toEqual(['variables.username', 'variables.plan']);
             });
 
-            it('keeps the object above the other fields as in use when another row fills a field', () => {
+            it('keeps the object as in use at depth 0 when another row fills a field under it', () => {
                 const { fixture } = createPanel(
                     nodeWith('read', [
                         { key: 'profile', value: 'variables.' },
@@ -1958,7 +1979,7 @@ describe('KeyValueNodePanelComponent', () => {
 
                 focusValue(fixture);
 
-                expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.username']);
+                expect(listed()).toEqual(['variables.user', 'variables.username']);
                 expect(disabled()).toEqual(['variables.user']);
                 expect(document.querySelector('.vpf-item:disabled')!.textContent).toContain('in use');
             });
@@ -1974,13 +1995,7 @@ describe('KeyValueNodePanelComponent', () => {
 
                 focusValue(fixture);
 
-                expect(listed()).toEqual([
-                    'variables.user',
-                    'variables.user.id',
-                    'variables.user.name',
-                    'variables.username',
-                    'variables.plan',
-                ]);
+                expect(listed()).toEqual(['variables.user', 'variables.username', 'variables.plan']);
                 expect(disabled()).toEqual([]);
             });
 
@@ -1993,15 +2008,10 @@ describe('KeyValueNodePanelComponent', () => {
                     { renderTemplate: true, initialState: nested }
                 );
 
-                valueInput(fixture).value = 'variables.';
+                valueInput(fixture).value = '';
                 focusValue(fixture);
 
-                expect(listed()).toEqual([
-                    'variables.user',
-                    'variables.user.id',
-                    'variables.user.name',
-                    'variables.username',
-                ]);
+                expect(listed()).toEqual(['variables.user', 'variables.username']);
                 expect(disabled()).toEqual([]);
             });
         });
@@ -2026,9 +2036,8 @@ describe('KeyValueNodePanelComponent', () => {
                     },
                 ],
             } as unknown as GraphDto;
-            const ALL = ['variables.my_object', 'variables.my_object.user_id', 'variables.my_object.user_email'];
             const disabled = (): string[] =>
-                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), (item) => item.title);
+                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), tooltipOf);
 
             function openLoaded(): {
                 panel: KeyValueNodePanelComponent;
@@ -2049,11 +2058,11 @@ describe('KeyValueNodePanelComponent', () => {
                 expect(flowService.startNodeInitialState()).toEqual({ variables: MY_OBJECT });
             });
 
-            it('offers the object the other row uses, and its fields, all enabled', () => {
+            it('offers only the top-level object on empty filter, all enabled', () => {
                 const { panel, fixture } = openLoaded();
 
-                typeValue(fixture, 'variables.', 1);
-                expect(listed()).toEqual(ALL);
+                typeValue(fixture, '', 1);
+                expect(listed()).toEqual(['variables.my_object']);
                 expect(disabled()).toEqual([]);
 
                 document.querySelector<HTMLElement>('.vpf-item')!.click();
@@ -2063,10 +2072,10 @@ describe('KeyValueNodePanelComponent', () => {
                 expect(panel.captureForValidation()).not.toBeNull();
             });
 
-            it('picks a field with the arrow keys and Enter', () => {
+            it('picks a field with the arrow keys and Enter once scoped into the object', () => {
                 Element.prototype.scrollIntoView = vi.fn();
                 const { panel, fixture } = openLoaded();
-                const input = typeValue(fixture, 'variables.', 1);
+                const input = typeValue(fixture, '.my_object.', 1);
                 const press = (key: string): KeyboardEvent => {
                     const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
                     input.dispatchEvent(event);
@@ -2076,8 +2085,7 @@ describe('KeyValueNodePanelComponent', () => {
 
                 // Other keys still reach the input.
                 expect(press('a').defaultPrevented).toBe(false);
-                press('ArrowUp');
-                press('ArrowUp');
+                // The first child (user_id) is preselected; Enter picks it.
                 press('Enter');
 
                 expect(entriesOf(panel).at(1).get('value')!.value).toBe('variables.my_object.user_id');
@@ -2086,8 +2094,8 @@ describe('KeyValueNodePanelComponent', () => {
 
             it('picks nothing on Enter once the pointer has left the list while the prefill is untouched', () => {
                 const { panel, fixture } = openLoaded();
-                const input = typeValue(fixture, 'variables.', 1);
-                document.querySelectorAll('.vpf-item')[2].dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+                const input = typeValue(fixture, '', 1);
+                document.querySelectorAll('.vpf-item')[0].dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
                 document.querySelector('.vpf-list')!.dispatchEvent(new MouseEvent('mouseleave'));
                 fixture.detectChanges();
 
@@ -2103,7 +2111,7 @@ describe('KeyValueNodePanelComponent', () => {
 
             it('wires the value input to the list as a combobox, and closes the list when focus leaves', () => {
                 const { fixture } = openLoaded();
-                const input = typeValue(fixture, 'variables.', 1);
+                const input = typeValue(fixture, '', 1);
                 expect(input.getAttribute('aria-controls')).toBe(document.querySelector('.vpf-list')!.id);
 
                 input.dispatchEvent(new FocusEvent('blur'));
@@ -2174,7 +2182,7 @@ describe('KeyValueNodePanelComponent', () => {
             return event;
         };
         const listed = (): string[] =>
-            Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
+            Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), tooltipOf);
         const keyOf = (panel: KeyValueNodePanelComponent): string => entriesOf(panel).at(0).get('key')!.value;
         const openWithStoredKey = (): ReturnType<typeof createPanel> =>
             createPanel(nodeWith('write', [{ key: '', value: 'variables.plan' }]), {
@@ -2196,19 +2204,19 @@ describe('KeyValueNodePanelComponent', () => {
             expect(listed()).toEqual([]);
 
             const input = typeKey(fixture, 'profile_{variables.');
-            expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
+            expect(listed()).toEqual(['variables.user', 'variables.plan']);
             expect(input.getAttribute('aria-expanded')).toBe('true');
             expect(input.getAttribute('aria-controls')).toBe(document.querySelector('.vpf-list')!.id);
 
             typeKey(fixture, 'profile_{variables.us');
-            expect(listed()).toEqual(['variables.user', 'variables.user.id']);
+            expect(listed()).toEqual(['variables.user']);
         });
 
         it('inserts the clicked path and closes the placeholder, the caret after it', () => {
             const { panel, fixture } = openWithStoredKey();
 
-            const input = typeKey(fixture, 'profile_{variables.us');
-            document.querySelectorAll<HTMLElement>('.vpf-item')[1].click();
+            const input = typeKey(fixture, 'profile_{variables.user.');
+            document.querySelectorAll<HTMLElement>('.vpf-item')[0].click();
             fixture.detectChanges();
 
             expect(keyOf(panel)).toBe('profile_{variables.user.id}');
@@ -2220,8 +2228,8 @@ describe('KeyValueNodePanelComponent', () => {
         it('keeps a closing } that is already there, and the text after it', () => {
             const { panel, fixture } = openWithStoredKey();
 
-            typeKey(fixture, 'p_{variables.us}_x', 'p_{variables.us'.length);
-            document.querySelectorAll<HTMLElement>('.vpf-item')[1].click();
+            typeKey(fixture, 'p_{variables.user.}_x', 'p_{variables.user.'.length);
+            document.querySelectorAll<HTMLElement>('.vpf-item')[0].click();
             fixture.detectChanges();
 
             expect(keyOf(panel)).toBe('p_{variables.user.id}_x');
@@ -2236,7 +2244,7 @@ describe('KeyValueNodePanelComponent', () => {
             expect(listed()).toEqual([]);
 
             typeKey(fixture, 'p_{variables.');
-            expect(listed().length).toBe(3);
+            expect(listed().length).toBe(2);
             typeKey(fixture, 'p_{variables.}');
             expect(listed()).toEqual([]);
         });
@@ -2287,7 +2295,7 @@ describe('KeyValueNodePanelComponent', () => {
         it('highlights nothing on an empty placeholder, the first snippet once one is typed', () => {
             const { fixture } = openWithStoredKey();
             const highlighted = (): string[] =>
-                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item--highlighted'), (item) => item.title);
+                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item--highlighted'), tooltipOf);
 
             typeKey(fixture, 'p_{variables.');
             expect(highlighted()).toEqual([]);
@@ -2309,7 +2317,7 @@ describe('KeyValueNodePanelComponent', () => {
             input.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', bubbles: true }));
             fixture.detectChanges();
 
-            expect(listed()).toEqual(['variables.user', 'variables.user.id']);
+            expect(listed()).toEqual(['variables.user']);
             expect(document.querySelectorAll('.vpf-item--highlighted').length).toBe(0);
             expect(press(fixture, input, 'Enter').defaultPrevented).toBe(true);
             // The picker left Enter alone, so the row moved on to its variable.
@@ -2336,7 +2344,7 @@ describe('KeyValueNodePanelComponent', () => {
             vi.advanceTimersByTime(250);
             fixture.detectChanges();
             expect(suggestions()).toEqual([]);
-            expect(listed().length).toBe(3);
+            expect(listed().length).toBe(2);
         });
 
         it('allows spaces after the {, as crew does', () => {
@@ -2353,7 +2361,7 @@ describe('KeyValueNodePanelComponent', () => {
         it('follows the caret when it moves without typing, by arrow key or click', () => {
             const { fixture } = openWithStoredKey();
             const input = typeKey(fixture, 'p_{variables.plan}_{variables.u');
-            expect(listed()).toEqual(['variables.user', 'variables.user.id']);
+            expect(listed()).toEqual(['variables.user']);
 
             // Back inside the first placeholder: its own text filters the list.
             input.setSelectionRange('p_{variables.pl'.length, 'p_{variables.pl'.length);
@@ -2372,7 +2380,7 @@ describe('KeyValueNodePanelComponent', () => {
             input.setSelectionRange(1, 1);
             input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift' }));
             fixture.detectChanges();
-            expect(listed().length).toBe(3);
+            expect(listed().length).toBe(2);
         });
 
         it('closes when focus leaves the key', () => {
@@ -2528,7 +2536,7 @@ describe('KeyValueNodePanelComponent', () => {
             const value = fieldsOf(fixture, 0)[1];
             value.focus();
             fixture.detectChanges();
-            value.value = 'variables.p';
+            value.value = '.p';
             value.dispatchEvent(new Event('input'));
             fixture.detectChanges();
 
@@ -3163,7 +3171,7 @@ describe('KeyValueNodePanelComponent', () => {
             // Only the "+" shows; its name and tooltip still say what it does.
             expect(createButton()?.textContent!.trim()).toBe('');
             expect(createButton()?.getAttribute('aria-label')).toBe('Create table');
-            expect(createButton()?.title).toBe('Create table');
+            expect(tooltipOf(createButton()!)).toBe('Create table');
             expect(createButton()?.querySelector('app-svg-icon')).not.toBeNull();
         });
 

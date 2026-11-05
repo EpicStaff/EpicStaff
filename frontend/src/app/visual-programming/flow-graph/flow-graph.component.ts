@@ -45,7 +45,8 @@ import {
     ICurrentSelection,
 } from '@foblex/flow';
 import { AppSvgIconComponent, AuthorshipDetailsSource } from '@shared/components';
-import { NodeType, ShortcutParams } from '@shared/models';
+import { NODE_COLORS, NodeType, ShortcutParams } from '@shared/models';
+import { SECRET_CODE_COPY_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { fromEvent, Subject } from 'rxjs';
 
 import { GetGraphLightRequest, GraphContentDto } from '../../features/flows/models/graph.model';
@@ -64,6 +65,7 @@ import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classificatio
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
+import { NoteRegionHighlightComponent } from '../components/note-region-highlight/note-region-highlight.component';
 import { UnusedNodesBarComponent } from '../components/unused-nodes-bar/unused-nodes-bar.component';
 import { FLOW_ACTION_PERMISSIONS } from '../core/constants/flow-action-permissions';
 import { HideOverflowingChildrenDirective } from '../core/directives/hide-overflowing-children.directive';
@@ -71,6 +73,7 @@ import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directiv
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
 import { PANEL_COMPONENT_MAP } from '../core/enums/node-panel.map';
 import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
+import { codeSecretIds } from '../core/helpers/code-secret-ids.util';
 import { buildInsertionConnections, findConnectionUnderNode } from '../core/helpers/drop-on-connection.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isConnectionValid } from '../core/helpers/helpers';
@@ -117,6 +120,7 @@ import { FlowImportExportService } from './flow-import-export-handler.service';
 import { FlowReassignHandlerService, ReassignHandlerCallbacks } from './flow-reassign-handler.service';
 import { FlowRoutingOrchestratorService } from './flow-routing-orchestrator.service';
 import { FlowSelectionManagerService } from './flow-selection-manager.service';
+import { NoteInteractionService } from './note-interaction.service';
 
 /** How long a refused reassignment — and the same refusal when drawing a connection — stays on screen. */
 const CONNECTION_REFUSED_TOAST_MS = 5000;
@@ -165,6 +169,7 @@ const IMPORT_GAP_PX = 200;
         FlowReassignHandlerService,
         FlowRoutingOrchestratorService,
         FlowSelectionManagerService,
+        NoteInteractionService,
     ],
     imports: [
         FFlowModule,
@@ -185,6 +190,7 @@ const IMPORT_GAP_PX = 200;
         FlowExportImportButtonComponent,
         FlowFilesButtonComponent,
         MatTooltipModule,
+        NoteRegionHighlightComponent,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
@@ -234,6 +240,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
     private readonly shortcutsAnchor = viewChild.required<ElementRef<HTMLElement>>('shortcutsAnchor');
     private readonly flowHost = viewChild.required('flowHost', { read: ElementRef<HTMLElement> });
+    private readonly settingsButton = viewChild<ElementRef<HTMLButtonElement>>('settingsButton');
     private readonly filesButton = viewChild(FlowFilesButtonComponent);
     private readonly exportImportButton = viewChild(FlowExportImportButtonComponent);
 
@@ -259,14 +266,25 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected readonly hasUnarrangedChanges = this.arrangeAnimator.hasUnarrangedChanges;
     protected readonly isArranging = this.arrangeAnimator.isArranging;
     protected readonly flowSettings = inject(FlowSettingsService);
+    protected readonly noteInteraction = inject(NoteInteractionService);
     public smartRoutingEnabled = signal<boolean>(false);
     protected readonly hoveredConnectionId = signal<string | null>(null);
     public hoveredNodeId = signal<string | null>(null);
 
     public readonly selectionManager = inject(FlowSelectionManagerService);
 
+    protected readonly noteDrawState = this.noteInteraction.noteDrawState;
+    protected readonly noteDrawRect = this.noteInteraction.noteDrawRect;
+    protected readonly activeNoteLinkedRegion = this.noteInteraction.activeNoteLinkedRegion;
+    protected readonly isNoteRegionResizable = this.noteInteraction.isNoteRegionResizable;
+
     /** Gates every Foblex gesture that edits the graph (move, resize, rotate, connect, reassign, waypoints). */
-    readonly editGestureTrigger = (): boolean => !this.flowReadOnly.isReadOnly();
+    readonly editGestureTrigger = (): boolean =>
+        !this.flowReadOnly.isReadOnly() && !this.noteInteraction.isDrawActive();
+
+    /** Gates canvas panning — blocked during note area draw so raw pointer events drive the rectangle. */
+    readonly canvasMoveTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
+        !this.noteInteraction.isDrawActive() && this.selectionManager.canvasMoveTrigger(event);
 
     protected readonly canReadFiles = computed(() => this.permissions.meets(FLOW_ACTION_PERMISSIONS.files));
 
@@ -286,7 +304,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
         for (const node of this.flowService.nodes()) {
-            map.set(node.id, node.color);
+            map.set(node.id, NODE_COLORS[node.type]);
         }
         return map;
     });
@@ -334,6 +352,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     });
 
     protected readonly hoverContext = computed<HoverContext | null>(() => {
+        // Suppress dimming while the user is dragging/resizing a note's linked region,
+        // or while a note with a visible region is selected (dimming would hide the note and area).
+        if (this.noteInteraction.regionResizeActive()) return null;
+        if (this.noteInteraction.isNoteRegionResizable()) return null;
         const nodeId = this.hoveredNodeId();
         const nodes = this.flowService.nodes();
         if (!nodeId || !nodes.some((n) => n.id === nodeId)) return null;
@@ -418,6 +440,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private lastSeenFullSaveRequest = untracked(() => this.sidePanelService.fullSaveRequest());
 
     constructor() {
+        this.noteInteraction.hoveredNodeId = () => this.hoveredNodeId();
         this.registerShortcuts();
 
         effect(() => {
@@ -952,14 +975,26 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             ? snapPointToGrid(this.toFlowPosition(this.mouseCursorPosition))
             : { x: 0, y: 0 };
 
-        const canPaste = (node: NodeModel): boolean => !this.flowReadOnly.isNodeTypeReadOnly(node.type);
-        const { skippedNodeCount } = this.insertNodes(clipboardData, pastePosition, canPaste);
+        const isTriggerBlocked = (node: NodeModel): boolean => this.flowReadOnly.isNodeTypeReadOnly(node.type);
+        const isSecretCodeBlocked = (node: NodeModel): boolean =>
+            this.flowReadOnly.isSecretCodeLocked(codeSecretIds(node));
+        const { skippedNodeCount } = this.insertNodes(
+            clipboardData,
+            pastePosition,
+            (node) => !isTriggerBlocked(node) && !isSecretCodeBlocked(node)
+        );
         if (skippedNodeCount > 0) {
-            this.toastService.warning(
-                `${skippedNodeCount} trigger node${skippedNodeCount > 1 ? 's were' : ' was'} not pasted. ${TRIGGER_NODES_NEED_USE_MESSAGE}`,
-                6000,
-                'bottom-right'
-            );
+            const triggerCount = clipboardData.nodes.filter(isTriggerBlocked).length;
+            const secretCodeCount = skippedNodeCount - triggerCount;
+            const reasons = [
+                triggerCount > 0
+                    ? `${triggerCount} trigger node${triggerCount > 1 ? 's were' : ' was'} not pasted. ${TRIGGER_NODES_NEED_USE_MESSAGE}`
+                    : null,
+                secretCodeCount > 0
+                    ? `${secretCodeCount} node${secretCodeCount > 1 ? 's were' : ' was'} not pasted. ${SECRET_CODE_COPY_NEEDS_USE_MESSAGE}`
+                    : null,
+            ];
+            this.toastService.warning(reasons.filter(Boolean).join(' '), 6000, 'bottom-right');
         }
     }
 
@@ -1099,6 +1134,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
+        if (event.type === NodeType.NOTE && event.areaSelection) {
+            this.noteInteraction.startAreaDraw();
+            return;
+        }
+
         this.addNodeAt(event, this.contextMenuPosition());
     }
 
@@ -1122,36 +1162,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             if (this.flowReadOnly.isReadOnly()) {
                 return;
             }
-            const noteNode = node as GraphNoteModel;
-
-            const data: NoteEditDialogData = {
-                node: noteNode,
-                authorship: this.nodeAuthorshipStore.authorshipOf(noteNode),
-            };
-            const dialogRef = this.dialog.open(NoteEditDialogComponent, { data, disableClose: true });
-
-            dialogRef.closed.subscribe((result: unknown) => {
-                if (
-                    result !== null &&
-                    typeof result === 'object' &&
-                    'content' in result &&
-                    typeof (result as { content?: unknown }).content !== 'undefined'
-                ) {
-                    const content = (result as { content?: unknown }).content;
-                    if (typeof content !== 'string') return;
-
-                    const updatedNode: GraphNoteModel = {
-                        ...noteNode,
-                        data: {
-                            ...noteNode.data,
-                            content,
-                        },
-                    };
-
-                    this.flowService.updateNode(updatedNode);
-                    this.cd.detectChanges();
-                }
-            });
+            this.openNoteDialog(node as GraphNoteModel);
         } else if (node.type === NodeType.START) {
             const startNode = node as StartNodeModel;
             const data: DomainDialogData = {
@@ -1173,7 +1184,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 injector: this.injector,
             });
 
-            dialogRef.closed.subscribe((result: unknown) => {
+            dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result: unknown) => {
                 if (this.flowReadOnly.isReadOnly()) return;
                 if (result !== null && typeof result === 'object' && result !== undefined) {
                     this.updateStartNodeInitialState(result as Record<string, unknown>);
@@ -1182,6 +1193,61 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         } else {
             void this.sidePanelService.trySelectNode(node);
         }
+    }
+
+    /** Opens the full-screen note edit dialog for `noteNode`, then applies the result. */
+    private openNoteDialog(noteNode: GraphNoteModel): void {
+        const data: NoteEditDialogData = {
+            node: noteNode,
+            authorship: this.nodeAuthorshipStore.authorshipOf(noteNode),
+        };
+        const dialogRef = this.dialog.open(NoteEditDialogComponent, {
+            data,
+            disableClose: true,
+            width: 'calc(100vw - 2rem)',
+            height: 'calc(100vh - 2rem)',
+        });
+
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result: unknown) => {
+            if (
+                result !== null &&
+                typeof result === 'object' &&
+                'content' in result &&
+                typeof (result as { content?: unknown }).content !== 'undefined'
+            ) {
+                const content = (result as { content?: unknown }).content;
+                if (typeof content !== 'string') return;
+
+                const updatedNode: GraphNoteModel = {
+                    ...noteNode,
+                    data: {
+                        ...noteNode.data,
+                        content,
+                    },
+                };
+
+                this.flowService.updateNode(updatedNode);
+                this.cd.detectChanges();
+            }
+        });
+    }
+
+    /** Double-clicking the note body opens the note edit dialog. */
+    public onNoteDoubleClick(node: NodeModel): void {
+        if (this.flowReadOnly.isReadOnly()) return;
+        if (node.type !== NodeType.NOTE) return;
+        this.openNoteDialog(node as GraphNoteModel);
+    }
+
+    /** "Reselect area" button on a note: enters draw mode to replace the note's linked region. */
+    public onReselectNoteArea(node: NodeModel): void {
+        if (this.flowReadOnly.isReadOnly()) return;
+        if (node.type !== NodeType.NOTE) return;
+        this.noteInteraction.startAreaDraw(node.id);
+    }
+
+    public onRegionResizeStart(event: PointerEvent, direction: string): void {
+        this.noteInteraction.onRegionResizeStart(event, direction, this.fFlowComponent);
     }
 
     public onNodePanelSaved(updatedNode: NodeModel): void {
@@ -1405,6 +1471,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.smartRoutingEnabled.set(value);
     }
 
+    /** The Unused nodes bar closed with the focus on it; Flow settings, where it is switched on, takes the focus. */
+    protected focusSettingsButton(): void {
+        this.settingsButton()?.nativeElement.focus();
+    }
+
     protected openSettings(): void {
         this.dialog.open(FlowSettingsPanelComponent, {
             width: '480px',
@@ -1415,6 +1486,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public updateMouseTrackerPosition(event: IPoint): void {
         this.mouseCursorPosition = event;
+    }
+
+    protected onAutoArrangeClick(): void {
+        if (this.isAutoArrangeDisabled()) return;
+        this.onAutoArrange();
     }
 
     public onAutoArrange(): void {
@@ -1444,7 +1520,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             injector: this.injector,
         });
 
-        dialogRef.closed.subscribe((result: unknown) => {
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result: unknown) => {
             if (this.flowReadOnly.isReadOnly()) return;
             if (result !== null && typeof result === 'object' && result !== undefined) {
                 this.updateStartNodeInitialState(result as Record<string, unknown>);
@@ -1453,10 +1529,31 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onFlowPointerDown(event: PointerEvent): void {
+        if (this.noteInteraction.handlePointerDown(event, this.fFlowComponent)) return;
         this.selectionManager.recordPointerDown(event);
     }
 
+    public onFlowPointerMove(event: PointerEvent): void {
+        this.noteInteraction.handlePointerMove(event, this.fFlowComponent);
+    }
+
     public onFlowPointerUp(event: PointerEvent): void {
+        const wasDrawing = this.noteInteraction.isDrawActive();
+        const snapToGrid = (v: number): number => this.snapToGrid(v);
+        const noteNode = this.noteInteraction.handlePointerUp(event, this.fFlowComponent, snapToGrid);
+        if (noteNode) {
+            if (this.flowReadOnly.isReadOnly() || this.isDialogOpen()) return;
+            setTimeout(() => {
+                this.routingOrchestrator.rerouteSegmentConnections();
+                this.selectionManager.selectedNodeIds.set([noteNode.id]);
+                this.fFlowComponent.select([noteNode.id], []);
+                this.cd.detectChanges();
+                this.fFlowComponent?.redraw();
+                this.openNoteDialog(noteNode);
+            }, 0);
+            return;
+        }
+        if (wasDrawing) return;
         this.selectionManager.recordPointerUp(event);
     }
 
@@ -1465,6 +1562,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onFlowClick(event: MouseEvent): void {
+        if (this.noteInteraction.isDrawActive()) {
+            return;
+        }
+        if (this.noteInteraction.suppressNextClick) {
+            this.noteInteraction.suppressNextClick = false;
+            return;
+        }
         this.showContextMenu.set(false);
         const wasMultiSelect = this.selectionManager.multiSelectActive();
         this.selectionManager.handleFlowClick(event, this.isDragging);
@@ -1474,6 +1578,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onEscapeKey(): void {
+        if (this.noteInteraction.isDrawActive()) {
+            this.noteInteraction.cancelDraw();
+            return;
+        }
         if (this.selectionManager.escapeSelection()) {
             this.fFlowComponent.select([], []);
         }
@@ -1665,7 +1773,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const position = this.fFlowComponent.getPositionInFlow(
             PointExtensions.initialize(screenPoint.x, screenPoint.y)
         );
-        const newNode = this.nodeFactory.createNode(request.type, { ...request.overrides, position });
+        const overrides = request.overrides ?? {};
+        const noteOverrides =
+            request.type === NodeType.NOTE
+                ? this.buildNoteCreationOverrides(overrides as Partial<GraphNoteModel>)
+                : overrides;
+
+        const newNode = this.nodeFactory.createNode(request.type, { ...noteOverrides, position });
         const safePosition = findNearestFreePosition(
             { x: this.snapToGrid(position.x), y: this.snapToGrid(position.y) },
             getCollisionBounds(newNode),
@@ -1678,6 +1792,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             this.cd.detectChanges();
             this.fFlowComponent?.redraw();
         }, 0);
+    }
+
+    /** Merges user-derived default colour into note creation overrides. */
+    private buildNoteCreationOverrides(overrides: Partial<GraphNoteModel>): Partial<GraphNoteModel> {
+        return this.noteInteraction.buildNoteCreationOverrides(overrides);
     }
 
     private canvasCenter(): IPoint {
