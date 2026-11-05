@@ -80,3 +80,21 @@ def test_empty_table_is_returned_unchanged():
 
     assert result.num_rows == 0
     assert result.schema.field("id").type == pa.large_string()
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        pytest.param(pa.table({"title": ["a.txt"]}), id="no id column"),
+        pytest.param(pa.table({"id": pa.array([2], type=pa.int64())}), id="ids not text"),
+    ],
+)
+def test_a_table_without_a_text_id_column_is_refused(table):
+    with pytest.raises(InvalidArtifactArchiveError):
+        rewrite_document_ids(table, "id", {"2": 51})
+
+
+def test_the_id_column_keeps_its_type():
+    result = rewrite_document_ids(_documents_table(["2"]), "id", {"2": 51})
+
+    assert result.schema.field("id").type == pa.large_string()

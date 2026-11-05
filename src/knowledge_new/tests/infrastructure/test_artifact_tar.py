@@ -202,3 +202,150 @@ def test_total_size_cap_allows_the_limit_and_refuses_one_byte_more(monkeypatch):
     assert len(_read_members_of(_tar_with(_valid_members(("output/extra", b"x" * 10))))) == 3
     with pytest.raises(InvalidArtifactArchiveError):
         _read_members_of(_tar_with(_valid_members(("output/extra", b"x" * 11))))
+
+
+# --- crafted tars are refused before their headers are read --------------------------------
+
+
+# Every restorable index holds these; a crafted tar carries them so that only the
+# crafted member can be the reason it is refused.
+REQUIRED_MEMBERS = ("output/documents.parquet", "output/text_units.parquet")
+
+
+def _crafted_tar(tmp_path, build) -> str:
+    path = tmp_path / "crafted.tar"
+    with tarfile.open(path, mode="w", **build.get("open", {})) as tar:
+        for name in REQUIRED_MEMBERS:
+            info, data = _member(name)
+            tar.addfile(info, io.BytesIO(data))
+        for info, data in build["members"]:
+            tar.addfile(info, io.BytesIO(data))
+    return str(path)
+
+
+def _member(name: str, data: bytes = b"x", **attributes) -> tuple[tarfile.TarInfo, bytes]:
+    info = tarfile.TarInfo(name=name)
+    info.size = len(data)
+    for key, value in attributes.items():
+        setattr(info, key, value)
+    return info, data
+
+
+def _read(path: str) -> list[str]:
+    with artifact_tar.open_artifact_tar(path) as tar:
+        return [member.name for member in read_members(tar)]
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(
+            {
+                "open": {"format": tarfile.PAX_FORMAT},
+                "members": [_member("output/a.parquet", pax_headers={"comment": "x" * 9000})],
+            },
+            id="pax header past the limit",
+        ),
+        pytest.param(
+            {
+                "open": {"format": tarfile.GNU_FORMAT},
+                "members": [_member("output/" + "n" * 9000 + ".parquet")],
+            },
+            id="GNU long name past the limit",
+        ),
+        pytest.param(
+            {
+                "open": {"format": tarfile.PAX_FORMAT, "pax_headers": {"comment": "global"}},
+                "members": [_member("output/a.parquet")],
+            },
+            id="global pax header",
+        ),
+        pytest.param(
+            {
+                "open": {"format": tarfile.PAX_FORMAT},
+                "members": [_member("output/" + "n" * 5000 + ".parquet")],
+            },
+            id="name longer than the limit",
+        ),
+        pytest.param(
+            {
+                "open": {"format": tarfile.GNU_FORMAT},
+                "members": [_member("output/a.parquet", type=tarfile.GNUTYPE_SPARSE)],
+            },
+            id="sparse member",
+        ),
+    ],
+)
+def test_a_crafted_tar_is_refused(tmp_path, build):
+    path = _crafted_tar(tmp_path, build)
+
+    with pytest.raises(InvalidArtifactArchiveError):
+        _read(path)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(
+            {
+                "open": {"format": tarfile.PAX_FORMAT},
+                "members": [_member("output/a.parquet", pax_headers={"comment": "x" * 9000})],
+            },
+            id="pax header past the limit",
+        ),
+        pytest.param(
+            {
+                "open": {"format": tarfile.GNU_FORMAT},
+                "members": [_member("output/" + "n" * 9000 + ".parquet")],
+            },
+            id="GNU long name past the limit",
+        ),
+        pytest.param(
+            {
+                "open": {"format": tarfile.PAX_FORMAT, "pax_headers": {"comment": "global"}},
+                "members": [_member("output/a.parquet")],
+            },
+            id="global pax header",
+        ),
+        pytest.param(
+            {
+                "open": {"format": tarfile.GNU_FORMAT},
+                "members": [_member("output/a.parquet", type=tarfile.GNUTYPE_SPARSE)],
+            },
+            id="sparse member",
+        ),
+    ],
+)
+def test_an_oversized_or_unusual_header_is_refused_while_tarfile_reads_it(tmp_path, build):
+    # Refused by the header hook itself, before tarfile holds the header in memory:
+    # iterating alone, without read_members, already fails.
+    path = _crafted_tar(tmp_path, build)
+
+    with pytest.raises(InvalidArtifactArchiveError), artifact_tar.open_artifact_tar(path) as tar:
+        for _member_info in tar:
+            pass
+
+
+def test_a_long_but_ordinary_name_is_accepted(tmp_path):
+    long_name = "lancedb/community_full_content.lance/" + "_nested/" * 30 + "auxiliary.idx"
+    path = _crafted_tar(
+        tmp_path, {"open": {"format": tarfile.PAX_FORMAT}, "members": [_member(long_name)]}
+    )
+
+    assert _read(path) == [*REQUIRED_MEMBERS, long_name]
+
+
+@pytest.mark.parametrize(("count", "refused"), [(1, False), (2, True)])
+def test_member_count_is_checked_while_reading(tmp_path, monkeypatch, count, refused):
+    # The limit counts the required members too: 2 of them plus `count` more.
+    monkeypatch.setattr(artifact_tar, "_MAX_MEMBERS", 3)
+    path = _crafted_tar(
+        tmp_path,
+        {"members": [_member(f"output/file_{index}.parquet") for index in range(count)]},
+    )
+
+    if refused:
+        with pytest.raises(InvalidArtifactArchiveError):
+            _read(path)
+    else:
+        assert len(_read(path)) == len(REQUIRED_MEMBERS) + count

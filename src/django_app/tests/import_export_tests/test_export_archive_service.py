@@ -236,3 +236,104 @@ def test_inspect_refuses_an_unsafe_zip(flow_service, default_org):
 
     with pytest.raises(InvalidArchiveError):
         flow_service.inspect_entity(upload, org_id=default_org.id)
+
+
+class _UploadWithoutSize(io.RawIOBase):
+    """An upload whose size is only known by reading it."""
+
+    def __init__(self, data: bytes):
+        self._stream = io.BytesIO(data)
+
+    def readable(self):
+        return True
+
+    def seekable(self):
+        return True
+
+    def readinto(self, buffer):
+        chunk = self._stream.read(len(buffer))
+        buffer[: len(chunk)] = chunk
+        return len(chunk)
+
+    def seek(self, offset, whence=0):
+        return self._stream.seek(offset, whence)
+
+
+def _small_zip_upload() -> bytes:
+    upload = io.BytesIO()
+    with zipfile.ZipFile(upload, "w") as archive:
+        archive.writestr(
+            ENVELOPE_MEMBER,
+            json.dumps({MAIN_ENTITY_KEY: EntityType.GRAPH, "version": IMPORT_VERSION}),
+        )
+        archive.writestr("padding", bytes(2000))
+    return upload.getvalue()
+
+
+class _UnreadableSizedUpload(io.BytesIO):
+    """An upload whose measured size is all that may be used: copying it fails."""
+
+    def __init__(self, data: bytes, size: int):
+        super().__init__(data)
+        self._size = size
+        self._head_read = False
+
+    @property
+    def size(self) -> int:
+        return self._size
+
+    def read(self, size=-1):
+        # The first bytes tell a zip from JSON; anything after that is a copy.
+        if self._head_read:
+            raise AssertionError("an upload past the limit must not be copied")
+        self._head_read = True
+        return super().read(size)
+
+
+@pytest.mark.django_db
+def test_inspect_refuses_an_oversized_upload_before_copying_any_of_it(
+    flow_service, default_org, settings
+):
+    data = _small_zip_upload()
+    settings.MAX_KNOWLEDGE_ARCHIVE_SIZE = len(data)
+
+    with pytest.raises(InvalidArchiveError):
+        flow_service.inspect_entity(
+            _UnreadableSizedUpload(data, size=len(data) + 1), org_id=default_org.id
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "make_upload",
+    [
+        pytest.param(lambda data: _SizedUpload(data), id="size known up front"),
+        pytest.param(lambda data: io.BufferedReader(_UploadWithoutSize(data)), id="size unknown"),
+    ],
+)
+def test_inspect_refuses_an_upload_past_the_archive_size_limit(
+    flow_service, default_org, settings, make_upload
+):
+    data = _small_zip_upload()
+    settings.MAX_KNOWLEDGE_ARCHIVE_SIZE = len(data) - 1
+
+    with pytest.raises(InvalidArchiveError):
+        flow_service.inspect_entity(make_upload(data), org_id=default_org.id)
+
+
+@pytest.mark.django_db
+def test_inspect_takes_an_upload_exactly_at_the_limit(flow_service, default_org, settings):
+    data = _small_zip_upload()
+    settings.MAX_KNOWLEDGE_ARCHIVE_SIZE = len(data)
+
+    assert flow_service.inspect_entity(_SizedUpload(data), org_id=default_org.id) == {
+        "review_items": []
+    }
+
+
+class _SizedUpload(io.BytesIO):
+    """An upload Django already measured, like an UploadedFile."""
+
+    @property
+    def size(self) -> int:
+        return len(self.getvalue())

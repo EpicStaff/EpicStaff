@@ -114,7 +114,9 @@ ENVELOPE = {ENVELOPE_MEMBER: "{}"}
             [],
             id="one entry too many",
         ),
-        pytest.param({**ENVELOPE, "big": "x" * (MAX_UNCOMPRESSED_SIZE - 1)}, [], id="unpacks too big"),
+        pytest.param(
+            {**ENVELOPE, "big": "x" * (MAX_UNCOMPRESSED_SIZE - 1)}, [], id="unpacks too big"
+        ),
     ],
 )
 def test_an_unsafe_archive_is_refused_before_any_member_is_read(tmp_path, members, extra):
@@ -214,3 +216,37 @@ def test_reading_stops_once_the_whole_archive_passes_the_size_cap(tmp_path):
         archive.envelope()
         with pytest.raises(ArchiveLimitExceeded):
             archive.envelope()
+
+
+# --- export.json has a cap of its own ------------------------------------------------------
+
+
+@pytest.mark.parametrize(("envelope_size", "refused"), [(100, False), (101, True)])
+def test_export_json_past_its_own_cap_is_refused_at_open(
+    tmp_path, settings, envelope_size, refused
+):
+    # Well under the whole-archive cap: export.json is parsed whole, so it has its own.
+    settings.MAX_EXPORT_ENVELOPE_SIZE = 100
+    envelope = '{"padding": "' + "x" * (envelope_size - 15) + '"}'
+    assert len(envelope) == envelope_size
+    path = _zip(tmp_path, {ENVELOPE_MEMBER: envelope})
+
+    if refused:
+        with pytest.raises(InvalidArchiveError) as raised:
+            ImportArchive.open(path)
+        assert raised.value.detail["code"] == "invalid_archive"
+    else:
+        with ImportArchive.open(path) as archive:
+            assert archive.envelope() == json.loads(envelope)
+
+
+def test_reading_export_json_stops_at_its_cap(tmp_path, settings):
+    # The cap holds while reading too, not only on the size the archive declares.
+    envelope = json.dumps({"padding": "x" * 200})
+    with ImportArchive.open(_zip(tmp_path, {ENVELOPE_MEMBER: envelope})) as archive:
+        settings.MAX_EXPORT_ENVELOPE_SIZE = 100
+        with pytest.raises(InvalidArchiveError) as raised:
+            archive.envelope()
+
+    # Refused for its size, not because the first 100 bytes are not whole JSON.
+    assert "unpacks to more than 100 bytes" in str(raised.value.detail["detail"])

@@ -218,6 +218,21 @@ def test_a_malformed_chunk_is_refused(indexed_collection, target_org, tmp_path, 
     _assert_refused(tmp_path, target_org, envelope, members, mentioning=mentioning)
 
 
+@pytest.mark.parametrize(("line_limit_delta", "refused"), [(0, False), (-1, True)])
+def test_a_chunk_line_past_the_line_limit_is_refused(
+    indexed_collection, target_org, tmp_path, monkeypatch, line_limit_delta, refused
+):
+    envelope, members = _export(indexed_collection)
+    longest_line = max(len(line) for line in members[_chunks_path(envelope)].splitlines())
+    monkeypatch.setattr(strategy_module, "_MAX_LINE_SIZE", longest_line + line_limit_delta)
+
+    if refused:
+        _assert_refused(tmp_path, target_org, envelope, members, mentioning="longer than")
+    else:
+        _import(tmp_path, target_org, envelope, members)
+        assert SourceCollection.objects.filter(org=target_org).count() == 1
+
+
 # --- statuses a file cannot set ---------------------------------------------------------
 
 

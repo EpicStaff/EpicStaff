@@ -12,6 +12,7 @@ from application.commands import (
     RestoreGraphArtifacts,
     RewriteGraphDocumentIds,
 )
+from application.orchestrators.transferring.strategies import graph_artifacts
 from application.orchestrators.transferring.strategies.graph_artifacts import (
     GraphArtifactExportOrchestrator,
     GraphArtifactRestoreOrchestrator,
@@ -123,9 +124,7 @@ async def test_export_streams_the_active_slots_index_named_relative_to_the_slot(
             "graphrag/rag_10/b/output/documents.parquet": b"other rag",
         }
     )
-    orchestrator = GraphArtifactExportOrchestrator(
-        FakeUoW(_rag(IndexStatusEnum.COMPLETED)), store
-    )
+    orchestrator = GraphArtifactExportOrchestrator(FakeUoW(_rag(IndexStatusEnum.COMPLETED)), store)
 
     result = await orchestrator.execute(ExportGraphArtifacts(rag_id=1))
     archive = b"".join([chunk async for chunk in result.stream])
@@ -199,7 +198,9 @@ async def test_exported_tar_restores_into_another_rag_unchanged(tmp_path):
     restore = GraphArtifactRestoreOrchestrator(NoDatabaseUoW(), target)
     await restore.execute(RestoreGraphArtifacts(rag_id=2, archive_path=str(archive_path)))
 
-    assert target.objects == {f"graphrag/rag_2/a/{name}": data for name, data in VALID_MEMBERS.items()}
+    assert target.objects == {
+        f"graphrag/rag_2/a/{name}": data for name, data in VALID_MEMBERS.items()
+    }
 
 
 # --- restore --------------------------------------------------------------------------
@@ -232,7 +233,9 @@ async def test_restore_replaces_everything_stored_for_the_rag_with_the_archive_i
 @pytest.mark.parametrize(
     "archive",
     [
-        pytest.param(_tar({**VALID_MEMBERS, "../rag_8/a/output/x.parquet": b"x"}), id="path escape"),
+        pytest.param(
+            _tar({**VALID_MEMBERS, "../rag_8/a/output/x.parquet": b"x"}), id="path escape"
+        ),
         pytest.param(_tar({DOCUMENTS: b"documents"}), id="required table missing"),
         pytest.param(b"definitely not a tar archive" * 40, id="not a tar"),
     ],
@@ -357,3 +360,58 @@ async def test_rewrite_of_an_index_without_a_document_table_is_refused(missing_t
         )
 
     assert store.objects == before
+
+
+@pytest.mark.parametrize(
+    ("text_unit_ids", "refused"),
+    [
+        pytest.param(["2", "3"], False, id="at the row limit"),
+        pytest.param(["2", "3", "3"], True, id="one row past it"),
+    ],
+)
+async def test_a_table_with_more_rows_than_its_documents_allow_is_refused(
+    monkeypatch, text_unit_ids, refused
+):
+    # Two documents in the map, one row each: a small parquet file cannot expand to
+    # far more rows than the collection could have produced.
+    monkeypatch.setattr(graph_artifacts, "_MAX_ROWS_PER_DOCUMENT", 1)
+    store = InMemoryArtifactStore(
+        {
+            f"graphrag/rag_9/a/{DOCUMENTS}": _parquet({"id": ["2", "3"]}),
+            f"graphrag/rag_9/a/{TEXT_UNITS}": _parquet(
+                {
+                    "id": [f"unit-{index}" for index in range(len(text_unit_ids))],
+                    "document_id": text_unit_ids,
+                }
+            ),
+        }
+    )
+    before = dict(store.objects)
+    orchestrator = GraphDocumentIdRewriteOrchestrator(NoDatabaseUoW(), store)
+    command = RewriteGraphDocumentIds(rag_id=9, document_id_map={"2": 51, "3": 52})
+
+    if refused:
+        with pytest.raises(InvalidArtifactArchiveError):
+            await orchestrator.execute(command)
+        assert store.objects == before
+    else:
+        await orchestrator.execute(command)
+        assert _read_parquet(store.objects[f"graphrag/rag_9/a/{TEXT_UNITS}"])["document_id"] == [
+            "51",
+            "52",
+        ]
+
+
+async def test_rewrite_in_batches_gives_the_same_tables(monkeypatch):
+    monkeypatch.setattr(graph_artifacts, "_REWRITE_BATCH_ROWS", 1)
+    store = _restored_store(["2", "3", "3"])
+    orchestrator = GraphDocumentIdRewriteOrchestrator(NoDatabaseUoW(), store)
+
+    await orchestrator.execute(
+        RewriteGraphDocumentIds(rag_id=9, document_id_map={"2": 51, "3": 52})
+    )
+
+    assert _read_parquet(store.objects[f"graphrag/rag_9/a/{TEXT_UNITS}"]) == {
+        "id": ["unit-1", "unit-2", "unit-3"],
+        "document_id": ["51", "52", "52"],
+    }
