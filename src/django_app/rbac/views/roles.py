@@ -2,7 +2,6 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 
-from rbac.access.principals import limit_org_ids_to_api_key
 from rbac.governance.roles import RoleManagementService
 from rbac.models.enums import Permission, ResourceType
 from rbac.schemas.roles import (
@@ -49,16 +48,14 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
     def list(self, request):
         # `assignable_org_ids` is `org_ids` plus the assignability filter, so
         # when present it defines the org scope as well.
-        assignable_ids = self.parse_org_ids(request.query_params.get("assignable_org_ids"))
-        if assignable_ids is not None:
-            assignable_ids = limit_org_ids_to_api_key(request, assignable_ids)
-        org_ids = (
-            assignable_ids
-            if assignable_ids is not None
-            else limit_org_ids_to_api_key(
-                request, self.parse_org_ids(request.query_params.get("org_ids"))
-            )
+        # Checked on the raw query: for a key `requested_org_ids` is never None, so
+        # without this guard every key request would switch on the assignability filter.
+        assignable_ids = (
+            self.requested_org_ids(request, "assignable_org_ids")
+            if request.query_params.get("assignable_org_ids")
+            else None
         )
+        org_ids = assignable_ids if assignable_ids is not None else self.requested_org_ids(request)
         scopes = getattr(request, "_rbac_org_scopes", None)
         # One resolution for the whole request: it decides which orgs the
         # built-in counts cover, and raises the 403 fail-loud on a forbidden
@@ -94,7 +91,7 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
             actor=request.user,
             role_id=pk,
             scopes=getattr(request, "_rbac_org_scopes", None),
-            org_ids=limit_org_ids_to_api_key(request, None),
+            org_ids=self.key_org_ids(request),
         )
         return Response(RoleResponseSerializer(role).data)
 

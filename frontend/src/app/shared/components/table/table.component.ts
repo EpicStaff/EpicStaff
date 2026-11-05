@@ -94,9 +94,11 @@ export class AppTableComponent {
 
         effect(() => {
             const ids = this.initialSelectedIds();
-            if (!ids.length) return;
-            this.selectedIds.set(new Set(ids));
-            untracked(() => this.selectionChange.emit(this.selectedItems()));
+            untracked(() => {
+                if (!ids.length && !this.selectedIds().size) return;
+                this.selectedIds.set(new Set(ids));
+                this.selectionChange.emit(this.selectedItems());
+            });
         });
 
         // Apply per-column `defaultValues` whenever the columns array (or the default values

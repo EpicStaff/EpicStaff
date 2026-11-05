@@ -214,9 +214,10 @@ Two authentication classes (`rbac/identity/authentication.py`), both global defa
   `/api/admin/api-keys/`) are JWT-only (`DenyApiKeyAuth`) — see
   [api_keys.md](api_keys.md). Every write on the governance surface
   (`/api/admin/roles|memberships|organizations|users/`, including permanent
-  deletion) is JWT-only, and the SYSTEM key is rejected there even on reads
-  (`RestrictApiKeyToUserKeyReads`, prepended first by the `get_permissions` of
-  `CrossOrgAdminViewSet` and of `UserAdminViewSet`): a leaked credential must not
+  deletion and `PATCH /api/admin/organizations/settings/`) is JWT-only, and the
+  SYSTEM key is rejected there even on reads (`RestrictApiKeyToUserKeyReads`,
+  prepended first by the `get_permissions` of `CrossOrgAdminViewSet`, which
+  `UserAdminViewSet` extends, and of `OrganizationSelfServiceViewSet`): a leaked credential must not
   be able to rewrite governance or erase accounts or tenants. `reset-user` and the
   admin password reset are JWT-only via `DenyApiKeyAuth`. Those two, and permanent
   deletion of users and organizations, are superadmin-only by construction — they
@@ -441,13 +442,16 @@ org-scoped at all — never to a superadmin, who already bypasses the org filter
 `ApiKeyManagementService` sets it to exclude superadmin-owned keys from a delegated admin's
 list, since the superadmin's own request already reaches them without it.
 
-`limit_org_ids_to_api_key(request, org_ids)` (`rbac/access/principals.py`, next to
-`user_api_key_org_id`) narrows the admin read surface for a USER API key: it returns
-`[key org]` in place of whatever orgs the read named (or `None`), and passes `org_ids` through
-unchanged for any other credential. Every cross-org list (roles, memberships incl. `assignable-users`, organizations,
-users, plugin role permissions) calls it before the service; get-by-id reads (a role, an
-organization, its retention) return 404 outside the key's org. A new cross-org read action must
-call it too, or a USER key reads every org its owner can.
+`CrossOrgAdminViewSet` (`rbac/views/cross_org_base.py`) narrows the admin read surface for a
+USER API key: `requested_org_ids(request)` returns `[key org]` in place of whatever orgs the read
+named (or `None`), `key_org_ids(request)` is `[key org]` for a USER key and `None` otherwise, and
+`require_key_org(request, org_id)` raises a 404 outside the key's org. Every other credential
+passes through unchanged. Every cross-org list (roles, memberships incl. `assignable-users`,
+organizations, users, plugin role permissions) takes its org ids through them; get-by-id reads
+(a role, an organization, its retention) return 404 outside the key's org. A new cross-org read
+action must use them too, or a USER key reads every org its owner can.
+`tests/api_tests/test_admin_surface_api_key_coverage.py` fails on any `api/admin/` route it
+does not classify.
 
 ### 5.5 Service-layer guards (defense in depth)
 
@@ -876,7 +880,7 @@ path — the default org is only for bootstrap and data migrations.
 | Escalation ceiling (shared by authoring and assignment) | `rbac/access/asserts.py` (`assert_within_ceiling`), `rbac/access/effective.py` (`covers`, `bits_of`) |
 | API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys, scoped by the key's own org) | `rbac/governance/api_keys.py`, `rbac/views/api_keys_admin.py` |
 | Self-service API keys (one org per key, cap 5 per user and org) + key-org lookup | `rbac/identity/api_keys/service.py`, `rbac/views/api_keys.py`, `rbac/access/principals.py` (`user_api_key_org_id`) |
-| Admin read limit for a USER API key | `rbac/access/principals.py` (`limit_org_ids_to_api_key`) |
+| Admin read limit for a USER API key | `rbac/views/cross_org_base.py` (`CrossOrgAdminViewSet.requested_org_ids`, `key_org_ids`, `require_key_org`) |
 | Permission gate (ViewSet) | `rbac/access/gates.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `rbac/access/asserts.py` |
 | Session/SSE and graph co-editing WS authorization | `tables/services/session_access.py`, `tables/views/sse_views.py`, `tables/graph_collab/consumers.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |

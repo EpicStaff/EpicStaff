@@ -16,7 +16,7 @@ from tables.models.graph_models import (
     Graph,
     StartNode,
 )
-from tables.models.llm_models import LLMConfig
+from tables.models.llm_models import LLMConfig, SystemOneConfig
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
@@ -36,6 +36,10 @@ from tables.services.persistent_variables_service import (
 )
 from tables.services.python_code_cleanup_service import PythonCodeCleanupService
 from tables.validators.cdt_explanations import CdtExplanationsSanitizingMixin
+from tables.validators.system_one_questions_validator import (
+    validate_input_map,
+    validate_system_one_questions,
+)
 
 
 class StartNodeSerializer(
@@ -215,14 +219,30 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
     llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True
     )
+    system_one_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=SystemOneConfig.objects.all(), required=False, allow_null=True
+    )
+    questions = serializers.JSONField(required=False)
+    input_map = serializers.JSONField(required=False)
+
+    def validate_questions(self, value):
+        # A field validator's return value is discarded by DRF; this hook's is kept.
+        return validate_system_one_questions(value)
+
+    def validate_input_map(self, value):
+        return validate_input_map(value)
 
     class Meta:
         model = ClassificationDecisionTablePrompt
         fields = [
             "id",
             "prompt_key",
+            "kind",
             "prompt_text",
             "llm_config",
+            "system_one_config",
+            "questions",
+            "input_map",
             "output_schema",
             "result_variable",
             "variable_mappings",

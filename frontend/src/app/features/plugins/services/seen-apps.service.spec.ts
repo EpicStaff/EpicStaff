@@ -41,6 +41,8 @@ describe('SeenAppsService', () => {
     }
 
     beforeEach(() => {
+        // Spec files share a worker's localStorage: start from an empty one whatever ran before.
+        localStorage.clear();
         plugins = signal([]);
         loadedOrgId = signal(null);
         user = signal({ id: 7 } as GetMeResponse);

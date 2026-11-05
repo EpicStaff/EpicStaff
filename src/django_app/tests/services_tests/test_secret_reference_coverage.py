@@ -31,6 +31,7 @@ SECRET_USE_CHECK_BY_SERIALIZER: dict[str, str] = {
     "OpenAIRealtimeConfigSerializer": "check_openai_realtime_config_write",
     "ElevenLabsRealtimeConfigSerializer": "check_elevenlabs_realtime_config_write",
     "GeminiRealtimeConfigSerializer": "check_gemini_realtime_config_write",
+    "SystemOneConfigSerializer": "check_system_one_config_write",
     "TwilioChannelSerializer": "check_twilio_channel_write",
     "McpToolSerializer": "check_mcp_tool_write",
     "WebhookTriggerNestedSerializer": "check_webhook_trigger_write",
@@ -90,7 +91,7 @@ KNOWN_SKIPS = {
 #: replacing a field's `queryset=` with a `get_queryset()` override, would make the
 #: walk lose a field while the "no unchecked field" assertion below stays green, and
 #: this is what would catch that.
-MINIMUM_DISCOVERED_SECRET_FIELDS = 17
+MINIMUM_DISCOVERED_SECRET_FIELDS = 18
 
 
 def _all_serializer_classes():

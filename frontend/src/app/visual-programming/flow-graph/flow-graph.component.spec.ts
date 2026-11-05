@@ -29,7 +29,7 @@ import { ActionCode, NodeType, ResourceCode, ShortcutSettings } from '@shared/mo
 import { SECRET_CODE_COPY_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { EMPTY, of } from 'rxjs';
 
-import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
+import { GetGraphLightRequest, GraphDto } from '../../features/flows/models/graph.model';
 import { USE_PERMISSION_REQUIRED_TITLE } from '../../features/flows/services/use-permission-refusal.service';
 import { PermissionRequirement, PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
@@ -55,21 +55,23 @@ import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from '../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
+import { SavedFlowStateService } from '../services/saved-flow-state.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
 import { createFlowConnection } from '../utils/connection.factory';
-import { createStartNode } from '../utils/load';
+import { buildFlowModelFromGraphDto, createStartNode } from '../utils/load';
 import { mapGraphDtoToFlowModel } from '../utils/load/map-graph-dto-to-flow-model';
 import {
     buildBulkSavePayload,
     buildUuidToBackendIdMap,
+    clearStaleIds,
     cloneFlowState,
     getConnectionDiff,
     getNodeDiff,
     hasTriggerNodeWrites,
 } from '../utils/save';
-import { liveAgent, liveGraph, liveNote, livePython, liveStart } from '../utils/testing/live-graph.fixture';
+import { liveAgent, liveGraph, liveNote, livePython, liveStart, liveTask } from '../utils/testing/live-graph.fixture';
 import {
     FLOW_ACTIONS_WITH_USE,
     FLOW_ACTIONS_WITHOUT_USE,
@@ -95,8 +97,6 @@ function noteNode(): GraphNoteModel {
         data: { content: 'hello' },
         position: { x: 200, y: 0 },
         ports: [],
-        color: '',
-        icon: '',
         size: { width: 200, height: 100 },
         input_map: {},
         output_variable_path: null,
@@ -124,8 +124,6 @@ function scheduleTriggerNode(): ScheduleTriggerNodeModel {
         },
         position: { x: 0, y: 400 },
         ports: [],
-        color: '',
-        icon: '',
         size: { width: 200, height: 100 },
         input_map: {},
         output_variable_path: null,
@@ -1397,8 +1395,6 @@ describe('FlowGraphComponent', () => {
                 data: {},
                 position,
                 ports: generatePortsForNode(id, NodeType.PYTHON),
-                color: '',
-                icon: '',
                 size: { width: 200, height: 100 },
                 input_map: {},
                 output_variable_path: null,
@@ -1854,8 +1850,6 @@ describe('FlowGraphComponent', () => {
                 data: { name: 'Triage', table: { condition_groups: rows } },
                 position: { x: 0, y: 0 },
                 ports: generatePortsForClassificationDecisionTableNode('table1', rows),
-                color: '',
-                icon: '',
                 size: { width: 300, height: 200 },
                 input_map: {},
                 output_variable_path: null,
@@ -1871,8 +1865,6 @@ describe('FlowGraphComponent', () => {
                 data: {},
                 position: { x: 400, y: 0 },
                 ports: generatePortsForNode(id, NodeType.PYTHON),
-                color: '',
-                icon: '',
                 size: { width: 200, height: 100 },
                 input_map: {},
                 output_variable_path: null,
@@ -1958,6 +1950,120 @@ describe('FlowGraphComponent', () => {
 
             expect(flowService.connections().map((connection) => connection.targetPortId)).toEqual(['py2_python-in']);
             expect(warning).not.toHaveBeenCalled();
+        });
+    });
+
+    // The flow page's own spec stands in a stub for this canvas, so the wire routing that runs when
+    // the canvas opens a flow can only be reached here. The page's part of the load and of the save is
+    // repeated as it does it: the canvas model built from the graph is both the live flow and the saved
+    // baseline, and a save diffs the live flow against the model built from the graph last loaded.
+    describe('opening a flow saved before node sizes came from the frontend', () => {
+        // Hand-placed bends that met the agent's right port while the agent was stored 900x40 at
+        // (0, 0): the port sat at (905, 20). The task at (1300, 400) has its left port at (1295, 430).
+        const HAND_PLACED_BENDS = [
+            { x: 1100, y: 20 },
+            { x: 1100, y: 430 },
+        ];
+        const WIRE_ID = 1;
+
+        function graphWithOutdatedAgentSize(): GraphDto {
+            return {
+                ...liveGraph,
+                agent_node_list: [
+                    {
+                        ...liveAgent,
+                        metadata: {
+                            position: { x: 0, y: 0 },
+                            color: '#ff0000',
+                            icon: 'ti ti-bug',
+                            size: { width: 900, height: 40 },
+                        },
+                    },
+                ],
+                task_node_list: [
+                    { ...liveTask, metadata: { position: { x: 1300, y: 400 }, color: '#00ff00', icon: 'ti ti-x' } },
+                ],
+                edge_list: [
+                    {
+                        id: WIRE_ID,
+                        graph: 1,
+                        start_node_id: liveAgent.id,
+                        end_node_id: liveTask.id,
+                        metadata: { waypoints: HAND_PLACED_BENDS },
+                    },
+                ],
+            };
+        }
+
+        function open(graph: GraphDto): void {
+            const loadedFlow = buildFlowModelFromGraphDto(graph);
+            mount(false, loadedFlow, () => {
+                TestBed.inject(FlowService).setFlow(loadedFlow);
+                TestBed.inject(SavedFlowStateService).setSavedFlow(cloneFlowState(loadedFlow));
+            });
+        }
+
+        function save(graph: GraphDto): Record<string, unknown> {
+            const previous = buildFlowModelFromGraphDto(graph);
+            const flowToSave = clearStaleIds(previous, TestBed.inject(FlowService).getFlowState());
+            const idMap = buildUuidToBackendIdMap(flowToSave.nodes);
+            return buildBulkSavePayload(
+                graph.id,
+                getNodeDiff(previous, flowToSave),
+                getConnectionDiff(previous, flowToSave, idMap),
+                flowToSave,
+                idMap,
+                graph.save_version
+            );
+        }
+
+        /** The graph as the backend holds it after the save: every row written takes the metadata it was sent. */
+        function withSavedRows(graph: GraphDto, payload: Record<string, unknown>): GraphDto {
+            const sentMetadata = (listKey: string) =>
+                new Map(
+                    (payload[listKey] as { id?: number; metadata?: Record<string, unknown> }[]).map((row) => [
+                        row.id,
+                        row.metadata,
+                    ])
+                );
+            const sentAgents = sentMetadata('agent_node_list');
+            const sentEdges = sentMetadata('edge_list');
+            return {
+                ...graph,
+                agent_node_list: graph.agent_node_list!.map((row) => ({
+                    ...row,
+                    metadata: sentAgents.get(row.id) ?? row.metadata,
+                })),
+                edge_list: graph.edge_list.map((row) => ({ ...row, metadata: sentEdges.get(row.id) ?? row.metadata })),
+            };
+        }
+
+        function hasUnsavedChanges(): boolean {
+            return TestBed.inject(SavedFlowStateService).hasUnsavedChanges();
+        }
+
+        it('does not report the flow as changed once its wires are routed', () => {
+            open(graphWithOutdatedAgentSize());
+
+            expect(hasUnsavedChanges()).toBe(false);
+        });
+
+        it('still does not report it as changed when reopened after the agent was edited and saved', () => {
+            const graph = graphWithOutdatedAgentSize();
+            open(graph);
+            const flowService = TestBed.inject(FlowService);
+            const agent = flowService.nodes().find((node) => node.type === NodeType.AGENT)!;
+            flowService.updateNode({ ...agent, node_name: 'Researcher' });
+
+            const payload = save(graph);
+            // The save drops the agent's stored size, so on reopening nothing marks it as outdated.
+            expect(payload['agent_node_list']).toEqual([
+                expect.objectContaining({ id: liveAgent.id, metadata: { position: { x: 0, y: 0 } } }),
+            ]);
+            TestBed.resetTestingModule();
+            open(withSavedRows(graph, payload));
+
+            expect(hasUnsavedChanges()).toBe(false);
         });
     });
 });

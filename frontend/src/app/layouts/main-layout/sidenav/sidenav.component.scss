@@ -246,7 +246,7 @@ $logo-padding-bottom: 0.75rem;
             line-height: 1;
         }
 
-        // A row that opens a list (Apps, the app switcher) rather than a page: a button drawn like the links.
+        // A row that opens a list (Apps, the app switcher, Help) rather than a page: a button drawn like the links.
         .sidenav-nav-button {
             border: 0;
             background-color: transparent;
@@ -332,14 +332,14 @@ $logo-padding-bottom: 0.75rem;
     }
 }
 
-// An apps list opened inline in the drawer: under its row, as wide as the rows.
+// A list opened inline in the drawer: under its row, as wide as the rows.
 .sidenav-inline-list {
     align-self: stretch;
     padding: 0 $nav-padding-inline;
 }
 
-// The popover an apps row opens, to the right of the sidebar; its list scrolls when the window is short.
-.apps-popover {
+// The popover a list row opens, to the right of the sidebar; its list scrolls when the window is short.
+.sidenav-popover {
     display: flex;
     flex-direction: column;
     width: 18.75rem; // 300px

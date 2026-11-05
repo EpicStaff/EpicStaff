@@ -14,6 +14,8 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import envtool
@@ -401,6 +403,10 @@ class SetupWizardTest(unittest.TestCase):
     def setUp(self):
         self.env_file = Path(tempfile.mkdtemp()) / ".env"
         self.schema = real_schema()
+        # Production sizes the server from the CPU count; the test machine's must not matter.
+        cpu_count_patch = mock.patch.object(envtool, "detect_cpu_count", return_value=2)
+        self.cpu_count = cpu_count_patch.start()
+        self.addCleanup(cpu_count_patch.stop)
 
     def run_setup(self, target: str, answers: list) -> tuple[dict[str, str], str]:
         output = io.StringIO()
@@ -530,12 +536,55 @@ class SetupWizardTest(unittest.TestCase):
         values, _ = self.run_setup(
             "prod", ["https://es.example.com", "1", "y", "n", "n", "v1", "1", "y", "3", "3", "1"]
         )
-        self.assertEqual(values["DJANGO_SGI_WORKERS"], "3")
-        self.assertEqual(values["DJANGO_DB_POOL_MAX_SIZE"], "12")
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "6")
+        self.assertEqual(values["DJANGO_DB_POOL_MAX_SIZE"], "15")
         self.assertEqual(values["CHAT_WORKERS"], "4")
         self.assertEqual(values["SANDBOX_MAX_EXECUTION_TIMEOUT"], "2h")
         self.assertEqual(values["CREW_CODE_RESULT_TIMEOUT"], "130m")
         self.assertEqual(values["DJANGO_LOG_LEVEL"], "DEBUG")
+
+    def test_production_sizes_the_server_from_its_cpus(self):
+        # Chat on, advanced settings declined.
+        answers = ["https://es.example.com", "1", "y", "n", "n", "v1", "1", "n"]
+        expected = {
+            2: ("1", "1", "Detected 2 CPUs: using the Small server size"),
+            4: ("3", "2", "Detected 4 CPUs: using the Medium server size"),
+            7: ("3", "2", "Detected 7 CPUs: using the Medium server size"),
+            8: ("6", "4", "Detected 8 CPUs: using the Large server size"),
+            16: ("6", "4", "Detected 16 CPUs: using the Large server size"),
+            None: ("1", "1", "Could not detect the CPUs: using the Small server size"),
+        }
+        for cpu_count, (workers, chat_workers, note) in expected.items():
+            with self.subTest(cpu_count=cpu_count):
+                self.env_file.unlink(missing_ok=True)
+                self.cpu_count.return_value = cpu_count
+                values, output = self.run_setup("prod", answers)
+                self.assertEqual(values["DJANGO_SGI_WORKERS"], workers)
+                self.assertEqual(values["CHAT_WORKERS"], chat_workers)
+                self.assertIn(note, output)
+
+    def test_advanced_settings_keep_the_detected_size_on_enter_and_take_another_choice(self):
+        self.cpu_count.return_value = 4
+        # Advanced settings opened: server size, then code time limit 30 minutes, logging INFO.
+        opened = ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "y"]
+        kept, _ = self.run_setup("prod", [*opened, "", "2", "2"])
+        self.assertEqual(kept["DJANGO_SGI_WORKERS"], "3")
+        self.env_file.unlink()
+        overridden, output = self.run_setup("prod", [*opened, "1", "2", "2"])
+        self.assertEqual(overridden["DJANGO_SGI_WORKERS"], "1")
+        # Every screen after the size question shows the chosen size and no other one.
+        screens = output.split("EpicStaff setup")
+        after_size = [screen for screen in screens if "Server size: Small" in screen]
+        self.assertEqual(len(after_size), 3)  # code time limit, logging, the final screen
+        for screen in after_size:
+            self.assertIn("Detected 4 CPUs.", screen)
+            self.assertNotIn("Medium server size", screen)
+
+    def test_local_setup_ignores_the_cpu_count(self):
+        self.cpu_count.return_value = 16
+        values, output = self.run_setup("dev", ["n", "y", ""])
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "1")
+        self.assertNotIn("CPUs", output)
 
     def test_tune_rewrites_only_its_lines_and_skips_chat_when_off(self):
         envtool.main(["--env-file", str(self.env_file)])
@@ -546,7 +595,7 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(
             changed,
             {
-                "DJANGO_SGI_WORKERS=2",
+                "DJANGO_SGI_WORKERS=3",
                 "SANDBOX_MAX_EXECUTION_TIMEOUT=5m",
                 "CREW_CODE_RESULT_TIMEOUT=15m",
             },
@@ -698,18 +747,44 @@ ANSI_CODE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 ALL_ON = {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": True, "PLUGINS_ENABLED": True}
 
+# Most crewdb connections held outside django_app's web servers:
+#   realtime       15 per REALTIME_SGI_WORKERS, 1 by default (SQLAlchemy's default pool, 5 + 10)
+#   knowledge_new  15 (SQLAlchemy's default pool)
+#   manager        10 (src/manager/db/config.py: pool_size 5 + max_overflow 5)
+#   sandbox_new    10 (asyncpg's default pool, min = max = 10)
+#   django_app's background processes: 8 (listen_redis, cache_redis and run_recycle_bin_purge
+#   at a pool of at most 2 each in entrypoint.sh; send_session_callbacks keeps the web pool's
+#   minimum of 2 and queries from one thread)
+OTHER_CREWDB_CONNECTIONS = 15 + 15 + 10 + 10 + 8
+# Postgres keeps superuser_reserved_connections (3 by default) of max_connections.
+POSTGRES_RESERVED_CONNECTIONS = 3
+
+
+def crewdb_usable_connections() -> int:
+    compose = yaml.safe_load((envtool.BASE_DIR / "docker-compose.yaml").read_text(encoding="utf-8"))
+    for argument in compose["services"]["crewdb"]["command"]:
+        if argument.startswith("max_connections="):
+            return int(argument.removeprefix("max_connections=")) - POSTGRES_RESERVED_CONNECTIONS
+    raise AssertionError("crewdb's command sets no max_connections: Postgres allows only 100")
+
 
 class AdvancedSettingsTest(unittest.TestCase):
-    def test_small_size_matches_the_schema_defaults(self):
+    def test_large_size_runs_django_as_in_the_schema_defaults(self):
         defaults = envtool.target_defaults(real_schema(), "prod")
-        for name, value in envtool.SERVER_SIZE_VALUES["small"].items():
-            self.assertEqual(value, str(defaults[name]), name)
+        for name in ("DJANGO_SGI_WORKERS", "DJANGO_DB_POOL_MAX_SIZE"):
+            self.assertEqual(envtool.SERVER_SIZE_VALUES["large"][name], str(defaults[name]), name)
 
-    def test_every_size_fits_the_postgres_connection_budget(self):
-        # env.yaml: ~97 usable connections, ~40 for other services, django_app adds 4.
-        for size, values in envtool.SERVER_SIZE_VALUES.items():
-            django = int(values["DJANGO_SGI_WORKERS"]) * int(values["DJANGO_DB_POOL_MAX_SIZE"]) + 4
-            self.assertLessEqual(django + 40, 97, size)
+    def test_every_size_and_the_defaults_fit_the_postgres_connection_budget(self):
+        # chatdb is a separate Postgres with the default max_connections of 100: 6 chat workers.
+        usable = crewdb_usable_connections()
+        sizes = dict(envtool.SERVER_SIZE_VALUES)
+        for target in ("prod", "dev"):
+            defaults = envtool.target_defaults(real_schema(), target)
+            self.assertEqual(str(defaults["REALTIME_SGI_WORKERS"]), "1", target)
+            sizes[f"{target} defaults"] = defaults
+        for size, values in sizes.items():
+            web_servers = int(values["DJANGO_SGI_WORKERS"]) * int(values["DJANGO_DB_POOL_MAX_SIZE"])
+            self.assertLessEqual(web_servers + OTHER_CREWDB_CONNECTIONS, usable, size)
             self.assertLessEqual(int(values["CHAT_WORKERS"]), 6, size)
 
     def test_code_time_limits_keep_crew_waiting_longer_than_sandbox(self):
@@ -739,7 +814,7 @@ class AdvancedSettingsTest(unittest.TestCase):
         values = envtool.advanced_values("large", "30m", "DEBUG", all_off, real_schema())
         for name in ("CHAT_WORKERS", "CHAT_LOG_LEVEL", "AUDITOR_LOG_LEVEL"):
             self.assertNotIn(name, values)
-        self.assertEqual(values["DJANGO_SGI_WORKERS"], "3")
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "6")
         self.assertEqual(values["DJANGO_LOG_LEVEL"], "DEBUG")
         values = envtool.advanced_values("large", "30m", "DEBUG", ALL_ON, real_schema())
         self.assertEqual(values["CHAT_WORKERS"], "4")
@@ -752,6 +827,20 @@ class AdvancedSettingsTest(unittest.TestCase):
         uvicorn = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"}
         accepted = django & uvicorn & set(envtool.Env.LOG_LEVELS)
         self.assertEqual({level.upper() for level in envtool.LOG_CHOICES}, accepted)
+
+    def test_cpu_count_falls_back_to_every_cpu_when_the_affinity_mask_is_refused(self):
+        with (
+            mock.patch.object(envtool.os, "sched_getaffinity", side_effect=OSError, create=True),
+            mock.patch.object(envtool.os, "cpu_count", return_value=5),
+        ):
+            self.assertEqual(envtool.detect_cpu_count(), 5)
+
+    def test_server_size_follows_the_cpu_bands_of_the_labels(self):
+        expected = {
+            None: "small", 0: "small", 1: "small", 3: "small", 4: "medium", 7: "medium", 8: "large"
+        }  # fmt: skip
+        for cpu_count, size in expected.items():
+            self.assertEqual(envtool.server_size_for(cpu_count), size, cpu_count)
 
     def test_nothing_chosen_changes_nothing(self):
         self.assertEqual(envtool.advanced_values(None, None, None, ALL_ON, real_schema()), {})

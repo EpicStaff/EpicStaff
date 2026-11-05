@@ -41,6 +41,15 @@ class Surface(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMi
         related_name="owned_surfaces",
         help_text="Agent that owns this surface. Null means shared — any agent or place may use it. Set means agent-specific — only that agent.",
     )
+    group = models.ForeignKey(
+        "tables.Label",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={"scope": "agent"},
+        related_name="surfaces",
+        help_text="Agent-scope label this shared surface is grouped under. Only shared surfaces (no owner_agent) may be grouped; deleting the group un-groups the surface.",
+    )
 
     class Meta(OrgScopedModel.Meta, TimestampMixin.Meta):
         default_manager_name = "objects"
@@ -51,6 +60,10 @@ class Surface(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMi
                 fields=["org", "name"],
                 condition=models.Q(active=True),
                 name="uniq_surface_org_name",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(owner_agent__isnull=True) | models.Q(group__isnull=True),
+                name="surface_group_only_when_shared",
             ),
         ]
 

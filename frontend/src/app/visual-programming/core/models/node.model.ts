@@ -19,8 +19,6 @@ export interface BaseNodeModel {
     position: { x: number; y: number };
     ports: ViewPort[] | null;
     node_name: string;
-    color: string;
-    icon: string;
     size: {
         width: number;
         height: number;
@@ -67,11 +65,20 @@ export interface DecisionTableNodeModel extends BaseNodeModel {
     };
 }
 
+export interface NoteLinkedRegion {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
 export interface GraphNoteModel extends BaseNodeModel {
     type: NodeType.NOTE;
     data: {
         content: string;
         backgroundColor?: string;
+        fontSize?: number;
+        linkedRegion?: NoteLinkedRegion;
     };
 }
 

@@ -4,7 +4,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from rbac.models import Organization
-from tables.models import EmbeddingConfig, LLMConfig
+from tables.models import EmbeddingConfig, LLMConfig, SystemOneConfig
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
@@ -140,6 +140,17 @@ def gemini_config_pointing_at_secret_a(default_org, secret_a) -> GeminiRealtimeC
     )
 
 
+@pytest.fixture
+def system_one_config_pointing_at_secret_a(default_org, secret_a) -> SystemOneConfig:
+    return SystemOneConfig.objects.create(
+        custom_name="fkuse-system-one-config",
+        provider="typesafe",
+        model_name="jev-1.14.0",
+        api_key_secret=secret_a,
+        org=default_org,
+    )
+
+
 #: (endpoint prefix, serializer field, name of a fixture that builds an instance
 #: already pointing at `secret_a`). All six carry exactly one guarded field,
 #: `api_key_secret_id`; the fixture name is resolved per-test via
@@ -170,6 +181,11 @@ GATED = [
         "/api/gemini-realtime-configs/",
         "api_key_secret_id",
         "gemini_config_pointing_at_secret_a",
+    ),
+    (
+        "/api/system-one-configs/",
+        "api_key_secret_id",
+        "system_one_config_pointing_at_secret_a",
     ),
 ]
 

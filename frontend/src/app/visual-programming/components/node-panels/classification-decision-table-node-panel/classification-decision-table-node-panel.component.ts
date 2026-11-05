@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { NgTemplateOutlet } from '@angular/common';
 import {
     afterNextRender,
     ChangeDetectionStrategy,
@@ -6,7 +7,6 @@ import {
     Component,
     computed,
     effect,
-    ElementRef,
     inject,
     Injector,
     input,
@@ -40,7 +40,12 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
-import { ExecutionTimeoutLimitsStorageService, FullLLMConfigService, SecretsStorageService } from '@shared/services';
+import {
+    ExecutionTimeoutLimitsStorageService,
+    FullLLMConfigService,
+    SecretsStorageService,
+    SystemOneConfigStorageService,
+} from '@shared/services';
 import { downloadBlob, formatNodeLabel, getProviderIconPath, SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
@@ -52,7 +57,7 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
-import { getClassificationTableVisualHeight } from '../../../core/helpers/node-size.util';
+import { getClassificationTableVisualHeight, TABLE_NODE_WIDTH } from '../../../core/helpers/node-size.util';
 import { CdtSection, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import {
     ClassificationDecisionTableData,
@@ -85,6 +90,7 @@ import { CdtDecisionTreeInput, CdtTreeLlmOption } from './cdt-decision-tree-dial
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
 import { explainKeyMovesForRuleEdit } from './cdt-decision-tree-dialog/cdt-explain.identity';
 import { CdtExportImportService } from './cdt-export-import.service';
+import { CdtSystemOneEntryComponent } from './cdt-system-one-entry/cdt-system-one-entry.component';
 import {
     CdtEnableContinueRequest,
     CdtRuleIdentityEdit,
@@ -99,8 +105,10 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         TooltipOnOverflowDirective,
         ReactiveFormsModule,
         FormsModule,
+        NgTemplateOutlet,
         CustomInputComponent,
         ClassificationDecisionTableGridComponent,
+        CdtSystemOneEntryComponent,
         LlmModelSelectorComponent,
         InputMapComponent,
         CodeEditorComponent,
@@ -127,7 +135,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public override readonly isExpanded = input<boolean>(true);
     public readonly graphId = input<number | null>(null);
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
-    private readonly addPromptButton = viewChild<ElementRef<HTMLButtonElement>>('addPromptButton');
+    private readonly addPromptButton = viewChild<ButtonComponent>('addPromptButton');
 
     private flowService = inject(FlowService);
     private undoRedoService = inject(UndoRedoService);
@@ -146,6 +154,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     });
     private cdr = inject(ChangeDetectorRef);
     private fullLlmConfigService = inject(FullLLMConfigService);
+    private readonly systemOneConfigStorage = inject(SystemOneConfigStorageService);
     private sanitizer = inject(DomSanitizer);
 
     public activeTab = signal<TabType>('table');
@@ -358,6 +367,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
         this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.systemOneConfigStorage.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {
@@ -554,7 +564,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         // or the "No condition groups" placeholder — plus Default and Error), so ports
         // line up horizontally with their connected target nodes. See node-size.util.ts.
         const updatedSize = {
-            width: currentNode.size?.width || 330,
+            width: TABLE_NODE_WIDTH,
             height: getClassificationTableVisualHeight(conditionGroups),
         };
 
@@ -703,9 +713,38 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.prompts.update((p) => ({ ...p, [newId]: newConfig }));
         this.editingPromptId.set(newId);
         this.pendingPromptName.set(newId);
-        if (this.sideEditorPromptId() !== null) {
-            this.sideEditorPromptId.set(newId);
-        }
+        this.followSideEditorTo(newId);
+        this.sidePanelService.triggerAutosave();
+    }
+
+    public addSystemOnePrompt(): void {
+        const existing = this.prompts();
+        let newId = 'System One';
+        for (let nameNumber = 2; newId in existing; nameNumber++) newId = `System One ${nameNumber}`;
+
+        // Conditions read `<result_variable>.answers…`, so this stays an identifier, unlike the name.
+        const takenVariables = new Set([
+            ...Object.keys(existing),
+            ...Object.values(existing).map((prompt) => prompt.result_variable),
+        ]);
+        let variableNumber = 1;
+        while (takenVariables.has(`system_one_${variableNumber}`)) variableNumber++;
+
+        const newConfig: PromptConfig = {
+            kind: 'system_one',
+            system_one_config: null,
+            questions: {},
+            input_map: {},
+            prompt_text: '',
+            llm_config: null,
+            output_schema: null,
+            result_variable: `system_one_${variableNumber}`,
+            variable_mappings: {},
+        };
+        this.prompts.update((p) => ({ ...p, [newId]: newConfig }));
+        this.editingPromptId.set(newId);
+        this.pendingPromptName.set(newId);
+        this.followSideEditorTo(newId);
         this.sidePanelService.triggerAutosave();
     }
 
@@ -749,7 +788,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.updatePromptFields(id, { [field]: value } as Partial<PromptConfig>);
     }
 
-    private updatePromptFields(id: string, fields: Partial<PromptConfig>): void {
+    public updatePromptFields(id: string, fields: Partial<PromptConfig>): void {
         const current = { ...this.prompts() };
         if (!current[id]) return;
         current[id] = { ...current[id], ...fields };
@@ -770,7 +809,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 if (result === true) {
                     this.performDeletePrompt(id);
                     // The dialog gave the focus back to the prompt's Delete button, which is gone now.
-                    afterNextRender(() => this.addPromptButton()?.nativeElement.focus(), { injector: this.injector });
+                    afterNextRender(() => this.addPromptButton()?.focus(), { injector: this.injector });
                 }
             });
     }
@@ -803,12 +842,16 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.editingPromptId.set(newId);
         if (newId) {
             this.pendingPromptName.set(newId);
-            if (this.sideEditorPromptId() !== null) {
-                this.sideEditorPromptId.set(newId);
-            }
+            this.followSideEditorTo(newId);
         } else {
             this.sideEditorPromptId.set(null);
         }
+    }
+
+    /** An open side editor follows the expanded entry; a System One entry has no prompt text or schema to show, so it closes. */
+    private followSideEditorTo(promptId: string): void {
+        if (this.sideEditorPromptId() === null) return;
+        this.sideEditorPromptId.set(this.prompts()[promptId]?.kind === 'system_one' ? null : promptId);
     }
 
     public openSideEditor(promptId: string, view: 'schema' | 'prompt'): void {
@@ -1025,6 +1068,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             nodes: [...this.flowService.nodes()],
             defaultLlmConfig: this.form.value.default_llm_config || null,
             llmConfigOptions: this.llmConfigOptions(),
+            systemOneConfigs: this.systemOneConfigStorage.configs(),
             readOnly: this.isReadOnly(),
         };
     }

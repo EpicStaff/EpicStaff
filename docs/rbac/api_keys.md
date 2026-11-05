@@ -394,7 +394,8 @@ What happens to `USER` keys when their owner or organization changes:
 
 The cross-org governance surface — `/api/admin/roles/`,
 `/api/admin/memberships/`, `/api/admin/organizations/`,
-`/api/admin/users/` and `/api/admin/api-keys/` — runs the
+`/api/admin/users/` and `/api/admin/api-keys/` — and the org self-service
+`PATCH /api/admin/organizations/settings/` run the
 `RestrictApiKeyToUserKeyReads` gate on every action:
 
 | Caller | Safe methods (`GET`/`HEAD`/`OPTIONS`) | Writes (`POST`/`PUT`/`PATCH`/`DELETE`, incl. custom actions such as `deactivate`, `grant-superadmin`) |
@@ -406,8 +407,9 @@ The cross-org governance surface — `/api/admin/roles/`,
 So creating/deleting roles, adding or changing memberships,
 creating/deactivating/reactivating/deleting organizations and every user
 management action (create, grant/revoke superadmin, deactivate, reactivate,
-delete) need a user session. The gate is prepended, first, by the
-`get_permissions` of `CrossOrgAdminViewSet` and of `UserAdminViewSet`, so
+delete), and changing an organization's own settings, need a user session.
+The gate is prepended, first, by the `get_permissions` of
+`CrossOrgAdminViewSet` and of `OrganizationSelfServiceViewSet`, so
 every subclass inherits it — including any action later added to a
 subclass's `superadmin_actions` — and neither a subclass's
 `permission_classes` nor an `@action(permission_classes=...)` can drop it.
@@ -435,11 +437,15 @@ are JWT-only as well (`DenyApiKeyAuth`, any key type).
 ### Admin pages with an API key
 
 A `USER` key — also a superadmin's — reads the admin pages **only in its own
-organization**. `limit_org_ids_to_api_key` (`rbac/access/principals.py`) replaces the
-organizations a read asks for (`?org_ids=`, `?organization_id=`,
-`?assignable_org_ids=`, or none) with the key's organization. This applies to
-roles, memberships (including `assignable-users`), organizations (including
-`{id}/retention/`), users, and plugin role permissions.
+organization**. The helpers of `CrossOrgAdminViewSet` (`rbac/views/cross_org_base.py`)
+— `requested_org_ids`, `key_org_ids` and `require_key_org` — replace the organizations
+a read asks for (`?org_ids=`, `?organization_id=`, `?assignable_org_ids=`, or none)
+with the key's organization, wherever a view takes its org ids through them. Roles,
+memberships (including `assignable-users`), organizations (including
+`{id}/retention/`), users, and plugin role permissions do.
+`tests/api_tests/test_admin_surface_api_key_coverage.py` enforces it: every
+`api/admin/` route must be listed there as key-scoped (with a leak check) or
+key-refused.
 
 - A list returns only rows of the key's organization, whatever `?org_ids=` says.
   A different id in `?org_ids=` is not an error — it is replaced.

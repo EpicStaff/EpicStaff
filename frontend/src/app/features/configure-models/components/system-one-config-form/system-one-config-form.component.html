@@ -1,0 +1,100 @@
+<form [formGroup]="form">
+    <section class="section">
+        <h3 class="section-title">MODEL INFORMATION</h3>
+        <div>
+            <app-custom-input
+                formControlName="custom_name"
+                label="Configuration Name"
+                placeholder="Enter a custom name"
+                tooltipText="A friendly name to identify this configuration across the app"
+                [required]="true"
+                autocomplete="off"
+            />
+            <app-validation-errors [control]="form.controls.custom_name" />
+        </div>
+        <div>
+            <div class="provider-label">
+                <span>Provider</span>
+                <span class="required">*</span>
+                <app-help-tooltip
+                    text="TypeSafe runs a Jev model with your API key. LLM answers with one of your LLM configurations."
+                    position="right"
+                />
+            </div>
+            <div
+                class="provider-buttons"
+                role="group"
+                aria-label="Provider"
+            >
+                @for (provider of providers; track provider.key) {
+                    <button
+                        type="button"
+                        class="provider-btn"
+                        [class.active]="selectedProvider() === provider.key"
+                        [attr.aria-pressed]="selectedProvider() === provider.key"
+                        [disabled]="isEditMode() && selectedProvider() !== provider.key"
+                        (click)="selectProvider(provider.key)"
+                    >
+                        {{ provider.label }}
+                    </button>
+                }
+            </div>
+        </div>
+
+        @if (selectedProvider() === 'typesafe') {
+            <div>
+                <app-select
+                    formControlName="model_name"
+                    label="Jev Version"
+                    variant="boxed"
+                    placeholder="Select a version"
+                    tooltipText="The Jev model version that answers the questions"
+                    [items]="jevItems"
+                    [required]="true"
+                />
+                <app-validation-errors [control]="form.controls.model_name" />
+            </div>
+            <div>
+                <app-select
+                    formControlName="api_key_secret_id"
+                    label="API Key"
+                    variant="boxed"
+                    placeholder="Select a secret"
+                    tooltipText="The stored secret holding your TypeSafe API key"
+                    [items]="apiKeyItems()"
+                    [required]="true"
+                    [showSearch]="true"
+                    searchPlaceholder="Search a secret..."
+                />
+                <app-binned-secret-note [selected]="form.controls.api_key_secret_id.value" />
+                @if (!form.controls.api_key_secret_id.value) {
+                    <app-hint-message>
+                        Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                    </app-hint-message>
+                }
+                <app-validation-errors [control]="form.controls.api_key_secret_id" />
+            </div>
+        } @else {
+            <div>
+                <app-select
+                    formControlName="llm_config"
+                    label="LLM Configuration"
+                    variant="boxed"
+                    placeholder="Select an LLM configuration"
+                    tooltipText="The LLM configuration that answers the questions"
+                    [items]="llmConfigItems()"
+                    [required]="true"
+                    [showSearch]="true"
+                    searchPlaceholder="Search a configuration..."
+                />
+                @if (llmConfigItems().length === 0) {
+                    <app-hint-message
+                        >No LLM configs yet. Add one in the <strong>LLM tab</strong> first.</app-hint-message
+                    >
+                }
+                <app-hint-message>Its probabilities are the LLM's own estimate, not calibrated.</app-hint-message>
+                <app-validation-errors [control]="form.controls.llm_config" />
+            </div>
+        }
+    </section>
+</form>
