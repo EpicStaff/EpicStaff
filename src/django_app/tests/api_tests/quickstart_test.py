@@ -6,7 +6,9 @@ from rest_framework import status
 from tables.models.default_models import DefaultModels
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.llm_models import LLMConfig
+from tables.models.provider import Provider
 from tables.models.realtime_models import OpenAIRealtimeConfig
+from tables.utils.litellm_model_info import validate_reasoning_effort
 
 from tests.fixtures import *
 
@@ -158,6 +160,39 @@ def test_post_quickstart_creates_configs_in_db(
     realtime = OpenAIRealtimeConfig.objects.get(custom_name="quickstart_openai")
     assert realtime.api_key_secret_id is not None
     assert realtime.transcription_api_key_secret_id is not None
+
+
+@pytest.mark.django_db
+def test_post_quickstart_openai_llm_config_uses_low_reasoning_and_large_token_budget(
+    auth_client, quickstart_url, openai_provider_seeded
+):
+    response = auth_client.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-test"}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    llm_config = LLMConfig.objects.get(custom_name="quickstart_openai")
+    assert llm_config.reasoning_effort == "low"
+    assert llm_config.max_tokens == 100000
+    # Quickstart skips the serializer, so check the stored effort is one the model takes.
+    validate_reasoning_effort(llm_config.model, llm_config.reasoning_effort)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("provider_name", ["gemini", "cohere", "mistral"])
+def test_post_quickstart_non_openai_llm_config_keeps_model_defaults(
+    auth_client, quickstart_url, provider_name
+):
+    Provider.objects.create(name=provider_name)
+
+    response = auth_client.post(
+        quickstart_url, {"provider": provider_name, "api_key": "sk-test"}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    llm_config = LLMConfig.objects.get(custom_name=f"quickstart_{provider_name}")
+    assert llm_config.reasoning_effort is None
+    assert llm_config.max_tokens == 4096
 
 
 @pytest.mark.django_db
