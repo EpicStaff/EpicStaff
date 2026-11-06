@@ -117,7 +117,7 @@
                                 <app-copy-button [text]="chunk.text" />
                             }
                             <div class="chunk-header">
-                                <div class="chunk-order">#{{ chunk.order }}</div>
+                                <div class="chunk-order">Chunk {{ chunk.order }}</div>
                                 @if (chunk.source || ragKind === 'naive') {
                                     <div
                                         class="chunk-source"

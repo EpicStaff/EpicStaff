@@ -83,7 +83,7 @@ describe('ExtractedChunksMessageComponent', () => {
 
         expect(texts(element, '.stat .label')).toEqual(['Search limit', 'Retrieved', 'Similarity threshold']);
         expect(texts(element, '.chip')).toEqual(['Naive RAG', '2 chunks']);
-        expect(texts(element, '.chunk-order')).toEqual(['#0', '#1']);
+        expect(texts(element, '.chunk-order')).toEqual(['Chunk 0', 'Chunk 1']);
         expect(texts(element, '.chunk-source')).toEqual(['doc.pdf', 'Unknown source']);
         expect(texts(element, '.chunk-text')).toEqual(['first', 'second']);
     });
