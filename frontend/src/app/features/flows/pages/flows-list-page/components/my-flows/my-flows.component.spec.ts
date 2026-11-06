@@ -9,13 +9,13 @@ import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shar
 import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
 import { Observable, of, throwError } from 'rxjs';
 
+import { TransferExportService } from '../../../../../../core/services/transfer-export.service';
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../../../services/config';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { GetGraphLightRequest } from '../../../../models/graph.model';
-import { FlowExportService } from '../../../../services/flow-export.service';
 import { FlowsApiService } from '../../../../services/flows-api.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
@@ -57,7 +57,7 @@ describe('MyFlowsComponent copy action', () => {
                 { provide: ToastService, useValue: { success: toastSuccess, error: toastError } },
                 { provide: ConfirmationDialogService, useValue: {} },
                 { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
-                { provide: FlowExportService, useValue: {} },
+                { provide: TransferExportService, useValue: {} },
             ],
         });
     });
