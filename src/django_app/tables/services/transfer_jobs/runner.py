@@ -10,6 +10,7 @@ from rbac.access.asserts import assert_org_permission
 from rbac.models.enums import Permission
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from tables.clients.errors import ClientError, ClientValidationError
+from tables.exceptions import CustomAPIExeption
 from tables.import_export.archive import temporary_archive
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import ArchiveExportFormatStrategy
@@ -33,7 +34,7 @@ EXPORT_ARCHIVE_NAME = "export.zip"
 IMPORT_ARCHIVE_NAME = "import.zip"
 
 # The main entities a job carries: their model, and the prefix of their archive's name.
-_MAIN_MODELS = {
+MAIN_ENTITY_MODELS = {
     EntityType.GRAPH: (Graph, "flow"),
     EntityType.SOURCE_COLLECTION: (SourceCollection, "knowledge"),
 }
@@ -80,8 +81,11 @@ def public_error(error: Exception, kind: str) -> dict:
             "code": "knowledge_service_unavailable",
             "message": "The knowledge service could not be reached.",
         }
+    # A project error names itself (e.g. `export_cycle_detected`); the creator sees that code.
+    if isinstance(error, CustomAPIExeption):
+        return {"code": error.default_code, "message": flatten_error_detail(error.detail)}
     if isinstance(error, APIException):
-        return {"code": "invalid_file", "message": str(error.detail)}
+        return {"code": "invalid_file", "message": flatten_error_detail(error.detail)}
     return {"code": "internal_error", "message": "The job failed unexpectedly."}
 
 
@@ -155,7 +159,7 @@ class TransferJobRunner:
         user, org_id = job.created_by, job.org_id
         # Checked again here: the creator's rights may have changed since the job was queued.
         assert_org_permission(user, org_id, ENTITY_RESOURCE_MAP[entity_type], Permission.EXPORT)
-        model, prefix = _MAIN_MODELS[entity_type]
+        model, prefix = MAIN_ENTITY_MODELS[entity_type]
         entity_ids = list(job.request.get("ids", []))
         instances = list(model.objects.filter(pk__in=entity_ids, org_id=org_id))
         if not entity_ids or len(instances) != len(set(entity_ids)):
@@ -201,7 +205,7 @@ class TransferJobRunner:
         if settings.replace_existing:
             assert_org_permission(user, org_id, ENTITY_RESOURCE_MAP[entity_type], Permission.UPDATE)
 
-        _model, prefix = _MAIN_MODELS[entity_type]
+        _model, prefix = MAIN_ENTITY_MODELS[entity_type]
         with temporary_archive(partial(self._store.download_to, job.archive_key)) as path:
             job.result = ViewSetImportExportService(
                 entity_type=entity_type, export_prefix=prefix, filename_attr="name"

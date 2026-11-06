@@ -120,6 +120,8 @@ TAG_MAP = [
     ("api/admin/plugin-role-permissions", "Plugins"),
     # Notifications
     ("api/notify", "Notifications"),
+    # Transfer jobs
+    ("api/transfer-jobs", "Transfer Jobs"),
 ]
 
 TAGS_ORDER = [
@@ -193,6 +195,7 @@ TAGS_ORDER = [
     "Key Value Tables",
     "Plugins",
     "Notifications",
+    "Transfer Jobs",
     "Other",
 ]
 
