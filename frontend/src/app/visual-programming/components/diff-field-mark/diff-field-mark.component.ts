@@ -65,7 +65,6 @@ const BADGE_LABEL = 'Restore changes this field';
                 <span
                     class="diff-field-mark__badge"
                     aria-hidden="true"
-                    [attr.title]="diffLabel()"
                 >
                     <i
                         class="ti ti-pencil"
@@ -148,8 +147,9 @@ export class DiffFieldMarkComponent {
      */
     readonly diffBadge = input(true);
     /**
-     * What the mark is called for screen readers and on its badge: "Restore changes this field" unless the marked
-     * element is something else, e.g. "Restore changes this question" for a row that holds a whole question.
+     * What the mark is called for screen readers: "Restore changes this field" unless the marked element is something
+     * else, e.g. "Restore changes this question" for a row that holds a whole question. The badge does not show it: on
+     * a row it would be a second tooltip over the row's own.
      */
     readonly diffLabel = input(BADGE_LABEL);
     /**

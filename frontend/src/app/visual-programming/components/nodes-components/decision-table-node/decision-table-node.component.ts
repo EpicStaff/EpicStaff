@@ -1,6 +1,7 @@
 import { CommonModule, NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { FFlowModule } from '@foblex/flow';
 import { NODE_COLORS, NODE_ICONS } from '@shared/models';
 import { formatNodeLabel } from '@shared/utils';
@@ -19,7 +20,7 @@ import { FlowSettingsService } from '../../../services/flow-settings.service';
     selector: 'app-decision-table-node',
     templateUrl: './decision-table-node.component.html',
     styleUrls: ['./decision-table-node.component.scss'],
-    imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle],
+    imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DecisionTableNodeComponent {

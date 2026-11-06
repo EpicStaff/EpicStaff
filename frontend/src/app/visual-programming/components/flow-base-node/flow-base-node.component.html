@@ -328,7 +328,8 @@
 }
 <!--
     Version diff canvas: the status badge (top-left) and the missing-reference marker right of it, 2px under the
-    badge (in the badge's spot when there is no badge). Both yield to a Key-Value summary tab.
+    badge (in the badge's spot when there is no badge). Both yield to a Key-Value summary tab: they hide while the
+    node is hovered, so the pointer can never be on one while it shows, and their tooltips are off there.
 -->
 @let badge = diffBadge;
 @if (badge) {
@@ -337,7 +338,8 @@
         [class.diff-badge--yields-to-tab]="showsSummaryTab"
         role="img"
         [attr.aria-label]="badge.label"
-        [attr.title]="badge.label"
+        [matTooltip]="badge.label"
+        [matTooltipDisabled]="showsSummaryTab"
     >
         <i
             [class]="badge.icon"
@@ -352,7 +354,8 @@
         [class.missing-references-marker--yields-to-tab]="showsSummaryTab"
         role="img"
         aria-label="This version uses items that no longer exist"
-        title="This version uses items that no longer exist"
+        matTooltip="This version uses items that no longer exist"
+        [matTooltipDisabled]="showsSummaryTab"
     >
         <app-svg-icon
             icon="alert-triangle"

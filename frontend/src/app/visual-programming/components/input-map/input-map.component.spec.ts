@@ -438,6 +438,8 @@ describe('InputMapComponent rows on the Changes tab of a version preview', () =>
         for (const row of [added, removed]) row.dispatchEvent(new Event('mouseenter'));
         fixture.detectChanges();
         expect(document.querySelector('.diff-field-mark__tooltip')).toBeNull();
+        // Their status is read out instead (see above); a native tooltip would cover the cells' own.
+        expect([added, removed].map((row) => row.hasAttribute('title'))).toEqual([false, false]);
 
         changed.dispatchEvent(new Event('mouseenter'));
         fixture.detectChanges();

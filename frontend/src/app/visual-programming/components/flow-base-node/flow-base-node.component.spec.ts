@@ -338,6 +338,12 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
     const host = (): HTMLElement => fixture.nativeElement;
     const badge = (): HTMLElement | null => host().querySelector('.diff-badge');
     const missingReferencesMarker = (): HTMLElement | null => host().querySelector('.missing-references-marker');
+    const tooltipDirective = (mark: HTMLElement): MatTooltip | null =>
+        getDebugNode(mark)?.injector.get(MatTooltip, null, { self: true }) ?? null;
+    /** The hover tooltip of a mark; empty when it has none. */
+    const markTooltip = (mark: HTMLElement | null): string | null => mark && (tooltipDirective(mark)?.message ?? '');
+    /** Whether a mark's tooltip can open (it is off while the mark yields to a summary tab). */
+    const tooltipEnabled = (mark: HTMLElement): boolean => !(tooltipDirective(mark)?.disabled ?? true);
 
     function render(node: NodeModel, state: { status: NodeDiffStatus } | null, hasMissingReferences = false): void {
         TestBed.configureTestingModule({
@@ -376,7 +382,7 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
             const statusClasses = Array.from(host().classList).filter((name) => name.startsWith('diff-'));
             expect(statusClasses).toEqual([`diff-${status}`]);
             expect(badge()?.getAttribute('aria-label') ?? null).toBe(label);
-            expect(badge()?.title ?? null).toBe(label);
+            expect(markTooltip(badge())).toBe(label);
         });
     }
 
@@ -397,12 +403,19 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
         render(NUMBERED_NODE, { status: 'added' });
 
         expect(badge()!.classList).toContain('diff-badge--yields-to-tab');
+        // It hides while the node is hovered, so its tooltip could only open over nothing.
+        expect(tooltipEnabled(badge()!)).toBe(false);
     });
 
     it('keeps the badge of a node without a summary tab always shown', () => {
         render({ ...mapGraphNoteToModel(liveNote), ports: null, nodeNumber: 3 }, { status: 'added' });
 
         expect(badge()!.classList).not.toContain('diff-badge--yields-to-tab');
+        expect(tooltipEnabled(badge()!)).toBe(true);
+        expect(markTooltip(badge())).toBe('Restore adds this node');
+        // The tooltip says what the label says, so a screen reader hears it once (Material describes after render).
+        TestBed.tick();
+        expect(badge()!.hasAttribute('aria-describedby')).toBe(false);
     });
 
     it('flags missing references apart from the status, on an unchanged node too', () => {
@@ -412,6 +425,7 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
         expect(missingReferencesMarker()!.getAttribute('aria-label')).toBe(
             'This version uses items that no longer exist'
         );
+        expect(markTooltip(missingReferencesMarker())).toBe('This version uses items that no longer exist');
     });
 
     // jsdom has no layout: the classes pick the spot, the positions are checked by eye.
@@ -433,12 +447,17 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
 
         expect(missingReferencesMarker()!.classList).toContain('missing-references-marker--yields-to-tab');
         expect(badge()!.classList).toContain('diff-badge--yields-to-tab');
+        expect(tooltipEnabled(missingReferencesMarker()!)).toBe(false);
     });
 
     it('keeps the marker of a node without a summary tab always shown', () => {
         render({ ...mapGraphNoteToModel(liveNote), ports: null }, null, true);
 
         expect(missingReferencesMarker()!.classList).not.toContain('missing-references-marker--yields-to-tab');
+        expect(tooltipEnabled(missingReferencesMarker()!)).toBe(true);
+        // Heard once: the tooltip repeats the label.
+        TestBed.tick();
+        expect(missingReferencesMarker()!.hasAttribute('aria-describedby')).toBe(false);
     });
 
     it('flags missing references on a plain version canvas, with no status mark', () => {

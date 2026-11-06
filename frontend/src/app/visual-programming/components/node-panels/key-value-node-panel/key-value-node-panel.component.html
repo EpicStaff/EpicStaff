@@ -121,7 +121,6 @@
                             appDiffFieldMark
                             [diffChange]="entryRowMarks()[i]?.change ?? null"
                             [class.entry-row-mark--added]="entryRowMarks()[i]?.added"
-                            [attr.title]="entryRowMarks()[i]?.added ? 'Restore adds this key' : null"
                             (diffTooltipSide)="onEntryDiffTooltipSide($event)"
                         >
                             @if (entryRowMarks()[i]?.added) {
@@ -260,10 +259,7 @@
                         </div>
                     </ng-template>
                     @for (removed of removedEntries(); track $index) {
-                        <div
-                            class="entry-row-mark entry-row-mark--removed"
-                            title="Restore removes this key"
-                        >
+                        <div class="entry-row-mark entry-row-mark--removed">
                             <span class="visually-hidden">Restore removes this key: </span>
                             <div class="entry-row">
                                 @switch (mode()) {

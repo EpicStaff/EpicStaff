@@ -162,14 +162,15 @@ describe('DiffFieldMarkComponent', () => {
         expect(descriptionOf('row')).toBe('Restore changes this field. Current canvas: variables.user');
     });
 
-    it("keeps a marked row's own role and names the row by its label", () => {
+    it("keeps a marked row's own role and names the row by its label, which its badge does not repeat", () => {
         render([onDiff('changed', [])], { current: 'variables.user', version: 'variables.account' });
 
         expect(element('table-row').getAttribute('role')).toBe('row');
         expect(descriptionOf('table-row')).toBe('Restore changes this input. Current canvas: variables.user');
-        expect(element('table-row').querySelector('.diff-field-mark__badge')?.getAttribute('title')).toBe(
-            'Restore changes this input'
-        );
+        // The row's own tooltip opens over the badge too; a native one on the badge would be a second.
+        const badge = element('table-row').querySelector('.diff-field-mark__badge')!;
+        expect(badge.getAttribute('aria-hidden')).toBe('true');
+        expect(badge.hasAttribute('title')).toBe(false);
     });
 
     it('leaves a field the diff does not change unmarked', () => {

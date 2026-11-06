@@ -561,6 +561,9 @@ $missing-references-marker-hover-z-index: 14;
     .missing-references-marker--yields-to-tab {
         opacity: 0;
         transition-delay: 0s;
+        // Hidden, it goes under the tab (the node is a stacking context: Foblex moves it with a transform), so the tab
+        // and its tooltip get the pointer. It stays hit-testable where nothing covers it, so the node keeps its hover.
+        z-index: -1;
     }
 }
 

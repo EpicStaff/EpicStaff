@@ -112,7 +112,8 @@ describe('buildUnionFlowModel', () => {
             const live = load({
                 python_node_list: [{ ...livePython, ...at(0, 0) }],
                 end_node_list: [{ ...liveEnd, ...at(0, 0) }],
-                // A note keeps its stored size: the one of the other nodes, so both clear the Python node alike.
+                // A note is sized by its stored size, not by its type. It gets the size the other nodes have
+                // (330 x 60), so the note and the End node clear the Python node by the same distance.
                 graph_note_list: [{ ...liveNote, ...at(0, 0, { width: 330, height: 60 }) }],
             });
 

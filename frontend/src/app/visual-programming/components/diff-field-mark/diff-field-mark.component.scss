@@ -53,8 +53,8 @@
     }
 }
 
-// On the frame's top-right corner, half outside, like the badge of the element form. A real element rather than a
-// pseudo-element, for its `title`. The glyph is the `ti ti-pencil` icon inside.
+// On the frame's top-right corner, half outside, like the badge of the element form. The glyph is the `ti ti-pencil`
+// icon inside.
 .diff-field-mark__badge {
     @include diff-value-mark.badge-look;
     position: absolute;

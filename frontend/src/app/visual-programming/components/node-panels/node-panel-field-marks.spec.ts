@@ -425,6 +425,8 @@ describe('Key-Value entries on the Changes tab', () => {
             { status: 'removed', text: 'Restore removes this key: gone @ .gone' },
         ]);
         expect(markedFields(root)).toEqual([]);
+        // The status is read out, not hovered: a row-wide tooltip would cover the Key / Variable path tooltips.
+        expect(root.querySelectorAll('.entry-row-mark[title]').length).toBe(0);
     });
 
     it('draws a row only the canvas has in the deleted colour, struck and faded, as the other removed values', () => {

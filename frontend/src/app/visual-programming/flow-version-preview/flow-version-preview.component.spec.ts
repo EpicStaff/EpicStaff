@@ -191,15 +191,6 @@ describe('FlowVersionPreviewComponent', () => {
     let liveFlow: FlowModel;
 
     beforeEach(() => {
-        // jsdom has no ResizeObserver; the preview bar title's overflow tooltip needs one.
-        vi.stubGlobal(
-            'ResizeObserver',
-            class {
-                observe(): void {}
-                unobserve(): void {}
-                disconnect(): void {}
-            }
-        );
         responses = new Map();
         liveFlow = { nodes: [], connections: [] };
         TestBed.configureTestingModule({

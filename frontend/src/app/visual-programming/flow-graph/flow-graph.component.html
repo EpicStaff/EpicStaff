@@ -150,6 +150,8 @@
                 connection of sortedConnections();
                 track connection.id + '-' + (routingOrchestrator.connectionRenderVersions()[connection.id] ?? 0)
             ) {
+                <!-- Native title on purpose (exception to the one-tooltip rule): a matTooltip would anchor to the edge's
+                     whole bounding box, and the title is the non-colour cue for an added or removed connection. -->
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
                     [fType]="flowSettings.edgeStyle()"

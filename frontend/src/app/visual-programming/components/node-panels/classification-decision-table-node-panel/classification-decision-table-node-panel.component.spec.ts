@@ -1114,11 +1114,15 @@ describe('ClassificationDecisionTableNodePanelComponent — the prompts and the 
             ],
         });
 
+        // The status is heard, not hovered: a card-wide tooltip would cover the tooltips of the controls inside.
         const added = card(root, 'triage');
         expect(added.classList).toContain('prompt-card--added');
-        expect(added.getAttribute('title')).toBe('Restore adds this prompt');
+        expect(added.querySelector(':scope > .visually-hidden')?.textContent).toBe('Restore adds this prompt: ');
+        expect(added.hasAttribute('title')).toBe(false);
         const removed = card(root, 'legacy');
         expect(removed.classList).toContain('prompt-card--removed');
+        expect(removed.querySelector(':scope > .visually-hidden')?.textContent).toBe('Restore removes this prompt: ');
+        expect(removed.hasAttribute('title')).toBe(false);
         expect(removed.textContent).toContain('old_category');
         expect(removed.querySelector('button')).toBeNull();
     });

@@ -44,7 +44,6 @@
                         class="att-row"
                         [class.att-row--even]="i % 2 === 1"
                         [class.att-row--added]="rowMark.added"
-                        [attr.title]="rowMark.added ? 'Restore adds this task' : null"
                         cdkDrag
                         [cdkDragDisabled]="readonly()"
                         appDiffFieldMark
@@ -193,10 +192,7 @@
 
                 <!-- Tasks only on the current canvas: the version does not have them, a restore removes them. -->
                 @for (removed of removedTasks(); track removed.position) {
-                    <div
-                        class="att-row att-row--removed"
-                        title="Restore removes this task"
-                    >
+                    <div class="att-row att-row--removed">
                         <span class="visually-hidden">Restore removes this task: </span>
                         <div class="att-cell att-cell--index">
                             <span class="att-row-number">{{ removed.position }}</span>

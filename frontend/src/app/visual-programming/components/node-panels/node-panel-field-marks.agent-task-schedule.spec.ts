@@ -348,6 +348,8 @@ describe('Agent tasks on the Changes tab', () => {
             { status: 'removed', text: 'Restore removes this task: | Review | Check it' },
         ]);
         expect(markedFields(root)).toEqual([]);
+        // The status is read out, not hovered: a row-wide tooltip would cover the tooltips inside (Expand).
+        expect(root.querySelectorAll('.att-row[title]').length).toBe(0);
     });
 
     it('names the changed columns in the row tooltip and description, not their values', () => {

@@ -1,5 +1,6 @@
-import { signal } from '@angular/core';
+import { getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { FFlowModule } from '@foblex/flow';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 import { LlmConfigStorageService, SystemOneConfigStorageService } from '@shared/services';
@@ -73,6 +74,9 @@ describe('ClassificationDecisionTableNodeComponent', () => {
         fixture.nativeElement.querySelector(`[data-f-output-id="${portId}"]`)?.closest('.decision-table__group') ??
         null;
     const rows = (): HTMLElement[] => [...fixture.nativeElement.querySelectorAll('.decision-table__group')];
+    /** The row's own hover tooltip; empty when it has none. */
+    const tooltipOf = (row: HTMLElement): string =>
+        getDebugNode(row)?.injector.get(MatTooltip, null, { self: true })?.message ?? '';
 
     it('draws a row with a connector for a route a restore removes, named and labelled for it, on a diff canvas', () => {
         render({ versionOnlyPortIds: [], currentOnlyRoutePortIds: [REMOVED_ROUTE_PORT] });
@@ -81,7 +85,10 @@ describe('ClassificationDecisionTableNodeComponent', () => {
         expect(row.textContent?.trim()).toBe('Route B');
         expect(row.classList).toContain('decision-table__group--removed');
         expect(row.getAttribute('aria-label')).toBe('Restore removes this condition');
-        expect(row.getAttribute('title')).toBe('Restore removes this condition');
+        expect(tooltipOf(row)).toBe('Restore removes this condition');
+        // The tooltip says what the label says, so a screen reader hears it once (Material describes after render).
+        TestBed.tick();
+        expect(row.hasAttribute('aria-describedby')).toBe(false);
     });
 
     it('draws no removed row for a group of its own without a route code, which has a port but no row', () => {
@@ -100,7 +107,7 @@ describe('ClassificationDecisionTableNodeComponent', () => {
         const addedRow = rowOf(ADDED_ROUTE_PORT)!;
         expect(addedRow.classList).toContain('decision-table__group--added');
         expect(addedRow.getAttribute('aria-label')).toBe('Restore adds this condition');
-        expect(addedRow.getAttribute('title')).toBe('Restore adds this condition');
+        expect(tooltipOf(addedRow)).toBe('Restore adds this condition');
         expect(rows().filter((row) => row.classList.contains('decision-table__group--added'))).toEqual([addedRow]);
     });
 
@@ -111,7 +118,7 @@ describe('ClassificationDecisionTableNodeComponent', () => {
         for (const row of rows()) {
             expect(row.className).not.toMatch(/--added|--removed/);
             expect(row.hasAttribute('aria-label')).toBe(false);
-            expect(row.hasAttribute('title')).toBe(false);
+            expect(tooltipOf(row)).toBe('');
         }
     });
 });

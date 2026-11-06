@@ -457,7 +457,6 @@
                                             [class.expanded]="editingPromptId() === prompt.id"
                                             [class.prompt-card--changed]="cardMark.change !== null"
                                             [class.prompt-card--added]="cardMark.added"
-                                            [attr.title]="cardMark.added ? 'Restore adds this prompt' : null"
                                         >
                                             @if (cardMark.added) {
                                                 <span class="visually-hidden">Restore adds this prompt: </span>
@@ -705,10 +704,7 @@
                                     }
                                     <!-- Version diff (Changes tab): the canvas prompts a restore removes, read-only. -->
                                     @for (removed of removedPrompts(); track removed.id) {
-                                        <div
-                                            class="prompt-card prompt-card--removed"
-                                            title="Restore removes this prompt"
-                                        >
+                                        <div class="prompt-card prompt-card--removed">
                                             <span class="visually-hidden">Restore removes this prompt: </span>
                                             <div class="prompt-card-header">
                                                 <div class="prompt-card-title">
