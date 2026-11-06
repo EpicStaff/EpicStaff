@@ -367,7 +367,7 @@ def test_storage_folder_delete_records_one_not_per_file(
 
     folder = StorageFile.deleted_objects.get(org=acme, path="reports/")
     [event] = sent_events
-    assert _target(event) == ("moved_to_recycle_bin", "storage file", str(folder.id), "reports/")
+    assert _target(event) == ("moved_to_recycle_bin", "storage folder", str(folder.id), "reports/")
 
 
 def test_storage_restore_records_restored(

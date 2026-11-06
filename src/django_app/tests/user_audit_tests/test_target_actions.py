@@ -133,14 +133,14 @@ def test_storage_mkdir_records_the_folder_not_its_new_ancestors(
 
     folder = StorageFile.objects.get(org=acme, path="reports/2026/")
     assert StorageFile.objects.filter(org=acme, path="reports/").exists()
-    assert _target(_only_event(sent_events)) == ("created", "storage file", str(folder.id), "reports/2026/")
+    assert _target(_only_event(sent_events)) == ("created", "storage folder", str(folder.id), "reports/2026/")
 
 
 @pytest.mark.parametrize(
-    "seeded_path, from_path, to_path, entry_path, old_path",
+    "seeded_path, from_path, to_path, entry_path, entry_type, old_path",
     [
-        ("docs/old.txt", "docs/old.txt", "docs/new.txt", "docs/new.txt", "docs/old.txt"),
-        ("docs/a.txt", "docs", "papers", "papers/", "docs/"),
+        ("docs/old.txt", "docs/old.txt", "docs/new.txt", "docs/new.txt", "storage file", "docs/old.txt"),
+        ("docs/a.txt", "docs", "papers", "papers/", "storage folder", "docs/"),
     ],
     ids=["file", "folder"],
 )
@@ -149,6 +149,7 @@ def test_storage_rename_records_renamed_with_the_old_path(
     from_path,
     to_path,
     entry_path,
+    entry_type,
     old_path,
     admin_client,
     acme,
@@ -167,7 +168,7 @@ def test_storage_rename_records_renamed_with_the_old_path(
 
     entry = StorageFile.objects.get(org=acme, path=entry_path)
     event = _only_event(sent_events)
-    assert _target(event) == ("renamed", "storage file", str(entry.id), entry_path)
+    assert _target(event) == ("renamed", entry_type, str(entry.id), entry_path)
     assert event.previous_name == old_path
 
 
@@ -191,14 +192,18 @@ def test_storage_move_records_moved_with_both_paths(
 
 
 @pytest.mark.parametrize(
-    "seeded_path, from_path, entry_path",
-    [("a.txt", "a.txt", "archive/a.txt"), ("docs/a.txt", "docs", "archive/docs/")],
+    "seeded_path, from_path, entry_path, entry_type",
+    [
+        ("a.txt", "a.txt", "archive/a.txt", "storage file"),
+        ("docs/a.txt", "docs", "archive/docs/", "storage folder"),
+    ],
     ids=["file", "folder"],
 )
 def test_storage_copy_records_copied_naming_the_copy(
     seeded_path,
     from_path,
     entry_path,
+    entry_type,
     admin_client,
     acme,
     storage_manager,
@@ -217,7 +222,7 @@ def test_storage_copy_records_copied_naming_the_copy(
 
     copy = StorageFile.objects.get(org=acme, path=entry_path)
     event = _only_event(sent_events)
-    assert _target(event) == ("copied", "storage file", str(copy.id), entry_path)
+    assert _target(event) == ("copied", entry_type, str(copy.id), entry_path)
     assert (event.org_id, event.previous_name) == (acme.id, None)
 
 

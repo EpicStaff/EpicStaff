@@ -8,6 +8,7 @@ TARGET_NAME_FIELDS = ("name", "node_name", "custom_name", "collection_name", "fi
 # `app_label.model_name`. A storage entry is known by its full path: one file name repeats
 # across folders, and a move or copy records the path too.
 TARGET_NAME_FIELD_OVERRIDES = {"tables.storagefile": "path"}
+STORAGE_FOLDER_TYPE = "storage folder"
 # Labels a reader knows a model by, where its verbose_name is an internal word.
 TARGET_TYPE_LABELS = {
     "graph": "flow",
@@ -86,7 +87,14 @@ def describe(instance: models.Model) -> TargetDescription:
     if name is None and instance._meta.label_lower in TARGET_NAMED_AFTER_PARENT:
         parent = target_parent(instance)
         name = describe(parent).name if parent is not None else None
-    return TargetDescription(type=target_type(type(instance)), id=str(instance.pk), name=name)
+    return TargetDescription(type=_instance_type(instance), id=str(instance.pk), name=name)
+
+
+def _instance_type(instance: models.Model) -> str:
+    # One storage model holds both files and folders; a reader tells them apart.
+    if instance._meta.label_lower == "tables.storagefile" and instance.item_type == "folder":
+        return STORAGE_FOLDER_TYPE
+    return target_type(type(instance))
 
 
 def describe_user(user) -> TargetDescription:

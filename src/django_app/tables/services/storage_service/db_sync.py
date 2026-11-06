@@ -15,7 +15,6 @@ from tables.services.recycle_bin.deleting import record_deleter
 from tables.services.storage_service.path_utils import is_trash_path
 from tables.signals import rows_bulk_created
 from user_audit.recorder import record_user_action
-from user_audit.targets import TargetDescription, target_type
 
 
 def _name_of(path: str) -> str:
@@ -392,23 +391,15 @@ class StorageFileSync:
     ) -> None:
         """Record the move, copy or upload that put a storage entry at `entry_path` as a user action.
 
-        Names the entry by the path it is stored at, the part a move or copy changes, and
-        keeps a move's `source_path` as its previous name. Records nothing for a `user`
+        Keeps a move's `source_path` as its previous name. Records nothing for a `user`
         None, or when no live row sits at `entry_path` (a folder with no row of its own).
         """
         if user is None or entry_path is None:
             return
-        entry = StorageFile.objects.filter(org_id=org_id, path=entry_path).only("pk").first()
+        entry = StorageFile.objects.filter(org_id=org_id, path=entry_path).first()
         if entry is None:
             return
-        record_user_action(
-            action=action,
-            org_id=org_id,
-            target_description=TargetDescription(
-                type=target_type(StorageFile), id=str(entry.pk), name=entry_path
-            ),
-            previous_name=source_path,
-        )
+        record_user_action(action=action, org_id=org_id, target=entry, previous_name=source_path)
 
 
 def _record_move(org_id: int, source_path: str, entry_path: str, *, user: object | None) -> None:
