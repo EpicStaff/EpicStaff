@@ -13,7 +13,8 @@
 #     number in range;
 #   - that Django's upstreams are least_conn (requests) and round-robin (websockets, the session
 #     event stream) over django_app's servers, DJANGO_SGI_WORKERS of them on their own ports
-#     from DJANGO_PORT + 1 up, none of which nginx ever marks failed (max_fails=0);
+#     from DJANGO_PORT + 1 up, none of which nginx ever marks failed (max_fails=0) or keeps an
+#     idle connection to (keepalive 0);
 #   - that every X-Forwarded-Proto a template sets is $forwarded_proto, never the client's header,
 #     and never $scheme but on the plugin listeners, which no proxy is in front of; that every
 #     location that proxies and passes the client's headers on sends one, so none passes the
@@ -1270,7 +1271,8 @@ fi
 # DJANGO_SGI_WORKERS (19-render-django-upstream.envsh): django_app runs single-worker servers, each
 # on its own port from DJANGO_PORT + 1 up (DJANGO_PORT is the one they share for direct callers).
 # nginx balances requests across them with least_conn, and the long-lived connections in turn,
-# and never takes one out of the group after an error (max_fails=0).
+# never takes one out of the group after an error (max_fails=0) and keeps no idle connection to
+# one (keepalive 0).
 # $1 = upstream name; prints the directives of that upstream in the last render, one per line.
 django_upstream_directives() {
   directives | awk -v name="$1" '$0 == "upstream " name " {" { inside = 1; next }
@@ -1282,8 +1284,8 @@ expect_django_upstreams() {
   local requests streams
   requests=$(django_upstream_directives backend_server | paste -sd '|' -)
   streams=$(django_upstream_directives backend_stream_server | paste -sd '|' -)
-  if [ "$requests" = "zone backend_server 64k;|least_conn;|$2" ] \
-    && [ "$streams" = "zone backend_stream_server 64k;|$2" ]; then
+  if [ "$requests" = "zone backend_server 64k;|least_conn;|keepalive 0;|$2" ] \
+    && [ "$streams" = "zone backend_stream_server 64k;|keepalive 0;|$2" ]; then
     pass "$1"
   else
     fail "$1: backend_server [$requests], backend_stream_server [$streams]"
@@ -1292,6 +1294,12 @@ expect_django_upstreams() {
 if expect_valid "DJANGO_SGI_WORKERS=1 is accepted"; then
   expect_django_upstreams "DJANGO_SGI_WORKERS=1 sends Django's requests to the one server's own port, DJANGO_PORT + 1" \
     "server django:8001 max_fails=0 resolve;"
+  # Uvicorn closes idle connections after 5 s; a webhook POST sent on one as it closes is not retried.
+  if django_upstream_directives webhook_server | grep -qx 'keepalive 0;'; then
+    pass "nginx keeps no idle connection to the webhook service (keepalive 0)"
+  else
+    fail "webhook_server must set keepalive 0: [$(django_upstream_directives webhook_server | paste -sd '|' -)]"
+  fi
 fi
 if expect_valid "DJANGO_SGI_WORKERS=3 is accepted" DJANGO_SGI_WORKERS=3 DJANGO_PORT=8100; then
   expect_django_upstreams "DJANGO_SGI_WORKERS=3 balances Django's requests across the three servers' own ports" \
