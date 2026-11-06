@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 
 from tables.models import Secret
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
-from tables.models.llm_models import LLMConfig, LLMModel
+from tables.models.llm_models import LLMConfig, LLMModel, SystemOneConfig
 from tables.models.provider import Provider
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from rbac.models import Organization, OrganizationUser, Role
@@ -108,6 +108,7 @@ def test_cold_start_creates_one_secret_shared_by_the_whole_bundle(
     realtime = OpenAIRealtimeConfig.objects.get(custom_name=name)
     assert realtime.api_key_secret_id == secret.id
     assert realtime.transcription_api_key_secret_id == secret.id
+    assert SystemOneConfig.objects.get(custom_name=name).api_key_secret_id == secret.id
     assert secret_encryption.decrypt(encryptedtext=secret.value) == "sk-cold-start"
 
 
@@ -159,6 +160,7 @@ def test_gemini_three_config_bundle_shares_one_secret(
     assert GeminiRealtimeConfig.objects.get(custom_name=name).api_key_secret_id == secret.id
     # No OpenAI realtime config, so no transcription key either.
     assert not OpenAIRealtimeConfig.objects.filter(custom_name=name).exists()
+    assert not SystemOneConfig.objects.filter(org=org).exists()
 
 
 @pytest.mark.django_db
@@ -177,7 +179,7 @@ def test_reuse_by_id_creates_no_new_secret(
     assert Secret.objects.filter(org=org).count() == 1, "reuse must create nothing"
 
     name = "quickstart_openai"
-    for model in (LLMConfig, EmbeddingConfig, OpenAIRealtimeConfig):
+    for model in (LLMConfig, EmbeddingConfig, OpenAIRealtimeConfig, SystemOneConfig):
         assert model.objects.get(custom_name=name).api_key_secret_id == existing.id
     assert (
         OpenAIRealtimeConfig.objects.get(custom_name=name).transcription_api_key_secret_id

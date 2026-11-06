@@ -2,7 +2,7 @@
 
 Regression target: the configs a run creates all carry the bundle name, and the
 usage view counted a named resource once per distinct name — so the whole bundle
-folded into one `llm_configs` entry and a secret backing four configs read as
+folded into one `llm_configs` entry and a secret backing several configs read as
 backing one. The resource type in the usage key is what tells them apart, which
 is why these assert on a bundle whose configs deliberately still share a name.
 """
@@ -92,7 +92,7 @@ def llm_config_items(secret):
 
 @pytest.mark.django_db
 class TestABundleSecretReportsEveryConfigItBacks:
-    def test_an_openai_bundle_reports_all_four_configs(
+    def test_an_openai_bundle_reports_all_five_configs(
         self, client_a, org, openai_seeded, quickstart_url
     ):
         run_quickstart(client_a, quickstart_url)
@@ -100,13 +100,14 @@ class TestABundleSecretReportsEveryConfigItBacks:
 
         items = llm_config_items(secret)
 
-        # One name, four resources — exactly the collision the type key exists for.
+        # One name, five resources — exactly the collision the type key exists for.
         assert {item["name"] for item in items} == {"quickstart_openai"}
         assert sorted(item["type"] for item in items) == [
             "embedding_config",
             "llm_config",
             "openai_realtime_config",
             "openai_realtime_transcription_config",
+            "system_one_config",
         ]
 
     def test_the_count_matches_the_configs_the_secret_backs(
@@ -120,7 +121,7 @@ class TestABundleSecretReportsEveryConfigItBacks:
             secret_usage_service.count_for(
                 secret=secret, effective=_all_readable()
             ).readable
-            == 4
+            == 5
         )
 
     def test_a_gemini_bundle_reports_the_three_configs_it_creates(
@@ -156,5 +157,5 @@ class TestABundleSecretReportsEveryConfigItBacks:
                 secret_usage_service.count_for(
                     secret=secret, effective=_all_readable()
                 ).readable
-                == 4
+                == 5
             )
