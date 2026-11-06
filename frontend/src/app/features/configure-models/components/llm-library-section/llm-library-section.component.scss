@@ -9,102 +9,6 @@
         margin-top: 24px;
     }
 
-    // Layouts picked in the component from measured widths (toolbarLayout): beside the title with labels; beside
-    // it icon-only, the title shrinking to 372px and its subtitle wrapping; under the title (--stacked) in two rows.
-    // Beside the title, the toolbar sits midway between the tabs' line and this header's line: centred on the
-    // title block, with 4px on top of the page's 20px so the space above matches the 24px below.
-    .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 24px;
-        padding: 4px 0 24px;
-        border-bottom: 1px solid var(--graphite-750);
-
-        // 16px from the subtitle to the search.
-        &--stacked {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 16px;
-        }
-    }
-
-    .header-left {
-        display: flex;
-        flex: 0 1 auto;
-        flex-direction: column;
-        gap: 6px;
-        min-width: 372px;
-    }
-
-    .header--stacked .header-left {
-        min-width: 0;
-    }
-
-    .title {
-        margin: 0;
-        font-size: var(--text-h3-size);
-        font-weight: var(--text-h3-weight);
-        color: var(--fog-200);
-    }
-
-    .subtitle {
-        margin: 0;
-        font-size: 0.875rem;
-        color: var(--fog-alpha-60);
-    }
-
-    // A zero basis: the toolbar takes the room the title leaves. Its min-width (bound in the template) is what its
-    // controls need with the search at 201px, so the title gives way down to its own minimum first.
-    .header-right {
-        display: flex;
-        flex: 1 1 0;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 8px;
-
-        // With labels the search gives way from 278px down to 201px before the controls go icon-only.
-        > app-search {
-            flex: 0 1 278px;
-            min-width: 201px;
-        }
-
-        > app-button,
-        > app-bulk-select-dropdown,
-        > .filter {
-            flex-shrink: 0;
-        }
-    }
-
-    // Icon-only beside the title: the search takes all the room the icons leave.
-    .header--icons .header-right > app-search {
-        flex: 1 1 201px;
-    }
-
-    // Row 1 the search, full width; row 2 the controls at their natural widths from the left. The component drops
-    // labels from that row (the action's first) before it would wrap to a third.
-    .header--stacked .header-right {
-        flex: 0 0 auto;
-        flex-wrap: wrap;
-        justify-content: flex-start;
-
-        > app-search {
-            flex: 1 1 100%;
-            min-width: 0;
-        }
-    }
-
-    .filter {
-        position: relative;
-        display: flex;
-        align-items: center;
-
-        // Fixed at the width "All capabilities" takes (Figma: 157px), so picking a shorter option does not resize it.
-        &--labelled {
-            width: 157px;
-        }
-    }
-
     // One line between sections: each section closes with its own bottom line (under the header when collapsed,
     // under the cards when open); the page header's line sits above the first one.
     // A row's cards fill the sections' width. Worked out in CSS (container units), not set from the measured width:
@@ -137,7 +41,20 @@
         padding: 8px 0;
     }
 
-    // Full width outside select mode; in it, the section's box and count follow the title.
+    // Full width outside select mode; in it, the section's box and count follow the title. The heading only carries
+    // the semantics: no margin or font of its own, the parts inside keep theirs.
+    .section-heading {
+        display: flex;
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 0;
+        font: inherit;
+    }
+
+    &--select-mode .section-heading {
+        flex: 0 1 auto;
+    }
+
     .section-toggle {
         display: flex;
         flex: 1 1 auto;
@@ -150,10 +67,6 @@
         color: var(--color-text-primary);
         text-align: left;
         cursor: pointer;
-    }
-
-    &--select-mode .section-toggle {
-        flex: 0 1 auto;
     }
 
     .section-title,

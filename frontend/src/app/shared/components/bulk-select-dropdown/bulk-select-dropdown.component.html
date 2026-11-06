@@ -8,7 +8,7 @@
     [class.bulk-select--disabled]="disabled()"
 >
     @if (isSelectToggle()) {
-        <!-- Toolbar look with nothing selected: no menu, a toggle of select mode. -->
+        <!-- toggleWhenEmpty with nothing selected: no menu, a toggle of select mode. -->
         <button
             #mainButton
             type="button"
@@ -19,10 +19,12 @@
             matTooltip="Select"
             (click)="onToggleSelectMode()"
         >
-            <app-svg-icon
-                icon="check-square"
-                size="12px"
-            />
+            @if (isToolbar()) {
+                <app-svg-icon
+                    icon="check-square"
+                    size="12px"
+                />
+            }
             <span class="bulk-select__label"><span class="bulk-select__word">Select</span></span>
         </button>
     } @else {
@@ -91,7 +93,7 @@
         [class.bulk-select-menu--outline]="isOutline()"
     >
         <!-- (keydown.escape): see onMenuItemEscape(). -->
-        @if (isToolbar()) {
+        @if (hasSelectClearMenu()) {
             <!-- Fixed items: "Select All" only ever selects, so it is off once everything is selected. -->
             <button
                 cdkMenuItem

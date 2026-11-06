@@ -252,7 +252,7 @@ button:is(:disabled, [aria-disabled='true']) {
     }
 }
 
-// Toolbar (the LLM Library header): the icon in line with the label, 16px in and 8px before it; with the icon
+// Toolbar (the list-page toolbar look): the icon in line with the label, 16px in and 8px before it; with the icon
 // alone, a 40px square. The destructive action takes the 8px radius of the selected Select beside it.
 .btn--toolbar {
     gap: 0.5rem;

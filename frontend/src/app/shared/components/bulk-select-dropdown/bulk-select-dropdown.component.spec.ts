@@ -17,6 +17,8 @@ import { BulkSelectDropdownComponent } from './bulk-select-dropdown.component';
             [mod]="mod()"
             [appearance]="appearance()"
             [iconOnly]="iconOnly()"
+            [menu]="menu()"
+            [toggleWhenEmpty]="toggleWhenEmpty()"
             (selectModeEntered)="onSelectModeEntered()"
             (selectAllToggled)="onSelectAllToggled()"
             (cleared)="onCleared()"
@@ -32,6 +34,8 @@ class ListHostComponent {
     readonly mod = signal<'default' | 'small'>('default');
     readonly appearance = signal<'filled' | 'outline' | 'toolbar'>('filled');
     readonly iconOnly = signal(false);
+    readonly menu = signal<'toggle-all' | 'select-clear'>('toggle-all');
+    readonly toggleWhenEmpty = signal(false);
     selectModeEnteredCount = 0;
     selectAllToggledCount = 0;
     clearedCount = 0;
@@ -155,9 +159,9 @@ describe('BulkSelectDropdownComponent', () => {
         expect(clearButton(element)).not.toBeNull();
     });
 
-    it('toggles select mode with a plain "Select" in the toolbar look while nothing is selected', () => {
+    it('toggles select mode with a plain "Select" while nothing is selected, with toggleWhenEmpty', () => {
         const { fixture, host, element, overlay } = render();
-        host.appearance.set('toolbar');
+        host.toggleWhenEmpty.set(true);
         fixture.detectChanges();
         expect(mainButton(element).getAttribute('aria-pressed')).toBe('false');
         expect(mainButton(element).hasAttribute('aria-haspopup')).toBe(false);
@@ -186,10 +190,11 @@ describe('BulkSelectDropdownComponent', () => {
         );
     }
 
-    function openToolbarMenu(allSelected: boolean): Rendered {
+    function openSelectClearMenu(allSelected: boolean): Rendered {
         const rendered = render();
         const { fixture, host, element } = rendered;
-        host.appearance.set('toolbar');
+        host.menu.set('select-clear');
+        host.toggleWhenEmpty.set(true);
         host.selectMode.set(true);
         host.selectedCount.set(1);
         host.allSelected.set(allSelected);
@@ -199,8 +204,8 @@ describe('BulkSelectDropdownComponent', () => {
         return rendered;
     }
 
-    it('opens "Select All" and "Clear Selection" from "Select (N)" in the toolbar look', () => {
-        const { host, fixture, overlay } = openToolbarMenu(false);
+    it('opens "Select All" and "Clear Selection" from "Select (N)" with menu="select-clear"', () => {
+        const { host, fixture, overlay } = openSelectClearMenu(false);
 
         expect(menuItemLabels(overlay)).toEqual(['Select All', 'Clear Selection']);
         expect(overlay.querySelector('.bulk-select-menu__divider')).not.toBeNull();
@@ -210,8 +215,8 @@ describe('BulkSelectDropdownComponent', () => {
         expect(host.selectAllToggledCount).toBe(1);
     });
 
-    it('turns "Select All" off, without flipping it, once everything is selected (toolbar look)', () => {
-        const { host, fixture, overlay } = openToolbarMenu(true);
+    it('turns "Select All" off, without flipping it, once everything is selected (menu="select-clear")', () => {
+        const { host, fixture, overlay } = openSelectClearMenu(true);
         const selectAll = overlay.querySelectorAll<HTMLButtonElement>('.bulk-select-menu__item')[0];
 
         expect(selectAll.textContent?.trim()).toBe('Select All');
@@ -222,8 +227,8 @@ describe('BulkSelectDropdownComponent', () => {
         expect(host.selectAllToggledCount).toBe(0);
     });
 
-    it('clears the selection and keeps select mode with "Clear Selection" (toolbar look)', () => {
-        const { host, fixture, element, overlay } = openToolbarMenu(false);
+    it('clears the selection and keeps select mode with "Clear Selection" (menu="select-clear")', () => {
+        const { host, fixture, element, overlay } = openSelectClearMenu(false);
 
         overlay.querySelectorAll<HTMLButtonElement>('.bulk-select-menu__item')[1].click();
         fixture.detectChanges();
@@ -238,6 +243,7 @@ describe('BulkSelectDropdownComponent', () => {
     it('names the icon-only plain "Select" of the toolbar look', () => {
         const { fixture, host, element } = render();
         host.appearance.set('toolbar');
+        host.toggleWhenEmpty.set(true);
         host.iconOnly.set(true);
         fixture.detectChanges();
 
@@ -245,9 +251,10 @@ describe('BulkSelectDropdownComponent', () => {
     });
 
     // Icon-only hides the word from view only: it stays the button's name.
-    it.each([false, true])('reads "Select (N)" in the toolbar look (icon-only: %s)', (iconOnly) => {
+    it.each([false, true])('reads "Select (N)" with toggleWhenEmpty (toolbar look, icon-only: %s)', (iconOnly) => {
         const { fixture, host, element } = render();
         host.appearance.set('toolbar');
+        host.toggleWhenEmpty.set(true);
         host.iconOnly.set(iconOnly);
         host.selectMode.set(true);
         host.selectedCount.set(2);
@@ -464,6 +471,21 @@ describe('BulkSelectDropdownComponent', () => {
             expect(controlClasses(element)).toContain('bulk-select--outline');
             clickSelect(rendered);
             expect(menuClasses(overlay)).toContain('bulk-select-menu--outline');
+        });
+
+        // The look alone: entering select mode still opens the one-item menu and reads "Selected (N)".
+        it('keeps the menu behaviour with appearance="toolbar" alone', () => {
+            const rendered = render();
+            const { fixture, host, element, overlay } = rendered;
+            host.appearance.set('toolbar');
+            fixture.detectChanges();
+
+            clickSelect(rendered);
+            expect(menuItemLabels(overlay)).toEqual(['Select All']);
+
+            host.selectedCount.set(2);
+            fixture.detectChanges();
+            expect(label(element)).toBe('Selected (2)');
         });
     });
 

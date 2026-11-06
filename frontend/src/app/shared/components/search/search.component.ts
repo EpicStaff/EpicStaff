@@ -16,7 +16,7 @@ export class SearchComponent {
     width = input<string>('100%');
     mod = input<'default' | 'small'>('default');
     /**
-     * `toolbar`: the look of a list page's toolbar (LLM Library): the 10px radius, the dim outline and icon,
+     * `toolbar`: the list-page toolbar look: the 10px radius, the dim outline and icon,
      * the icon 16px in and 16px before the text. For the 12px glyph of the design, pair it with `iconSize="16px"`.
      */
     appearance = input<'default' | 'toolbar'>('default');

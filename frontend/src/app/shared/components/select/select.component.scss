@@ -230,7 +230,11 @@
         scrollbar-gutter: stable;
     }
 
-    // Toolbar look (the LLM Library filter): the same panel and rows as the bulk-select menu beside it
+    &__dropdown--boxed &__search {
+        background-color: var(--color-ks-line);
+    }
+
+    // Toolbar look (a list-page toolbar filter): the same panel and rows as the bulk-select menu beside it
     // (bulk-select-dropdown .bulk-select-menu); the picked option keeps the plain text colour, since the trigger
     // already shows it (aria-pressed still marks it).
     &__dropdown--toolbar {

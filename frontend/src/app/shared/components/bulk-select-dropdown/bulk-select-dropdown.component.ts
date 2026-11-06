@@ -4,6 +4,7 @@ import {
     afterNextRender,
     Component,
     computed,
+    DOCUMENT,
     effect,
     ElementRef,
     inject,
@@ -19,18 +20,22 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 /**
- * The "Select" button of a list's bulk selection, with its one-item "Select All" menu.
+ * The "Select" button of a list's bulk selection, with its "Select All" menu.
  *
  * The host owns select mode and the selection; this only shows them and reports what the user asked for.
  * - Opening the menu (a click on "Select", or the keyboard) enters select mode in the same step.
  * - In select mode it reads "Selected (N)", with an × that clears the selection and leaves select mode;
  *   a click on the label toggles the menu (the design's "Selected_Pressed" state, even at 0).
- * - The `toolbar` look differs: with nothing selected it is a plain toggle (no chevron, no menu) that enters
- *   select mode and, clicked again, leaves it; the menu and the × come only with a selection. Its menu has two
- *   fixed items: "Select All" (off once all is selected) and "Clear Selection" (`selectionCleared`).
+ * - `toggleWhenEmpty` changes that: with nothing selected it is a plain toggle (no chevron, no menu) that enters
+ *   select mode and, clicked again, leaves it; the menu and the × come only with a selection, which it reads
+ *   "Select (N)".
+ * - `menu` picks the items: `toggle-all`, one "Select All" / "Deselect All" item; `select-clear`, two fixed items,
+ *   "Select All" (off once all is selected) and "Clear Selection" (`selectionCleared`).
  * - Only the menu opened by the click that enters select mode keeps the "Select" look (the design's
  *   "Pressed" state) until it closes.
  * - Any change of the selected count closes the menu, so ticking an item closes it.
+ *
+ * `appearance`, `mod` and `iconOnly` change only the look; the behaviour comes from `menu` and `toggleWhenEmpty`.
  */
 @Component({
     selector: 'app-bulk-select-dropdown',
@@ -49,44 +54,51 @@ export class BulkSelectDropdownComponent {
     readonly mod = input<'default' | 'small'>('default');
     /**
      * `filled`: the dark control. `outline`: the look of the flows page's Import button, for the default size.
-     * `toolbar`: the LLM Library toolbar, for the default size: transparent, a check-square icon before the label,
-     * and "Select (N)" (not "Selected") in the Selected states. The menu is the `filled` one.
+     * `toolbar`: the list-page toolbar look, for the default size: transparent, with a check-square icon before the
+     * label. The menu is the `filled` one.
      */
     readonly appearance = input<'filled' | 'outline' | 'toolbar'>('filled');
     /**
-     * With `toolbar`, shows the icon in place of the word "Select", which stays the name (the tooltip says it too):
-     * the icon alone at rest, the icon, count and chevron in the Selected states.
+     * Shows the icon in place of the word "Select", which stays the name (the tooltip says it too): the icon alone at
+     * rest, the icon, count and chevron in the Selected states. Needs `appearance="toolbar"`, the only look with the
+     * icon: with any other it does nothing.
      */
     readonly iconOnly = input(false);
+    /** The menu's items: `toggle-all`, one "Select All"/"Deselect All"; `select-clear`, "Select All" and "Clear Selection". */
+    readonly menu = input<'toggle-all' | 'select-clear'>('toggle-all');
+    /**
+     * With nothing selected, a plain toggle of select mode (no chevron, no menu) in place of the menu trigger; with a
+     * selection it reads "Select (N)" (not "Selected").
+     */
+    readonly toggleWhenEmpty = input(false);
 
     readonly selectModeEntered = output<void>();
     readonly selectAllToggled = output<void>();
     readonly cleared = output<void>();
-    /** Toolbar look: "Clear Selection" in the menu; unlike the ×, select mode stays on. */
+    /** `menu="select-clear"`: "Clear Selection" in the menu; unlike the ×, select mode stays on. */
     readonly selectionCleared = output<void>();
 
     private readonly menuTrigger = viewChild(CdkMenuTrigger);
-    /** The menu trigger, or the select-mode toggle that stands in for it (toolbar look, nothing selected). */
+    /** The menu trigger, or the select-mode toggle that stands in for it (`toggleWhenEmpty`, nothing selected). */
     private readonly mainButton = viewChild.required<ElementRef<HTMLButtonElement>>('mainButton');
 
     protected readonly isMenuOpen = signal(false);
     /** The open menu is the one that entered select mode: the control keeps the "Select" look until it closes. */
     private readonly isPressedFromDefault = signal(false);
-    /** In the toolbar look the Selected states need a selection: at 0 it is the plain "Select" toggle again. */
+    /** With `toggleWhenEmpty` the Selected states need a selection: at 0 it is the plain "Select" toggle again. */
     protected readonly showsSelection = computed(
-        () =>
-            this.selectMode() &&
-            !this.isPressedFromDefault() &&
-            (this.appearance() !== 'toolbar' || this.selectedCount() > 0)
+        () => this.selectMode() && !this.isPressedFromDefault() && (!this.toggleWhenEmpty() || this.selectedCount() > 0)
     );
     protected readonly menuItemLabel = computed(() => (this.allSelected() ? 'Deselect All' : 'Select All'));
     protected readonly isSmall = computed(() => this.mod() === 'small');
     protected readonly isOutline = computed(() => this.appearance() === 'outline');
     protected readonly isToolbar = computed(() => this.appearance() === 'toolbar');
     protected readonly isIconOnly = computed(() => this.isToolbar() && this.iconOnly());
-    /** Toolbar look with nothing selected: a plain toggle of select mode, with no chevron and no menu. */
-    protected readonly isSelectToggle = computed(() => this.isToolbar() && !this.showsSelection());
-    protected readonly selectionWord = computed(() => (this.isToolbar() ? 'Select' : 'Selected'));
+    /** `toggleWhenEmpty` with nothing selected: a plain toggle of select mode, with no chevron and no menu. */
+    protected readonly isSelectToggle = computed(() => this.toggleWhenEmpty() && !this.showsSelection());
+    protected readonly hasSelectClearMenu = computed(() => this.menu() === 'select-clear');
+    /** The toggle reads "Select" in both of its states, so its selection keeps the word: "Select (N)". */
+    protected readonly selectionWord = computed(() => (this.toggleWhenEmpty() ? 'Select' : 'Selected'));
     protected readonly mainTooltip = computed(() =>
         this.showsSelection() ? `${this.selectionWord()} (${this.selectedCount()})` : 'Select'
     );
@@ -95,6 +107,7 @@ export class BulkSelectDropdownComponent {
     protected readonly clearIconSize = computed(() => (this.isSmall() ? '20px' : '24px'));
 
     private readonly injector = inject(Injector);
+    private readonly document = inject(DOCUMENT);
 
     private readonly closeMenuOnSelectionChange = effect(() => {
         this.selectedCount();
@@ -138,12 +151,12 @@ export class BulkSelectDropdownComponent {
     protected onMenuClosed(): void {
         this.isMenuOpen.set(false);
         this.isPressedFromDefault.set(false);
-        // "Deselect All" in the toolbar look swaps the trigger for the toggle once the host has the new count:
+        // With `toggleWhenEmpty`, "Clear Selection" swaps the trigger for the toggle once the host has the new count:
         // the focus the menu gave back to the trigger then goes with it, so the toggle takes it.
-        if (this.isToolbar()) {
+        if (this.toggleWhenEmpty()) {
             afterNextRender(
                 () => {
-                    if (document.activeElement === document.body) this.mainButton().nativeElement.focus();
+                    if (this.document.activeElement === this.document.body) this.mainButton().nativeElement.focus();
                 },
                 { injector: this.injector }
             );
@@ -167,10 +180,10 @@ export class BulkSelectDropdownComponent {
         this.focusMainButton();
     }
 
-    /** In the toolbar look the next render may swap the trigger for the toggle: that one gets the focus then. */
+    /** With `toggleWhenEmpty` the next render may swap the trigger for the toggle: that one gets the focus then. */
     private focusMainButton(): void {
         this.mainButton().nativeElement.focus();
-        if (this.isToolbar()) {
+        if (this.toggleWhenEmpty()) {
             afterNextRender(() => this.mainButton().nativeElement.focus(), { injector: this.injector });
         }
     }

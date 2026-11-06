@@ -5,7 +5,12 @@
     (click)="onCardClick()"
 >
     <div class="llm-card__top">
-        <span class="llm-card__model">{{ model().customName }}</span>
+        <span
+            class="llm-card__model"
+            appTooltipOnOverflow
+            [matTooltip]="model().customName"
+            >{{ model().customName }}</span
+        >
         @if (selectMode()) {
             <div
                 class="llm-card__checkbox"
@@ -54,7 +59,13 @@
         }
     </div>
 
-    <div class="llm-card__name">{{ model().modelName }}</div>
+    <div
+        class="llm-card__name"
+        appTooltipOnOverflow
+        [matTooltip]="model().modelName"
+    >
+        {{ model().modelName }}
+    </div>
 
     @if (model().tags.length > 0) {
         <div class="llm-card__tags">

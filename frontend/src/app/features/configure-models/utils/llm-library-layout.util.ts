@@ -62,10 +62,17 @@ export function providerCreationOrder(
     return { createdAt, lowestId };
 }
 
-/** The provider added first comes first: by creation time where both have one, else by the lowest config id. */
+/**
+ * The provider added first comes first. A total order, so any mix sorts the same way: providers with a creation time
+ * by that time, then those without one; ties, and providers without a time among themselves, by the lowest config id.
+ */
 export function compareProviderCreationOrder(first: ProviderCreationOrder, second: ProviderCreationOrder): number {
-    if (first.createdAt !== null && second.createdAt !== null && first.createdAt !== second.createdAt) {
-        return first.createdAt - second.createdAt;
+    if (first.createdAt !== null && second.createdAt !== null) {
+        if (first.createdAt !== second.createdAt) return first.createdAt - second.createdAt;
+    } else if (first.createdAt !== null) {
+        return -1;
+    } else if (second.createdAt !== null) {
+        return 1;
     }
     return first.lowestId - second.lowestId;
 }

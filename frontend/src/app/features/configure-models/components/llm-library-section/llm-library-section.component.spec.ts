@@ -33,6 +33,7 @@ import { DefaultModelsStorageService } from '../../services/default-models-stora
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
+import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
 import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
 import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
 import { RealtimeConfigDialogComponent } from '../realtime-config-dialog/realtime-config-dialog.component';
@@ -296,80 +297,6 @@ describe('LlmLibrarySectionComponent "View Details"', () => {
     });
 });
 
-describe('LlmLibrarySectionComponent toolbar layout', () => {
-    /** Observers that report a header width on demand; the header buttons' own observers are left alone. */
-    const headerObservers: { callback: ResizeObserverCallback; element: Element }[] = [];
-
-    class MeasuringResizeObserver {
-        constructor(private readonly callback: ResizeObserverCallback) {}
-        observe(element: Element): void {
-            if (element.tagName === 'HEADER') headerObservers.push({ callback: this.callback, element });
-        }
-        unobserve(): void {}
-        disconnect(): void {}
-    }
-
-    beforeEach(() => {
-        headerObservers.length = 0;
-        vi.stubGlobal('ResizeObserver', MeasuringResizeObserver);
-    });
-
-    function setHeaderWidth(fixture: ComponentFixture<LlmLibrarySectionComponent>, width: number): void {
-        for (const { callback, element } of headerObservers) {
-            callback([{ target: element, contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver);
-        }
-        fixture.detectChanges();
-    }
-
-    /** Where the toolbar is, and which of its controls show only icons (Select's look stands for Capabilities'). */
-    function layoutOf(fixture: ComponentFixture<LlmLibrarySectionComponent>): string {
-        const element = fixture.nativeElement as HTMLElement;
-        const stacked = !!element.querySelector('.header--stacked');
-        const selectIcon = !!element.querySelector('.bulk-select--icon-only');
-        const actionIcon = !!element.querySelector('.header-right > app-button .btn--icon-only');
-        if (!stacked) return selectIcon && actionIcon ? 'icons' : 'labels';
-        if (selectIcon) return 'stacked-icons';
-        return actionIcon ? 'stacked-action-icon' : 'stacked';
-    }
-
-    // The controls are not measured here (no layout in jsdom): the switches come from the estimated widths.
-    it.each([
-        [false, 1054, 'labels'],
-        [false, 1053, 'icons'],
-        [false, 768, 'icons'],
-        [false, 767, 'stacked'],
-        [false, 449, 'stacked'],
-        [false, 448, 'stacked-action-icon'],
-        [false, 309, 'stacked-action-icon'],
-        [false, 308, 'stacked-icons'],
-        [true, 1075, 'labels'],
-        [true, 1074, 'icons'],
-        [true, 859, 'icons'],
-        [true, 858, 'stacked'],
-        [true, 470, 'stacked'],
-        [true, 469, 'stacked-action-icon'],
-        [true, 390, 'stacked-action-icon'],
-        [true, 389, 'stacked-icons'],
-    ])('with a selection: %s, at a %spx header lays the toolbar out as %s', (withSelection, width, layout) => {
-        const model = libraryModel(ModelTypes.LLM, SHARED_ID);
-        const { fixture } = render([model], { grantedActions: [ActionCode.Create, ActionCode.Delete] });
-        // Runs the render hook that starts observing the header.
-        TestBed.tick();
-        if (withSelection) {
-            fixture.componentInstance.enterSelectMode();
-            fixture.detectChanges();
-            (
-                fixture.debugElement.query(By.directive(LlmLibraryCardComponent))
-                    .componentInstance as LlmLibraryCardComponent
-            ).selectedChange.emit(true);
-        }
-
-        setHeaderWidth(fixture, width);
-
-        expect(layoutOf(fixture)).toBe(layout);
-    });
-});
-
 describe('LlmLibrarySectionComponent select mode', () => {
     function headerButtonLabels(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
         return Array.from(
@@ -525,6 +452,21 @@ describe('LlmLibrarySectionComponent select mode', () => {
             );
         });
 
+        it('leaves select mode on Escape in the search and keeps the focus there', () => {
+            const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+                grantedActions: [ActionCode.Delete],
+            });
+            enterSelectMode(fixture);
+            const search = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('app-search input')!;
+            search.focus();
+
+            search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            fixture.detectChanges();
+
+            expect(fixture.componentInstance.selectMode()).toBe(false);
+            expect(document.activeElement).toBe(search);
+        });
+
         it('leaves Escape to what is above the page when that takes it', () => {
             const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
                 grantedActions: [ActionCode.Delete],
@@ -606,6 +548,38 @@ describe('LlmLibrarySectionComponent select mode', () => {
             new Set([`llm:${SHARED_ID}`, `embedding:${SHARED_ID}`])
         );
         expect(fixture.componentInstance.allVisibleSelected()).toBe(true);
+    });
+
+    it('opens the Add Configuration dialog from the header', () => {
+        const { fixture, openDialog } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+            grantedActions: [ActionCode.Create],
+        });
+
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('app-llm-library-header .header-right > app-button button')!
+            .click();
+
+        expect(openDialog).toHaveBeenCalledOnce();
+        expect(openDialog.mock.calls[0][0]).toBe(AddConfigurationDialogComponent);
+    });
+
+    it('puts the focus on Add Configuration once a bulk delete is done', () => {
+        const model = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const { fixture, runBulkDelete } = render([model], { grantedActions: [ActionCode.Create, ActionCode.Delete] });
+        runBulkDelete.mockReturnValue(of([]));
+        enterSelectMode(fixture);
+        tickCard(fixture, model, true);
+
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('.header-right > app-button button')!
+            .click();
+        // A full tick: the focus moves in an after-render hook.
+        TestBed.tick();
+
+        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+        expect(document.activeElement).toBe(
+            (fixture.nativeElement as HTMLElement).querySelector('.header-right > app-button button')
+        );
     });
 
     it('offers no select dropdown without the delete permission', () => {
@@ -776,7 +750,9 @@ describe('LlmLibrarySectionComponent System One configs', () => {
     it('narrows them by name with the shared search', () => {
         const { fixture } = render([], { systemOneConfigs: [TYPESAFE_CONFIG, LLM_BACKED_CONFIG] });
 
-        fixture.componentInstance.onSearchChange('judge');
+        const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('app-search input')!;
+        input.value = 'judge';
+        input.dispatchEvent(new Event('input'));
         fixture.detectChanges();
 
         expect(cardNames(fixture)).toEqual(['Judge']);
@@ -822,7 +798,9 @@ describe('LlmLibrarySectionComponent System One configs', () => {
 
         expect(fixture.componentInstance.selectedKeys()).toEqual(new Set([`llm:${SHARED_ID}`, 'system_one:21']));
 
-        fixture.componentInstance.deleteSelected();
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('.header-right > app-button button')!
+            .click();
 
         const groups = runBulkDelete.mock.calls[0][0] as { label: { singular: string }; items: unknown[] }[];
         expect(groups.map((group) => group.label.singular)).toEqual(['LLM config', 'System One config']);
@@ -918,7 +896,7 @@ describe('LlmLibrarySectionComponent sections', () => {
         fixture.detectChanges();
     }
 
-    it('heads LLM, Embeddings, Voice and System One, in that order, each with its card count', () => {
+    it('heads LLM, Embeddings, Realtime and System One, in that order, each with its card count', () => {
         const { fixture } = render(
             [
                 libraryModel(ModelTypes.LLM, SHARED_ID),
@@ -933,13 +911,13 @@ describe('LlmLibrarySectionComponent sections', () => {
                 (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.library-section'),
                 headingText
             )
-        ).toEqual(['LLM 2', 'Embeddings 1', 'Voice 2', 'System One 1']);
+        ).toEqual(['LLM 2', 'Embeddings 1', 'Realtime 2', 'System One 1']);
     });
 
-    it('groups every voice provider under the one Voice section', () => {
+    it('groups every realtime provider under the one Realtime section', () => {
         const { fixture } = render([], { voiceConfigs: Object.values(VOICE_CONFIGS) });
 
-        const voice = sectionElement(fixture, 'Voice');
+        const voice = sectionElement(fixture, 'Realtime');
 
         expect(Array.from(voice.querySelectorAll('.provider-name'), (name) => name.textContent!.trim())).toEqual([
             'OpenAI',
@@ -951,19 +929,19 @@ describe('LlmLibrarySectionComponent sections', () => {
 
     it('starts open and lists the providers in the heading only while collapsed', () => {
         const { fixture } = render([], { voiceConfigs: Object.values(VOICE_CONFIGS) });
-        expect(toggle(fixture, 'Voice').getAttribute('aria-expanded')).toBe('true');
-        expect(headingText(sectionElement(fixture, 'Voice'))).toBe('Voice 3');
+        expect(toggle(fixture, 'Realtime').getAttribute('aria-expanded')).toBe('true');
+        expect(headingText(sectionElement(fixture, 'Realtime'))).toBe('Realtime 3');
 
-        toggle(fixture, 'Voice').click();
+        toggle(fixture, 'Realtime').click();
         fixture.detectChanges();
 
-        expect(toggle(fixture, 'Voice').getAttribute('aria-expanded')).toBe('false');
-        expect(headingText(sectionElement(fixture, 'Voice'))).toBe('Voice 3 OpenAI, ElevenLabs, Gemini');
+        expect(toggle(fixture, 'Realtime').getAttribute('aria-expanded')).toBe('false');
+        expect(headingText(sectionElement(fixture, 'Realtime'))).toBe('Realtime 3 OpenAI, ElevenLabs, Gemini');
 
-        toggle(fixture, 'Voice').click();
+        toggle(fixture, 'Realtime').click();
         fixture.detectChanges();
 
-        expect(headingText(sectionElement(fixture, 'Voice'))).toBe('Voice 3');
+        expect(headingText(sectionElement(fixture, 'Realtime'))).toBe('Realtime 3');
     });
 
     it('stays in select mode when a section box is ticked right after entering it', () => {
@@ -1002,5 +980,143 @@ describe('LlmLibrarySectionComponent sections', () => {
         expect(headingText(sectionElement(fixture, 'LLM'))).toBe('LLM 0 / 2');
         expect(sectionBox(fixture, 'LLM').checked).toBe(false);
         expect(headingText(sectionElement(fixture, 'Embeddings'))).toBe('Embeddings 1 / 1');
+    });
+});
+
+describe('LlmLibrarySectionComponent Capabilities filter and search', () => {
+    function sectionTitles(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
+        return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.section-title'), (title) =>
+            title.textContent!.trim()
+        );
+    }
+
+    function emptyHint(fixture: ComponentFixture<LlmLibrarySectionComponent>): string | undefined {
+        return (fixture.nativeElement as HTMLElement).querySelector('.empty-hint')?.textContent?.trim();
+    }
+
+    function chooseCapability(fixture: ComponentFixture<LlmLibrarySectionComponent>, name: string): void {
+        (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.filter .selector__btn')!.click();
+        fixture.detectChanges();
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.selector__option'))
+            .find((option) => option.querySelector('.selector__text')?.textContent?.trim() === name)!
+            .click();
+        fixture.detectChanges();
+    }
+
+    function search(fixture: ComponentFixture<LlmLibrarySectionComponent>, query: string): void {
+        const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('app-search input')!;
+        input.value = query;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    function selectButton(fixture: ComponentFixture<LlmLibrarySectionComponent>): HTMLButtonElement | null {
+        return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+            'app-bulk-select-dropdown .bulk-select__main'
+        );
+    }
+
+    function selectLabel(fixture: ComponentFixture<LlmLibrarySectionComponent>): string {
+        return selectButton(fixture)!.textContent!.replace(/\s+/g, ' ').trim();
+    }
+
+    function enterSelectMode(fixture: ComponentFixture<LlmLibrarySectionComponent>): void {
+        selectButton(fixture)!.click();
+        fixture.detectChanges();
+    }
+
+    function tick(fixture: ComponentFixture<LlmLibrarySectionComponent>, model: LlmLibraryModel): void {
+        const card = fixture.debugElement
+            .queryAll(By.directive(LlmLibraryCardComponent))
+            .find((debugElement) => (debugElement.componentInstance as LlmLibraryCardComponent).model() === model)!;
+        (card.componentInstance as LlmLibraryCardComponent).selectedChange.emit(true);
+        fixture.detectChanges();
+    }
+
+    it('shows only the chosen section, and all of them again with "All capabilities"', () => {
+        const { fixture } = render(
+            [libraryModel(ModelTypes.LLM, SHARED_ID), libraryModel(ModelTypes.EMBEDDING, SHARED_ID)],
+            { voiceConfigs: [OPENAI_VOICE_CONFIG], systemOneConfigs: [TYPESAFE_CONFIG] }
+        );
+
+        chooseCapability(fixture, 'Realtime');
+
+        expect(sectionTitles(fixture)).toEqual(['Realtime']);
+
+        chooseCapability(fixture, 'All capabilities');
+
+        expect(sectionTitles(fixture)).toEqual(['LLM', 'Embeddings', 'Realtime', 'System One']);
+    });
+
+    it.each([
+        [
+            'a Capabilities option with no configs',
+            (fixture: ComponentFixture<LlmLibrarySectionComponent>) => chooseCapability(fixture, 'Realtime'),
+        ],
+        [
+            'a search nothing matches',
+            (fixture: ComponentFixture<LlmLibrarySectionComponent>) => search(fixture, 'no such config'),
+        ],
+    ])('says "No configurations match." and keeps Select when %s hides every card', (_case, hideAll) => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], { grantedActions: [ActionCode.Delete] });
+
+        hideAll(fixture);
+
+        expect(sectionTitles(fixture)).toEqual([]);
+        expect(emptyHint(fixture)).toBe('No configurations match.');
+        expect(selectButton(fixture)).not.toBeNull();
+    });
+
+    it('says "No configurations yet." when there are none', () => {
+        const { fixture } = render([], { grantedActions: [ActionCode.Delete] });
+
+        expect(emptyHint(fixture)).toBe('No configurations yet.');
+    });
+
+    it('drops ticked cards the filter hides from the count and from the delete', () => {
+        const llmModel = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const embeddingModel = libraryModel(ModelTypes.EMBEDDING, SHARED_ID);
+        const { fixture, runBulkDelete } = render([llmModel, embeddingModel], {
+            grantedActions: [ActionCode.Delete],
+        });
+        enterSelectMode(fixture);
+        tick(fixture, llmModel);
+        tick(fixture, embeddingModel);
+        expect(selectLabel(fixture)).toBe('Select (2)');
+
+        chooseCapability(fixture, 'Embedding');
+
+        expect(selectLabel(fixture)).toBe('Select (1)');
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('.header-right > app-button button')!
+            .click();
+        const groups = runBulkDelete.mock.calls[0][0] as { label: { singular: string }; items: unknown[] }[];
+        expect(groups.map((group) => group.label.singular)).toEqual(['embedding config']);
+        expect(groups[0].items).toEqual([{ id: SHARED_ID, name: EMBEDDING_CONFIG.custom_name }]);
+    });
+
+    it('ends select mode when the search hides every ticked card', () => {
+        const llmModel = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const embeddingModel = libraryModel(ModelTypes.EMBEDDING, SHARED_ID);
+        const { fixture } = render([llmModel, embeddingModel], { grantedActions: [ActionCode.Delete] });
+        enterSelectMode(fixture);
+        tick(fixture, llmModel);
+
+        search(fixture, embeddingModel.customName);
+
+        expect(fixture.componentInstance.selectMode()).toBe(false);
+        expect(selectLabel(fixture)).toBe('Select');
+    });
+
+    it('keeps the ticked cards of a collapsed section in the count', () => {
+        const llmModel = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const { fixture } = render([llmModel], { grantedActions: [ActionCode.Delete] });
+        enterSelectMode(fixture);
+        tick(fixture, llmModel);
+
+        (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.section-toggle')!.click();
+        fixture.detectChanges();
+
+        expect(selectLabel(fixture)).toBe('Select (1)');
     });
 });

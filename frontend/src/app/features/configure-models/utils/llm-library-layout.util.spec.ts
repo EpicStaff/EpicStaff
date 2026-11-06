@@ -54,12 +54,39 @@ describe('compareProviderCreationOrder', () => {
         ).toEqual(['OpenAI', 'Ollama']);
     });
 
-    it('falls back to the lowest config id when a provider has no creation time', () => {
+    it('puts a provider with no creation time after one with it, even with a lower config id', () => {
         expect(
             sortedNames({
-                Anthropic: [{ id: 5, createdAt: null }],
+                Anthropic: [{ id: 1, createdAt: null }],
                 OpenAI: [{ id: 3, createdAt: '2026-01-01T00:00:00Z' }],
             })
         ).toEqual(['OpenAI', 'Anthropic']);
+    });
+
+    it('breaks a tie in creation time by the lowest config id', () => {
+        expect(
+            sortedNames({
+                Ollama: [{ id: 8, createdAt: '2026-01-01T00:00:00Z' }],
+                OpenAI: [{ id: 4, createdAt: '2026-01-01T00:00:00Z' }],
+            })
+        ).toEqual(['OpenAI', 'Ollama']);
+    });
+
+    // The old rule fell back to ids only for a pair missing a time, which made Gemini < Mistral < Cohere < Gemini
+    // here: a cycle, so the result depended on the input order.
+    it.each([
+        ['Cohere', 'Gemini', 'Mistral'],
+        ['Mistral', 'Cohere', 'Gemini'],
+        ['Gemini', 'Mistral', 'Cohere'],
+        ['Cohere', 'Mistral', 'Gemini'],
+    ])('sorts a mix with and without creation times the same from any order (%s, %s, %s)', (...inputOrder) => {
+        const providers: Record<string, { id: number; createdAt: string | null }[]> = {
+            Cohere: [{ id: 2, createdAt: '2026-01-01T00:00:00Z' }],
+            Gemini: [{ id: 5, createdAt: null }],
+            Mistral: [{ id: 9, createdAt: '2025-06-01T00:00:00Z' }],
+        };
+        const ordered = Object.fromEntries(inputOrder.map((name) => [name, providers[name]]));
+
+        expect(sortedNames(ordered)).toEqual(['Mistral', 'Cohere', 'Gemini']);
     });
 });

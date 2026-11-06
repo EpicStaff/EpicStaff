@@ -1,100 +1,34 @@
 <section
+    #library
     class="llm-library"
     [class.llm-library--select-mode]="selectMode()"
 >
-    <header
-        #header
-        class="header"
-        [class.header--icons]="toolbarLayout() === 'icons'"
-        [class.header--stacked]="isStacked()"
-    >
-        <div class="header-left">
-            <h3 class="title">LLM Library</h3>
-            <p class="subtitle">Configure large language models for text generation and AI assistants.</p>
-        </div>
-
-        <div
-            class="header-right"
-            [style.min-width.px]="toolbarMinWidth()"
-        >
-            <app-search
-                appearance="toolbar"
-                iconSize="16px"
-                placeholder="Search providers..."
-                [searchTerm]="searchQuery()"
-                (searchTermChange)="onSearchChange($event)"
-            />
-
-            <div
-                #capabilitiesControl
-                class="filter"
-                [class.filter--labelled]="!toolbarIcons().capabilities"
-            >
-                <app-select
-                    appearance="toolbar"
-                    triggerIcon="filter"
-                    tooltip="Capabilities"
-                    placeholder="All capabilities"
-                    [iconOnly]="toolbarIcons().capabilities"
-                    [items]="capabilities"
-                    (changed)="onSectionFilterChange($event)"
-                />
-            </div>
-
-            <!-- One condition for both modes: entering select mode must not recreate it (and close its menu). -->
-            @if (selectMode() || !hasNoConfigs()) {
-                <!-- Toolbar look: at 0 selected a plain "Select" that toggles select mode; the menu comes with a selection. -->
-                <app-bulk-select-dropdown
-                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
-                    appearance="toolbar"
-                    [iconOnly]="toolbarIcons().select"
-                    [selectMode]="selectMode()"
-                    [selectedCount]="selectedCount()"
-                    [allSelected]="allVisibleSelected()"
-                    [disabled]="isDeleting()"
-                    (selectModeEntered)="enterSelectMode()"
-                    (selectAllToggled)="toggleSelectAll()"
-                    (cleared)="exitSelectMode()"
-                    (selectionCleared)="clearSelection()"
-                />
-            }
-
-            @if (hasSelection()) {
-                <app-button
-                    #actionControl
-                    type="danger"
-                    appearance="toolbar"
-                    leftIcon="trash"
-                    iconSize="14px"
-                    [iconOnly]="toolbarIcons().action"
-                    [disabled]="isDeleting()"
-                    (click)="deleteSelected()"
-                >
-                    Delete
-                </app-button>
-            } @else {
-                <app-button
-                    #addButton
-                    #actionControl
-                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
-                    appearance="toolbar"
-                    leftIcon="plus"
-                    iconSize="16px"
-                    [iconOnly]="toolbarIcons().action"
-                    (click)="onAddModel()"
-                >
-                    Add Configuration
-                </app-button>
-            }
-        </div>
-    </header>
+    <app-llm-library-header
+        [searchQuery]="searchQuery()"
+        [selectMode]="selectMode()"
+        [selectedCount]="selectedCount()"
+        [allSelected]="allVisibleSelected()"
+        [showSelect]="selectMode() || !hasNoConfigs()"
+        [isDeleting]="isDeleting()"
+        (searchChange)="onSearchChange($event)"
+        (sectionFilterChange)="onSectionFilterChange($event)"
+        (selectModeEntered)="enterSelectMode()"
+        (selectModeExited)="exitSelectMode()"
+        (selectAllToggled)="toggleSelectAll()"
+        (selectionCleared)="clearSelection()"
+        (addClicked)="onAddModel()"
+        (deleteClicked)="deleteSelected()"
+    />
 
     @if (status() !== 'loaded') {
         <app-loading-spinner message="Loading Configurations data" />
     } @else if (hasNoConfigs()) {
         <p class="empty-hint">No configurations yet.</p>
+    } @else if (hasNoMatches()) {
+        <p class="empty-hint">No configurations match.</p>
     } @else {
         <div
+            #sectionList
             class="sections"
             [style.--llm-card-gap.px]="cardGap"
             [style.--llm-cards-per-row]="cardsPerRow()"
@@ -110,26 +44,29 @@
                         #sectionHeader
                         class="section-header"
                     >
-                        <button
-                            type="button"
-                            class="section-toggle"
-                            [attr.aria-expanded]="expanded"
-                            [attr.aria-controls]="'llm-library-section-' + section.key"
-                            (click)="toggleSection(section.key)"
-                        >
-                            <app-svg-icon
-                                class="section-chevron"
-                                [icon]="expanded ? 'chevron-up' : 'chevron-down'"
-                                size="20px"
-                            />
-                            <span class="section-title">{{ section.title }}</span>
-                            @if (!selectMode()) {
-                                <span class="section-count">{{ total }}</span>
-                                @if (!expanded && section.providerList) {
-                                    <span class="section-providers">{{ section.providerList }}</span>
+                        <!-- A disclosure heading: the heading holds the button that collapses its section. -->
+                        <h4 class="section-heading">
+                            <button
+                                type="button"
+                                class="section-toggle"
+                                [attr.aria-expanded]="expanded"
+                                [attr.aria-controls]="'llm-library-section-' + section.key"
+                                (click)="toggleSection(section.key)"
+                            >
+                                <app-svg-icon
+                                    class="section-chevron"
+                                    [icon]="expanded ? 'chevron-up' : 'chevron-down'"
+                                    size="20px"
+                                />
+                                <span class="section-title">{{ section.title }}</span>
+                                @if (!selectMode()) {
+                                    <span class="section-count">{{ total }}</span>
+                                    @if (!expanded && section.providerList) {
+                                        <span class="section-providers">{{ section.providerList }}</span>
+                                    }
                                 }
-                            }
-                        </button>
+                            </button>
+                        </h4>
 
                         @if (selectMode()) {
                             @let ticked = tickedCount(section);

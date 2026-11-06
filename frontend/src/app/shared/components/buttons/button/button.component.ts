@@ -59,7 +59,7 @@ export class ButtonComponent {
      */
     readonly ariaDisabled = input<boolean>(false);
     /**
-     * `toolbar`: the look of a list page's toolbar (LLM Library): 10px radius, the icon in line with the label
+     * `toolbar`: the list-page toolbar look: 10px radius, the icon in line with the label
      * (16px in, 8px gap), and a 40px square when it shows only its icon.
      */
     readonly appearance = input<'default' | 'toolbar'>('default');

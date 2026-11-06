@@ -4,7 +4,7 @@
 // visible glyphs land.
 // Three appearances: `filled` (the rules below) and `outline` (the --outline blocks at the end of each
 // part), the look of the flows page's Import button, for the default size; `toolbar` (the --toolbar block at
-// the end of the control), the LLM Library toolbar.
+// the end of the control), the list-page toolbar look.
 @use '../../../../styles/a11y-mixins' as a11y;
 
 :host {
@@ -176,7 +176,7 @@
     }
 }
 
-// Toolbar (LLM Library header, default size): transparent at rest with the dim outline; the Selected states on the
+// Toolbar (list-page toolbar look, default size): transparent at rest with the dim outline; the Selected states on the
 // page background with the accent border. The chevron keeps its 20px box, so its glyph sits ~12px further in.
 .bulk-select--toolbar {
     border-color: var(--graphite-750);
