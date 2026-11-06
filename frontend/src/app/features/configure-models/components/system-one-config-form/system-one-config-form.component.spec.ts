@@ -290,12 +290,14 @@ describe('SystemOneConfigFormComponent', () => {
         const { fixture } = render(TYPESAFE_CONFIG);
 
         expect(providerTrigger(fixture).disabled).toBe(true);
+        expect(providerTrigger(fixture).textContent).toContain('TypeSafe');
     });
 
     it('keeps the provider of an edited OpenAI config fixed and updates it with its model', () => {
         const { fixture, http } = render(OPENAI_CONFIG);
 
         expect(providerTrigger(fixture).disabled).toBe(true);
+        expect(providerTrigger(fixture).textContent).toContain('OpenAI');
 
         fixture.componentInstance.submit();
         const request = http.expectOne({ method: 'PATCH', url: '/api/system-one-configs/12/' });
