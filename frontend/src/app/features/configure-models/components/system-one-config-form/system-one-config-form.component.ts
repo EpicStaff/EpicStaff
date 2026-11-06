@@ -38,7 +38,11 @@ interface ModelChoiceItem extends GroupedPickerItem {
     choice: ModelChoice;
 }
 
-const PROVIDER_NAMES: Record<SystemOneProvider, string> = { typesafe: 'TypeSafe', openai: 'OpenAI', llm: 'LLM' };
+const PROVIDER_NAMES: Record<SystemOneProvider, string> = {
+    typesafe: 'TypeSafe',
+    openai: 'OpenAI',
+    llm: 'Existing LLM configs',
+};
 
 function providerGroup(provider: SystemOneProvider, items: ModelChoiceItem[]): GroupedPickerGroup<ModelChoiceItem> {
     return { id: provider, name: PROVIDER_NAMES[provider], icon: getProviderIconPath(provider), items };
