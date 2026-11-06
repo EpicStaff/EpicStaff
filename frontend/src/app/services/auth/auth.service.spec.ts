@@ -14,6 +14,7 @@ import { ConfigService } from '../config';
 import { AuthService } from './auth.service';
 import { PermissionsService } from './permissions.service';
 import { ProfileService } from './profile.service';
+import { SessionEndService } from './session-end.service';
 
 describe('AuthService sign-out', () => {
     let authService: AuthService;
@@ -21,6 +22,7 @@ describe('AuthService sign-out', () => {
     let returnUrl: AppReturnUrlService;
     let clearCurrentUser: ReturnType<typeof vi.fn>;
     let navigate: ReturnType<typeof vi.spyOn>;
+    let sessionEnds: number;
 
     beforeEach(() => {
         clearCurrentUser = vi.fn();
@@ -40,6 +42,8 @@ describe('AuthService sign-out', () => {
         httpMock = TestBed.inject(HttpTestingController);
         returnUrl = TestBed.inject(AppReturnUrlService);
         navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+        sessionEnds = 0;
+        TestBed.inject(SessionEndService).ended$.subscribe(() => sessionEnds++);
 
         authService.storeAccessToken('access-token');
         returnUrl.record('/flows/my');
@@ -61,6 +65,7 @@ describe('AuthService sign-out', () => {
         expect(clearCurrentUser).toHaveBeenCalled();
         expect(returnUrl.url()).toBe('/agents');
         expect(sessionStorage.getItem('epicstaff.appReturnUrl')).toBeNull();
+        expect(sessionEnds).toBeGreaterThan(0);
         expect(navigate).toHaveBeenCalledWith(['/login']);
     });
 
@@ -69,6 +74,8 @@ describe('AuthService sign-out', () => {
 
         expect(clearCurrentUser).toHaveBeenCalled();
         expect(returnUrl.url()).toBe('/agents');
+        // Work waiting on the session, such as a background job's wait, stops now too.
+        expect(sessionEnds).toBeGreaterThan(0);
         expect(navigate).not.toHaveBeenCalled();
 
         httpMock.expectOne('/api/auth/logout/').flush(null);

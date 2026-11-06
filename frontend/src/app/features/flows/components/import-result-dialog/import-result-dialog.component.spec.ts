@@ -53,7 +53,7 @@ describe('ImportResultDialogComponent', () => {
             },
         });
 
-        expect(summaryRows(element)).toContain('2 Knowledge collections');
+        expect(summaryRows(element)).toContain('2 Knowledge Collection');
         expect(element.querySelector('.entity-lists-section')?.textContent).toContain('Manuals');
     });
 });

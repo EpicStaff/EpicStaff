@@ -1,13 +1,18 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { EMPTY } from 'rxjs';
+import { EMPTY, Observable, Subject } from 'rxjs';
 
 import { ImportResult } from '../../../../core/models/import-result.model';
+import {
+    ImportReviewDialogCloseResult,
+    ImportReviewDialogData,
+    ReviewItem,
+} from '../../../../core/models/review-item.model';
 import { TransferJob } from '../../../../core/models/transfer-job.model';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
@@ -15,6 +20,7 @@ import { ToastService } from '../../../../services/notifications';
 import { storedZip } from '../../../../shared/utils/read-export-envelope.testing';
 import { FilesSearchService } from '../../../files/services/files-search.service';
 import { ImportResultDialogComponent } from '../../../flows/components/import-result-dialog/import-result-dialog.component';
+import { ImportReviewDialogComponent } from '../../../flows/components/import-review-dialog/import-review-dialog.component';
 import { CollectionStatus, GetCollectionRequest } from '../../models/collection.model';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
@@ -78,6 +84,9 @@ let httpMock: HttpTestingController;
 let fixture: ComponentFixture<CollectionsListPageComponent>;
 let dialogOpen: ReturnType<typeof vi.fn>;
 let toastError: ReturnType<typeof vi.fn>;
+let toastWarning: ReturnType<typeof vi.fn>;
+let toastShow: ReturnType<typeof vi.fn>;
+let toastRemove: ReturnType<typeof vi.fn>;
 let clickedLinks: string[];
 
 // jsdom has no ResizeObserver; the buttons' collapse-on-overflow only needs it to exist.
@@ -95,6 +104,9 @@ function renderPage(
     vi.stubGlobal('ResizeObserver', ResizeObserverStub);
     dialogOpen = vi.fn(() => ({ closed: EMPTY }));
     toastError = vi.fn();
+    toastWarning = vi.fn();
+    toastShow = vi.fn(() => 1);
+    toastRemove = vi.fn();
     clickedLinks = [];
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
         clickedLinks.push(this.href);
@@ -120,7 +132,13 @@ function renderPage(
             { provide: Dialog, useValue: { open: dialogOpen } },
             {
                 provide: ToastService,
-                useValue: { error: toastError, warning: vi.fn(), success: vi.fn(), show: () => 1, remove: vi.fn() },
+                useValue: {
+                    error: toastError,
+                    warning: toastWarning,
+                    success: vi.fn(),
+                    show: toastShow,
+                    remove: toastRemove,
+                },
             },
             // Polls collection details every few seconds; not what is under test.
             { provide: KnowledgeSourcesPollingService, useValue: { startPagePolling() {}, stopPagePolling() {} } },
@@ -226,6 +244,24 @@ describe('CollectionsListPageComponent export', () => {
         expect(clickedLinks).toHaveLength(1);
     });
 
+    it("disables a card's Export while its export runs, so a second click starts no second job", async () => {
+        renderPage([MANUALS, POLICIES]);
+        await settle();
+
+        click('Export Policies');
+        httpMock.expectOne(EXPORT_JOBS_URL).flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+        fixture.detectChanges();
+
+        expect(buttonLabelled('Export Policies')!.disabled).toBe(true);
+        expect(buttonLabelled('Export Manuals')!.disabled).toBe(false);
+        buttonLabelled('Export Policies')!.click();
+        httpMock.expectNone(EXPORT_JOBS_URL);
+
+        await completeExportJob();
+        fixture.detectChanges();
+        expect(buttonLabelled('Export Policies')!.disabled).toBe(false);
+    });
+
     it("reports a failed export job with the server's reason and downloads nothing", async () => {
         renderPage([MANUALS]);
         await settle();
@@ -238,6 +274,78 @@ describe('CollectionsListPageComponent export', () => {
 
         expect(toastError).toHaveBeenCalledExactlyOnceWith('Storage is unavailable.');
         expect(clickedLinks).toEqual([]);
+    });
+});
+
+describe('CollectionsListPageComponent bulk selection', () => {
+    const PROCEDURES = collection(4, 'Procedures', '2026-10-31T10:00:00Z');
+
+    function search(term: string): void {
+        TestBed.inject(FilesSearchService).setSearchTerm(term);
+        fixture.detectChanges();
+    }
+
+    /** The "Select All" / "Deselect All" item of the Select menu, which opens in an overlay. */
+    function clickSelectMenuItem(label: 'Select All' | 'Deselect All'): void {
+        click(buttonLabelled('Select') ? 'Select' : `Selected (${selectedCount()})`);
+        const item = [...document.querySelectorAll<HTMLButtonElement>('.bulk-select-menu__item')].find(
+            (candidate) => candidate.textContent?.trim() === label
+        );
+        expect(item, `a "${label}" menu item`).toBeDefined();
+        item!.click();
+        fixture.detectChanges();
+    }
+
+    function selectedCount(): number {
+        const count = host().querySelector('.bulk-select__count')?.textContent ?? '(0)';
+        return Number(count.replace(/[()]/g, ''));
+    }
+
+    it('selects all shown collections without dropping a pick the search hides', async () => {
+        renderPage([MANUALS, POLICIES, PROCEDURES]);
+        await settle();
+        click('Select');
+        cardNamed('Manuals').click();
+        fixture.detectChanges();
+
+        search('P');
+        clickSelectMenuItem('Select All');
+        // Manuals is picked but hidden: neither counted nor exported.
+        expect(selectedCount()).toBe(2);
+
+        search('');
+        expect(selectedCount()).toBe(3);
+    });
+
+    it('deselects only the shown collections', async () => {
+        renderPage([MANUALS, POLICIES, PROCEDURES]);
+        await settle();
+        click('Select');
+        cardNamed('Manuals').click();
+        cardNamed('Policies').click();
+        fixture.detectChanges();
+
+        search('Pol');
+        clickSelectMenuItem('Deselect All');
+        search('');
+
+        expect(selectedCount()).toBe(1);
+        click('Export');
+        expect(httpMock.expectOne(EXPORT_JOBS_URL).request.body).toEqual({ ids: [1] });
+    });
+
+    it('exports only the picks the list shows', async () => {
+        renderPage([MANUALS, POLICIES, PROCEDURES]);
+        await settle();
+        click('Select');
+        cardNamed('Manuals').click();
+        cardNamed('Policies').click();
+        fixture.detectChanges();
+
+        search('Pol');
+        click('Export');
+
+        expect(httpMock.expectOne(EXPORT_JOBS_URL).request.body).toEqual({ ids: [2] });
     });
 });
 
@@ -275,22 +383,37 @@ describe('CollectionsListPageComponent import', () => {
         picker.dispatchEvent(new Event('change'));
     }
 
-    /** Picks an archive, passes its inspection with nothing to review and starts its import job. */
-    async function startArchiveImport(): Promise<void> {
-        const archive = storedZip('collections.zip', {
-            'export.json': JSON.stringify({ main_entity: 'SourceCollection', version: 6 }),
+    const ENVELOPE = { main_entity: 'SourceCollection', version: 6 };
+    const CODE_TO_REVIEW: ReviewItem = { kind: 'mcp_tool', name: 'Search', transport: 'stdio' };
+
+    function archiveToImport(): File {
+        return storedZip('collections.zip', {
+            'export.json': JSON.stringify(ENVELOPE),
             'files/collection-3/handbook.pdf': '%PDF',
         });
+    }
+
+    /** Picks the archive and waits for its inspection, which gets only the archive's envelope. */
+    async function chooseArchiveAndInspect(archive: File): Promise<TestRequest> {
         chooseFileToImport(archive);
-
-        // The archive's envelope is read before it is inspected.
         const inspect = await vi.waitFor(() => httpMock.expectOne(INSPECT_URL));
-        expect((inspect.request.body as FormData).get('file')).toBe(archive);
-        inspect.flush({ review_items: [] });
+        const inspected = (inspect.request.body as FormData).get('file') as File;
+        expect(inspected).not.toBe(archive);
+        expect(JSON.parse(await inspected.text())).toEqual(ENVELOPE);
+        return inspect;
+    }
 
+    function uploadArchive(archive: File): void {
         const upload = httpMock.expectOne((request) => request.url === IMPORT_JOBS_URL);
         expect(upload.request.body).toBe(archive);
         upload.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+    }
+
+    /** Picks an archive, passes its inspection with nothing to review and starts its import job. */
+    async function startArchiveImport(): Promise<void> {
+        const archive = archiveToImport();
+        (await chooseArchiveAndInspect(archive)).flush({ review_items: [] });
+        uploadArchive(archive);
     }
 
     async function finishImportJob(job: TransferJob): Promise<void> {
@@ -314,6 +437,106 @@ describe('CollectionsListPageComponent import', () => {
             expect(shownCollectionNames()).toEqual(['Imported handbook', 'Manuals']);
         });
         expect(toastError).not.toHaveBeenCalled();
+    });
+
+    it('shows its progress from the inspection until the import has finished', async () => {
+        renderPage([MANUALS]);
+        await settle();
+
+        const archive = archiveToImport();
+        const inspect = await chooseArchiveAndInspect(archive);
+        expect(toastShow).toHaveBeenCalledExactlyOnceWith('Importing…', 'info', expect.any(Number));
+        inspect.flush({ review_items: [] });
+        uploadArchive(archive);
+        expect(toastRemove).not.toHaveBeenCalled();
+
+        await finishImportJob(transferJob({ kind: 'import', status: 'completed', result: IMPORT_SUMMARY }));
+
+        expect(toastRemove).toHaveBeenCalledOnce();
+        httpMock.expectOne(COLLECTIONS_URL).flush([IMPORTED, MANUALS]);
+    });
+
+    it('says so, instead of showing an empty result, when the finished import reports no summary', async () => {
+        renderPage([MANUALS]);
+        await settle();
+
+        await startArchiveImport();
+        await finishImportJob(transferJob({ kind: 'import', status: 'completed', result: null }));
+
+        expect(toastWarning).toHaveBeenCalledExactlyOnceWith(
+            'The import has finished, but the server did not report what it brought in. Check the list for the new items.'
+        );
+        expect(dialogOpen).not.toHaveBeenCalled();
+        httpMock.expectOne(COLLECTIONS_URL).flush([IMPORTED, MANUALS]);
+    });
+
+    it('stops waiting for the import job when the page is left', async () => {
+        renderPage([MANUALS]);
+        await settle();
+
+        await startArchiveImport();
+        const poll = await vi.waitFor(() => httpMock.expectOne(JOB_URL));
+        fixture.destroy();
+
+        expect(poll.cancelled).toBe(true);
+        expect(toastRemove).toHaveBeenCalledOnce();
+        await new Promise((resolve) => setTimeout(resolve, 2_500));
+        httpMock.expectNone(JOB_URL);
+    });
+
+    describe('with code to review', () => {
+        let reviewClosed: Subject<ImportReviewDialogCloseResult>;
+
+        /** Picks an archive whose inspection finds code to review; returns what the review dialog is given. */
+        async function openReview(archive: File): Promise<ImportReviewDialogData> {
+            reviewClosed = new Subject();
+            dialogOpen.mockReturnValueOnce({ closed: reviewClosed });
+            (await chooseArchiveAndInspect(archive)).flush({ review_items: [CODE_TO_REVIEW] });
+
+            expect(dialogOpen).toHaveBeenCalledWith(ImportReviewDialogComponent, expect.anything());
+            httpMock.expectNone((request) => request.url === IMPORT_JOBS_URL);
+            // The dialog shows its own progress: the toast ends with the inspection.
+            expect(toastRemove).toHaveBeenCalledOnce();
+            return dialogOpen.mock.calls[0][1].data as ImportReviewDialogData;
+        }
+
+        function collect(source: Observable<unknown>): unknown[] {
+            const values: unknown[] = [];
+            source.subscribe((value) => values.push(value));
+            return values;
+        }
+
+        it("imports the archive when the review dialog's Import is pressed and shows the result", async () => {
+            renderPage([MANUALS]);
+            await settle();
+            const archive = archiveToImport();
+            const review = await openReview(archive);
+            expect(review.reviewItems).toEqual([CODE_TO_REVIEW]);
+
+            const imported = collect(review.importFn());
+            uploadArchive(archive);
+            await finishImportJob(transferJob({ kind: 'import', status: 'completed', result: IMPORT_SUMMARY }));
+            expect(imported).toEqual([IMPORT_SUMMARY]);
+            reviewClosed.next({ action: 'imported', result: IMPORT_SUMMARY });
+
+            expect(dialogOpen).toHaveBeenLastCalledWith(
+                ImportResultDialogComponent,
+                expect.objectContaining({ data: { importResult: IMPORT_SUMMARY } })
+            );
+            httpMock.expectOne(COLLECTIONS_URL).flush([IMPORTED, MANUALS]);
+        });
+
+        it('imports nothing when the review is cancelled', async () => {
+            renderPage([MANUALS]);
+            await settle();
+            await openReview(archiveToImport());
+
+            reviewClosed.next({ action: 'cancel' });
+
+            expect(dialogOpen).toHaveBeenCalledOnce();
+            httpMock.expectNone((request) => request.url === IMPORT_JOBS_URL);
+            httpMock.expectNone(COLLECTIONS_URL);
+        });
     });
 
     it("reports a failed import job with the server's reason and leaves the list as it was", async () => {

@@ -229,12 +229,18 @@ describe('FlowsListPageComponent flow import', () => {
                 'files/collection-1/manual.pdf': '%PDF',
             });
 
-            (await chooseFileToImport()).flush({ review_items: [] });
+            const inspect = await chooseFileToImport();
+            // Only the envelope is inspected: the archive is uploaded once, by the import job.
+            const inspected = (inspect.request.body as FormData).get('file') as File;
+            expect(inspected).not.toBe(file);
+            expect(JSON.parse(await inspected.text())).toEqual(envelope);
+            expect(toastShow).toHaveBeenCalledExactlyOnceWith('Importing…', 'info', expect.any(Number));
+            inspect.flush({ review_items: [] });
             httpMock.expectNone(IMPORT_URL);
             const upload = httpMock.expectOne((request) => request.url === IMPORT_JOBS_URL);
             expect(upload.request.body).toBe(file);
-            expect(toastShow).toHaveBeenCalledWith('Importing…', 'info', expect.any(Number));
             upload.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+            expect(toastRemove).not.toHaveBeenCalled();
 
             const poll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-1/'));
             poll.flush(transferJob({ kind: 'import', status: 'completed', result: SUMMARY }));
@@ -245,6 +251,22 @@ describe('FlowsListPageComponent flow import', () => {
             );
             expect(toastRemove).toHaveBeenCalled();
             expect(toastError).not.toHaveBeenCalled();
+        });
+
+        it('says so, instead of showing an empty result, when the finished import job reports no summary', async () => {
+            file = storedZip('flows.zip', { 'export.json': JSON.stringify({ main_entity: 'Flow', version: 6 }) });
+
+            (await chooseFileToImport()).flush({ review_items: [] });
+            httpMock
+                .expectOne((request) => request.url === IMPORT_JOBS_URL)
+                .flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+            const poll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-1/'));
+            poll.flush(transferJob({ kind: 'import', status: 'completed', result: null }));
+
+            expect(toastWarning).toHaveBeenCalledExactlyOnceWith(
+                'The import has finished, but the server did not report what it brought in. Check the list for the new items.'
+            );
+            expect(dialogOpen).not.toHaveBeenCalled();
         });
 
         it("reports a failed import job with the server's reason", async () => {
