@@ -79,6 +79,7 @@ PLUGIN_REACHABLE_VIEWS: dict[str, tuple[str, str]] = {
     "tables.views.knowledge_views.naive_rag_views.NaiveRagChunkPreviewView": (RESOLVER_IN_CODE, "assert_org_permission on the knowledge source in the active organization"),
     "tables.views.knowledge_views.search_config_views.NaiveRagSuggestParamsView": (RESOLVER_IN_CODE, "assert_org_permission on the knowledge source, fetched in the active organization"),
     "tables.views.knowledge_views.search_config_views.GraphRagSuggestParamsView": (RESOLVER_IN_CODE, "assert_org_permission on the knowledge source, fetched in the active organization"),
+    "tables.views.transfer_job_views.TransferJobViewSet": (RESOLVER_IN_CODE, "a service account owns no job (empty queryset); a user sees only their own jobs in the active organization, and download re-checks export on the job's organization"),
     "tables.views.model_view_sets.ProviderReadWriteViewSet": (GLOBAL_READ_ONLY, "the deployment's provider catalog: a service account may read it, writes are SuperAdmin-only (SuperadminWriteMixin)"),
 }
 

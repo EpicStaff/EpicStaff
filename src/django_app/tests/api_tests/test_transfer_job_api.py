@@ -3,13 +3,18 @@ status, downloading their archive, and who may see a job at all."""
 
 import io
 import json
+import unittest.mock
 import uuid
 import zipfile
+
+import fakeredis
 
 import pytest
 from django.urls import reverse
 
+from rbac.models import OrganizationUser
 from rbac.models.enums import Permission, ResourceType
+from rbac.models.role import RolePermission
 from tables.import_export.archive import ENVELOPE_MEMBER
 from tables.import_export.constants import IMPORT_VERSION, MAIN_ENTITY_KEY
 from tables.import_export.enums import EntityType
@@ -439,3 +444,129 @@ def test_a_collection_archive_can_be_inspected(client_in, exporter, acme):
 
     assert response.status_code == 200
     assert response.json() == {"review_items": []}
+
+
+# --- one-time download tickets --------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_redis():
+    fake = fakeredis.FakeStrictRedis()
+    with unittest.mock.patch("rbac.identity.tickets.get_redis_connection", return_value=fake):
+        yield fake
+
+
+@pytest.fixture
+def stored_export(exporter, acme, backend):
+    """A completed export of `exporter` in acme, with its archive in storage."""
+    job = _job(exporter, acme, status=TransferJob.Status.COMPLETED, file_name="flow_support.zip")
+    job.archive_key = TransferArchiveStore(backend=backend).upload_file(
+        job.id, "export.zip", io.BytesIO(b"zip bytes")
+    )
+    job.save(update_fields=["archive_key"])
+    return job
+
+
+def _issue_ticket(client, job) -> str:
+    response = client.post(reverse("transfer-jobs-download-ticket", args=[job.id]))
+    assert response.status_code == 200, response.content
+    return response.json()["download_url"]
+
+
+def test_a_ticket_downloads_once_without_any_credentials(
+    client_in, exporter, acme, stored_export, fake_redis, api_client
+):
+    url = _issue_ticket(client_in(exporter, acme), stored_export)
+    assert url.startswith(f"/api/transfer-jobs/{stored_export.id}/download/?ticket=")
+
+    # A browser navigation: no Authorization header, no org header.
+    first = api_client.get(url)
+    second = api_client.get(url)
+
+    assert first.status_code == 200
+    assert b"".join(first.streaming_content) == b"zip bytes"
+    assert second.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "ticket_url",
+    [
+        pytest.param(lambda job, url: url.replace("ticket=", "ticket=x"), id="unknown ticket"),
+        pytest.param(
+            lambda job, url: url.replace(str(job.id), str(uuid.uuid4())), id="another job's url"
+        ),
+    ],
+)
+def test_a_ticket_opens_only_its_own_job(
+    client_in, exporter, acme, stored_export, fake_redis, api_client, ticket_url
+):
+    url = _issue_ticket(client_in(exporter, acme), stored_export)
+
+    assert api_client.get(ticket_url(stored_export, url)).status_code == 404
+    # The failed attempt did not spend the real ticket.
+    assert api_client.get(url).status_code == 200
+
+
+def test_an_expired_ticket_is_refused(
+    client_in, exporter, acme, stored_export, fake_redis, api_client
+):
+    url = _issue_ticket(client_in(exporter, acme), stored_export)
+    for key in fake_redis.scan_iter("rbac:transfer_download_ticket:*"):
+        assert 0 < fake_redis.ttl(key) <= 60
+        fake_redis.delete(key)  # what expiry does
+
+    assert api_client.get(url).status_code == 404
+
+
+def test_a_ticket_is_issued_only_to_the_jobs_creator(
+    client_in, custom_role_user, acme, stored_export, fake_redis
+):
+    colleague = custom_role_user(acme, "colleague@example.com", FLOW_RIGHTS)
+
+    response = client_in(colleague, acme).post(
+        reverse("transfer-jobs-download-ticket", args=[stored_export.id])
+    )
+
+    assert response.status_code == 404
+
+
+def test_no_ticket_for_an_unfinished_export(client_in, exporter, acme, backend, fake_redis):
+    job = _job(exporter, acme, status=TransferJob.Status.RUNNING)
+
+    response = client_in(exporter, acme).post(
+        reverse("transfer-jobs-download-ticket", args=[job.id])
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "job_not_ready"
+
+
+@pytest.mark.parametrize(
+    ("change", "status"),
+    [
+        pytest.param("export revoked", 403, id="export right revoked"),
+        pytest.param("left the org", 404, id="no longer a member"),
+        pytest.param("deactivated", 404, id="account deactivated"),
+    ],
+)
+def test_a_ticket_rechecks_the_holder_when_it_is_used(
+    client_in, exporter, acme, stored_export, fake_redis, api_client, change, status
+):
+    url = _issue_ticket(client_in(exporter, acme), stored_export)
+    if change == "export revoked":
+        RolePermission.objects.filter(
+            role__organization_users__user=exporter, resource_type=ResourceType.FLOWS
+        ).update(permissions=int(Permission.READ))
+    elif change == "left the org":
+        OrganizationUser.objects.filter(user=exporter, org=acme).delete()
+    else:
+        exporter.is_active = False
+        exporter.save(update_fields=["is_active"])
+
+    assert api_client.get(url).status_code == status
+
+
+def test_a_download_without_ticket_or_credentials_is_refused(stored_export, api_client):
+    response = api_client.get(reverse("transfer-jobs-download", args=[stored_export.id]))
+
+    assert response.status_code == 401
