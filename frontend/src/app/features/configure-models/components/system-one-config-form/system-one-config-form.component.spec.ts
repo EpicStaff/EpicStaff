@@ -33,7 +33,6 @@ const OPENAI_CONFIG: SystemOneConfig = {
     provider: 'openai',
     model_name: 'gpt-6-luna',
 };
-const OPENAI_HINT = 'OpenAI does not document how its probabilities are computed.';
 
 const OTHER_LLM_CONFIG = { id: 8, custom_name: 'claude-judge' } as GetLlmConfigRequest;
 const LLM_EDIT_CONFIG: SystemOneConfig = {
@@ -145,7 +144,7 @@ describe('SystemOneConfigFormComponent', () => {
         expect(selectFor(fixture, 'api_key_secret_id')).toBeNull();
     });
 
-    it('offers TypeSafe, OpenAI and LLM, in that order, each with its models or LLM configs', () => {
+    it('offers TypeSafe, OpenAI and existing LLM configs, in that order, each with its models or LLM configs', () => {
         const { fixture } = render();
 
         const text = openPicker(fixture);
@@ -153,8 +152,8 @@ describe('SystemOneConfigFormComponent', () => {
         expect(text.indexOf('TYPESAFE')).toBeLessThan(text.indexOf('jev-1.14.0'));
         expect(text.indexOf('jev-1.13.0')).toBeLessThan(text.indexOf('OPENAI'));
         expect(text.indexOf('OPENAI')).toBeLessThan(text.indexOf('gpt-6-luna'));
-        expect(text.indexOf('gpt-6-luna')).toBeLessThan(text.indexOf('LLM'));
-        expect(text.indexOf('LLM')).toBeLessThan(text.indexOf('gpt-judge'));
+        expect(text.indexOf('gpt-6-luna')).toBeLessThan(text.indexOf('EXISTING LLM CONFIGS'));
+        expect(text.indexOf('EXISTING LLM CONFIGS')).toBeLessThan(text.indexOf('gpt-judge'));
     });
 
     it('shows the API key select, and no provider note, after picking a Jev version', () => {
@@ -166,16 +165,15 @@ describe('SystemOneConfigFormComponent', () => {
         expect(pickerTrigger(fixture).textContent).toContain('jev-1.13.0');
         expect(selectFor(fixture, 'api_key_secret_id')).not.toBeNull();
         expect(host(fixture).textContent).not.toContain(LLM_HINT);
-        expect(host(fixture).textContent).not.toContain(OPENAI_HINT);
     });
 
-    it('shows the API key select and the OpenAI note after picking gpt-6-luna', () => {
+    it('shows the API key select, and no provider note, after picking gpt-6-luna', () => {
         const { fixture } = render();
 
         choose(fixture, 'gpt-6-luna');
 
         expect(selectFor(fixture, 'api_key_secret_id')).not.toBeNull();
-        expect(host(fixture).textContent).toContain(OPENAI_HINT);
+        expect(host(fixture).textContent).not.toContain('probabilities');
     });
 
     it('hides the API key select and shows the LLM note after picking an LLM config', () => {
@@ -183,7 +181,7 @@ describe('SystemOneConfigFormComponent', () => {
 
         choose(fixture, 'gpt-judge');
 
-        expect(pickerTrigger(fixture).textContent).toContain('LLM:');
+        expect(pickerTrigger(fixture).textContent).toContain('Existing LLM configs:');
         expect(selectFor(fixture, 'api_key_secret_id')).toBeNull();
         expect(host(fixture).textContent).toContain(LLM_HINT);
     });

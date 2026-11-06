@@ -22,7 +22,6 @@ import { CdtSystemOneEntryComponent } from './cdt-system-one-entry.component';
 const TYPESAFE_CONFIG = { id: 7, custom_name: 'jev', provider: 'typesafe', model_name: 'Jev 1.14' } as SystemOneConfig;
 const LLM_CONFIG = { id: 8, custom_name: 'cheap', provider: 'llm', llm_config: 4 } as SystemOneConfig;
 const OPENAI_CONFIG = { id: 9, custom_name: 'oai', provider: 'openai', model_name: 'gpt-6-luna' } as SystemOneConfig;
-const OPENAI_NOTE = 'This config uses OpenAI Decisions.';
 
 type Entry = PromptConfig & { id: string };
 
@@ -424,22 +423,12 @@ describe('CdtSystemOneEntryComponent', () => {
     it.each([
         [7, false],
         [8, true],
+        [9, false],
         [null, false],
     ])('shows the LLM warning only for an LLM-backed config (config %s -> %s)', (config, warns) => {
         mount(entry({ system_one_config: config }));
 
         expect(host().textContent?.includes('This config uses an LLM.')).toBe(warns);
-    });
-
-    it.each([
-        [7, false],
-        [8, false],
-        [9, true],
-        [null, false],
-    ])('shows the OpenAI note only for an OpenAI config (config %s -> %s)', (config, shown) => {
-        mount(entry({ system_one_config: config }));
-
-        expect(host().textContent?.includes(OPENAI_NOTE)).toBe(shown);
     });
 
     it('tells a new question what it still needs', () => {

@@ -53,9 +53,6 @@
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
                     </app-hint-message>
                 }
-                @if (selectedProvider() === 'openai') {
-                    <app-hint-message>OpenAI does not document how its probabilities are computed.</app-hint-message>
-                }
                 <app-validation-errors [control]="form.controls.api_key_secret_id" />
             </div>
         }

@@ -56,9 +56,7 @@ const NOT_SAVED_NOTE =
 const KEPT_VERSION_NOTE = 'Not saved yet; the last saved version is kept.';
 
 const LLM_CALIBRATION_NOTE =
-    "This config uses an LLM. Its probabilities are the LLM's own estimate, so thresholds tuned on Jev may behave differently.";
-const OPENAI_CALIBRATION_NOTE =
-    'This config uses OpenAI Decisions. OpenAI does not document how its probabilities are computed, so thresholds tuned on another provider may behave differently.';
+    "This config uses an LLM. Its probabilities are the LLM's own estimate, so thresholds tuned on System One models may behave differently.";
 
 const QUESTION_TYPE_ITEMS: SelectItem<QuestionType>[] = [
     { name: 'Noul', value: 'noul' },
@@ -104,18 +102,11 @@ export class CdtSystemOneEntryComponent implements OnInit {
         this.configStorage.configs().map((config) => ({ name: this.configLabel(config), value: config.id }))
     );
 
-    protected readonly calibrationNote = computed<string | null>(() => {
-        switch (
-            this.configStorage.configs().find((config) => config.id === this.prompt().system_one_config)?.provider
-        ) {
-            case 'llm':
-                return LLM_CALIBRATION_NOTE;
-            case 'openai':
-                return OPENAI_CALIBRATION_NOTE;
-            default:
-                return null;
-        }
-    });
+    protected readonly calibrationNote = computed<string | null>(() =>
+        this.configStorage.configs().find((config) => config.id === this.prompt().system_one_config)?.provider === 'llm'
+            ? LLM_CALIBRATION_NOTE
+            : null
+    );
 
     protected readonly atQuestionLimit = computed(() => this.rows().length >= MAX_SYSTEM_ONE_QUESTIONS);
 
