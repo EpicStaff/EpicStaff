@@ -72,6 +72,7 @@
                     [selected]="selectedCollectionId() === collection.collection_id"
                     [selectMode]="selectMode()"
                     [checked]="isChecked(collection.collection_id)"
+                    [exporting]="exportingIds().has(collection.collection_id)"
                     (checkedChange)="setChecked(collection.collection_id, $event)"
                     (exportRequested)="exportCollection(collection.collection_id)"
                     (click)="onCollectionClick(collection.collection_id)"

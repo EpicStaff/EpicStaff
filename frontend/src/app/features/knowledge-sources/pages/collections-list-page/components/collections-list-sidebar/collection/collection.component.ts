@@ -30,6 +30,8 @@ export class CollectionComponent {
     selectMode = input<boolean>(false);
     /** Picked for the bulk action; only shown in select mode. */
     checked = input<boolean>(false);
+    /** Its export has not finished yet: Export is disabled until it has, so a second click starts no second job. */
+    exporting = input<boolean>(false);
 
     readonly checkedChange = output<boolean>();
     readonly exportRequested = output<void>();

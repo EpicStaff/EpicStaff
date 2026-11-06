@@ -26,6 +26,14 @@ export async function readExportEnvelope(file: Blob): Promise<ExportEnvelope> {
     return { format: 'json', data: parseEnvelope(await file.text()) };
 }
 
+/**
+ * The envelope as a plain JSON export file, for a request that needs only the envelope, such as an import
+ * inspection: the archive's files stay on the user's machine.
+ */
+export function exportEnvelopeFile(data: ImportFileData): File {
+    return new File([JSON.stringify(data)], EXPORT_ENVELOPE_MEMBER, { type: 'application/json' });
+}
+
 async function isZipArchive(file: Blob): Promise<boolean> {
     const head = new Uint8Array(await file.slice(0, ZIP_SIGNATURE.length).arrayBuffer());
     return head.length === ZIP_SIGNATURE.length && ZIP_SIGNATURE.every((byte, index) => head[index] === byte);

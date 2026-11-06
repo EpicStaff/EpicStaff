@@ -54,6 +54,15 @@
         display: flex;
         align-items: center;
         flex-shrink: 0;
+
+        // The disabled button lets the hover through to the wrapper, which shows why it is disabled.
+        &--busy {
+            cursor: not-allowed;
+
+            .export-button {
+                pointer-events: none;
+            }
+        }
     }
 
     .export-button {

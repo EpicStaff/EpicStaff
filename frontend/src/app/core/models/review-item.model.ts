@@ -68,6 +68,11 @@ export interface InspectResult {
     review_items: ReviewItem[];
 }
 
+/** An import after its inspection: imported straight away, or waiting for the user to review the code it carries. */
+export type InspectedImport =
+    | { kind: 'imported'; result: ImportResult | null }
+    | { kind: 'review'; reviewItems: ReviewItem[] };
+
 export function hasReviewableItems(reviewItems: ReviewItem[]): boolean {
     return reviewItems.length > 0;
 }

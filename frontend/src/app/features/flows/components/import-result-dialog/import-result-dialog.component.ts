@@ -143,7 +143,7 @@ export class ImportResultDialogComponent implements AfterViewInit {
             RealtimeModel: 'Realtime Model',
             RealtimeTranscriptionConfig: 'Realtime Transcription Config',
             RealtimeTranscriptionModel: 'Realtime Transcription Model',
-            SourceCollection: 'Knowledge collections',
+            SourceCollection: 'Knowledge Collection',
         };
 
         return labelMap[entityType] || entityType;

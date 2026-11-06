@@ -1,6 +1,5 @@
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { map, switchMap } from 'rxjs/operators';
 
 import { ImportFlowRequestOptions, ImportResult } from '../../../core/models/import-result.model';
 import { ImportExportService } from '../../../core/services/import-export.service';
@@ -32,15 +31,14 @@ export class FlowCopyImportFacadeService {
     }
 
     /**
-     * Imports a `.zip` export archive as a background job and emits the import summary once it has finished.
-     * Errors with the job's failure (TransferJobFailedError) when the import fails on the server.
+     * Imports a `.zip` export archive as a background job and emits the import summary once it has finished,
+     * `null` when the server gave none. Errors with the job's failure (TransferJobFailedError) when the import
+     * fails on the server.
      */
-    importFlowArchive(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult> {
-        return this.transferJobs.startImport('flows', file, settings).pipe(
-            this.usePermissionRefusal.catchRefusal('import'),
-            switchMap(({ job_id }) => this.transferJobs.waitForJob(job_id)),
-            map((job) => (job.kind === 'import' && job.result ? job.result : {}))
-        );
+    importFlowArchive(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult | null> {
+        return this.transferJobs
+            .importAndWait('flows', file, settings)
+            .pipe(this.usePermissionRefusal.catchRefusal('import'));
     }
 
     partialImport(graphId: number, file: File): Observable<PartialImportResponse> {

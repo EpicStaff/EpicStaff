@@ -49,7 +49,7 @@ export class CollectionsListItemSidebarComponent {
 
     private readonly collectionCards = viewChildren(CollectionComponent);
 
-    selectedCollectionId = inject(CollectionsStorageService).selectedCollectionId;
+    readonly selectedCollectionId = computed(() => this.collectionsStorage.selectedCollectionId());
     selectedRagType = signal<RagType | null>(null);
 
     filteredCollections = computed(() => {
@@ -65,12 +65,18 @@ export class CollectionsListItemSidebarComponent {
     /** Picking collections for a bulk export. */
     readonly selectMode = signal(false);
     private readonly checkedIds = signal<ReadonlySet<number>>(new Set());
-    /** The picked collections still in the list: one deleted meanwhile is not exported. */
+    /**
+     * The picked collections the list shows: one deleted meanwhile is not exported, and one the search or the RAG
+     * filter hides is neither counted nor exported, so the export takes what the user sees. A hidden pick is kept
+     * and counts again once the filter shows it.
+     */
     readonly selectedIds = computed(() =>
-        this.collections()
+        this.filteredCollections()
             .map((collection) => collection.collection_id)
             .filter((id) => this.checkedIds().has(id))
     );
+    /** Collections whose export has not finished: their card's Export waits until it has. */
+    readonly exportingIds = computed(() => this.transferExport.exportingCollectionIds());
     readonly allVisibleSelected = computed(() => {
         const visible = this.filteredCollections();
         return visible.length > 0 && visible.every((collection) => this.checkedIds().has(collection.collection_id));
@@ -136,9 +142,16 @@ export class CollectionsListItemSidebarComponent {
         this.checkedIds.set(new Set());
     }
 
+    /** Picks every collection the list shows, or unpicks them when all are picked; hidden picks stay as they are. */
     toggleSelectAll(): void {
         const visibleIds = this.filteredCollections().map((collection) => collection.collection_id);
-        this.checkedIds.set(this.allVisibleSelected() ? new Set() : new Set(visibleIds));
+        const next = new Set(this.checkedIds());
+        if (this.allVisibleSelected()) {
+            visibleIds.forEach((id) => next.delete(id));
+        } else {
+            visibleIds.forEach((id) => next.add(id));
+        }
+        this.checkedIds.set(next);
     }
 
     // Exports are not tied to this list: one the user started still downloads after they leave the page.

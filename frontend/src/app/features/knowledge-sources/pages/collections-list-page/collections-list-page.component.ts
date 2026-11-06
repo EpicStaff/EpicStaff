@@ -5,14 +5,27 @@ import { FetchErrorStateComponent, SpinnerComponent } from '@shared/components';
 import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { ImportedEntityStoragesService, SidebarWidthService } from '@shared/services';
-import { buildPreviewImportResult, enrichImportResult, ImportFileData, readExportEnvelope } from '@shared/utils';
-import { defer, EMPTY, from, Observable, of, throwError } from 'rxjs';
+import {
+    buildPreviewImportResult,
+    enrichImportResult,
+    exportEnvelopeFile,
+    ImportFileData,
+    readExportEnvelope,
+    withProgressToast,
+} from '@shared/utils';
+import { EMPTY, from, Observable, of, throwError } from 'rxjs';
 import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 
 import { ImportResult } from '../../../../core/models/import-result.model';
-import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../core/models/review-item.model';
+import {
+    hasReviewableItems,
+    ImportReviewDialogCloseResult,
+    InspectedImport,
+    ReviewItem,
+} from '../../../../core/models/review-item.model';
 import {
     describeTransferError,
+    IMPORT_WITHOUT_SUMMARY_MESSAGE,
     TRANSFER_JOB_MAX_WAIT_MS,
     TransferJobsService,
 } from '../../../../core/services/transfer-jobs.service';
@@ -34,7 +47,8 @@ const ARCHIVE_REQUIRED_MESSAGE = 'Knowledge sources are imported from a .zip exp
 const IMPORT_FAILED_MESSAGE = 'Failed to import knowledge sources. Please check the file and try again.';
 
 interface CollectionImport {
-    result: ImportResult;
+    /** `null` when the server reported no summary. */
+    result: ImportResult | null;
     fileData: ImportFileData;
 }
 
@@ -128,58 +142,67 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
         input.click();
     }
 
+    /**
+     * Inspects the archive's envelope, never its files, and imports the archive straight away or after the user has
+     * reviewed the code it carries. The progress toast covers the inspection and a straight import; the review
+     * dialog shows its own progress.
+     */
     private importArchive(file: File, fileData: ImportFileData): Observable<CollectionImport> {
-        const importFn = (): Observable<ImportResult> => this.runImportJob(file);
-        return this.collectionsApiService.inspect(file).pipe(
-            switchMap((inspection) => {
-                if (!hasReviewableItems(inspection.review_items)) {
-                    return this.withImportProgress(importFn());
-                }
-                const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
-                    width: 'calc(100vw - 2rem)',
-                    height: 'calc(100vh - 2rem)',
-                    // On the dialog itself, not its first button: Enter imports from there.
-                    autoFocus: 'dialog',
-                    data: {
-                        importResult: buildPreviewImportResult(fileData),
-                        reviewItems: inspection.review_items,
-                        importFn,
-                    },
-                });
-                // The dialog reports a failed import itself and stays open; a cancel imports nothing.
-                return reviewRef.closed.pipe(
-                    switchMap((closeResult) =>
-                        closeResult?.action === 'imported' ? of(closeResult.result as ImportResult) : EMPTY
-                    )
-                );
-            }),
+        const importFn = (): Observable<ImportResult | null> => this.transferJobs.importAndWait('collections', file);
+        return this.collectionsApiService.inspect(exportEnvelopeFile(fileData)).pipe(
+            switchMap(
+                (inspection): Observable<InspectedImport> =>
+                    hasReviewableItems(inspection.review_items)
+                        ? of({ kind: 'review', reviewItems: inspection.review_items })
+                        : importFn().pipe(map((result): InspectedImport => ({ kind: 'imported', result })))
+            ),
+            withProgressToast(this.toastService, IMPORT_PROGRESS_MESSAGE, TRANSFER_JOB_MAX_WAIT_MS),
+            switchMap((inspected) =>
+                inspected.kind === 'imported'
+                    ? of(inspected.result)
+                    : this.reviewAndImport(inspected.reviewItems, fileData, importFn)
+            ),
             map((result) => ({ result, fileData }))
         );
     }
 
-    /** Uploads the archive as an import job and emits the import summary once it has finished. */
-    private runImportJob(file: File): Observable<ImportResult> {
-        return this.transferJobs.startImport('collections', file).pipe(
-            switchMap(({ job_id }) => this.transferJobs.waitForJob(job_id)),
-            map((job) => (job.kind === 'import' && job.result ? job.result : {}))
+    /** Emits the import's result once the review dialog has imported the archive; nothing when the user cancels. */
+    private reviewAndImport(
+        reviewItems: ReviewItem[],
+        fileData: ImportFileData,
+        importFn: () => Observable<ImportResult | null>
+    ): Observable<ImportResult | null> {
+        const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
+            width: 'calc(100vw - 2rem)',
+            height: 'calc(100vh - 2rem)',
+            // On the dialog itself, not its first button: Enter imports from there.
+            autoFocus: 'dialog',
+            data: {
+                importResult: buildPreviewImportResult(fileData),
+                reviewItems,
+                importFn,
+            },
+        });
+        // The dialog reports a failed import itself and stays open; a cancel imports nothing.
+        return reviewRef.closed.pipe(
+            switchMap((closeResult) =>
+                closeResult?.action === 'imported' ? of(closeResult.result as ImportResult | null) : EMPTY
+            )
         );
     }
 
-    private withImportProgress<T>(source: Observable<T>): Observable<T> {
-        return defer(() => {
-            const progressToastId = this.toastService.show(IMPORT_PROGRESS_MESSAGE, 'info', TRANSFER_JOB_MAX_WAIT_MS);
-            return source.pipe(finalize(() => this.toastService.remove(progressToastId)));
-        });
-    }
-
     private finishImport({ result, fileData }: CollectionImport): void {
-        this.dialog.open(ImportResultDialogComponent, {
-            width: 'calc(100vw - 2rem)',
-            height: 'calc(100vh - 2rem)',
-            data: { importResult: enrichImportResult(result, fileData) },
-        });
+        if (result) {
+            this.dialog.open(ImportResultDialogComponent, {
+                width: 'calc(100vw - 2rem)',
+                height: 'calc(100vh - 2rem)',
+                data: { importResult: enrichImportResult(result, fileData) },
+            });
+            this.importedEntityStorages.invalidateImported(result);
+        } else {
+            this.toastService.warning(IMPORT_WITHOUT_SUMMARY_MESSAGE);
+        }
 
-        this.importedEntityStorages.invalidateImported(result);
         // In place: the list stays on screen while it reloads, unlike the first load.
         this.collectionsStorageService
             .getCollections(true)

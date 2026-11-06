@@ -35,9 +35,13 @@
                 />
             </div>
         } @else {
+            <!-- A disabled button gets no mouse events: the wrapper says why it is disabled. -->
             <div
                 *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
                 class="card-control"
+                [class.card-control--busy]="exporting()"
+                matTooltip="Export in progress"
+                [matTooltipDisabled]="!exporting()"
                 (click)="$event.stopPropagation()"
             >
                 <app-icon-button
@@ -46,6 +50,7 @@
                     size="1.5rem"
                     tooltip="Export"
                     [ariaLabel]="'Export ' + collection().collection_name"
+                    [disabled]="exporting()"
                     (onClick)="exportRequested.emit()"
                 />
             </div>

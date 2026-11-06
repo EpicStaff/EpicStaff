@@ -4,6 +4,9 @@ import { ImportResult } from './import-result.model';
 
 export type TransferJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 
+/** What a job does: writes an export archive or reads one in. */
+export type TransferJobKind = 'export' | 'import';
+
 export type TransferJobMainEntity = 'Flow' | 'SourceCollection';
 
 /** What an import job brings in: flows or knowledge collections. */

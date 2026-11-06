@@ -17,6 +17,7 @@ import { catchError, finalize, map, Observable, of, shareReplay, tap, throwError
 import { SKIP_FORBIDDEN_RELOAD } from '../../core/interceptors/skip-forbidden-reload.context';
 import { ConfigService } from '../config';
 import { ProfileService } from './profile.service';
+import { SessionEndService } from './session-end.service';
 
 interface TokenDecoded {
     exp: number;
@@ -33,6 +34,7 @@ export class AuthService {
     private readonly router = inject(Router);
     private readonly currentUserService = inject(ProfileService);
     private readonly appStorage = inject(AppStorageService);
+    private readonly sessionEnd = inject(SessionEndService);
 
     private refreshInProgress$: Observable<string | null> | null = null;
     private statusCache$: Observable<FirstSetupStatus> | null = null;
@@ -178,10 +180,11 @@ export class AuthService {
         this.accessTokenSignal.set(accessToken);
     }
 
-    /** The signed-in user, and every storage registered in `APP_STORAGE`. */
+    /** The signed-in user, every storage registered in `APP_STORAGE`, and the work waiting on this session. */
     private forgetSession(): void {
         this.currentUserService.clearCurrentUser();
         this.appStorage.clearAll();
+        this.sessionEnd.notifyEnded();
     }
 
     private getTokenPayload(token: string): TokenDecoded | null {

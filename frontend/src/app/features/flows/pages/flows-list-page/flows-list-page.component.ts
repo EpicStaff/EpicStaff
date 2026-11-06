@@ -1,6 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { HttpErrorResponse } from '@angular/common/http';
 import {
     afterNextRender,
     ChangeDetectionStrategy,
@@ -47,14 +46,15 @@ import {
 import {
     buildPreviewImportResult,
     enrichImportResult,
+    exportEnvelopeFile,
     ExportFileFormat,
-    extractHttpErrorMessage,
     ImportFileData,
     JsonObject,
     pluralize,
     readExportEnvelope,
+    withProgressToast,
 } from '@shared/utils';
-import { defer, EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
+import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
 import {
     catchError,
     debounceTime,
@@ -72,11 +72,17 @@ import {
     FlowNodesByFile,
     hasReviewableItems,
     ImportReviewDialogCloseResult,
+    InspectedImport,
+    ReviewItem,
     toFileNodeId,
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { TransferExportService } from '../../../../core/services/transfer-export.service';
-import { describeTransferError, TRANSFER_JOB_MAX_WAIT_MS } from '../../../../core/services/transfer-jobs.service';
+import {
+    describeTransferError,
+    IMPORT_WITHOUT_SUMMARY_MESSAGE,
+    TRANSFER_JOB_MAX_WAIT_MS,
+} from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { isUsableCondition } from '../../../audit/models/audit-filter.models';
@@ -101,6 +107,8 @@ import { FLOWS_SORT_MENU_ITEMS, FlowsSortMenuComponent } from './components/flow
 
 const FILTER_PANEL_WIDTH_KEY = 'flows-filter-panel';
 const IMPORT_PROGRESS_MESSAGE = 'Importing…';
+const FLOW_FILE_UNREADABLE_MESSAGE = 'Failed to read the flow file. Please check the file and try again.';
+const FLOW_IMPORT_FAILED_MESSAGE = 'Failed to import flow. Please check the file and try again.';
 const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth: 640 } satisfies SidebarWidthOptions;
 
 @Component({
@@ -440,17 +448,9 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             from(readExportEnvelope(file))
                 .pipe(
                     switchMap(({ format, data }) =>
-                        this._importFlowFile(file, data, this._importFunction(format, file, settings))
+                        this._importFlowFile(data, this._importFunction(format, file, settings))
                     ),
-                    catchError((error: unknown) => {
-                        this.toastService.error(
-                            describeTransferError(
-                                error,
-                                'Failed to read the flow file. Please check the file and try again.'
-                            )
-                        );
-                        return EMPTY;
-                    }),
+                    catchError((error: unknown) => this._reportImportError(error, FLOW_FILE_UNREADABLE_MESSAGE)),
                     takeUntilDestroyed(this.destroyRef)
                 )
                 .subscribe(({ result, fileData }) => this._finishFlowImport(result, fileData));
@@ -466,84 +466,88 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         format: ExportFileFormat,
         file: File,
         settings: ImportFlowRequestOptions
-    ): () => Observable<ImportResult> {
+    ): () => Observable<ImportResult | null> {
         return format === 'zip'
             ? () => this.flowCopyImport.importFlowArchive(file, settings)
             : () => this.flowCopyImport.importFlow(file, settings);
     }
 
+    /**
+     * Inspects the file's envelope, never its archived files, and imports it straight away or after the user has
+     * reviewed the code it carries. The progress toast covers the inspection and a straight import; the review
+     * dialog shows its own progress.
+     */
     private _importFlowFile(
-        file: File,
         fileData: ImportFileData,
-        importFn: () => Observable<ImportResult>
-    ): Observable<{ result: ImportResult; fileData: ImportFileData }> {
-        return this.importExportService.inspectFlow(file).pipe(
-            switchMap((inspection) => {
-                if (!hasReviewableItems(inspection.review_items)) {
-                    // A refusal over trigger nodes is explained by the facade and emits nothing: no toast here.
-                    return this._withImportProgress(importFn()).pipe(
-                        map((result) => ({ result, fileData })),
-                        catchError((error: unknown) => {
-                            this.toastService.error(
-                                describeTransferError(
-                                    error,
-                                    'Failed to import flow. Please check the file and try again.'
-                                )
-                            );
-                            return EMPTY;
-                        })
-                    );
-                }
-
-                const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
-                    width: 'calc(100vw - 2rem)',
-                    height: 'calc(100vh - 2rem)',
-                    // On the dialog itself, not its first button: Enter imports from there.
-                    autoFocus: 'dialog',
-                    data: {
-                        importResult: buildPreviewImportResult(fileData),
-                        reviewItems: inspection.review_items,
-                        allFlowNodes: this._extractFlowNodesFromFile(fileData),
-                        // On a refusal over trigger nodes nothing is emitted, so the review dialog stays open.
-                        // The dialog's Import button reads "Importing…" while this runs.
-                        importFn,
-                    },
-                });
-
-                return reviewRef.closed.pipe(
-                    switchMap((closeResult) =>
-                        closeResult?.action === 'imported'
-                            ? of({ result: closeResult.result as ImportResult, fileData })
-                            : EMPTY
-                    )
-                );
-            }),
-            catchError((error: HttpErrorResponse) => {
-                this.toastService.error(
-                    extractHttpErrorMessage(error, 'Failed to read the flow file. Please check the file and try again.')
-                );
-                return EMPTY;
-            })
+        importFn: () => Observable<ImportResult | null>
+    ): Observable<{ result: ImportResult | null; fileData: ImportFileData }> {
+        return this.importExportService.inspectFlow(exportEnvelopeFile(fileData)).pipe(
+            catchError((error: unknown) => this._reportImportError(error, FLOW_FILE_UNREADABLE_MESSAGE)),
+            switchMap(
+                (inspection): Observable<InspectedImport> =>
+                    hasReviewableItems(inspection.review_items)
+                        ? of({ kind: 'review', reviewItems: inspection.review_items })
+                        : // A refusal over trigger nodes is explained by the facade and emits nothing: no toast here.
+                          importFn().pipe(
+                              map((result): InspectedImport => ({ kind: 'imported', result })),
+                              catchError((error: unknown) => this._reportImportError(error, FLOW_IMPORT_FAILED_MESSAGE))
+                          )
+            ),
+            withProgressToast(this.toastService, IMPORT_PROGRESS_MESSAGE, TRANSFER_JOB_MAX_WAIT_MS),
+            switchMap((inspected) =>
+                inspected.kind === 'imported'
+                    ? of(inspected.result)
+                    : this._reviewAndImport(inspected.reviewItems, fileData, importFn)
+            ),
+            map((result) => ({ result, fileData }))
         );
     }
 
-    private _withImportProgress<T>(source: Observable<T>): Observable<T> {
-        return defer(() => {
-            const progressToastId = this.toastService.show(IMPORT_PROGRESS_MESSAGE, 'info', TRANSFER_JOB_MAX_WAIT_MS);
-            return source.pipe(finalize(() => this.toastService.remove(progressToastId)));
-        });
-    }
-
-    private _finishFlowImport(result: ImportResult, fileData: ImportFileData): void {
-        const enriched = enrichImportResult(result, fileData);
-
-        this.dialog.open(ImportResultDialogComponent, {
+    /** Emits the import's result once the review dialog has imported the file; nothing when the user cancels. */
+    private _reviewAndImport(
+        reviewItems: ReviewItem[],
+        fileData: ImportFileData,
+        importFn: () => Observable<ImportResult | null>
+    ): Observable<ImportResult | null> {
+        const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
-            data: { importResult: enriched },
+            // On the dialog itself, not its first button: Enter imports from there.
+            autoFocus: 'dialog',
+            data: {
+                importResult: buildPreviewImportResult(fileData),
+                reviewItems,
+                allFlowNodes: this._extractFlowNodesFromFile(fileData),
+                // On a refusal over trigger nodes nothing is emitted, so the review dialog stays open.
+                // The dialog's Import button reads "Importing…" while this runs.
+                importFn,
+            },
         });
 
-        this.importedEntityStorages.invalidateImported(result);
+        return reviewRef.closed.pipe(
+            switchMap((closeResult) =>
+                closeResult?.action === 'imported' ? of(closeResult.result as ImportResult | null) : EMPTY
+            )
+        );
+    }
+
+    private _reportImportError(error: unknown, fallback: string): Observable<never> {
+        this.toastService.error(describeTransferError(error, fallback));
+        return EMPTY;
+    }
+
+    private _finishFlowImport(result: ImportResult | null, fileData: ImportFileData): void {
+        if (result) {
+            this.dialog.open(ImportResultDialogComponent, {
+                width: 'calc(100vw - 2rem)',
+                height: 'calc(100vh - 2rem)',
+                data: { importResult: enrichImportResult(result, fileData) },
+            });
+            this.importedEntityStorages.invalidateImported(result);
+        } else {
+            this.toastService.warning(IMPORT_WITHOUT_SUMMARY_MESSAGE);
+        }
+
         this.labelsStorage.setActiveLabelFilter('all');
         this.flowStorageService.getFlows(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.labelsStorage.loadLabels(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
