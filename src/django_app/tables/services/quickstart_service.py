@@ -36,10 +36,17 @@ class QuickstartCustomModelError(QuickstartError):
 class QuickstartService(metaclass=SingletonMeta):
     QUICKSTART_TAG = "quickstart:latest"
 
+    # `llm_config` holds LLMConfig field values that replace the model defaults for
+    # that provider's quickstart config. A provider without it keeps the defaults.
     PROVIDER_CONFIGS = {
         "openai": {
-            "llm_model": "gpt-4o-mini",
+            "llm_model": "gpt-6-luna",
             "embedding_model": "text-embedding-3-small",
+            # gpt-6-luna is a reasoning model: its reasoning tokens count against
+            # max_tokens, so the default 4096 can end a long agent step with
+            # finish_reason=length and little visible text. Low effort and a budget
+            # below the model's 128000 output limit leave room for the answer.
+            "llm_config": {"reasoning_effort": "low", "max_tokens": 100000},
         },
         "gemini": {
             "llm_model": "gemini-1.5-pro",
@@ -250,12 +257,14 @@ class QuickstartService(metaclass=SingletonMeta):
         author: User | None,
     ) -> LLMConfig:
         llm_model = self._get_or_create_llm_model(provider=provider, org_id=org_id, author=author)
+        provider_overrides = self.PROVIDER_CONFIGS[provider.name].get("llm_config", {})
         return LLMConfig.objects.create(
             model=llm_model,
             custom_name=config_name,
             org_id=org_id,
             api_key_secret=secret,
             created_by=author,
+            **provider_overrides,
         )
 
     def _create_embedder_config(

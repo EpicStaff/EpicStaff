@@ -57,7 +57,7 @@ def quickstart_url():
 @pytest.fixture
 def openai_seeded(db):
     provider = Provider.objects.create(name="openai")
-    LLMModel.objects.get_or_create(name="gpt-4o-mini", llm_provider=provider)
+    LLMModel.objects.get_or_create(name="gpt-6-luna", llm_provider=provider)
     EmbeddingModel.objects.get_or_create(
         name="text-embedding-3-small", embedding_provider=provider
     )
