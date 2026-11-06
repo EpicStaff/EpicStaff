@@ -59,7 +59,7 @@ fi
 
 # deploy.env stays last so the server's overrides win. envtool.py --dev turns the chat service
 # and the audit trail on (COMPOSE_PROFILES=dev,chat,auditor, CHAT_ENABLED=true,
-# AUDIT_TRAIL_ENABLED=true); override the profile and its flag in deploy.env to turn one off.
+# SESSION_AUDIT_TRAIL_ENABLED=true, USER_AUDIT_TRAIL_ENABLED=true); override the profile and its flag in deploy.env to turn one off.
 # With chat on, set CHAT_PUBLIC_BASE_URL in deploy.env too: its dev default is http://localhost.
 DC="docker compose --env-file .env --env-file deploy.env -f $COMPOSE_FILE"
 

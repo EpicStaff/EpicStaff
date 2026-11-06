@@ -23,6 +23,7 @@ from django.db.models.deletion import Collector
 from django.db.models.functions import Coalesce
 from rbac.models import Organization
 from rest_framework.exceptions import APIException
+from src.shared.models import UserAction
 from tables.exceptions import (
     CrossOrgCascadeError,
     NotInRecycleBinError,
@@ -40,6 +41,9 @@ from tables.services.recycle_bin.restore_service import RestoreResult
 from tables.services.storage_service.dataclasses import PurgedBinEntry
 from tables.services.storage_service.db_sync import _ancestor_paths, _name_of, _parent_of
 from tables.services.storage_service.naming import ensure_unique_file_name, split_file_name
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
+from user_audit.targets import describe
 from utils.logger import logger
 
 if TYPE_CHECKING:
@@ -286,6 +290,8 @@ class StorageRecycleBinService:
         Raises:
             NotInRecycleBinError: an id isn't in this org's bin; nothing is restored.
         """
+        # Each restored entry records itself; a request that restored none records nothing.
+        mark_request_handled()
         result = BulkRestoreResult()
         for row_id in self._target_ids(org_id, row_ids):
             row = StorageFile.all_objects.filter(org_id=org_id, pk=row_id).first()
@@ -315,6 +321,8 @@ class StorageRecycleBinService:
            rename: a live folder at that path is reused.
         4. The objects move from the trash to the final path. A batch left with
            no binned rows left has its trash prefix deleted.
+
+        Records the restore as a user action, under the name it came back with.
 
         Raises:
             NotInRecycleBinError: `row_id` isn't in this org's bin.
@@ -348,6 +356,7 @@ class StorageRecycleBinService:
                 raise StorageRestoreConflictError(final_path) from error
             self._drop_trash_if_empty(org_id, batch)
             root.refresh_from_db()
+            record_user_action(action=UserAction.RESTORED, org_id=org_id, target=root)
 
         logger.info(
             "Restored storage {} {} of org {} (batch {})", root.item_type, root.pk, org_id, batch
@@ -371,6 +380,8 @@ class StorageRecycleBinService:
         Raises:
             NotInRecycleBinError: an id isn't in this org's bin; nothing is purged.
         """
+        # Each purged entry records itself; a request that purged none records nothing.
+        mark_request_handled()
         result = BulkPurgeResult()
         for row_id in self._target_ids(org_id, row_ids):
             row = StorageFile.deleted_objects.filter(org_id=org_id, pk=row_id).first()
@@ -400,7 +411,8 @@ class StorageRecycleBinService:
 
         Rows go first and objects second, inside the transaction: if storage
         fails the rows come back and the purge can be retried. Logged with
-        `actor`, since it can't be undone.
+        `actor`, since it can't be undone, and recorded as a user action unless the
+        retention job asked for it.
 
         Raises:
             NotInRecycleBinError: `row_id` isn't in this org's bin.
@@ -410,6 +422,7 @@ class StorageRecycleBinService:
         with transaction.atomic():
             batch_rows, root = self._lock_batch_of(org_id, row_id)
             batch = root.soft_delete_batch
+            target = describe(root)
             doomed = (
                 [row.pk for row in batch_rows if row.path.startswith(root.path)]
                 if root.item_type == "folder"
@@ -421,6 +434,11 @@ class StorageRecycleBinService:
             else:
                 self._manager.delete_trash_path(org_id, batch, root.path)
 
+        # Imported here: purge_service imports this module.
+        from tables.services.recycle_bin.purge_service import RETENTION_JOB_ACTOR
+
+        if actor != RETENTION_JOB_ACTOR:
+            record_user_action(action=UserAction.DELETED, org_id=org_id, target_description=target)
         logger.info(
             "Purged storage {item_type} {pk} of org {org_id} (batch {batch}, {count} rows) by {actor}",
             item_type=root.item_type,

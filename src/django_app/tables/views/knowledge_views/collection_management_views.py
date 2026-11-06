@@ -64,6 +64,10 @@ class SourceCollectionViewSet(
 
     """
 
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = SourceCollection.objects.none()
+
     http_method_names = ["get", "post", "patch", "put", "delete"]
 
     permission_classes = [IsAuthenticated, HasOrgPermission]

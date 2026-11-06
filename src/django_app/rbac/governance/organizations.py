@@ -3,11 +3,14 @@ from dataclasses import dataclass, field
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, QuerySet
 from loguru import logger
+from src.shared.models import UserAction
 from storage_credentials.exceptions import OrgStorageProvisioningError
 from storage_credentials.services.org_provisioning_service import (
     org_storage_provisioning_service,
 )
 from tables.models.user import User
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 
 from rbac.exceptions import (
     DefaultOrganizationNotDeletableError,
@@ -142,12 +145,17 @@ class OrganizationManagementService(CrossOrgResourceService):
         self.assert_can(effective, Permission.UPDATE)
         org = self._get_locked_org(org_id)
         if org.name == name:
+            mark_request_handled()
             return self._get_organization_with_member_count(org.pk)
+        previous_name = org.name
         org.name = name
         try:
             org.save(update_fields=["name", "updated_at"])
         except IntegrityError as exc:
             raise OrganizationNameConflictError() from exc
+        record_user_action(
+            action=UserAction.RENAMED, org_id=org.pk, target=org, previous_name=previous_name
+        )
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
@@ -171,6 +179,9 @@ class OrganizationManagementService(CrossOrgResourceService):
         if config.audit_retention_days != audit_retention_days:
             config.audit_retention_days = audit_retention_days
             config.save(update_fields=["audit_retention_days"])
+            record_user_action(action=UserAction.UPDATED, org_id=org.pk, target=org)
+        else:
+            mark_request_handled()
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic

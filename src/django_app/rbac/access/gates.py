@@ -5,7 +5,7 @@ from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.cross_org_resolver import (
     CrossOrgPermissionResolver,
 )
-from rbac.access.org_context import OrgContextService
+from rbac.access.org_context import OrgContextService, cache_active_org_id
 from rbac.access.principals import is_plugin_credential
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
@@ -110,8 +110,8 @@ class HasOrgPermission(BaseRbacPermission):
         # Cached under the key the scoping mixins and serializer fields read, so the
         # view does not run the membership query a second time.
         if not hasattr(request, "_rbac_active_org_id"):
-            request._rbac_active_org_id = self._org_context.resolve(
-                request=request, view_kwargs=view.kwargs
+            cache_active_org_id(
+                request, self._org_context.resolve(request=request, view_kwargs=view.kwargs)
             )
         org_id = request._rbac_active_org_id
         effective = self._resolver.resolve(user=request.user, org_id=org_id)

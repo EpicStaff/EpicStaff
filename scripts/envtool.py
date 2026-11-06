@@ -91,9 +91,17 @@ class Feature(NamedTuple):
 # writes both together so they cannot drift apart.
 FEATURES = (
     Feature("Chat", "CHAT_ENABLED", "chat", ("chat", "chatdb"), ("CHAT_WORKERS", "CHAT_LOG_LEVEL")),
+    # Both audit switches share the auditor stack: its profile is on when either is.
     Feature(
-        "Audit trail",
-        "AUDIT_TRAIL_ENABLED",
+        "Session audit trail",
+        "SESSION_AUDIT_TRAIL_ENABLED",
+        "auditor",
+        ("auditor", "opensearch"),
+        ("AUDITOR_LOG_LEVEL",),
+    ),
+    Feature(
+        "User audit trail",
+        "USER_AUDIT_TRAIL_ENABLED",
         "auditor",
         ("auditor", "opensearch"),
         ("AUDITOR_LOG_LEVEL",),
@@ -307,7 +315,9 @@ def feature_values(enabled: dict[str, bool], current_profiles: str, local: bool)
     profiles = [profile for profile in parse_profiles(current_profiles) if profile not in owned]
     if local:
         profiles.append("dev")
-    profiles += [feature.profile for feature in FEATURES if enabled[feature.flag]]
+    for feature in FEATURES:
+        if enabled[feature.flag] and feature.profile not in profiles:
+            profiles.append(feature.profile)
     values = {feature.flag: "true" if enabled[feature.flag] else "false" for feature in FEATURES}
     values["COMPOSE_PROFILES"] = ",".join(profiles) or "none"
     return values
@@ -802,9 +812,10 @@ def advanced_values(
         for name in target_defaults(schema, "prod"):
             if name.endswith("_LOG_LEVEL"):
                 values[name] = log_level
+    kept = {name for feature in FEATURES if enabled[feature.flag] for name in feature.settings}
     for feature in FEATURES:
         if not enabled[feature.flag]:
-            for name in feature.settings:
+            for name in set(feature.settings) - kept:
                 values.pop(name, None)
     return values
 
@@ -949,7 +960,13 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
     for feature in FEATURES:
         flag_on = old.get(feature.flag, "").strip().lower() in Env.BOOLEAN_TRUE_VALUES
         profile_on = feature.profile in profiles
-        if flag_on != profile_on:
+        # A profile shared by two flags stays on while either flag is on.
+        sibling_on = any(
+            old.get(other.flag, "").strip().lower() in Env.BOOLEAN_TRUE_VALUES
+            for other in FEATURES
+            if other.profile == feature.profile and other is not feature
+        )
+        if flag_on != profile_on and not (profile_on and sibling_on):
             screen.notes.append(
                 f"{feature.label} is out of sync: {feature.flag} is "
                 f"{'on' if flag_on else 'off'} but the {feature.profile} profile is "
@@ -981,9 +998,13 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
     print(f"{style('✓', GREEN)} Updated {style(str(env_file), BOLD)}")
     commands = ["cd src", "docker compose up -d"]
     for feature in FEATURES:
-        if was_on[feature.flag] and not enabled[feature.flag]:
+        profile_still_on = any(
+            enabled[other.flag] for other in FEATURES if other.profile == feature.profile
+        )
+        stop = f"docker compose stop {' '.join(feature.services)}"
+        if was_on[feature.flag] and not profile_still_on and stop not in commands:
             # `up -d` leaves containers of a deactivated profile running.
-            commands.append(f"docker compose stop {' '.join(feature.services)}")
+            commands.append(stop)
     print_panel("Apply it with", commands)
 
 

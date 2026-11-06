@@ -2,6 +2,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.response import Response
 
 from rbac.governance.organization_retention import OrganizationRetentionService
+from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
 from rbac.schemas.organization_retention import (
     ORGANIZATION_RETENTION_GET,
@@ -17,6 +18,10 @@ class OrganizationRetentionAdminViewSet(CrossOrgAdminViewSet):
     Gated like the organization detail endpoint: the door gate needs the ORGANIZATIONS
     bit in some organization, and the service checks it in the target one.
     """
+
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = Organization.objects.none()
 
     rbac_resource_type = ResourceType.ORGANIZATIONS
     rbac_action_map = {

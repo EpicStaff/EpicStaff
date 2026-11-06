@@ -24,7 +24,8 @@
       "key_value_tables": [ "create", "read", "update", "delete" ],
       "venvs": [ "create", "read", "update", "delete" ],
       "chats": [ "create", "read", "update", "delete", "use" ],
-      "audit": [ "read", "export" ]
+      "audit": [ "read", "export" ],
+      "user_audit": [ "read", "export" ]
     }
   },
   "Member": {

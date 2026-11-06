@@ -11,8 +11,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
+from src.shared.models import UserAction
 from tables.services.secrets.request_actor import actor_from_request
 from tables.services.secrets.secret_use_checks import check_venv_write
+from user_audit.recorder import record_user_action
+from user_audit.targets import TargetDescription, target_type
 
 from proxies.sandbox.models import SandboxVenvBinding
 from proxies.sandbox.services import VenvService
@@ -20,7 +23,13 @@ from proxies.sandbox.services import VenvService
 
 class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
     """Venvs as this API exposes them: addressed by their binding, never by the
-    sandbox's own id. The upstream id stays inside this package."""
+    sandbox's own id. The upstream id stays inside this package.
+
+    Records its own creates, updates and deletes as user actions: the binding has no
+    name, so the middleware's fallback could name none. They are recorded here, not in
+    `VenvService`, because an import creates venvs through the service too and is
+    recorded as one import.
+    """
 
     queryset = SandboxVenvBinding.objects.all()
     service_class = VenvService
@@ -77,6 +86,7 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             org_id=self.get_active_org_id(),
             created_by=request.user,
         )
+        _record_venv_action(UserAction.CREATED, binding.org_id, binding.pk, venv.get("name"))
         return Response(self._as_response(venv, binding), status=status.HTTP_201_CREATED)
 
     def partial_update(self, request: Request, pk: str) -> Response:
@@ -99,6 +109,8 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             read_current_libs=lambda: service.retrieve(binding).get("libs"),
         )
         venv = service.update(binding, request.data)
+        # Not RENAMED: telling a rename apart would take an extra sandbox call for the old name.
+        _record_venv_action(UserAction.UPDATED, binding.org_id, binding.pk, venv.get("name"))
         return Response(self._as_response(venv, binding))
 
     def destroy(self, request: Request, pk: str) -> Response:
@@ -108,7 +120,11 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             Http404: No venv with this id in the active org.
             VenvInUseError: Some Python code still runs in it. Rendered as 409.
         """
-        self.service_class().delete(self._get_binding_or_404(pk))
+        binding = self._get_binding_or_404(pk)
+        # The delete clears the binding's pk.
+        binding_id = binding.pk
+        name = self.service_class().delete(binding)
+        _record_venv_action(UserAction.DELETED, binding.org_id, binding_id, name)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post", "delete"], url_path="favorite")
@@ -152,3 +168,15 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             "email": owner.email,
             "display_name": owner.display_name,
         }
+
+
+def _record_venv_action(action: str, org_id: int, binding_id: int, name: str | None) -> None:
+    """Record a venv write under the binding's id, the one this API exposes, and the
+    name the sandbox stored."""
+    record_user_action(
+        action=action,
+        org_id=org_id,
+        target_description=TargetDescription(
+            type=target_type(SandboxVenvBinding), id=str(binding_id), name=name
+        ),
+    )

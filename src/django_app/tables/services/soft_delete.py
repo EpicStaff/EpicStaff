@@ -13,8 +13,12 @@ from django.db.models.deletion import (
 from django.db.models.fields.reverse_related import ManyToManyRel
 from django.db.models.signals import post_save
 from django.utils import timezone
+from src.shared.models import UserAction
 from tables.models.base_models import SoftDeleteFields
 from tables.services.cascade_org_guard import CascadeOrgGuard
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
+from user_audit.targets import describe
 
 
 def keeps_references(model: type[models.Model]) -> bool:
@@ -116,7 +120,12 @@ class DeleteService:
         obj: models.Model,
         using: str | None = None,
     ) -> uuid.UUID | None:
-        """Delete `obj` and its dependents.
+        """Delete `obj` and its dependents, and record the deletion of `obj` as a user action.
+
+        Only `obj` is recorded, not the rows binned with it: one record per item deleted.
+        A soft-deletable `obj` is recorded as moved to the recycle bin, any other as deleted.
+        An `obj` already in the bin records nothing and marks the request handled: the
+        first delete's record stays, and the middleware's fallback must not add another.
 
         Returns:
             The batch id stamped on every row this call soft-deleted, or None
@@ -140,14 +149,29 @@ class DeleteService:
                     .first()
                 )
                 if stored_active is False:
+                    mark_request_handled()
                     return None
                 if stored_active is not None:
                     # The walk trusts `obj.active`; a copy loaded while the row
                     # was binned (and since restored) must not skip it.
                     obj.active = stored_active
             context = _DeleteContext(org_guard=CascadeOrgGuard.for_root(obj, using), using=using)
+            # Described before the delete: a hard-deleted `obj` has no primary key after it.
+            target_description = describe(obj)
             context.delete(obj)
             context.finish()
+            if context.org_guard.org_id is not None:
+                action = (
+                    UserAction.MOVED_TO_RECYCLE_BIN
+                    if isinstance(obj, SoftDeleteFields)
+                    else UserAction.DELETED
+                )
+                record_user_action(
+                    action=action,
+                    org_id=context.org_guard.org_id,
+                    target=obj,
+                    target_description=target_description,
+                )
             return context.batch
 
 

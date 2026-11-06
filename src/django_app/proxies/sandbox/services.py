@@ -121,13 +121,17 @@ class VenvService:
         with self.client_class() as client:
             return client.update(binding.resource_id, data)
 
-    def delete(self, binding: SandboxVenvBinding) -> None:
+    def delete(self, binding: SandboxVenvBinding) -> str | None:
         """Delete an environment nothing runs in any more, upstream and here.
 
         `PythonCode.venv` is PROTECTed, so the delete would fail regardless; the
         refusal is raised first so the caller is told what is in the way instead of
         getting an integrity error, and so the upstream environment is never removed
         before that is known.
+
+        Returns:
+            The environment's name, read just before it is removed, since nothing can
+            tell it afterwards; None when the sandbox could not be asked.
 
         Raises:
             VenvInUseError: Some Python code still points at it. Rendered as 409.
@@ -137,8 +141,10 @@ class VenvService:
             raise VenvInUseError(self._describe_owners(code_ids))
 
         with self.client_class() as client:
+            name = self._name_before_removal(client, binding.resource_id)
             client.remove(binding.resource_id)
         binding.delete()
+        return name
 
     def remove_upstream(self, venv_ids: Iterable[int]) -> None:
         """Delete environments a caller created upstream, after that caller rolled back.
@@ -161,6 +167,16 @@ class VenvService:
                     logger.exception(
                         "Could not remove venv {} created by work that rolled back", venv_id
                     )
+
+    @staticmethod
+    def _name_before_removal(client: SandboxVenvClient, venv_id: str) -> str | None:
+        # Best effort: the name only labels the record of the delete, which must not
+        # fail for want of it.
+        try:
+            return client.retrieve(venv_id).get("name")
+        except Exception:
+            logger.exception("Could not read the name of venv {} before deleting it", venv_id)
+            return None
 
     def _describe_owners(self, code_ids: list[int]) -> str:
         live, binned = self._owner_names(code_ids)

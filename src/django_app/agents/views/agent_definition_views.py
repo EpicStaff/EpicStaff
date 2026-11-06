@@ -22,6 +22,7 @@ from tables.swagger_schemas.tools_schemas import (
 )
 from tables.views.mixins import InspectActionMixin
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
+from user_audit.read_only import reads_only
 
 from agents.models import AgentDefinition
 from agents.serializers.agent_definition_serializers import (
@@ -112,6 +113,7 @@ class AgentDefinitionViewSet(
 
     @extend_schema(**AGENT_DEFINITION_BULK_EXPORT_POST)
     @action(detail=False, methods=["post"], url_path="bulk-export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

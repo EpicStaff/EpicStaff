@@ -101,3 +101,12 @@ see the per-op pairs in this request's own `openapi_examples`):
 
 CURSOR_FIELD_DESCRIPTION = "Opaque pagination cursor from a previous response's `next_cursor`."
 SIZE_FIELD_DESCRIPTION = "Max rows per page (1-1000)."
+
+VALUES_DESCRIPTION = """
+Distinct values of `{{field}}` recorded for the token's `org_id` within its
+`retention_days` window, sorted ascending, empty values left out. Meant for
+filter option lists, so it is always exactly what the data holds.
+
+Listable fields: {fields}. Any other field answers `404`. At most {limit}
+values are returned (the first {limit} in sorted order).
+"""

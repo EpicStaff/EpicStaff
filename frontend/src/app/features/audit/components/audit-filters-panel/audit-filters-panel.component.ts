@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
     afterNextRender,
     ChangeDetectionStrategy,
@@ -22,6 +23,15 @@ import { DateRangeFilter } from 'src/app/shared/models';
 
 import { ToastService } from '../../../../services/notifications';
 import {
+    AUDIT_FIELD_CATALOG,
+    AuditBuilderSection,
+    AuditLookupField,
+    AuditLookupOptions,
+    AuditSelectField,
+    AuditTextField,
+    catalogFieldOptions,
+} from '../../models/audit-domain.models';
+import {
     AuditConditionGroup,
     AuditEnumOption,
     AuditFilterState,
@@ -29,6 +39,9 @@ import {
     AuditMatchScopeState,
     AuditNumberFilter,
     AuditValuesFilter,
+    catalogIdFilter,
+    catalogSelection,
+    catalogTextConditions,
     EMPTY_AUDIT_FILTER,
 } from '../../models/audit-filter.models';
 import {
@@ -37,8 +50,6 @@ import {
     JSON_OPERATORS,
     KIND_OPTIONS,
     NODE_TYPE_OPTIONS,
-    QUERY_EXAMPLES,
-    QUERY_FIELDS,
     QUERY_OPERATORS,
     STATUS_OPTIONS,
 } from '../../models/audit-filter-options';
@@ -68,6 +79,12 @@ import { AuditTokensFilterComponent } from '../audit-tokens-filter/audit-tokens-
 
 export type AuditFilterTab = 'builder' | 'query' | AuditPresetScope;
 
+// in the order the Builder shows them, titled as on the Sessions tab
+const BUILDER_SECTION_TITLES: Record<AuditBuilderSection, string> = {
+    quick: 'Quick filters',
+    deep: 'Deep filters',
+};
+
 @Component({
     selector: 'app-audit-filters-panel',
     standalone: true,
@@ -82,6 +99,7 @@ export type AuditFilterTab = 'builder' | 'query' | AuditPresetScope;
         AuditTokensFilterComponent,
         AuditMatchScopeComponent,
         AuditPresetsComponent,
+        NgTemplateOutlet,
         MatTooltip,
     ],
     providers: [AuditPresetsStorageService],
@@ -98,6 +116,8 @@ export class AuditFiltersPanelComponent implements OnInit {
     public readonly flowNames = input<string[]>([]);
     public readonly agentOptions = input<AuditEnumOption[]>([]);
     public readonly toolOptions = input<AuditEnumOption[]>([]);
+    // the lists the catalog's lookup fields pick from, by source
+    public readonly lookupOptions = input<AuditLookupOptions>({});
     public readonly queryError = input<string | null>(null);
 
     public readonly flowOptions = computed<AuditEnumOption[]>(() =>
@@ -115,8 +135,19 @@ export class AuditFiltersPanelComponent implements OnInit {
     public readonly errorOperators = ERROR_OPERATORS;
     public readonly jsonOperators = JSON_OPERATORS;
     public readonly deepTextOperators = DEEP_TEXT_OPERATORS;
-    public readonly queryExamples = QUERY_EXAMPLES;
-    public readonly queryFields = QUERY_FIELDS;
+    // the audit tab's domain: which Builder fields, query fields and examples the panel offers
+    protected readonly catalog = inject(AUDIT_FIELD_CATALOG);
+    protected readonly isSessions = this.catalog.domain === 'sessions';
+    // the catalog's Builder fields by section; Quick filters always shows, as the date closes it
+    protected readonly builderSections = (Object.keys(BUILDER_SECTION_TITLES) as AuditBuilderSection[])
+        .map((section) => ({
+            section,
+            title: BUILDER_SECTION_TITLES[section],
+            fields: this.catalog.builderFields.filter((item) => item.section === section),
+        }))
+        .filter(({ section, fields }) => section === 'quick' || fields.length > 0);
+    public readonly queryExamples = this.catalog.queryExamples;
+    public readonly queryFields = this.catalog.queryFields;
 
     public readonly queryOperators = QUERY_OPERATORS;
 
@@ -148,12 +179,12 @@ export class AuditFiltersPanelComponent implements OnInit {
         const current = this.filter();
         if (tab === 'query' && current.mode === 'builder') {
             // the search box is its own control, so its text never goes into the query
-            const filters = compileAuditFilter({ ...current, searchText: '' }).filters;
+            const filters = compileAuditFilter({ ...current, searchText: '' }, this.catalog).filters;
             const query = filters === undefined ? '' : auditFilterToQueryText(filters);
             this.filter.set({ ...current, query, mode: 'query' });
         }
         if (tab === 'builder' && current.mode === 'query') {
-            const builderState = queryToBuilderState(current.query, current);
+            const builderState = queryToBuilderState(current.query, current, this.catalog);
             if (builderState === null) {
                 this.confirmClearComplexQuery();
                 return;
@@ -244,10 +275,11 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     // Each Builder card shows its applied value, worded like the preset chips.
     private readonly fieldSummaries = computed<Map<string, string>>(() => {
-        const chips = describeAuditFilter(
-            { ...this.filter(), mode: 'builder' },
-            { agents: this.agentOptions(), tools: this.toolOptions() }
-        );
+        const chips = describeAuditFilter({ ...this.filter(), mode: 'builder' }, this.catalog, {
+            ...this.lookupOptions(),
+            agents: this.agentOptions(),
+            tools: this.toolOptions(),
+        });
         return new Map(chips.map((chip) => [chip.key, chip.value]));
     });
 
@@ -330,6 +362,34 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public setTokens(tokens: AuditNumberFilter): void {
         this.updateBuilder({ tokens });
+    }
+
+    public optionsOf(builderField: AuditSelectField | AuditLookupField): AuditEnumOption[] {
+        return catalogFieldOptions(builderField, this.lookupOptions());
+    }
+
+    public selectionOf(field: string): AuditValuesFilter {
+        return catalogSelection(this.filter(), field);
+    }
+
+    public idFilterOf(field: string): AuditIdFilter {
+        return catalogIdFilter(this.filter(), field);
+    }
+
+    public textConditionsOf(textField: AuditTextField): AuditConditionGroup[] {
+        return catalogTextConditions(this.filter(), textField);
+    }
+
+    public setSelection(field: string, selection: AuditValuesFilter): void {
+        this.updateBuilder({ selections: { ...this.filter().selections, [field]: selection } });
+    }
+
+    public setIdFilter(field: string, id: AuditIdFilter): void {
+        this.updateBuilder({ idFilters: { ...this.filter().idFilters, [field]: id } });
+    }
+
+    public setTextConditions(field: string, groups: AuditConditionGroup[]): void {
+        this.updateBuilder({ textConditions: { ...this.filter().textConditions, [field]: groups } });
     }
 
     public setQuery(event: Event): void {

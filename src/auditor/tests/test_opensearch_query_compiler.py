@@ -9,6 +9,7 @@ import pytest
 
 from app.domains.base import DEFAULT_SCOPING, BaseScopeArgs, MissingScopeError
 from app.domains.sessions.fields import SESSIONS_FIELDS
+from app.domains.user_actions.fields import USER_ACTIONS_FIELDS
 from app.repositories.compiler import QueryCompiler
 
 _compiler = QueryCompiler(SESSIONS_FIELDS, DEFAULT_SCOPING)
@@ -78,6 +79,24 @@ def test_every_query_is_scoped_to_the_callers_org_and_retention(
 )
 def test_filter_leaf_compiles_to_the_clause_on_the_fields_real_path(field, op, value, expected):
     assert _leaf({"field": field, "op": op, "value": value}) == expected
+
+
+@pytest.mark.parametrize(
+    ("op", "value", "expected"),
+    [
+        ("equals", 3, {"term": {"number": 3}}),
+        ("in", [1, 4], {"terms": {"number": [1, 4]}}),
+        ("gt", 3, {"range": {"number": {"gt": 3}}}),
+        ("lte", 9, {"range": {"number": {"lte": 9}}}),
+    ],
+)
+def test_user_action_record_number_compiles_to_a_native_clause(op, value, expected):
+    compiler = QueryCompiler(USER_ACTIONS_FIELDS, DEFAULT_SCOPING)
+    clauses = compiler.compile(
+        {"field": "number", "op": op, "value": value}, org_id=1, retention_days=0
+    )["bool"]["filter"]
+
+    assert clauses[0] == expected
 
 
 @pytest.mark.parametrize(
