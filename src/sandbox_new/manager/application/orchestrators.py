@@ -1,4 +1,5 @@
 import asyncio
+import builtins
 import hashlib
 import io
 import os
@@ -528,13 +529,35 @@ class CustomLibraryCRUDOrchestrator:
         ids: list[int] | None,
         limit: int | None,
         offset: int | None,
-    ) -> tuple[list[CustomLibrary], int]:
-        async with self.uow:
-            return await self.uow.custom_library_repo.list(ids=ids, limit=limit, offset=offset)
+    ) -> tuple[list[tuple[CustomLibrary, list[Wheel]]], int]:
+        """One page of libraries, each with its versions, and the total before paging.
 
-    async def retrieve(self, id: int) -> CustomLibrary:
+        The versions of the whole page are read in one query rather than one per
+        library: a reader is shown what state a library's builds are in, and that
+        must not cost a round trip per row.
+        """
         async with self.uow:
-            return await self._retrieve(id)
+            objs, total = await self.uow.custom_library_repo.list(
+                ids=ids, limit=limit, offset=offset
+            )
+            wheels = await self.uow.wheel_repo.list_by_library_ids([obj.id for obj in objs])
+
+        by_library: dict[int, list[Wheel]] = defaultdict(list)
+        for wheel in wheels:
+            by_library[wheel.library_id].append(wheel)
+        return [(obj, by_library[obj.id]) for obj in objs], total
+
+    # `builtins.list`: the method named `list` above shadows the builtin for every
+    # annotation in this class body from here on.
+    async def retrieve(self, id: int) -> tuple[CustomLibrary, builtins.list[Wheel]]:
+        """One library and its versions.
+
+        Raises:
+            CustomLibraryNotFoundError: No library with this id.
+        """
+        async with self.uow:
+            obj = await self._retrieve(id)
+            return obj, await self.uow.wheel_repo.list(id)
 
     async def create(self, name: str | None) -> CustomLibrary:
         """Create a library, named or not.

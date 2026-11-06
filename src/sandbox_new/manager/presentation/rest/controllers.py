@@ -341,12 +341,14 @@ class CustomLibraryController(Controller):
     ) -> schemas.CustomLibraryListSchema:
         """Return a page of custom libraries."""
         orchestrator = CustomLibraryCRUDOrchestrator(uow)
-        objs, count = await orchestrator.list(ids, limit, offset)
+        pairs, count = await orchestrator.list(ids, limit, offset)
         return schemas.CustomLibraryListSchema(
             count=count,
             limit=limit or 0,
             offset=offset or 0,
-            result=[schemas.CustomLibraryRetrieveSchema.from_domain(o) for o in objs],
+            result=[
+                schemas.CustomLibraryRetrieveSchema.from_domain(o, wheels) for o, wheels in pairs
+            ],
         )
 
     @get(
@@ -368,8 +370,8 @@ class CustomLibraryController(Controller):
             CustomLibraryNotFoundError: No library with this id, rendered as 404.
         """
         orchestrator = CustomLibraryCRUDOrchestrator(uow)
-        obj = await orchestrator.retrieve(id)
-        return schemas.CustomLibraryRetrieveSchema.from_domain(obj)
+        obj, wheels = await orchestrator.retrieve(id)
+        return schemas.CustomLibraryRetrieveSchema.from_domain(obj, wheels)
 
     @post(
         status_code=status_codes.HTTP_201_CREATED,
@@ -410,13 +412,17 @@ class CustomLibraryController(Controller):
         library_orchestrator = CustomLibraryCRUDOrchestrator(uow)
         obj = await library_orchestrator.create_for(filename)
         try:
-            await WheelCRUDOrchestrator(uow, file_storage).upload(library_id=obj.id, file=data.file)
+            wheel = await WheelCRUDOrchestrator(uow, file_storage).upload(
+                library_id=obj.id, file=data.file
+            )
         except Exception:
             # The library was just created and nothing could name it yet, so removing
             # it here is safe and frees the name for the next attempt.
             await library_orchestrator.remove(obj.id)
             raise
-        return schemas.CustomLibraryRetrieveSchema.from_domain(obj)
+        # The library was created for this upload, so its one version is the whole
+        # state of it; nothing is read back to work that out.
+        return schemas.CustomLibraryRetrieveSchema.from_domain(obj, [wheel])
 
     @delete(
         path="/{id:int}",

@@ -19,6 +19,7 @@ from manager.domain.models import (
     Venv,
     Wheel,
 )
+from manager.domain.services import summarize_wheels
 
 __all__ = [
     "CustomLibraryCreateSchema",
@@ -271,14 +272,23 @@ class CustomLibraryRetrieveSchema(Schema):
     # Null until a wheel -- uploaded directly, or built from a source archive -- names
     # the library.
     name: str | None
+    # Where the library's versions stand, taken together, so that a listing can say a
+    # build is running or has failed without reading every version itself. Null while
+    # the library holds no version at all.
+    status: WheelStatus | None = None
+    # The failed version's error, set only when `status` is `failed`.
+    error: str | None = None
     created_at: datetime
     updated_at: datetime
 
     @classmethod
-    def from_domain(cls, library: CustomLibrary) -> Self:
+    def from_domain(cls, library: CustomLibrary, wheels: list[Wheel]) -> Self:
+        state = summarize_wheels(wheels)
         return cls(
             id=library.id,
             name=library.name,
+            status=state.status,
+            error=state.error,
             created_at=library.created_at,
             updated_at=library.updated_at,
         )

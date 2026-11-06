@@ -58,6 +58,51 @@ async def test_retrieve_raises_for_a_library_that_is_not_there(uow):
         await CustomLibraryCRUDOrchestrator(uow).retrieve(404)
 
 
+async def test_retrieve_carries_the_library_versions(uow):
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    library = await orchestrator.create("acme-core")
+    uow.wheel_repo.seed(make_wheel(library.id, "a"), make_wheel(library.id, "b"))
+
+    obj, wheels = await orchestrator.retrieve(library.id)
+
+    assert obj.name == "acme-core"
+    assert len(wheels) == 2
+
+
+async def test_a_page_pairs_every_library_with_its_own_versions(uow):
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    first = await orchestrator.create("acme-core")
+    second = await orchestrator.create("acme-ml")
+    empty = await orchestrator.create("acme-cli")
+    uow.wheel_repo.seed(make_wheel(first.id, "a"), make_wheel(second.id, "b"))
+
+    pairs, total = await orchestrator.list(None, None, None)
+
+    assert total == 3
+    assert {obj.id: [wheel.library_id for wheel in wheels] for obj, wheels in pairs} == {
+        first.id: [first.id],
+        second.id: [second.id],
+        empty.id: [],
+    }
+
+
+async def test_a_page_reads_the_versions_of_every_library_at_once(uow):
+    """One query for the page, not one per row: the state of a library's builds is
+    shown on every row of the list, and that must not cost a round trip each."""
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    library = await orchestrator.create("acme-core")
+    uow.wheel_repo.seed(make_wheel(library.id, "a"))
+
+    async def refuse(*_args, **_kwargs):
+        raise AssertionError("a page must not read one library's versions at a time")
+
+    uow.wheel_repo.list = refuse
+
+    pairs, _total = await orchestrator.list(None, None, None)
+
+    assert len(pairs) == 1
+
+
 async def test_create_for_names_the_library_after_a_wheels_distribution(uow):
     library = await CustomLibraryCRUDOrchestrator(uow).create_for("My_Library-1.0.0-py3-none-any.whl")
 
@@ -121,7 +166,7 @@ async def test_remove_leaves_another_library_and_its_versions_alone(uow):
     await orchestrator.remove(doomed.id)
 
     assert len(await uow.wheel_repo.list(spared.id)) == 1
-    assert (await orchestrator.retrieve(spared.id)).name == "spared"
+    assert (await orchestrator.retrieve(spared.id))[0].name == "spared"
 
 
 async def test_remove_raises_for_a_library_that_is_not_there(uow):
@@ -166,7 +211,7 @@ async def test_a_library_a_venv_uses_cannot_be_removed(uow):
     with pytest.raises(CustomLibraryInUseError):
         await orchestrator.remove(library.id)
 
-    assert (await orchestrator.retrieve(library.id)).name == "acme-core"
+    assert (await orchestrator.retrieve(library.id))[0].name == "acme-core"
 
 
 async def test_the_refusal_says_how_many_environments_are_in_the_way(uow):
