@@ -42,6 +42,46 @@
         flex-direction: column;
     }
 
+    // --fog-alpha-16 has no semantic token, so the palette primitive is used directly.
+    &__dropdown--outlined {
+        border-color: var(--color-table-border);
+
+        .multi-select__item {
+            background-color: var(--color-table-border);
+            border-color: var(--fog-alpha-16);
+
+            ::ng-deep app-checkbox input[type='checkbox'] {
+                border-color: var(--fog-alpha-16);
+                background: transparent;
+            }
+
+            ::ng-deep app-checkbox input[type='checkbox']:checked {
+                background: var(--color-text-primary);
+                border-color: var(--color-text-primary);
+            }
+
+            ::ng-deep app-checkbox input[type='checkbox']:checked::after {
+                border-color: var(--graphite-875);
+            }
+        }
+    }
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+        padding: 1.25rem 1.25rem 0.75rem;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__header-selected {
+        color: var(--accent-color);
+    }
+
     &__search {
         margin: 1.25rem;
         padding: 0 1rem;

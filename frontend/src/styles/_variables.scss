@@ -540,6 +540,7 @@
     --color-tour-backdrop: var(--black-alpha-70); // guided-tour spotlight dim
     --color-flow-card-bg: var(--graphite-750);
     --color-table-border: var(--graphite-750);
+    --color-table-row-stripe: var(--color-ks-transparent-black-28); // darker odd rows of the shared table
     --color-surface-card: var(--graphite-825);
     --color-drag-drop-active: var(--black-alpha-28);
 
@@ -795,6 +796,7 @@
     --color-scrollbar-thumb-hover: rgba(71, 85, 105, 0.3);
     --color-scrollbar-track: transparent;
     --color-drag-drop-active: rgba(15, 15, 15, 0.12);
+    --color-table-row-stripe: var(--black-alpha-5);
     --color-card-background: #ffffff;
     --color-key-value: #115e59; // darker teal: 5.99:1 on its 15% chip over white (#14b8a6 is 2.2:1)
 

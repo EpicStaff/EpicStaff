@@ -9,6 +9,7 @@
     </div>
 
     <div class="toolbar-actions">
+        <app-table-column-picker [table]="table" />
         <!-- aria-disabled, not disabled: it keeps the focus when a bulk action clears the selection. -->
         <button
             #bulkButton
@@ -73,6 +74,8 @@
 </div>
 
 <app-table
+    #table
+    layoutKey="workspace-api-keys"
     [columns]="columns()"
     [data]="tableData()"
     [selectable]="true"
