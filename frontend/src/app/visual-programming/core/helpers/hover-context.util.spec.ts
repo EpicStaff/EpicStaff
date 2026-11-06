@@ -18,8 +18,6 @@ function makeNode(id: string, type: NodeType = NodeType.AGENT): NodeModel {
         position: { x: 0, y: 0 },
         size: { width: 200, height: 100 },
         ports: null,
-        color: '',
-        icon: '',
         input_map: {},
         output_variable_path: null,
         data: null,

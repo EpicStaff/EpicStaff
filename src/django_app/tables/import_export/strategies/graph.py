@@ -19,6 +19,7 @@ from tables.graph_collab.notifications import GraphEditNotifier
 from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.node_uuids import KeptNodeUuids
 from tables.import_export.registry import entity_registry
 from tables.import_export.serializers.graph import (
     EdgeImportSerializer,
@@ -80,6 +81,12 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
         deps[EntityType.LLM_CONFIG].discard(None)
+        deps[EntityType.SYSTEM_ONE_CONFIG] = set(
+            ClassificationDecisionTablePrompt.objects.filter(cdt_node__graph=instance).values_list(
+                "system_one_config_id", flat=True
+            )
+        )
+        deps[EntityType.SYSTEM_ONE_CONFIG].discard(None)
 
         deps[EntityType.AGENT_DEFINITION] = set(
             instance.agent_node_list.values_list("agent_definition_id", flat=True)
@@ -230,6 +237,9 @@ class GraphStrategy(EntityImportExportStrategy):
             id_mapper,
             old_graph_id=old_id,
             user=kwargs.get("user"),
+            # Node uuids follow the flow: kept when the file replaces its flow in
+            # place, new for a flow created by this import.
+            keep_node_uuids=replaced_graph is not None,
         )
         if replaced_telegram_keys:
             self._restore_telegram_bot_keys(graph, replaced_telegram_keys, kwargs.get("user"))
@@ -373,6 +383,8 @@ class GraphStrategy(EntityImportExportStrategy):
         is_partial: bool = False,
         old_graph_id: int | None = None,
         user=None,
+        *,
+        keep_node_uuids: bool,
         preserve_node_numbers: bool = False,
         cap_grants: bool = True,
     ) -> IDMapper:
@@ -383,13 +395,17 @@ class GraphStrategy(EntityImportExportStrategy):
         check (e.g. a key-value table) gate on it. `None` means there is no acting user,
         so nodes get no author and no last edit.
 
-        By default the nodes are numbered from the graph's counter in source order.
-        `preserve_node_numbers` keeps each node's stored number instead (version
-        restore); see `_create_nodes` for the numbers that cannot be kept.
-
-        By default each node's storage grants are capped to what `user` may hand out.
-        `cap_grants=False` stores them as given, for a caller that has already checked
-        that `user` may apply exactly this data (version restore).
+        Args:
+            keep_node_uuids: Give each node the uuid it carries in `data` (restore,
+                in-place replace). When false, every node gets a new uuid, so the
+                same data can be added to a graph twice. See `KeptNodeUuids` for
+                the uuids that are not kept.
+            preserve_node_numbers: Keep each node's stored number (version restore).
+                When false, the nodes are numbered from the graph's counter in
+                source order. See `_create_nodes` for the numbers that cannot be kept.
+            cap_grants: Cap each node's storage grants to what `user` may hand
+                out. False stores them as given, for a caller that has already
+                checked that `user` may apply exactly this data (version restore).
         """
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
@@ -404,6 +420,7 @@ class GraphStrategy(EntityImportExportStrategy):
             id_mapper,
             old_graph_id,
             user,
+            keep_node_uuids=keep_node_uuids,
             preserve_node_numbers=preserve_node_numbers,
             cap_grants=cap_grants,
         )
@@ -442,6 +459,8 @@ class GraphStrategy(EntityImportExportStrategy):
         id_mapper: IDMapper,
         old_graph_id: int | None = None,
         user=None,
+        *,
+        keep_node_uuids: bool,
         preserve_node_numbers: bool = False,
         cap_grants: bool = True,
     ) -> list:
@@ -465,6 +484,7 @@ class GraphStrategy(EntityImportExportStrategy):
         nodes_to_create = sorted(
             zip(supported_nodes, kept_numbers, strict=True), key=lambda pair: pair[1] is None
         )
+        kept_uuids = KeptNodeUuids(graph) if keep_node_uuids else None
         created_nodes = []
         # Imported flags are capped to what the importer may hand out, so a file cannot
         # grant more than its importer could set by hand.
@@ -472,6 +492,9 @@ class GraphStrategy(EntityImportExportStrategy):
 
         for (entity_type, node_data), node_number in nodes_to_create:
             old_id = node_data.get("id")
+            # Taken out even when it is not kept, so a node serializer that one day
+            # accepts `uuid` cannot write it behind keep_node_uuids=False.
+            node_uuid = node_data.pop("uuid", None)
 
             strategy = entity_registry.get_strategy(entity_type)
             if cap_grants:
@@ -497,6 +520,11 @@ class GraphStrategy(EntityImportExportStrategy):
 
             if old_id and node:
                 node_mapper.map(NODE_MAPPING_KEY, old_id, node.id)
+            if kept_uuids is not None and node:
+                kept_uuids.keep(node, node_uuid)
+
+        if kept_uuids is not None:
+            kept_uuids.save()
 
         return created_nodes
 

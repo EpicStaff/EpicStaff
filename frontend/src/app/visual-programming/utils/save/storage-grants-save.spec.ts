@@ -11,6 +11,7 @@ import { buildBulkSavePayload } from './payload';
 const PYTHON_DTO: PythonNode = {
     id: 7,
     graph: 1,
+    uuid: null,
     node_name: 'Python #1',
     node_number: 1,
     python_code: { id: 3, code: 'def main():\n    return 1', entrypoint: 'main', venv_id: null },
@@ -32,6 +33,7 @@ const CDT_DTO: GetClassificationDecisionTableNodeRequest = {
     last_edited_at: null,
     id: 21,
     graph: 1,
+    uuid: null,
     node_number: 1,
     node_name: 'Triage',
     pre_python_code: null,

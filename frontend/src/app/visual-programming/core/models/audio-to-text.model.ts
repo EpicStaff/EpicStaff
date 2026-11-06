@@ -1,9 +1,11 @@
 import { AuthorshipFields } from '@shared/models';
 
+import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
 import { StorageGrantFields } from './storage-grants.model';
 
-export interface GetAudioToTextNodeRequest extends AuthorshipFields, NumberedNodeDto, StorageGrantFields {
+export interface GetAudioToTextNodeRequest
+    extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto, StorageGrantFields {
     id: number;
     created_at: string;
     node_name: string;

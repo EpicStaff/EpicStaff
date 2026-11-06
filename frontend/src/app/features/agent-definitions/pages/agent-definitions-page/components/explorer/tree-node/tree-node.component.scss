@@ -35,6 +35,10 @@
         .row__chevron {
             color: var(--accent-color);
         }
+
+        .row__empty {
+            color: var(--purple-alpha-40);
+        }
     }
 
     &--drop-target {
@@ -69,6 +73,11 @@
     &__chevron-spacer {
         display: inline-block;
         width: 8px;
+        flex-shrink: 0;
+    }
+
+    &__check {
+        display: inline-flex;
         flex-shrink: 0;
     }
 

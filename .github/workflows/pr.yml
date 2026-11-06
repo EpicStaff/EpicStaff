@@ -131,10 +131,13 @@ jobs:
             # es_plugins installs src/plugin_sdk (package rules, signatures and
             # the runtime file contract), so a change there runs its suite too,
             # and its policy contract test runs the egress proxy's host helper
-            # on the policy it writes.
+            # on the policy it writes. knowledge_new's tests check that its ORM maps
+            # exactly the columns django_app grants its database role.
             also=''
             if [ "$svc" = es_plugins ]; then
               also='src/plugin_sdk/|src/plugins_egress/plugin_host_acl\.py$|src/plugins_egress/private_ranges\.txt$|'
+            elif [ "$svc" = knowledge_new ]; then
+              also='src/django_app/tables/service_db_grants\.py$|'
             fi
             filter "be_$svc" "^(${also}src/$svc/|$backend_wide)"
             if [ "$result" = true ]; then

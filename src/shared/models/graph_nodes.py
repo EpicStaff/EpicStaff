@@ -8,6 +8,7 @@ from .ai_providers import LLMData
 from .knowledge import RagSearchConfig
 from .storage_scope import StorageGrant, StorageScopedData
 from .surfaces import CombinedSurfaceData
+from .system_one import PromptKind, SystemOneConfigData, SystemOneQuestion
 from .tools import BaseToolData, PythonCodeData
 
 
@@ -104,6 +105,14 @@ class PromptConfigData(BaseModel):
     result_variable: str = "prompt_result"
     variable_mappings: dict[str, str] = {}
     llm_data: LLMData | None = None
+    kind: PromptKind = "llm"
+    # A System One entry whose config was deleted arrives with None; crew fails the entry at run time.
+    system_one_config: SystemOneConfigData | None = None
+    # Each question is still validated here (strict discriminated model). Only the dict-level
+    # rules (min_length, identifier names) of the save-time adapter are skipped: stored data
+    # is safe because save and import both run that adapter.
+    questions: dict[str, SystemOneQuestion] = {}
+    input_map: dict[str, str] = {}
 
 
 class ClassificationConditionGroupData(BaseModel):
@@ -140,6 +149,7 @@ class AgentDefinitionData(BaseModel):
     instructions: str = ""
     llm_config_id: int | None = None
     fcm_llm_config_id: int | None = None
+    fallback_llm_config_id: int | None = None
     max_iter: int | None = None
     max_rpm: int | None = None
     max_execution_time: int | None = None
@@ -152,6 +162,10 @@ class AgentDefinitionData(BaseModel):
     schema_max_retries: int | None = None
     llm: LLMData | None = None
     fcm_llm: LLMData | None = None
+    fallback_llm: LLMData | None = None
+    fallback_llm_warning: str | None = None
+    """Set when the configured fallback was dropped at session build, so the
+    run continues without one."""
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,9 +1,12 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CustomInputComponent, HintMessageComponent, ValidationErrorsComponent } from '@shared/components';
 
 import { AudioToTextNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
+import { mapFieldRowChanges } from '../../../utils/diff';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 interface InputMapPair {
@@ -19,6 +22,7 @@ interface InputMapPair {
         InputMapComponent,
         StorageGrantsFieldComponent,
         ValidationErrorsComponent,
+        DiffFieldMarkComponent,
     ],
     template: `
         <div class="panel-container">
@@ -29,14 +33,16 @@ interface InputMapPair {
                 >
                     <!-- Node Name Field -->
                     <div class="node-name-field">
-                        <app-custom-input
-                            label="Node Name"
-                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'node_name'">
+                            <app-custom-input
+                                label="Node Name"
+                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
 
@@ -45,26 +51,34 @@ interface InputMapPair {
                         <app-input-map
                             [activeColor]="activeColor"
                             [readonly]="isReadOnly()"
+                            [rowChanges]="inputMapRowChanges()"
                         ></app-input-map>
                     </div>
 
                     <!-- Output Variable Path -->
-                    <app-custom-input
-                        label="Output Variable Path"
-                        tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
-                        formControlName="output_variable_path"
-                        placeholder="Enter output variable path (leave empty for null)"
-                        [activeColor]="activeColor"
-                        [readonly]="isReadOnly()"
-                    ></app-custom-input>
+                    <app-diff-field-mark [diffField]="'output_variable_path'">
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
+                            formControlName="output_variable_path"
+                            placeholder="Enter output variable path (leave empty for null)"
+                            [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
+                        ></app-custom-input>
+                    </app-diff-field-mark>
 
                     @if (storageGrantLock(); as lock) {
                         <app-hint-message tone="warning">{{ lock }}</app-hint-message>
                     }
-                    <app-storage-grants-field
-                        formControlName="storage_grants"
-                        [readonly]="isReadOnly()"
-                    />
+                    <app-diff-field-mark
+                        [diffField]="'storage_grants'"
+                        [diffGroup]="true"
+                    >
+                        <app-storage-grants-field
+                            formControlName="storage_grants"
+                            [readonly]="isReadOnly()"
+                        />
+                    </app-diff-field-mark>
                 </form>
             </div>
         </div>
@@ -115,6 +129,11 @@ interface InputMapPair {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNodeModel> {
+    /** Changes tab of a version preview: what a restore does to each Input List row; `null` anywhere else. */
+    protected readonly inputMapRowChanges = computed(() => mapFieldRowChanges(this.panelDiff(), 'input_map'));
+
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
+
     constructor() {
         super();
     }

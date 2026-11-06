@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LabelDto } from '@shared/models';
 
 import { AuditConditionFilterComponent } from '../../../../../audit/components/audit-condition-filter/audit-condition-filter.component';
@@ -61,6 +62,7 @@ type FlowsFilterTab = 'builder' | 'presets';
         FlowsCheckboxEnumComponent,
         FlowsFilterPresetsComponent,
         MatTooltip,
+        TooltipOnOverflowDirective,
     ],
     providers: [FlowFilterPresetsStorageService],
     templateUrl: './flows-filter-sidebar.component.html',

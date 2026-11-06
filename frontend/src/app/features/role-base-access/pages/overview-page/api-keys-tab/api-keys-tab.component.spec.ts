@@ -13,6 +13,7 @@ import {
 } from '@shared/models';
 import { of } from 'rxjs';
 
+import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../../services/config';
 import { ToastService } from '../../../../../services/notifications';
@@ -127,6 +128,43 @@ describe('ApiKeysTabComponent', () => {
             cell.textContent!.trim()
         );
         expect(cellTexts).toEqual(expect.arrayContaining(['Acme', 'Globex']));
+    });
+
+    describe('organization filter', () => {
+        afterEach(() => TestBed.inject(ActiveOrgService).clear());
+
+        function requestedOrgIds(activeOrgId: number | null): string | null {
+            TestBed.inject(ActiveOrgService).set(activeOrgId);
+            fixture = TestBed.createComponent(ApiKeysTabComponent);
+            fixture.detectChanges();
+            vi.runOnlyPendingTimers();
+            const request = httpTesting.expectOne((req) => req.url === '/api/admin/api-keys/');
+            request.flush({ count: 0, next: null, previous: null, results: [] });
+            return request.request.params.get('org_ids');
+        }
+
+        it('is preselected to the active organization when the caller can read keys there', () => {
+            expect(requestedOrgIds(GLOBEX.id)).toBe(String(GLOBEX.id));
+        });
+
+        it('is left empty when the caller cannot read keys in the active organization', () => {
+            expect(requestedOrgIds(99)).toBeNull();
+        });
+
+        it('is left empty when there is no active organization', () => {
+            expect(requestedOrgIds(null)).toBeNull();
+        });
+
+        it('has no organization drop-down in the toolbar', () => {
+            requestedOrgIds(null);
+            fixture.detectChanges();
+
+            // The column picker is a multi-select too, but lists columns, not organizations.
+            const dropDowns = Array.from<HTMLElement>(
+                fixture.nativeElement.querySelectorAll('.toolbar app-multi-select')
+            ).filter((dropDown) => !dropDown.closest('app-table-column-picker'));
+            expect(dropDowns).toEqual([]);
+        });
     });
 });
 

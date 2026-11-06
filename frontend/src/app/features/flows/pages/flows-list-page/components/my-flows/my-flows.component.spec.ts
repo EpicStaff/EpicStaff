@@ -20,6 +20,9 @@ import { LabelsStorageService } from '../../../../services/labels-storage.servic
 import { RunGraphService } from '../../../../services/run-graph-session.service';
 import { MyFlowsComponent } from './my-flows.component';
 
+const SECRETS_REFUSAL_MESSAGE =
+    'This contains code that reads secrets. This action requires the Use permission on secrets.';
+
 const SOURCE_FLOW: GetGraphLightRequest = { id: 7, uuid: 'uuid-7', name: 'Support Flow', description: '' };
 
 describe('MyFlowsComponent copy action', () => {
@@ -132,6 +135,36 @@ describe('MyFlowsComponent copy action', () => {
 
         expect(toastError).toHaveBeenCalledWith('Failed to copy flow');
         consoleError.mockRestore();
+    });
+
+    it('explains a copy refused over code that reads secrets, with no toast and no reload', () => {
+        const confirm = vi.fn();
+        TestBed.overrideProvider(ConfirmationDialogService, { useValue: { confirm } });
+        copyFlow.mockReturnValue(
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 403,
+                        error: {
+                            status_code: 403,
+                            code: 'code_with_secrets_requires_secrets_use_permission',
+                            message: SECRETS_REFUSAL_MESSAGE,
+                        },
+                    })
+            )
+        );
+
+        openCopyDialog('Support Flow');
+
+        expect(confirm).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+                title: 'Use permission required',
+                message: 'This flow contains code that reads secrets.',
+                caution: '<strong>Copying</strong> it requires the <strong>Use</strong> permission on secrets.',
+            })
+        );
+        expect(toastError).not.toHaveBeenCalled();
+        expect(getFlows).toHaveBeenCalledOnce();
     });
 });
 

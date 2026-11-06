@@ -9,6 +9,7 @@ import { buildBulkSavePayload } from './payload';
 
 const webhookDto: GetWebhookTriggerNodeRequest = {
     id: 21,
+    uuid: '00000000-0000-4000-8000-000000000021',
     graph: 1,
     node_number: 1,
     node_name: 'Webhook Trigger #1',
@@ -28,6 +29,7 @@ const webhookDto: GetWebhookTriggerNodeRequest = {
 
 const telegramDto: GetTelegramTriggerNodeRequest = {
     id: 22,
+    uuid: '00000000-0000-4000-8000-000000000022',
     graph: 1,
     node_number: 1,
     node_name: 'Telegram Trigger #1',

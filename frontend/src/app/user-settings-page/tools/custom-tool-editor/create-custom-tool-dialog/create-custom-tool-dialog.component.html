@@ -16,7 +16,9 @@
                         type="outline-primary"
                         mod="default"
                         [disabled]="isSaving()"
-                        [matTooltip]="builtInSaveTooltip"
+                        [ariaDisabled]="!!copyBlockedReason()"
+                        [ariaDescribedby]="copyBlockedReason() ? copyBlockedReasonId : null"
+                        [matTooltip]="copyBlockedReason() ?? builtInSaveTooltip"
                         matTooltipClass="builtin-copy-tooltip"
                         matTooltipPosition="below"
                         (click)="submit()"
@@ -28,8 +30,19 @@
                         type="outline-primary"
                         mod="default"
                         [disabled]="isCopying()"
+                        [ariaDisabled]="!!copyBlockedReason()"
+                        [ariaDescribedby]="copyBlockedReason() ? copyBlockedReasonId : null"
+                        [matTooltip]="copyBlockedReason() ?? ''"
+                        matTooltipPosition="below"
                         (click)="makeCopy()"
                         >{{ isCopying() ? 'Copying...' : 'Make Copy' }}</app-button
+                    >
+                }
+                @if (copyBlockedReason(); as reason) {
+                    <span
+                        class="visually-hidden"
+                        [id]="copyBlockedReasonId"
+                        >{{ reason }}</span
                     >
                 }
                 <button
@@ -146,6 +159,9 @@
                             [tooltipText]="secretsTooltip()"
                             (valueChange)="onSecretsChange($event)"
                         />
+                        @if (isSecretCodeLocked()) {
+                            <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                        }
                     </div>
                 }
 
@@ -161,7 +177,7 @@
                         [showSearch]="true"
                         searchPlaceholder="Search by venv name..."
                         [loading]="loadingVenvs()"
-                        [readonly]="isReadOnly()"
+                        [readonly]="isCodeReadOnly()"
                         (opened)="onVenvDropdownOpened()"
                         (changed)="onVenvChanged($event)"
                     />
@@ -228,7 +244,7 @@
                                     [pythonCode]="form.controls.pythonCode.value"
                                     [showHeader]="false"
                                     [secretNames]="secretNames()"
-                                    [readOnly]="isReadOnly()"
+                                    [readOnly]="isCodeReadOnly()"
                                     (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onPythonErrorChange($event)"
                                 ></app-code-editor>
@@ -260,6 +276,10 @@
                         </div>
                     </div>
 
+                    @if (isSecretCodeLocked()) {
+                        <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                    }
+
                     <div class="storage-mode-switch">
                         <span>Enable Storage</span>
                         <app-help-tooltip
@@ -274,7 +294,7 @@
                     @if (parametersTableMode()) {
                         <app-parameters-table-view
                             [variables]="tableVariables()"
-                            [readOnly]="isReadOnly()"
+                            [readOnly]="isCodeReadOnly()"
                             [initialDrillStack]="tableDrillStack()"
                             (variablesChange)="onVariablesChange($event)"
                             (drillStackChange)="onDrillStackChange($event)"
@@ -448,7 +468,7 @@
                                 [pythonCode]="form.controls.pythonCode.value"
                                 [showHeader]="false"
                                 [secretNames]="secretNames()"
-                                [readOnly]="isReadOnly()"
+                                [readOnly]="isCodeReadOnly()"
                                 (pythonCodeChange)="onPythonCodeChange($event)"
                                 (errorChange)="onPythonErrorChange($event)"
                             ></app-code-editor>

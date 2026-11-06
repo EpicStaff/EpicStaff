@@ -31,7 +31,7 @@ from rbac.scoping.mixins import (
 )
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.settings import api_settings
 from src.shared.bench_log import BENCH_LEVEL
@@ -540,9 +540,16 @@ class RunSession(APIView):
         except RunAdmissionRefusedError:
             # A refusal is the caller's answer (409), not a failure to start.
             raise
-        except Exception as e:
-            logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
-            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
+        except APIException as error:
+            # The run path raises its domain errors as APIExceptions. Any 4xx one (such as a
+            # flow without an entry point, an undeclared secret or a deleted LLM provider)
+            # keeps the existing 400 with its message in `error`. A 5xx one, like any other
+            # exception, goes to the global handler, which answers without the internal text
+            # (503 for an exhausted database pool).
+            if status.is_server_error(error.status_code):
+                raise
+            logger.warning("Session for graph_id {} not started: {}", graph_id, error)
+            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(error)})
 
         return Response(
             data={"session_id": session_id},

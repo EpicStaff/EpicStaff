@@ -1,7 +1,8 @@
 from functools import lru_cache
+from uuid import UUID
 
 from django.apps import apps
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
 from rbac.authorship import LAST_EDIT_TRACKER_CONTEXT_KEY, LastEditTracker
 from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
@@ -15,6 +16,10 @@ from tables.services.graph_bulk_save_service.data_types import (
     NodeListValidationResult,
     NodeRef,
     ParsedNodeRef,
+)
+from tables.services.graph_bulk_save_service.node_uuid_validator import (
+    TAKEN_UUID_MESSAGE,
+    NodeUuidValidator,
 )
 from tables.services.graph_bulk_save_service.registry import (
     EDGE_DELETE_CONFIGS,
@@ -36,9 +41,10 @@ from tables.services.storage_grants.write_checks import STEERING_PREFETCHES
 def _stored_secret_prefetches(model) -> list[Prefetch]:
     """Prefetch, once for all of `model`'s rows, the secrets each of its PythonCodes links to.
 
-    The secret Use check reads a node's stored links when the payload changes
-    `secret_ids`, and always for a plugin's service account, which may write only rows
-    whose links it may reference; without this it costs a query per node. Through
+    The secret Use check reads a node's stored PythonCode whenever the payload carries
+    it, and its stored links when the payload changes `secret_ids` or the code, and
+    always for a plugin's service account, which may write only rows whose links it may
+    reference; without this it costs queries per node. Through
     `all_objects`, because the check counts a link to a binned secret as linked.
     These instances are used only to validate and save: the response is serialized
     from a fresh read of the graph, so nothing reads this cache expecting live
@@ -61,7 +67,8 @@ class GraphBulkSaveService:
     Raises BulkSaveValidationError with a structured error dict if any entity
     fails validation. No DB writes happen in that case. An item error that can
     only be detected during Pass 2 (a node's nested child reference) is raised in
-    the same shape, and the whole transaction is rolled back.
+    the same shape, and the whole transaction is rolled back. A node uuid constraint
+    violation at write time is raised the same way, so it is never a 500.
 
     A node gets a last edit only when its own state changed (a move is not a node
     edit); the graph gets one when anything in it changed, moves included.
@@ -114,6 +121,7 @@ class GraphBulkSaveService:
         # {list_key: {item index: real routing target ids}}, so a bad routing ref is
         # reported on the decision table item that holds it.
         routing_refs_by_item: dict[str, dict[int, set[int]]] = {}
+        created_uuids: dict[str, list[tuple[int, UUID]]] = {}
         for config in NODE_TYPE_REGISTRY:
             incoming = validated_input.get(config.list_key, [])
             if not incoming:
@@ -126,6 +134,8 @@ class GraphBulkSaveService:
                 )
             }
             result = self._validate_node_list(graph, incoming, config, db_map, payload_temp_ids)
+            if result.created_uuids:
+                created_uuids[config.list_key] = result.created_uuids
             if result.errors:
                 all_errors[config.list_key] = result.errors
             else:
@@ -133,6 +143,11 @@ class GraphBulkSaveService:
                 edge_saveables.extend(result.deferred_saveables)
                 if result.real_routing_node_ids_by_index:
                     routing_refs_by_item[config.list_key] = result.real_routing_node_ids_by_index
+
+        # Pass 1: validate client-sent node uuids across all node lists and tables
+        uuid_errors = NodeUuidValidator().find_errors(graph, created_uuids, deleted_data)
+        for list_key, errors in uuid_errors.items():
+            all_errors.setdefault(list_key, []).extend(errors)
 
         # Pass 1: validate edges
         existing_node_ref_errors = []
@@ -190,13 +205,22 @@ class GraphBulkSaveService:
             raise BulkSaveValidationError(all_errors)
 
         # Pass 2: atomic write
-        self._execute_writes(
-            graph,
-            deleted_data,
-            node_saveables,
-            edge_saveables,
-            expected_save_version,
-        )
+        try:
+            self._execute_writes(
+                graph,
+                deleted_data,
+                node_saveables,
+                edge_saveables,
+                expected_save_version,
+            )
+        except IntegrityError as error:
+            # Safety net: the save_version check already serialises writers, so
+            # no current writer gets here. StartNode and EndNode violate their
+            # older one-per-graph index first, which stays a plain IntegrityError.
+            if not NodeUuidValidator.is_uuid_conflict(error):
+                raise
+            # The atomic block rolls back every write of this request.
+            raise BulkSaveValidationError({"nodes": [TAKEN_UUID_MESSAGE]}) from error
         return graph
 
     def _validate_node_list(
@@ -212,9 +236,11 @@ class GraphBulkSaveService:
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
+
             # The URL graph is the authority: a per-item graph would let an item
             # be written into (or moved to) another graph that skips the checks below.
             item_data["graph"] = graph.id
+
             item_id = item_data.get("id")
             temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
@@ -249,6 +275,8 @@ class GraphBulkSaveService:
                         config.model_class,
                     )
                 )
+                if build.created_uuid is not None:
+                    result.created_uuids.append((index, build.created_uuid))
                 if build.deferred_saveable is not None:
                     result.deferred_saveables.append(build.deferred_saveable)
                     routing_refs = self._collect_real_routing_refs(build.deferred_saveable)
@@ -301,7 +329,11 @@ class GraphBulkSaveService:
 
         inner = config.saveable_factory.build(s, extra, instance)
         deferred = config.saveable_factory.build_deferred(inner, extra)
-        return BuildSaveableResult(inner_saveable=inner, deferred_saveable=deferred)
+        return BuildSaveableResult(
+            inner_saveable=inner,
+            deferred_saveable=deferred,
+            created_uuid=s.validated_data.get("uuid") if instance is None else None,
+        )
 
     @staticmethod
     def _collect_real_routing_refs(deferred) -> set[int]:
@@ -333,6 +365,7 @@ class GraphBulkSaveService:
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
             item_data["graph"] = graph.id
+
             item_id = item_data.get("id")
 
             start_parsed = self._parse_node_ref(

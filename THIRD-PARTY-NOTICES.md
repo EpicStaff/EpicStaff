@@ -3702,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-11-02T10:12:15Z UTC -->
-<!-- commit: 5632dc50e13a09557cacd14e6337315de781e9ef -->
-<!-- lock-hashes: agent:83cefc2b59540d91, auditor:49bc6b4568ea6ce4, chat:0e40c6142ddd64d8, crew:52f4af39a42d68af, django_app:03b95e3ed1e26a6b, es_plugins:cf58ae9355d4d516, foundation:da2ef7a6b1550191, knowledge_new:5a60b9e61af86e56, manager:263decd2407ab889, plugin_sdk:1d91f171502da724, plugins_egress:9a5691273399ac26, realtime:f3bdc1234519e379, sandbox:117c57af453053a0, sandbox_new:8077ff5467db9eb4, shared:c8f577231b56a363, webhook:b0fc119a3af1fcd1 -->
+<!-- generated: 2026-11-02T16:55:53Z UTC -->
+<!-- commit: 0e8c9c551f281de1e00390c7204f62dd6f628c7c -->
+<!-- lock-hashes: agent:83cefc2b59540d91, auditor:49bc6b4568ea6ce4, chat:0e40c6142ddd64d8, crew:52f4af39a42d68af, django_app:644a8311bbb3cf6f, es_plugins:cf58ae9355d4d516, foundation:da2ef7a6b1550191, knowledge_new:617a4fe991000c06, manager:263decd2407ab889, plugin_sdk:1d91f171502da724, plugins_egress:9a5691273399ac26, realtime:f3bdc1234519e379, sandbox:117c57af453053a0, sandbox_new:8077ff5467db9eb4, shared:c8f577231b56a363, webhook:b0fc119a3af1fcd1 -->
 
 ## Backend (Python)
 
@@ -3965,7 +3965,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pgvector` | 0.3.6 | MIT | Copyright (c) 2021-2024 Andrew Kane |
 | `pgvector` | 0.4.2 | MIT | Copyright (c) 2021-2025 Andrew Kane |
 | `piccolo` | 1.36.0 | MIT License | Copyright (c) 2018 Daniel Townsend |
-| `pillow` | 12.3.0 | MIT-CMU | Copyright © 1997-2011 by Secret Labs AB |
+| `pillow` | 13.0.0 | MIT-CMU | Copyright © 1997-2011 by Secret Labs AB |
 | `platformdirs` | 4.11.7 | MIT | Copyright (c) 2010-202x The platformdirs developers |
 | `platformdirs` | 4.13.5 | MIT | Copyright (c) 2010-202x The platformdirs developers |
 | `polyfactory` | 3.3.0 | MIT License | Copyright (c) 2021, 2022, 2023 Litestar Org. |
@@ -23481,7 +23481,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 > No NOTICE file shipped by upstream.
 
-#### pillow@12.3.0
+#### pillow@13.0.0
 
 - **License:** MIT-CMU
 - **Author:** Jeffrey 'Alex' Clark <aclark@aclark.net>

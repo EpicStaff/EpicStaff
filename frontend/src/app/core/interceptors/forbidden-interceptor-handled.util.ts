@@ -18,12 +18,15 @@ const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>([
     // An upload over an existing file without FILES:UPDATE; the upload's own error handling shows it.
     'overwrite_not_permitted',
     // A copy, import, partial import or version restore / new flow from a version of a flow with trigger nodes,
-    // without Flows:Use; FlowUsePermissionRefusalService shows it.
+    // without Flows:Use; UsePermissionRefusalService shows it.
     'flow_with_trigger_nodes_requires_use_permission',
     // An edit of a Python code tool, or of a flow node (single save or flow bulk save), that runs with storage
     // grants whose files permissions the user lacks; the tool editor or the flow save handler shows the message,
     // and the session is deliberately not refreshed, since the user's role did not change.
     'storage_grant_denied',
+    // A copy, version restore or new flow from a version holding code that reads secrets, without Secrets:Use;
+    // UsePermissionRefusalService shows it (tool copy shows it in its own error banner or toast).
+    'code_with_secrets_requires_secrets_use_permission',
 ]);
 
 /**

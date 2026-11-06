@@ -1,4 +1,12 @@
+// The footer with its full button labels (Clear Filters, Cancel, Create & Apply Preset, Apply Filters) takes about 460px.
+$footer-full-labels-min-width: 460px;
+// The footer with short labels (Clear, Cancel, Save Preset, Apply) takes about 320px; below that "Save Preset"
+// becomes "Preset" and the footer spacing tightens, so it still fits the panel at its 280px minimum.
+$footer-short-labels-min-width: 320px;
+
 :host {
+    // A container, not a media query: the panel is resizable, so its width does not follow the window.
+    container: filter-sidebar / inline-size;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -117,7 +125,8 @@
 }
 
 .filter-sidebar__btn {
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
     height: 28px;
     padding: 0 10px;
     border: 1px solid var(--color-input-border);
@@ -126,6 +135,8 @@
     color: var(--color-text-primary);
     font-size: 0.75rem;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     cursor: pointer;
 
     &:is(:hover, :focus-visible):not(:disabled) {
@@ -148,10 +159,44 @@
 }
 
 .filter-sidebar__btn--primary {
+    // Apply never shrinks: the other buttons give way first.
+    flex: none;
     background-color: var(--accent-color);
     border-color: var(--accent-color);
 
     &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--accent-color-hover);
+    }
+}
+
+.filter-sidebar__btn-label-short,
+.filter-sidebar__btn-label-two-words,
+.filter-sidebar__btn-label-one-word {
+    display: none;
+}
+
+@container filter-sidebar (max-width: #{$footer-full-labels-min-width - 0.02px}) {
+    .filter-sidebar__btn-label-full {
+        display: none;
+    }
+
+    .filter-sidebar__btn-label-short,
+    .filter-sidebar__btn-label-two-words {
+        display: inline;
+    }
+}
+
+@container filter-sidebar (max-width: #{$footer-short-labels-min-width - 0.02px}) {
+    .filter-sidebar__footer {
+        gap: 6px;
+        padding-inline: 12px;
+    }
+
+    .filter-sidebar__btn-label-two-words {
+        display: none;
+    }
+
+    .filter-sidebar__btn-label-one-word {
+        display: inline;
     }
 }

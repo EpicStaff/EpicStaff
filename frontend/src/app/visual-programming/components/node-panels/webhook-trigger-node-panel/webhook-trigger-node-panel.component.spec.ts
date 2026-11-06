@@ -1,12 +1,13 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { NO_ERRORS_SCHEMA, Provider, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ExecutionTimeoutFormField } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
+import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { Subject } from 'rxjs';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
@@ -22,10 +23,12 @@ import {
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
+import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { FlowService } from '../../../services/flow.service';
 import { TRIGGER_NODES_NEED_USE_MESSAGE } from '../../../services/flow-readonly.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { FieldChange, NodeDiffStatus } from '../../../utils/diff';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
 import {
@@ -33,6 +36,14 @@ import {
     FLOW_ACTIONS_WITHOUT_USE,
     grantPermissions,
 } from '../../../utils/testing/permissions.fixture';
+import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
+import {
+    codeMarkDescriptions,
+    renderCodeDiffViewWithStubEditor,
+    shownCodeDiffs,
+} from '../../code-diff-view/code-diff-view.testing';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
+import { provideChangesTabDiff } from '../../missing-reference-note/missing-reference-note.testing';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
@@ -53,6 +64,7 @@ const SAVED_PAYLOAD = { order: { id: '104' } };
 
 const DTO: GetWebhookTriggerNodeRequest = {
     id: 21,
+    uuid: '00000000-0000-4000-8000-000000000021',
     graph: 1,
     node_number: 1,
     node_name: 'Webhook Trigger #1',
@@ -74,6 +86,15 @@ const DTO: GetWebhookTriggerNodeRequest = {
 interface TestPayloadPanel {
     testPayload: TriggerTestPayloadState;
     onTestPayloadTextChange(text: string): void;
+}
+
+/**
+ * Clicks the expand icon of the test payload card in the left column of the widened panel, which swaps the payload
+ * into the big pane. The card is an unknown element in these specs, so its output is fired as its click would.
+ */
+function expandTestPayloadCard(fixture: ComponentFixture<WebhookTriggerNodePanelComponent>): void {
+    fixture.debugElement.query(By.css('.form-fields app-test-payload-section')).triggerEventHandler('expand');
+    fixture.detectChanges();
 }
 
 describe('WebhookTriggerNodePanelComponent test payload', () => {
@@ -120,6 +141,21 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
     function savedTestPayload(): WebhookTriggerNodeModel['data']['test_payload'] {
         return panel.onSaveSilently()!.data.test_payload;
     }
+
+    it('saves the stored entrypoint and global kwargs it does not edit', () => {
+        fixture.componentRef.setInput(
+            'node',
+            mapWebhookTriggerNodeToModel({
+                ...DTO,
+                python_code: { ...DTO.python_code, entrypoint: 'run', global_kwargs: { retries: 3 } },
+            })
+        );
+        fixture.detectChanges();
+
+        const saved = panel.createUpdatedNode().data.python_code;
+
+        expect([saved.entrypoint, saved.global_kwargs]).toEqual(['run', { retries: 3 }]);
+    });
 
     it('shows the saved payload and saves it unchanged while not edited', () => {
         expect(editor().testPayload.text()).toBe(formatTestPayload(SAVED_PAYLOAD));
@@ -437,14 +473,193 @@ describe('WebhookTriggerNodePanelComponent code editor header', () => {
 
     it('uses the JSON-style header for the code card moved to the left column of the expanded panel', () => {
         fixture.componentRef.setInput('isExpanded', true);
-        (fixture.componentInstance as unknown as { expandPane(pane: 'payload'): void }).expandPane('payload');
         fixture.detectChanges();
+        expandTestPayloadCard(fixture);
 
         const editors = codeEditors();
         expect(editors).toHaveLength(1);
         expect(editors[0].editorHeight()).toBe(220);
         expect(editors[0].compactHeader()).toBe(true);
     });
+});
+
+describe('WebhookTriggerNodePanelComponent code on the Changes tab of a version preview', () => {
+    const CODE_CHANGE: FieldChange = {
+        path: 'python_code.code',
+        field: 'python_code.code',
+        status: 'changed',
+        current: 'def main(trigger_payload): pass\n',
+        version: 'def main(trigger_payload): return 1\n',
+    };
+    const EXPAND_HINT = 'Expand editor to see the changes.';
+
+    let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
+
+    /** The panel's real template with the code editor (empty, Monaco-free), the mark and the diff view real. */
+    function open(diff: Provider[], layout: 'narrow' | 'widened' | 'widened, payload in the big pane'): HTMLElement {
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: FLOW_EDITOR_PREVIEW, useValue: true },
+                { provide: ToastService, useValue: {} },
+                {
+                    provide: PermissionsService,
+                    useValue: { can: () => true, canAny: () => true, canEditSecrets: () => false },
+                },
+                {
+                    provide: SecretsStorageService,
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
+                },
+                ...diff,
+            ],
+        });
+        renderCodeDiffViewWithStubEditor();
+        TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
+            set: {
+                imports: [NgTemplateOutlet, CodeEditorComponent, DiffFieldMarkComponent, CodeDiffViewComponent],
+                schemas: [NO_ERRORS_SCHEMA],
+            },
+        });
+        TestBed.overrideComponent(CodeEditorComponent, { set: { template: '', imports: [] } });
+        fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(DTO));
+        fixture.componentRef.setInput('isExpanded', layout !== 'narrow');
+        fixture.detectChanges();
+        if (layout === 'widened, payload in the big pane') expandTestPayloadCard(fixture);
+        return fixture.nativeElement;
+    }
+
+    const onChangesTab = (status: NodeDiffStatus, fields: FieldChange[]): Provider[] => [
+        provideChangesTabDiff({ status, fields }),
+    ];
+    const codeEditors = (root: HTMLElement): number => root.querySelectorAll('app-code-editor').length;
+
+    it("marks the code card of the narrow panel, pointing to the editor's expand button", () => {
+        const root = open(onChangesTab('changed', [CODE_CHANGE]), 'narrow');
+
+        expect(codeMarkDescriptions(root)).toEqual([EXPAND_HINT]);
+        expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+    });
+
+    it('shows the diff of the current canvas code and the version code in the big pane of the widened panel', () => {
+        const root = open(onChangesTab('changed', [CODE_CHANGE]), 'widened');
+
+        expect(shownCodeDiffs(fixture.debugElement)).toEqual([
+            { current: 'def main(trigger_payload): pass\n', version: 'def main(trigger_payload): return 1\n' },
+        ]);
+        expect(codeEditors(root)).toBe(0);
+        expect(codeMarkDescriptions(root)).toEqual([]);
+    });
+
+    it("marks the code card moved to the left column by the swap, pointing to the editor's expand button", () => {
+        const root = open(onChangesTab('changed', [CODE_CHANGE]), 'widened, payload in the big pane');
+
+        expect(codeMarkDescriptions(root)).toEqual([EXPAND_HINT]);
+        expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+    });
+
+    const KEEPS_EDITOR = [
+        {
+            case: 'the code is unchanged',
+            diff: onChangesTab('changed', [{ ...CODE_CHANGE, path: 'node_name', field: 'node_name' }]),
+        },
+        { case: 'the node is added', diff: onChangesTab('added', [CODE_CHANGE]) },
+        { case: 'the node is removed', diff: onChangesTab('deleted', [CODE_CHANGE]) },
+        { case: 'off the Changes tab (Preview tab, live editor)', diff: [] },
+    ].flatMap((keeps) => (['narrow', 'widened'] as const).map((layout) => ({ ...keeps, layout })));
+
+    it.each(KEEPS_EDITOR)('keeps the normal code editor when $case ($layout)', ({ diff, layout }) => {
+        const root = open(diff, layout);
+
+        expect(codeEditors(root)).toBe(1);
+        expect(codeMarkDescriptions(root)).toEqual([]);
+        expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+    });
+});
+
+describe('WebhookTriggerNodePanelComponent code that reads secrets', () => {
+    let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
+
+    /** The real template with the real storage section and an empty code editor, for a node reading a secret. */
+    function open(canUseSecrets: boolean): void {
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ToastService, useValue: {} },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode) => resource !== ResourceCode.Secrets || canUseSecrets,
+                        canAny: () => true,
+                        canEditSecrets: () => canUseSecrets,
+                    },
+                },
+                {
+                    provide: SecretsStorageService,
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
+                },
+                { provide: RuffWasmService, useValue: { check: () => Promise.resolve([]) } },
+                { provide: RuffDiagnosticsService, useValue: { setMarkers: () => {}, hasSyntaxErrors: () => false } },
+            ],
+        });
+        TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
+            set: {
+                imports: [NgTemplateOutlet, CodeEditorComponent, NodeStorageSectionComponent],
+                schemas: [NO_ERRORS_SCHEMA],
+            },
+        });
+        TestBed.overrideComponent(CodeEditorComponent, { set: { template: '', imports: [] } });
+        fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+        fixture.componentRef.setInput(
+            'node',
+            mapWebhookTriggerNodeToModel({
+                ...DTO,
+                python_code: { ...DTO.python_code, secrets: [{ id: 7, name: 'STRIPE_KEY' }] },
+            })
+        );
+        fixture.detectChanges();
+    }
+
+    function codeEditor(): CodeEditorComponent {
+        return fixture.debugElement.query(By.directive(CodeEditorComponent)).componentInstance as CodeEditorComponent;
+    }
+
+    function storageSection(): NodeStorageSectionComponent {
+        return fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
+            .componentInstance as NodeStorageSectionComponent;
+    }
+
+    it.each([
+        { canUseSecrets: false, locked: true },
+        { canUseSecrets: true, locked: false },
+    ])(
+        'locks the code and storage toggle, saying why, without Secrets:Use ($canUseSecrets)',
+        ({ canUseSecrets, locked }) => {
+            open(canUseSecrets);
+
+            expect(codeEditor().readOnly).toBe(locked);
+            expect(storageSection().readonly()).toBe(locked);
+            expect((fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE)).toBe(
+                locked
+            );
+        }
+    );
 });
 
 describe('WebhookTriggerNodePanelComponent run python code', () => {

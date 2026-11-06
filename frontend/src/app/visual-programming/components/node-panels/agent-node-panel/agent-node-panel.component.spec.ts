@@ -39,12 +39,11 @@ function agentNode(id: string, tempIdPrefix = ''): AgentNodeModel {
     return {
         id,
         backendId: 1,
+        nodeUuid: null,
         type: NodeType.AGENT,
         position: { x: 0, y: 0 },
         ports: null,
         node_name: 'Agent',
-        color: '',
-        icon: '',
         size: { width: 0, height: 0 },
         input_map: { topic: 'variables.topic' },
         output_variable_path: null,

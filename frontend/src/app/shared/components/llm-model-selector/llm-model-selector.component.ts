@@ -436,6 +436,10 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     // Readonly mode: renders the current selection as plain text (no dropdown, no create button).
     readonly readonly = input<boolean>(false);
 
+    // A config id left out of the dropdown options (e.g. the primary model, when picking a fallback).
+    // It is not hidden from the trigger if it is already the selected value.
+    readonly excludedConfigId = input<number | null>(null);
+
     @Output() modelSelected = new EventEmitter<number>();
 
     private readonly fullLLMConfigService = inject(FullLLMConfigService);
@@ -475,8 +479,9 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
 
     public readonly filteredConfigs = computed<SelectorConfig[]>(() => {
         const term = this.searchTerm().trim().toLowerCase();
-        const configs = this.configs();
-        if (!term) return [...configs];
+        const excludedId = this.excludedConfigId();
+        const configs = this.configs().filter((config) => config.id !== excludedId);
+        if (!term) return configs;
         return configs.filter((config) => {
             const modelName = config.modelDetails?.name?.toLowerCase() || '';
             const customName = config.custom_name?.toLowerCase() || '';

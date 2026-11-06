@@ -12,6 +12,7 @@ from tables.models.python_models import PythonCodeTool
 from tables.services.copy_services.helpers import copy_python_code
 from tables.models.webhook_models import NgrokWebhookConfig, WebhookTriggerAuthKind
 from tables.services.secrets import secret_service
+from tables.services.secrets.secret_use_service import SecretActor
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tests.api_tests.test_secret_use_fk_fields import (  # noqa: F401  -- fixtures
     GATED,
@@ -255,12 +256,14 @@ def test_updating_a_tool_answers_with_its_new_secrets_not_the_prefetched_ones(
 
 
 @pytest.mark.django_db
-def test_a_copy_keeps_a_binned_secret_link(default_org, secret_a, secret_b):
+def test_a_copy_keeps_a_binned_secret_link(default_org, regular_user, secret_a, secret_b):
     python_code = PythonCode.objects.create(code="def main(**kwargs): ...")
     python_code.secrets.set([secret_a, secret_b])
     _bin(secret_b)
 
-    duplicate = copy_python_code(python_code)
+    duplicate = copy_python_code(
+        python_code, actor=SecretActor(user=regular_user, org_id=default_org.id)
+    )
 
     linked = set(duplicate.secrets(manager="all_objects").values_list("pk", flat=True))
     assert linked == {secret_a.id, secret_b.id}

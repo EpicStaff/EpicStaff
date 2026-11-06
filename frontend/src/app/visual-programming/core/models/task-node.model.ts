@@ -6,6 +6,7 @@ import {
     SurfacePythonTool,
     SurfaceStorageItem,
 } from '../../../features/agent-definitions/models/surface.model';
+import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
 import { StorageGrantFields } from './storage-grants.model';
 
@@ -44,7 +45,7 @@ export interface InlineSurface {
     updated_at?: string;
 }
 
-export interface TaskNode extends AuthorshipFields, NumberedNodeDto, StorageGrantFields {
+export interface TaskNode extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto, StorageGrantFields {
     id: number;
     created_at: string;
     updated_at: string;

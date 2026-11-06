@@ -1,11 +1,11 @@
-import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import { ClassificationDecisionTableData } from '../models/classification-decision-table.model';
 import { ConditionGroup } from '../models/decision-table.model';
 import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel } from '../models/node.model';
 import { generatePortsForClassificationDecisionTableNode } from './helpers';
-import { getClassificationTableVisualHeight } from './node-size.util';
+import { getClassificationTableVisualHeight, TABLE_NODE_WIDTH } from './node-size.util';
 import { newNodeStorageGrants } from './storage-grants.util';
 
 /**
@@ -14,11 +14,11 @@ import { newNodeStorageGrants } from './storage-grants.util';
  *
  * - A fresh UUID is assigned so the diff/save layer creates a new backend record.
  * - backendId is null so the backend treats it as a new node.
+ * - A new nodeUuid: the CDT is a new node, not the DT under another type.
  * - nodeNumber is preserved to maintain visual ordering.
  * - condition_groups, default_next_node, next_error_node are carried verbatim.
  * - CDT-only fields (prompts, pre/post_computation, default_llm_config,
  *   route_variable_name) are initialised to safe empty defaults.
- * - icon/color are set to the canonical CDT appearance (NODE_ICONS/NODE_COLORS), not carried over from the DT.
  * - Ports are regenerated for the new node id.
  * - Each condition group is auto-assigned a unique route_code (preserved if
  *   already set) so per-row CDT route ports are created correctly.
@@ -109,15 +109,14 @@ export function convertDecisionTableToCdt(dtNode: DecisionTableNodeModel): {
     const node: ClassificationDecisionTableNodeModel = {
         id: newId,
         backendId: null,
+        nodeUuid: generateUuid(),
         type: NodeType.CLASSIFICATION_TABLE,
         node_name: dtNode.node_name,
         position: { ...dtNode.position },
         size: {
-            width: dtNode.size?.width ?? 330,
+            width: TABLE_NODE_WIDTH,
             height: getClassificationTableVisualHeight(conditionGroups),
         },
-        color: NODE_COLORS[NodeType.CLASSIFICATION_TABLE],
-        icon: NODE_ICONS[NodeType.CLASSIFICATION_TABLE],
         input_map: { ...dtNode.input_map },
         output_variable_path: dtNode.output_variable_path,
         nodeNumber: dtNode.nodeNumber,

@@ -160,6 +160,7 @@ export class ClipboardService {
                 ...capNodeStorageGrants(oldNode, (resource, action) => this.permissions.can(resource, action)),
                 id: newNodeId,
                 backendId: null,
+                nodeUuid: generateUuid(),
                 nodeNumber: newNumberByOldId.get(oldNode.id),
                 position: {
                     x: oldNode.position.x + offsetX,

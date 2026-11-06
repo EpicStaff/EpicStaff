@@ -1,4 +1,4 @@
-import { NodeType, toSecretIds, toSecretNames } from '@shared/models';
+import { NodeType, SystemOneQuestion, toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import { storageGrantsFromDto } from '../../../core/helpers/storage-grants.util';
@@ -9,6 +9,25 @@ import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { readCdtExplanations } from '../../cdt-explanations';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
+
+/** The server stores questions as jsonb, which loses key order. Sorting by name keeps the editor stable. */
+function sortQuestions(questions: Record<string, SystemOneQuestion>): Record<string, SystemOneQuestion> {
+    return Object.fromEntries(
+        Object.entries(questions)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([name, question]): [string, SystemOneQuestion] => [
+                name,
+                question.type === 'choice'
+                    ? {
+                          ...question,
+                          criteria: Object.fromEntries(
+                              Object.entries(question.criteria ?? {}).sort(([a], [b]) => a.localeCompare(b))
+                          ),
+                      }
+                    : question,
+            ])
+    );
+}
 
 export function mapClassificationDecisionTableNodeToModel(
     n: GetClassificationDecisionTableNodeRequest
@@ -28,6 +47,10 @@ export function mapClassificationDecisionTableNodeToModel(
             result_variable: p.result_variable ?? '',
             variable_mappings: p.variable_mappings ?? {},
             output_schema_invalid: false,
+            kind: p.kind ?? 'llm',
+            system_one_config: p.system_one_config ?? null,
+            questions: sortQuestions(p.questions ?? {}),
+            input_map: p.input_map ?? {},
         };
     }
 
@@ -53,6 +76,7 @@ export function mapClassificationDecisionTableNodeToModel(
     return {
         id: generateUuid(),
         backendId: n.id,
+        nodeUuid: n.uuid,
         type: NodeType.CLASSIFICATION_TABLE,
         node_name: n.node_name,
         nodeNumber: n.node_number ?? undefined,
@@ -73,6 +97,8 @@ export function mapClassificationDecisionTableNodeToModel(
                 next_error_node: null, // resolved in ref-resolvers/classification-decision-table-refs.ts
                 pre_computation: {
                     code: n.pre_python_code?.code ?? '',
+                    entrypoint: n.pre_python_code?.entrypoint,
+                    global_kwargs: n.pre_python_code?.global_kwargs,
                     input_map: n.pre_input_map ?? {},
                     output_variable_path: n.pre_output_variable_path ?? null,
                     secret_ids: toSecretIds(n.pre_python_code?.secrets),
@@ -81,6 +107,8 @@ export function mapClassificationDecisionTableNodeToModel(
                 },
                 post_computation: {
                     code: n.post_python_code?.code ?? '',
+                    entrypoint: n.post_python_code?.entrypoint,
+                    global_kwargs: n.post_python_code?.global_kwargs,
                     input_map: n.post_input_map ?? {},
                     output_variable_path: n.post_output_variable_path ?? null,
                     secret_ids: toSecretIds(n.post_python_code?.secrets),
@@ -100,8 +128,6 @@ export function mapClassificationDecisionTableNodeToModel(
         },
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: {},
         output_variable_path: null,
         size: ui.size,

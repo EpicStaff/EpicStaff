@@ -14,6 +14,8 @@ from domain.errors import AliasReservedError, BotNameTakenError, UpstreamUnavail
 from domain.models import VisitorToken
 from infrastructure.database.models import OperatorProfileRow, VisitorTokenRow
 from infrastructure.database.repositories import OperatorAliasRepository
+from litestar.testing import AsyncTestClient
+from main import create_app
 from presentation.rest.controllers.operator import PAGE_SIZE
 from application.orchestrators.budgets import NEW_DESK_RULES
 from presentation.rest.schemas.operator import ConversationOutput
@@ -163,6 +165,25 @@ async def test_update_rotate_snippet(client, people, settings):
     assert f'src="{settings.CHAT_WIDGET_URL}"' in snippet.json()["snippet"]
     assert f'data-chat-url="{settings.CHAT_PUBLIC_BASE_URL}/chat/"' in snippet.json()["snippet"]
     assert (await client.post(f"{BASE}/bindings/{binding['id']}/rotate-key", headers=h("agent"))).status_code == 403
+
+
+WIDGET_SHA384 = "sha384-zJxl4o8r/3cYp2rLJAbAh/qSKfhfKx5+7fMzyqwLwky1qbdFmzmzA5wDKo3wuE8N"
+
+
+@pytest.mark.parametrize("integrity, attributes", [
+    (None, ""),  # unset: the snippet operators already pasted stays byte for byte the same
+    (WIDGET_SHA384, f' integrity="{WIDGET_SHA384}" crossorigin="anonymous"'),
+])
+async def test_snippet_carries_the_widget_integrity_only_when_one_is_set(settings, session_factory, django, redis_client, people, integrity, attributes):
+    app = create_app(settings.model_copy(update={"CHAT_WIDGET_INTEGRITY": integrity}), django_transport=django.transport, redis_client=redis_client)
+    async with AsyncTestClient(app=app) as client:
+        binding = (await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("admin"))).json()
+        snippet = await client.get(f"{BASE}/bindings/{binding['id']}/snippet", headers=h("admin"))
+    assert snippet.status_code == 200
+    assert snippet.json()["snippet"] == (
+        f'<script src="{settings.CHAT_WIDGET_URL}"{attributes} data-public-key="{binding["public_key"]}" '
+        f'data-chat-url="{settings.CHAT_PUBLIC_BASE_URL}/chat/" async></script>'
+    )
 
 
 # ---- visitor token revocation -------------------------------------------------------------------

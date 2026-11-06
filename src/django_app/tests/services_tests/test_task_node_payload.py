@@ -47,6 +47,7 @@ from tables.models.knowledge_models.collection_models import (
 )
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
+from tables.models.llm_models import LLMConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization
@@ -482,6 +483,143 @@ class TestAgentDefinitionLLMHydration:
         )
         assert task_data.agent_definition.fcm_llm is None
         assert task_data.agent_definition.llm_config_id == llm_config.pk
+
+
+class TestAgentDefinitionFallbackLLM:
+    @pytest.fixture
+    def fallback_config(self, db, org, gpt_35_llm):
+        from tests.fixtures import _make_secret
+
+        return LLMConfig.objects.create(
+            custom_name="Key B",
+            model=gpt_35_llm,
+            org=org,
+            api_key_secret=_make_secret(org, "fallback-key", "sk-plaintext-fallback"),
+        )
+
+    @pytest.fixture
+    def agent_with_fallback(self, agent, llm_config, fallback_config):
+        agent.llm_config = llm_config
+        agent.fallback_llm_config = fallback_config
+        agent.save()
+        return agent
+
+    @staticmethod
+    def agent_data_for_run(graph, task_node, agent):
+        task_node.agent_definition = agent
+        task_node.save()
+        wire_entrypoint(graph, task_node)
+        return graph_data_for_run(graph).task_node_list[0].agent_definition
+
+    @pytest.mark.django_db
+    def test_payload_carries_fallback(
+        self, graph, task_node, agent_with_fallback, fallback_config
+    ):
+        data = self.agent_data_for_run(graph, task_node, agent_with_fallback)
+
+        assert data.fallback_llm_config_id == fallback_config.pk
+        assert data.fallback_llm.provider == "openai"
+        assert data.fallback_llm.config.model == "gpt-3.5-turbo"
+        assert data.fallback_llm.config.custom_name == "Key B"
+        assert data.fallback_llm.config.api_key_secret_id == fallback_config.api_key_secret_id
+        assert data.fallback_llm_warning is None
+
+    @pytest.mark.django_db
+    def test_payload_without_fallback_has_none(self, graph, task_node, agent, llm_config):
+        agent.llm_config = llm_config
+        agent.save()
+
+        data = self.agent_data_for_run(graph, task_node, agent)
+
+        assert data.fallback_llm_config_id is None
+        assert data.fallback_llm is None
+        assert data.fallback_llm_warning is None
+
+    @pytest.mark.django_db
+    def test_payload_never_holds_the_fallback_key_in_plaintext(
+        self, graph, task_node, agent_with_fallback
+    ):
+        data = self.agent_data_for_run(graph, task_node, agent_with_fallback)
+
+        assert "sk-plaintext-fallback" not in data.model_dump_json()
+
+    @pytest.mark.django_db
+    def test_fallback_with_deleted_provider_is_dropped(
+        self, graph, task_node, agent_with_fallback, fallback_config
+    ):
+        fallback_config.model.llm_provider = None
+        fallback_config.model.save()
+
+        data = self.agent_data_for_run(graph, task_node, agent_with_fallback)
+
+        assert data.fallback_llm is None
+        assert data.fallback_llm_warning == (
+            'Fallback LLM config "Key B" is unavailable (ConfigProviderMissingError)'
+            " and was skipped."
+        )
+        assert data.llm is not None
+
+    @pytest.mark.django_db
+    def test_fallback_without_a_model_is_dropped_with_a_warning(
+        self, graph, task_node, agent_with_fallback, fallback_config
+    ):
+        fallback_config.model = None
+        fallback_config.save()
+
+        data = self.agent_data_for_run(graph, task_node, agent_with_fallback)
+
+        assert data.fallback_llm is None
+        assert data.fallback_llm_warning == (
+            'Fallback LLM config "Key B" is unavailable (no model) and was skipped.'
+        )
+        assert data.llm is not None
+
+    @pytest.mark.django_db
+    def test_fallback_with_undecryptable_secret_is_dropped(
+        self, graph, task_node, agent_with_fallback, fallback_config
+    ):
+        secret = fallback_config.api_key_secret
+        secret.value = "not-a-ciphertext"
+        secret.save()
+
+        data = self.agent_data_for_run(graph, task_node, agent_with_fallback)
+
+        assert data.fallback_llm is None
+        assert data.fallback_llm_warning == (
+            'Fallback LLM config "Key B" is unavailable (SecretResolutionError)'
+            " and was skipped."
+        )
+        assert "not-a-ciphertext" not in data.model_dump_json()
+        assert data.llm is not None
+
+    @pytest.mark.django_db
+    def test_fallback_with_binned_secret_is_dropped(
+        self, graph, task_node, agent_with_fallback, fallback_config
+    ):
+        from django.utils import timezone
+
+        from tables.models import Secret
+
+        Secret.all_objects.filter(pk=fallback_config.api_key_secret_id).update(
+            active=False, soft_deleted_at=timezone.now()
+        )
+
+        data = self.agent_data_for_run(graph, task_node, agent_with_fallback)
+
+        assert data.fallback_llm is None
+        assert "SecretResolutionError" in data.fallback_llm_warning
+
+    @pytest.mark.django_db
+    def test_broken_primary_still_raises(
+        self, graph, task_node, agent_with_fallback, llm_config
+    ):
+        from tables.exceptions import ConfigProviderMissingError
+
+        llm_config.model.llm_provider = None
+        llm_config.model.save()
+
+        with pytest.raises(ConfigProviderMissingError):
+            self.agent_data_for_run(graph, task_node, agent_with_fallback)
 
 
 class TestToolPool:

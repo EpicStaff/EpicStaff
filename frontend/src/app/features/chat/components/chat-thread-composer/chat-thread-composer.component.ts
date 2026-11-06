@@ -1,9 +1,11 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+    afterNextRender,
     Component,
     computed,
     DestroyRef,
     effect,
+    ElementRef,
     inject,
     input,
     linkedSignal,
@@ -16,7 +18,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     ButtonComponent,
-    CustomInputComponent,
     HintMessageComponent,
     JSON_EDITOR_OPTIONS,
     JsonEditorComponent,
@@ -81,14 +82,7 @@ const ROLES: { id: ChatComposerRole; label: string }[] = [
  */
 @Component({
     selector: 'app-chat-thread-composer',
-    imports: [
-        ReactiveFormsModule,
-        ButtonComponent,
-        CustomInputComponent,
-        HintMessageComponent,
-        TabButtonComponent,
-        JsonEditorComponent,
-    ],
+    imports: [ReactiveFormsModule, ButtonComponent, HintMessageComponent, TabButtonComponent, JsonEditorComponent],
     templateUrl: './chat-thread-composer.component.html',
     styleUrls: ['./chat-thread-composer.component.scss'],
 })
@@ -107,7 +101,8 @@ export class ChatThreadComposerComponent {
     readonly claimRequested = output<void>();
     readonly operatorMessageSent = output<ChatOperatorReplySent>();
 
-    private readonly inputField = viewChild.required(CustomInputComponent);
+    // Unset until the view exists: the first conversation's reset may come before it.
+    private readonly messageField = viewChild<ElementRef<HTMLTextAreaElement>>('messageField');
 
     readonly conversationId = computed(() => this.conversation().id);
     readonly isTest = computed(() => this.conversation().is_test);
@@ -190,9 +185,38 @@ export class ChatThreadComposerComponent {
     private readonly conversationActions = inject(ChatConversationActionsService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
+    // Driven by the control, not by keystrokes: a paste, a send's reset and a conversation switch re-fit it too.
+    private readonly fitOnValue = this.message.valueChanges
+        .pipe(takeUntilDestroyed())
+        .subscribe(() => this.fitMessageField());
+
+    constructor() {
+        // Wrapping depends on the width too: a pane that narrows, widens or turns visible re-fits the draft it holds.
+        afterNextRender(() => {
+            const field = this.messageField()?.nativeElement;
+            if (!field) return;
+            let width = field.clientWidth;
+            const observer = new ResizeObserver(() => {
+                // The field's own height changes are observed as well; only a new width changes the wrapping.
+                if (field.clientWidth === width) return;
+                width = field.clientWidth;
+                this.fitMessageField();
+            });
+            observer.observe(field);
+            this.destroyRef.onDestroy(() => observer.disconnect());
+        });
+    }
 
     focus(): void {
-        this.inputField().inputEl?.nativeElement.focus();
+        this.messageField()?.nativeElement.focus();
+    }
+
+    // Angular matches keydown.enter only without modifiers, so Shift+Enter keeps its newline.
+    onEnter(event: Event): void {
+        // The Enter that confirms an IME composition picks a candidate; it does not send.
+        if (event instanceof KeyboardEvent && event.isComposing) return;
+        event.preventDefault();
+        this.send();
     }
 
     send(): void {
@@ -207,16 +231,16 @@ export class ChatThreadComposerComponent {
         if (!token) return;
         // A response for a conversation the operator has since left must not touch the open one.
         const sentOn = this.conversation();
+        const text = this.takeDraft();
         this.sendingOn.set(sentOn.id);
         this.notice.set(null);
         this.chatApi
-            .sendAsVisitor(sentOn.id, token, this.message.value, this.visitorExtras())
+            .sendAsVisitor(sentOn.id, token, text, this.visitorExtras())
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (result) => {
                     this.endSend(sentOn.id);
                     if (this.conversationId() !== sentOn.id) return;
-                    this.message.reset();
                     const streamSpoke = this.conversation() !== sentOn;
                     if (result.state === 'processing' && !streamSpoke) this.isAwaitingRun.set(true);
                     this.notice.set(SEND_STATE_NOTICES[result.state]);
@@ -224,6 +248,7 @@ export class ChatThreadComposerComponent {
                 error: (error: HttpErrorResponse) => {
                     this.endSend(sentOn.id);
                     if (this.conversationId() !== sentOn.id) return;
+                    this.restoreDraft(text);
                     // Widget-side errors are shown inline, exactly as a widget would.
                     const body = error.error as ChatErrorBody | null;
                     // A refused field (extra data, action) is named in `errors`; the top-level message is generic.
@@ -239,19 +264,20 @@ export class ChatThreadComposerComponent {
 
     private sendAsOperator(): void {
         const sentOn = this.conversationId();
+        const text = this.takeDraft();
         this.sendingOn.set(sentOn);
         this.chatApi
-            .reply(sentOn, this.message.value)
+            .reply(sentOn, text)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (message) => {
                     this.endSend(sentOn);
-                    // The draft on screen belongs to another conversation once the operator has switched.
-                    if (this.conversationId() === sentOn) this.message.reset();
                     this.operatorMessageSent.emit({ conversationId: sentOn, message });
                 },
                 error: (error: HttpErrorResponse) => {
                     this.endSend(sentOn);
+                    // The draft on screen belongs to another conversation once the operator has switched.
+                    if (this.conversationId() === sentOn) this.restoreDraft(text);
                     this.toastService.error(extractHttpErrorMessage(error));
                     // Closed meanwhile, and the stream missed it: fetched again, the thread turns read-only.
                     if (isConversationClosed(error)) this.conversationActions.refresh(sentOn);
@@ -265,7 +291,28 @@ export class ChatThreadComposerComponent {
         return extraData ? { chat_extra_data: extraData } : {};
     }
 
+    // Cleared as the send starts, not when it answers: the field is locked meanwhile, so it would sit there full.
+    private takeDraft(): string {
+        const text = this.message.value;
+        this.message.reset();
+        return text;
+    }
+
+    // A failed send gives the text back so it is not lost; never over anything the user has typed since.
+    private restoreDraft(text: string): void {
+        if (!this.message.value) this.message.setValue(text);
+    }
+
     private endSend(conversationId: string): void {
         if (this.sendingOn() === conversationId) this.sendingOn.set(null);
+    }
+
+    // One line when empty, growing with the text up to the CSS max-height, past which it scrolls.
+    private fitMessageField(): void {
+        const field = this.messageField()?.nativeElement;
+        if (!field) return;
+        field.style.height = 'auto';
+        // scrollHeight leaves out the border, which the border-box height includes.
+        field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
     }
 }

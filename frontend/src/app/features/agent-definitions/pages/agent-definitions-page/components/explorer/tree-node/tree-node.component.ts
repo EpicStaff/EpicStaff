@@ -1,18 +1,25 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 import { DragHoverDirective, TooltipOnOverflowDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
 import { StorageDragService } from '../../../../../../files/services/storage-drag.service';
 import { ExplorerSelection } from '../../../../../models/explorer.model';
 import { BranchTreeNode, nodeKey } from '../../../../../models/tree-node.model';
+import { AgentDragService } from '../../../../../services/agent-drag.service';
+import { AgentsPageStore } from '../../../../../services/agents-page-store.service';
 import { SurfaceDragService } from '../../../../../services/surface-drag.service';
-import { ExplorerMenuItem, ExplorerMenuPosition } from '../explorer-context-menu/explorer-menu.model';
+import {
+    ExplorerMenuItem,
+    ExplorerMenuPosition,
+    ExplorerMenuSubject,
+} from '../explorer-context-menu/explorer-menu.model';
 import { menuPositionFromClick, treeNodeMenuItems } from '../explorer-menu.util';
 
 export interface ExplorerTreeMenuEvent {
-    node: BranchTreeNode;
+    node: ExplorerMenuSubject;
     action: string;
     /**
      * The row's ⋮ button that opened the menu — where a dialog opened from the menu returns focus.
@@ -22,7 +29,7 @@ export interface ExplorerTreeMenuEvent {
 }
 
 export interface ExplorerTreeMenuOpenEvent {
-    node: BranchTreeNode;
+    node: ExplorerMenuSubject;
     items: ExplorerMenuItem[];
     position: ExplorerMenuPosition;
     trigger: HTMLElement;
@@ -35,7 +42,7 @@ export interface ExplorerTreeAttachSurfaceEvent {
 
 @Component({
     selector: 'app-tree-node',
-    imports: [AppSvgIconComponent, DragHoverDirective, MatTooltipModule, TooltipOnOverflowDirective],
+    imports: [AppSvgIconComponent, CheckboxComponent, DragHoverDirective, MatTooltipModule, TooltipOnOverflowDirective],
     templateUrl: './tree-node.component.html',
     styleUrls: ['./tree-node.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -43,7 +50,9 @@ export interface ExplorerTreeAttachSurfaceEvent {
 export class TreeNodeComponent implements OnInit {
     private readonly storageDrag = inject(StorageDragService);
     private readonly surfaceDrag = inject(SurfaceDragService);
+    private readonly agentDrag = inject(AgentDragService);
     private readonly permissionService = inject(PermissionsService);
+    private readonly store = inject(AgentsPageStore);
 
     node = input.required<BranchTreeNode>();
     depth = input(0);
@@ -146,7 +155,23 @@ export class TreeNodeComponent implements OnInit {
         this.expanded.set(!this.expanded());
     }
 
+    readonly showExportCheckbox = computed(() => this.node().kind === 'agent' && this.store.agentExportMode());
+
+    readonly isExportChecked = computed(() => {
+        const n = this.node();
+        return n.kind === 'agent' && this.store.selectedAgentIds().has(n.agentId);
+    });
+
+    onExportCheckboxChange(): void {
+        const n = this.node();
+        if (n.kind === 'agent') this.store.toggleAgentSelection(n.agentId);
+    }
+
     onRowClick(): void {
+        if (this.showExportCheckbox()) {
+            this.onExportCheckboxChange();
+            return;
+        }
         this.selectNode.emit(this.node());
     }
 
@@ -200,6 +225,28 @@ export class TreeNodeComponent implements OnInit {
 
     onSurfaceDragEnd(): void {
         this.surfaceDrag.end();
+    }
+
+    // ---- agent drag & drop (onto a group block, see ExplorerGroupBlockComponent) ----
+    readonly isDraggableAgent = computed(
+        () =>
+            this.node().kind === 'agent' &&
+            !this.store.agentExportMode() &&
+            this.permissionService.can(ResourceCode.Agents, ActionCode.Update)
+    );
+
+    onAgentDragStart(event: DragEvent): void {
+        const n = this.node();
+        if (n.kind !== 'agent') return;
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', n.label);
+        }
+        this.agentDrag.start({ id: n.agentId, name: n.label });
+    }
+
+    onAgentDragEnd(): void {
+        this.agentDrag.end();
     }
 
     private dropAgentId(): number | null {

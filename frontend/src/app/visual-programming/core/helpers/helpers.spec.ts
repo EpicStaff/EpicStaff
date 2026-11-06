@@ -1,6 +1,9 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { ConnectionModel } from '../models/connection.model';
+import { ConditionGroup } from '../models/decision-table.model';
 import { NodeModel } from '../models/node.model';
-import { isBackwardConnection } from './helpers';
+import { generatePortsForNode, isBackwardConnection } from './helpers';
 
 function node(
     id: string,
@@ -141,5 +144,48 @@ describe('isBackwardConnection', () => {
         const c2 = connection('source', 'source_out-bottom', 'target', 'target_in-left');
 
         expect(() => isBackwardConnection(c2, [bottomSource, leftTarget])).not.toThrow();
+    });
+});
+
+function conditionGroup(groupName: string, routeCode: string): ConditionGroup {
+    return {
+        group_name: groupName,
+        group_type: 'simple',
+        expression: null,
+        conditions: [],
+        manipulation: null,
+        next_node: null,
+        route_code: routeCode,
+    };
+}
+
+describe('generatePortsForNode port colors', () => {
+    const tableData = { table: { condition_groups: [conditionGroup('Approved', 'APPROVE')] } };
+    const nodeTypesWithPorts = Object.values(NodeType).filter((nodeType) => nodeType !== NodeType.NOTE);
+
+    it.each(nodeTypesWithPorts)('paints every %s port in that node type colour', (nodeType) => {
+        const ports = generatePortsForNode('node-1', nodeType, tableData);
+
+        expect(ports.length).toBeGreaterThan(0);
+        for (const port of ports) {
+            expect({ role: port.role, color: port.color }).toEqual({ role: port.role, color: NODE_COLORS[nodeType] });
+        }
+    });
+
+    it('paints the classification decision table input, route, default and error ports in its own blue', () => {
+        const ports = generatePortsForNode('cdt-1', NodeType.CLASSIFICATION_TABLE, tableData);
+
+        expect(ports.map((port) => [port.role, port.color])).toEqual([
+            ['table-in', '#2a5bd7'],
+            ['decision-route-APPROVE', '#2a5bd7'],
+            ['decision-default', '#2a5bd7'],
+            ['decision-error', '#2a5bd7'],
+        ]);
+    });
+
+    it('keeps the plain decision table ports in the decision table blue', () => {
+        const ports = generatePortsForNode('dt-1', NodeType.TABLE, tableData);
+
+        expect(new Set(ports.map((port) => port.color))).toEqual(new Set(['#00aaff']));
     });
 });

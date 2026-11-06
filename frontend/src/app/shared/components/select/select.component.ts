@@ -103,11 +103,17 @@ export class SelectComponent implements ControlValueAccessor {
     items = input<SelectItem[]>([]);
     placeholder = input<string>('Select option');
     invalid = input<boolean>(false);
+    /**
+     * Ids of what describes the trigger, e.g. the `app-validation-errors` saying why it is invalid. The reason is said
+     * through it alone: a button takes no `aria-invalid`.
+     */
+    ariaDescribedby = input<string | null>(null);
     disabled = input<boolean>(false);
     hideTrigger = input<boolean>(false);
     panelClass = input<string | string[]>('');
     variant = input<SelectVariant>('default');
     showSearch = input<boolean>(false);
+    showCreate = input<boolean>(false);
     /**
      * Render each item under a heading taken from its `group`. Off by default: panels that
      * already set `group` on their items were written before any heading was rendered.
@@ -115,6 +121,7 @@ export class SelectComponent implements ControlValueAccessor {
     grouped = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
     transparent = input<boolean>(false);
+    searchNotFoundText = input<string>('No items available');
     /** When true, the selected item's tip is shown at the end of the closed trigger too, not only in the list. */
     showTipInTrigger = input<boolean>(false);
     /** When true, the user can commit the search text as a custom value (Enter or clicking the "Use ..." row). */
@@ -140,6 +147,7 @@ export class SelectComponent implements ControlValueAccessor {
 
     changed = output<unknown>();
     opened = output<void>();
+    onCreate = output<void>();
 
     selectedValue = model<unknown | null>(null);
 

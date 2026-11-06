@@ -32,11 +32,24 @@
 <ng-template #dropdownTemplate>
     <div
         class="multi-select__dropdown"
+        [class.multi-select__dropdown--outlined]="variant() === 'outlined'"
         cdkTrapFocus
         [cdkTrapFocusAutoCapture]="true"
         [style.--ms-width]="panelWidth()"
         [style.--ms-height]="panelHeight()"
     >
+        @if (headerTitle()) {
+            <div class="multi-select__header">
+                <span>{{ headerTitle() }}</span>
+                <span
+                    class="multi-select__header-count"
+                    aria-live="polite"
+                >
+                    <span class="multi-select__header-selected">{{ tempSelected().length }}</span> /
+                    {{ items().length }}
+                </span>
+            </div>
+        }
         @if (showSearch()) {
             <input
                 class="multi-select__search"
@@ -101,7 +114,9 @@
                 @for (item of group.items; track item.name) {
                     <div
                         class="multi-select__item"
-                        [class.multi-select__item--selected]="isChecked(item.value) && !readonlyView()"
+                        [class.multi-select__item--selected]="
+                            variant() === 'default' && isChecked(item.value) && !readonlyView()
+                        "
                         [class.multi-select__item--checkbox-left]="checkboxPosition() === 'left'"
                         [class.multi-select__item--checkbox-white]="color() === 'white'"
                         [class.multi-select__item--has-action]="!!item.trailingActionIcon"
@@ -170,6 +185,16 @@
                         (click)="clearFilter()"
                     >
                         Clear Filter
+                    </app-button>
+                }
+                @if (selectAllLabel()) {
+                    <app-button
+                        class="multi-select__footer-btn"
+                        mod="default"
+                        type="outline-primary"
+                        (click)="selectAll()"
+                    >
+                        {{ selectAllLabel() }}
                     </app-button>
                 }
 

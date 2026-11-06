@@ -3,6 +3,7 @@ import { Provider } from '@angular/core';
 import { CdtExplanationStoreService } from '../../services/cdt-explanation-store.service';
 import { ClipboardService } from '../../services/clipboard.service';
 import { FlowService } from '../../services/flow.service';
+import { FlowDiffStateService } from '../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowTestRunService } from '../../services/flow-test-run.service';
 import { NodeAuthorshipStore } from '../../services/node-authorship.store';
@@ -44,4 +45,5 @@ export const FLOW_EDITOR_STATE_PROVIDERS: Provider[] = [
     VersionPreviewNodeAuthorshipStore,
     { provide: NodeAuthorshipStore, useExisting: VersionPreviewNodeAuthorshipStore },
     FlowTestRunService,
+    FlowDiffStateService,
 ];

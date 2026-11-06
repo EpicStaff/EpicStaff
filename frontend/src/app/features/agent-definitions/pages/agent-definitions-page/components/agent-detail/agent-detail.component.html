@@ -43,7 +43,10 @@
         @if (isOpen('basics')) {
             <div class="section__body">
                 <div class="row row--name-llm">
-                    <div class="field">
+                    <div
+                        class="field"
+                        [attr.data-tour]="isCreating() ? tourAnchors.agentName : null"
+                    >
                         <label class="label"> Agent Name<span class="required">*</span> </label>
                         <input
                             type="text"
@@ -58,13 +61,34 @@
                             <span class="field__error">Agent name must be at most 255 characters.</span>
                         }
                     </div>
-                    <div class="field">
-                        <label class="label">LLM Configuration<span class="required">*</span></label>
-                        <app-llm-model-selector
-                            formControlName="llm_config"
-                            placeholder="Select LLM model"
-                            (modelSelected)="autosave()"
-                        />
+                    <div class="field field--stack">
+                        <div
+                            class="field"
+                            [attr.data-tour]="tourAnchors.llmConfig"
+                        >
+                            <label class="label">LLM Configuration<span class="required">*</span></label>
+                            <app-llm-model-selector
+                                formControlName="llm_config"
+                                placeholder="Select LLM model"
+                                (modelSelected)="onPrimaryLlmSelected()"
+                            />
+                        </div>
+                        <div class="field">
+                            <label class="label label--with-help">
+                                Fallback LLM
+                                <app-help-tooltip
+                                    text="Used only when the primary LLM is unavailable (outage, rate limit, bad key, removed model). A too-long prompt still fails."
+                                    size="14px"
+                                />
+                            </label>
+                            <app-llm-model-selector
+                                formControlName="fallback_llm_config"
+                                placeholder="No fallback"
+                                [excludedConfigId]="liveLlmConfigId()"
+                                [readonly]="!liveLlmConfigId()"
+                                (modelSelected)="autosave()"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -84,7 +108,10 @@
                     ></textarea>
                 </div>
 
-                <div class="field">
+                <div
+                    class="field"
+                    [attr.data-tour]="tourAnchors.instructions"
+                >
                     <label class="label">Instructions<span class="required">*</span></label>
                     <app-agent-instructions-list
                         [instructions]="instructionList()"
@@ -104,6 +131,7 @@
         *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
         id="agent-section-surfaces"
         class="section"
+        [attr.data-tour]="tourAnchors.surfaces"
     >
         <button
             type="button"
@@ -168,6 +196,7 @@
                     [llmConfigId]="liveLlmConfigId()"
                     [defaultSurfaces]="agent()?.default_surfaces ?? []"
                     [sharedSurfaceIds]="sharedSurfaceIds()"
+                    [groups]="groups()"
                     [saving]="saving()"
                     [saveError]="surfaceSaveError()"
                     [surfaceCreateErrorTick]="surfaceCreateErrorTick()"

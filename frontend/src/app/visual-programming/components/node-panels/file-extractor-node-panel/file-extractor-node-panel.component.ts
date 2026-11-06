@@ -1,9 +1,12 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CustomInputComponent, HintMessageComponent, ValidationErrorsComponent } from '@shared/components';
 
 import { FileExtractorNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
+import { mapFieldRowChanges } from '../../../utils/diff';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 interface InputMapPair {
@@ -19,12 +22,18 @@ interface InputMapPair {
         InputMapComponent,
         StorageGrantsFieldComponent,
         ValidationErrorsComponent,
+        DiffFieldMarkComponent,
     ],
     templateUrl: './file-extractor-node-panel.component.html',
     styleUrls: ['./file-extractor-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractorNodeModel> {
+    /** Changes tab of a version preview: what a restore does to each Input List row; `null` anywhere else. */
+    protected readonly inputMapRowChanges = computed(() => mapFieldRowChanges(this.panelDiff(), 'input_map'));
+
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
+
     constructor() {
         super();
     }
