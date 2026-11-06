@@ -24,7 +24,9 @@ SNAPSHOT_ONLY_MODEL = "epicstaff-snapshot-reasoner"
 
 
 @pytest.fixture
-def snapshot_path(monkeypatch, tmp_path_factory):
+def snapshot_path(monkeypatch, settings, tmp_path_factory):
+    # The snapshot is read only with the refresh on; these tests are about reading it.
+    settings.LITELLM_MODEL_COST_REFRESH_ENABLED = True
     path = tmp_path_factory.mktemp("litellm_snapshot") / "litellm_model_cost_snapshot.json"
     monkeypatch.setattr(litellm, "model_cost", dict(litellm.model_cost))
     monkeypatch.setenv("LITELLM_MODEL_COST_SNAPSHOT_PATH", str(path))
