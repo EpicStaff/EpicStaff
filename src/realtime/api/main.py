@@ -7,6 +7,7 @@ from xml.sax.saxutils import quoteattr
 import httpx
 from application.agent_chat_end_client import AgentChatEndClient
 from application.conversation_service import ConversationService
+from application.pending_connection_sweeper import PendingConnectionSweeper
 from application.tool_manager_service import ToolManagerService
 from application.voice_call_service import VoiceCallService
 from core import config
@@ -90,6 +91,14 @@ app.add_middleware(
 
 
 connection_repository = ConnectionRepository(ttl_seconds=config.CONNECTION_KEY_TTL_SECONDS)
+pending_connection_sweeper = PendingConnectionSweeper(
+    connection_repository=connection_repository,
+    chat_end_client=AgentChatEndClient(
+        django_api_base_url=config.DJANGO_API_BASE_URL,
+        django_api_key=config.DJANGO_API_KEY,
+    ),
+    interval_seconds=config.PENDING_CONNECTION_SWEEP_INTERVAL_SECONDS,
+)
 stream_token_repository = StreamTokenRepository(ttl_seconds=config.STREAM_TOKEN_TTL_SECONDS)
 
 # ---------------------------------------------------------------------------
@@ -243,14 +252,21 @@ async def startup_event():
     app.state.redis_listener_task = asyncio.create_task(
         _run_forever(redis_listener, "redis_listener")
     )
+    app.state.pending_connection_sweeper_task = asyncio.create_task(
+        _run_forever(pending_connection_sweeper.run, "pending_connection_sweeper")
+    )
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Stop the Redis listener supervisor and close the outbound HTTP clients."""
-    redis_listener_task = app.state.redis_listener_task
-    redis_listener_task.cancel()
-    await asyncio.gather(redis_listener_task, return_exceptions=True)
+    """Stop the background supervisors and close the outbound HTTP clients."""
+    background_tasks = (
+        app.state.redis_listener_task,
+        app.state.pending_connection_sweeper_task,
+    )
+    for background_task in background_tasks:
+        background_task.cancel()
+    await asyncio.gather(*background_tasks, return_exceptions=True)
     await knowledge_client.stop()
     await django_auth_client.stop()
     await sandbox_client.aclose()

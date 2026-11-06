@@ -267,3 +267,33 @@ class TestRealtimeAgentChatEnd:
         response = api_client.post(self._url(), data={}, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_a_chat_that_never_started_is_ended_as_a_zero_length_timeout_and_its_account_revoked(
+    wikipedia_agent, default_org, api_client, env_api_key, monkeypatch
+):
+    """The realtime service reports a connection key nobody attached to as timeout/0."""
+    from tables.views import model_view_sets
+
+    revoked_chat_ids = []
+    monkeypatch.setattr(
+        model_view_sets.session_credential_service,
+        "revoke_for_realtime_chat",
+        revoked_chat_ids.append,
+    )
+    chat = _make_chat(_make_realtime_agent(wikipedia_agent, default_org), "conn-never-attached")
+    api_client.credentials(HTTP_X_API_KEY=env_api_key[0])
+
+    response = api_client.post(
+        reverse("realtimeagentchat-end"),
+        data={"connection_key": chat.connection_key, "duration_seconds": 0, "end_reason": "timeout"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    chat.refresh_from_db()
+    assert chat.ended_at is not None
+    assert chat.duration_seconds == 0
+    assert chat.end_reason == "timeout"
+    assert revoked_chat_ids == [chat.id]

@@ -34,17 +34,19 @@ async def test_startup_keeps_listener_task_alive_across_garbage_collection(stubb
     tasks_before = asyncio.all_tasks()
 
     await main.startup_event()
-    (new_task,) = asyncio.all_tasks() - tasks_before
-    task_ref = weakref.ref(new_task)
-    del new_task
+    new_tasks = asyncio.all_tasks() - tasks_before
+    task_refs = [weakref.ref(new_task) for new_task in new_tasks]
+    del new_tasks
     try:
         # Once parked on its pending future the task is reachable only through
         # that future's cycle, so only a strong reference held by the app saves it.
         await asyncio.wait_for(started.wait(), timeout=1.0)
         gc.collect()
 
-        assert task_ref() is not None
-        assert not task_ref().done()
+        assert len(task_refs) == 2
+        for task_ref in task_refs:
+            assert task_ref() is not None
+            assert not task_ref().done()
     finally:
         await main.shutdown_event()
 
@@ -54,10 +56,10 @@ async def test_shutdown_cancels_and_awaits_listener_task(stubbed_startup):
     main, started = stubbed_startup
 
     await main.startup_event()
-    task = main.app.state.redis_listener_task
+    tasks = (main.app.state.redis_listener_task, main.app.state.pending_connection_sweeper_task)
     await asyncio.wait_for(started.wait(), timeout=1.0)
 
     await main.shutdown_event()
 
-    assert task.cancelled()
+    assert all(task.cancelled() for task in tasks)
     main.knowledge_client.stop.assert_awaited_once()
