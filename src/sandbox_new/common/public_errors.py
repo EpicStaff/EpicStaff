@@ -8,8 +8,7 @@ find the log line without the user ever seeing its content.
 
 from enum import StrEnum
 
-from loguru import logger
-from src.shared.public_error import new_error_correlation_id
+from foundation.utils.error_reference import log_with_reference
 
 __all__ = ["SandboxFailureMessage", "log_sandbox_failure", "public_failure_text"]
 
@@ -41,11 +40,8 @@ def log_sandbox_failure(detail: str, *, execution_id: str | None) -> str:
             them.
         execution_id: Names the execution in the log line; None when it is unknown.
     """
-    reference = new_error_correlation_id()
-    logger.error(
-        "Execution {} failed in the sandbox (reference: {}): {}",
-        execution_id,
-        reference,
-        detail,
+    return log_with_reference(
+        "Execution {execution_id} failed in the sandbox: {detail}",
+        execution_id=execution_id,
+        detail=detail,
     )
-    return reference

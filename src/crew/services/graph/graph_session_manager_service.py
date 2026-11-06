@@ -9,6 +9,7 @@ from typing import Any
 import redis
 from clients.key_value import KeyValueClient
 from dotdict import DotDict
+from foundation.utils.error_reference import log_with_reference
 from loguru import logger
 from models.graph_models import GraphMessage
 from services.agent_task_service import AgentTaskService
@@ -30,7 +31,6 @@ from src.crew.services.graph.session_audit_provider import (
 )
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import SessionData, StopSessionMessage
-from src.shared.public_error import new_error_correlation_id
 from utils.singleton_meta import SingletonMeta
 
 TOKEN_BUDGET_STOP_MESSAGE = "The flow stopped: it used up its token budget."
@@ -419,14 +419,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             if error.correlation_id is None:
                 return error.public_message
             return SESSION_FAILED_MESSAGE.format(reference=error.correlation_id)
-        correlation_id = new_error_correlation_id()
-        logger.opt(exception=error).error(
-            "Failed to start session {session_id}: {error} (correlation_id={correlation_id})",
+        reference = log_with_reference(
+            "Failed to start session {session_id}: {error}",
             session_id=session_id,
             error=str(error),
-            correlation_id=correlation_id,
+            exception=error,
         )
-        return SESSION_FAILED_MESSAGE.format(reference=correlation_id)
+        return SESSION_FAILED_MESSAGE.format(reference=reference)
 
     async def _store_final_variables(self, session_id: int, variables: dict) -> None:
         # A Redis outage must not lose the `end` status: the session still finished,

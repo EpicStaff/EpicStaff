@@ -67,7 +67,7 @@ def respond(status_code: int, **kwargs) -> httpx.Response:
 
 def overloaded(retry_after: str | None = None) -> httpx.Response:
     headers = {} if retry_after is None else {"Retry-After": retry_after}
-    return respond(503, headers=headers, json={"errors": [{"code": "overloaded"}]})
+    return respond(503, headers=headers, json={"errors": [{"code": "sandbox_overloaded"}]})
 
 
 def known(status: str = "running") -> httpx.Response:

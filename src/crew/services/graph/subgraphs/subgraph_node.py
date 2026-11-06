@@ -3,10 +3,10 @@ from typing import Literal, NoReturn
 from uuid import uuid4
 
 from dotdict import DotDict
+from foundation.utils.error_reference import log_with_reference
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
-from loguru import logger
 from models.graph_models import (
     GraphMessage,
     SubGraphFinishMessageData,
@@ -17,7 +17,6 @@ from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.exceptions import NodeExecutionError, SubflowPathError
 from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
 from src.shared.models.storage_scope import StorageCredentials
-from src.shared.public_error import new_error_correlation_id
 from utils import map_variables_to_input
 from utils.node_label import node_label_from_runtime_name
 from utils.set_output_variables import set_output_variables
@@ -200,14 +199,12 @@ class SubGraphNode:
             public_message = str(error)
             correlation_id = None
         else:
-            correlation_id = new_error_correlation_id()
-            logger.opt(exception=error).error(
-                "Subflow node failed: {error} (correlation_id={correlation_id}, "
-                "session_id={session_id}, node_name={node_name})",
+            correlation_id = log_with_reference(
+                "Subflow node failed: {error} (session_id={session_id}, node_name={node_name})",
                 error=str(error),
-                correlation_id=correlation_id,
                 session_id=self.session_id,
                 node_name=self.node_name,
+                exception=error,
             )
             public_message = (
                 f'Subflow node "{self.node_label}" couldn\'t {phase} {self._flow_description()}. '

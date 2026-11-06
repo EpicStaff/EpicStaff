@@ -1,5 +1,6 @@
 import json
 
+from foundation.utils.error_reference import log_with_reference
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -28,11 +29,7 @@ from src.shared.models import (
     PythonCodeData,
 )
 from src.shared.models.storage_scope import StorageCredentials
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
+from src.shared.public_error import PublicErrorMessage, build_public_error_message
 
 # The expression arrives as data and is compiled on its own, so an error in it is reported
 # as the expression's, not as a line of this code. It sees what it saw when it was pasted
@@ -419,19 +416,18 @@ class DecisionTableNodeSubgraph:
                 except Exception as error:
                     # The exception text can quote variables or code, so it stays in the
                     # log; the user sees a reference to that log line.
-                    correlation_id = new_error_correlation_id()
-                    logger.opt(exception=error).error(
-                        "Decision table '{}' failed in condition '{}': {}: {} (correlation_id={})",
+                    reference = log_with_reference(
+                        "Decision table '{}' failed in condition '{}': {}: {}",
                         self.node_name,
                         condition_group.group_name,
                         type(error).__name__,
                         error,
-                        correlation_id,
+                        exception=error,
                     )
                     public_message = build_public_error_message(
-                        PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id
+                        PublicErrorMessage.NODE_EXECUTION_FAILED, reference
                     )
-                    await self._fail(state, writer, error, public_message, correlation_id)
+                    await self._fail(state, writer, error, public_message, reference)
 
                 return state
 

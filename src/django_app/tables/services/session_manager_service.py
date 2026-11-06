@@ -5,6 +5,7 @@ from typing import TypeVar
 from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
+from foundation.utils.error_reference import log_with_reference, new_reference
 from rbac.access.principals import is_pinned_org_principal
 from rbac.governance.organization_retention import effective_retention_days_for_org
 from rbac.identity.api_keys.principals import SystemServicePrincipal
@@ -21,7 +22,6 @@ from src.shared.models import (
     SubGraphNodeData,
     TaskNodeData,
 )
-from src.shared.public_error import new_error_correlation_id
 from src.shared.retention import DataType
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.exceptions import GraphEntryPointException, SubGraphValidationError
@@ -355,7 +355,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         """
         # Drawn before the run starts: the session's reason cites it, and that reason is
         # written inside _start_session, before the traceback is logged here.
-        failure_reference = new_error_correlation_id()
+        failure_reference = new_reference()
         try:
             return self._start_session(
                 graph_id,
@@ -379,10 +379,11 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             raise
         except Exception as error:
-            logger.exception(
-                "Run of graph {} failed to start (correlation_id={})",
+            log_with_reference(
+                "Run of graph {} failed to start",
                 graph_id,
-                failure_reference,
+                reference=failure_reference,
+                exception=error,
             )
             mark_traceback_logged(error)
             raise

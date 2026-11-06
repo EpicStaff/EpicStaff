@@ -4,9 +4,16 @@ Covered here rather than per endpoint: the point of the envelope is that a clien
 the same body whoever raised, so the cases are grouped by who raised rather than by route.
 """
 
-from litestar import status_codes
+import re
+
+from foundation.utils.error_reference import REFERENCE_PATTERN
+from foundation.utils.litestar import error_handler
+from litestar import get, status_codes
+from litestar.exceptions import ValidationException
+from litestar.testing import create_test_client
 
 from tests.builders import make_venv
+from tests.public_errors import logged_with
 
 
 def test_an_unknown_venv_is_a_client_error(client):
@@ -15,7 +22,7 @@ def test_an_unknown_venv_is_a_client_error(client):
     assert response.status_code == status_codes.HTTP_404_NOT_FOUND
     body = response.json()
     assert body["type"] == "client_error"
-    assert [error["code"] for error in body["errors"]] == ["not_found"]
+    assert [error["code"] for error in body["errors"]] == ["venv_not_found"]
     assert body["errors"][0]["attr"] is None
     assert "404" in body["errors"][0]["detail"]
 
@@ -81,6 +88,22 @@ def test_a_body_wrong_in_two_fields_before_parsing_reports_both(client):
     assert [error["attr"] for error in response.json()["errors"]] == ["name", "libs"]
 
 
+def test_a_request_refused_without_field_details_is_still_a_validation_error():
+    @get("/refuse")
+    async def refuse() -> None:
+        raise ValidationException(detail="The request can't be read.")
+
+    with create_test_client(
+        route_handlers=[refuse], exception_handlers=error_handler.get_handlers()
+    ) as test_client:
+        response = test_client.get("/refuse")
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert response.json()["errors"] == [
+        {"code": "validation_error", "detail": "The request can't be read.", "attr": None}
+    ]
+
+
 def test_an_unknown_route_is_a_client_error(client):
     response = client.get("/venvs/1/nothing-here")
 
@@ -88,25 +111,44 @@ def test_an_unknown_route_is_a_client_error(client):
     assert response.json()["type"] == "client_error"
 
 
-def test_a_failure_inside_the_service_is_a_server_error(client, venv_repository):
+def test_a_failure_inside_the_service_cites_a_reference_instead_of_its_text(
+    client, venv_repository, error_logs
+):
     async def explode(*args, **kwargs):
-        raise RuntimeError("the database went away")
+        raise RuntimeError("the database at db.internal:5432 went away")
 
     venv_repository.retrieve = explode
     venv_repository.seed(make_venv())
 
-    response = client.get("/venvs/1")
+    response = client.get("/venvs/1?token=hunter2")
 
     assert response.status_code == status_codes.HTTP_500_INTERNAL_SERVER_ERROR
     body = response.json()
     assert body["type"] == "server_error"
-    assert [error["code"] for error in body["errors"]] == ["unknown"]
+    assert re.fullmatch(REFERENCE_PATTERN, body["reference"])
+    (error,) = body["errors"]
+    assert error["code"] == "internal_error"
+    assert error["detail"] == (
+        "Something went wrong on the server. Try again or contact your administrator "
+        f"(reference: {body['reference']})."
+    )
+    logged = logged_with(body["reference"], error_logs)
+    assert "the database at db.internal:5432 went away" in logged
+    # Only the message line: this test sink keeps loguru's `diagnose`, which prints the
+    # request scope among the frame variables; the service's own sinks turn it off.
+    message_line = logged.splitlines()[0]
+    assert message_line.endswith(
+        f"(reference: {body['reference']}) Unhandled error on GET /venvs/1"
+    )
+    assert "hunter2" not in message_line
 
 
-def test_every_error_answer_has_the_same_two_keys(client):
+def test_every_error_answer_has_the_same_keys_and_no_reference_for_a_caller_error(client):
     for response in (
         client.get("/venvs/404"),
         client.post("/venvs", json={"libs": []}),
         client.get("/venvs/1/nothing-here"),
     ):
-        assert set(response.json()) == {"type", "errors"}
+        body = response.json()
+        assert set(body) == {"type", "errors", "reference"}
+        assert body["reference"] is None

@@ -18,6 +18,7 @@ from litestar import Request, Response, status_codes
 from litestar.exceptions import HTTPException, ValidationException
 
 from foundation.schemas import ErrorDetailSchema, ErrorResponseSchema
+from foundation.utils.error_reference import log_with_reference
 
 __all__ = [
     "create_response",
@@ -39,11 +40,11 @@ def get_handlers() -> dict[type[Exception], Callable[[Request, Exception], Respo
 
 
 def create_response(
-    status_code: int, errors: list[ErrorDetailSchema]
+    status_code: int, errors: list[ErrorDetailSchema], *, reference: str | None = None
 ) -> Response[ErrorResponseSchema]:
     """Wrap the shared error envelope in a Litestar response."""
     return Response(
-        content=ErrorResponseSchema.for_status(status_code, errors),
+        content=ErrorResponseSchema.for_status(status_code, errors, reference=reference),
         status_code=status_code,
     )
 
@@ -106,7 +107,7 @@ def foundation_handle_request_validation_error(
     ]
     return create_response(
         status_code=error.status_code,
-        errors=details or [ErrorDetailSchema(code="invalid", detail=error.detail)],
+        errors=details or [ErrorDetailSchema(code="validation_error", detail=error.detail)],
     )
 
 
@@ -116,6 +117,8 @@ def foundation_handle_http_exception(request: Request, error: HTTPException) -> 
 
     Registered so they keep the status code the framework already chose; without it the
     catch-all below would answer 500 to something Litestar judged to be the caller's fault.
+    `detail` is passed through as it is: whoever raised the exception wrote it on purpose
+    for the caller to read.
     """
     code = HTTPStatus(error.status_code).phrase.lower().replace(" ", "_")
     return create_response(
@@ -126,8 +129,28 @@ def foundation_handle_http_exception(request: Request, error: HTTPException) -> 
 
 @registry(Exception)
 def foundation_handle_server_error(request: Request, error: Exception) -> Response:
-    """Anything no other handler claimed. Registered last so it stays the fallback."""
+    """Anything no other handler claimed. Registered last so it stays the fallback.
+
+    The raw error is logged under a reference and never sent: its text can carry
+    credentials, internal hosts or paths. The query string stays out of the log for the
+    same reason.
+    """
+    reference = log_with_reference(
+        "Unhandled error on {method} {path}",
+        method=request.method,
+        path=request.url.path,
+        exception=error,
+    )
     return create_response(
         status_code=status_codes.HTTP_500_INTERNAL_SERVER_ERROR,
-        errors=[ErrorDetailSchema(code="unknown", detail=str(error))],
+        errors=[
+            ErrorDetailSchema(
+                code="internal_error",
+                detail=(
+                    "Something went wrong on the server. Try again or contact your "
+                    f"administrator (reference: {reference})."
+                ),
+            )
+        ],
+        reference=reference,
     )

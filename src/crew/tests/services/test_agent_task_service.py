@@ -19,7 +19,6 @@ import pytest
 
 from loguru import logger
 
-from services import agent_run_errors
 from services.agent_run_errors import AgentTaskError, AgentTaskTimeoutError
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
@@ -234,7 +233,7 @@ AGENT_SERVICE_NO_ANSWER_TEXT = (
 
 @pytest.fixture
 def fixed_reference(monkeypatch):
-    monkeypatch.setattr(agent_run_errors, "new_error_correlation_id", lambda: REFERENCE)
+    monkeypatch.setattr("foundation.utils.error_reference.new_reference", lambda: REFERENCE)
 
 
 @pytest.fixture

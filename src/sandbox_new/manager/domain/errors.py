@@ -1,5 +1,6 @@
 import re
 from string import Formatter
+from typing import ClassVar
 
 __all__ = [
     "ExecutionNotFoundError",
@@ -13,8 +14,13 @@ __all__ = [
 
 
 class BaseError(Exception):
-    """Base class for domain errors"""
+    """Base class for domain errors.
 
+    Every subclass sets ``code``: the snake_case name a client branches on, so it stays
+    stable across releases even when the wording of the message changes.
+    """
+
+    code: ClassVar[str]
     default_message: str = ""
 
     def __init__(self, message: str = "", *args, **format_kwargs) -> None:
@@ -40,22 +46,27 @@ class BaseError(Exception):
 
 
 class VenvNotFoundError(BaseError):
+    code = "venv_not_found"
     default_message: str = "Venv(id={venv_id}) not found."
 
 
 class UVBuildError(BaseError):
+    code = "package_install_failed"
     default_message: str = "Couldn't install the libraries. Check the library names and versions."
 
 
 class UVPackageNotFoundError(BaseError):
+    code = "package_not_found"
     default_message: str = "Package '{package}' does not exist."
 
 
 class UVVersionNotFoundError(BaseError):
+    code = "package_version_not_found"
     default_message: str = "Package '{package}' has no version matching '{specification}'."
 
 
 class UVDependencyResolutionError(BaseError):
+    code = "package_dependency_conflict"
     default_message: str = (
         "Package '{package}' requires versions of its dependencies "
         "that conflict with the other requested packages."
@@ -63,6 +74,7 @@ class UVDependencyResolutionError(BaseError):
 
 
 class ExecutionNotFoundError(BaseError):
+    code = "execution_not_found"
     default_message: str = "Execution(id={execution_id}) not found."
 
     def __init__(self, execution_id: str) -> None:
@@ -76,6 +88,7 @@ class SandboxOverloadedError(BaseError):
         retry_after: Seconds the caller should wait before re-posting.
     """
 
+    code = "sandbox_overloaded"
     default_message: str = "The sandbox is full; retry later."
 
     def __init__(self, *, retry_after: int) -> None:

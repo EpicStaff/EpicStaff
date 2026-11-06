@@ -612,15 +612,7 @@ FIXED_REFERENCE = "0a1b2c3d4e5f"
 @pytest.fixture
 def fixed_correlation_id(monkeypatch):
     """Give every new reference a node or the sandbox call cites the value FIXED_REFERENCE."""
-    monkeypatch.setattr(
-        "services.graph.nodes.base_node.new_error_correlation_id", lambda: FIXED_REFERENCE
-    )
-    monkeypatch.setattr(
-        "services.run_python_code_service.new_error_correlation_id", lambda: FIXED_REFERENCE
-    )
-    monkeypatch.setattr(
-        "services.agent_run_errors.new_error_correlation_id", lambda: FIXED_REFERENCE
-    )
+    monkeypatch.setattr("foundation.utils.error_reference.new_reference", lambda: FIXED_REFERENCE)
 
 
 class SandboxDownExecutor:

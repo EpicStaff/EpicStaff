@@ -103,7 +103,7 @@ def test_failure_before_publish_marks_session_error(graph, session_manager, monk
 
     monkeypatch.setattr(session_manager.redis_service, "publish_session_data", fail)
     monkeypatch.setattr(
-        "tables.services.session_manager_service.new_error_correlation_id", lambda: REFERENCE
+        "tables.services.session_manager_service.new_reference", lambda: REFERENCE
     )
     records: list[dict] = []
     sink_id = logger.add(lambda message: records.append(message.record), level="TRACE")
@@ -124,7 +124,7 @@ def test_failure_before_publish_marks_session_error(graph, session_manager, monk
     assert session.status_updated_at >= session.created_at
     # A caller other than the view (a trigger, the scheduler) relies on this log line.
     [traceback_record] = [record for record in records if record["exception"] is not None]
-    assert f"correlation_id={REFERENCE}" in traceback_record["message"]
+    assert traceback_record["message"].startswith(f"(reference: {REFERENCE}) ")
 
 
 @pytest.mark.django_db

@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from foundation.utils.error_reference import log_with_reference
 from loguru import logger
 from services.agent_run_errors import llm_error_text
 from services.graph.exceptions import PublicNodeError
@@ -19,7 +20,6 @@ from services.run_python_code_service import CORRELATION_ID_KEY, is_result_timeo
 from src.shared.llm_error_kind import classify_llm_error
 from src.shared.models import LLMData
 from src.shared.models.agent_service import LLMErrorKind
-from src.shared.public_error import new_error_correlation_id
 
 PRE_COMPUTATION_SUBJECT = "Pre-computation code"
 POST_COMPUTATION_SUBJECT = "Post-computation code"
@@ -211,12 +211,10 @@ def unreadable_result_error(subject: str, result_data: Any) -> DecisionTableErro
 
     The raw result can hold the flow's variables, so it goes only to the log.
     """
-    reference = new_error_correlation_id()
-    logger.error(
-        "{subject}: unreadable code result {result_data!r} (correlation_id={correlation_id})",
+    reference = log_with_reference(
+        "{subject}: unreadable code result {result_data!r}",
         subject=subject,
         result_data=result_data,
-        correlation_id=reference,
     )
     return DecisionTableError(
         _SERVER_ERROR_TEXT.format(subject=subject, reference=reference),
@@ -300,21 +298,16 @@ def prompt_llm_error(prompt_id: str, llm: LLMData, error: Exception) -> Decision
             return DecisionTableError(prompt_text.format(subject=subject, model=llm.config.model))
         return DecisionTableError(f"{subject}: {llm_error_text(kind, llm)}")
 
-    reference = new_error_correlation_id()
     if kind is None:
-        logger.opt(exception=error).error(
-            "{subject}: LLM call failed (correlation_id={correlation_id})",
-            subject=subject,
-            correlation_id=reference,
+        reference = log_with_reference(
+            "{subject}: LLM call failed", subject=subject, exception=error
         )
     else:
-        logger.error(
-            "{subject}: LLM call failed: {error_class}: <redacted len={length}> "
-            "(correlation_id={correlation_id})",
+        reference = log_with_reference(
+            "{subject}: LLM call failed: {error_class}: <redacted len={length}>",
             subject=subject,
             error_class=type(error).__name__,
             length=len(str(error)),
-            correlation_id=reference,
         )
     return DecisionTableError(
         f"{subject}: {llm_error_text(LLMErrorKind.UNKNOWN, llm, reference)}",

@@ -75,7 +75,7 @@ def _tracebacks(records: list[dict]) -> list[dict]:
 @pytest.fixture
 def fixed_reference(monkeypatch):
     monkeypatch.setattr(
-        "tables.services.session_manager_service.new_error_correlation_id", lambda: REFERENCE
+        "tables.services.session_manager_service.new_reference", lambda: REFERENCE
     )
 
 
@@ -409,7 +409,7 @@ def test_unexpected_failure_logs_its_traceback_once(
     assert stdlib_tracebacks == []
     [traceback_record] = _tracebacks(captured_log_records)
     # The reference a stored session reason cites finds this line.
-    assert f"correlation_id={REFERENCE}" in traceback_record["message"]
+    assert traceback_record["message"].startswith(f"(reference: {REFERENCE}) ")
     # The request's status line is still logged, once, without the traceback.
     assert [record.getMessage() for record in caplog.records if record.name == "django.request"] == [
         "Internal Server Error: /api/run-session/"

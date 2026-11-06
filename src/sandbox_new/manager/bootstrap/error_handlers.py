@@ -13,7 +13,7 @@ def handle_not_found_error(
 ) -> Response:
     return error_handler.create_response(
         status_code=status_codes.HTTP_404_NOT_FOUND,
-        errors=[ErrorDetailSchema(code="not_found", detail=str(error))],
+        errors=[ErrorDetailSchema(code=error.code, detail=str(error))],
     )
 
 
@@ -24,7 +24,7 @@ def handle_overloaded_error(request: Request, error: errors.SandboxOverloadedErr
     return Response(
         content=ErrorResponseSchema.for_status(
             status_codes.HTTP_503_SERVICE_UNAVAILABLE,
-            [ErrorDetailSchema(code="overloaded", detail=str(error))],
+            [ErrorDetailSchema(code=error.code, detail=str(error))],
         ),
         status_code=status_codes.HTTP_503_SERVICE_UNAVAILABLE,
         headers={"Retry-After": str(error.retry_after)},

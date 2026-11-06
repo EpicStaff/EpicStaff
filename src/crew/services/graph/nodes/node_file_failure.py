@@ -14,9 +14,9 @@ from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Any
 
+from foundation.utils.error_reference import log_with_reference
 from loguru import logger
 from services.graph.exceptions import NodeFileError
-from src.shared.public_error import new_error_correlation_id
 
 
 class NodeFileFailureKind(StrEnum):
@@ -113,16 +113,14 @@ def node_file_error(
         "(session_id={session_id}, kind={kind})"
     )
     if kind is NodeFileFailureKind.STORAGE_UNAVAILABLE:
-        reference = new_error_correlation_id()
-        logger.error(
-            log_text + " (correlation_id={reference})",
+        reference = log_with_reference(
+            log_text,
             kind_name=kind_name,
             node_label=node_label,
             path=path,
             detail=detail,
             session_id=session_id,
             kind=kind,
-            reference=reference,
         )
     else:
         logger.warning(

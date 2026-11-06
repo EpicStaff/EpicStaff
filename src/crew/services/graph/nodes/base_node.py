@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Literal, NoReturn
 
+from foundation.utils.error_reference import log_with_reference
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.graph_models import GraphMessage
@@ -10,11 +11,7 @@ from services.graph.events import StopEvent
 from services.graph.exceptions import NodeExecutionError, PublicNodeError, StopSession
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.shared.bench_log import BENCH_LEVEL
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
+from src.shared.public_error import PublicErrorMessage, build_public_error_message
 from utils import map_variables_to_input, set_output_variables
 from utils.node_label import node_label_from_runtime_name
 
@@ -164,14 +161,12 @@ class BaseNode(ABC):
             public_message = str(error)
             correlation_id = error.correlation_id
         else:
-            correlation_id = new_error_correlation_id()
-            logger.opt(exception=error).error(
-                "Node execution failed: {error} (correlation_id={correlation_id}, "
-                "session_id={session_id}, node_name={node_name})",
+            correlation_id = log_with_reference(
+                "Node execution failed: {error} (session_id={session_id}, node_name={node_name})",
                 error=str(error),
-                correlation_id=correlation_id,
                 session_id=self.session_id,
                 node_name=self.node_name,
+                exception=error,
             )
             public_message = build_public_error_message(
                 PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id

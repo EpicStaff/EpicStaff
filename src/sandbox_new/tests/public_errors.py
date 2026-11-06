@@ -2,13 +2,15 @@
 
 import re
 
+from foundation.utils.error_reference import REFERENCE_PATTERN
+
 SERVER_ERROR = re.compile(
     r"The code couldn't run because of a server error\. Try again or contact your "
-    r"administrator \(reference: (?P<reference>[0-9a-f]{12})\)\."
+    rf"administrator \(reference: (?P<reference>{REFERENCE_PATTERN})\)\."
 )
 UNSAFE_TO_RUN = re.compile(
     r"This server can't run code safely right now, so the code wasn't run\. Contact your "
-    r"administrator \(reference: (?P<reference>[0-9a-f]{12})\)\."
+    rf"administrator \(reference: (?P<reference>{REFERENCE_PATTERN})\)\."
 )
 
 

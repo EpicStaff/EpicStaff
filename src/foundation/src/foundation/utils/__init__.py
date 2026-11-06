@@ -1,1 +1,1 @@
-"""Framework utilities: environment config, humanize parsing, task scheduling, Litestar helpers."""
+"""Framework utilities: environment config, error references, humanize parsing, task scheduling, Litestar helpers."""

@@ -7,6 +7,7 @@ anything in it leaves the service.
 from unittest.mock import AsyncMock
 
 import pytest
+from loguru import logger
 
 from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
 from tool_executors.knowledge_tool_executor import KnowledgeSearchToolExecutor
@@ -35,11 +36,20 @@ async def test_failed_search_result_omits_exception_text():
     assert PUBLIC_ERROR_REFERENCE.search(result)
 
 
+@pytest.fixture
+def error_records():
+    records: list[dict] = []
+    sink_id = logger.add(lambda message: records.append(message.record), level="ERROR")
+    yield records
+    logger.remove(sink_id)
+
+
 @pytest.mark.asyncio
-async def test_failed_search_logs_detail_under_the_returned_correlation_id(captured_log_messages):
+async def test_failed_search_logs_the_raw_error_at_error_under_the_cited_reference(error_records):
     result = await _failing_executor().execute(query="q")
 
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(result).group(1)
-    matching_logs = [message for message in captured_log_messages if correlation_id in message]
-    assert len(matching_logs) == 1
-    assert SECRET_SENTINEL in matching_logs[0]
+    reference = PUBLIC_ERROR_REFERENCE.search(result).group(1)
+    assert SECRET_SENTINEL not in result
+    (record,) = error_records
+    assert record["message"].startswith(f"(reference: {reference}) Knowledge search failed")
+    assert SECRET_SENTINEL in record["message"]

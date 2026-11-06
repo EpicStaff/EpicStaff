@@ -19,7 +19,6 @@ from clients.sandbox import SandboxClient
 from services.graph.events import StopEvent
 from loguru import logger
 
-from services import run_python_code_service as run_python_code_service_module
 from services.graph.exceptions import StopSession
 from services.run_python_code_service import STOP_CHECK_INTERVAL_S, RunPythonCodeService
 from tests.services.conftest import REJECTED_RETRY_AFTER_S, SANDBOX_BASE_URL
@@ -37,9 +36,7 @@ def fast_status_checks(monkeypatch):
 
 @pytest.fixture
 def fixed_reference(monkeypatch):
-    monkeypatch.setattr(
-        run_python_code_service_module, "new_error_correlation_id", lambda: REFERENCE
-    )
+    monkeypatch.setattr("foundation.utils.error_reference.new_reference", lambda: REFERENCE)
 
 
 @pytest.fixture
@@ -55,7 +52,7 @@ def assert_failed_under_the_reference(result: dict, logs: list[str], reason: str
     assert result["stderr"] == f"Node execution failed (reference: {REFERENCE})"
     assert result["correlation_id"] == REFERENCE
     assert result["result_data"] is None
-    [logged] = [record for record in logs if REFERENCE in record]
+    [logged] = [record for record in logs if f"(reference: {REFERENCE})" in record]
     assert reason in logged
 
 

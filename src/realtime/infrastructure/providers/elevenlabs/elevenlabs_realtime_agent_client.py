@@ -8,12 +8,9 @@ from typing import Any
 import websockets
 from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
+from foundation.utils.error_reference import log_with_reference
 from loguru import logger
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
+from src.shared.public_error import PublicErrorMessage, build_public_error_message
 from starlette.websockets import WebSocketDisconnect
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
@@ -298,10 +295,11 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                 call_arguments=tool_arguments,
             )
         except Exception as e:
-            correlation_id = new_error_correlation_id()
-            logger.exception(f"Tool execution failed [correlation_id={correlation_id}]: {e!s}")
+            reference = log_with_reference(
+                "ElevenLabs: Tool execution failed: {error}", error=str(e), exception=e
+            )
             tool_result = build_public_error_message(
-                PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
+                PublicErrorMessage.TOOL_EXECUTION_FAILED, reference
             )
         await self.send_function_result(call_id, tool_result)
 

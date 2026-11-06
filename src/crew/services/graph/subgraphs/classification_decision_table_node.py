@@ -3,6 +3,7 @@ import json
 import re
 from typing import Any
 
+from foundation.utils.error_reference import log_with_reference
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -42,11 +43,7 @@ from src.shared.models.graph_nodes import (
 )
 from src.shared.models.storage_scope import StorageCredentials
 from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SYSTEM_ONE_QUESTIONS_ADAPTER
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
+from src.shared.public_error import PublicErrorMessage, build_public_error_message
 from src.shared.system_one.adapter import SystemOneError, evaluate
 from src.shared.system_one.json_llm import run_json_llm
 
@@ -645,20 +642,18 @@ def main(**kwargs) -> dict:
         Returns:
             The message to show, and its reference.
         """
-        correlation_id = new_error_correlation_id()
-        logger.opt(exception=error).error(
-            "Classification decision table '{}' failed with an unexpected error in {}: "
-            "{}: {} (correlation_id={})",
+        reference = log_with_reference(
+            "Classification decision table '{}' failed with an unexpected error in {}: {}: {}",
             self.node_name,
             where,
             type(error).__name__,
             error,
-            correlation_id,
+            exception=error,
         )
         public_message = build_public_error_message(
-            PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id
+            PublicErrorMessage.NODE_EXECUTION_FAILED, reference
         )
-        return public_message, correlation_id
+        return public_message, reference
 
     async def _show_error_and_route(
         self,

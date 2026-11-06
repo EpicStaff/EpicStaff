@@ -7,6 +7,7 @@ from typing import Any
 import settings
 from clients.sandbox import SandboxClient
 from foundation.transport.http import ClientError
+from foundation.utils.error_reference import log_with_reference
 from loguru import logger
 from models.state import State
 from pydantic import ValidationError
@@ -15,11 +16,7 @@ from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeResultData, ExecutionRequest, PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
+from src.shared.public_error import PublicErrorMessage, build_public_error_message
 from src.shared.redis_keys import crew_code_result_channel
 from src.shared.sandbox_errors import (
     SandboxError,
@@ -171,24 +168,20 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                     session_id=python_code_data.session_id,
                     execution_id=execution_id,
                 )
-            correlation_id = new_error_correlation_id()
-            logger.error(
+            reference = log_with_reference(
                 "Code execution {execution_id} failed: {error_type}: {error} "
-                "(correlation_id={correlation_id}, session_id={session_id})",
+                "(session_id={session_id})",
                 execution_id=execution_id,
                 error_type=type(error).__name__,
                 error=str(error),
-                correlation_id=correlation_id,
                 session_id=python_code_data.session_id,
             )
             failed_result = _failed_result(
                 execution_id,
                 1,
-                build_public_error_message(
-                    PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id
-                ),
+                build_public_error_message(PublicErrorMessage.NODE_EXECUTION_FAILED, reference),
             )
-            failed_result[CORRELATION_ID_KEY] = correlation_id
+            failed_result[CORRELATION_ID_KEY] = reference
             return failed_result
         finally:
             self._pending_results.pop(execution_id, None)

@@ -6,6 +6,7 @@ from typing import Any, Literal
 from clients.errors import ClientError, ClientValidationError
 from clients.key_value import KeyValueClient
 from dotdict import DotDict
+from foundation.utils.error_reference import log_with_reference
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.graph_models import KeyValueMessageData, KeyValueMessageEntry
@@ -13,7 +14,6 @@ from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import KeyValueNodeError
 from services.graph.nodes.base_node import BaseNode
-from src.shared.public_error import new_error_correlation_id
 from utils import map_variables_to_input
 
 MAX_KEY_LENGTH = 512
@@ -117,20 +117,18 @@ class KeyValueNode(BaseNode):
         except ClientError as e:
             # Unreachable, timed out, failed or refused crew itself (401, 403, 429): the detail
             # can be Django's error page or about crew's credentials, so only the log gets it.
-            correlation_id = new_error_correlation_id()
-            logger.error(
-                "Key-Value call failed: {error_type}: {detail} (correlation_id={correlation_id}, "
-                "session_id={session_id}, node_name={node_name})",
+            reference = log_with_reference(
+                "Key-Value call failed: {error_type}: {detail} "
+                "(session_id={session_id}, node_name={node_name})",
                 error_type=type(e).__name__,
                 detail=e.detail,
-                correlation_id=correlation_id,
                 session_id=self.session_id,
                 node_name=self.node_name,
             )
             raise KeyValueNodeError(
                 f"Key-Value node '{self.node_label}' {self.mode} failed. "
-                f"Try again or contact your administrator (reference: {correlation_id}).",
-                correlation_id=correlation_id,
+                f"Try again or contact your administrator (reference: {reference}).",
+                correlation_id=reference,
             ) from e
         self.custom_session_message_writer.add_custom_message(
             session_id=self.session_id,

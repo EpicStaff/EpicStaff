@@ -13,10 +13,8 @@ from dotdict import DotDict
 from loguru import logger
 
 from models.graph_models import GraphMessage
-from services import run_python_code_service as run_python_code_service_module
 from services.graph.events import StopEvent
 from services.graph.exceptions import NodeExecutionError
-from services.graph.nodes import base_node
 from services.graph.nodes.python_node import PythonNode
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
 from src.shared.models import CodeResultData
@@ -30,8 +28,7 @@ RAW_SANDBOX_BODY = "<html>500 at sandbox-internal:8000, venv /opt/venvs/org-7</h
 
 @pytest.fixture
 def fixed_reference(monkeypatch):
-    for module in (run_python_code_service_module, base_node):
-        monkeypatch.setattr(module, "new_error_correlation_id", lambda: REFERENCE)
+    monkeypatch.setattr("foundation.utils.error_reference.new_reference", lambda: REFERENCE)
 
 
 @pytest.fixture
@@ -117,7 +114,9 @@ async def test_sandbox_failure_shows_a_reference_and_logs_the_raw_reason_under_i
     assert error.correlation_id == REFERENCE
     for message in messages:
         assert RAW_SANDBOX_BODY not in json.dumps(message.message_data, default=vars)
-    [logged] = [record for record in captured_error_logs if REFERENCE in record]
+    [logged] = [
+        record for record in captured_error_logs if f"(reference: {REFERENCE})" in record
+    ]
     assert RAW_SANDBOX_BODY in logged
 
 

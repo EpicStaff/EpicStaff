@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from dotdict import DotDict
+from foundation.utils.error_reference import REFERENCE_PATTERN
 from loguru import logger
 
 from models.graph_models import GraphMessage, PythonMessageData
@@ -28,7 +29,7 @@ pytestmark = pytest.mark.asyncio
 RAW_STORAGE_TEXT = "minio-internal.epicstaff.local:9000"
 RAW_AUDIO_TEXT = "/tmp/tmpk3j2x9ab"
 RAW_LIBRARY_TEXT = "/opt/sandbox/venvs/default/site-packages"
-REFERENCE_PATTERN = r"\(reference: ([0-9a-f]{12})\)\.$"
+CITED_REFERENCE = rf"\(reference: ({REFERENCE_PATTERN})\)\.$"
 
 STUB_MODULES = {
     "boto3/__init__.py": f"""
@@ -215,14 +216,19 @@ async def test_file_extractor_storage_failure_cites_a_reference_and_logs_the_raw
     )
 
     (card,) = cards
-    reference = re.search(REFERENCE_PATTERN, card).group(1)
+    reference = re.search(CITED_REFERENCE, card).group(1)
     assert card == (
         'File Extractor node "Extract PDF #2" couldn\'t reach file storage. '
         f"Try again or contact your administrator (reference: {reference})."
     )
     assert session_error(error) == f"The flow failed. Try again or contact your administrator (reference: {reference})."
     assert [result["stderr"] for result in shown_results] == [card]
-    (logged,) = [record for record in captured_logs if f"correlation_id={reference}" in record]
+    # The session's WARNING repeats the user text, which cites the reference too.
+    (logged,) = [
+        record
+        for record in captured_logs
+        if record.record["level"].name == "ERROR" and f"(reference: {reference})" in record
+    ]
     assert ("Storage error" in logged) or ("Missing required environment variables" in logged)
 
 

@@ -8,15 +8,12 @@ the error class and the text's length.
 
 import re
 
+from foundation.utils.error_reference import log_with_reference
 from loguru import logger
 from services.graph.exceptions import PublicNodeError
 from src.shared.models import AgentDefinitionData, LLMData
 from src.shared.models.agent_service import FailedLLM, LLMErrorKind, StopReason
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
+from src.shared.public_error import PublicErrorMessage, build_public_error_message
 
 
 class AgentTaskError(PublicNodeError):
@@ -84,12 +81,10 @@ def agent_service_no_answer_error(
     Logs the wait under a new reference, which the message cites and the failed session
     repeats.
     """
-    reference = new_error_correlation_id()
-    logger.error(
+    reference = log_with_reference(
         "Agent service didn't answer within {timeout_s}s "
-        "(correlation_id={correlation_id}, agent_correlation_id={agent_correlation_id})",
+        "(agent_correlation_id={agent_correlation_id})",
         timeout_s=timeout_s,
-        correlation_id=reference,
         agent_correlation_id=run_correlation_id,
     )
     return AgentTaskTimeoutError(
@@ -206,15 +201,11 @@ def _log_explained_failure(reason: str, run_correlation_id: str) -> None:
 
 
 def _log_unexplained_failure(raw_error: object, run_correlation_id: str) -> str:
-    reference = new_error_correlation_id()
-    logger.error(
-        "Agent run failed: {error} (correlation_id={correlation_id}, "
-        "agent_correlation_id={agent_correlation_id})",
+    return log_with_reference(
+        "Agent run failed: {error} (agent_correlation_id={agent_correlation_id})",
         error=_describe_for_log(raw_error),
-        correlation_id=reference,
         agent_correlation_id=run_correlation_id,
     )
-    return reference
 
 
 def _describe_for_log(raw_error: object) -> str:
