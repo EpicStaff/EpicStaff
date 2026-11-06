@@ -129,6 +129,24 @@ def test_a_write_that_does_not_fit_even_with_the_bin_is_refused_before_anything_
     assert capsys.readouterr().err == ""
 
 
+def test_the_refusal_names_both_sizes_in_readable_units_when_they_differ(monkeypatch, storage):
+    limit(monkeypatch, free=1024 * 1024)
+
+    with pytest.raises(StorageQuotaExceededError) as error:
+        storage.write_bytes("a.bin", b"x" * (3 * 1024 * 1024))
+
+    assert "needs 3.0 MB but only 1.0 MB can be made available" in str(error.value)
+
+
+def test_the_refusal_gives_exact_bytes_when_both_sizes_would_read_the_same(monkeypatch, storage):
+    limit(monkeypatch, free=5_925_784)
+
+    with pytest.raises(StorageQuotaExceededError) as error:
+        storage.write_bytes("a.bin", b"x" * 5_927_832)
+
+    assert "needs 5,927,832 bytes but only 5,925,784 bytes can be made available" in str(error.value)
+
+
 def test_the_refusal_is_not_a_size_limit_error_so_oversize_handlers_do_not_catch_it():
     from epicstaff_storage import StorageSizeLimitError
 

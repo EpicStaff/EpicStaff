@@ -398,10 +398,14 @@ class EpicStaffStorage:
                 f"Organization storage quota reached: no storage is left, so '{path}' was not "
                 "written. Delete files to free space."
             )
+        needed, available = _format_size(needed_bytes), _format_size(available_bytes)
+        # A write that misses by a few bytes would otherwise read "needs 5.7 MB but only
+        # 5.7 MB can be made available".
+        if needed == available:
+            needed, available = f"{needed_bytes:,} bytes", f"{available_bytes:,} bytes"
         return StorageQuotaExceededError(
-            f"Organization storage quota reached: writing '{path}' needs "
-            f"{_format_size(needed_bytes)} but only {_format_size(available_bytes)} can be "
-            "made available. Nothing was written. Delete files to free space."
+            f"Organization storage quota reached: writing '{path}' needs {needed} but only "
+            f"{available} can be made available. Nothing was written. Delete files to free space."
         )
 
     def read(self, path: str) -> str:
