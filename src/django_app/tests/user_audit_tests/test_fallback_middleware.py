@@ -155,15 +155,13 @@ def test_fallback_skips_excluded_views(
     assert sent_events == []
 
 
-def test_fallback_records_a_view_it_does_not_exclude(
+def test_fallback_records_nothing_for_a_change_that_names_no_target(
     admin_acme, acme, sent_events, django_capture_on_commit_callbacks
 ):
     with django_capture_on_commit_callbacks(execute=True):
         _serve(_checked_request(admin_acme, acme.id, method="delete"), view_class=_PlainChangeView)
 
-    [event] = sent_events
-    assert (event.action, event.org_id, event.route) == ("deleted", acme.id, "DELETE api/things/")
-    assert event.target_type is None
+    assert sent_events == []
 
 
 @pytest.mark.parametrize(
@@ -178,11 +176,13 @@ def test_fallback_records_a_view_it_does_not_exclude(
 def test_fallback_records_a_generic_viewset_action_as_the_recorder_verb(
     method, drf_action, expected_action, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
 ):
+    collection = SourceCollection.objects.create(org=acme, collection_name="Contracts")
     with django_capture_on_commit_callbacks(execute=True):
         _serve(
             _checked_request(admin_acme, acme.id, method=method),
             view_class=_CollectionViewSet,
             actions={method: drf_action},
+            kwargs={"pk": str(collection.pk)},
         )
 
     [event] = sent_events
@@ -219,12 +219,14 @@ def test_fallback_labels_a_collection_by_its_collection_name(
 def test_fallback_keeps_a_custom_action_name(
     admin_acme, acme, sent_events, django_capture_on_commit_callbacks
 ):
+    collection = SourceCollection.objects.create(org=acme, collection_name="Contracts")
     with django_capture_on_commit_callbacks(execute=True):
         _serve(
             _checked_request(admin_acme, acme.id),
             view_class=_CollectionViewSet,
             actions={"post": "reindex"},
-            route="api/^source-collections/reindex/$",
+            route="api/^source-collections/(?P<pk>[^/.]+)/reindex/$",
+            kwargs={"pk": str(collection.pk)},
         )
 
     [event] = sent_events
@@ -274,7 +276,7 @@ def test_fallback_names_an_untracked_generic_create_by_the_id_its_response_names
 
 
 @pytest.mark.parametrize("response_data", ["other-org-row", {"name": "no id"}, None])
-def test_fallback_names_no_create_target_it_cannot_find_in_the_org(
+def test_fallback_records_no_create_whose_target_it_cannot_find_in_the_org(
     response_data, admin_acme, acme, beta, sent_events, django_capture_on_commit_callbacks
 ):
     if response_data == "other-org-row":
@@ -295,13 +297,7 @@ def test_fallback_names_no_create_target_it_cannot_find_in_the_org(
     with django_capture_on_commit_callbacks(execute=True):
         UserActionMiddleware(get_response)(_checked_request(admin_acme, acme.id))
 
-    [event] = sent_events
-    assert (event.action, event.target_type, event.target_id, event.target_name) == (
-        "created",
-        None,
-        None,
-        None,
-    )
+    assert sent_events == []
 
 
 @pytest.fixture
@@ -382,10 +378,18 @@ def test_fallback_never_resolves_a_child_row_of_another_org(
     with django_capture_on_commit_callbacks(execute=True):
         UserActionMiddleware(get_response)(_checked_request(admin_acme, acme.id))
 
-    expected_target = (
-        ("voice settings", str(beta_agent.id), None) if named_by == "url" else (None, None, None)
-    )
-    assert _voice_settings_event(sent_events)[1:] == (*expected_target, None, None, None)
+    if named_by == "url":
+        # The URL still names the row by id; only its name and parent stay unread.
+        assert _voice_settings_event(sent_events)[1:] == (
+            "voice settings",
+            str(beta_agent.id),
+            None,
+            None,
+            None,
+            None,
+        )
+    else:
+        assert sent_events == []
 
 
 def test_fallback_ignores_unverified_org_header(
@@ -420,20 +424,6 @@ def test_fallback_never_labels_a_target_from_another_org(
         "flow",
         str(other_org_flow.pk),
         None,
-    )
-
-
-def test_fallback_change_outside_any_org_fans_out_under_the_profile_prefix(
-    admin_in_two_orgs, acme, beta, sent_events, django_capture_on_commit_callbacks
-):
-    request = RequestFactory().post("/api/profile/things/")
-    request.user = admin_in_two_orgs
-
-    with django_capture_on_commit_callbacks(execute=True):
-        _serve(request, view_class=_PlainChangeView, route="api/profile/things/")
-
-    assert sorted((event.action, event.org_id, event.route) for event in sent_events) == sorted(
-        [("created", acme.id, "POST api/profile/things/"), ("created", beta.id, "POST api/profile/things/")]
     )
 
 

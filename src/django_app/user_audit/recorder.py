@@ -6,13 +6,19 @@ from django.utils import timezone
 from loguru import logger
 from rbac.governance.organization_retention import effective_retention_days_for_org
 from rbac.models import OrganizationUser
-from src.shared.models import UserActionEvent
+from src.shared.models import UserAction, UserActionEvent
 from src.shared.retention import DataType
 
 from user_audit.actor import Actor, actor_from_request
 from user_audit.context import UserActionContext, current_context
 from user_audit.sender import get_user_audit_sender
 from user_audit.targets import TargetDescription, describe, target_parent
+
+# The only actions recorded without a target: the user themselves is the subject. Every
+# other action must name what it changed, or it is not recorded at all.
+TARGETLESS_ACTIONS = frozenset(
+    {UserAction.SIGNED_IN, UserAction.SIGN_IN_FAILED, UserAction.SIGNED_OUT}
+)
 
 
 def record_user_action(
@@ -31,7 +37,9 @@ def record_user_action(
     Best-effort: never raises into the caller. Records nothing while the switch is off,
     or when there is no actor: none was passed and the current request (if any) was not
     made by a user or the system API key. So management commands and consumers, which
-    run outside a request, record nothing unless they name the actor.
+    run outside a request, record nothing unless they name the actor. Records nothing,
+    and logs a warning, when the action needs a target and none was given
+    (`TARGETLESS_ACTIONS`).
 
     Args:
         org_id: The resource's org, or the active org `OrgContextService` resolved for
@@ -49,10 +57,17 @@ def record_user_action(
             actor = actor_from_request(context.request)
         if actor is None:
             return
+        target_description = target_description or (describe(target) if target else None)
+        if target_description is None and action not in TARGETLESS_ACTIONS:
+            # A record that names no target tells the reader nothing; the warning names the
+            # code path that still needs a hook.
+            logger.warning(
+                "Dropping user action {} in org {} with no target (route {})", action, org_id, route
+            )
+            return
         if context is not None:
             context.recorded = True
 
-        target_description = target_description or (describe(target) if target else None)
         if parent is None and target is not None:
             parent = target_parent(target)
         parent_description = describe(parent) if parent is not None else None

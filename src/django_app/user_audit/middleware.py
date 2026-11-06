@@ -44,7 +44,7 @@ from utils.request_target import (
 from user_audit.actor import actor_from_request
 from user_audit.context import UserActionContext, user_action_context
 from user_audit.read_only import handler_reads_only
-from user_audit.recorder import record_for_user_orgs, record_user_action
+from user_audit.recorder import record_user_action
 from user_audit.targets import TargetDescription, target_type
 
 # A request answered with a status at or above this changed nothing worth recording.
@@ -77,8 +77,6 @@ FALLBACK_EXCLUDED_VIEWS = frozenset(
 )
 # DRF actions that change only the caller's own preferences, never anything the org shares.
 FALLBACK_EXCLUDED_ACTIONS = frozenset({"favorite"})
-# Requests that act in no single org, recorded in every org the user is a member of.
-ORGLESS_FAN_OUT_PATH_PREFIXES = ("/api/profile/",)
 # The action recorded for a view with no DRF action name for the method.
 METHOD_ACTIONS = {"POST": "create", "PUT": "update", "PATCH": "update", "DELETE": "destroy"}
 # DRF's generic action names, recorded as the verbs the recorder's own records use, so one
@@ -188,8 +186,8 @@ def _record_unhandled_change(
     Skips a handler marked `reads_only`, besides the excluded views and actions.
 
     Best-effort: never raises. The record goes to the org `OrgContextService` checked for
-    the request; a request with no checked org is recorded only under
-    `ORGLESS_FAN_OUT_PATH_PREFIXES`, in each of the user's orgs, and otherwise not at all.
+    the request; a request with no checked org is not recorded, nor is one whose target
+    neither its URL nor its create response names.
 
     Args:
         action: The view's DRF action name for the method, if it has one.
@@ -230,8 +228,6 @@ def _record_unhandled_change(
                 route=route_text,
                 actor=actor,
             )
-        elif request.path.startswith(ORGLESS_FAN_OUT_PATH_PREFIXES):
-            record_for_user_orgs(action=action, actor=actor, route=route_text)
     except Exception:
         logger.exception("Failed to record {} {} as a user action", request.method, request.path)
 

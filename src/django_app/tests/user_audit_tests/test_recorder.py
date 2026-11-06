@@ -369,3 +369,42 @@ def test_failed_record_number_read_is_logged_and_leaves_the_callers_transaction_
 
     assert sent_events == []
     assert any("Failed to record user action updated" in error for error in errors)
+
+
+@pytest.mark.django_db
+def test_an_action_with_no_target_is_dropped_with_a_warning(
+    acme, admin_acme, sent_events, django_capture_on_commit_callbacks
+):
+    warnings = []
+    sink_id = logger.add(lambda message: warnings.append(str(message)), level="WARNING")
+    try:
+        with user_action_context(request_as(admin_acme)) as context:
+            with django_capture_on_commit_callbacks(execute=True):
+                record_user_action(
+                    action=UserAction.CREATED, org_id=acme.id, route="POST api/things/"
+                )
+    finally:
+        logger.remove(sink_id)
+
+    assert sent_events == []
+    assert not context.recorded
+    assert any("created" in warning and "POST api/things/" in warning for warning in warnings)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "action", [UserAction.SIGNED_IN, UserAction.SIGN_IN_FAILED, UserAction.SIGNED_OUT]
+)
+def test_a_sign_in_action_is_recorded_with_no_target(
+    action, acme, admin_acme, sent_events, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        record_user_action(
+            action=action,
+            org_id=acme.id,
+            actor=Actor(user_id=admin_acme.pk, email=admin_acme.email, api_key_name=None),
+        )
+
+    (event,) = sent_events
+    assert event.action == action
+    assert event.target_type is None
