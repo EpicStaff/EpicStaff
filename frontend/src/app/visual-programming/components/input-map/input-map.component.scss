@@ -1,4 +1,5 @@
 @use '../../styles/node-panel-controls.scss' as controls;
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
 
 .input-map-container {
     display: flex;
@@ -234,8 +235,45 @@
     border-bottom: none;
 }
 
-.readonly-row .readonly-cell:last-child {
+// Of type: a marked row also holds its badge after the cells.
+.readonly-row .readonly-cell:last-of-type {
     border-right: none;
+}
+
+// Version diff (Changes tab): the badge of a marked row sticks out of the table's edge, so the table does
+// not clip. Its rounded corners then come from the first and last rows instead.
+.readonly-table--diff {
+    overflow: visible;
+}
+
+// A row with a diff status is a box of its own, so it can carry a border and a tooltip. The border is a
+// frame on the row's edge that takes no space, so the row is as wide as an unmarked one.
+.readonly-row--diff {
+    position: relative;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+}
+
+// The table's inner corners, so the frame of a first or last row does not stick out of them.
+.readonly-row--diff:first-child {
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+}
+
+.readonly-row--diff:last-child {
+    border-bottom-left-radius: 3px;
+    border-bottom-right-radius: 3px;
+}
+
+.readonly-row--added {
+    @include diff-value-mark.row-frame(var(--color-diff-added));
+}
+
+.readonly-row--removed .readonly-cell {
+    color: var(--color-diff-deleted);
+    text-decoration: line-through;
+    opacity: var(--diff-deleted-opacity);
 }
 
 .test-input-dirty-warning {

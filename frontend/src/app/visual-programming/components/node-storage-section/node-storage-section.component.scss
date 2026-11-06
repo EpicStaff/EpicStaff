@@ -1,3 +1,5 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
 .storage-section {
     display: flex;
     flex-direction: column;
@@ -113,3 +115,7 @@
         cursor: not-allowed;
     }
 }
+
+// Version diff: the value of a changed field.
+// A toggle has no value box: the row with its label is boxed instead.
+@include diff-value-mark.marked('.storage-header', $draws-box: true);

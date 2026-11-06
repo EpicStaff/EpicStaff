@@ -1,5 +1,6 @@
 import { AuthorshipFields, DeclaredSecretRef, SystemOnePromptKind, SystemOneQuestion } from '@shared/models';
 
+import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
 
 export interface PromptConfigBackend {
@@ -81,7 +82,7 @@ export interface CDTPythonCodeBlock {
     execution_timeout?: number;
 }
 
-export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields, NumberedNodeDto {
+export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
     id: number;
     created_at: string;
     graph: number;

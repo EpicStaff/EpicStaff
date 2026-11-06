@@ -1,4 +1,5 @@
 @use '../../../../styles/a11y-mixins' as a11y;
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
 
 :host {
     flex-grow: 1;
@@ -472,6 +473,14 @@
         transform: rotate(360deg);
     }
 }
+
+// Version diff (flow editor node panel, Changes tab): a changed read-only value, boxed like an input so every marked
+// value has one width. The host clips what sticks out, so it lets the pen badge on the box's corner show.
+:host-context(.diff-value-marked) {
+    overflow: visible;
+}
+
+@include diff-value-mark.marked('.selector__readonly-value', $draws-box: true, $display: flex);
 
 // Options are plain buttons, laid out like the rows they were. :where() keeps this reset below every option rule
 // (the row borders, the boxed background, the selected colour).

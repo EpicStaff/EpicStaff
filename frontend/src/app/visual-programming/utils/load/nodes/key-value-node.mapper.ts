@@ -14,6 +14,7 @@ export function mapKeyValueNodeToModel(dto: GetKeyValueNodeRequest): KeyValueNod
     return {
         id: generateUuid(),
         backendId: dto.id,
+        nodeUuid: dto.uuid,
         type: NodeType.KEY_VALUE,
         node_name: dto.node_name,
         nodeNumber: dto.node_number ?? undefined,
