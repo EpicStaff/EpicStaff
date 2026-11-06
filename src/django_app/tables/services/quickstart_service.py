@@ -38,7 +38,7 @@ class QuickstartService(metaclass=SingletonMeta):
 
     PROVIDER_CONFIGS = {
         "openai": {
-            "llm_model": "gpt-4o-mini",
+            "llm_model": "gpt-6-luna",
             "embedding_model": "text-embedding-3-small",
         },
         "gemini": {

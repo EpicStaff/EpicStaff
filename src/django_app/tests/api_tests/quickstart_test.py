@@ -37,7 +37,7 @@ def openai_provider_seeded(openai_provider):
     from tables.models.embedding_models import EmbeddingModel
     from tables.models.llm_models import LLMModel
 
-    LLMModel.objects.get_or_create(name="gpt-4o-mini", llm_provider=openai_provider)
+    LLMModel.objects.get_or_create(name="gpt-6-luna", llm_provider=openai_provider)
     EmbeddingModel.objects.get_or_create(
         name="text-embedding-3-small", embedding_provider=openai_provider
     )

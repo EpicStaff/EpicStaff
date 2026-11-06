@@ -70,7 +70,7 @@ def openai_seeded(db):
     """QuickstartService does Provider.objects.get(name=...) and get_or_create for
     each model. Mirrors `openai_provider_seeded` in quickstart_test.py."""
     provider = Provider.objects.create(name="openai")
-    LLMModel.objects.get_or_create(name="gpt-4o-mini", llm_provider=provider)
+    LLMModel.objects.get_or_create(name="gpt-6-luna", llm_provider=provider)
     EmbeddingModel.objects.get_or_create(
         name="text-embedding-3-small", embedding_provider=provider
     )
@@ -279,7 +279,7 @@ def test_foreign_secret_error_matches_a_nonexistent_id(
 # A custom model can send requests to any base_url. One created under the catalog
 # name must not silently receive the quickstart secret.
 
-OPENAI_LLM_MODEL_NAME = "gpt-4o-mini"
+OPENAI_LLM_MODEL_NAME = "gpt-6-luna"
 OPENAI_EMBEDDING_MODEL_NAME = "text-embedding-3-small"
 
 MODEL_KINDS = [
