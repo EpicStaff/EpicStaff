@@ -57,6 +57,8 @@ SYSTEM_ONE_QUESTIONS_ADAPTER = TypeAdapter(SystemOneQuestions)
 
 
 Probability = Annotated[float, Field(ge=0, le=1)]
+# Unbounded, so NaN would otherwise pass and fail every comparison in a decision table.
+Score = Annotated[float, Field(allow_inf_nan=False)]
 
 
 class NoulAnswer(BaseModel):
@@ -73,7 +75,7 @@ class ChoiceAnswer(BaseModel):
 
 class ScoreAnswer(BaseModel):
     type: Literal["score"]
-    score: float
+    score: Score
     confidence: Probability
     probabilities: dict[str, Probability]
 

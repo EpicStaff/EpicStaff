@@ -182,6 +182,12 @@ def test_answer_values_outside_zero_to_one_are_refused(build):
         build()
 
 
+@pytest.mark.parametrize("score", [float("nan"), float("inf"), float("-inf")])
+def test_a_score_that_is_not_a_finite_number_is_refused(score):
+    with pytest.raises(ValidationError):
+        ScoreAnswer(type="score", score=score, confidence=1, probabilities={"0": 1})
+
+
 def test_score_is_not_limited_to_zero_to_one():
     assert ScoreAnswer(type="score", score=2.4, confidence=1, probabilities={"2": 1}).score == 2.4
 

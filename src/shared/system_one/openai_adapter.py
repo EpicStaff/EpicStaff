@@ -7,6 +7,7 @@ from src.shared.models.system_one import (
     ChoiceAnswer,
     NoulAnswer,
     Probability,
+    Score,
     ScoreAnswer,
     SystemOneAnswer,
     SystemOneConfigData,
@@ -56,7 +57,7 @@ class _ChoiceAnswer(BaseModel):
 class _ScoreAnswer(BaseModel):
     type: Literal["score"]
     name: str
-    score: float
+    score: Score
     confidence: Probability
     probabilities: list[_ScoreProbability]
 

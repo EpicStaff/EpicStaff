@@ -273,6 +273,21 @@ def with_answer(position: int, **changes) -> dict:
             httpx.Response(200, json={**RECORDED, "usage": {"input_tokens": "many"}}),
             id="malformed-usage",
         ),
+        pytest.param(
+            httpx.Response(
+                200,
+                json=with_answer(
+                    1, probabilities=[{"value": {"a": 1}, "probability": 1.0}]
+                ),
+            ),
+            id="choice-probability-value-object",
+        ),
+        pytest.param(
+            httpx.Response(
+                200, content=json.dumps(RECORDED).replace('"score": 1.0', '"score": NaN')
+            ),
+            id="nan-score",
+        ),
     ],
 )
 async def test_a_malformed_body_is_a_system_one_error(response):

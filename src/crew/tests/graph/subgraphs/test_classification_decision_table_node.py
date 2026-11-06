@@ -44,6 +44,7 @@ from src.shared.models.system_one import (
 )
 from src.shared.system_one.adapter import SYSTEM_ONE_ADAPTERS, SystemOneError
 from src.shared.system_one.llm_adapter import LlmSystemOneAdapter
+from src.shared.system_one.openai_adapter import OpenAIDecisionsAdapter
 from src.shared.system_one.typesafe_adapter import TypeSafeAdapter
 from utils.singleton_meta import SingletonMeta
 
@@ -1038,11 +1039,25 @@ TYPESAFE_RECORDED = (
     '"probabilities":{"0":0.53,"1":0.45,"2":0.02}}},'
     '"usage":{"input_tokens":377,"output_tokens":64}}'
 )
+OPENAI_RECORDED = (
+    '{"model":"gpt-6-luna","answers":[{"type":"predicate","name":"is_engineering",'
+    '"probability":0.95},{"type":"choice","name":"department","choice":"engineering",'
+    '"probabilities":[{"value":"engineering","probability":0.97},'
+    '{"value":"sales","probability":0.03}],"confidence":0.94},'
+    '{"type":"score","name":"size","score":1.0,"probabilities":['
+    '{"value":0,"label":"small","probability":0.0},{"value":1,"label":"medium",'
+    '"probability":1.0},{"value":2,"label":"large","probability":0.0}],"confidence":1.0}],'
+    '"usage":{"input_tokens":420,"output_tokens":0}}'
+)
 LLM_MODEL = "gpt-4o-mini"
 
 
 def real_typesafe_config() -> SystemOneConfigData:
     return SystemOneConfigData(id=1, provider="typesafe", model_name="jev-1.14.0", api_key="ts-key")
+
+
+def real_openai_config() -> SystemOneConfigData:
+    return SystemOneConfigData(id=3, provider="openai", model_name="gpt-6-luna", api_key="sk-key")
 
 
 def real_llm_config() -> SystemOneConfigData:
@@ -1059,6 +1074,7 @@ def real_llm_config() -> SystemOneConfigData:
     [
         pytest.param(real_typesafe_config(), "typesafe", "jev-1.14.0", id="typesafe"),
         pytest.param(real_llm_config(), "llm", LLM_MODEL, id="llm"),
+        pytest.param(real_openai_config(), "openai", "gpt-6-luna", id="openai"),
     ],
 )
 async def test_switching_the_provider_needs_no_table_change(
@@ -1071,6 +1087,10 @@ async def test_switching_the_provider_needs_no_table_change(
     )
     monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "typesafe", typesafe)
     monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "llm", LlmSystemOneAdapter())
+    openai = OpenAIDecisionsAdapter(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=OPENAI_RECORDED))
+    )
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "openai", openai)
     llm_reply = ModelResponse(
         model=LLM_MODEL,
         choices=[
