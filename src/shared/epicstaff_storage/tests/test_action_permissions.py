@@ -126,12 +126,40 @@ def test_path_outside_own_folders_still_needs_the_action(monkeypatch, storage, f
         storage.write("docs/out.txt", "x")
 
 
-def test_own_path_does_not_widen_the_path_allowlist(monkeypatch, storage):
-    allow_paths(monkeypatch, ["sessions/7/"])
+def test_own_folder_is_usable_when_the_allowed_files_do_not_list_it(monkeypatch, storage):
+    # A sub-flow's node: its allowed files hold only the flow's files, not the session folder.
+    allow_paths(monkeypatch, ["docs/"])
     restrict_actions(monkeypatch, [], own_paths=["sessions/8/"])
 
-    with pytest.raises(StoragePermissionError, match="not within this flow's allowed files"):
-        storage.write("sessions/8/out.txt", "x")
+    storage.write("sessions/8/out.txt", "x")
+
+    assert storage.read("sessions/8/out.txt") == "x"
+    assert [item["name"] for item in storage.list("sessions/8/")] == ["out.txt"]
+
+
+def test_own_folder_does_not_open_other_paths_outside_the_allowed_files(monkeypatch, storage):
+    allow_paths(monkeypatch, ["docs/"])
+    restrict_actions(monkeypatch, ["read", "write", "delete"], own_paths=["sessions/8/"])
+
+    for path in ("sessions/9/out.txt", "sessions/8-other/out.txt", "elsewhere/out.txt"):
+        with pytest.raises(StoragePermissionError, match="not within this flow's allowed files"):
+            storage.write(path, "x")
+
+
+def test_own_folder_never_opens_the_recycle_bin(monkeypatch, storage):
+    allow_paths(monkeypatch, ["docs/"])
+    restrict_actions(monkeypatch, [], own_paths=[".recycle-bin/"])
+
+    with pytest.raises(StoragePermissionError, match="holds deleted files"):
+        storage.write(".recycle-bin/out.txt", "x")
+
+
+def test_own_folder_still_refuses_executable_files(monkeypatch, storage):
+    allow_paths(monkeypatch, ["docs/"])
+    restrict_actions(monkeypatch, [], own_paths=["sessions/8/"])
+
+    with pytest.raises(StoragePermissionError, match="executable"):
+        storage.write("sessions/8/tool.exe", "x")
 
 
 def test_without_the_env_vars_every_operation_keeps_its_path_only_behavior(

@@ -218,7 +218,14 @@ def check_storage_permission(operation: str, path: str) -> None:
             f"Access denied: '{RESERVED_DIRECTORY}' holds deleted files and is not available to flows."
         )
     allowed = __get_allowed_paths()
-    if allowed is not None and not __is_path_allowed(normalized, allowed):
+    # The run's own folders come with its credentials, whose storage policy grants them
+    # whatever the node's allowed files say: a sub-flow's nodes are converted without
+    # the session, so their allowed files never list the session folder.
+    if (
+        allowed is not None
+        and not __is_path_allowed(normalized, allowed)
+        and not __is_path_allowed(normalized, __get_own_paths())
+    ):
         if allowed:
             allowed_hint = (
                 f" Allowed paths: [{__format_allowed_paths(allowed)}]. "
