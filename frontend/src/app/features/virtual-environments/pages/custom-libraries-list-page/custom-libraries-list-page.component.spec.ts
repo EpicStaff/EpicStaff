@@ -8,10 +8,11 @@ import { Observable, Subject } from 'rxjs';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
-import { CustomLibrary } from '../../models/custom-library.model';
+import { CustomLibrary, WheelStatus } from '../../models/custom-library.model';
 import { CustomLibrariesListPageComponent } from './custom-libraries-list-page.component';
 
 const API_URL = 'http://api/';
+const POLL_INTERVAL_MS = 2_000;
 
 class ResizeObserverStub {
     observe(): void {}
@@ -19,11 +20,13 @@ class ResizeObserverStub {
     disconnect(): void {}
 }
 
-function library(id: number, name: string | null): CustomLibrary {
+function library(id: number, name: string | null, status: WheelStatus | null = 'completed'): CustomLibrary {
     return {
         id,
         name,
         owner: { id: 1, email: 'dana@example.com', display_name: 'Dana' },
+        status,
+        error: status === 'failed' ? 'no setup.py' : null,
         created_at: '2026-01-02T03:04:05Z',
         updated_at: '2026-01-02T03:04:05Z',
     };
@@ -59,6 +62,7 @@ describe('CustomLibrariesListPageComponent', () => {
     }
 
     beforeEach(() => {
+        vi.useFakeTimers();
         vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         confirmation = new Subject<boolean>();
         dialogClosed = new Subject<unknown>();
@@ -86,6 +90,7 @@ describe('CustomLibrariesListPageComponent', () => {
     });
 
     afterEach(() => {
+        vi.useRealTimers();
         vi.unstubAllGlobals();
     });
 
@@ -94,6 +99,25 @@ describe('CustomLibrariesListPageComponent', () => {
 
         expect(renderedNames()).toEqual(['acme-utils', 'acme-ml']);
         expect(host.querySelector('.custom-library-card__meta')!.textContent).toContain('Dana');
+    });
+
+    it('marks a library whose version did not build, and leaves a built one unmarked', () => {
+        answerList([library(1, 'acme-utils', 'failed'), library(2, 'acme-ml')]);
+
+        const badges = host.querySelectorAll('.venv-status');
+        expect(badges).toHaveLength(1);
+        expect(badges[0].textContent).toContain('Failed');
+    });
+
+    it('follows a library that is still building until nothing is building', () => {
+        answerList([library(1, 'acme-utils', 'processing')]);
+        expect(host.querySelector('.venv-status')!.textContent).toContain('Building');
+
+        vi.advanceTimersByTime(POLL_INTERVAL_MS);
+        answerList([library(1, 'acme-utils', 'completed')]);
+
+        vi.advanceTimersByTime(POLL_INTERVAL_MS);
+        expect(http.match(() => true)).toHaveLength(0);
     });
 
     it('offers to create the first library when there is none', () => {

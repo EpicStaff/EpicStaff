@@ -5,13 +5,21 @@
     (click)="onCardClick()"
     (keydown.enter)="onCardClick()"
 >
-    <span
-        class="custom-library-card__name text-body-medium"
-        appTooltipOnOverflow
-        matTooltipPosition="above"
-        [matTooltip]="displayName()"
-        >{{ displayName() }}</span
-    >
+    <div class="custom-library-card__title">
+        <span
+            class="custom-library-card__name text-body-medium"
+            appTooltipOnOverflow
+            matTooltipPosition="above"
+            [matTooltip]="displayName()"
+            >{{ displayName() }}</span
+        >
+        @if (library().status; as status) {
+            <app-venv-status-badge
+                [status]="status"
+                [error]="library().error"
+            />
+        }
+    </div>
 
     <div class="custom-library-card__trailing text-body-small">
         @if (meta(); as meta) {

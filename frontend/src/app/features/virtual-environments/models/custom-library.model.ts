@@ -37,6 +37,11 @@ export interface CustomLibrary {
     id: number;
     name: string | null;
     owner: VenvOwner | null;
+    // Where the library's versions stand, taken together: a failed build is reported ahead of
+    // one still running, and `null` means the library holds no version at all. `error` is the
+    // failed version's, and is set only alongside `failed`.
+    status: WheelStatus | null;
+    error: string | null;
     created_at: string;
     updated_at: string;
 }

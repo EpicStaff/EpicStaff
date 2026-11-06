@@ -5,7 +5,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { filter, finalize, switchMap } from 'rxjs';
+import { catchError, EMPTY, filter, finalize, repeat, Subscription, switchMap, timer } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -15,9 +15,11 @@ import {
     CustomLibraryDialogData,
     CustomLibraryDialogResult,
 } from '../../components/custom-library-dialog/custom-library-dialog.component';
-import { CustomLibrary } from '../../models/custom-library.model';
+import { BUILDING_WHEEL_STATUSES, CustomLibrary } from '../../models/custom-library.model';
 import { VenvSortOrder } from '../../models/venv.model';
 import { CustomLibrariesApiService } from '../../services/custom-libraries-api.service';
+
+const POLL_INTERVAL_MS = 2_000;
 
 @Component({
     selector: 'app-custom-libraries-list-page',
@@ -55,6 +57,8 @@ export class CustomLibrariesListPageComponent {
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
+
+    private pollSubscription: Subscription | null = null;
 
     constructor() {
         this.loadLibraries();
@@ -128,12 +132,13 @@ export class CustomLibrariesListPageComponent {
     }
 
     private loadLibraries(): void {
+        this.stopPolling();
         this.customLibrariesApi
             .getCustomLibraries()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (libraries) => {
-                    this.libraries.set(libraries);
+                    this.applyLibraries(libraries);
                     this.isLoading.set(false);
                 },
                 error: (error: HttpErrorResponse) => {
@@ -141,5 +146,34 @@ export class CustomLibrariesListPageComponent {
                     this.toastService.error(extractHttpErrorMessage(error));
                 },
             });
+    }
+
+    /** A version builds in the background, so the list follows it until nothing is left
+     *  building and the row shows what became of it. */
+    private applyLibraries(libraries: CustomLibrary[]): void {
+        this.libraries.set(libraries);
+        if (libraries.some((library) => library.status && BUILDING_WHEEL_STATUSES.has(library.status))) {
+            this.startPolling();
+        } else {
+            this.stopPolling();
+        }
+    }
+
+    private startPolling(): void {
+        if (this.pollSubscription) return;
+        // timer + repeat: the next request is scheduled only after the previous response arrived.
+        this.pollSubscription = timer(POLL_INTERVAL_MS)
+            .pipe(
+                filter(() => document.visibilityState === 'visible'),
+                switchMap(() => this.customLibrariesApi.getCustomLibraries().pipe(catchError(() => EMPTY))),
+                repeat(),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((libraries) => this.applyLibraries(libraries));
+    }
+
+    private stopPolling(): void {
+        this.pollSubscription?.unsubscribe();
+        this.pollSubscription = null;
     }
 }

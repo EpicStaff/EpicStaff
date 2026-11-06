@@ -4,6 +4,7 @@ import { AppSvgIconComponent, formatAuthorshipTimestamp } from '@shared/componen
 import { TooltipOnOverflowDirective } from '@shared/directives';
 
 import { CustomLibrary } from '../../models/custom-library.model';
+import { VenvStatusBadgeComponent } from '../venv-status-badge/venv-status-badge.component';
 
 interface CustomLibraryCardMeta {
     lead: string;
@@ -13,7 +14,7 @@ interface CustomLibraryCardMeta {
 
 @Component({
     selector: 'app-custom-library-card',
-    imports: [MatTooltipModule, AppSvgIconComponent, TooltipOnOverflowDirective],
+    imports: [MatTooltipModule, AppSvgIconComponent, TooltipOnOverflowDirective, VenvStatusBadgeComponent],
     templateUrl: './custom-library-card.component.html',
     styleUrls: ['./custom-library-card.component.scss'],
 })

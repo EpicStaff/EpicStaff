@@ -10,6 +10,13 @@
     box-shadow: var(--shadow-raised);
     cursor: pointer;
 
+    &__title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
     &__name {
         min-width: 0;
         overflow: hidden;

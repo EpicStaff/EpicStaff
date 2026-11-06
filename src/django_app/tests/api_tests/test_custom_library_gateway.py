@@ -88,6 +88,8 @@ def upstream_library(binding: SandboxCustomLibraryBinding, name: str = "mylib") 
     return {
         "id": int(binding.resource_id),
         "name": name,
+        "status": "completed",
+        "error": None,
         "created_at": "2026-11-04T10:00:00Z",
         "updated_at": "2026-11-04T10:00:00Z",
     }
@@ -126,6 +128,20 @@ def test_the_list_carries_this_orgs_libraries_under_their_binding_ids(
     assert sorted(sandbox_client.list.call_args.kwargs["ids"]) == ["7", "8"]
     assert [item["id"] for item in response.data["result"]] == [library.pk, second_library.pk]
     assert [item["name"] for item in response.data["result"]] == ["mylib", "otherlib"]
+
+
+@pytest.mark.django_db
+def test_the_state_of_a_librarys_builds_reaches_the_caller(auth_client, library, sandbox_client):
+    """The gateway replaces the id and adds the owner; what the sandbox says about the
+    library's versions travels on as it stands, so a listing can show a failed build."""
+    sandbox_client.list.return_value = upstream_page(
+        upstream_library(library) | {"status": "failed", "error": "no setup.py"}
+    )
+
+    response = auth_client.get("/api/custom-libraries/")
+
+    assert response.data["result"][0]["status"] == "failed"
+    assert response.data["result"][0]["error"] == "no setup.py"
 
 
 @pytest.mark.django_db
