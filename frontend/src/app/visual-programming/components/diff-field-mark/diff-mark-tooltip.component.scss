@@ -1,25 +1,29 @@
-// The colours of the app's other tooltips (matTooltip), in both themes.
+@use '../../../../styles/tooltip';
+
+// The look of the app's other tooltips (the --tooltip-* tokens), dark in both themes.
 .diff-field-mark__tooltip {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
     max-width: 320px;
-    padding: 0.5rem 0.75rem;
-    border-radius: 4px;
-    background-color: var(--mat-tooltip-container-color);
-    color: var(--mat-tooltip-supporting-text-color);
-    box-shadow: var(--shadow-raised);
-    font-size: var(--text-body-small-size);
-    font-weight: var(--text-body-small-weight);
-    line-height: var(--text-body-small-line-height);
+    padding: var(--tooltip-padding);
+    @include tooltip.tooltip-surface;
+    filter: var(--tooltip-shadow);
     overflow-wrap: anywhere;
     white-space: pre-wrap;
     pointer-events: none;
 }
 
+// The full text of a cut-off cell, above the rest: a little stronger, so it reads as the row's name.
+.diff-field-mark__tooltip-heading {
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
+    line-height: var(--text-body-small-large-line-height);
+}
+
 // Muted from the tooltip's own text colour: the tooltip is dark in both themes.
 .diff-field-mark__tooltip-label {
-    color: color-mix(in srgb, var(--mat-tooltip-supporting-text-color) 60%, transparent);
+    color: color-mix(in srgb, var(--tooltip-text) 60%, transparent);
     font-size: var(--text-caption-size);
     font-weight: var(--text-caption-weight);
     line-height: var(--text-caption-line-height);

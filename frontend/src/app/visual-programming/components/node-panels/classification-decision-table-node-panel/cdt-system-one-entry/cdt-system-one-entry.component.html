@@ -69,9 +69,11 @@
             }
             <div class="question__header">
                 <app-tooltip label="Question name" />
+                <!-- data-own-tooltip: over its help icon only the help shows, not the question's diff tooltip. -->
                 <app-tooltip
                     label="Question type"
                     [tooltipText]="typeHelp[item.row.question.type]"
+                    data-own-tooltip
                 />
                 <app-custom-input
                     class="question__name"

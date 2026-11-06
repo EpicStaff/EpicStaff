@@ -7,13 +7,17 @@ import { FlowService } from '../../../../services/flow.service';
 import { ConditionGroupGridRowChanges } from '../../shared/condition-group-row-marks/condition-group-row-marks';
 import {
     conditionGroupsDiff,
+    cutOffCellText,
     gridCell,
     gridRowChanges,
+    movePointerOnto,
     rowMark,
     rowOf,
     rowStatusOf,
     shownGridRows,
+    shownGridTooltip,
     shownRowTooltip,
+    shownTooltipHeading,
     shownTooltipText,
 } from '../../shared/condition-group-row-marks/condition-group-row-marks.testing';
 import { DecisionTableGridComponent } from './decision-table-grid.component';
@@ -351,6 +355,83 @@ describe('DecisionTableGridComponent — version diff row marks', { timeout: GRI
             expect(shownTooltipText()).toBeNull();
             await focus(rowIndex, 'next_node');
             expect(shownTooltipText()).toBeNull();
+        });
+
+        describe("next to the grid's own tooltip of a cut-off cell (Condition Name, Next Node)", () => {
+            /** Points at a cell as a user does and waits past ag-grid's tooltip delay. */
+            async function hoverCell(rowIndex: number, colId: string): Promise<void> {
+                movePointerOnto(host, rowIndex, colId);
+                await settle();
+                await vi.advanceTimersByTimeAsync(2000);
+                fixture.detectChanges();
+            }
+
+            it('shows only the row tooltip over a cut-off name of a changed row, with the full name above', async () => {
+                await render(CELL_ROW_CHANGES, { groups: CELL_GROUPS });
+                cutOffCellText(host, 0, 'group_name');
+
+                await hoverCell(0, 'group_name');
+
+                expect(shownGridTooltip()).toBeNull();
+                expect(shownTooltipHeading()).toBe('yes');
+                expect(shownTooltipText()).toBe(SUMMARY);
+                // A little stronger than the text below it, so it reads as the row's name.
+                const heading = document.querySelector('.diff-field-mark__tooltip-heading')!;
+                expect(getComputedStyle(heading).fontWeight).toBe('var(--text-body-small-large-weight)');
+            });
+
+            it('shows only the row tooltip over a cut-off next node of a changed row, with the full node above', async () => {
+                await render(CELL_ROW_CHANGES, { groups: CELL_GROUPS });
+                cutOffCellText(host, 0, 'next_node');
+
+                await hoverCell(0, 'next_node');
+
+                expect(shownGridTooltip()).toBeNull();
+                expect(shownTooltipHeading()).toBe('node-b');
+                expect(shownTooltipText()).toBe('Current canvas: ~~Node node-a~~');
+            });
+
+            it('adds no full text to the row tooltip over a name the cell shows whole', async () => {
+                await render(CELL_ROW_CHANGES, { groups: CELL_GROUPS });
+
+                await hoverCell(0, 'group_name');
+
+                expect(shownTooltipHeading()).toBeNull();
+                expect(shownTooltipText()).toBe(SUMMARY);
+            });
+
+            it.each([
+                { row: 'an added', rowIndex: 1, name: 'maybe' },
+                { row: 'a removed', rowIndex: 2, name: 'gone' },
+            ])(
+                "shows the grid's own tooltip over a cut-off name of $row row, which has no row tooltip",
+                async ({ rowIndex, name }) => {
+                    await render(CELL_ROW_CHANGES, { groups: CELL_GROUPS });
+                    cutOffCellText(host, rowIndex, 'group_name');
+
+                    await hoverCell(rowIndex, 'group_name');
+
+                    expect(shownGridTooltip()).toBe(name);
+                    expect(shownTooltipText()).toBeNull();
+                }
+            );
+
+            it('shows no grid tooltip over a name the cell shows whole', async () => {
+                await render(CELL_ROW_CHANGES, { groups: CELL_GROUPS });
+
+                await hoverCell(1, 'group_name');
+
+                expect(shownGridTooltip()).toBeNull();
+            });
+
+            it("keeps the grid's own tooltip over a cut-off name in the live editor", async () => {
+                await render(null, { groups: CELL_GROUPS });
+                cutOffCellText(host, 0, 'group_name');
+
+                await hoverCell(0, 'group_name');
+
+                expect(shownGridTooltip()).toBe('yes');
+            });
         });
 
         it('shows no tooltip over a cell in the live editor', async () => {

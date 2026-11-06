@@ -30,12 +30,13 @@
                 let-key="key"
                 let-value="value"
                 let-statusText="statusText"
+                let-onChangedRow="onChangedRow"
             >
                 <div
                     class="readonly-cell"
                     role="cell"
                     [matTooltip]="key"
-                    matTooltipPosition="above"
+                    [matTooltipPosition]="cellTooltipPosition(onChangedRow)"
                 >
                     <!-- Inside the cell: a row may hold only cells. -->
                     @if (statusText) {
@@ -47,7 +48,7 @@
                     class="readonly-cell"
                     role="cell"
                     [matTooltip]="value"
-                    matTooltipPosition="above"
+                    [matTooltipPosition]="cellTooltipPosition(onChangedRow)"
                 >
                     {{ value || '—' }}
                 </div>
@@ -69,10 +70,15 @@
                                 role="row"
                                 appDiffFieldMark
                                 [diffChange]="rowChange"
+                                (diffTooltipSide)="onDiffTooltipSide($event)"
                             >
                                 <ng-container
                                     [ngTemplateOutlet]="readonlyCells"
-                                    [ngTemplateOutletContext]="pair.value"
+                                    [ngTemplateOutletContext]="{
+                                        key: pair.value.key,
+                                        value: pair.value.value,
+                                        onChangedRow: true,
+                                    }"
                                 />
                             </div>
                         }

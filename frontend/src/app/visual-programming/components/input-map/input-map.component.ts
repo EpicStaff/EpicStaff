@@ -44,6 +44,7 @@ import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
 import { MapKeyChange } from '../../utils/diff';
 import { DiffFieldMarkComponent } from '../diff-field-mark/diff-field-mark.component';
+import { DiffTooltipSide, sideAwayFrom } from '../diff-field-mark/diff-mark-tooltip.component';
 import { PickerItem } from './var-picker-flat.component';
 import {
     buildVariablePickerItems,
@@ -124,6 +125,11 @@ export class InputMapComponent implements OnInit, OnChanges {
     protected readonly removedRows = computed(() =>
         (this.rowChanges() ?? []).filter((change) => change.status === 'deleted')
     );
+    /**
+     * The side of its row the diff tooltip of a changed row last opened on. Only one is open at a time, and it opens
+     * at once while a cell's own tooltip waits for its delay, so the cell's tooltip can take the other side.
+     */
+    private readonly diffTooltipSide = signal<DiffTooltipSide>('above');
 
     private readonly destroyRef = inject(DestroyRef);
     private readonly removeButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeButton');
@@ -231,6 +237,18 @@ export class InputMapComponent implements OnInit, OnChanges {
 
     protected rowChangeFor(key: string): MapKeyChange | null {
         return this.rowChangeByKey().get(key) ?? null;
+    }
+
+    protected onDiffTooltipSide(side: DiffTooltipSide): void {
+        this.diffTooltipSide.set(side);
+    }
+
+    /**
+     * Where a read-only cell shows its own tooltip: above it, and on a changed row (Changes tab) on the other side of
+     * the row from the row's diff tooltip, so the two never cover each other.
+     */
+    protected cellTooltipPosition(onChangedRow = false): DiffTooltipSide {
+        return onChangedRow ? sideAwayFrom(this.diffTooltipSide()) : 'above';
     }
 
     hasNoMeaningfulPairs(): boolean {

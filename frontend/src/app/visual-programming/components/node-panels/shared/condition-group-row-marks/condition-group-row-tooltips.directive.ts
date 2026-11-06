@@ -13,24 +13,33 @@ import {
     NgZone,
 } from '@angular/core';
 import { AgGridAngular } from 'ag-grid-angular';
+import { IRowNode } from 'ag-grid-community';
 
 import { DisplaySegment } from '../../../../utils/diff';
 import {
     currentValueDescription,
     DIFF_MARK_TOOLTIP_POSITIONS,
     DiffMarkTooltipComponent,
+    isOnOwnTooltip,
 } from '../../../diff-field-mark/diff-mark-tooltip.component';
-import { cellTooltipOf, ConditionGroupCellTooltip, ConditionGroupGridRowChanges } from './condition-group-row-marks';
-
-/**
- * Put by a cell renderer on an element of its cell that shows a tooltip of its own (the Route Code status icon, the
- * Prompt ID "Open in Prompt Library" button): while the pointer or the focus is on it, the row tooltip stays closed, so
- * two tooltips never show at once. The rest of the cell shows the row tooltip as any cell.
- */
-export const OWN_TOOLTIP_ATTRIBUTE = 'data-own-tooltip';
+import {
+    cellTooltipOf,
+    ConditionGroupCellTooltip,
+    ConditionGroupGridRowChanges,
+    isCellTextTruncated,
+} from './condition-group-row-marks';
 
 /** The `segments` of a row summary: one array, so moving between two cells that show the summary changes no input. */
 const NO_SEGMENTS: readonly DisplaySegment[] = [];
+
+/**
+ * What the tooltip over a cell shows: the cell's change or the row's summary (`tooltip`), and above it the cell's full
+ * text when the cell cuts it off and its column has a tooltip of its own for that (`heading`; `null` otherwise).
+ */
+interface ShownTooltip {
+    tooltip: ConditionGroupCellTooltip;
+    heading: string | null;
+}
 
 /**
  * Above the hovered or focused cell, centred, as a field mark's tooltip; when the event came from the row itself (no
@@ -48,6 +57,10 @@ const ROW_START_POSITIONS: ConnectedPosition[] = [
  * cell of the row shows the row's summary ("Changed columns: Expression."). ag-grid draws its rows itself, so the rows
  * cannot wear the mark: the grid element listens for them. A screen reader hears the row's summary in the row's name
  * cell (`ConditionGroupNameCellRendererComponent`), and a changed cell's value as the description of that cell.
+ *
+ * Where it shows, a column's own tooltip (the full text of a cut-off cell, as the Condition Name has) stays closed
+ * (`withoutGridTooltipUnderRowTooltip`, the name renderer): one tooltip at a time. So this one carries that full text
+ * instead, above its own, while the cell cuts it off.
  *
  * The grid listens only while it shows row changes (the Changes tab), and outside Angular's zone: pointer moves and
  * scrolling in the live editor's grids cost nothing. Only opening and closing a tooltip goes back into the zone.
@@ -70,7 +83,7 @@ export class ConditionGroupRowTooltipsDirective {
         overlayRef: OverlayRef;
         positionStrategy: FlexibleConnectedPositionStrategy;
         content: ComponentRef<DiffMarkTooltipComponent>;
-        shown: ConditionGroupCellTooltip;
+        shown: ShownTooltip;
         /** The row's `row-index`: the row is the one the grid shows there, whatever element draws it. */
         rowIndex: string;
         anchor: HTMLElement;
@@ -145,12 +158,7 @@ export class ConditionGroupRowTooltipsDirective {
     }
 
     /** `isRowAnchor`: the event came from the row itself, not a cell. */
-    private open(
-        rowIndex: string,
-        anchor: HTMLElement,
-        isRowAnchor: boolean,
-        tooltip: ConditionGroupCellTooltip
-    ): void {
+    private open(rowIndex: string, anchor: HTMLElement, isRowAnchor: boolean, tooltip: ShownTooltip): void {
         const positionStrategy = this.overlay
             .position()
             .flexibleConnectedTo(anchor)
@@ -173,7 +181,7 @@ export class ConditionGroupRowTooltipsDirective {
     }
 
     /** Another cell of the row the tooltip is open for: the tooltip follows it, with no new overlay, and shows its text. */
-    private moveTo(anchor: HTMLElement, isRowAnchor: boolean, tooltip: ConditionGroupCellTooltip): void {
+    private moveTo(anchor: HTMLElement, isRowAnchor: boolean, tooltip: ShownTooltip): void {
         if (this.tooltip === null) return;
         this.tooltip.anchor = anchor;
         this.tooltip.positionStrategy
@@ -187,11 +195,13 @@ export class ConditionGroupRowTooltipsDirective {
      * Puts the text of the anchor's tooltip in the open overlay; a changed cell is described by it, as a field mark. The
      * same text sets no input, so it marks nothing for a change detection.
      */
-    private show(tooltip: ConditionGroupCellTooltip): void {
+    private show(shown: ShownTooltip): void {
         const open = this.tooltip;
         if (open === null) return;
+        const { tooltip, heading } = shown;
         const isCellChange = 'segments' in tooltip;
-        open.shown = tooltip;
+        open.shown = shown;
+        open.content.setInput('heading', heading);
         open.content.setInput('hint', isCellChange ? null : tooltip.hint);
         open.content.setInput('segments', isCellChange ? tooltip.segments : NO_SEGMENTS);
         this.undescribe();
@@ -219,20 +229,33 @@ export class ConditionGroupRowTooltipsDirective {
     }
 
     /** The tooltip of `cell` (`null`: the event came from the row itself) of the row at `rowIndex`; `null` for none. */
-    private tooltipOf(rowIndex: string, cell: HTMLElement | null): ConditionGroupCellTooltip | null {
-        const data = this.grid.api?.getDisplayedRowAtIndex(Number(rowIndex))?.data;
-        return cellTooltipOf(this.appConditionGroupRowTooltips(), data, cell?.getAttribute('col-id') ?? null);
+    private tooltipOf(rowIndex: string, cell: HTMLElement | null): ShownTooltip | null {
+        const rowNode = this.grid.api?.getDisplayedRowAtIndex(Number(rowIndex));
+        const colId = cell?.getAttribute('col-id') ?? null;
+        const tooltip = cellTooltipOf(this.appConditionGroupRowTooltips(), rowNode?.data, colId);
+        if (tooltip === null) return null;
+        return { tooltip, heading: rowNode && cell && colId ? this.cutOffTextOf(rowNode, cell, colId) : null };
+    }
+
+    /**
+     * The full text of `cell` as its column's own tooltip gives it (the value as the cell shows it), when the column
+     * has one and the cell cuts the text off; `null` otherwise.
+     */
+    private cutOffTextOf(rowNode: IRowNode, cell: HTMLElement, colId: string): string | null {
+        const api = this.grid.api;
+        if (!api.getColumn(colId)?.getColDef().tooltipValueGetter || !isCellTextTruncated(cell)) return null;
+        const text = api.getCellValue({ rowNode, colKey: colId, useFormatter: true }) as unknown;
+        return text === null || text === undefined || text === '' ? null : String(text);
     }
 }
 
-/** Whether `element` is (in) an element of `cell` that shows a tooltip of its own (`OWN_TOOLTIP_ATTRIBUTE`). */
-function isOnOwnTooltip(element: Element | null, cell: HTMLElement | null): boolean {
-    const ownTooltip = element?.closest(`[${OWN_TOOLTIP_ATTRIBUTE}]`) ?? null;
-    return ownTooltip !== null && cell !== null && cell.contains(ownTooltip);
-}
-
-/** Two tooltips with the same words: the row's summary, or the change of the same cell. */
-function isSameTooltip(first: ConditionGroupCellTooltip, second: ConditionGroupCellTooltip): boolean {
-    if ('hint' in first && 'hint' in second) return first.hint === second.hint;
-    return 'segments' in first && 'segments' in second && first.segments === second.segments;
+/** Two tooltips with the same words: the same full text above the row's summary, or the change of the same cell. */
+function isSameTooltip(first: ShownTooltip, second: ShownTooltip): boolean {
+    if (first.heading !== second.heading) return false;
+    if ('hint' in first.tooltip && 'hint' in second.tooltip) return first.tooltip.hint === second.tooltip.hint;
+    return (
+        'segments' in first.tooltip &&
+        'segments' in second.tooltip &&
+        first.tooltip.segments === second.tooltip.segments
+    );
 }

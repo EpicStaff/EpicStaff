@@ -15,6 +15,30 @@ export function currentValueDescription(segments: readonly DisplaySegment[]): st
     return `${CURRENT_VALUE_LABEL}: ${segments.map((segment) => segment.text).join('')}`;
 }
 
+/**
+ * Put on an element inside a marked field, row or grid cell that shows a tooltip of its own (a help icon, the Route
+ * Code status icon, the Prompt ID "Open in Prompt Library" button): while the pointer or the focus is on it, the diff
+ * tooltip stays closed, so two tooltips never show at once. The rest of the marked element shows the diff tooltip.
+ */
+export const OWN_TOOLTIP_ATTRIBUTE = 'data-own-tooltip';
+
+/** Whether `target` is (in) an element inside `container` that shows a tooltip of its own (`OWN_TOOLTIP_ATTRIBUTE`). */
+export function isOnOwnTooltip(target: EventTarget | null, container: Element | null): boolean {
+    const ownTooltip = target instanceof Element ? target.closest(`[${OWN_TOOLTIP_ATTRIBUTE}]`) : null;
+    return ownTooltip !== null && container !== null && container.contains(ownTooltip);
+}
+
+/** The side of its element a diff tooltip opened on (`DIFF_MARK_TOOLTIP_POSITIONS`). */
+export type DiffTooltipSide = 'above' | 'below';
+
+/**
+ * Where an element inside a marked row places its own tooltip (`matTooltipPosition`) so it never covers the row's diff
+ * tooltip: on the other side of the row.
+ */
+export function sideAwayFrom(diffTooltipSide: DiffTooltipSide): DiffTooltipSide {
+    return diffTooltipSide === 'above' ? 'below' : 'above';
+}
+
 /** Above the marked element, centred; below it when there is no room above. */
 export const DIFF_MARK_TOOLTIP_POSITIONS: ConnectedPosition[] = [
     { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -8 },
@@ -23,9 +47,9 @@ export const DIFF_MARK_TOOLTIP_POSITIONS: ConnectedPosition[] = [
 
 /**
  * The tooltip of a version diff mark, shown in a CDK overlay above the marked field or row: the current canvas value,
- * the parts a restore replaces struck through, or a fixed hint instead; below it, sentences for changes that have no
- * value to show. Visual only: the mark gives screen readers the same words another way, so the tooltip is hidden from
- * them. Every value is shown as text.
+ * the parts a restore replaces struck through, or a fixed hint instead; above it, the full text of a cut-off cell the
+ * tooltip is over; below it, sentences for changes that have no value to show. Visual only: the mark gives screen
+ * readers the same words another way, so the tooltip is hidden from them. Every value is shown as text.
  */
 @Component({
     selector: 'app-diff-mark-tooltip',
@@ -34,6 +58,9 @@ export const DIFF_MARK_TOOLTIP_POSITIONS: ConnectedPosition[] = [
             class="diff-field-mark__tooltip"
             aria-hidden="true"
         >
+            @if (heading(); as shownHeading) {
+                <span class="diff-field-mark__tooltip-heading">{{ shownHeading }}</span>
+            }
             @if (hint(); as shownHint) {
                 <span class="diff-field-mark__tooltip-hint">{{ shownHint }}</span>
             } @else if (segments(); as shownSegments) {
@@ -53,6 +80,11 @@ export const DIFF_MARK_TOOLTIP_POSITIONS: ConnectedPosition[] = [
     styleUrls: ['./diff-mark-tooltip.component.scss'],
 })
 export class DiffMarkTooltipComponent {
+    /**
+     * Above everything else when set: the full text of the version's cell the tooltip is over when the cell cuts it
+     * off. The cell's own tooltip would show it; on a marked row this tooltip shows instead.
+     */
+    readonly heading = input<string | null>(null);
     /** Shown instead of the value when set. */
     readonly hint = input<string | null>(null);
     /** The current canvas value; `null` when no value is shown, only `lines`. */

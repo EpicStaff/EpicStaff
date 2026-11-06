@@ -43,6 +43,8 @@ import {
     lockRemovedRows,
     rowMarkClass,
     rowStatusText,
+    showsRowTooltip,
+    withoutGridTooltipUnderRowTooltip,
 } from '../../shared/condition-group-row-marks/condition-group-row-marks';
 import { ConditionGroupRowTooltipsDirective } from '../../shared/condition-group-row-marks/condition-group-row-tooltips.directive';
 import { ExpressionEditorComponent } from './cell-editors/expression-editor/expression-editor.component';
@@ -507,7 +509,8 @@ export class DecisionTableGridComponent implements OnInit {
 
     /**
      * A column as the Changes tab shows it: the Condition Name tells screen readers what a restore does to the row
-     * before the name, and a removed row is numbered by its place on the canvas.
+     * before the name, a removed row is numbered by its place on the canvas, and a cell under the row tooltip shows
+     * no tooltip of its own.
      */
     private withRowMarks(col: ColDef): ColDef {
         if (col.colId === 'index') {
@@ -517,9 +520,10 @@ export class DecisionTableGridComponent implements OnInit {
                     isRemovedGroupRow(params.data) ? params.data.order : (params.node?.rowIndex ?? 0) + 1,
             };
         }
-        if (col.field !== 'group_name') return col;
+        if (col.field !== 'group_name') return withoutGridTooltipUnderRowTooltip(col, () => this.rowChangesOfRows());
         const params: ConditionGroupNameCellParams = {
             statusOf: (data) => rowStatusText(this.rowChangesOfRows(), data),
+            showsRowTooltip: (data) => showsRowTooltip(this.rowChangesOfRows(), data, 'group_name'),
         };
         return { ...col, cellRenderer: ConditionGroupNameCellRendererComponent, cellRendererParams: params };
     }

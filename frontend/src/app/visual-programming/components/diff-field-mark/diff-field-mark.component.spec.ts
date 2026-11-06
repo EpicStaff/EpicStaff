@@ -1,4 +1,4 @@
-import { Component, input, Provider } from '@angular/core';
+import { Component, EnvironmentProviders, input, NgZone, Provider, provideZoneChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { FieldChange, NodeDiffStatus } from '../../utils/diff';
@@ -36,6 +36,21 @@ import { DiffFieldMarkChange, DiffFieldMarkComponent } from './diff-field-mark.c
             [diffChange]="rowChange()"
         >
             <span>user_id</span>
+        </div>
+        <div
+            id="help-row"
+            appDiffFieldMark
+            [diffChange]="rowChange()"
+        >
+            <span id="help-row-text">Question type</span>
+            <span data-own-tooltip>
+                <button
+                    id="help-row-icon"
+                    type="button"
+                >
+                    ?
+                </button>
+            </span>
         </div>
         <div
             id="table-row"
@@ -84,7 +99,7 @@ function onDiff(status: NodeDiffStatus, fields: FieldChange[] = [OUTPUT_PATH_CHA
 let fixture: ComponentFixture<PanelFieldsComponent>;
 
 function render(
-    providers: Provider[],
+    providers: (Provider | EnvironmentProviders)[],
     rowChange: DiffFieldMarkChange | null = null,
     groupChange: DiffFieldMarkChange | null = null
 ): void {
@@ -235,6 +250,129 @@ describe('DiffFieldMarkComponent', () => {
         element('output-path').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
         expect(reachedPanel).toHaveBeenCalled();
+    });
+
+    it('paints the tooltip with the tooltip tokens the rest of the app uses', () => {
+        render([onDiff('changed')]);
+
+        dispatch('output-path', 'mouseenter');
+        const style = getComputedStyle(tooltip()!);
+
+        expect({ background: style.backgroundColor, color: style.color, filter: style.filter }).toEqual({
+            background: 'var(--tooltip-bg)',
+            color: 'var(--tooltip-text)',
+            filter: 'var(--tooltip-shadow)',
+        });
+    });
+
+    describe('around an element with a tooltip of its own (a help icon)', () => {
+        const ROW_CHANGE = { current: 'choice', version: 'score' };
+
+        function pointAt(id: string): void {
+            element(id).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            fixture.detectChanges();
+        }
+
+        it('shows only the help while the pointer is on it, and the diff tooltip elsewhere in the row', () => {
+            render([onDiff('changed', [])], ROW_CHANGE);
+            dispatch('help-row', 'mouseenter');
+            pointAt('help-row-text');
+            expect(tooltip()).not.toBeNull();
+
+            pointAt('help-row-icon');
+            expect(tooltip()).toBeNull();
+
+            pointAt('help-row-text');
+            expect(tooltip()).not.toBeNull();
+        });
+
+        /** Moves the focus onto the help icon with Tab, as a keyboard user does. */
+        function tabOntoHelp(): void {
+            element('help-row-icon').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            element('help-row-icon').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+            fixture.detectChanges();
+        }
+
+        it('shows only the help while the keyboard focus is on it, though the pointer is on the row', () => {
+            render([onDiff('changed', [])], ROW_CHANGE);
+            dispatch('help-row', 'mouseenter');
+            pointAt('help-row-text');
+
+            tabOntoHelp();
+            expect(tooltip()).toBeNull();
+
+            element('help-row-icon').dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+            fixture.detectChanges();
+            expect(tooltip()).not.toBeNull();
+        });
+
+        it('shows the diff tooltip again when the pointer leaves a help icon it clicked, though the icon keeps the focus', () => {
+            render([onDiff('changed', [])], ROW_CHANGE);
+            dispatch('help-row', 'mouseenter');
+            pointAt('help-row-icon');
+            element('help-row-icon').dispatchEvent(
+                new MouseEvent('mousedown', { bubbles: true, buttons: 1, detail: 1 })
+            );
+            element('help-row-icon').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+            fixture.detectChanges();
+            expect(tooltip()).toBeNull();
+
+            pointAt('help-row-text');
+
+            expect(tooltip()).not.toBeNull();
+        });
+
+        it('lets Esc through to the panel while the diff tooltip is hidden for the help', () => {
+            render([onDiff('changed', [])], ROW_CHANGE);
+            dispatch('help-row', 'mouseenter');
+            tabOntoHelp();
+            const panelEscapes: KeyboardEvent[] = [];
+            const onDocumentKeydown = (event: KeyboardEvent): void => {
+                if (event.key === 'Escape') panelEscapes.push(event);
+            };
+            document.addEventListener('keydown', onDocumentKeydown);
+
+            element('help-row-icon').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            document.removeEventListener('keydown', onDocumentKeydown);
+
+            expect(panelEscapes).toHaveLength(1);
+        });
+
+        it('listens for own tooltips only on a shown mark, outside the zone; the live editor adds no listener', () => {
+            const added: string[] = [];
+            const addEventListener = EventTarget.prototype.addEventListener;
+            vi.spyOn(EventTarget.prototype, 'addEventListener').mockImplementation(function (
+                this: EventTarget,
+                ...args: Parameters<EventTarget['addEventListener']>
+            ) {
+                const isMark = this instanceof HTMLElement && this.id === 'help-row';
+                if (isMark && ['mouseover', 'focusin', 'focusout'].includes(args[0])) {
+                    added.push(`${args[0]} ${NgZone.isInAngularZone() ? 'inside' : 'outside'} the zone`);
+                }
+                addEventListener.apply(this, args);
+            });
+
+            // The app runs change detection from zone.js, as `app.config.ts` sets it up.
+            const zoned = provideZoneChangeDetection({ eventCoalescing: true });
+            render([zoned], ROW_CHANGE);
+            expect(added).toEqual([]);
+            TestBed.resetTestingModule();
+
+            render([zoned, onDiff('changed', [])], ROW_CHANGE);
+            expect(added).toEqual(['mouseover', 'focusin', 'focusout'].map((type) => `${type} outside the zone`));
+            vi.restoreAllMocks();
+        });
+
+        it('opens again on the next hover after the pointer left from the help', () => {
+            render([onDiff('changed', [])], ROW_CHANGE);
+            dispatch('help-row', 'mouseenter');
+            pointAt('help-row-icon');
+            dispatch('help-row', 'mouseleave');
+
+            dispatch('help-row', 'mouseenter');
+
+            expect(tooltip()).not.toBeNull();
+        });
     });
 
     it('opens no tooltip on an unmarked field', () => {

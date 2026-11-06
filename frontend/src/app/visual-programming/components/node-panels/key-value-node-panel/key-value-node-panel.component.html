@@ -122,6 +122,7 @@
                             [diffChange]="entryRowMarks()[i]?.change ?? null"
                             [class.entry-row-mark--added]="entryRowMarks()[i]?.added"
                             [attr.title]="entryRowMarks()[i]?.added ? 'Restore adds this key' : null"
+                            (diffTooltipSide)="onEntryDiffTooltipSide($event)"
                         >
                             @if (entryRowMarks()[i]?.added) {
                                 <span class="visually-hidden">Restore adds this key: </span>
@@ -147,6 +148,7 @@
                                                 formControlName="key"
                                                 aria-label="Key"
                                                 matTooltip="Key"
+                                                [matTooltipPosition]="entryFieldTooltipPosition(i)"
                                                 autocomplete="off"
                                                 role="combobox"
                                                 aria-autocomplete="list"
@@ -191,6 +193,7 @@
                                                 placeholder="All fields if empty"
                                                 aria-label="Variable path"
                                                 matTooltip="Variable path"
+                                                [matTooltipPosition]="entryFieldTooltipPosition(i)"
                                                 autocomplete="off"
                                                 role="combobox"
                                                 aria-autocomplete="list"

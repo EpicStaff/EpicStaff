@@ -101,6 +101,37 @@ export function shownTooltipText(): string | null {
     return `${label}: ${struckText(segments)}`;
 }
 
+/** The full text of a cut-off cell above the row tooltip shown, or `null` when it shows none or none is open. */
+export function shownTooltipHeading(): string | null {
+    return document.querySelector('.diff-field-mark__tooltip-heading')?.textContent?.trim() ?? null;
+}
+
+/** The text of ag-grid's own tooltip (the full text of a cut-off cell), or `null` when none is open. */
+export function shownGridTooltip(): string | null {
+    return document.querySelector('.ag-tooltip')?.textContent?.trim() ?? null;
+}
+
+/** Makes the text of a cell overflow it, as a long name does: jsdom lays nothing out. */
+export function cutOffCellText(host: HTMLElement, rowIndex: number, colId: string): void {
+    const cell = gridCell(host, rowIndex, colId);
+    const text = cell.querySelector<HTMLElement>('.ag-cell-value') ?? cell;
+    Object.defineProperty(text, 'scrollWidth', { configurable: true, value: 400 });
+    Object.defineProperty(text, 'clientWidth', { configurable: true, value: 100 });
+}
+
+/**
+ * Moves the pointer onto a cell as a mouse does, so ag-grid's own tooltip may open after its delay too (the row
+ * tooltip opens at once).
+ */
+export function movePointerOnto(host: HTMLElement, rowIndex: number, colId: string): void {
+    // ag-grid places its tooltip in the grid; a static grid sends it to an offset parent jsdom does not have.
+    host.querySelector<HTMLElement>('.ag-root-wrapper')!.style.position = 'relative';
+    const cell = gridCell(host, rowIndex, colId);
+    for (const type of ['mouseover', 'mouseenter', 'mousemove']) {
+        cell.dispatchEvent(new MouseEvent(type, { bubbles: type !== 'mouseenter', clientX: 5, clientY: 5 }));
+    }
+}
+
 /** A cell tooltip as one text: the row summary, or the current value with its struck parts in `~~` (`x > ~~1~~`). */
 export function cellTooltipText(tooltip: ConditionGroupCellTooltip | null): string | null {
     if (tooltip === null) return null;

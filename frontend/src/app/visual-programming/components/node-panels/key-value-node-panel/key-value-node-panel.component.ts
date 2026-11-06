@@ -25,7 +25,7 @@ import {
     ValidatorFn,
     Validators,
 } from '@angular/forms';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltipModule, TooltipPosition } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     CustomInputComponent,
@@ -101,6 +101,7 @@ import { KeyValueEntryDraftsService } from '../../../services/key-value-entry-dr
 import { SidePanelService } from '../../../services/side-panel.service';
 import { keyedListRowChanges, linkedEntityFormat, reordersKeyedList } from '../../../utils/diff';
 import { DiffFieldMarkChange, DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
+import { DiffTooltipSide, sideAwayFrom } from '../../diff-field-mark/diff-mark-tooltip.component';
 import { PickerItem } from '../../input-map/var-picker-flat.component';
 import {
     buildVariablePickerItems,
@@ -262,21 +263,30 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     private readonly entryRowChanges = computed(() => keyedListRowChanges(this.panelDiff(), 'entries', entryKey));
     /**
      * One per entry row, in the version's order (the rows the panel shows): a changed row is marked with its canvas
-     * variable path, a row only in the version is shown as added; `null` for a row a restore keeps.
+     * variable path as its field shows it (`.client`, not `variables.client`), a row only in the version is shown as
+     * added; `null` for a row a restore keeps.
      */
     protected readonly entryRowMarks = computed<(EntryRowMark | null)[]>(
         () =>
             this.entryRowChanges()?.rows.map((row) => {
                 if (row === null || row.status === 'deleted') return null;
                 if (row.status === 'added') return { change: null, added: true };
-                return { change: { current: entryValue(row.current), version: entryValue(row.version) }, added: false };
+                return {
+                    change: { current: entryDisplayValue(row.current), version: entryDisplayValue(row.version) },
+                    added: false,
+                };
             }) ?? []
     );
+    /**
+     * The side of its row the diff tooltip of a changed entry last opened on. Only one is open at a time, and it opens
+     * at once while a field's own tooltip waits for its delay, so the field's tooltip can take the other side.
+     */
+    private readonly entryDiffTooltipSide = signal<DiffTooltipSide>('above');
     /** The canvas entries the version does not have: a restore removes them. The value as its field shows it. */
     protected readonly removedEntries = computed(() =>
         (this.entryRowChanges()?.removed ?? []).map((row) => ({
             key: row.key,
-            value: variablesFormValueToDisplay(entryValue(row.current) ?? ''),
+            value: entryDisplayValue(row.current) ?? '',
         }))
     );
     /**
@@ -327,6 +337,8 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     });
 
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    /** Where a field's own tooltip opens when nothing asks otherwise, as `matTooltip` takes it. */
+    private readonly defaultTooltipPosition: TooltipPosition = inject(MAT_TOOLTIP_DEFAULT_OPTIONS).position ?? 'below';
     private readonly keyValueTablesApi = inject(KeyValueTablesApiService);
     private readonly keyValueTablesStorage = inject(KeyValueTablesStorageService);
     private readonly permissions = inject(PermissionsService);
@@ -618,6 +630,21 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     protected onValueBlur(entryIndex: number, event: FocusEvent): void {
         this.entries.at(entryIndex).get('value')?.markAsTouched();
         this.variablePicker.onBlur(entryIndex, event);
+    }
+
+    protected onEntryDiffTooltipSide(side: DiffTooltipSide): void {
+        this.entryDiffTooltipSide.set(side);
+    }
+
+    /**
+     * Where the Key and Variable path fields of a row show their own tooltips: where every tooltip opens, and on a
+     * changed row (Changes tab) on the other side of the row from the row's diff tooltip, so the two never cover
+     * each other.
+     */
+    protected entryFieldTooltipPosition(entryIndex: number): TooltipPosition {
+        return this.entryRowMarks()[entryIndex]?.change
+            ? sideAwayFrom(this.entryDiffTooltipSide())
+            : this.defaultTooltipPosition;
     }
 
     /** Returns the portion of the form value to show in the display input (strips the `variables` prefix). */
@@ -1094,4 +1121,10 @@ function entryKey(entry: unknown): string {
 
 function entryValue(entry: unknown): string | null {
     return (entry as Partial<KeyValueReadWriteEntry>).value ?? null;
+}
+
+/** An entry's variable path as its value field shows it; `null` when it has none. */
+function entryDisplayValue(entry: unknown): string | null {
+    const value = entryValue(entry);
+    return value === null ? null : variablesFormValueToDisplay(value);
 }

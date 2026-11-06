@@ -1,6 +1,6 @@
-import { _IdGenerator, AriaDescriber } from '@angular/cdk/a11y';
-import { OverlayModule } from '@angular/cdk/overlay';
-import { Component, computed, effect, ElementRef, inject, input, signal } from '@angular/core';
+import { _IdGenerator, AriaDescriber, InputModalityDetector } from '@angular/cdk/a11y';
+import { ConnectedOverlayPositionChange, OverlayModule } from '@angular/cdk/overlay';
+import { Component, computed, effect, ElementRef, inject, input, NgZone, output, signal } from '@angular/core';
 
 import { NODE_PANEL_DIFF } from '../../core/providers/node-panel-diff.token';
 import {
@@ -15,6 +15,8 @@ import {
     currentValueDescription,
     DIFF_MARK_TOOLTIP_POSITIONS,
     DiffMarkTooltipComponent,
+    DiffTooltipSide,
+    isOnOwnTooltip,
 } from './diff-mark-tooltip.component';
 
 /** The two sides of a changed value. */
@@ -45,6 +47,9 @@ const BADGE_LABEL = 'Restore changes this field';
  * A field whose value spans several inputs (a group of settings) is a group (`diffGroup`): the mark then draws the
  * border and the badge around itself and does not set `diff-value-marked`, so the form components inside keep their
  * own look. Its label, when inside, is then inside the border too.
+ *
+ * An element inside with a tooltip of its own (a help icon) carries `data-own-tooltip` (`OWN_TOOLTIP_ATTRIBUTE`): while
+ * the pointer or the focus is on it, only its own tooltip shows.
  *
  * A value too long for a tooltip (code) gets a fixed hint instead (`diffHint`), e.g. where to see the changes. A
  * value box that clips what sticks out (a code editor card, `marked-frame()` in `styles/_diff-value-mark.scss`)
@@ -78,10 +83,11 @@ const BADGE_LABEL = 'Restore changes this field';
         <ng-template
             cdkConnectedOverlay
             [cdkConnectedOverlayOrigin]="host"
-            [cdkConnectedOverlayOpen]="isOpen() && change() !== null"
+            [cdkConnectedOverlayOpen]="isOpen() && change() !== null && !isOnOwnTooltip()"
             [cdkConnectedOverlayPositions]="tooltipPositions"
             (overlayKeydown)="onOverlayKeydown($event)"
-            (detach)="close()"
+            (detach)="onDetach()"
+            (positionChange)="onPositionChange($event)"
         >
             <app-diff-mark-tooltip
                 [hint]="diffHint()"
@@ -146,6 +152,11 @@ export class DiffFieldMarkComponent {
      * element is something else, e.g. "Restore changes this question" for a row that holds a whole question.
      */
     readonly diffLabel = input(BADGE_LABEL);
+    /**
+     * The side of the marked element the tooltip opened on, each time it opens or moves: an element inside with a
+     * tooltip of its own places that one on the other side (`sideAwayFrom`), so the two never cover each other.
+     */
+    readonly diffTooltipSide = output<DiffTooltipSide>();
 
     /** The change shown; `null` when there is none, or off the Changes tab, or on an added or removed node. */
     protected readonly change = computed<DiffFieldMarkChange | null>(() => {
@@ -172,6 +183,14 @@ export class DiffFieldMarkComponent {
         return this.isRow ? `${this.diffLabel()}. ${currentValue}` : currentValue;
     });
     protected readonly isOpen = signal(false);
+    /**
+     * Whether the pointer or the keyboard focus is on an element inside that shows a tooltip of its own
+     * (`data-own-tooltip`, e.g. a help icon): the mark's tooltip stays closed meanwhile, so two tooltips never show at
+     * once. Focus a click leaves on it does not count: its tooltip follows the pointer, as the mark's does.
+     */
+    protected readonly pointerOnOwnTooltip = signal(false);
+    protected readonly focusOnOwnTooltip = signal(false);
+    protected readonly isOnOwnTooltip = computed(() => this.pointerOnOwnTooltip() || this.focusOnOwnTooltip());
 
     protected readonly tooltipPositions = DIFF_MARK_TOOLTIP_POSITIONS;
     protected readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -183,6 +202,12 @@ export class DiffFieldMarkComponent {
 
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private readonly ariaDescriber = inject(AriaDescriber);
+    private readonly inputModality = inject(InputModalityDetector);
+    private readonly zone = inject(NgZone);
+    private readonly onPointerOver = (event: Event): void => this.pointerOnOwnTooltip.set(this.onOwnTooltip(event));
+    private readonly onFocusIn = (event: Event): void =>
+        this.focusOnOwnTooltip.set(this.inputModality.mostRecentModality === 'keyboard' && this.onOwnTooltip(event));
+    private readonly onFocusOut = (): void => this.focusOnOwnTooltip.set(false);
 
     constructor() {
         effect((onCleanup) => {
@@ -192,6 +217,25 @@ export class DiffFieldMarkComponent {
             this.ariaDescriber.describe(element, description);
             onCleanup(() => this.ariaDescriber.removeDescription(element, description));
         });
+        // Own tooltips inside matter only while the mark shows (the Changes tab). The listeners run outside Angular's
+        // zone, so moving the pointer inside a mark starts no app-wide change detection; the signals they set refresh
+        // only this mark. The live editor's marks listen to nothing.
+        effect((onCleanup) => {
+            if (this.change() === null) return;
+            const element = this.host.nativeElement;
+            this.zone.runOutsideAngular(() => {
+                element.addEventListener('mouseover', this.onPointerOver);
+                element.addEventListener('focusin', this.onFocusIn);
+                element.addEventListener('focusout', this.onFocusOut);
+            });
+            onCleanup(() => {
+                element.removeEventListener('mouseover', this.onPointerOver);
+                element.removeEventListener('focusin', this.onFocusIn);
+                element.removeEventListener('focusout', this.onFocusOut);
+                this.pointerOnOwnTooltip.set(false);
+                this.focusOnOwnTooltip.set(false);
+            });
+        });
     }
 
     protected open(): void {
@@ -200,11 +244,24 @@ export class DiffFieldMarkComponent {
 
     protected close(): void {
         this.isOpen.set(false);
+        this.pointerOnOwnTooltip.set(false);
     }
 
-    /** Esc on the focused field closes an open tooltip only; it does not also close the panel. */
+    /** The overlay went away by itself (e.g. scrolled out of sight); not when it closed for an own tooltip. */
+    protected onDetach(): void {
+        if (!this.isOnOwnTooltip()) this.close();
+    }
+
+    protected onPositionChange(change: ConnectedOverlayPositionChange): void {
+        this.diffTooltipSide.emit(change.connectionPair.originY === 'top' ? 'above' : 'below');
+    }
+
+    /**
+     * Esc on the focused field closes a shown tooltip only; it does not also close the panel. Not shown (closed, or
+     * hidden for an own tooltip): Esc goes on to the panel.
+     */
     protected onEscape(event: Event): void {
-        if (!this.isOpen()) return;
+        if (!this.isOpen() || this.isOnOwnTooltip()) return;
         event.stopPropagation();
         this.close();
     }
@@ -217,5 +274,9 @@ export class DiffFieldMarkComponent {
         if (event.key !== 'Escape') return;
         event.stopPropagation();
         this.close();
+    }
+
+    private onOwnTooltip(event: Event): boolean {
+        return isOnOwnTooltip(event.target, this.host.nativeElement);
     }
 }

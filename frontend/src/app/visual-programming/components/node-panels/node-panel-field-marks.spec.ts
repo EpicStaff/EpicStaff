@@ -1,10 +1,12 @@
-import { Type } from '@angular/core';
+import { getDebugNode, Type } from '@angular/core';
 import { ComponentFixture } from '@angular/core/testing';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltip } from '@angular/material/tooltip';
 import { NodeType } from '@shared/models';
 
 import { KeyValueNodeModel } from '../../core/models/node.model';
 import { FieldChange } from '../../utils/diff';
 import { shownCodeDiffLanguages, shownCodeDiffs } from '../code-diff-view/code-diff-view.testing';
+import { layOutWindowWithRowAt } from '../diff-field-mark/diff-mark-tooltip.testing';
 import { AudioToTextNodePanelComponent } from './audio-to-text-node-panel/audio-to-text-node-panel.component';
 import { EndNodePanelComponent } from './end-node-panel/end-node-panel.component';
 import { FileExtractorNodePanelComponent } from './file-extractor-node-panel/file-extractor-node-panel.component';
@@ -449,15 +451,90 @@ describe('Key-Value entries on the Changes tab', () => {
         expect(keptCell.color).not.toBe(removedCells[0].color);
     });
 
-    it('shows the canvas variable path of a changed row in its tooltip', () => {
+    it('shows the canvas variable path of a changed row in its tooltip as the value field shows it', () => {
         const root = openEntries([{ key: 'customer', value: 'variables.client' }, ...VERSION_ENTRIES.slice(1)]);
 
         root.querySelector('.entry-row-mark.diff-field-mark--shown')!.dispatchEvent(new Event('mouseenter'));
         fixture.detectChanges();
 
+        // The field shows `@` then the path without `variables`: `.client`, against the version's `.customer`.
         expect(document.querySelector('.diff-field-mark__tooltip-value')?.textContent?.replace(/\s+/g, '')).toBe(
-            'variables.client'
+            '.client'
         );
+    });
+
+    describe('the Key and Variable path tooltips next to the diff tooltip of a row', () => {
+        // As the app sets it: every tooltip above its element.
+        const APP_TOOLTIP_OPTIONS = {
+            provide: MAT_TOOLTIP_DEFAULT_OPTIONS,
+            useValue: { showDelay: 0, hideDelay: 0, touchendHideDelay: 1500, position: 'above' },
+        };
+
+        afterEach(() => vi.restoreAllMocks());
+
+        function openWithAppTooltips(current: unknown[], options: ChangesTabOptions = {}): HTMLElement {
+            fixture = openPanelOnChangesTab(
+                KeyValueNodePanelComponent,
+                { ...KEY_VALUE_NODE, data: { ...KEY_VALUE_NODE.data, entries: VERSION_ENTRIES } },
+                [fieldChange('entries', current, VERSION_ENTRIES)],
+                options,
+                [APP_TOOLTIP_OPTIONS]
+            );
+            return fixture.nativeElement;
+        }
+
+        /**
+         * Points at the row, as a user does before a field's own tooltip opens (after its delay), and gives the side
+         * the Key and Variable path fields ask their tooltips to open on.
+         */
+        async function fieldTooltipSides(row: HTMLElement): Promise<string[]> {
+            row.dispatchEvent(new Event('mouseenter'));
+            fixture.detectChanges();
+            // The diff tooltip is placed once it has rendered and reports its side; the next check applies it.
+            await fixture.whenStable();
+            fixture.detectChanges();
+            return Array.from(
+                row.querySelectorAll<HTMLElement>('input[aria-label="Key"], input[aria-label="Variable path"]'),
+                (field) => getDebugNode(field)!.injector.get(MatTooltip).position
+            );
+        }
+
+        const CHANGED_CUSTOMER = [{ key: 'customer', value: 'variables.client' }, ...VERSION_ENTRIES.slice(1)];
+
+        it.each([
+            // Room above the row: the diff tooltip opens above it.
+            { where: 'above', rowTop: 300, fields: ['below', 'below'] },
+            // No room above the row (window top): the diff tooltip opens below it.
+            { where: 'below', rowTop: 4, fields: ['above', 'above'] },
+        ])(
+            'opens them on the other side of a changed row when its diff tooltip is $where it',
+            async ({ rowTop, fields }) => {
+                const root = openWithAppTooltips(CHANGED_CUSTOMER);
+                const changed = root.querySelector<HTMLElement>('.entry-row-mark.diff-field-mark--shown')!;
+                layOutWindowWithRowAt(changed, rowTop);
+
+                expect(await fieldTooltipSides(changed)).toEqual(fields);
+                expect(document.querySelector('.diff-field-mark__tooltip')).not.toBeNull();
+            }
+        );
+
+        // Room above the row, where a diff tooltip would open: the fields would then ask for below.
+        it.each<{ row: string; key: string; options: ChangesTabOptions }>([
+            { row: 'a row a restore keeps', key: 'kept', options: {} },
+            {
+                row: 'the changed row off the Changes tab (the live editor)',
+                key: 'customer',
+                options: { onChangesTab: false },
+            },
+        ])('opens them where every tooltip opens on $row', async ({ key, options }) => {
+            const root = openWithAppTooltips(CHANGED_CUSTOMER, options);
+            const row = Array.from(root.querySelectorAll<HTMLElement>('.entry-row-mark')).find(
+                (entryRow) => entryRow.querySelector<HTMLInputElement>('input[aria-label="Key"]')?.value === key
+            )!;
+            layOutWindowWithRowAt(row, 300);
+
+            expect(await fieldTooltipSides(row)).toEqual(['above', 'above']);
+        });
     });
 
     const ORDER_NOTE = 'Restore changes the order of the entries.';

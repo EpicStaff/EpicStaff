@@ -22,6 +22,7 @@ import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
 import { MapKeyChange } from '../../utils/diff';
 import { DiffFieldMarkComponent } from '../diff-field-mark/diff-field-mark.component';
+import { layOutWindowWithRowAt } from '../diff-field-mark/diff-mark-tooltip.testing';
 import { provideChangesTabDiff } from '../missing-reference-note/missing-reference-note.testing';
 import { InputMapComponent } from './input-map.component';
 
@@ -443,6 +444,54 @@ describe('InputMapComponent rows on the Changes tab of a version preview', () =>
         expect(document.querySelector('.diff-field-mark__tooltip-value')?.textContent?.replace(/\s/g, '')).toBe(
             'variables.user'
         );
+    });
+
+    describe('the cell tooltips next to the diff tooltip of a changed row', () => {
+        afterEach(() => vi.restoreAllMocks());
+
+        const readonlyRows = (): HTMLElement[] =>
+            Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.readonly-row'));
+
+        /**
+         * Points at the row, as a user does before a cell's own tooltip opens (after its delay), and gives the side
+         * each cell asks its tooltip to open on. jsdom cannot lay out where Material then puts it.
+         */
+        async function cellTooltipSides(row: HTMLElement): Promise<string[]> {
+            row.dispatchEvent(new Event('mouseenter'));
+            fixture.detectChanges();
+            // The diff tooltip is placed once it has rendered and reports its side; the next check applies it.
+            await fixture.whenStable();
+            fixture.detectChanges();
+            return Array.from(
+                row.querySelectorAll<HTMLElement>('.readonly-cell'),
+                (cell) => getDebugNode(cell)!.injector.get(MatTooltip).position
+            );
+        }
+
+        it.each([
+            // Room above the row: the diff tooltip opens above it.
+            { where: 'above', rowTop: 300, cells: ['below', 'below'] },
+            // No room above the row (window top): the diff tooltip opens below it.
+            { where: 'below', rowTop: 4, cells: ['above', 'above'] },
+        ])('opens them on the other side of the row when the diff tooltip is $where it', async ({ rowTop, cells }) => {
+            render(RESTORE);
+            const [changed] = readonlyRows();
+            layOutWindowWithRowAt(changed, rowTop);
+
+            expect(await cellTooltipSides(changed)).toEqual(cells);
+            expect(document.querySelector('.diff-field-mark__tooltip')).not.toBeNull();
+        });
+
+        it.each([
+            { row: 'a row a restore keeps', rowChanges: RESTORE, rowIndex: 2 },
+            { row: 'any row without row changes (the live editor)', rowChanges: null, rowIndex: 0 },
+        ])('keeps them above on $row', async ({ rowChanges, rowIndex }) => {
+            render(rowChanges);
+            const row = readonlyRows()[rowIndex];
+            layOutWindowWithRowAt(row, 4);
+
+            expect(await cellTooltipSides(row)).toEqual(['above', 'above']);
+        });
     });
 
     it('shows the rows as they are without row changes, as everywhere but the Changes tab', () => {

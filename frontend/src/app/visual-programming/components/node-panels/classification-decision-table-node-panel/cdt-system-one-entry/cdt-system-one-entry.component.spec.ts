@@ -591,6 +591,32 @@ describe('CdtSystemOneEntryComponent on the Changes tab of a version preview', (
         expect(changed.getAttribute('tabindex')).toBe('0');
     });
 
+    it("shows only the type help over its help icon, and the question's tooltip elsewhere in the question", async () => {
+        const root = await open(versionEntry, {
+            fields: [
+                promptChange(
+                    'questions',
+                    { ...QUESTIONS, correct: { type: 'noul', instructions: 'Is it right?' } },
+                    QUESTIONS
+                ),
+            ],
+        });
+        const question = questionNamed(root, 'correct');
+        const diffTooltip = (): string | null =>
+            document.querySelector('.diff-field-mark__tooltip')?.textContent?.trim() ?? null;
+        const pointAt = (element: Element): void => {
+            element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            fixture.detectChanges();
+        };
+        question.dispatchEvent(new Event('mouseenter'));
+
+        pointAt(question.querySelector('.question__name')!);
+        expect(diffTooltip()).toBe('Changed fields: Instructions.');
+
+        pointAt(question.querySelector('button[aria-label="Question type help"]')!);
+        expect(diffTooltip()).toBeNull();
+    });
+
     it('names a question whose type changed by its type and its new criteria', async () => {
         const root = await open(versionEntry, {
             fields: [

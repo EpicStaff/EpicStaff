@@ -1,5 +1,5 @@
 import { NodeType } from '@shared/models';
-import { ColDef, ColGroupDef, EditableCallbackParams } from 'ag-grid-community';
+import { ColDef, ColGroupDef, EditableCallbackParams, ITooltipParams } from 'ag-grid-community';
 
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { NodeModel } from '../../../../core/models/node.model';
@@ -127,6 +127,46 @@ export function cellTooltipOf(
     if (mark?.status !== 'changed' || mark.hint === null) return null;
     const segments = colId === null ? undefined : mark.cells.get(colId);
     return segments ? { segments } : { hint: mark.hint };
+}
+
+/**
+ * Whether the cell of column `colId` of a row shows a row tooltip (`cellTooltipOf`): there, a column's own ag-grid
+ * tooltip stays closed, so a cell never shows two tooltips at once; the row tooltip carries the cell's full text.
+ */
+export function showsRowTooltip(
+    changes: ConditionGroupGridRowChanges | null,
+    data: unknown,
+    colId: string | null
+): boolean {
+    return cellTooltipOf(changes, data, colId) !== null;
+}
+
+/**
+ * The column with its own ag-grid tooltip (`tooltipValueGetter`, the full text of a cut-off cell) closed on the cells
+ * that show a row tooltip; the column as it is when it has none. `changes` is read when a tooltip is about to open.
+ */
+export function withoutGridTooltipUnderRowTooltip(
+    definition: ColDef,
+    changes: () => ConditionGroupGridRowChanges | null
+): ColDef {
+    const tooltipValueGetter = definition.tooltipValueGetter;
+    if (!tooltipValueGetter) return definition;
+    // The cell's `col-id`, as ag-grid sets it.
+    const colId = definition.colId ?? definition.field ?? null;
+    return {
+        ...definition,
+        tooltipValueGetter: (params: ITooltipParams) =>
+            showsRowTooltip(changes(), params.data, colId) ? undefined : tooltipValueGetter(params),
+    };
+}
+
+/**
+ * Whether the text of an ag-grid cell is cut off, as ag-grid's `tooltipShowMode: 'whenTruncated'` decides it: its
+ * value element (the cell itself when it has none) overflows in either direction.
+ */
+export function isCellTextTruncated(cell: HTMLElement): boolean {
+    const text = cell.querySelector<HTMLElement>('.ag-cell-value') ?? cell;
+    return text.scrollWidth > text.clientWidth || text.scrollHeight > text.clientHeight;
 }
 
 /** The class of a row (ag-grid `getRowClass`); none for a row a restore keeps and outside the Changes tab. */

@@ -93,6 +93,7 @@ import {
     lockRemovedRows,
     rowMarkClass,
     rowStatusText,
+    showsRowTooltip,
 } from '../../shared/condition-group-row-marks/condition-group-row-marks';
 import { ConditionGroupRowTooltipsDirective } from '../../shared/condition-group-row-marks/condition-group-row-tooltips.directive';
 import {
@@ -2115,6 +2116,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         if (!this.isDiffShown()) return {};
         const params: ConditionGroupNameCellParams = {
             statusOf: (data) => rowStatusText(this.rowChanges(), data),
+            showsRowTooltip: (data) => showsRowTooltip(this.rowChanges(), data, 'group_name'),
         };
         return { cellRenderer: ConditionGroupNameCellRendererComponent, cellRendererParams: params };
     }
