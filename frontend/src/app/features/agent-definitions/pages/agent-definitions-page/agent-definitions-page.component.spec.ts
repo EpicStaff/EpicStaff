@@ -23,6 +23,7 @@ import { AgentsPageStore } from '../../services/agents-page-store.service';
 import { SurfaceCatalogsStore } from '../../services/surface-catalogs-store.service';
 import { AgentDefinitionsPageComponent } from './agent-definitions-page.component';
 import { DetailHeaderComponent } from './components/detail-header/detail-header.component';
+import { AGENTS_SECTION_MENU_ACTION } from './components/explorer/explorer-menu.util';
 
 const AGENT: AgentDefinition = {
     id: 3,
@@ -326,6 +327,58 @@ describe('AgentDefinitionsPageComponent explorer row menu "View Details"', () =>
         });
 
         expect(open).not.toHaveBeenCalled();
+    });
+});
+
+describe('AgentDefinitionsPageComponent Agents section menu', () => {
+    function stubImportExport(fixture: ComponentFixture<AgentDefinitionsPageComponent>) {
+        const actions = { importAgents: vi.fn(), startAgentExport: vi.fn() };
+        Object.assign(fixture.debugElement.injector.get(AgentsPageStore), actions);
+        return actions;
+    }
+
+    function chooseSectionItem(fixture: ComponentFixture<AgentDefinitionsPageComponent>, action: string): void {
+        fixture.componentInstance.onExplorerTreeMenu({
+            node: { kind: 'section-header', section: 'agents' },
+            action,
+            trigger: document.createElement('button'),
+        });
+    }
+
+    it('imports agents on Import', () => {
+        const { fixture } = render(true);
+        const { importAgents, startAgentExport } = stubImportExport(fixture);
+
+        chooseSectionItem(fixture, AGENTS_SECTION_MENU_ACTION.import);
+
+        expect(importAgents).toHaveBeenCalledOnce();
+        expect(startAgentExport).not.toHaveBeenCalled();
+    });
+
+    it('starts picking the agents to export on Export…', () => {
+        const { fixture } = render(true);
+        const { importAgents, startAgentExport } = stubImportExport(fixture);
+
+        chooseSectionItem(fixture, AGENTS_SECTION_MENU_ACTION.export);
+
+        expect(startAgentExport).toHaveBeenCalledOnce();
+        expect(importAgents).not.toHaveBeenCalled();
+    });
+});
+
+describe('AgentDefinitionsPageComponent agent row menu "Export"', () => {
+    it('exports that agent', () => {
+        const { fixture } = render(true);
+        const exportAgent = vi.fn();
+        Object.assign(fixture.debugElement.injector.get(AgentsPageStore), { exportAgent });
+
+        fixture.componentInstance.onExplorerTreeMenu({
+            node: { kind: 'agent', agentId: 3, label: 'CV Processor', children: [] },
+            action: 'export',
+            trigger: document.createElement('button'),
+        });
+
+        expect(exportAgent).toHaveBeenCalledExactlyOnceWith(3);
     });
 });
 

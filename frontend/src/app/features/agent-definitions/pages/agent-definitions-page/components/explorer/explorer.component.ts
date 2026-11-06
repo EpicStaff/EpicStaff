@@ -28,7 +28,7 @@ import { AgentsSectionComponent } from './agents-section/agents-section.componen
 import { BranchesFilterComponent } from './branches-filter/branches-filter.component';
 import { ExplorerContextMenuComponent } from './explorer-context-menu/explorer-context-menu.component';
 import { ExplorerMenuItem, ExplorerMenuPosition } from './explorer-context-menu/explorer-menu.model';
-import { groupMenuItems, menuPositionFromClick } from './explorer-menu.util';
+import { agentsSectionMenuItems, groupMenuItems, menuPositionFromClick } from './explorer-menu.util';
 import { StorageSectionComponent } from './storage-section/storage-section.component';
 import { SurfacesSectionComponent } from './surfaces-section/surfaces-section.component';
 
@@ -210,7 +210,7 @@ export class ExplorerComponent {
     onAgentsSectionMenu(event: MouseEvent): void {
         this.onTreeMenuOpen({
             node: { kind: 'section-header', section: 'agents' },
-            items: [],
+            items: agentsSectionMenuItems(),
             position: menuPositionFromClick(event),
             trigger: event.currentTarget as HTMLElement,
         });
