@@ -1,0 +1,16 @@
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('rbac', '0011_merge_retention_and_resource_types'),
+    ]
+
+    operations = [
+        migrations.AlterField(
+            model_name='rolepermission',
+            name='resource_type',
+            field=models.CharField(choices=[('organizations', 'Organizations'), ('roles', 'Roles'), ('memberships', 'Members'), ('api_keys', 'API Keys'), ('flows', 'Flows'), ('agents', 'Agents'), ('tools', 'Tools'), ('knowledge_sources', 'Knowledge Sources'), ('files', 'Files'), ('projects', 'Projects'), ('llm_configs', 'LLM Configs'), ('secrets', 'Secrets'), ('audit', 'Audit'), ('voice', 'Voice'), ('surfaces', 'Surfaces'), ('webhooks', 'Webhooks'), ('key_value_tables', 'Key-Value Tables'), ('venvs', 'Venvs'), ('chats', 'Conversations'), ('custom_libraries', 'Custom Libraries')], max_length=32),
+        ),
+    ]

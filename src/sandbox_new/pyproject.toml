@@ -7,6 +7,8 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "boto3==1.43.111",
+    "boto3-stubs==1.43.111",
     "foundation",
     "litestar==2.24.0",
     "loguru==0.7.3",
@@ -39,7 +41,8 @@ transitive-pins = [
     "anyio==4.14.2",
     "idna==3.18",
     "pyjwt==2.15.1",
-    "certifi==2026.10.23"
+    "certifi==2026.10.23",
+    "urllib3==2.7.0"
 ]
 
 [tool.pytest.ini_options]

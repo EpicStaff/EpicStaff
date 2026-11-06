@@ -140,3 +140,13 @@ STORAGE_HOST = env.str("STORAGE_HOST")
 STORAGE_SSL = env.bool("STORAGE_SSL")
 STORAGE_ENDPOINT = f"{'https' if STORAGE_SSL else 'http'}://{STORAGE_HOST}:{STORAGE_PORT}"
 STORAGE_BUCKET = env.str("STORAGE_BUCKET")
+
+# This service's own credential, used only for CUSTOM_LIBRARY_BUCKET. An execution never
+# gets it: the worker builds the child environment from scratch rather than inheriting
+# os.environ, and the credentials it does use arrive per job from the caller.
+STORAGE_USER = env.str("STORAGE_USER")
+STORAGE_PASSWORD = env.str("STORAGE_PASSWORD")
+
+# Uploaded custom-library sources and the wheels built from them. Kept apart from
+# STORAGE_BUCKET, which holds organizations' files.
+CUSTOM_LIBRARY_BUCKET = env.str("SANDBOX_CUSTOM_LIBRARY_BUCKET")
