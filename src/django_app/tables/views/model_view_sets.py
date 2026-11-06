@@ -68,7 +68,6 @@ from rest_framework.exceptions import (
 from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
 )
-from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -421,6 +420,7 @@ from tables.views.secret_use import (
     SecretUseCheckedViewSetMixin,
 )
 from utils.logger import logger
+from utils.pagination import DefaultLimitOffsetPagination
 
 redis_service = RedisService()
 
@@ -3225,8 +3225,8 @@ class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewse
         return Response({key: asdict(item) for key, item in result.items()})
 
 
-class KeyValueTableEntryPagination(LimitOffsetPagination):
-    """Caps `?limit=` so one request can't force a worker to load every entry of a table."""
+class KeyValueTableEntryPagination(DefaultLimitOffsetPagination):
+    """Tighter cap than the project default: every entry on a page renders a value preview."""
 
     max_limit = 100
 
