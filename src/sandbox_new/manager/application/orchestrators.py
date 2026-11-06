@@ -16,6 +16,7 @@ from common.public_errors import (
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
 
+from manager.application.errors import VenvNotFoundError
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.ports import (
@@ -24,9 +25,14 @@ from manager.application.ports import (
     AbstractUnitOfWork,
     AbstractUVProvider,
 )
+from manager.application.ports.errors import (
+    DependencyConflictError,
+    EnvironmentBuildError,
+    PackageNotFoundError,
+    PackageVersionNotFoundError,
+)
 from manager.application.registry import ExecutionRegistry
-from manager.domain.enums import ExecutionStatus, VenvOrder, VenvStatus
-from manager.domain.errors import UVBuildError, VenvNotFoundError
+from manager.domain.enums import ExecutionStatus, VenvBuildErrorKind, VenvOrder, VenvStatus
 from manager.domain.models import Job, Library, StorageCredentials, Venv
 from manager.domain.types import NotRunReason
 
@@ -107,6 +113,26 @@ class VenvCRUDOrchestrator:
         logger.info("Removed venv {}", id)
 
 
+# Build errors whose text names only what the user declared, so it is stored as is.
+_DECLARED_PACKAGE_ERROR_KINDS: dict[type[EnvironmentBuildError], VenvBuildErrorKind] = {
+    PackageNotFoundError: VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+    PackageVersionNotFoundError: VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND,
+    DependencyConflictError: VenvBuildErrorKind.PACKAGE_DEPENDENCY_CONFLICT,
+}
+
+
+def _build_failure(error: Exception) -> tuple[VenvBuildErrorKind, str]:
+    """The kind and the text to store for a build that raised `error`.
+
+    Any exception but a declared-package error can carry paths or tool output in its
+    text, so it is stored as the generic hint; its detail is left to the build's log line.
+    """
+    kind = _DECLARED_PACKAGE_ERROR_KINDS.get(type(error))
+    if kind is None:
+        return VenvBuildErrorKind.PACKAGE_INSTALL_FAILED, EnvironmentBuildError.default_message
+    return kind, str(error)
+
+
 class VenvBuildOrchestrator:
     def __init__(self, uow: AbstractUnitOfWork, uv_provider: AbstractUVProvider):
         self.uow = uow
@@ -125,7 +151,7 @@ class VenvBuildOrchestrator:
         try:
             await self._build(venv)
         except Exception as e:
-            venv.mark_as_failed(e)
+            venv.mark_as_failed(*_build_failure(e))
             logger.exception("Venv {} failed to build", venv.id)
         else:
             venv.mark_as_completed()
@@ -399,11 +425,10 @@ class JobOrchestrator:
 def _venv_build_failed_message(venv: Venv | None) -> str:
     """The text a job gets when its venv failed to build, or vanished while it was held.
 
-    Only an error naming what the user declared is quoted; any other failure gets a
-    generic hint, so an error stored before build errors were filtered never reaches
-    the run's message.
+    Only an error whose kind says it names what the user declared is quoted; any other
+    failure, and one stored before kinds were, gets the generic hint.
     """
     detail = venv.build_error_detail if venv is not None else None
     if detail is not None:
         return _VENV_BUILD_FAILED_MESSAGE.format(error=detail)
-    return UVBuildError.default_message
+    return EnvironmentBuildError.default_message

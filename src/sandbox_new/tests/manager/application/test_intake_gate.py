@@ -9,9 +9,9 @@ in-flight cap -- otherwise one tenant's venv stuck building could lock out every
 
 import pytest
 
+from manager.application.errors import SandboxOverloadedError
 from manager.application.intake import IntakeGate
 from manager.application.registry import ExecutionRegistry
-from manager.domain.errors import SandboxOverloadedError
 
 QUEUE_TIMEOUT = 10.0
 

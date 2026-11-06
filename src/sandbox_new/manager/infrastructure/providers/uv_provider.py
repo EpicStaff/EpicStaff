@@ -7,12 +7,11 @@ from loguru import logger
 from packaging.utils import canonicalize_name
 
 from manager.application.ports import AbstractUVProvider
-from manager.domain.errors import (
-    BaseError,
-    UVBuildError,
-    UVDependencyResolutionError,
-    UVPackageNotFoundError,
-    UVVersionNotFoundError,
+from manager.application.ports.errors import (
+    DependencyConflictError,
+    EnvironmentBuildError,
+    PackageNotFoundError,
+    PackageVersionNotFoundError,
 )
 from manager.domain.types import LibraryString
 
@@ -53,37 +52,37 @@ def _normalize(stderr: str) -> str:
     return " ".join(stderr.split())
 
 
-def _parse_stderr(args: Sequence[str], stderr: str) -> BaseError:
-    """Turn the stderr of a failed uv command into a domain error.
+def _parse_stderr(args: Sequence[str], stderr: str) -> EnvironmentBuildError:
+    """Turn the stderr of a failed uv command into the build port's error.
 
     Only dependency resolution (`uv pip compile` and `uv pip sync`) reports failures a
     user can act on; every other command and every unrecognised cause falls back to the
     generic build error.
     """
     if tuple(args[:2]) not in PARSED_COMMANDS:
-        return UVBuildError()
+        return EnvironmentBuildError()
 
     cause = _normalize(stderr)
     if RESOLUTION_FAILURE not in cause:
-        return UVBuildError()
+        return EnvironmentBuildError()
 
     not_found = PACKAGE_NOT_FOUND_PATTERN.search(cause)
     if not_found is not None:
-        return UVPackageNotFoundError(package=canonicalize_name(not_found["name"]))
+        return PackageNotFoundError(package=canonicalize_name(not_found["name"]))
 
     for pattern in (MISSING_VERSION_PATTERN, UNSATISFIED_RANGE_PATTERN):
         no_version = pattern.search(cause)
         if no_version is not None:
-            return UVVersionNotFoundError(
+            return PackageVersionNotFoundError(
                 package=canonicalize_name(no_version["name"]),
                 specification=no_version["specification"].rstrip(",."),
             )
 
     conflict = CONFLICT_PATTERN.search(cause)
     if conflict is not None:
-        return UVDependencyResolutionError(package=canonicalize_name(conflict["name"]))
+        return DependencyConflictError(package=canonicalize_name(conflict["name"]))
 
-    return UVBuildError()
+    return EnvironmentBuildError()
 
 
 class UVProvider(AbstractUVProvider):

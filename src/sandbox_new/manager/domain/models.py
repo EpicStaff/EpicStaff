@@ -7,24 +7,21 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from pydantic import Field, field_validator, model_validator
 
-from manager.domain.enums import JobStatus, VenvStatus
-from manager.domain.errors import (
-    UVBuildError,
-    UVDependencyResolutionError,
-    UVPackageNotFoundError,
-    UVVersionNotFoundError,
-)
+from manager.domain.enums import JobStatus, VenvBuildErrorKind, VenvStatus
 from manager.domain.types import LibraryString
 
 __all__ = ["DEFAULT_VENV_NAME", "Job", "Library", "StorageCredentials", "Venv"]
 
 DEFAULT_VENV_NAME = "default"
 
-# Build errors whose text names only what the user declared, so it may be shown to them.
-_USER_FACING_BUILD_ERRORS = (
-    UVPackageNotFoundError,
-    UVVersionNotFoundError,
-    UVDependencyResolutionError,
+# Build failures whose stored text names only what the user declared, so it may be
+# shown to them.
+_USER_FACING_BUILD_ERROR_KINDS = frozenset(
+    {
+        VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+        VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND,
+        VenvBuildErrorKind.PACKAGE_DEPENDENCY_CONFLICT,
+    }
 )
 
 VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_\.][a-z0-9]+)*)?$"
@@ -86,6 +83,8 @@ class Venv(Entity):
     hash: str | None = None
     status: VenvStatus = VenvStatus.DECLARED
     error: str | None = None
+    # None while the build has not failed, and for a failure stored before kinds were.
+    error_kind: VenvBuildErrorKind | None = None
     # Assigned by the database, never by the domain: unset until the venv is stored.
     created_at: datetime | None = Field(default=None, frozen=True)
     updated_at: datetime | None = Field(default=None, frozen=True)
@@ -119,7 +118,7 @@ class Venv(Entity):
     def apply_resolved_versions(self, versions: dict[str, str], /):
         """Record what the build installed, keyed by canonical name.
 
-        `versions` also carries the transitive packages uv resolved; only declared
+        `versions` also carries the transitive packages the build resolved; only declared
         libraries are stamped, and one the build did not resolve is left as declared.
         """
         self.libs = [
@@ -130,42 +129,41 @@ class Venv(Entity):
         ]
 
     def mark_as_declared(self):
-        self.error = None
+        self._clear_error()
         self.status = VenvStatus.DECLARED
 
     def mark_as_processing(self):
         self.status = VenvStatus.PROCESSING
 
     def mark_as_completed(self):
-        self.error = None
+        self._clear_error()
         self.status = VenvStatus.COMPLETED
 
-    def mark_as_failed(self, error: Exception):
-        """Mark the build failed and store a text about it that is safe to show.
+    def mark_as_failed(self, kind: VenvBuildErrorKind, message: str):
+        """Mark the build failed, recording why.
 
-        The build errors that name just a declared package keep their own text. Any
-        other exception's text can carry paths or tool output, so it is stored as the
-        generic build-failure hint and its detail is left to the build's log line.
+        Args:
+            message: Stored as given, so it must be safe to show: the caller passes a
+                generic hint for any failure whose text can carry paths or tool output.
         """
-        if isinstance(error, _USER_FACING_BUILD_ERRORS):
-            self.error = str(error)
-        else:
-            self.error = UVBuildError.default_message
+        self.error = message
+        self.error_kind = kind
         self.status = VenvStatus.FAILED
 
     @property
     def build_error_detail(self) -> str | None:
-        """The stored error when it names what the user declared, else None.
+        """The stored error when its kind says it names what the user declared, else None.
 
-        Recognised by its text, since only the text is stored: None for the generic
-        hint, and for an error stored before build errors were filtered, which can
-        still hold raw tool output.
+        None for the generic kind, and for a failure stored before kinds were, whose
+        text can still hold raw tool output.
         """
-        if self.error is not None and any(
-            error_type.describes(self.error) for error_type in _USER_FACING_BUILD_ERRORS
-        ):
+        if self.error_kind in _USER_FACING_BUILD_ERROR_KINDS:
             return self.error
         return None
+
+    def _clear_error(self):
+        self.error = None
+        self.error_kind = None
 
 
 class StorageCredentials(ValueObject):

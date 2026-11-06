@@ -17,8 +17,8 @@ from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
 from manager.application.registry import ExecutionRegistry
-from manager.domain.enums import ExecutionStatus, VenvStatus
-from manager.domain.errors import SandboxOverloadedError, VenvNotFoundError
+from manager.application.errors import SandboxOverloadedError, VenvNotFoundError
+from manager.domain.enums import ExecutionStatus, VenvBuildErrorKind, VenvStatus
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
@@ -186,7 +186,11 @@ async def test_submit_against_a_failed_venv_reports_a_failure(
     uow, orchestrator, dispatcher, holding, failure_sink
 ):
     venv = uow.venv_repo.seed(
-        make_venv(status=VenvStatus.FAILED, error="Package 'requests2' does not exist.")
+        make_venv(
+            status=VenvStatus.FAILED,
+            error="Package 'requests2' does not exist.",
+            error_kind=VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+        )
     )[0]
 
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
@@ -200,24 +204,31 @@ async def test_submit_against_a_failed_venv_reports_a_failure(
 
 
 @pytest.mark.parametrize(
-    "stored_error",
+    ("kind", "stored_error"),
     [
-        GENERIC_VENV_FAILED_MESSAGE,
-        "Could not build the environment. Check the library names and version specifications.",
-        "uv pip compile failed: /var/lib/sandbox/venvs/venv-3 is not writable",
-        None,
+        (VenvBuildErrorKind.PACKAGE_INSTALL_FAILED, GENERIC_VENV_FAILED_MESSAGE),
+        (
+            None,
+            "Could not build the environment. Check the library names and version specifications.",
+        ),
+        (None, "uv pip compile failed: /var/lib/sandbox/venvs/venv-3 is not writable"),
+        (None, "Package 'requests2' does not exist."),
+        (None, None),
     ],
     ids=[
         "generic-build-error",
-        "generic-build-error-stored-in-its-earlier-wording",
-        "raw-text-stored-before-filtering",
+        "generic-build-error-stored-before-kinds",
+        "raw-text-stored-before-kinds",
+        "package-text-stored-before-kinds",
         "no-error",
     ],
 )
 async def test_a_failed_venv_without_a_showable_error_reports_a_generic_hint(
-    uow, orchestrator, failure_sink, stored_error
+    uow, orchestrator, failure_sink, kind, stored_error
 ):
-    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.FAILED, error=stored_error))[0]
+    venv = uow.venv_repo.seed(
+        make_venv(status=VenvStatus.FAILED, error=stored_error, error_kind=kind)
+    )[0]
 
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
 
@@ -336,7 +347,11 @@ async def test_flush_pending_fails_jobs_whose_venv_failed_to_build(
     venv = uow.venv_repo.seed(make_venv(status=VenvStatus.PROCESSING))[0]
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
     failed = (await uow.venv_repo.retrieve(venv.id)).model_copy(
-        update={"status": VenvStatus.FAILED, "error": "Package 'requests2' does not exist."}
+        update={
+            "status": VenvStatus.FAILED,
+            "error": "Package 'requests2' does not exist.",
+            "error_kind": VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+        }
     )
     await uow.venv_repo.update(failed)
 

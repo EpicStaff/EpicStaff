@@ -18,7 +18,7 @@ from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
 from manager.application.registry import ExecutionRegistry
-from manager.domain.enums import VenvStatus
+from manager.domain.enums import VenvBuildErrorKind, VenvStatus
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
@@ -187,7 +187,11 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
 
 async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uow, runtime):
     venv = uow.venv_repo.seed(
-        make_venv(status=VenvStatus.FAILED, error="Package 'requests2' does not exist.")
+        make_venv(
+            status=VenvStatus.FAILED,
+            error="Package 'requests2' does not exist.",
+            error_kind=VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+        )
     )[0]
     manager = build_manager(uow, runtime)
 

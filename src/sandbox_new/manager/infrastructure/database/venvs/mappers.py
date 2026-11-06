@@ -1,6 +1,6 @@
 import json
 
-from manager.domain.enums import VenvStatus
+from manager.domain.enums import VenvBuildErrorKind, VenvStatus
 from manager.domain.models import Library, Venv
 from manager.infrastructure.database.venvs.tables import VenvTable
 
@@ -16,6 +16,7 @@ class VenvMapper:
             hash=row.hash,
             status=VenvStatus(row.status),
             error=row.error,
+            error_kind=VenvBuildErrorKind(row.error_kind) if row.error_kind is not None else None,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )

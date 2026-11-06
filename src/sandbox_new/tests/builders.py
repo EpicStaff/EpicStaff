@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from manager.domain.enums import VenvStatus
+from manager.domain.enums import VenvBuildErrorKind, VenvStatus
 from manager.domain.models import Job as ManagerJob, Library, Venv
 from worker.application.context import ExecutionContext
 from worker.domain.enums import NetworkPolicy
@@ -37,6 +37,7 @@ def make_venv(
     hash: str | None = None,
     status: VenvStatus = VenvStatus.DECLARED,
     error: str | None = None,
+    error_kind: VenvBuildErrorKind | None = None,
     created_at: datetime | None = None,
     updated_at: datetime | None = None,
 ) -> Venv:
@@ -47,6 +48,7 @@ def make_venv(
         hash=hash,
         status=status,
         error=error,
+        error_kind=error_kind,
         created_at=created_at,
         updated_at=updated_at,
     )

@@ -83,6 +83,7 @@ class PiccoloVenvRepository(AbstractVenvRepository):
             hash=obj.hash,
             status=obj.status,
             error=obj.error,
+            error_kind=obj.error_kind,
         )
         await row.save()
         return VenvMapper.to_domain(row)
@@ -96,6 +97,7 @@ class PiccoloVenvRepository(AbstractVenvRepository):
                     VenvTable.hash: obj.hash,
                     VenvTable.status: obj.status,
                     VenvTable.error: obj.error,
+                    VenvTable.error_kind: obj.error_kind,
                 }
             )
             .where(VenvTable.id == obj.id)

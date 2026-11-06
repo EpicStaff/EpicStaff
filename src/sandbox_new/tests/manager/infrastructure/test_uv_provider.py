@@ -8,11 +8,11 @@ production. One sample from a newer uv (0.12) is kept as well: it words the same
 differently, and a developer running the service outside the image sees that one.
 """
 
-from manager.domain.errors import (
-    UVBuildError,
-    UVDependencyResolutionError,
-    UVPackageNotFoundError,
-    UVVersionNotFoundError,
+from manager.application.ports.errors import (
+    DependencyConflictError,
+    EnvironmentBuildError,
+    PackageNotFoundError,
+    PackageVersionNotFoundError,
 )
 from manager.infrastructure.providers import UVProvider
 from manager.infrastructure.providers.uv_provider import _parse_stderr
@@ -140,42 +140,42 @@ NEWER_UV_PACKAGE_NOT_FOUND_STDERR = (
 def test_a_missing_package_names_the_package():
     error = _parse_stderr(COMPILE_ARGS, PACKAGE_NOT_FOUND_STDERR)
 
-    assert isinstance(error, UVPackageNotFoundError)
+    assert isinstance(error, PackageNotFoundError)
     assert str(error) == "Package 'pydanticsdf' does not exist."
 
 
 def test_a_missing_package_is_named_whichever_way_uv_words_it():
     error = _parse_stderr(COMPILE_ARGS, NEWER_UV_PACKAGE_NOT_FOUND_STDERR)
 
-    assert isinstance(error, UVPackageNotFoundError)
+    assert isinstance(error, PackageNotFoundError)
     assert str(error) == "Package 'pydanticsdf' does not exist."
 
 
 def test_a_pinned_version_that_does_not_exist_names_package_and_pin():
     error = _parse_stderr(COMPILE_ARGS, NO_SUCH_VERSION_STDERR)
 
-    assert isinstance(error, UVVersionNotFoundError)
+    assert isinstance(error, PackageVersionNotFoundError)
     assert str(error) == "Package 'requests' has no version matching '==99.99.99'."
 
 
 def test_a_range_no_release_satisfies_names_package_and_range():
     error = _parse_stderr(COMPILE_ARGS, NO_VERSION_IN_RANGE_STDERR)
 
-    assert isinstance(error, UVVersionNotFoundError)
+    assert isinstance(error, PackageVersionNotFoundError)
     assert str(error) == "Package 'requests' has no version matching '>=99.0'."
 
 
 def test_conflicting_requirements_name_the_package_whose_dependencies_clash():
     error = _parse_stderr(COMPILE_ARGS, CONFLICT_STDERR)
 
-    assert isinstance(error, UVDependencyResolutionError)
+    assert isinstance(error, DependencyConflictError)
     assert "requests" in str(error)
 
 
 def test_a_failure_that_is_not_a_resolution_failure_falls_back_to_the_build_error():
     error = _parse_stderr(COMPILE_ARGS, UNPARSEABLE_REQUIREMENT_STDERR)
 
-    assert type(error) is UVBuildError
+    assert type(error) is EnvironmentBuildError
 
 
 def test_a_resolution_failure_uv_words_differently_falls_back_to_the_build_error():
@@ -186,7 +186,7 @@ def test_a_resolution_failure_uv_words_differently_falls_back_to_the_build_error
         "      your requirements are unsatisfiable.\n",
     )
 
-    assert type(error) is UVBuildError
+    assert type(error) is EnvironmentBuildError
 
 
 def test_the_fallback_message_does_not_send_the_user_to_the_logs():
@@ -199,7 +199,7 @@ def test_the_fallback_message_does_not_send_the_user_to_the_logs():
 def test_a_command_other_than_pip_compile_or_sync_is_not_parsed():
     error = _parse_stderr(VENV_ARGS, PACKAGE_NOT_FOUND_STDERR)
 
-    assert type(error) is UVBuildError
+    assert type(error) is EnvironmentBuildError
     assert "pydanticsdf" not in str(error)
 
 
@@ -209,7 +209,7 @@ def test_pip_sync_is_parsed_like_pip_compile():
         PACKAGE_NOT_FOUND_STDERR,
     )
 
-    assert isinstance(error, UVPackageNotFoundError)
+    assert isinstance(error, PackageNotFoundError)
     assert "pydanticsdf" in str(error)
 
 
@@ -222,5 +222,5 @@ def test_a_package_name_is_normalized():
         "      are unsatisfiable.\n",
     )
 
-    assert isinstance(error, UVVersionNotFoundError)
+    assert isinstance(error, PackageVersionNotFoundError)
     assert str(error) == "Package 'zope-interface' has no version matching '==99.0'."

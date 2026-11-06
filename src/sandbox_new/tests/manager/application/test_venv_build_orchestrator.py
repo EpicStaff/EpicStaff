@@ -8,9 +8,15 @@ import hashlib
 
 import pytest
 
+from manager.application.errors import VenvNotFoundError
 from manager.application.orchestrators import VenvBuildOrchestrator
-from manager.domain.enums import VenvStatus
-from manager.domain.errors import UVPackageNotFoundError, VenvNotFoundError
+from manager.application.ports.errors import (
+    DependencyConflictError,
+    EnvironmentBuildError,
+    PackageNotFoundError,
+    PackageVersionNotFoundError,
+)
+from manager.domain.enums import VenvBuildErrorKind, VenvStatus
 from tests.builders import make_library, make_venv
 
 
@@ -81,31 +87,52 @@ async def test_build_marks_the_venv_processing_before_it_starts(uow, uv_provider
     assert seen == [VenvStatus.PROCESSING]
 
 
-async def test_a_missing_package_marks_the_venv_failed_with_that_packages_error(
-    uow, uv_provider, venvs_dir
+GENERIC_BUILD_ERROR = "Couldn't install the libraries. Check the library names and versions."
+
+
+@pytest.mark.parametrize(
+    ("error", "kind", "stored_error"),
+    [
+        (
+            PackageNotFoundError(package="requests2"),
+            VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+            "Package 'requests2' does not exist.",
+        ),
+        (
+            PackageVersionNotFoundError(package="requests", specification="==99"),
+            VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND,
+            "Package 'requests' has no version matching '==99'.",
+        ),
+        (
+            DependencyConflictError(package="pandas"),
+            VenvBuildErrorKind.PACKAGE_DEPENDENCY_CONFLICT,
+            "Package 'pandas' requires versions of its dependencies "
+            "that conflict with the other requested packages.",
+        ),
+        (EnvironmentBuildError(), VenvBuildErrorKind.PACKAGE_INSTALL_FAILED, GENERIC_BUILD_ERROR),
+        (
+            RuntimeError("uv crashed in /var/lib/sandbox/venvs/builds"),
+            VenvBuildErrorKind.PACKAGE_INSTALL_FAILED,
+            GENERIC_BUILD_ERROR,
+        ),
+    ],
+    ids=["package-not-found", "version-not-found", "conflict", "unrecognised-cause", "unexpected"],
+)
+async def test_a_failed_build_stores_its_kind_and_only_a_text_that_is_safe_to_show(
+    uow, uv_provider, venvs_dir, error, kind, stored_error
 ):
     stored = uow.venv_repo.seed(make_venv())[0]
-    uv_provider.fail_apply = UVPackageNotFoundError(package="requests2")
+    uv_provider.fail_apply = error
 
     await VenvBuildOrchestrator(uow, uv_provider).build(stored)
 
     failed = uow.venv_repo.rows[stored.id]
-    assert failed.status is VenvStatus.FAILED
-    assert failed.error == "Package 'requests2' does not exist."
+    assert (failed.status, failed.error_kind, failed.error) == (
+        VenvStatus.FAILED,
+        kind,
+        stored_error,
+    )
     assert uv_provider.install_local_calls == []
-
-
-async def test_an_unexpected_build_failure_stores_the_generic_hint_instead_of_its_text(
-    uow, uv_provider, venvs_dir
-):
-    stored = uow.venv_repo.seed(make_venv())[0]
-    uv_provider.fail_apply = RuntimeError("uv crashed in /var/lib/sandbox/venvs/builds")
-
-    await VenvBuildOrchestrator(uow, uv_provider).build(stored)
-
-    failed = uow.venv_repo.rows[stored.id]
-    assert failed.status is VenvStatus.FAILED
-    assert failed.error == "Couldn't install the libraries. Check the library names and versions."
 
 
 def install_target(uv_provider):
