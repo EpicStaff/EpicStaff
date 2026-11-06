@@ -19,6 +19,7 @@ from services.retention_service import RetentionService
 from services.schedule_service import ScheduleService
 from services.session_timeout_service import SessionTimeoutService
 from services.storage_account_cleanup_service import StorageAccountCleanupService
+from services.transfer_job_sweep_service import TransferJobSweepService
 from sqlalchemy import text
 
 redis_service = RedisService(
@@ -51,6 +52,10 @@ storage_account_cleanup_service = StorageAccountCleanupService(
     timezone=ZoneInfo(settings.TIMEZONE),
 )
 recycle_bin_purge_service = RecycleBinPurgeService(
+    redis_service=redis_service,
+    timezone=ZoneInfo(settings.TIMEZONE),
+)
+transfer_job_sweep_service = TransferJobSweepService(
     redis_service=redis_service,
     timezone=ZoneInfo(settings.TIMEZONE),
 )
@@ -126,6 +131,9 @@ async def main():
         await recycle_bin_purge_service.start()
         logger.info("RecycleBinPurgeService started successfully.")
 
+        await transfer_job_sweep_service.start()
+        logger.info("TransferJobSweepService started successfully.")
+
     except Exception as e:
         logger.error(f"Error during initialization: {e}")
 
@@ -141,6 +149,7 @@ async def shutdown():
         schedule_service.scheduler.shutdown(wait=False)
     storage_account_cleanup_service.stop()
     recycle_bin_purge_service.stop()
+    transfer_job_sweep_service.stop()
     retention_service.stop()
     if redis_service.aioredis_client:
         await redis_service.aioredis_client.close()
