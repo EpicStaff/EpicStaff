@@ -94,7 +94,8 @@ export class SystemOneConfigFormComponent implements OnInit {
         if (config) {
             this.form.patchValue({
                 custom_name: config.custom_name,
-                model_name: config.model_name ?? JEV_MODEL_VERSIONS[0],
+                model_name:
+                    config.model_name ?? (config.provider === 'llm' ? null : SYSTEM_ONE_MODELS[config.provider][0]),
                 api_key_secret_id: config.api_key_secret_id,
                 llm_config: config.llm_config,
             });

@@ -307,6 +307,15 @@ describe('SystemOneConfigFormComponent', () => {
         });
     });
 
+    it('submits the provider default model when an edited OpenAI config has none', () => {
+        const { fixture, http } = render({ ...OPENAI_CONFIG, model_name: null });
+
+        fixture.componentInstance.submit();
+        const request = http.expectOne({ method: 'PATCH', url: '/api/system-one-configs/12/' });
+
+        expect(request.request.body.model_name).toBe('gpt-6-luna');
+    });
+
     it("reports the server's message on a 400 and stays unsaved", () => {
         const { fixture, http, saved } = render(TYPESAFE_CONFIG);
 
