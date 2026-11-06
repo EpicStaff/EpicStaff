@@ -321,7 +321,9 @@ jobs:
   # comment saying why it is not a secret, in a SEPARATE pull request that touches
   # nothing else. Once that is merged, re-run this job on the original pull request.
   # The sha is left out because it changes when a pull request is rebased or
-  # squash-merged, and an entry that names it stops matching.
+  # squash-merged, and an entry that names it stops matching. On a failure the job
+  # annotates each finding on the diff and lists these options, with the entry to
+  # paste, in the job summary.
   secret-scan:
     runs-on: ubuntu-latest
     steps:
@@ -357,9 +359,33 @@ jobs:
               git show "${BASE_SHA}:${file}" > "$file"
             fi
           done
+          report="$RUNNER_TEMP/gitleaks-report.json"
+          status=0
           "$RUNNER_TEMP/gitleaks" git --log-opts="${BASE_SHA}..${HEAD_SHA}" \
             --ignore-gitleaks-allow --max-archive-depth 3 \
-            --redact --verbose --no-banner --exit-code 1 .
+            --redact --verbose --no-banner --exit-code 1 \
+            --report-format json --report-path "$report" . || status=$?
+
+          # The log alone says only "leaks found": annotate each finding on the diff and
+          # put the ways out in the job summary. Reads the redacted report, so no secret
+          # value is printed.
+          if [ "$status" -ne 0 ] && [ -s "$report" ] && [ "$(jq length "$report")" -gt 0 ]; then
+            jq -r '.[] | "::error file=\(.File),line=\(.StartLine),title=Possible secret (\(.RuleID))::Found in commit \(.Commit[0:9]). See the job summary for what to do. Ignore entry: \(.File):\(.RuleID):\(.StartLine)"' "$report"
+            {
+              echo "## Secret scan: possible secrets in this pull request"
+              echo
+              echo "| File | Line | Rule | Commit | \`.gitleaksignore\` entry |"
+              echo "|---|---|---|---|---|"
+              jq -r '.[] | "| `\(.File)` | \(.StartLine) | \(.RuleID) | \(.Commit[0:9]) | `\(.File):\(.RuleID):\(.StartLine)` |"' "$report"
+              echo
+              echo "Every commit of the pull request is scanned, not only its final state, so changing the value in a new commit does not clear a finding."
+              echo
+              echo "- **A real secret:** rotate it first. Then remove it from the branch history (rebase the commit that added it) and force-push."
+              echo "- **Test data that only looks like a credential:** rename it so it no longer does (\`canary\` instead of \`secret\`, \`key\` or \`token\` in the name or the value). Then rebase so the commit that added the old value is gone, and force-push."
+              echo "- **A false positive in code that must stay as it is:** add the entry from the table to \`.gitleaksignore\` with a comment saying why it is not a secret, in a separate pull request that touches nothing else. Once that is merged, re-run this job. The comment above the \`secret-scan\` job in \`.github/workflows/pr.yml\` explains why."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
 
   # Compose variables must be required (`${VAR:?}`) and boolean flags parsed
   # strictly (Env.bool in Python, env_bool in shell). The rules and what to do
