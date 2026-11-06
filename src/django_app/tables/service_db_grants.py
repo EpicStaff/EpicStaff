@@ -120,6 +120,7 @@ KNOWLEDGE_LLM_CONFIG_COLUMNS = (
     "output_cost_per_token",
 )
 KNOWLEDGE_LLM_MODEL_COLUMNS = ("id", "llm_provider_id", "name", "base_url", "api_version")
+KNOWLEDGE_EMBEDDING_CONFIG_COLUMNS = ("id", "custom_name", "task_type", "is_visible", "model_id")
 
 KNOWLEDGE_GRANTS = ServiceRoleGrants(
     service="knowledge",
@@ -128,14 +129,15 @@ KNOWLEDGE_GRANTS = ServiceRoleGrants(
         # Configuration the knowledge service reads but never changes.
         TableGrant("tables_provider", (SELECT,)),
         TableGrant("tables_embeddingmodel", (SELECT,)),
-        TableGrant("tables_embeddingconfig", (SELECT,)),
         TableGrant("tables_sourcecollection", (SELECT,)),
         TableGrant("tables_documentmetadata", (SELECT,)),
         TableGrant("tables_documentcontent", (SELECT,)),
         TableGrant("tables_baseragtype", (SELECT,)),
-        # Only the columns the knowledge ORM maps (LLMConfig and LLMModel in
-        # src/knowledge_new/infrastructure/database/models/graph.py): the service never reads
-        # credentials such as extra_headers, it receives them resolved in each request.
+        # Only the columns the knowledge ORM maps (EmbeddingConfig in .../models/common.py,
+        # LLMConfig and LLMModel in .../models/graph.py under
+        # src/knowledge_new/infrastructure/database): the service never reads credentials
+        # such as extra_headers, it receives them resolved in each request.
+        TableGrant("tables_embeddingconfig", (), select_columns=KNOWLEDGE_EMBEDDING_CONFIG_COLUMNS),
         TableGrant("tables_llmconfig", (), select_columns=KNOWLEDGE_LLM_CONFIG_COLUMNS),
         TableGrant("tables_llmmodel", (), select_columns=KNOWLEDGE_LLM_MODEL_COLUMNS),
         # Rows django_app creates and the knowledge service updates while it indexes
