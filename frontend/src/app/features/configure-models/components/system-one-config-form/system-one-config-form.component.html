@@ -13,32 +13,17 @@
             <app-validation-errors [control]="form.controls.custom_name" />
         </div>
         <div>
-            <div class="provider-label">
-                <span>Provider</span>
-                <span class="required">*</span>
-                <app-help-tooltip
-                    text="TypeSafe runs a Jev model and OpenAI runs a Decisions model, each with your API key. LLM answers with one of your LLM configurations."
-                    position="right"
-                />
-            </div>
-            <div
-                class="provider-buttons"
-                role="group"
-                aria-label="Provider"
-            >
-                @for (provider of providers; track provider.key) {
-                    <button
-                        type="button"
-                        class="provider-btn"
-                        [class.active]="selectedProvider() === provider.key"
-                        [attr.aria-pressed]="selectedProvider() === provider.key"
-                        [disabled]="isEditMode() && selectedProvider() !== provider.key"
-                        (click)="selectProvider(provider.key)"
-                    >
-                        {{ provider.label }}
-                    </button>
-                }
-            </div>
+            <app-select
+                label="Provider"
+                variant="boxed"
+                placeholder="Select provider"
+                tooltipText="TypeSafe runs a Jev model and OpenAI runs a Decisions model, each with your API key. LLM answers with one of your LLM configurations."
+                [items]="providerItems"
+                [selectedValue]="selectedProvider()"
+                [disabled]="isEditMode()"
+                [required]="true"
+                (changed)="selectProvider($event)"
+            />
         </div>
 
         @if (usesKey()) {

@@ -16,7 +16,6 @@ import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, Validator
 import {
     BinnedSecretNoteComponent,
     CustomInputComponent,
-    HelpTooltipComponent,
     HintMessageComponent,
     SelectComponent,
     SelectItem,
@@ -27,10 +26,10 @@ import { SystemOneConfig, SystemOneConfigWrite, SystemOneProvider } from '@share
 import { LlmConfigStorageService, SecretsStorageService, SystemOneConfigStorageService } from '@shared/services';
 import { extractHttpErrorMessage, isClientError, trackPickedSecrets } from '@shared/utils';
 
-const PROVIDERS: { key: SystemOneProvider; label: string }[] = [
-    { key: 'typesafe', label: 'TypeSafe' },
-    { key: 'openai', label: 'OpenAI' },
-    { key: 'llm', label: 'LLM' },
+const PROVIDER_ITEMS: SelectItem<SystemOneProvider>[] = [
+    { name: 'TypeSafe', value: 'typesafe' },
+    { name: 'OpenAI', value: 'openai' },
+    { name: 'LLM', value: 'llm' },
 ];
 
 /**
@@ -43,7 +42,6 @@ const PROVIDERS: { key: SystemOneProvider; label: string }[] = [
         ReactiveFormsModule,
         BinnedSecretNoteComponent,
         CustomInputComponent,
-        HelpTooltipComponent,
         HintMessageComponent,
         SelectComponent,
         ValidationErrorsComponent,
@@ -75,7 +73,7 @@ export class SystemOneConfigFormComponent implements OnInit {
         this.llmConfigStorage.configs().map((config) => ({ name: config.custom_name, value: config.id }))
     );
 
-    protected readonly providers = PROVIDERS;
+    protected readonly providerItems = PROVIDER_ITEMS;
     protected readonly form = new FormGroup({
         custom_name: new FormControl('', { nonNullable: true, validators: Validators.required }),
         model_name: new FormControl<string | null>(JEV_MODEL_VERSIONS[0], Validators.required),
@@ -136,8 +134,9 @@ export class SystemOneConfigFormComponent implements OnInit {
             });
     }
 
-    protected selectProvider(provider: SystemOneProvider): void {
-        if (this.isEditMode()) return;
+    protected selectProvider(picked: unknown): void {
+        const provider = PROVIDER_ITEMS.find((item) => item.value === picked)?.value;
+        if (!provider || this.isEditMode()) return;
         this.selectedProvider.set(provider);
         if (provider !== 'llm') this.form.controls.model_name.setValue(SYSTEM_ONE_MODELS[provider][0]);
         this.applyProvider(provider);

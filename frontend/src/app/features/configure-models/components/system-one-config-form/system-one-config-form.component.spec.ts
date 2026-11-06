@@ -100,10 +100,25 @@ function pick(fixture: ComponentFixture<SystemOneConfigFormComponent>, control: 
     fixture.detectChanges();
 }
 
-function providerButton(fixture: ComponentFixture<SystemOneConfigFormComponent>, label: string): HTMLButtonElement {
-    return Array.from(host(fixture).querySelectorAll<HTMLButtonElement>('.provider-btn')).find(
-        (button) => button.textContent!.trim() === label
-    )!;
+function providerSelect(fixture: ComponentFixture<SystemOneConfigFormComponent>): HTMLElement {
+    return host(fixture).querySelector<HTMLElement>('app-select:not([formcontrolname])')!;
+}
+
+function providerTrigger(fixture: ComponentFixture<SystemOneConfigFormComponent>): HTMLButtonElement {
+    return providerSelect(fixture).querySelector<HTMLButtonElement>('.selector__btn')!;
+}
+
+function providerOptions(fixture: ComponentFixture<SystemOneConfigFormComponent>): HTMLElement[] {
+    providerTrigger(fixture).click();
+    fixture.detectChanges();
+    return Array.from(document.querySelectorAll<HTMLElement>('.selector__option'));
+}
+
+function chooseProvider(fixture: ComponentFixture<SystemOneConfigFormComponent>, label: string): void {
+    providerOptions(fixture)
+        .find((option) => option.textContent!.trim() === label)!
+        .click();
+    fixture.detectChanges();
 }
 
 describe('SystemOneConfigFormComponent', () => {
@@ -122,8 +137,7 @@ describe('SystemOneConfigFormComponent', () => {
     it('shows only the LLM config select, with its hint, after switching to LLM', () => {
         const { fixture } = render();
 
-        providerButton(fixture, 'LLM').click();
-        fixture.detectChanges();
+        chooseProvider(fixture, 'LLM');
 
         expect(selectFor(fixture, 'llm_config')).not.toBeNull();
         expect(selectFor(fixture, 'model_name')).toBeNull();
@@ -134,8 +148,7 @@ describe('SystemOneConfigFormComponent', () => {
     it('shows the model (default gpt-6-luna) and API key selects, and no LLM config select, for OpenAI', () => {
         const { fixture } = render();
 
-        providerButton(fixture, 'OpenAI').click();
-        fixture.detectChanges();
+        chooseProvider(fixture, 'OpenAI');
 
         expect(selectFor(fixture, 'model_name')!.textContent).toContain('gpt-6-luna');
         expect(selectFor(fixture, 'api_key_secret_id')).not.toBeNull();
@@ -146,9 +159,7 @@ describe('SystemOneConfigFormComponent', () => {
     it('offers the providers in the order TypeSafe, OpenAI, LLM', () => {
         const { fixture } = render();
 
-        const labels = Array.from(host(fixture).querySelectorAll('.provider-btn')).map((button) =>
-            button.textContent!.trim()
-        );
+        const labels = providerOptions(fixture).map((option) => option.textContent!.trim());
 
         expect(labels).toEqual(['TypeSafe', 'OpenAI', 'LLM']);
     });
@@ -156,8 +167,7 @@ describe('SystemOneConfigFormComponent', () => {
     it('tells the user to add an LLM config first when there are none to pick', () => {
         const { fixture } = render(null, []);
 
-        providerButton(fixture, 'LLM').click();
-        fixture.detectChanges();
+        chooseProvider(fixture, 'LLM');
 
         expect(host(fixture).textContent).toContain('No LLM configs yet.');
     });
@@ -165,8 +175,7 @@ describe('SystemOneConfigFormComponent', () => {
     it('does not show that hint while LLM configs exist', () => {
         const { fixture } = render();
 
-        providerButton(fixture, 'LLM').click();
-        fixture.detectChanges();
+        chooseProvider(fixture, 'LLM');
 
         expect(host(fixture).textContent).not.toContain('No LLM configs yet.');
     });
@@ -192,8 +201,7 @@ describe('SystemOneConfigFormComponent', () => {
 
     it('creates an OpenAI config with gpt-6-luna and the chosen secret', () => {
         const { fixture, http, saved } = render();
-        providerButton(fixture, 'OpenAI').click();
-        fixture.detectChanges();
+        chooseProvider(fixture, 'OpenAI');
         type(fixture, 'Configuration Name', 'OpenAI prod');
         pick(fixture, 'api_key_secret_id', 'Jev key');
 
@@ -213,10 +221,8 @@ describe('SystemOneConfigFormComponent', () => {
 
     it('goes back to the default Jev version after switching TypeSafe, OpenAI, TypeSafe', () => {
         const { fixture, http } = render();
-        providerButton(fixture, 'OpenAI').click();
-        fixture.detectChanges();
-        providerButton(fixture, 'TypeSafe').click();
-        fixture.detectChanges();
+        chooseProvider(fixture, 'OpenAI');
+        chooseProvider(fixture, 'TypeSafe');
         type(fixture, 'Configuration Name', 'Jev prod');
         pick(fixture, 'api_key_secret_id', 'Jev key');
 
@@ -234,8 +240,7 @@ describe('SystemOneConfigFormComponent', () => {
 
     it('creates an LLM config without a Jev version or secret', () => {
         const { fixture, http } = render();
-        providerButton(fixture, 'LLM').click();
-        fixture.detectChanges();
+        chooseProvider(fixture, 'LLM');
         type(fixture, 'Configuration Name', 'Judge');
         pick(fixture, 'llm_config', 'gpt-judge');
 
@@ -284,16 +289,13 @@ describe('SystemOneConfigFormComponent', () => {
     it('keeps the provider of an edited config fixed', () => {
         const { fixture } = render(TYPESAFE_CONFIG);
 
-        expect(providerButton(fixture, 'TypeSafe').disabled).toBe(false);
-        expect(providerButton(fixture, 'LLM').disabled).toBe(true);
+        expect(providerTrigger(fixture).disabled).toBe(true);
     });
 
     it('keeps the provider of an edited OpenAI config fixed and updates it with its model', () => {
         const { fixture, http } = render(OPENAI_CONFIG);
 
-        expect(providerButton(fixture, 'OpenAI').disabled).toBe(false);
-        expect(providerButton(fixture, 'TypeSafe').disabled).toBe(true);
-        expect(providerButton(fixture, 'LLM').disabled).toBe(true);
+        expect(providerTrigger(fixture).disabled).toBe(true);
 
         fixture.componentInstance.submit();
         const request = http.expectOne({ method: 'PATCH', url: '/api/system-one-configs/12/' });
