@@ -75,7 +75,7 @@ export class ConversationRowComponent {
     protected readonly isClosed = computed(() => isClosed(this.conversation()));
     /**
      * A closed row's time is its close, as Closed sorts by it; any other row's, its last message. A closed test stays
-     * in Tests, which sorts by the last message, so it keeps that time too.
+     * in Bot Testing, which sorts by the last message, so it keeps that time too.
      */
     private readonly isTimedByClose = computed(() => this.isClosed() && !this.conversation().is_test);
     private readonly shownTime = computed(() => {

@@ -1,13 +1,12 @@
 <span
     class="desk-avatar__picture"
     aria-hidden="true"
-    [class.desk-avatar__picture--neutral]="!fill()"
-    [style.background-color]="fill()"
 >
     @if (pictureIcon(); as iconName) {
         <app-svg-icon
+            class="desk-avatar__icon"
+            size="12px"
             [icon]="iconName"
-            size="1.125rem"
         />
     } @else {
         <span class="desk-avatar__initials">{{ initials() }}</span>

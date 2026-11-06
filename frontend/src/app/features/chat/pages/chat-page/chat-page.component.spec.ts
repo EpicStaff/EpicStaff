@@ -155,7 +155,7 @@ describe('ChatPageComponent', () => {
     const chatApi = {
         getBindings: vi.fn(() => of(serverBindings)),
         getMyAliases: vi.fn(() => of([] as ChatMyAlias[])),
-        // By default Waiting, In progress and Tests are empty and Bot holds one conversation.
+        // By default Bot holds one conversation and every other section is empty.
         getConversations: vi.fn((params: ConversationListParams): Observable<ChatConversationPage> => {
             const answer = nextPages[params.section];
             if (answer) {
@@ -216,13 +216,33 @@ describe('ChatPageComponent', () => {
 
     const rememberedSection = (): ChatInboxSection | null =>
         TestBed.inject(ConversationListPreferencesService).expanded();
+    // Open: its rows shown, under an expanded header on Inbox, or Bot Testing's one section, which has none.
     const openSections = (): ChatInboxSection[] =>
         Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.conversation-list__section'))
             .filter(
-                (section) =>
-                    section.querySelector('.conversation-section-header')?.getAttribute('aria-expanded') === 'true'
+                (section) => section.querySelector<HTMLElement>('.conversation-list__section-body')?.hidden === false
             )
             .map((section) => section.dataset['section'] as ChatInboxSection);
+    /**
+     * New Test Chat, on Bot Testing: the column moves there first, as the user would; undefined where the user cannot
+     * build desks (Bot Testing is aria-disabled: it stays focusable, so its reason can be read) or the button is not
+     * offered.
+     */
+    function newTestChat(): HTMLButtonElement | undefined {
+        const host = fixture.nativeElement as HTMLElement;
+        const testing = Array.from(host.querySelectorAll<HTMLButtonElement>('app-conversation-list-tabs button')).find(
+            (button) => button.textContent?.trim() === 'Bot Testing'
+        );
+        if (testing && testing.getAttribute('aria-disabled') !== 'true') {
+            testing.click();
+            fixture.detectChanges();
+        }
+        return host.querySelector<HTMLButtonElement>('.conversation-list-toolbar__new-test button') ?? undefined;
+    }
+    const pressedTab = (): string | undefined =>
+        (fixture.nativeElement as HTMLElement)
+            .querySelector('app-conversation-list-tabs button[aria-pressed="true"]')
+            ?.textContent?.trim();
 
     /** A reload requests the sections open now (only Waiting for a person at first): each answers its page, else nothing. */
     function reloadWith(pages: Partial<Record<ChatInboxSection, Observable<ChatConversationPage>>>): void {
@@ -250,10 +270,52 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
     }
 
+    // By its visible label, or by its name for an icon-only button (Settings).
     const headerButton = (label: string): HTMLButtonElement | undefined =>
         Array.from(
             (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.header-actions button')
-        ).find((button) => button.textContent?.trim() === label);
+        ).find((button) => button.textContent?.trim() === label || button.getAttribute('aria-label') === label);
+
+    /** Opens a conversation of the route desk, as picking its row does. */
+    function openConversation(conversation: ChatConversation = row({ id: 'c-1' })): void {
+        conversationUpdated$.next(conversation);
+        fixture.componentInstance.selectConversation(conversation);
+        fixture.detectChanges();
+    }
+
+    /** The open conversation's ⋯ menu, opened as the user would; its items' labels. */
+    function openThreadMenu(): string[] {
+        (fixture.nativeElement.querySelector('.thread-header .chat-action-menu__trigger') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        return Array.from(document.querySelectorAll<HTMLButtonElement>('.chat-action-menu__item')).map(
+            (item) => item.textContent?.trim() ?? ''
+        );
+    }
+
+    /** Closes the ⋯ menu that is open, as Escape does. */
+    function closeMenu(): void {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        fixture.detectChanges();
+    }
+
+    /** Chooses Delete Conversation in the open conversation's ⋯ menu. */
+    function deleteFromThread(): void {
+        openThreadMenu();
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.chat-action-menu__item'))
+            .find((item) => item.textContent?.trim() === 'Delete Conversation')!
+            .click();
+        fixture.detectChanges();
+    }
+
+    /** Picks Live or Pause in the desk status menu beside the title, as the user would. */
+    function pickRunState(label: 'Live' | 'Pause'): void {
+        (fixture.nativeElement.querySelector('.desk-toolbar .desk-status--button') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.desk-status-menu__item'))
+            .find((item) => item.querySelector('.desk-status-menu__label')?.textContent?.trim() === label)!
+            .click();
+        fixture.detectChanges();
+    }
 
     /** A button beside the open conversation's title (the holder's main action). */
     const threadAction = (label: string): HTMLButtonElement | undefined =>
@@ -357,15 +419,17 @@ describe('ChatPageComponent', () => {
         expect(list().selectedId()).toBe('c-4');
     });
 
-    it('opens Tests in the conversations column when a test conversation starts, the remembered section unchanged', () => {
+    it('moves the conversations column to Bot Testing when a test conversation starts, the remembered choices unchanged', () => {
         expect(openSections()).toEqual(['waiting']);
         fixture.componentInstance.onTestConversationStarted(row({ id: 'c-9', is_test: true, last_message_at: null }));
         fixture.detectChanges();
-        expect(openSections()).toEqual(['waiting', 'test']);
+        expect(pressedTab()).toBe('Bot Testing');
+        expect(openSections()).toEqual(['test_bot']);
         expect(rememberedSection()).toBe('waiting');
+        expect(TestBed.inject(ConversationListPreferencesService).tab()).toBe('inbox');
     });
 
-    it('tests the route binding from the header, expands Tests, selects it and writes as the visitor', () => {
+    it('tests the route binding from New Test Chat on Bot Testing, selects it and writes as the visitor', () => {
         const component = fixture.componentInstance;
         const created = row({
             id: 'c-9',
@@ -381,15 +445,15 @@ describe('ChatPageComponent', () => {
         const host: HTMLElement = fixture.nativeElement;
         // The separator is aria-hidden and spaced by CSS.
         expect(text('.desk-toolbar__title')).toEqual(['Sales']);
-        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Live']);
-        expect(fixture.nativeElement.querySelector('h2 app-chat-binding-status')).toBeNull();
+        expect(text('.desk-toolbar app-desk-status-select .desk-status__label')).toEqual(['Live']);
+        expect(fixture.nativeElement.querySelector('h2 app-desk-status-select')).toBeNull();
         expect(host.querySelector('.inbox__toolbar, app-select')).toBeNull();
 
-        headerButton('Test')!.click();
+        newTestChat()!.click();
         fixture.detectChanges();
 
         expect(chatApi.createTestConversation).toHaveBeenCalledWith('b-2');
-        expect(openSections()).toContain('test');
+        expect(openSections()).toEqual(['test_bot']);
         expect(component.selectedId()).toBe('c-9');
         expect(text('.thread-header .test-chip')).toEqual(['Test']);
         expect(host.querySelector('app-tab-button button[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');
@@ -407,7 +471,7 @@ describe('ChatPageComponent', () => {
         expect(chatApi.getConversations.mock.calls.map(([params]) => params.binding)).toEqual(['b-2']);
     });
 
-    it('shows the all-bindings inbox unscoped, without My name, Settings, Get snippet, Pause or Test', () => {
+    it('shows the all-bindings inbox unscoped, without Operator name, Settings, Copy install snippet, Pause or Test', () => {
         listBindings([binding]);
         fixture.detectChanges();
         expect(text('.desk-toolbar__title')).toEqual(['All desks']);
@@ -415,13 +479,13 @@ describe('ChatPageComponent', () => {
         expect(fixture.nativeElement.querySelector('.header-actions')).toBeNull();
     });
 
-    it('pauses or resumes the route binding and opens its settings, then reloads it', () => {
+    it('pauses or resumes the route binding from its status menu and opens its settings, then reloads it', () => {
         permissions.can = () => true;
         try {
             listBindings([binding]);
             scopeTo('b-1');
             bindingActions.pause.mockReturnValue(of(true));
-            headerButton('Pause')!.click();
+            pickRunState('Pause');
             expect(bindingActions.pause).toHaveBeenCalledWith(binding);
 
             const paused = { ...binding, is_active: false };
@@ -430,21 +494,25 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
             bindingActions.resume.mockReturnValue(of(true));
             const callsBefore = chatApi.getBindings.mock.calls.length;
-            headerButton('Resume')!.click();
+            pickRunState('Live');
             expect(bindingActions.resume).toHaveBeenCalled();
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1);
 
-            bindingActions.openSettings.mockReturnValue(of(undefined));
+            bindingActions.openSettings.mockReturnValue(of('closed'));
             headerButton('Settings')!.click();
-            expect(bindingActions.openSettings).toHaveBeenCalledWith({ ...binding, is_active: false });
+            expect(bindingActions.openSettings).toHaveBeenCalledWith(
+                { ...binding, is_active: false },
+                { canDelete: true }
+            );
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 2);
+            expect(bindingActions.delete).not.toHaveBeenCalled();
         } finally {
             permissions.can = (resource, action) =>
                 resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
         }
     });
 
-    it('draws its header actions as the flow editor header buttons, each named even when collapsed to its icon', () => {
+    it('draws its header actions in order, each named even when collapsed to its icon', () => {
         permissions.can = () => true;
         try {
             listBindings([binding]);
@@ -454,17 +522,19 @@ describe('ChatPageComponent', () => {
             );
             expect(
                 buttons.map((button) => [
-                    [...button.classList].filter((name) => name.startsWith('header-action')).join(' '),
+                    [...button.classList]
+                        .filter(
+                            (name) =>
+                                name.startsWith('header-action') || ['operator-name', 'desk-settings'].includes(name)
+                        )
+                        .join(' '),
                     button.getAttribute('aria-label'),
                 ])
             ).toEqual([
+                ['header-action header-action--ghost header-action--snippet', 'Copy install snippet'],
                 // My aliases have not loaded here: the action names no one rather than a name that may be wrong.
-                ['header-action header-action--ghost', 'My name'],
-                ['header-action header-action--ghost', 'Settings'],
-                ['header-action header-action--ghost', 'Delete'],
-                ['header-action header-action--outline', 'Get snippet'],
-                ['header-action header-action--outline', 'Pause'],
-                ['header-action header-action--primary', 'Test'],
+                ['operator-name', 'Operator name'],
+                ['desk-settings', 'Settings'],
             ]);
         } finally {
             permissions.can = (resource, action) =>
@@ -472,23 +542,55 @@ describe('ChatPageComponent', () => {
         }
     });
 
-    it('copies the binding snippet from Get snippet through the shared binding actions, for a desk builder', () => {
+    it('copies the binding snippet from Copy install snippet through the shared binding actions, for a desk builder', () => {
         listBindings([binding]);
         scopeTo('b-1');
-        headerButton('Get snippet')!.click();
+        headerButton('Copy install snippet')!.click();
         expect(bindingActions.copySnippet).toHaveBeenCalledWith(binding);
     });
 
-    it('deletes the route binding after its confirmation, goes to All desks, then reloads the desks; a cancel stays', async () => {
+    it("offers Delete Conversation last in the thread's ⋯ menu, set apart, on a desk to whoever may delete desks", () => {
         permissions.can = () => true;
         try {
             listBindings([binding]);
             scopeTo('b-1');
+            openConversation();
+            expect(openThreadMenu()).toEqual(['Resolve', 'Delete Conversation']);
+            expect(
+                document.querySelector('.chat-action-menu [role="separator"]')?.nextElementSibling?.textContent?.trim()
+            ).toBe('Delete Conversation');
+            expect(headerButton('Delete')).toBeUndefined();
+            closeMenu();
+
+            // All desks: there is no one desk to delete.
+            scopeTo('');
+            openConversation();
+            expect(openThreadMenu()).toEqual(['Resolve']);
+            closeMenu();
+
+            permissions.can = (resource, action) => resource === ResourceCode.Chats && action !== ActionCode.Delete;
+            fixture = TestBed.createComponent(ChatPageComponent);
+            listBindings([binding]);
+            scopeTo('b-1');
+            openConversation();
+            expect(openThreadMenu()).toEqual(['Resolve']);
+        } finally {
+            permissions.can = (resource, action) =>
+                resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
+        }
+    });
+
+    it('deletes the route binding from the thread after its confirmation, goes to All desks, then reloads the desks; a cancel stays', async () => {
+        permissions.can = () => true;
+        try {
+            listBindings([binding]);
+            scopeTo('b-1');
+            openConversation();
             const callsBefore = chatApi.getBindings.mock.calls.length;
             let finishNavigation: (navigated: boolean) => void = () => undefined;
             navigate.mockReturnValueOnce(new Promise<boolean>((resolve) => (finishNavigation = resolve)));
             bindingActions.delete.mockReturnValueOnce(of(true));
-            headerButton('Delete')!.click();
+            deleteFromThread();
             expect(bindingActions.delete).toHaveBeenCalledWith(binding);
             expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'all']);
             // Only once the page has left: a list without the desk must not read as "no longer exists".
@@ -500,7 +602,38 @@ describe('ChatPageComponent', () => {
             navigate.mockClear();
             // The shared action completes without emitting when the confirm is cancelled or the delete fails.
             bindingActions.delete.mockReturnValueOnce(of());
-            headerButton('Delete')!.click();
+            deleteFromThread();
+            expect(navigate).not.toHaveBeenCalled();
+        } finally {
+            permissions.can = (resource, action) =>
+                resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
+        }
+    });
+
+    it("deletes the route binding from the settings' Delete desk through the same confirmation, goes to All desks, then reloads the desks; a cancel stays", async () => {
+        permissions.can = () => true;
+        try {
+            listBindings([binding]);
+            scopeTo('b-1');
+            const callsBefore = chatApi.getBindings.mock.calls.length;
+            let finishNavigation: (navigated: boolean) => void = () => undefined;
+            navigate.mockReturnValueOnce(new Promise<boolean>((resolve) => (finishNavigation = resolve)));
+            bindingActions.openSettings.mockReturnValueOnce(of('delete-requested'));
+            bindingActions.delete.mockReturnValueOnce(of(true));
+
+            headerButton('Settings')!.click();
+            expect(bindingActions.delete).toHaveBeenCalledWith(binding);
+            expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'all']);
+            // Neither the settings' close nor the delete reloads before the page has left.
+            expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore);
+            finishNavigation(true);
+            await vi.waitFor(() => expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1));
+            expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
+
+            navigate.mockClear();
+            bindingActions.openSettings.mockReturnValueOnce(of('delete-requested'));
+            bindingActions.delete.mockReturnValueOnce(of());
+            headerButton('Settings')!.click();
             expect(navigate).not.toHaveBeenCalled();
         } finally {
             permissions.can = (resource, action) =>
@@ -513,9 +646,10 @@ describe('ChatPageComponent', () => {
         try {
             listBindings([binding, { ...binding, id: 'b-2', name: 'Sales' }]);
             scopeTo('b-1');
+            openConversation();
             const deleted$ = new Subject<boolean>();
             bindingActions.delete.mockReturnValueOnce(deleted$);
-            headerButton('Delete')!.click();
+            deleteFromThread();
             scopeTo('b-2');
             const callsBefore = chatApi.getBindings.mock.calls.length;
 
@@ -528,15 +662,16 @@ describe('ChatPageComponent', () => {
         }
     });
 
-    it('hides Pause and Settings without chats:update, Delete without chats:delete, My name without chats:use, Test and Get snippet without chats:create or update', () => {
+    it('shows a fixed status and no Settings without chats:update, no Operator name without chats:use, no New Test Chat or Copy install snippet without chats:create or update', () => {
         listBindings([binding]);
         scopeTo('b-1');
-        expect(headerButton('Test')).toBeDefined();
-        expect(headerButton('Get snippet')).toBeDefined();
-        expect(headerButton('My name')).toBeDefined();
-        expect(headerButton('Pause')).toBeUndefined();
+        expect(headerButton('Test')).toBeUndefined();
+        expect(newTestChat()).toBeDefined();
+        expect(headerButton('Copy install snippet')).toBeDefined();
+        expect(headerButton('Operator name')).toBeDefined();
+        expect(fixture.nativeElement.querySelector('.desk-toolbar .desk-status--button')).toBeNull();
+        expect(text('.desk-toolbar app-desk-status-select .desk-status__label')).toEqual(['Live']);
         expect(headerButton('Settings')).toBeUndefined();
-        expect(headerButton('Delete')).toBeUndefined();
 
         const can = permissions.can;
         try {
@@ -544,16 +679,16 @@ describe('ChatPageComponent', () => {
             fixture = TestBed.createComponent(ChatPageComponent);
             listBindings([binding]);
             scopeTo('b-1');
-            expect(headerButton('Test')).toBeUndefined();
-            expect(headerButton('Get snippet')).toBeUndefined();
-            expect(headerButton('My name')).toBeDefined();
+            expect(newTestChat()).toBeUndefined();
+            expect(headerButton('Copy install snippet')).toBeUndefined();
+            expect(headerButton('Operator name')).toBeDefined();
 
             permissions.can = () => false;
             fixture = TestBed.createComponent(ChatPageComponent);
             listBindings([binding]);
             scopeTo('b-1');
-            expect(headerButton('Test')).toBeUndefined();
-            expect(headerButton('My name')).toBeUndefined();
+            expect(newTestChat()).toBeUndefined();
+            expect(headerButton('Operator name')).toBeUndefined();
         } finally {
             permissions.can = can;
         }
@@ -581,19 +716,15 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
         }
 
-        it('starts 340px wide beside a handle that resizes it, with a toggle that controls the list', () => {
-            expect(column().style.width).toBe('340px');
+        it('starts 427px wide beside a handle that resizes it, with no toggle while expanded', () => {
+            expect(column().style.width).toBe('427px');
             expect(handle()?.getAttribute('aria-label')).toBe('Resize conversations column');
-            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
-            expect(compactToggle()?.getAttribute('aria-expanded')).toBe('true');
-            expect(compactToggle()?.getAttribute('aria-controls')).toBe(
-                host().querySelector('app-conversation-list')!.id
-            );
+            expect(compactToggle()).toBeNull();
         });
 
-        it('makes the same live list compact with the toggle, and lists it in full again at 280px', () => {
+        it('makes the same live list compact with Enter on the handle, and lists it in full again at 422px with the toggle', () => {
             const shown = list();
-            pressToggle();
+            press('Enter');
             expect(column().style.width).toBe('64px');
             expect(list()).toBe(shown);
             expect(searchField()).toBeNull();
@@ -601,16 +732,16 @@ describe('ChatPageComponent', () => {
             expect(compactToggle()?.getAttribute('aria-expanded')).toBe('false');
 
             pressToggle();
-            expect(column().style.width).toBe('280px');
+            expect(column().style.width).toBe('422px');
             expect(searchField()).not.toBeNull();
         });
 
-        it('resizes between 280px and 480px with the handle, and goes compact past the narrowest', () => {
+        it('resizes between 422px and 480px with the handle, and goes compact past the narrowest', () => {
             press('ArrowRight', 20);
             expect(column().style.width).toBe('480px');
 
-            press('ArrowLeft', 13);
-            expect(column().style.width).toBe('280px');
+            press('ArrowLeft', 4);
+            expect(column().style.width).toBe('422px');
             expect(searchField()).not.toBeNull();
 
             press('ArrowLeft');
@@ -623,11 +754,11 @@ describe('ChatPageComponent', () => {
             fixture.destroy();
             fixture = TestBed.createComponent(ChatPageComponent);
             fixture.detectChanges();
-            expect(column().style.width).toBe('356px');
+            expect(column().style.width).toBe('443px');
         });
 
         it('is never compact nor resizable on a phone: the full list, whatever the width', () => {
-            pressToggle();
+            press('Enter');
             isPhone.set(true);
             fixture.detectChanges();
             expect(handle()).toBeNull();
@@ -641,7 +772,7 @@ describe('ChatPageComponent', () => {
         it('names the action after the name visitors see once it is known, and opens the dialog for the open desk', () => {
             listBindings([binding]);
             scopeTo('b-1');
-            const action = (): HTMLButtonElement => headerButton('My name')!;
+            const action = (): HTMLButtonElement => headerButton('Operator name')!;
             const tooltipOf = (): MatTooltip =>
                 fixture.debugElement
                     .queryAll(By.directive(MatTooltip))
@@ -649,16 +780,16 @@ describe('ChatPageComponent', () => {
                     .injector.get(MatTooltip);
             const tooltip = (): string => tooltipOf().message;
             // Not known yet: no name at all, rather than the desk's while visitors may see an alias.
-            expect(action().getAttribute('aria-label')).toBe('My name');
+            expect(action().getAttribute('aria-label')).toBe('Operator name');
             expect(tooltipOf().disabled).toBe(true);
 
             loadAliases();
-            expect(action().getAttribute('aria-label')).toBe('My name: Support');
+            expect(action().getAttribute('aria-label')).toBe('Operator name: Support');
             expect(tooltipOf().disabled).toBe(false);
             expect(tooltip()).toBe('Visitors see you as Support');
 
             goBy('Mike');
-            expect(action().getAttribute('aria-label')).toBe('My name: Mike');
+            expect(action().getAttribute('aria-label')).toBe('Operator name: Mike');
             expect(tooltip()).toBe('Visitors see you as Mike');
 
             action().click();
@@ -758,7 +889,7 @@ describe('ChatPageComponent', () => {
         expect(text('.desk-toolbar__title')).toEqual(['Support']);
         scopeTo('b-2');
         expect(text('.desk-toolbar__title')).toEqual(['Sales']);
-        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Paused']);
+        expect(text('.desk-toolbar app-desk-status-select .desk-status__label')).toEqual(['Paused']);
         expect(navigate).not.toHaveBeenCalled();
     });
 
@@ -783,8 +914,8 @@ describe('ChatPageComponent', () => {
         pending$.next([binding, { ...binding, id: 'b-2', name: 'Sales' }]);
         fixture.detectChanges();
         expect(text('.desk-toolbar__title')).toEqual(['Sales']);
-        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Live']);
-        expect(fixture.nativeElement.querySelector('h2 app-chat-binding-status')).toBeNull();
+        expect(text('.desk-toolbar app-desk-status-select .desk-status__label')).toEqual(['Live']);
+        expect(fixture.nativeElement.querySelector('h2 app-desk-status-select')).toBeNull();
         expect(chatApi.getBindings).toHaveBeenCalledTimes(1);
         expect(navigate).not.toHaveBeenCalled();
     });
@@ -852,7 +983,7 @@ describe('ChatPageComponent', () => {
         scopeTo('b-1');
         expect(host.querySelectorAll('h1').length).toBe(0);
         expect(text('.desk-toolbar h2')).toEqual(['Support']);
-        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Live']);
+        expect(text('.desk-toolbar app-desk-status-select .desk-status__label')).toEqual(['Live']);
     });
 
     it('goes back to All desks without a message when the org changes on a binding page', () => {
@@ -1339,7 +1470,7 @@ describe('ChatPageComponent', () => {
         const page$ = new Subject<ChatConversationPage>();
         const thread$ = new Subject<ChatOperatorMessage[]>();
         chatApi.getMessages.mockReturnValueOnce(thread$);
-        openSection('Bot');
+        // Opened from outside the column, the conversation brought its section, Bot, into it.
         reloadWith({ bot: page$ });
         expect(component.selectedId()).toBe('c-1');
         expect(text('.message__content')).toEqual(['first', 'second']);
@@ -1942,23 +2073,50 @@ describe('ChatPageComponent', () => {
             expect(host().querySelector('.phone-bar app-chat-binding-status')).toBeNull();
         });
 
-        it('offers Test beside the switcher and the other desk actions in its ⋯ menu, by permission', () => {
+        it('offers the desk actions in its ⋯ menu by permission, Delete desk last and set apart, with no Test', () => {
             const permitted = permissions.can;
             try {
                 permissions.can = () => true;
                 renderOnDesk();
-                expect(host().querySelector('.phone-bar [aria-label="Test"]')).not.toBeNull();
+                expect(host().querySelector('.phone-bar [aria-label="Test"]')).toBeNull();
                 openMenu('.phone-bar');
-                expect(menuItems()).toEqual(['My name', 'Settings', 'Get snippet', 'Pause', 'Delete']);
+                expect(menuItems()).toEqual([
+                    'Operator name',
+                    'Settings',
+                    'Copy install snippet',
+                    'Pause',
+                    'Delete desk',
+                ]);
+                expect(
+                    document
+                        .querySelector('.chat-action-menu [role="separator"]')
+                        ?.nextElementSibling?.textContent?.trim()
+                ).toBe('Delete desk');
+                closeMenu();
 
-                bindingActions.openSettings.mockReturnValue(of(undefined));
+                permissions.can = (resource, action) => resource === ResourceCode.Chats && action !== ActionCode.Delete;
+                renderOnDesk();
+                openMenu('.phone-bar');
+                expect(menuItems()).toEqual(['Operator name', 'Settings', 'Copy install snippet', 'Pause']);
+                bindingActions.openSettings.mockReturnValue(of('closed'));
+                // Nor in the settings.
                 chooseInMenu('Settings');
-                expect(bindingActions.openSettings).toHaveBeenCalledWith(binding);
+                expect(bindingActions.openSettings).toHaveBeenLastCalledWith(binding, { canDelete: false });
+
+                permissions.can = () => true;
+                renderOnDesk();
+                openMenu('.phone-bar');
+                chooseInMenu('Settings');
+                expect(bindingActions.openSettings).toHaveBeenLastCalledWith(binding, { canDelete: true });
                 expect(document.querySelector('.chat-action-menu')).toBeNull();
+
+                openConversation(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
+                openMenu('.thread-header__nav');
+                expect(menuItems().at(-1)).toBe('Delete Conversation');
+                closeMenu();
 
                 permissions.can = (_resource, action) => action === ActionCode.Read;
                 renderOnDesk();
-                expect(host().querySelector('.phone-bar [aria-label="Test"]')).toBeNull();
                 // An operator's desk has nothing to change or connect: no ⋯ menu at all.
                 expect(host().querySelector('.phone-bar app-chat-action-menu')).toBeNull();
             } finally {
@@ -1966,9 +2124,45 @@ describe('ChatPageComponent', () => {
             }
         });
 
-        it('has no desk actions on All desks', () => {
+        it('deletes the desk from Delete desk with no conversation open, after its confirmation, goes to All desks, then reloads the desks', async () => {
+            const permitted = permissions.can;
+            try {
+                permissions.can = () => true;
+                renderOnDesk();
+                const callsBefore = chatApi.getBindings.mock.calls.length;
+                let finishNavigation: (navigated: boolean) => void = () => undefined;
+                navigate.mockReturnValueOnce(new Promise<boolean>((resolve) => (finishNavigation = resolve)));
+                bindingActions.delete.mockReturnValueOnce(of(true));
+                // No thread, so no thread ⋯ menu: the desk's own menu is the way to delete it.
+                expect(host().querySelector('.thread-header')).toBeNull();
+
+                openMenu('.phone-bar');
+                chooseInMenu('Delete desk');
+                expect(bindingActions.delete).toHaveBeenCalledWith(binding);
+                expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'all']);
+                // Only once the page has left: a list without the desk must not read as "no longer exists".
+                expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore);
+                finishNavigation(true);
+                await vi.waitFor(() => expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1));
+                expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
+            } finally {
+                permissions.can = permitted;
+            }
+        });
+
+        it('has no desk actions on All desks, whatever the permissions', () => {
             expect(host().querySelector('.phone-bar [aria-label="Test"]')).toBeNull();
             expect(host().querySelector('.phone-bar app-chat-action-menu')).toBeNull();
+
+            const permitted = permissions.can;
+            try {
+                permissions.can = () => true;
+                fixture = TestBed.createComponent(ChatPageComponent);
+                fixture.detectChanges();
+                expect(host().querySelector('.phone-bar app-chat-action-menu')).toBeNull();
+            } finally {
+                permissions.can = permitted;
+            }
         });
 
         it("heads the thread with Back to the list, the visitor and the conversation's actions, Resolve included", () => {

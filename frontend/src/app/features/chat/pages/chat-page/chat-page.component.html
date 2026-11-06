@@ -5,130 +5,75 @@
         <div class="desk-toolbar">
             <div class="desk-toolbar__titles">
                 @if (title(); as text) {
+                    <!-- The rail's picture of the open desk; the title beside it names it. -->
+                    <app-desk-avatar
+                        class="desk-toolbar__avatar"
+                        aria-hidden="true"
+                        [name]="text"
+                        [icon]="isAllBindings() ? allDesksIcon : null"
+                        [showBadge]="false"
+                    />
                     <h2 class="desk-toolbar__title text-h4">{{ text }}</h2>
                 }
                 <!-- Beside the title, not part of it. -->
                 @if (routeBinding(); as binding) {
-                    <app-chat-binding-status
-                        class="desk-toolbar__status"
+                    <app-desk-status-select
                         [binding]="binding"
+                        [canChange]="canUpdate()"
+                        (runStateChange)="setRunState($event)"
                     />
                 }
             </div>
             @if (routeBinding()) {
                 <!-- The flow editor header's buttons; the label may collapse to the icon, so each keeps an aria-label. -->
                 <div class="header-actions">
-                    <!-- Says the name visitors see now; the label alone may collapse to the icon. -->
-                    @if (canUse()) {
-                        <button
-                            type="button"
-                            class="header-action header-action--ghost"
-                            [attr.aria-label]="myNameLabel()"
-                            [matTooltip]="myNameTooltip()"
-                            [matTooltipDisabled]="!myNameTooltip()"
-                            [appCollapseOnOverflow]="true"
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            (click)="editMyAlias()"
-                        >
-                            <app-svg-icon
-                                icon="user"
-                                size="1.25rem"
-                            />
-                            <span class="btn-label">My name</span>
-                        </button>
-                    }
-                    @if (canUpdate()) {
-                        <button
-                            type="button"
-                            class="header-action header-action--ghost"
-                            aria-label="Settings"
-                            matTooltip="Settings"
-                            [appCollapseOnOverflow]="true"
-                            appTooltipWhenCollapsed
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            (click)="openSettings()"
-                        >
-                            <app-svg-icon
-                                icon="settings"
-                                size="1.25rem"
-                            />
-                            <span class="btn-label">Settings</span>
-                        </button>
-                    }
-                    @if (canDelete()) {
-                        <button
-                            type="button"
-                            class="header-action header-action--ghost"
-                            aria-label="Delete"
-                            matTooltip="Delete"
-                            [appCollapseOnOverflow]="true"
-                            appTooltipWhenCollapsed
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            (click)="deleteDesk()"
-                        >
-                            <app-svg-icon
-                                icon="trash"
-                                size="1.25rem"
-                            />
-                            <span class="btn-label">Delete</span>
-                        </button>
-                    }
                     @if (canBuildDesks()) {
                         <!-- Like the flow editor's Get cURL: copies straight to the clipboard with a toast. -->
                         <button
                             type="button"
-                            class="header-action header-action--outline"
-                            aria-label="Get snippet"
+                            class="header-action header-action--ghost header-action--snippet"
+                            aria-label="Copy install snippet"
+                            matTooltip="Copy install snippet"
+                            [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
                             (click)="copySnippet()"
                         >
-                            <span class="btn-label">Get snippet</span>
+                            <app-svg-icon
+                                icon="code-snippet"
+                                width="13px"
+                                height="12px"
+                            />
+                            <span class="btn-label">Copy install snippet</span>
+                        </button>
+                    }
+                    <!-- The name visitors see now is in its accessible name and tooltip. -->
+                    @if (canUse()) {
+                        <button
+                            type="button"
+                            class="operator-name"
+                            [attr.aria-label]="myNameLabel()"
+                            [matTooltip]="myNameTooltip()"
+                            [matTooltipDisabled]="!myNameTooltip()"
+                            (click)="editMyAlias()"
+                        >
+                            <span class="text-body-small-large">Operator name</span>
                         </button>
                     }
                     @if (canUpdate()) {
                         <button
                             type="button"
-                            class="header-action header-action--outline"
-                            [attr.aria-label]="pauseLabel()"
-                            [matTooltip]="pauseLabel()"
-                            [appCollapseOnOverflow]="true"
-                            appTooltipWhenCollapsed
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            (click)="togglePause()"
+                            class="desk-settings"
+                            aria-label="Settings"
+                            matTooltip="Settings"
+                            (click)="openSettings()"
                         >
                             <app-svg-icon
-                                [icon]="pauseIcon()"
-                                size="1.25rem"
+                                icon="settings"
+                                size="14px"
                             />
-                            <span class="btn-label">{{ pauseLabel() }}</span>
-                        </button>
-                    }
-                    @if (canBuildDesks()) {
-                        <button
-                            type="button"
-                            class="header-action header-action--primary"
-                            aria-label="Test"
-                            matTooltip="Test"
-                            [appCollapseOnOverflow]="true"
-                            appTooltipWhenCollapsed
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            [disabled]="!canStartTest()"
-                            (click)="startTest()"
-                        >
-                            <app-svg-icon
-                                icon="player-play-filled"
-                                size="1.25rem"
-                            />
-                            <span class="btn-label">Test</span>
                         </button>
                     }
                 </div>
@@ -153,7 +98,7 @@
             [attr.inert]="isPhone() && selected() ? '' : null"
         >
             @if (isPhone()) {
-                <!-- The list screen's nav bar: which desk (tap to switch), its status, Test and the other actions. -->
+                <!-- The list screen's nav bar: which desk (tap to switch), its status and the other actions. -->
                 <div class="phone-bar">
                     <h2 class="phone-bar__heading">
                         <button
@@ -167,7 +112,6 @@
                             <app-desk-avatar
                                 class="phone-bar__avatar"
                                 [name]="title()"
-                                [deskId]="routeBinding()?.id ?? null"
                                 [icon]="isAllBindings() ? allDesksIcon : null"
                                 [showBadge]="false"
                             />
@@ -186,21 +130,6 @@
                         />
                     }
                     <div class="phone-bar__actions">
-                        @if (routeBinding() && canBuildDesks()) {
-                            <button
-                                type="button"
-                                class="phone-bar__icon-button phone-bar__icon-button--primary"
-                                aria-label="Test"
-                                matTooltip="Test"
-                                [disabled]="!canStartTest()"
-                                (click)="startTest()"
-                            >
-                                <app-svg-icon
-                                    icon="player-play-filled"
-                                    size="1.25rem"
-                                />
-                            </button>
-                        }
                         @if (deskMenuItems().length) {
                             <app-chat-action-menu
                                 label="Desk actions"
@@ -218,7 +147,9 @@
                 [canCollapse]="!isPhone()"
                 [isCompact]="isConversationsCompact()"
                 (selectedChange)="selectConversation($event)"
+                [testStartBlockedReason]="testStartBlockedReason()"
                 (compactToggle)="toggleConversations()"
+                (testStartRequested)="startTest()"
             />
             @if (!isPhone()) {
                 <div
@@ -248,6 +179,8 @@
                         [conversation]="conversation"
                         [listTitle]="title()"
                         [isAllBindings]="isAllBindings()"
+                        [canDelete]="canDeleteFromThread()"
+                        (deleteRequested)="deleteDesk()"
                     />
                 </div>
             } @else {

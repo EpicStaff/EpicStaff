@@ -204,6 +204,7 @@ $logo-padding-bottom: 0.75rem;
         // On the icon wrapper's top-right corner, 2px inside it.
         .sidenav-badge {
             @include count-badge.pill;
+            --count-badge-outline: var(--color-sidenav-background);
             position: absolute;
             top: 2px;
             right: 2px;

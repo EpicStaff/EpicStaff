@@ -1,4 +1,4 @@
-import { ChatConversation, ChatInboxOrder, ChatInboxSection, ChatOperatorMessage } from '../models/chat.model';
+import { ChatConversation, ChatInboxSection, ChatOperatorMessage } from '../models/chat.model';
 import { isClosed } from './conversation-close.util';
 
 const ISO_FRACTION = /\.(\d+)/;
@@ -20,9 +20,9 @@ export type ConversationOrder = (left: ChatConversation, right: ChatConversation
 const compareIds = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
 // The server's section filters, row for row: a conversation is in at most one section, and in none while it has no
-// message yet (outside Waiting). Waiting, In progress and Bot list open conversations only; Tests keeps its closed ones
-// (marked on the row); every other closed one is in Closed. `!= null` also reads a field an older payload lacks as
-// empty, and a row without `status` is open.
+// message yet (outside Waiting). Waiting, In progress and Bot list open conversations only; test (Bot Testing) keeps
+// its closed ones (marked on the row); every other closed one is in Closed. `!= null` also reads a field an older
+// payload lacks as empty, and a row without `status` is open.
 const SECTION_FILTERS: Record<ChatInboxSection, (row: ChatConversation) => boolean> = {
     waiting: (row) => !isClosed(row) && row.visitor_waiting_since != null && !row.is_test,
     in_progress: (row) =>
@@ -42,30 +42,30 @@ export function belongsTo(row: ChatConversation, section: ChatInboxSection, hold
     return SECTION_FILTERS[section](row);
 }
 
-/** How the server orders a section: by which time, and in a fixed direction or the chosen order's (null). */
+/** How the server orders a section: by which time, and in which direction. */
 interface SectionSort {
     key: 'visitor_waiting_since' | 'last_message_at' | 'closed_at';
     // 1: oldest first, -1: newest first.
-    fixedDirection: 1 | -1 | null;
+    direction: 1 | -1;
 }
 
 const SECTION_SORTS: Record<ChatInboxSection, SectionSort> = {
-    // A queue: the longest wait first, whatever the chosen order.
-    waiting: { key: 'visitor_waiting_since', fixedDirection: 1 },
-    in_progress: { key: 'last_message_at', fixedDirection: null },
-    test: { key: 'last_message_at', fixedDirection: null },
-    // What was just closed is what gets looked up: the most recently closed first, whatever the chosen order.
-    closed: { key: 'closed_at', fixedDirection: -1 },
-    bot: { key: 'last_message_at', fixedDirection: null },
+    // A queue: the longest wait first.
+    waiting: { key: 'visitor_waiting_since', direction: 1 },
+    in_progress: { key: 'last_message_at', direction: -1 },
+    test: { key: 'last_message_at', direction: -1 },
+    // What was just closed is what gets looked up: the most recently closed first.
+    closed: { key: 'closed_at', direction: -1 },
+    bot: { key: 'last_message_at', direction: -1 },
 };
 
 /**
- * The API's order for a section: Waiting by wait start, oldest first; Closed by close, newest first; the others by
- * latest message, newest or oldest first. Ties break on the id in the same direction, as the server's keyset does.
+ * The API's order for a section as the column loads it: Waiting by wait start, oldest first; Closed by close, newest
+ * first; the others by latest message, newest first. Ties break on the id in the same direction, as the server's
+ * keyset does.
  */
-export function inboxOrder(section: ChatInboxSection, order: ChatInboxOrder): ConversationOrder {
-    const { key, fixedDirection } = SECTION_SORTS[section];
-    const direction = fixedDirection ?? (order === 'oldest' ? 1 : -1);
+export function inboxOrder(section: ChatInboxSection): ConversationOrder {
+    const { key, direction } = SECTION_SORTS[section];
     return (left, right) =>
         direction * (microseconds(left[key]) - microseconds(right[key]) || compareIds(left.id, right.id));
 }

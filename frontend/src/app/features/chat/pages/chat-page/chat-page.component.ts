@@ -40,10 +40,15 @@ import { ChatThreadComponent } from '../../components/chat-thread/chat-thread.co
 import { ConversationListComponent } from '../../components/conversation-list/conversation-list.component';
 import { DeskAvatarComponent } from '../../components/desk-avatar/desk-avatar.component';
 import {
+    DeskRunState,
+    DeskStatusSelectComponent,
+} from '../../components/desk-status-select/desk-status-select.component';
+import {
     CONVERSATIONS_WIDTH_KEY,
     CONVERSATIONS_WIDTH_OPTIONS,
     isCompactColumn,
 } from '../../constants/column-widths.constants';
+import { DESKS_ROUTE } from '../../constants/routes.constants';
 import { ChatConversation } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
@@ -56,7 +61,7 @@ import { OpenConversationSyncService } from '../../services/open-conversation-sy
 import { isDeskBuilder } from '../../utils/chat-permissions.util';
 import { ALL_DESKS_ICON } from '../../utils/desk-avatar.util';
 
-const ALL_DESKS_ROUTE: readonly string[] = ['/chat-bindings', 'all'];
+const ALL_DESKS_ROUTE: readonly string[] = [DESKS_ROUTE, 'all'];
 
 type DeskAction = 'my-name' | 'settings' | 'snippet' | 'pause' | 'delete';
 
@@ -79,6 +84,7 @@ type DeskAction = 'my-name' | 'settings' | 'snippet' | 'pause' | 'delete';
         TooltipWhenCollapsedDirective,
         ConversationListComponent,
         DeskAvatarComponent,
+        DeskStatusSelectComponent,
         ResizableSidebarDirective,
     ],
     providers: [OpenConversationService, OpenConversationSyncService, ChatVisitorTokensStore],
@@ -118,6 +124,10 @@ export class ChatPageComponent {
     });
     // The thread follows the conversation shown, not an id that has no row yet.
     private readonly shownConversationId = computed(() => this.selected()?.id ?? null);
+    // The open conversation's row, changing only when another conversation's row becomes known: not on its updates.
+    private readonly openConversationRow = computed(() => this.openConversation.row(), {
+        equal: (previous, next) => previous?.id === next?.id,
+    });
     readonly isAllBindings = computed(() => !this.bindingId());
     // Null until the desks load; an id they do not list sends the user back to All desks.
     readonly routeBinding = computed(
@@ -129,8 +139,11 @@ export class ChatPageComponent {
         return title ? `Switch desk, current: ${title}` : 'Switch desk';
     });
     readonly pauseLabel = computed(() => (this.routeBinding()?.is_active ? 'Pause' : 'Resume'));
-    readonly pauseIcon = computed(() => (this.routeBinding()?.is_active ? 'pause' : 'activate'));
-    readonly canStartTest = computed(() => !!this.routeBinding() && !this.isStartingTest());
+    /** Why New Test Chat cannot start a test now; null when it can. A test is of one desk, and one starts at a time. */
+    readonly testStartBlockedReason = computed((): string | null => {
+        if (!this.routeBinding()) return 'Open a desk to start a test';
+        return this.isStartingTest() ? 'Starting a test…' : null;
+    });
     readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
     readonly canBuildDesks = computed(() => isDeskBuilder(this.permissionsService));
     /**
@@ -143,7 +156,7 @@ export class ChatPageComponent {
     });
     readonly myNameLabel = computed(() => {
         const name = this.myNameOnDesk();
-        return name ? `My name: ${name}` : 'My name';
+        return name ? `Operator name: ${name}` : 'Operator name';
     });
     readonly myNameTooltip = computed(() => {
         const name = this.myNameOnDesk();
@@ -151,16 +164,24 @@ export class ChatPageComponent {
     });
     readonly canUpdate = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Update));
     readonly canDelete = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Delete));
-    /** Phones put every desk action except Test in the list screen's ⋯ menu; the same permissions as the toolbar's. */
+    /**
+     * The thread's "Delete Conversation" (the user's wording) runs Delete of this desk, the only delete the chat API
+     * has; so it is offered on a desk's page only, to whoever may delete desks.
+     */
+    readonly canDeleteFromThread = computed(() => this.canDelete() && !!this.routeBinding());
+    /**
+     * Phones put the desk actions in the list screen's ⋯ menu, with the toolbar's permissions. Delete desk comes last,
+     * set apart as in the thread's ⋯ menu: a desk with no conversations has no thread to delete it from.
+     */
     readonly deskMenuItems = computed((): ChatActionMenuItem<DeskAction>[] => {
         if (!this.routeBinding()) return [];
         const canUpdate = this.canUpdate();
         const items: (ChatActionMenuItem<DeskAction> | false)[] = [
             this.canUse() && { id: 'my-name', label: this.myNameLabel() },
             canUpdate && { id: 'settings', label: 'Settings' },
-            this.canBuildDesks() && { id: 'snippet', label: 'Get snippet' },
+            this.canBuildDesks() && { id: 'snippet', label: 'Copy install snippet' },
             canUpdate && { id: 'pause', label: this.pauseLabel() },
-            this.canDelete() && { id: 'delete', label: 'Delete' },
+            this.canDelete() && { id: 'delete', label: 'Delete desk', separated: true },
         ];
         return items.filter((item) => item !== false);
     });
@@ -232,9 +253,9 @@ export class ChatPageComponent {
     });
     /**
      * An id the page did not open itself (a reload, a link, history) takes its row from the conversations column, once
-     * the column holds the route's desk (until then its rows are another desk's). A column that hides rows (Mine, a
-     * search, a collapsed section) shows everything first; what it then finds, or that it lacks the id, goes to the sync
-     * (`OpenConversationSyncService.resolve`).
+     * the column holds the route's desk (until then its rows are another desk's). Whatever it does not show (kept out
+     * by Mine, a search, a folded section or the other tab, or not fetched yet), the sync asks the server for by id
+     * (`OpenConversationSyncService.resolve`); the row then says where it belongs (`revealOpenConversation`).
      */
     private readonly openConversationFromUrl = effect(() => {
         const id = this.openConversation.id();
@@ -242,10 +263,17 @@ export class ChatPageComponent {
         if (!id || !list || this.openConversation.row()) return;
         if (list.listedBindingId() !== (this.bindingId() ?? null)) return;
         const lookup = list.lookUp(id);
-        untracked(() => {
-            if (lookup === 'hidden') list.showEverything();
-            else if (lookup !== 'loading') this.openConversationSync.resolve(id, lookup);
-        });
+        if (lookup !== 'loading') untracked(() => this.openConversationSync.resolve(id, lookup));
+    });
+    /**
+     * Each conversation that opens, once its row is known, is brought into the column when it is not shown there: its
+     * tab (a test that started, a link the other tab holds), its section, and past Mine or a search. Once per
+     * conversation, so the user may switch tabs or fold its section while it is open.
+     */
+    private readonly revealOpenConversation = effect(() => {
+        const row = this.openConversationRow();
+        const list = this.conversationList();
+        if (row && list) untracked(() => list.revealConversation(row));
     });
     // Phones: the focus goes with the screen the user moved to: the thread's Back, or the row the thread was opened from.
     private readonly moveFocusWithStack = effect(() => {
@@ -308,7 +336,7 @@ export class ChatPageComponent {
     // The created row seeds the header: its stream event may already have passed, before it was selected.
     onTestConversationStarted(conversation: ChatConversation): void {
         this.openConversation.open(conversation);
-        this.conversationList()?.reveal('test');
+        this.conversationList()?.reveal('test_bot');
     }
 
     protected toggleConversations(): void {
@@ -332,7 +360,10 @@ export class ChatPageComponent {
         run[action]();
     }
 
-    /** Tests this workspace's binding; works on a paused one too (a test skips the active and origin checks). */
+    /**
+     * Tests this workspace's binding, for New Test Chat in the conversations column; works on a paused one too (a test
+     * skips the active and origin checks).
+     */
     startTest(): void {
         const bindingId = this.routeBinding()?.id;
         if (!bindingId || this.isStartingTest()) return;
@@ -354,13 +385,20 @@ export class ChatPageComponent {
             });
     }
 
+    /**
+     * The settings' Delete desk runs `deleteDesk`, which reloads the desks itself once the desk is gone; no reload is
+     * sent before it, as a list that lands after the delete would read as "no longer exists".
+     */
     openSettings(): void {
         const binding = this.routeBinding();
         if (!binding) return;
         this.bindingActions
-            .openSettings(binding)
+            .openSettings(binding, { canDelete: this.canDelete() })
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.desksStorage.reload());
+            .subscribe((outcome) => {
+                if (outcome === 'delete-requested') this.deleteDesk();
+                else this.desksStorage.reload();
+            });
     }
 
     /** The name the user goes by on the open desk; the dialog stores a change itself. */
@@ -390,10 +428,17 @@ export class ChatPageComponent {
         if (binding) this.bindingActions.copySnippet(binding);
     }
 
+    /** The phone menu's Pause / Resume: the other state than the desk's. */
     togglePause(): void {
         const binding = this.routeBinding();
+        if (binding) this.setRunState(binding.is_active ? 'paused' : 'live');
+    }
+
+    /** The state picked in the toolbar's status menu: that state, not a toggle of a desk that may not have reloaded yet. */
+    setRunState(state: DeskRunState): void {
+        const binding = this.routeBinding();
         if (!binding) return;
-        (binding.is_active ? this.bindingActions.pause(binding) : this.bindingActions.resume(binding))
+        (state === 'paused' ? this.bindingActions.pause(binding) : this.bindingActions.resume(binding))
             .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.desksStorage.reload());
     }

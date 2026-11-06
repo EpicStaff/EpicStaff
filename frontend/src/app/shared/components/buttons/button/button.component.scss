@@ -150,7 +150,8 @@
         padding: 0.25rem var(--button-small-padding-x, 0.5rem);
 
         .btn-content {
-            gap: 0.25rem;
+            // Overridable like the font weight above: the space between a projected icon and the label.
+            gap: var(--button-small-gap, 0.25rem);
         }
     }
 

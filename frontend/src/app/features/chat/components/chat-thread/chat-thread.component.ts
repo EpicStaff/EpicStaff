@@ -11,6 +11,7 @@ import {
     Injector,
     input,
     LOCALE_ID,
+    output,
     signal,
     untracked,
     viewChild,
@@ -77,6 +78,9 @@ export class ChatThreadComponent {
     /** The list the phone's Back returns to: the desk name or All desks; empty while not known. */
     readonly listTitle = input('');
     readonly isAllBindings = input(false);
+    /** Offers Delete Conversation in the header's ⋯ menu; the page carries it out. */
+    readonly canDelete = input(false);
+    readonly deleteRequested = output<void>();
 
     private readonly header = viewChild(ChatThreadHeaderComponent);
     private readonly composer = viewChild(ChatThreadComposerComponent);

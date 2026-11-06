@@ -16,9 +16,10 @@ describe('ConversationListPreferencesService', () => {
         localStorage.clear();
     });
 
-    it("opens Waiting for a person only, sorts newest first and shows everyone's conversations by default", () => {
+    it("opens Inbox at Waiting, Bot Testing at its open tests, and shows everyone's conversations by default", () => {
+        expect(preferences().tab()).toBe('inbox');
         expect(preferences().expanded()).toBe('waiting');
-        expect(preferences().order()).toBe('newest');
+        expect(preferences().testingExpanded()).toBe('test_bot');
         expect(preferences().isMineOnly()).toBe(false);
     });
 
@@ -33,14 +34,16 @@ describe('ConversationListPreferencesService', () => {
         expect(readAgain().expanded()).toBeNull();
     });
 
-    it('remembers the open section, the sort order and Mine together', () => {
+    it("remembers the tab, each tab's open section and Mine together", () => {
+        preferences().setTab('testing');
         preferences().setExpanded('closed');
-        preferences().setOrder('oldest');
+        preferences().setTestingExpanded('test_closed');
         preferences().setMineOnly(true);
 
         const again = readAgain();
+        expect(again.tab()).toBe('testing');
         expect(again.expanded()).toBe('closed');
-        expect(again.order()).toBe('oldest');
+        expect(again.testingExpanded()).toBe('test_closed');
         expect(again.isMineOnly()).toBe(true);
     });
 
@@ -50,27 +53,30 @@ describe('ConversationListPreferencesService', () => {
             JSON.stringify({ collapsed: ['bot'], order: 'oldest', isMineOnly: true, known: ['waiting', 'bot'] })
         );
         expect(preferences().expanded()).toBe('waiting');
-        expect(preferences().order()).toBe('oldest');
         expect(preferences().isMineOnly()).toBe(true);
     });
 
+    // `test` is no Inbox section to open: tests are a tab of their own.
     it('reads only known values, each falling back to its own default', () => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ expanded: 'gone', order: 'sideways', isMineOnly: 'yes' }));
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({ tab: 'tests', expanded: 'test', testingExpanded: 'waiting', isMineOnly: 'yes' })
+        );
+        expect(preferences().tab()).toBe('inbox');
         expect(preferences().expanded()).toBe('waiting');
-        expect(preferences().order()).toBe('newest');
+        expect(preferences().testingExpanded()).toBe('test_bot');
         expect(preferences().isMineOnly()).toBe(false);
     });
 
     it('keeps a known value beside unknown ones', () => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ expanded: 'test', order: 42 }));
-        expect(preferences().expanded()).toBe('test');
-        expect(preferences().order()).toBe('newest');
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ expanded: 'closed', isMineOnly: 42 }));
+        expect(preferences().expanded()).toBe('closed');
+        expect(preferences().isMineOnly()).toBe(false);
     });
 
     it.each(['{not json', 'null', '"expanded"', '[]'])('falls back to the defaults on %s', (value) => {
         localStorage.setItem(STORAGE_KEY, value);
         expect(preferences().expanded()).toBe('waiting');
-        expect(preferences().order()).toBe('newest');
         expect(preferences().isMineOnly()).toBe(false);
     });
 
@@ -84,10 +90,8 @@ describe('ConversationListPreferencesService', () => {
         expect(preferences().expanded()).toBe('waiting');
 
         preferences().setExpanded(null);
-        preferences().setOrder('oldest');
         preferences().setMineOnly(true);
         expect(preferences().expanded()).toBeNull();
-        expect(preferences().order()).toBe('oldest');
         expect(preferences().isMineOnly()).toBe(true);
     });
 });

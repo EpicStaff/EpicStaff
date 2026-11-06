@@ -1,4 +1,4 @@
-// Same look as the tools list sidebar toggle.
+// The chat columns' show/hide button: a 28px square around a 12px icon drawn with 1px lines.
 @mixin button {
     display: flex;
     align-items: center;
@@ -8,10 +8,11 @@
     height: 28px;
     padding: 0;
     background: transparent;
-    border: 1px solid var(--color-text-secondary);
+    border: 1px solid var(--color-control-outline);
     border-radius: 4px;
     color: var(--color-text-secondary);
     cursor: pointer;
+    --expand-sidebar-stroke-width: 1;
 
     &:hover {
         border-color: var(--accent-color);

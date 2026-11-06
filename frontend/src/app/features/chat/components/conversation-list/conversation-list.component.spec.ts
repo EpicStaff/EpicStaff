@@ -1,6 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 import { ConfirmationDialogService } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of, Subject, throwError } from 'rxjs';
@@ -20,9 +22,10 @@ import { ChatApiService, ConversationListParams } from '../../services/chat-api.
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
+import { ConversationListSection } from '../../utils/conversation-list-tab.util';
 import { SEARCH_DEBOUNCE_MS } from '../conversation-list-toolbar/conversation-list-toolbar.component';
 import { ConversationListComponent } from './conversation-list.component';
-import { ConversationListStore } from './conversation-list.store';
+import { CONVERSATION_SECTIONS, ConversationListStore } from './conversation-list.store';
 
 const PREFERENCES_KEY = 'chat:conversationList';
 
@@ -55,7 +58,7 @@ class IntersectionObserverStub {
     }
 
     /** The live observers' sentinels of `section` enter the view. */
-    static scrollIntoView(section: ChatInboxSection): void {
+    static scrollIntoView(section: ConversationListSection): void {
         for (const observer of IntersectionObserverStub.instances.filter((instance) => !instance.disconnected)) {
             const targets = observer.observed.filter(
                 (target) => (target as HTMLElement).dataset['section'] === section
@@ -171,7 +174,7 @@ describe('ConversationListComponent', () => {
     };
     const chatApi = {
         getBindings: vi.fn(() => of(serverDesks)),
-        // By default Waiting, In progress and Tests are empty and Bot holds one conversation.
+        // By default Bot holds one conversation and every other section is empty.
         getConversations: vi.fn((params: ConversationListParams): Observable<ChatConversationPage> => {
             const answer = nextPages[params.section];
             if (answer) {
@@ -192,7 +195,7 @@ describe('ConversationListComponent', () => {
     const store = (): ConversationListStore => fixture.debugElement.injector.get(ConversationListStore);
     const ids = (section: ChatInboxSection): string[] =>
         store()
-            .sections()
+            .lists()
             [section].rows.map((item) => item.id);
     const rowButtons = (): HTMLButtonElement[] =>
         Array.from(host().querySelectorAll<HTMLButtonElement>('button.conversation-row'));
@@ -213,16 +216,20 @@ describe('ConversationListComponent', () => {
         Array.from(host().querySelectorAll<HTMLButtonElement>('app-conversation-list-toolbar button')).find(
             (button) => button.textContent?.trim() === label
         );
+    const tabButton = (label: string): HTMLButtonElement =>
+        Array.from(host().querySelectorAll<HTMLButtonElement>('app-conversation-list-tabs button')).find((button) =>
+            button.textContent?.trim().startsWith(label)
+        )!;
     const sectionLabels = (): string[] => text('.conversation-section-header__label');
     // Remembered per browser, and as the column shows them.
     const rememberedSection = (): ChatInboxSection | null =>
         TestBed.inject(ConversationListPreferencesService).expanded();
-    const expandedSections = (): ChatInboxSection[] =>
+    const expandedSections = (): ConversationListSection[] =>
         store()
             .view()
             .filter(({ isExpanded }) => isExpanded)
             .map(({ section }) => section.id);
-    const listedSections = (): ChatInboxSection[] =>
+    const listedSections = (): ConversationListSection[] =>
         store()
             .view()
             .map(({ section }) => section.id);
@@ -260,11 +267,12 @@ describe('ConversationListComponent', () => {
     type SectionPages = Partial<Record<ChatInboxSection, Observable<ChatConversationPage>>>;
 
     /**
-     * The next load answers the sections open now (only Waiting for a person at first): each with its page in `pages`,
-     * else with nothing.
+     * The next load answers the server lists of the sections open now (only Waiting for a person at first): each with
+     * its page in `pages`, else with nothing. Bot Testing's two sections share the `test` list.
      */
-    function answerNextLoad(pages: SectionPages, sections: ChatInboxSection[] = expandedSections()): void {
-        nextPages = Object.fromEntries(sections.map((section) => [section, pages[section] ?? page([])]));
+    function answerNextLoad(pages: SectionPages, sections: ConversationListSection[] = expandedSections()): void {
+        const lists = new Set(sections.map((section) => CONVERSATION_SECTIONS.find(({ id }) => id === section)!.list));
+        nextPages = Object.fromEntries([...lists].map((list) => [list, pages[list] ?? page([])]));
     }
 
     /** As `answerNextLoad`, for a search starting: it opens every section the column lists. */
@@ -272,8 +280,9 @@ describe('ConversationListComponent', () => {
         answerNextLoad(pages, listedSections());
     }
 
+    /** Opens every Inbox section for this column, beside the remembered one. */
     function showEverySection(): void {
-        fixture.componentInstance.showEverything();
+        for (const section of ['waiting', 'in_progress', 'closed', 'bot'] as const) store().openForColumn(section);
         fixture.detectChanges();
     }
 
@@ -304,7 +313,12 @@ describe('ConversationListComponent', () => {
         fixture.detectChanges();
     }
 
-    function scrollToEndOf(section: ChatInboxSection): void {
+    /** Presses the Inbox or Bot Testing tab, as a user would. */
+    function switchTab(label: 'Inbox' | 'Bot Testing'): void {
+        click(tabButton(label));
+    }
+
+    function scrollToEndOf(section: ConversationListSection): void {
         IntersectionObserverStub.scrollIntoView(section);
         fixture.detectChanges();
     }
@@ -353,15 +367,15 @@ describe('ConversationListComponent', () => {
             expect(scrolling).toEqual([scrollers[0]]);
         });
 
-        it('lists Waiting for a person, In progress, Tests, Closed and Bot in that order, only Waiting open', () => {
+        it('lists Waiting for a person, In progress, Closed and Bot in that order on Inbox, only Waiting open', () => {
+            expect(tabButton('Inbox').getAttribute('aria-pressed')).toBe('true');
             expect(text('.conversation-section-header__label')).toEqual([
                 'Waiting for a person',
                 'In progress',
-                'Tests',
                 'Closed',
                 'Bot',
             ]);
-            expect(headerStates()).toEqual(['true', 'false', 'false', 'false', 'false']);
+            expect(headerStates()).toEqual(['true', 'false', 'false', 'false']);
         });
 
         it('gives each section a sticky header heading the section it collapses', () => {
@@ -383,7 +397,7 @@ describe('ConversationListComponent', () => {
             const counts = Array.from(host().querySelectorAll('.conversation-section-header')).map(
                 (button) => button.querySelector('.conversation-section-header__count')?.textContent?.trim() ?? null
             );
-            expect(counts).toEqual(['3', null, null, null, null]);
+            expect(counts).toEqual(['3', null, null, null]);
             expect(chatInboxStream.waitingCountFor).toHaveBeenLastCalledWith('b-2', null);
 
             waitingCount.set(4);
@@ -403,7 +417,7 @@ describe('ConversationListComponent', () => {
             expect(text('.conversation-list__section-empty .conversation-list__empty-title')).toEqual([
                 'Nobody is waiting',
             ]);
-            expect(sectionLabels()).toHaveLength(5);
+            expect(sectionLabels()).toHaveLength(4);
         });
 
         it('says per open section what an empty one is for while another has rows', () => {
@@ -411,7 +425,6 @@ describe('ConversationListComponent', () => {
             expect(text('.conversation-list__section-empty .conversation-list__empty-title')).toEqual([
                 'Nobody is waiting',
                 'Nothing in progress',
-                'No test conversations',
                 'Nothing closed yet',
             ]);
         });
@@ -420,51 +433,51 @@ describe('ConversationListComponent', () => {
     describe('one section open at a time', () => {
         it('opens a folded section from its header as the only open one, and remembers it per browser', () => {
             toggle('Bot');
-            expect(headerStates()).toEqual(['false', 'false', 'false', 'false', 'true']);
+            expect(headerStates()).toEqual(['false', 'false', 'false', 'true']);
             expect(text('.conversation-row__preview')).toEqual(['hello']);
             expect(rememberedSection()).toBe('bot');
 
             fixture = TestBed.createComponent(ConversationListComponent);
             fixture.detectChanges();
-            expect(headerStates()).toEqual(['false', 'false', 'false', 'false', 'true']);
+            expect(headerStates()).toEqual(['false', 'false', 'false', 'true']);
 
             toggle('In progress');
-            expect(headerStates()).toEqual(['false', 'true', 'false', 'false', 'false']);
+            expect(headerStates()).toEqual(['false', 'true', 'false', 'false']);
             expect(rememberedSection()).toBe('in_progress');
         });
 
         it('folds the open section from its header, leaving none open, and remembers that too', () => {
             toggle('Waiting for a person');
-            expect(headerStates()).toEqual(['false', 'false', 'false', 'false', 'false']);
+            expect(headerStates()).toEqual(['false', 'false', 'false', 'false']);
             expect(rememberedSection()).toBeNull();
 
             chatApi.getConversations.mockClear();
             fixture = TestBed.createComponent(ConversationListComponent);
             fixture.detectChanges();
-            expect(headerStates()).toEqual(['false', 'false', 'false', 'false', 'false']);
+            expect(headerStates()).toEqual(['false', 'false', 'false', 'false']);
             expect(chatApi.getConversations).not.toHaveBeenCalled();
         });
 
         it('never requests a folded section, and loads it when it is opened', () => {
             expect(requestedSections()).toEqual(['waiting']);
 
-            chatApi.getConversations.mockReturnValueOnce(page([row({ id: 't-1', is_test: true })]));
-            toggle('Tests');
-            expect(chatApi.getConversations).toHaveBeenLastCalledWith(listParams('test'));
-            expect(ids('test')).toEqual(['t-1']);
+            chatApi.getConversations.mockReturnValueOnce(page([answered('p-1', '2026-10-10T09:00:00Z')]));
+            toggle('In progress');
+            expect(chatApi.getConversations).toHaveBeenLastCalledWith(listParams('in_progress'));
+            expect(ids('in_progress')).toEqual(['p-1']);
 
             chatApi.getConversations.mockClear();
             readyEpoch.update((value) => value + 1);
             fixture.detectChanges();
-            expect(requestedSections()).toEqual(['test']);
+            expect(requestedSections()).toEqual(['in_progress']);
         });
 
         it('does not request a section again when it is opened again for the same desk', () => {
-            toggle('Tests');
-            toggle('Tests');
-            toggle('Tests');
+            toggle('In progress');
+            toggle('In progress');
+            toggle('In progress');
             toggle('Waiting for a person');
-            expect(requestedSections()).toEqual(['waiting', 'test']);
+            expect(requestedSections()).toEqual(['waiting', 'in_progress']);
         });
 
         it('keeps working when the browser refuses storage', () => {
@@ -497,10 +510,12 @@ describe('ConversationListComponent', () => {
             TestBed.inject(ActiveOrgService).set(1);
             fixture = TestBed.createComponent(ConversationListComponent);
             fixture.detectChanges();
-            expect(headerButton('Tests').getAttribute('aria-expanded')).toBe('false');
+            expect(headerButton('Closed').getAttribute('aria-expanded')).toBe('false');
 
-            toggle('Tests');
-            expect(headerButton('Tests').getAttribute('aria-expanded')).toBe('true');
+            toggle('Closed');
+            expect(headerButton('Closed').getAttribute('aria-expanded')).toBe('true');
+            switchTab('Bot Testing');
+            expect(tabButton('Bot Testing').getAttribute('aria-pressed')).toBe('true');
         });
 
         describe('keeping the pressed header in view', () => {
@@ -549,25 +564,28 @@ describe('ConversationListComponent', () => {
                 fixture.detectChanges();
                 await fixture.whenStable();
 
-                expect(headerStates()).toEqual(['false', 'false', 'false', 'false', 'true']);
+                expect(headerStates()).toEqual(['false', 'false', 'false', 'true']);
                 expect(scroller.scrollTop).toBe(100);
             });
         });
 
-        it('opens Tests for this visit and scrolls it to the top when a test conversation starts', async () => {
+        it('moves to Bot Testing for this visit and scrolls it to the top when a test conversation starts', async () => {
             const scrolled: Element[] = [];
             Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
                 scrolled.push(this);
             });
             try {
-                fixture.componentInstance.reveal('test');
+                fixture.componentInstance.reveal('test_bot');
                 fixture.detectChanges();
                 await fixture.whenStable();
 
-                expect(expandedSections()).toEqual(['waiting', 'test']);
+                expect(tabButton('Bot Testing').getAttribute('aria-pressed')).toBe('true');
+                expect(expandedSections()).toEqual(['test_bot']);
+                expect(sectionLabels()).toEqual(['Bot', 'Closed']);
+                expect(TestBed.inject(ConversationListPreferencesService).tab()).toBe('inbox');
                 expect(rememberedSection()).toBe('waiting');
                 expect(chatApi.getConversations).toHaveBeenLastCalledWith(listParams('test'));
-                expect(scrolled.map((element) => (element as HTMLElement).dataset['section'])).toEqual(['test']);
+                expect(scrolled.map((element) => (element as HTMLElement).dataset['section'])).toEqual(['test_bot']);
                 expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
             } finally {
                 delete (Element.prototype as Partial<Element>).scrollIntoView;
@@ -611,21 +629,49 @@ describe('ConversationListComponent', () => {
             expect(sentinels()).toEqual(['waiting']);
         });
 
-        it('pages Tests with the Tests cursor once Tests is open, and never while it is folded', () => {
-            chatApi.getConversations.mockReturnValueOnce(page([row({ id: 't-1', is_test: true })], 'test-2'));
-            toggle('Tests');
-            expect(sentinels()).toEqual(['test']);
+        it('pages Bot Testing with its own cursor under Closed while it is the tab, and never from Inbox', () => {
+            answerNextLoad({ test: page([row({ id: 't-1', is_test: true })], 'test-2') }, ['test_bot']);
+            switchTab('Bot Testing');
+            // Bot alone shows the open tests of the pages loaded so far: it does not page.
+            expect(sentinels()).toEqual([]);
+            toggle('Closed');
+            expect(sentinels()).toEqual(['test_closed']);
 
-            toggle('Tests');
+            switchTab('Inbox');
             expect(sentinels()).toEqual([]);
             const calls = chatApi.getConversations.mock.calls.length;
-            store().loadMore('test');
+            store().loadMore('test_closed');
             expect(chatApi.getConversations.mock.calls.length).toBe(calls);
 
-            toggle('Tests');
+            answerNextLoad({ test: page([row({ id: 't-1', is_test: true })], 'test-2') }, ['test_closed']);
+            switchTab('Bot Testing');
             chatApi.getConversations.mockReturnValueOnce(page([]));
-            scrollToEndOf('test');
+            scrollToEndOf('test_closed');
             expect(chatApi.getConversations).toHaveBeenLastCalledWith(listParams('test', { cursor: 'test-2' }));
+        });
+
+        it('shows the loading spinner for a first page only, not under a section that lists none of a later one', () => {
+            const isLoadingIn = (section: ConversationListSection): boolean =>
+                !!host().querySelector(`[data-section="${section}"] .conversation-list__loading`);
+            const isEmptyIn = (section: ConversationListSection): boolean =>
+                !!host().querySelector(`[data-section="${section}"] .conversation-list__section-empty`);
+            const firstPage$ = new Subject<ChatConversationPage>();
+            answerNextLoad({ test: firstPage$ }, ['test_bot']);
+            switchTab('Bot Testing');
+            expect(isLoadingIn('test_bot')).toBe(true);
+
+            firstPage$.next({
+                results: [row({ id: 't-1', is_test: true, status: 'closed', closed_at: '2026-10-10T12:00:00Z' })],
+                next_cursor: 'test-2',
+            });
+            store().openForColumn('test_closed');
+            fixture.detectChanges();
+            chatApi.getConversations.mockReturnValueOnce(new Subject<ChatConversationPage>());
+            scrollToEndOf('test_closed');
+
+            // Bot and Closed share the list: while Closed pages, Bot, showing none of its closed tests, is empty.
+            expect(isLoadingIn('test_bot')).toBe(false);
+            expect(isEmptyIn('test_bot')).toBe(true);
         });
 
         it('drops a live wait past the Waiting boundary and lists it when the next page reaches it', () => {
@@ -675,7 +721,7 @@ describe('ConversationListComponent', () => {
 
             expect(chatApi.getConversations).toHaveBeenLastCalledWith(listParams('bot', { cursor: 'cursor-2' }));
             expect(text('.conversation-row__preview')).toEqual(['later copy', 'older', 'oldest']);
-            expect(store().sections().bot.nextCursor).toBeNull();
+            expect(store().lists().bot.nextCursor).toBeNull();
             expect(sentinels()).toEqual([]);
         });
 
@@ -740,23 +786,44 @@ describe('ConversationListComponent', () => {
             expect(ids('in_progress')).toEqual(['p-1']);
         });
 
-        it('keeps a live test conversation in Tests whatever its mode or wait', () => {
+        it('lists a live test conversation in Bot Testing only, whatever its mode or wait', () => {
+            const streamTestInEveryMode = (expectListed: () => void): void => {
+                for (const mode of ['bot', 'awaiting_human', 'human'] as const) {
+                    const waitingSince = mode === 'bot' ? null : '2026-10-10T10:00:00Z';
+                    conversationUpdated$.next(
+                        row({
+                            id: 't-1',
+                            is_test: true,
+                            mode,
+                            handoff_at: waitingSince,
+                            visitor_waiting_since: waitingSince,
+                        })
+                    );
+                    expectListed();
+                }
+            };
             showEverySection();
-            for (const mode of ['bot', 'awaiting_human', 'human'] as const) {
-                const waitingSince = mode === 'bot' ? null : '2026-10-10T10:00:00Z';
-                conversationUpdated$.next(
-                    row({
-                        id: 't-1',
-                        is_test: true,
-                        mode,
-                        handoff_at: waitingSince,
-                        visitor_waiting_since: waitingSince,
-                    })
-                );
-                expect(ids('test')).toEqual(['t-1']);
+            streamTestInEveryMode(() => {
+                expect(ids('test')).toEqual([]);
                 expect(ids('waiting')).toEqual([]);
                 expect(ids('bot')).toEqual(['c-1']);
-            }
+            });
+
+            switchTab('Bot Testing');
+            streamTestInEveryMode(() => {
+                expect(ids('test')).toEqual(['t-1']);
+                expect(
+                    store()
+                        .visibleRows()
+                        .map(({ id }) => id)
+                ).toEqual(['t-1']);
+            });
+
+            // Bot Testing takes no Inbox row; back on Inbox, the test is gone from the column.
+            conversationUpdated$.next(handedOff('h-1', '2026-10-10T08:00:00Z'));
+            expect(ids('waiting')).toEqual([]);
+            switchTab('Inbox');
+            expect(ids('test')).toEqual([]);
         });
 
         it('moves a released conversation from In progress to Bot', () => {
@@ -794,7 +861,7 @@ describe('ConversationListComponent', () => {
         });
 
         it('does not list a streamed conversation without messages until its first message', () => {
-            toggle('Tests');
+            switchTab('Bot Testing');
             const created = row({ id: 'c-9', is_test: true, last_message_at: null, last_message_preview: '' });
             conversationUpdated$.next({ ...created, state: 'processing' });
             fixture.detectChanges();
@@ -861,17 +928,17 @@ describe('ConversationListComponent', () => {
         });
 
         it('reloads the open section when the desk changes, and forgets what a folded one had loaded', () => {
-            toggle('Tests');
+            toggle('In progress');
             chatApi.getConversations.mockClear();
             scopeTo('b-2');
-            expect(sentParams()).toEqual([listParams('test', { binding: 'b-2' })]);
+            expect(sentParams()).toEqual([listParams('in_progress', { binding: 'b-2' })]);
 
             toggle('Waiting for a person');
             chatApi.getConversations.mockClear();
             scopeTo('b-3');
             expect(sentParams()).toEqual([listParams('waiting', { binding: 'b-3' })]);
-            toggle('Tests');
-            expect(chatApi.getConversations).toHaveBeenLastCalledWith(listParams('test', { binding: 'b-3' }));
+            toggle('In progress');
+            expect(chatApi.getConversations).toHaveBeenLastCalledWith(listParams('in_progress', { binding: 'b-3' }));
         });
     });
 
@@ -889,7 +956,7 @@ describe('ConversationListComponent', () => {
         const closedSection = (selector: string): Element | null =>
             host().querySelector(`.conversation-list__section[data-section="closed"] ${selector}`);
 
-        it('loads Closed once opened, most recently closed first whatever the sort, without a count', () => {
+        it('loads Closed once opened, most recently closed first, without a count', () => {
             expect(requestedSections()).not.toContain('closed');
             chatApi.getConversations.mockReturnValueOnce(
                 page([closedRow('x-2', '2026-10-10T12:00:00Z'), closedRow('x-1', '2026-10-10T11:00:00Z')])
@@ -902,11 +969,6 @@ describe('ConversationListComponent', () => {
             );
             expect(closedSection('.conversation-section-header__count')).toBeNull();
 
-            answerNextLoad({
-                closed: page([closedRow('x-2', '2026-10-10T12:00:00Z'), closedRow('x-1', '2026-10-10T11:00:00Z')]),
-            });
-            click(toolbarButton('Newest first'));
-            expect(sentParams().at(-1)).toEqual(listParams('closed', { order: 'oldest' }));
             conversationUpdated$.next(closedRow('x-3', '2026-10-10T13:00:00Z'));
             expect(ids('closed')).toEqual(['x-3', 'x-2', 'x-1']);
         });
@@ -937,13 +999,44 @@ describe('ConversationListComponent', () => {
             expect(ids('closed')).toEqual(['p-2', 'p-1']);
         });
 
-        it('keeps closed tests in Tests, never in Closed', () => {
+        it('keeps closed tests in Bot Testing, never in Closed', () => {
             chatApi.getConversations.mockReturnValueOnce(page([]));
             toggle('Closed');
             conversationUpdated$.next(closedRow('t-1', '2026-10-10T12:00:00Z', { is_test: true }));
             fixture.detectChanges();
-            expect(ids('test')).toEqual(['t-1']);
             expect(ids('closed')).toEqual([]);
+
+            switchTab('Bot Testing');
+            conversationUpdated$.next(closedRow('t-1', '2026-10-10T12:00:00Z', { is_test: true }));
+            fixture.detectChanges();
+            expect(ids('test')).toEqual(['t-1']);
+        });
+
+        it('splits the tests on Bot Testing into open ones under Bot and closed ones under Closed, and lists none on Inbox', () => {
+            const shownIn = (section: ConversationListSection): string[] =>
+                Array.from(
+                    host().querySelectorAll<HTMLElement>(
+                        `.conversation-list__section[data-section="${section}"] [data-id]`
+                    )
+                ).map((element) => element.dataset['id'] ?? '');
+            const tests = (): Observable<ChatConversationPage> =>
+                page([
+                    row({ id: 't-open', is_test: true }),
+                    closedRow('t-closed', '2026-10-10T12:00:00Z', { is_test: true }),
+                ]);
+
+            answerNextLoad({ test: tests() }, ['test_bot']);
+            switchTab('Bot Testing');
+            expect(sectionLabels()).toEqual(['Bot', 'Closed']);
+            expect(shownIn('test_bot')).toEqual(['t-open']);
+
+            answerNextLoad({ test: tests() }, ['test_closed']);
+            toggle('Closed');
+            expect(shownIn('test_closed')).toEqual(['t-closed']);
+            expect(shownIn('test_bot')).toEqual([]);
+
+            switchTab('Inbox');
+            expect(host().querySelector('[data-id="t-open"], [data-id="t-closed"]')).toBeNull();
         });
 
         it('is hidden under Mine, closed conversations of the user included', () => {
@@ -961,7 +1054,7 @@ describe('ConversationListComponent', () => {
                 answerNextSearch({ closed: page([closedRow('x-1', '2026-10-10T12:00:00Z')]) });
                 typeSearch('12');
                 settle();
-                expect(expandedSections()).toEqual(['waiting', 'in_progress', 'test', 'closed', 'bot']);
+                expect(expandedSections()).toEqual(['waiting', 'in_progress', 'closed', 'bot']);
                 expect(sentParams()).toContainEqual(listParams('closed', { q: '12' }));
                 expect(ids('closed')).toEqual(['x-1']);
                 expect(rememberedSection()).toBe('waiting');
@@ -982,7 +1075,7 @@ describe('ConversationListComponent', () => {
                 typeSearch('12');
                 settle();
                 toggle('Closed');
-                expect(expandedSections()).toEqual(['waiting', 'in_progress', 'test', 'bot']);
+                expect(expandedSections()).toEqual(['waiting', 'in_progress', 'bot']);
 
                 answerNextLoad({});
                 typeSearch('123');
@@ -991,7 +1084,7 @@ describe('ConversationListComponent', () => {
 
                 chatApi.getConversations.mockReturnValueOnce(page([]));
                 toggle('Closed');
-                expect(expandedSections()).toEqual(['waiting', 'in_progress', 'test', 'closed', 'bot']);
+                expect(expandedSections()).toEqual(['waiting', 'in_progress', 'closed', 'bot']);
 
                 toggle('Waiting for a person');
                 expect(expandedSections()).not.toContain('waiting');
@@ -1033,7 +1126,7 @@ describe('ConversationListComponent', () => {
         });
     });
 
-    describe('search, Mine and sort', () => {
+    describe('search and Mine', () => {
         beforeEach(() => vi.useFakeTimers());
 
         it('searches every section once typing settles, each from its start, the folded ones included', () => {
@@ -1048,10 +1141,14 @@ describe('ConversationListComponent', () => {
             expect(sentParams()).toEqual([
                 listParams('waiting', { q: 'Ada' }),
                 listParams('in_progress', { q: 'Ada' }),
-                listParams('test', { q: 'Ada' }),
                 listParams('closed', { q: 'Ada' }),
                 listParams('bot', { q: 'Ada' }),
             ]);
+
+            // On Bot Testing the search goes to the test conversations alone.
+            chatApi.getConversations.mockClear();
+            switchTab('Bot Testing');
+            expect(sentParams()).toEqual([listParams('test', { q: 'Ada' })]);
         });
 
         it('does not search again for the same words, and lists without searching at once when cleared', () => {
@@ -1209,14 +1306,12 @@ describe('ConversationListComponent', () => {
                 'No matches',
                 'No matches',
                 'No matches',
-                'No matches',
             ]);
 
             answerNextSearch({ bot: page([row({ id: 'c-1' })]) });
             typeSearch('ada');
             settle();
             expect(text('.conversation-list__section-empty .conversation-list__empty-title')).toEqual([
-                'No matches',
                 'No matches',
                 'No matches',
                 'No matches',
@@ -1231,7 +1326,7 @@ describe('ConversationListComponent', () => {
                         error: { code: 'invalid_search', message: 'The search must be at most 100 characters.' },
                     })
             );
-            answerNextSearch({ waiting: refused, in_progress: refused, test: refused, closed: refused, bot: refused });
+            answerNextSearch({ waiting: refused, in_progress: refused, closed: refused, bot: refused });
             typeSearch('x'.repeat(101));
             settle();
 
@@ -1244,7 +1339,7 @@ describe('ConversationListComponent', () => {
             chatApi.getConversations.mockReturnValueOnce(page([handedOff('h-1', '2026-10-10T08:00:00Z')]));
             typeSearch('');
             expect(host().querySelector('.conversation-list-toolbar__error')).toBeNull();
-            expect(sectionLabels()).toHaveLength(5);
+            expect(sectionLabels()).toHaveLength(4);
             expect(ids('waiting')).toEqual(['h-1']);
         });
 
@@ -1273,10 +1368,18 @@ describe('ConversationListComponent', () => {
             expect(ids('bot')).toEqual([]);
             expect(ids('test')).toEqual([]);
 
+            // Mine is about Inbox: Bot Testing offers none and lists every test, the remembered Mine kept.
+            chatApi.getConversations.mockClear();
+            switchTab('Bot Testing');
+            expect(toolbarButton('Mine')).toBeUndefined();
+            expect(sentParams()).toEqual([listParams('test')]);
+            switchTab('Inbox');
+            expect(toolbarButton('Mine')?.getAttribute('aria-pressed')).toBe('true');
+
             chatApi.getConversations.mockClear();
             click(toolbarButton('Mine'));
             expect(sentParams()).toEqual([listParams('waiting')]);
-            expect(sectionLabels()).toHaveLength(5);
+            expect(sectionLabels()).toHaveLength(4);
         });
 
         it("removes a row a search found once it is no longer the user's under Mine", () => {
@@ -1313,7 +1416,6 @@ describe('ConversationListComponent', () => {
                 fixture.detectChanges();
                 expect(toolbarButton('Mine')).toBeUndefined();
                 expect(sentParams().every(({ mine }) => mine === false)).toBe(true);
-                // Nor Tests, which need chats create or update.
                 expect(sectionLabels()).toHaveLength(4);
             } finally {
                 permissions.can = (resource, action) =>
@@ -1321,25 +1423,7 @@ describe('ConversationListComponent', () => {
             }
         });
 
-        it('sorts newest first by default; Oldest first goes to the open section, orders live rows and is remembered', () => {
-            expect(toolbarButton('Newest first')).toBeDefined();
-            toggle('Bot');
-            chatApi.getConversations.mockClear();
-            answerNextLoad({
-                bot: page([row({ id: 'c-2', last_message_at: '2026-10-10T09:00:00Z' }), row({ id: 'c-1' })]),
-            });
-
-            click(toolbarButton('Newest first'));
-
-            expect(sentParams()).toEqual([listParams('bot', { order: 'oldest' })]);
-            expect(toolbarButton('Oldest first')).toBeDefined();
-            expect(TestBed.inject(ConversationListPreferencesService).order()).toBe('oldest');
-
-            conversationUpdated$.next(row({ id: 'c-2', last_message_at: '2026-10-10T11:00:00Z' }));
-            expect(ids('bot')).toEqual(['c-1', 'c-2']);
-        });
-
-        it('says above the Waiting rows that they are longest wait first, whatever the sort', () => {
+        it('says above the Waiting rows that they are longest wait first', () => {
             expect(host().querySelector('.conversation-list__section-note')).toBeNull();
             reloadWith({ waiting: page([handedOff('h-1', '2026-10-10T08:00:00Z')]) });
             expect(text('.conversation-list__section-note')).toEqual(['Longest wait first']);
@@ -1348,21 +1432,19 @@ describe('ConversationListComponent', () => {
             ).toBe(host().querySelector('.conversation-list__section[data-section="waiting"]'));
         });
 
-        it('keeps the sort and Mine for the next column, never the search', () => {
-            click(toolbarButton('Newest first'));
+        it('keeps Mine for the next column, never the search', () => {
             click(toolbarButton('Mine'));
             typeSearch('ada');
             settle();
 
             fixture = TestBed.createComponent(ConversationListComponent);
             fixture.detectChanges();
-            expect(toolbarButton('Oldest first')).toBeDefined();
             expect(toolbarButton('Mine')?.getAttribute('aria-pressed')).toBe('true');
             expect(searchField().value).toBe('');
-            expect(sentParams().at(-1)).toEqual(listParams('waiting', { mine: true, order: 'oldest' }));
+            expect(sentParams().at(-1)).toEqual(listParams('waiting', { mine: true }));
         });
 
-        it('drops Mine and the search when they would keep a new test conversation out of the list', async () => {
+        it('drops the search when it would keep a new test conversation out of the list; Mine does not apply there', async () => {
             Element.prototype.scrollIntoView = vi.fn();
             try {
                 click(toolbarButton('Mine'));
@@ -1370,15 +1452,32 @@ describe('ConversationListComponent', () => {
                 settle();
                 chatApi.getConversations.mockClear();
 
-                fixture.componentInstance.reveal('test');
+                fixture.componentInstance.reveal('test_bot');
+                fixture.detectChanges();
+                await Promise.resolve();
+
+                expect(searchField().value).toBe('');
+                expect(expandedSections()).toEqual(['test_bot']);
+                expect(sentParams().at(-1)).toEqual(listParams('test'));
+                switchTab('Inbox');
+                expect(toolbarButton('Mine')?.getAttribute('aria-pressed')).toBe('true');
+            } finally {
+                delete (Element.prototype as Partial<Element>).scrollIntoView;
+            }
+        });
+
+        it('sets Mine aside for this column when it hides the section revealed', async () => {
+            Element.prototype.scrollIntoView = vi.fn();
+            try {
+                click(toolbarButton('Mine'));
+
+                fixture.componentInstance.reveal('bot');
                 fixture.detectChanges();
                 await Promise.resolve();
 
                 expect(toolbarButton('Mine')?.getAttribute('aria-pressed')).toBe('false');
-                expect(searchField().value).toBe('');
-                expect(expandedSections()).toEqual(['waiting', 'test']);
-                expect(sentParams().at(-1)).toEqual(listParams('test'));
-                // Set aside for this column only: the remembered Mine stays for the next visit.
+                expect(expandedSections()).toEqual(['waiting', 'bot']);
+                // The remembered Mine stays for the next visit.
                 expect(TestBed.inject(ConversationListPreferencesService).isMineOnly()).toBe(true);
 
                 fixture = TestBed.createComponent(ConversationListComponent);
@@ -1474,7 +1573,7 @@ describe('ConversationListComponent', () => {
             expect(animations).toEqual([]);
         });
 
-        it('moves nothing when the sort, Mine or the desk changes: each lists from the start', async () => {
+        it('moves nothing when Mine or the desk changes: each lists from the start', async () => {
             toggle('Bot');
             reloadWith({
                 bot: page([row({ id: 'c-1' }), row({ id: 'c-2', last_message_at: '2026-10-10T09:00:00Z' })]),
@@ -1486,8 +1585,6 @@ describe('ConversationListComponent', () => {
                 bot: page([row({ id: 'c-2', last_message_at: '2026-10-10T09:00:00Z' }), row({ id: 'c-1' })]),
             });
             positions.set('c-2', 0).set('c-1', 50);
-            click(toolbarButton('Newest first'));
-            await render();
             click(toolbarButton('Mine'));
             await render();
             scopeTo('b-2');
@@ -1607,7 +1704,7 @@ describe('ConversationListComponent', () => {
 
         it('keeps the section headers in the Tab order', () => {
             const headers = Array.from(host().querySelectorAll<HTMLButtonElement>('.conversation-section-header'));
-            expect(headers).toHaveLength(5);
+            expect(headers).toHaveLength(4);
             expect(headers.every((button) => button.tabIndex === 0)).toBe(true);
         });
 
@@ -1617,7 +1714,7 @@ describe('ConversationListComponent', () => {
                 waiting: page([handedOff('h-1', '2026-10-10T08:00:00Z')]),
                 bot: page([row({ id: 'c-1' }), row({ id: 'c-2', last_message_at: '2026-10-10T09:00:00Z' })]),
             });
-            conversationUpdated$.next(row({ id: 't-1', is_test: true }));
+            conversationUpdated$.next(answered('p-1', '2026-10-10T09:00:00Z'));
             fixture.detectChanges();
             const opened: string[] = [];
             fixture.componentInstance.selectedChange.subscribe((conversation) => opened.push(conversation.id));
@@ -1630,11 +1727,11 @@ describe('ConversationListComponent', () => {
 
             rowButtons()[0].focus();
             press('ArrowDown');
-            expect(opened).toEqual(['t-1']);
+            expect(opened).toEqual(['p-1']);
 
             // A user's press moves the focus to the header; jsdom's click does not.
-            headerButton('Tests').focus();
-            toggle('Tests');
+            headerButton('In progress').focus();
+            toggle('In progress');
             opened.length = 0;
             rowButtons()[0].focus();
             press('ArrowDown');
@@ -1690,14 +1787,33 @@ describe('ConversationListComponent', () => {
             expect(document.activeElement).toBe(rowButtons()[0]);
         });
 
-        it('lists no Tests and asks for none without chats create or update', () => {
+        it('keeps Bot Testing disabled, saying why, and asks for no tests without chats create or update', () => {
+            // A tab remembered by this browser for someone who could build desks then does not apply.
+            TestBed.inject(ConversationListPreferencesService).setTab('testing');
             permissions.can = (resource, action) =>
                 resource === ResourceCode.Chats && (action === ActionCode.Read || action === ActionCode.Use);
             try {
                 chatApi.getConversations.mockClear();
                 fixture = TestBed.createComponent(ConversationListComponent);
                 fixture.detectChanges();
+                expect(tabButton('Inbox').getAttribute('aria-pressed')).toBe('true');
+                const testing = tabButton('Bot Testing');
+                expect(testing.getAttribute('aria-disabled')).toBe('true');
+                // Not the disabled attribute: the keyboard still reaches it, and with it the tooltip saying why.
+                testing.focus();
+                expect(document.activeElement).toBe(testing);
+                const tooltip = fixture.debugElement
+                    .queryAll(By.css('app-conversation-list-tabs button'))
+                    .find((button) => button.nativeElement === testing)!
+                    .injector.get(MatTooltip);
+                expect(tooltip.message).toBe('For people who build desks');
+                expect(tooltip.disabled).toBe(false);
+                click(testing);
+                expect(tabButton('Inbox').getAttribute('aria-pressed')).toBe('true');
                 expect(sectionLabels()).toEqual(['Waiting for a person', 'In progress', 'Closed', 'Bot']);
+
+                fixture.componentInstance.reveal('test_bot');
+                fixture.detectChanges();
                 expect(requestedSections()).not.toContain('test');
             } finally {
                 permissions.can = (resource, action) =>
@@ -1769,13 +1885,16 @@ describe('ConversationListComponent', () => {
             fixture.detectChanges();
         }
 
-        it('keeps only the toggle in the toolbar, which asks to expand the column it controls', () => {
+        it('keeps only the toggle in the toolbar, above the tabs, which asks to expand the column it controls', () => {
             compact();
             const requests: number[] = [];
             fixture.componentInstance.compactToggle.subscribe(() => requests.push(1));
-            const toolbarButtons = host().querySelectorAll<HTMLButtonElement>('app-conversation-list-toolbar button');
+            const toolbarButtons = Array.from(
+                host().querySelectorAll<HTMLButtonElement>('app-conversation-list-toolbar button')
+            ).filter((button) => !button.closest('app-conversation-list-tabs'));
 
             expect(toolbarButtons).toHaveLength(1);
+            expect(toolbarButtons[0].nextElementSibling?.tagName.toLowerCase()).toBe('app-conversation-list-tabs');
             expect(host().querySelector('app-conversation-list-toolbar input')).toBeNull();
             expect(toolbarButtons[0].getAttribute('aria-controls')).toBe(host().id);
             toolbarButtons[0].click();
@@ -1785,7 +1904,7 @@ describe('ConversationListComponent', () => {
         it('names each section header by its label, the Waiting count included, instead of showing it', () => {
             waitingCount.set(3);
             compact();
-            expect(headerNames()).toEqual(['Waiting for a person, 3', 'In progress', 'Tests', 'Closed', 'Bot']);
+            expect(headerNames()).toEqual(['Waiting for a person, 3', 'In progress', 'Closed', 'Bot']);
             expect(sectionLabels()).toEqual([]);
         });
 
@@ -1846,49 +1965,66 @@ describe('ConversationListComponent', () => {
             expect(lookUp('c-404')).toBe('loading');
         });
 
-        it('says hidden while it hides some rows, and missing once everything it can list has loaded without it', () => {
+        it('says missing once what it shows has loaded without it, whatever keeps it out', () => {
             // Only Waiting starts open.
-            expect(lookUp('c-404')).toBe('hidden');
+            expect(lookUp('c-404')).toBe('missing');
 
             showEverySection();
-            expect(expandedSections()).toEqual(['waiting', 'in_progress', 'test', 'closed', 'bot']);
             expect(lookUp('c-404')).toBe('missing');
         });
 
-        it('says hidden, not loading, when every section is folded: there is nothing open to wait for', () => {
+        it('says missing, not loading, when every section is folded: there is nothing open to wait for', () => {
             toggle('Waiting for a person');
-            expect(lookUp('c-404')).toBe('hidden');
+            expect(lookUp('c-404')).toBe('missing');
         });
 
-        it('shows everything for a conversation Mine hides: Mine set aside for this column only, every section open', () => {
-            nextPages = { test: page([row({ id: 't-1', is_test: true })]) };
+        it('reveals a conversation Mine hides: Mine set aside for this column only, its section open', () => {
             click(toolbarButton('Mine'));
-            expect(lookUp('t-1')).toBe('hidden');
+            expect(lookUp('c-1')).toBe('missing');
 
-            fixture.componentInstance.showEverything();
+            fixture.componentInstance.revealConversation(row({ id: 'c-1' }));
             fixture.detectChanges();
 
             expect(toolbarButton('Mine')?.getAttribute('aria-pressed')).toBe('false');
-            expect(expandedSections()).toEqual(['waiting', 'in_progress', 'test', 'closed', 'bot']);
-            expect(lookUp('t-1')).toEqual(expect.objectContaining({ id: 't-1' }));
+            expect(expandedSections()).toEqual(['waiting', 'bot']);
+            expect(lookUp('c-1')).toEqual(expect.objectContaining({ id: 'c-1' }));
         });
 
-        it('shows everything in one pass while a search runs: the search clears and every section opens', () => {
+        it('clears a search that keeps the conversation out, and keeps one that shows it', () => {
             vi.useFakeTimers();
             typeSearch('ada');
             settle();
 
-            fixture.componentInstance.showEverything();
+            // Found by the search (Bot answers c-1): opening it keeps the search.
+            fixture.componentInstance.revealConversation(row({ id: 'c-1' }));
+            fixture.detectChanges();
+            expect(store().isSearching()).toBe(true);
+
+            fixture.componentInstance.revealConversation(handedOff('h-9', '2026-10-10T08:00:00Z'));
+            fixture.detectChanges();
+            expect(store().isSearching()).toBe(false);
+            expect(expandedSections()).toEqual(['waiting']);
+        });
+
+        it('changes nothing for a conversation no section lists, such as a test without a message yet', () => {
+            vi.useFakeTimers();
+            typeSearch('ada');
+            settle();
+
+            fixture.componentInstance.revealConversation(
+                row({ id: 't-9', is_test: true, last_message_at: null, last_message_preview: '' })
+            );
             fixture.detectChanges();
 
-            expect(store().isSearching()).toBe(false);
-            expect(expandedSections()).toEqual(['waiting', 'in_progress', 'test', 'closed', 'bot']);
+            expect(tabButton('Inbox').getAttribute('aria-pressed')).toBe('true');
+            expect(store().isSearching()).toBe(true);
         });
 
         it('leaves the remembered choices as they were: the user asked for none of it', () => {
             toggle('Closed');
             click(toolbarButton('Mine'));
-            showEverySection();
+            fixture.componentInstance.revealConversation(row({ id: 'c-1' }));
+            fixture.detectChanges();
 
             expect(rememberedSection()).toBe('closed');
             expect(TestBed.inject(ConversationListPreferencesService).isMineOnly()).toBe(true);
@@ -1897,13 +2033,13 @@ describe('ConversationListComponent', () => {
         it('ends the openings for the column at a press on a header: an open section folds alone, a folded one opens alone', () => {
             showEverySection();
 
-            toggle('Tests');
-            expect(expandedSections()).toEqual(['waiting', 'in_progress', 'closed', 'bot']);
+            toggle('Closed');
+            expect(expandedSections()).toEqual(['waiting', 'in_progress', 'bot']);
             expect(rememberedSection()).toBe('waiting');
 
-            toggle('Tests');
-            expect(expandedSections()).toEqual(['test']);
-            expect(rememberedSection()).toBe('test');
+            toggle('Closed');
+            expect(expandedSections()).toEqual(['closed']);
+            expect(rememberedSection()).toBe('closed');
         });
 
         it("focuses a conversation's row, or the row Tab lands on once that one is gone", () => {

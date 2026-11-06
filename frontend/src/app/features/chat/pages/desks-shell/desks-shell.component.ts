@@ -1,10 +1,21 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { afterNextRender, Component, computed, effect, inject, Injector, untracked, viewChild } from '@angular/core';
+import {
+    afterNextRender,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    inject,
+    Injector,
+    untracked,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 import { HideInlineSubtitleOnOverflowDirective, ResizableSidebarDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { SidebarWidthService } from '@shared/services';
 import { urlPath } from '@shared/utils';
 import { filter, map } from 'rxjs';
@@ -13,6 +24,7 @@ import { BREAKPOINTS } from '../../../../core/constants/breakpoints';
 import { AppNavigationDrawerService } from '../../../../core/services/app-navigation-drawer.service';
 import { PhoneLayoutService } from '../../../../core/services/phone-layout.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { DeskRailComponent } from '../../components/desk-rail/desk-rail.component';
 import {
     DESK_RAIL_NARROW_WIDTH_KEY,
@@ -21,6 +33,7 @@ import {
     DESK_RAIL_WIDTH_OPTIONS,
     isCompactColumn,
 } from '../../constants/column-widths.constants';
+import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
@@ -39,6 +52,7 @@ import { DeskDrawerService } from '../../services/desk-drawer.service';
         RouterOutlet,
         CdkTrapFocus,
         AppSvgIconComponent,
+        ButtonComponent,
         HideInlineSubtitleOnOverflowDirective,
         ResizableSidebarDirective,
         DeskRailComponent,
@@ -73,6 +87,10 @@ export class DesksShellComponent {
         this.isNarrowScreen() ? this.narrowRailWidth() : this.wideRailWidth()
     );
     protected readonly isRailCompact = computed(() => isCompactColumn(this.railWidth()));
+    /** As on the rail: not before the list is known, as an org that only looks empty would invite duplicate desks. */
+    protected readonly canCreate = computed(
+        () => this.desksStorage.isLoaded() && this.permissionsService.can(ResourceCode.Chats, ActionCode.Create)
+    );
 
     /**
      * The desks, and the names the user goes by on them, load when the chat area opens, again on every stream `ready`
@@ -114,6 +132,9 @@ export class DesksShellComponent {
     private readonly appNavigation = inject(AppNavigationDrawerService);
     private readonly sidebarWidthService = inject(SidebarWidthService);
     private readonly injector = inject(Injector);
+    private readonly bindingActions = inject(ChatBindingActionsService);
+    private readonly permissionsService = inject(PermissionsService);
+    private readonly destroyRef = inject(DestroyRef);
 
     constructor() {
         // A pick in the drawer closes it (whatever its navigation changes: a query only, or nothing). So does a move to
@@ -131,6 +152,10 @@ export class DesksShellComponent {
                 if (path !== shownPath) this.deskDrawer.close();
                 shownPath = path;
             });
+    }
+
+    protected createDesk(): void {
+        this.bindingActions.create().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     protected toggleRail(): void {

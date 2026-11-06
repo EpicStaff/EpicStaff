@@ -540,6 +540,8 @@
     --color-tour-backdrop: var(--black-alpha-70); // guided-tour spotlight dim
     --color-flow-card-bg: var(--graphite-750);
     --color-table-border: var(--graphite-750);
+    --color-control-outline: var(--graphite-750); // outlined chat controls: column toggles, desk status select
+    --color-status-paused: var(--orange-500);
     --color-surface-card: var(--graphite-825);
     --color-drag-drop-active: var(--black-alpha-28);
 
@@ -644,9 +646,9 @@
     --tooltip-shadow: drop-shadow(0 6px 5px var(--black-alpha-15)) drop-shadow(0 2px 1.5px var(--black-alpha-30));
 
     // ------------------------------------------------------------------
-    // SEMANTIC — avatar fills (chat desk pictures, picked by id). Bright fills under dark letters; the light theme
+    // SEMANTIC — avatar fills (chat conversation pictures, picked by id). Bright fills under dark letters; the light theme
     // overrides none of these primitives, so the letters keep at least 6:1 contrast in both themes. Red, green and
-    // yellow are left out: they are the status and badge colours drawn on top.
+    // yellow are left out: they are status colours.
     // ------------------------------------------------------------------
     --color-avatar-1: var(--sky-500);
     --color-avatar-2: var(--teal-500);
@@ -654,7 +656,7 @@
     --color-avatar-4: var(--pink-500);
     --color-avatar-5: var(--lavender-500);
     --color-avatar-6: var(--blue-400);
-    // Dark text on a bright fill (avatar letters, count badges); the light theme does not flip it.
+    // Dark text on a bright fill (avatar letters); the light theme does not flip it.
     --color-text-on-bright: var(--gray-810);
 
     // ------------------------------------------------------------------

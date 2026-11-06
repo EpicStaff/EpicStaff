@@ -20,6 +20,8 @@ export class SearchComponent {
     iconSize = input<string>('1.1rem');
     /** The field's accessible name where no visible label names it; the placeholder is only a hint. */
     ariaLabel = input<string | null>(null);
+    /** What can be searched, when a short placeholder does not say: a tooltip on the field, read out as its description. */
+    hint = input<string>('');
     searchTerm = model<string>('');
 
     private readonly inputElement = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');

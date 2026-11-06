@@ -3,6 +3,8 @@
     [binding]="binding()"
     [listTitle]="listTitle()"
     [isAllBindings]="isAllBindings()"
+    [canDelete]="canDelete()"
+    (deleteRequested)="deleteRequested.emit()"
 />
 
 <div

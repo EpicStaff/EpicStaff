@@ -1,14 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { MatTooltip } from '@angular/material/tooltip';
-import { By } from '@angular/platform-browser';
 
-import { ChatInboxOrder } from '../../models/chat.model';
 import { ConversationListToolbarComponent, SEARCH_DEBOUNCE_MS } from './conversation-list-toolbar.component';
 
 describe('ConversationListToolbarComponent', () => {
     let fixture: ComponentFixture<ConversationListToolbarComponent>;
     let searches: string[];
-    let orders: ChatInboxOrder[];
     let mineChanges: boolean[];
 
     const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
@@ -26,10 +22,7 @@ describe('ConversationListToolbarComponent', () => {
 
     function setInputs(
         inputs: Partial<
-            Record<
-                'order' | 'isMineOnly' | 'canFilterMine' | 'searchError' | 'canCollapse' | 'isCompact' | 'columnId',
-                unknown
-            >
+            Record<'isMineOnly' | 'canFilterMine' | 'searchError' | 'canCollapse' | 'isCompact' | 'columnId', unknown>
         >
     ): void {
         for (const [name, value] of Object.entries(inputs)) fixture.componentRef.setInput(name, value);
@@ -39,12 +32,10 @@ describe('ConversationListToolbarComponent', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         fixture = TestBed.createComponent(ConversationListToolbarComponent);
-        setInputs({ order: 'newest', isMineOnly: false, canFilterMine: true });
+        setInputs({ isMineOnly: false, canFilterMine: true });
         searches = [];
-        orders = [];
         mineChanges = [];
         fixture.componentInstance.searchChange.subscribe((search) => searches.push(search));
-        fixture.componentInstance.orderChange.subscribe((order) => orders.push(order));
         fixture.componentInstance.mineOnlyChange.subscribe((isMineOnly) => mineChanges.push(isMineOnly));
     });
 
@@ -135,17 +126,10 @@ describe('ConversationListToolbarComponent', () => {
             expect(compactToggle()).toBeNull();
         });
 
-        it('puts the toggle right after the search field and asks to make the column compact', () => {
+        it('offers no toggle while expanded: the switch has the first row, and the handle collapses the column', () => {
             setInputs({ canCollapse: true, columnId: 'conversations' });
-            const requests: number[] = [];
-            fixture.componentInstance.compactToggle.subscribe(() => requests.push(1));
-
-            expect(compactToggle()?.previousElementSibling?.tagName.toLowerCase()).toBe('app-search');
-            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
-            expect(compactToggle()?.getAttribute('aria-expanded')).toBe('true');
-            expect(compactToggle()?.getAttribute('aria-controls')).toBe('conversations');
-            compactToggle()!.click();
-            expect(requests).toEqual([1]);
+            expect(compactToggle()).toBeNull();
+            expect(host().querySelector('app-search')).not.toBeNull();
         });
 
         it('shows only the toggle while compact, which asks to expand the column', () => {
@@ -175,12 +159,8 @@ describe('ConversationListToolbarComponent', () => {
             expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations, filtered');
         });
 
-        it('leaves the toggle unmarked when nothing filters the list, or when the filters show beside it', () => {
+        it('leaves the toggle unmarked when nothing filters the list', () => {
             setInputs({ canCollapse: true, columnId: 'conversations', isCompact: true });
-            expect(filteredDot()).toBeNull();
-            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
-
-            setInputs({ isMineOnly: true, isCompact: false });
             expect(filteredDot()).toBeNull();
             expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
         });
@@ -192,33 +172,6 @@ describe('ConversationListToolbarComponent', () => {
             setInputs({ isCompact: false });
             await Promise.resolve();
             expect(field().value).toBe('ada');
-        });
-    });
-
-    describe('sort', () => {
-        it('shows the order and asks for the other one', () => {
-            button('Newest first')!.click();
-            expect(orders).toEqual(['oldest']);
-
-            setInputs({ order: 'oldest' });
-            button('Oldest first')!.click();
-            expect(orders).toEqual(['oldest', 'newest']);
-        });
-
-        it('says what it is in its name, starting with what it shows', () => {
-            expect(button('Newest first')?.getAttribute('aria-label')).toBe('Sort: newest first');
-            setInputs({ order: 'oldest' });
-            expect(button('Oldest first')?.getAttribute('aria-label')).toBe('Sort: oldest first');
-        });
-
-        it('says which sections it sorts, and that Waiting and Closed keep their own order', () => {
-            const sort = fixture.debugElement
-                .queryAll(By.directive(MatTooltip))
-                .find((element) => element.nativeElement.textContent?.trim() === 'Newest first')!;
-            expect(sort.injector.get(MatTooltip).message).toBe(
-                'Sorts In progress, Tests and Bot. Waiting for a person is always longest wait first, Closed most ' +
-                    'recently closed first.'
-            );
         });
     });
 });
