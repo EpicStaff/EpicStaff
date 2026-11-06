@@ -24,6 +24,24 @@
         white-space: nowrap;
     }
 
+    &__header-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex: 0 1 auto;
+        min-width: 0;
+        max-width: 65%;
+        gap: 8px;
+    }
+
+    &__selection {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
     &__header-count {
         font-weight: 400;
         color: var(--color-text-muted);
@@ -61,8 +79,7 @@
     flex-shrink: 0;
 }
 
-::ng-deep .collections-sidebar__header > app-button {
+::ng-deep .collections-sidebar__header-actions > app-button {
     flex: 0 1 auto;
     min-width: 0;
-    max-width: 45%;
 }

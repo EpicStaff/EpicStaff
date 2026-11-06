@@ -24,6 +24,7 @@
                 <app-collections-list-sidebar
                     [collections]="collections()"
                     (onCreateCollection)="createCollection()"
+                    (importRequested)="importCollections()"
                 />
 
                 <div

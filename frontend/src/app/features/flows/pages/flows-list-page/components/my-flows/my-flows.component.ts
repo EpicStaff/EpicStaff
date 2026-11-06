@@ -25,6 +25,7 @@ import { DragScrollDirective } from '@shared/directives';
 import { BulkDeleteService, LABELS_STORE } from '@shared/services';
 import { filter, switchMap } from 'rxjs/operators';
 
+import { TransferExportService } from '../../../../../../core/services/transfer-export.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import {
@@ -40,7 +41,6 @@ import { FlowRenameDialogComponent } from '../../../../components/flow-rename-di
 import { FlowSessionsListComponent } from '../../../../components/flow-sessions-dialog/flow-sessions-list.component';
 import { GetGraphLightRequest, GraphDto } from '../../../../models/graph.model';
 import { FlowCopyImportFacadeService } from '../../../../services/flow-copy-import-facade.service';
-import { FlowExportService } from '../../../../services/flow-export.service';
 import { FlowsApiService } from '../../../../services/flows-api.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
@@ -71,7 +71,7 @@ export class MyFlowsComponent implements AfterViewChecked {
     private readonly toastService = inject(ToastService);
     private readonly bulkDeleteService = inject(BulkDeleteService);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
-    private readonly flowExport = inject(FlowExportService);
+    private readonly transferExport = inject(TransferExportService);
     private readonly labelsStorage = inject(LabelsStorageService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly destroyRef = inject(DestroyRef);
@@ -255,7 +255,7 @@ export class MyFlowsComponent implements AfterViewChecked {
     public exportFlow(flow: GetGraphLightRequest, options: FlowExportOptions): void {
         this.exportTarget.set(null);
         // Not tied to this view: an export the user started still downloads after they leave the list.
-        this.flowExport.exportFlows([flow.id], options.includeKnowledge).subscribe();
+        this.transferExport.exportFlows([flow.id], options.includeKnowledge).subscribe();
     }
 
     public onLabelDrop(event: FlowLabelDropEvent): void {

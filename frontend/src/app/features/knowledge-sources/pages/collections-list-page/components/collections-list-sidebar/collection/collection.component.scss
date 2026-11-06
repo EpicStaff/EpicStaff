@@ -22,6 +22,7 @@
 
     .header {
         display: flex;
+        align-items: center;
         justify-content: space-between;
         min-width: 0;
         gap: 0.5rem;
@@ -47,6 +48,16 @@
         &:focus-visible {
             outline: none;
         }
+    }
+
+    .card-control {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    .export-button {
+        --icon-button-icon-color: var(--text-secondary-60);
     }
 
     .files-count {

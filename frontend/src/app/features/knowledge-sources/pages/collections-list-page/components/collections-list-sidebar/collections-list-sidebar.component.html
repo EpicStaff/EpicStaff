@@ -7,21 +7,57 @@
             </span>
         </span>
 
-        <ng-container *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]">
+        <div class="collections-sidebar__header-actions">
             <app-button
-                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
-                [type]="collections().length ? 'primary' : 'outline-primary'"
-                [leftIcon]="'plus'"
-                (click)="onCreateCollection.emit()"
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
+                type="outline-primary"
+                [leftIcon]="'download'"
+                (click)="importRequested.emit()"
             >
-                Add
+                Import
             </app-button>
-        </ng-container>
+
+            <ng-container *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]">
+                <app-button
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                    [type]="collections().length ? 'primary' : 'outline-primary'"
+                    [leftIcon]="'plus'"
+                    (click)="onCreateCollection.emit()"
+                >
+                    Add
+                </app-button>
+            </ng-container>
+        </div>
     </div>
 
     @if (!collections().length) {
         <p class="collections-sidebar__empty">No collections yet</p>
     } @else {
+        <div
+            *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
+            class="collections-sidebar__selection"
+        >
+            <app-bulk-select-dropdown
+                mod="small"
+                [selectMode]="selectMode()"
+                [selectedCount]="selectedIds().length"
+                [allSelected]="allVisibleSelected()"
+                (selectModeEntered)="enterSelectMode()"
+                (selectAllToggled)="toggleSelectAll()"
+                (cleared)="exitSelectMode()"
+            />
+            @if (selectMode()) {
+                <app-button
+                    type="primary"
+                    mod="small"
+                    [leftIcon]="'upload'"
+                    [disabled]="selectedIds().length === 0"
+                    (click)="exportSelected()"
+                >
+                    Export
+                </app-button>
+            }
+        </div>
         <app-select
             class="rag-select"
             [placeholder]="'Rag type'"
@@ -34,7 +70,11 @@
                     class="collections-sidebar__item"
                     [collection]="collection"
                     [selected]="selectedCollectionId() === collection.collection_id"
-                    (click)="selectCollection(collection.collection_id)"
+                    [selectMode]="selectMode()"
+                    [checked]="isChecked(collection.collection_id)"
+                    (checkedChange)="setChecked(collection.collection_id, $event)"
+                    (exportRequested)="exportCollection(collection.collection_id)"
+                    (click)="onCollectionClick(collection.collection_id)"
                 />
             }
         </div>

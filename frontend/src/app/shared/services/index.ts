@@ -10,6 +10,7 @@ export * from './embeddings/embeddings.service';
 export * from './embeddings/full-embedding.service';
 export * from './execution-timeout-limits/execution-timeout-limits-api.service';
 export * from './execution-timeout-limits/execution-timeout-limits-storage.service';
+export * from './imported-entity-storages.service';
 export * from './labels-store.token';
 export * from './llms/full-llm-config.service';
 export * from './llms/llm-config.service';

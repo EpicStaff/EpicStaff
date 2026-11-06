@@ -21,6 +21,35 @@
         } @else {
             <span class="files-count empty"> No files </span>
         }
+
+        <!-- Kept off the card's click, which opens the collection or, in select mode, picks it. -->
+        @if (selectMode()) {
+            <div
+                class="card-control"
+                (click)="$event.stopPropagation()"
+            >
+                <app-checkbox
+                    [ariaLabel]="'Select ' + collection().collection_name"
+                    [checked]="checked()"
+                    (changed)="checkedChange.emit($event)"
+                />
+            </div>
+        } @else {
+            <div
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
+                class="card-control"
+                (click)="$event.stopPropagation()"
+            >
+                <app-icon-button
+                    class="export-button"
+                    icon="upload"
+                    size="1.5rem"
+                    tooltip="Export"
+                    [ariaLabel]="'Export ' + collection().collection_name"
+                    (onClick)="exportRequested.emit()"
+                />
+            </div>
+        }
     </div>
 
     @if (collection().rag_configurations.length) {

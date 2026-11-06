@@ -4,6 +4,7 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable } from 'rxjs';
 
 import { withPermission } from '../../../core/http/permission-context';
+import { InspectResult } from '../../../core/models/review-item.model';
 import { ConfigService } from '../../../services/config';
 import {
     CreateCollectionDtoRequest,
@@ -62,6 +63,13 @@ export class CollectionsApiService {
         body: Partial<CreateCollectionDtoResponse>
     ): Observable<CreateCollectionDtoResponse> {
         return this.http.patch<CreateCollectionDtoResponse>(`${this.apiUrl}${id}/`, body);
+    }
+
+    /** Lists what an export file brings in that the user should review before importing it. */
+    inspect(file: File): Observable<InspectResult> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return this.http.post<InspectResult>(`${this.apiUrl}import/inspect/`, formData);
     }
 
     deleteCollectionById(id: number): Observable<DeleteCollectionResponse> {

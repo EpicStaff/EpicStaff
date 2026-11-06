@@ -4,17 +4,39 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FetchErrorStateComponent, SpinnerComponent } from '@shared/components';
 import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
 import { ResizableSidebarDirective } from '@shared/directives';
-import { SidebarWidthService } from '@shared/services';
-import { finalize, switchMap } from 'rxjs/operators';
+import { ImportedEntityStoragesService, SidebarWidthService } from '@shared/services';
+import { buildPreviewImportResult, enrichImportResult, ImportFileData, readExportEnvelope } from '@shared/utils';
+import { defer, EMPTY, from, Observable, of, throwError } from 'rxjs';
+import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 
+import { ImportResult } from '../../../../core/models/import-result.model';
+import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../core/models/review-item.model';
+import {
+    describeTransferError,
+    TRANSFER_JOB_MAX_WAIT_MS,
+    TransferJobsService,
+} from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
+import { ImportResultDialogComponent } from '../../../flows/components/import-result-dialog/import-result-dialog.component';
+import { ImportReviewDialogComponent } from '../../../flows/components/import-review-dialog/import-review-dialog.component';
 import { CreateCollectionDialogComponent } from '../../components/create-collection-dialog/create-collection-dialog.component';
 import { NaiveRagConfigurationDialog } from '../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
+import { CollectionsApiService } from '../../services/collections-api.service';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { CollectionDetailsComponent } from './components/collection-details/collection-details.component';
 import { CollectionsListItemSidebarComponent } from './components/collections-list-sidebar/collections-list-sidebar.component';
+
+const IMPORT_PROGRESS_MESSAGE = 'Importing…';
+/** Collections carry their files, which only an export archive holds. */
+const ARCHIVE_REQUIRED_MESSAGE = 'Knowledge sources are imported from a .zip export. Choose a .zip file.';
+const IMPORT_FAILED_MESSAGE = 'Failed to import knowledge sources. Please check the file and try again.';
+
+interface CollectionImport {
+    result: ImportResult;
+    fileData: ImportFileData;
+}
 
 @Component({
     selector: 'app-collections-list-page',
@@ -36,6 +58,9 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
     private pollingService = inject(KnowledgeSourcesPollingService);
     private deepLinkService = inject(ChunkDeepLinkService);
     private toastService = inject(ToastService);
+    private collectionsApiService = inject(CollectionsApiService);
+    private transferJobs = inject(TransferJobsService);
+    private importedEntityStorages = inject(ImportedEntityStoragesService);
 
     isLoading = signal<boolean>(true);
     error = signal<string | null>(null);
@@ -74,6 +99,92 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
 
     retryLoad(): void {
         this.getCollections();
+    }
+
+    /** Picks an export archive, has its code reviewed when it carries any, imports it and shows what came in. */
+    importCollections(): void {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.zip';
+        input.onchange = (event: Event) => {
+            const file = (event.target as HTMLInputElement).files?.[0];
+            if (!file) return;
+
+            from(readExportEnvelope(file))
+                .pipe(
+                    switchMap(({ format, data }) =>
+                        format === 'zip'
+                            ? this.importArchive(file, data)
+                            : throwError(() => new Error(ARCHIVE_REQUIRED_MESSAGE))
+                    ),
+                    catchError((error: unknown) => {
+                        this.toastService.error(describeTransferError(error, IMPORT_FAILED_MESSAGE));
+                        return EMPTY;
+                    }),
+                    takeUntilDestroyed(this.destroyRef)
+                )
+                .subscribe((collectionImport) => this.finishImport(collectionImport));
+        };
+        input.click();
+    }
+
+    private importArchive(file: File, fileData: ImportFileData): Observable<CollectionImport> {
+        const importFn = (): Observable<ImportResult> => this.runImportJob(file);
+        return this.collectionsApiService.inspect(file).pipe(
+            switchMap((inspection) => {
+                if (!hasReviewableItems(inspection.review_items)) {
+                    return this.withImportProgress(importFn());
+                }
+                const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
+                    width: 'calc(100vw - 2rem)',
+                    height: 'calc(100vh - 2rem)',
+                    // On the dialog itself, not its first button: Enter imports from there.
+                    autoFocus: 'dialog',
+                    data: {
+                        importResult: buildPreviewImportResult(fileData),
+                        reviewItems: inspection.review_items,
+                        importFn,
+                    },
+                });
+                // The dialog reports a failed import itself and stays open; a cancel imports nothing.
+                return reviewRef.closed.pipe(
+                    switchMap((closeResult) =>
+                        closeResult?.action === 'imported' ? of(closeResult.result as ImportResult) : EMPTY
+                    )
+                );
+            }),
+            map((result) => ({ result, fileData }))
+        );
+    }
+
+    /** Uploads the archive as an import job and emits the import summary once it has finished. */
+    private runImportJob(file: File): Observable<ImportResult> {
+        return this.transferJobs.startImport('collections', file).pipe(
+            switchMap(({ job_id }) => this.transferJobs.waitForJob(job_id)),
+            map((job) => (job.kind === 'import' && job.result ? job.result : {}))
+        );
+    }
+
+    private withImportProgress<T>(source: Observable<T>): Observable<T> {
+        return defer(() => {
+            const progressToastId = this.toastService.show(IMPORT_PROGRESS_MESSAGE, 'info', TRANSFER_JOB_MAX_WAIT_MS);
+            return source.pipe(finalize(() => this.toastService.remove(progressToastId)));
+        });
+    }
+
+    private finishImport({ result, fileData }: CollectionImport): void {
+        this.dialog.open(ImportResultDialogComponent, {
+            width: 'calc(100vw - 2rem)',
+            height: 'calc(100vh - 2rem)',
+            data: { importResult: enrichImportResult(result, fileData) },
+        });
+
+        this.importedEntityStorages.invalidateImported(result);
+        // In place: the list stays on screen while it reloads, unlike the first load.
+        this.collectionsStorageService
+            .getCollections(true)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({ error: () => this.toastService.error('Failed to reload knowledge sources.') });
     }
 
     private handleDeepLink(): void {

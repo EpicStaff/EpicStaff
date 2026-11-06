@@ -38,21 +38,11 @@ import {
 } from '@shared/directives';
 import { ActionCode, LabelTreeNode, ResourceCode } from '@shared/models';
 import {
-    AppStorageService,
     BulkDeleteService,
-    EmbeddingConfigStorageService,
-    EmbeddingModelsStorageService,
+    ImportedEntityStoragesService,
     LABELS_STORE,
-    LlmConfigStorageService,
-    LlmModelsStorageService,
-    LlmProvidersStorageService,
-    RealtimeConfigStorageService,
-    RealtimeModelsStorageService,
     SidebarWidthOptions,
     SidebarWidthService,
-    StorageService,
-    TranscriptionConfigStorageService,
-    TranscriptionModelsStorageService,
 } from '@shared/services';
 import {
     buildPreviewImportResult,
@@ -85,6 +75,7 @@ import {
     toFileNodeId,
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
+import { TransferExportService } from '../../../../core/services/transfer-export.service';
 import { describeTransferError, TRANSFER_JOB_MAX_WAIT_MS } from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
@@ -100,7 +91,6 @@ import { ImportReviewDialogComponent } from '../../components/import-review-dial
 import { EMPTY_FLOWS_FILTER, FlowsFilterState, FlowSortOrder } from '../../models/flow-filter.model';
 import { GraphDto } from '../../models/graph.model';
 import { FlowCopyImportFacadeService } from '../../services/flow-copy-import-facade.service';
-import { FlowExportService } from '../../services/flow-export.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
@@ -158,25 +148,14 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private cdr = inject(ChangeDetectorRef);
     private importExportService = inject(ImportExportService);
     private flowCopyImport = inject(FlowCopyImportFacadeService);
-    private flowExport = inject(FlowExportService);
+    private transferExport = inject(TransferExportService);
     private toastService = inject(ToastService);
     private labelsStorage = inject(LabelsStorageService);
     private importFlowSettings = inject(ImportFlowSettingsService);
     private destroyRef = inject(DestroyRef);
-    private appStorage = inject(AppStorageService);
+    private importedEntityStorages = inject(ImportedEntityStoragesService);
     private bulkDeleteService = inject(BulkDeleteService);
     private recycleBinSettings = inject(RecycleBinSettingsService);
-
-    private readonly storageInvalidationMap: Record<string, StorageService[]> = {
-        LLMModel: [inject(LlmModelsStorageService), inject(LlmProvidersStorageService)],
-        LLMConfig: [inject(LlmConfigStorageService)],
-        EmbeddingModel: [inject(EmbeddingModelsStorageService), inject(LlmProvidersStorageService)],
-        EmbeddingConfig: [inject(EmbeddingConfigStorageService)],
-        RealtimeModel: [inject(RealtimeModelsStorageService), inject(LlmProvidersStorageService)],
-        RealtimeConfig: [inject(RealtimeConfigStorageService)],
-        RealtimeTranscriptionModel: [inject(TranscriptionModelsStorageService), inject(LlmProvidersStorageService)],
-        RealtimeTranscriptionConfig: [inject(TranscriptionConfigStorageService)],
-    };
 
     public importOptionsOpen = signal(false);
     public exportOptionsOpen = signal(false);
@@ -564,18 +543,10 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             data: { importResult: enriched },
         });
 
-        this.invalidateStorages(result);
+        this.importedEntityStorages.invalidateImported(result);
         this.labelsStorage.setActiveLabelFilter('all');
         this.flowStorageService.getFlows(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.labelsStorage.loadLabels(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-    }
-
-    private invalidateStorages(result: ImportResult): void {
-        const storagesToInvalidate = Object.entries(this.storageInvalidationMap)
-            .filter(([entityType]) => (result[entityType]?.total ?? 0) > 0)
-            .flatMap(([, storages]) => storages);
-
-        this.appStorage.invalidate(storagesToInvalidate);
     }
 
     private static readonly EXCLUDED_NODE_TYPES = new Set(['StartNode', 'EndNode']);
@@ -628,7 +599,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
         this.flowStorageService.setSelectMode(false);
         // Not tied to this page: an export the user started still downloads after they leave it.
-        this.flowExport.exportFlows(ids, options.includeKnowledge).subscribe();
+        this.transferExport.exportFlows(ids, options.includeKnowledge).subscribe();
     }
 
     public deleteSelectedFlows(): void {
