@@ -139,6 +139,32 @@ def test_a_user_from_another_org_is_not_found(
     assert sent_events == []
 
 
+def test_a_superadmin_who_is_not_a_member_is_recorded_in_the_org(
+    system_client, superadmin, beta, sent_events, django_capture_on_commit_callbacks
+):
+    response = _post(system_client, _body(superadmin, beta), django_capture_on_commit_callbacks)
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    [event] = sent_events
+    assert (event.org_id, event.actor_user_id, event.actor_email) == (
+        beta.id,
+        superadmin.id,
+        superadmin.email,
+    )
+
+
+def test_a_superadmin_in_an_inactive_org_is_not_found(
+    system_client, superadmin, beta, sent_events, django_capture_on_commit_callbacks
+):
+    beta.is_active = False
+    beta.save(update_fields=["is_active"])
+
+    response = _post(system_client, _body(superadmin, beta), django_capture_on_commit_callbacks)
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert sent_events == []
+
+
 @pytest.mark.parametrize("inactive", ["user", "org"])
 def test_an_inactive_member_or_org_is_not_found(
     system_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks, inactive

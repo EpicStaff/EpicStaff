@@ -1,6 +1,7 @@
+from django.contrib.auth import get_user_model
 from drf_spectacular.utils import extend_schema
 from rbac.access.gates import IsSystemApiKeyAuthenticated
-from rbac.models import OrganizationUser
+from rbac.models import Organization, OrganizationUser
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
@@ -42,8 +43,8 @@ class ServiceUserActionView(APIView):
     """Records a user's action that another service (the chat service) carried out.
 
     The system key is superadmin, so this view checks the org itself: the actor must be an
-    active user and a member of the org the body names, which must be active, or the answer
-    is 404. The actor's email is read here, never taken from the caller.
+    active user who may act in the active org the body names (`_actor_in_org`), or the
+    answer is 404. The actor's email is read here, never taken from the caller.
     """
 
     permission_classes = [IsSystemApiKeyAuthenticated]
@@ -59,19 +60,9 @@ class ServiceUserActionView(APIView):
         serializer = ServiceUserActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        membership = (
-            OrganizationUser.objects.select_related("user")
-            .filter(
-                user_id=data["actor_user_id"],
-                org_id=data["org_id"],
-                user__is_active=True,
-                org__is_active=True,
-            )
-            .first()
-        )
-        if membership is None:
+        user = _actor_in_org(data["actor_user_id"], data["org_id"])
+        if user is None:
             raise NotFound("No such member in this organization.")
-        user = membership.user
         record_user_action(
             action=data["action"],
             org_id=data["org_id"],
@@ -82,3 +73,17 @@ class ServiceUserActionView(APIView):
             actor=Actor(user_id=user.pk, email=user.email, api_key_name=None),
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _actor_in_org(user_id: int, org_id: int):
+    """The active user who may act in the active org `org_id`, else None.
+
+    Matches `OrgContextService`: a member of the org, or a superadmin, who may act in any
+    active org without being a member.
+    """
+    user = get_user_model().objects.filter(pk=user_id, is_active=True).first()
+    if user is None or not Organization.objects.filter(pk=org_id, is_active=True).exists():
+        return None
+    if user.is_superadmin or OrganizationUser.objects.filter(user=user, org_id=org_id).exists():
+        return user
+    return None
