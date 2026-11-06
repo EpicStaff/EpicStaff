@@ -18,6 +18,7 @@ __all__ = [
     "CustomLibrary",
     "Job",
     "Library",
+    "LibraryBuildState",
     "StorageCredentials",
     "Venv",
     "Wheel",
@@ -340,3 +341,14 @@ class Wheel(Entity):
 
     def mark_as_deleted(self):
         self.is_deleted = True
+
+
+class LibraryBuildState(ValueObject):
+    """Where a `CustomLibrary`'s versions stand, taken together.
+
+    Derived from its wheels rather than stored: see `summarize_wheels`. No status at
+    all means the library holds no version, and `error` belongs to the failed one.
+    """
+
+    status: WheelStatus | None = None
+    error: str | None = None

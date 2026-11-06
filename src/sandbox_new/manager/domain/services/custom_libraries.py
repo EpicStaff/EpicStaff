@@ -4,6 +4,9 @@ A venv names a custom library the way it names any package, with a version
 specification. The library's versions are its built wheels, so whether a build can go
 ahead is answered here rather than by the resolver: the resolver cannot tell a version
 that does not exist from one this service has not finished building yet.
+
+What a reader of the library list is told about those same versions is decided here
+too, so that a build and a listing never disagree about what a status means.
 """
 
 from foundation.base import ValueObject
@@ -11,9 +14,14 @@ from packaging.specifiers import SpecifierSet
 from packaging.version import InvalidVersion, Version
 
 from manager.domain.enums import WheelOffer, WheelStatus
-from manager.domain.models import Wheel
+from manager.domain.models import LibraryBuildState, Wheel
 
-__all__ = ["WheelsOnOffer", "offer_wheels", "order_by_version"]
+__all__ = [
+    "WheelsOnOffer",
+    "offer_wheels",
+    "order_by_version",
+    "summarize_wheels",
+]
 
 # A wheel in one of these is on its way to being usable. One in any other never will be:
 # a failed build is not retried, so waiting for it would never end.
@@ -56,6 +64,34 @@ def offer_wheels(wheels: list[Wheel], specification: str) -> WheelsOnOffer:
         return WheelsOnOffer(outcome=WheelOffer.NOTHING_BUILT)
 
     return WheelsOnOffer(outcome=WheelOffer.READY, wheels=built)
+
+
+def summarize_wheels(wheels: list[Wheel]) -> LibraryBuildState:
+    """Say in one status what a reader has to know about a library's versions.
+
+    A failure is reported ahead of a build still running: a failed build is never
+    retried, so it stays until someone removes that version, while a running one
+    answers itself in a moment.
+
+    Args:
+        wheels: Every version of the library, whatever its status.
+
+    Returns:
+        The status that stands for the library, carrying the failed version's error
+        when there is one, or no status at all when the library has no versions.
+    """
+    failed = next((wheel for wheel in wheels if wheel.status is WheelStatus.FAILED), None)
+    if failed is not None:
+        return LibraryBuildState(status=WheelStatus.FAILED, error=failed.error)
+
+    # Building before queued: the one under way is the more precise of the two.
+    for status in (WheelStatus.PROCESSING, WheelStatus.DECLARED):
+        if any(wheel.status is status for wheel in wheels):
+            return LibraryBuildState(status=status)
+
+    if not wheels:
+        return LibraryBuildState()
+    return LibraryBuildState(status=WheelStatus.COMPLETED)
 
 
 def order_by_version(wheels: list[Wheel]) -> list[Wheel]:
