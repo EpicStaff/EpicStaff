@@ -626,7 +626,7 @@ async def test_client_error_is_reported_with_node_context_and_no_key_value_messa
         await node.execute(state=make_state({"a": 1}), writer=writer, execution_order=0, input_={})
 
     assert str(error.value) == f"Key-Value node 'Save lead #3' {mode} failed: Key-value table 3 not found."
-    assert error.value.correlation_id is None
+    assert error.value.reference is None
     assert key_value_messages(writer) == []
 
 
@@ -665,7 +665,7 @@ async def test_service_failure_shows_a_reference_and_logs_the_raw_detail_under_i
     with pytest.raises(KeyValueNodeError) as error:
         await node.execute(state=make_state({"a": 1}), writer=MagicMock(), execution_order=0, input_={})
 
-    reference = error.value.correlation_id
+    reference = error.value.reference
     assert str(error.value) == (
         f"Key-Value node 'Save lead #3' {mode} failed. "
         f"Try again or contact your administrator (reference: {reference})."
@@ -692,7 +692,7 @@ async def test_key_value_error_reaches_the_user_as_it_is():
     ]
     assert error_cards == [expected]
     assert error.value.public_message == expected
-    assert error.value.correlation_id is None
+    assert error.value.reference is None
 
 
 @pytest.mark.asyncio

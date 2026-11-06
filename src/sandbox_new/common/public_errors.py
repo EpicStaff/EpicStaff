@@ -6,29 +6,34 @@ reference; the user sees a fixed text that cites the reference, so an administra
 find the log line without the user ever seeing its content.
 """
 
-from enum import StrEnum
-
 from foundation.utils.error_reference import log_with_reference
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode
 
-__all__ = ["SandboxFailureMessage", "log_sandbox_failure", "public_failure_text"]
+__all__ = ["log_sandbox_failure", "sandbox_failure"]
 
-
-class SandboxFailureMessage(StrEnum):
-    """Texts shown in place of a sandbox failure; each takes a ``reference``."""
-
-    SERVER_ERROR = (
-        "The code couldn't run because of a server error. Try again or contact your "
-        "administrator (reference: {reference})."
-    )
-    UNSAFE_TO_RUN = (
+_SERVER_ERROR_TEXT = (
+    "The code couldn't run because of a server error. Try again or contact your "
+    "administrator (reference: {reference})."
+)
+# The texts shown in place of a sandbox failure, by the code reported for it.
+_PUBLIC_TEXTS = {
+    CodeFailureCode.SANDBOX_ERROR: _SERVER_ERROR_TEXT,
+    CodeFailureCode.DISPATCH_FAILED: _SERVER_ERROR_TEXT,
+    CodeFailureCode.UNSAFE_TO_RUN: (
         "This server can't run code safely right now, so the code wasn't run. Contact "
         "your administrator (reference: {reference})."
-    )
+    ),
+}
 
 
-def public_failure_text(message: SandboxFailureMessage, reference: str) -> str:
-    """Return ``message`` citing ``reference``, the text the user sees."""
-    return message.format(reference=reference)
+def sandbox_failure(code: CodeFailureCode, reference: str) -> CodeFailure:
+    """Return the failure the user sees for a sandbox failure logged under ``reference``.
+
+    Args:
+        code: ``sandbox_error``, ``dispatch_failed`` or ``unsafe_to_run``, the codes of a
+            failure only a server log line explains.
+    """
+    return CodeFailure(code=code, detail=_PUBLIC_TEXTS[code].format(reference=reference))
 
 
 def log_sandbox_failure(detail: str, *, execution_id: str | None) -> str:

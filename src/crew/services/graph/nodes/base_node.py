@@ -12,8 +12,8 @@ from services.graph.exceptions import NodeExecutionError, PublicNodeError, StopS
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.public_error import PublicErrorMessage, build_public_error_message
+from src.shared.runtime_node_name import parse_runtime_node_label
 from utils import map_variables_to_input, set_output_variables
-from utils.node_label import node_label_from_runtime_name
 
 
 def _write_to_audit_trail_only(graph_message: GraphMessage) -> None:
@@ -125,7 +125,7 @@ class BaseNode(ABC):
     @property
     def node_label(self) -> str:
         """The node's label as the user sees it on the canvas, e.g. "Search docs #1"."""
-        return node_label_from_runtime_name(self.node_name)
+        return parse_runtime_node_label(self.node_name)
 
     def add_error_message(self, writer: StreamWriter, public_details: str, execution_order: int):
         """Stream an error message showing `public_details`, which must be safe to show."""
@@ -159,9 +159,9 @@ class BaseNode(ABC):
             raise error
         if isinstance(error, PublicNodeError):
             public_message = str(error)
-            correlation_id = error.correlation_id
+            reference = error.reference
         else:
-            correlation_id = log_with_reference(
+            reference = log_with_reference(
                 "Node execution failed: {error} (session_id={session_id}, node_name={node_name})",
                 error=str(error),
                 session_id=self.session_id,
@@ -169,12 +169,12 @@ class BaseNode(ABC):
                 exception=error,
             )
             public_message = build_public_error_message(
-                PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id
+                PublicErrorMessage.NODE_EXECUTION_FAILED, reference
             )
         self.add_error_message(
             writer=writer, public_details=public_message, execution_order=execution_order
         )
-        raise NodeExecutionError(public_message, correlation_id=correlation_id) from error
+        raise NodeExecutionError(public_message, reference=reference) from error
 
     @abstractmethod
     async def execute(

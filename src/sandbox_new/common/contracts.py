@@ -7,10 +7,11 @@ emits an ``ExecutionResultMessage`` when it is done. Neither type may appear in
 any domain or application module -- those layers work with their own models.
 """
 
-from typing import Any, Literal
+from typing import Any
 
 from foundation.schemas import Schema
 from pydantic import Field
+from src.shared.models.code_failure import CodeFailure
 
 __all__ = [
     "ExecutionJobMessage",
@@ -80,13 +81,11 @@ class ExecutionResultMessage(Schema):
     # (venv failed, dispatch failed, expired in the queue) keeps False, so it does not
     # count towards the drain rate admission control predicts queue waits from.
     ran: bool = False
-    # The next two only feed the publisher's BENCH checkpoint; neither is published.
+    # Feeds the publisher's BENCH checkpoint only; not published.
     session_id: int | None = None
-    # Set only on a result for a job that never ran: "venv_failed" and "dispatch_failed"
-    # from the manager, "hold_timeout" from the manager for a job held past its hold
-    # deadline, "overloaded" from the worker for a job that expired in its queue.
-    # Spelled out rather than imported: this module must not depend on either side of the
-    # seam.
-    not_run_reason: (
-        Literal["venv_failed", "dispatch_failed", "hold_timeout", "overloaded"] | None
-    ) = None
+    # Why the execution failed, from the worker or, for a job that never reached it, the
+    # manager; None exactly when ``returncode`` is 0. The shared contract, not either
+    # side's own type: this module must not depend on either side of the seam.
+    failure: CodeFailure | None = None
+    # The reference of the log line that explains the failure, when one does.
+    reference: str | None = None

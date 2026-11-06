@@ -1,9 +1,10 @@
 """The errors ClassificationDecisionTableNodeSubgraph shows the user, word for word.
 
-Code runs through the sandbox's own code wrapper (`run_in_sandbox_wrapper`), so line
-numbers and messages are the ones the sandbox really reports for the code the node
-generates. Failures of the sandbox service itself are the results `RunPythonCodeService`
-makes up for them. LLM calls are replaced with litellm's own exception classes.
+The code the node generates runs for real (`GeneratedCodeRunCodeService`), so conditions
+and manipulations give the results they really give. A failure is the result the sandbox
+sends for it (`tests.graph.code_results`): the user's error on a line of the code the node
+sent, or a failure of the sandbox or of crew's wait for the result. LLM calls are replaced
+with litellm's own exception classes.
 """
 
 from __future__ import annotations
@@ -21,23 +22,19 @@ from loguru import logger
 from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import NodeExecutionError, StopSession
-from services.run_python_code_service import (
-    CORRELATION_ID_KEY,
-    TIMEOUT_RETURNCODE,
-    TIMEOUT_STDERR_MESSAGE,
-    RunPythonCodeService,
-)
+from services.run_python_code_service import RunPythonCodeService
 from src.crew.services.graph.subgraphs.classification_decision_table_node import (
     ClassificationDecisionTableNodeSubgraph,
 )
-from src.crew.tests.graph.subgraphs.sandbox_wrapper_runner import run_in_sandbox_wrapper
-from src.shared.models import PythonCodeData
+from src.shared.models import CodeFailure, CodeFailureCode, CodeResultData, PythonCodeData
 from src.shared.models.ai_providers import LLMConfigData, LLMData
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
+from tests.graph.code_results import failed, raised_on
+from tests.graph.generated_code_runner import Answer, GeneratedCodeRunCodeService
 from utils.singleton_meta import SingletonMeta
 
 SANDBOX_REFERENCE = "0123456789ab"
@@ -58,15 +55,46 @@ def reset_singleton():
     SingletonMeta._instances.pop(RunPythonCodeService, None)
 
 
-def use_sandbox(monkeypatch, fail_when=None, failure: dict | None = None) -> None:
-    """Run every code through the sandbox wrapper; calls `fail_when` picks get `failure`."""
+def use_sandbox(monkeypatch, answer: Answer | None = None) -> None:
+    """Run every code for real, except the runs `answer` answers."""
+    service = GeneratedCodeRunCodeService(answer=answer)
 
     async def run_code(self, python_code_data, inputs, *args, **kwargs):
-        if fail_when is not None and fail_when(python_code_data, inputs):
-            return {"execution_id": "test", "stdout": "", **failure}
-        return run_in_sandbox_wrapper(python_code_data.code, python_code_data.entrypoint, inputs)
+        return await service.run_code(python_code_data, inputs)
 
     monkeypatch.setattr(RunPythonCodeService, "run_code", run_code, raising=True)
+
+
+def answer_with(fail_when, result: CodeResultData) -> Answer:
+    """Answer the runs `fail_when` picks with `result`."""
+    return lambda python_code_data, inputs: (
+        result if fail_when(python_code_data, inputs) else None
+    )
+
+
+def raising_on(fail_when, line_text: str, exception_type: str, message: str, printed: str = ""):
+    """Answer the run `fail_when` picks as the sandbox does when the line holding `line_text` raised."""
+    return lambda python_code_data, inputs: (
+        raised_on(python_code_data.code, line_text, exception_type, message, printed=printed)
+        if fail_when(python_code_data, inputs)
+        else None
+    )
+
+
+def _is_condition(code, inputs):
+    return "expressions" in inputs
+
+
+def _is_manipulation(code, inputs):
+    return "_from_ns" in code.code
+
+
+def _is_pre(code, inputs):
+    return code.code in (PRE_OK_CODE, PRE_CODE)
+
+
+def _is_post(code, inputs):
+    return code.code in (POST_OK_CODE, POST_CODE)
 
 
 def row(expression: str | None = "True", **fields) -> ClassificationConditionGroupData:
@@ -157,11 +185,43 @@ async def run(data, variables: dict | None = None):
             id="field-expression-error",
         ),
         pytest.param(
+            node_data(row("exit()")),
+            'Condition "High score" stopped the code with exit().',
+            id="expression-exit",
+        ),
+    ],
+)
+async def test_condition_error(monkeypatch, data, expected_error):
+    use_sandbox(monkeypatch)
+
+    result, errors = await run(data, {"score": 5})
+
+    assert errors == [expected_error]
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+
+
+PRE_FAILS = raising_on(_is_pre, "return total", "NameError", "name 'total' is not defined")
+POST_FAILS = raising_on(
+    _is_post, "return grand_total", "NameError", "name 'grand_total' is not defined"
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("data", "answer", "expected_error"),
+    [
+        pytest.param(
             node_data(
                 row(
                     field_manipulations={"bonus": "1"},
                     manipulation="a = 1\nb = 2\nvariables.total = total",
                 )
+            ),
+            raising_on(
+                _is_manipulation,
+                "variables.total = total",
+                "NameError",
+                "name 'total' is not defined",
             ),
             "Condition \"High score\", manipulation code: NameError on line 3: "
             "name 'total' is not defined",
@@ -169,6 +229,7 @@ async def run(data, variables: dict | None = None):
         ),
         pytest.param(
             node_data(row(manipulation='raise ValueError("a\\nb")')),
+            raising_on(_is_manipulation, "raise ValueError", "ValueError", "a\nb"),
             'Condition "High score", manipulation code: ValueError on line 1: a\nb',
             id="manipulation-multi-line-message",
         ),
@@ -180,33 +241,43 @@ async def run(data, variables: dict | None = None):
                     'raise ValueError("a\\nb")'
                 )
             ),
+            raising_on(
+                _is_manipulation,
+                "raise ValueError",
+                "ValueError",
+                "a\nb",
+                printed="ValueError on line 9: printed\n",
+            ),
             'Condition "High score", manipulation code: ValueError on line 3: a\nb',
             id="manipulation-leaves-out-what-the-code-printed",
         ),
         pytest.param(
-            node_data(row("exit()")),
-            'Condition "High score" stopped the code with exit().',
-            id="expression-exit",
-        ),
-        pytest.param(
             node_data(row(field_manipulations={"variables.score": "scroe + 1"})),
+            raising_on(
+                _is_manipulation,
+                "variables.score = scroe + 1",
+                "NameError",
+                "name 'scroe' is not defined",
+            ),
             "Condition \"High score\", manipulation of \"score\": name 'scroe' is not defined",
             id="field-manipulation",
         ),
         pytest.param(
             node_data(row(), pre_python_code=PythonCodeData(code=PRE_CODE, entrypoint="main")),
+            PRE_FAILS,
             "Pre-computation code: NameError on line 3: name 'total' is not defined",
             id="pre-computation",
         ),
         pytest.param(
             node_data(row(), post_python_code=PythonCodeData(code=POST_CODE, entrypoint="main")),
+            POST_FAILS,
             "Post-computation code: NameError on line 3: name 'grand_total' is not defined",
             id="post-computation",
         ),
     ],
 )
-async def test_user_code_error(monkeypatch, data, expected_error):
-    use_sandbox(monkeypatch)
+async def test_user_code_error(monkeypatch, data, answer, expected_error):
+    use_sandbox(monkeypatch, answer)
 
     result, errors = await run(data, {"score": 5})
 
@@ -214,38 +285,41 @@ async def test_user_code_error(monkeypatch, data, expected_error):
     assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
 
 
+@pytest.mark.asyncio
+async def test_failure_of_another_kind_in_computation_code_shows_its_detail(monkeypatch):
+    detail = "The code exited with code 3 before it returned a result."
+    use_sandbox(
+        monkeypatch,
+        answer_with(_is_pre, failed(CodeFailure(code=CodeFailureCode.CODE_EXITED, detail=detail))),
+    )
+
+    _, errors = await run(
+        node_data(row(), pre_python_code=PythonCodeData(code=PRE_OK_CODE, entrypoint="main"))
+    )
+
+    assert errors == [f"Pre-computation code: {detail}"]
+
+
 # ---------------------------------------------------------------------------
 # The sandbox couldn't run the code
 # ---------------------------------------------------------------------------
 
-_SANDBOX_UNAVAILABLE = {
-    "returncode": 1,
-    "stderr": f"Node execution failed (reference: {SANDBOX_REFERENCE})",
-    "result_data": None,
-    CORRELATION_ID_KEY: SANDBOX_REFERENCE,
-}
-_RESULT_TIMED_OUT = {
-    "returncode": TIMEOUT_RETURNCODE,
-    "stderr": TIMEOUT_STDERR_MESSAGE,
-    "result_data": None,
-}
-_UNREADABLE_RESULT = {"returncode": 0, "stderr": "", "result_data": UNREADABLE_RESULT_DATA}
-
-
-def _is_condition(code, inputs):
-    return "expressions" in inputs
-
-
-def _is_manipulation(code, inputs):
-    return "_from_ns" in code.code
-
-
-def _is_pre(code, inputs):
-    return code.code == PRE_OK_CODE
-
-
-def _is_post(code, inputs):
-    return code.code == POST_OK_CODE
+_SANDBOX_UNAVAILABLE = failed(
+    CodeFailure(
+        code=CodeFailureCode.SANDBOX_ERROR,
+        detail=f"Node execution failed (reference: {SANDBOX_REFERENCE})",
+    ),
+    reference=SANDBOX_REFERENCE,
+)
+_RESULT_TIMED_OUT = failed(
+    CodeFailure(
+        code=CodeFailureCode.RESULT_TIMEOUT,
+        detail="The code's result didn't arrive in time. Try again or contact your administrator.",
+    )
+)
+_UNREADABLE_RESULT = CodeResultData(
+    execution_id="test", returncode=0, stdout="", stderr="", result_data=UNREADABLE_RESULT_DATA
+)
 
 
 _FAILING_PARTS = [
@@ -269,7 +343,7 @@ def _data_running_every_part() -> ClassificationDecisionTableNodeData:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("fail_when", "subject"), _FAILING_PARTS)
 async def test_sandbox_unavailable_cites_the_sandbox_reference(monkeypatch, fail_when, subject):
-    use_sandbox(monkeypatch, fail_when, _SANDBOX_UNAVAILABLE)
+    use_sandbox(monkeypatch, answer_with(fail_when, _SANDBOX_UNAVAILABLE))
 
     _, errors = await run(_data_running_every_part())
 
@@ -282,7 +356,7 @@ async def test_sandbox_unavailable_cites_the_sandbox_reference(monkeypatch, fail
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("fail_when", "subject"), _FAILING_PARTS)
 async def test_result_that_never_arrived(monkeypatch, fail_when, subject):
-    use_sandbox(monkeypatch, fail_when, _RESULT_TIMED_OUT)
+    use_sandbox(monkeypatch, answer_with(fail_when, _RESULT_TIMED_OUT))
 
     _, errors = await run(_data_running_every_part())
 
@@ -297,7 +371,7 @@ async def test_result_that_never_arrived(monkeypatch, fail_when, subject):
 async def test_unreadable_result_cites_a_new_reference_and_logs_the_raw_result(
     monkeypatch, fail_when, subject
 ):
-    use_sandbox(monkeypatch, fail_when, _UNREADABLE_RESULT)
+    use_sandbox(monkeypatch, answer_with(fail_when, _UNREADABLE_RESULT))
     logged: list[str] = []
     sink_id = logger.add(logged.append, level="ERROR")
     try:
@@ -530,14 +604,19 @@ async def test_prompt_with_an_unknown_placeholder_is_sent_unrendered(monkeypatch
 async def test_without_an_error_route_the_session_fails_with_the_shown_error(
     monkeypatch, data, expected_message
 ):
-    use_sandbox(monkeypatch)
+    use_sandbox(
+        monkeypatch,
+        lambda python_code_data, inputs: (
+            PRE_FAILS(python_code_data, inputs) or POST_FAILS(python_code_data, inputs)
+        ),
+    )
     subgraph, redis_service = build(data)
 
     with pytest.raises(NodeExecutionError) as raised:
         await subgraph.ainvoke(make_state())
 
     assert raised.value.public_message == expected_message
-    assert raised.value.correlation_id is None
+    assert raised.value.reference is None
     assert error_details(redis_service) == [expected_message]
 
 
@@ -545,13 +624,13 @@ async def test_without_an_error_route_the_session_fails_with_the_shown_error(
 async def test_without_an_error_route_a_sandbox_failure_fails_the_session_under_its_reference(
     monkeypatch,
 ):
-    use_sandbox(monkeypatch, _is_condition, _SANDBOX_UNAVAILABLE)
+    use_sandbox(monkeypatch, answer_with(_is_condition, _SANDBOX_UNAVAILABLE))
     subgraph, _ = build(node_data(row(), next_error_node=None))
 
     with pytest.raises(NodeExecutionError) as raised:
         await subgraph.ainvoke(make_state())
 
-    assert raised.value.correlation_id == SANDBOX_REFERENCE
+    assert raised.value.reference == SANDBOX_REFERENCE
 
 
 @pytest.mark.asyncio

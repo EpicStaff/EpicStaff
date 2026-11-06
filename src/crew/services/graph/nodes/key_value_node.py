@@ -128,7 +128,7 @@ class KeyValueNode(BaseNode):
             raise KeyValueNodeError(
                 f"Key-Value node '{self.node_label}' {self.mode} failed. "
                 f"Try again or contact your administrator (reference: {reference}).",
-                correlation_id=reference,
+                reference=reference,
             ) from e
         self.custom_session_message_writer.add_custom_message(
             session_id=self.session_id,

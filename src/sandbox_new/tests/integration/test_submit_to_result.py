@@ -14,6 +14,8 @@ import fakeredis.aioredis
 import pytest
 
 from common.contracts import ExecutionJobMessage, ExecutionResultMessage
+from src.shared.models.code_failure import CodeFailure, UserCodeError
+from src.shared.models.tools import CodeResultData
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
@@ -218,7 +220,8 @@ async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uo
     assert message.returncode == 1
     assert message.ran is False
     assert message.stderr == "Couldn't install the libraries: Package 'requests2' does not exist."
-    assert (message.session_id, message.not_run_reason) == (7, "venv_failed")
+    assert message.failure == CodeFailure(code="package_not_found", detail=message.stderr)
+    assert (message.session_id, message.reference) == (7, None)
 
 
 async def test_storage_credentials_reach_the_worker_unchanged(uow, runtime):
@@ -412,3 +415,67 @@ async def test_a_failing_submission_comes_back_with_a_readable_scrubbed_error(uo
     message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
     assert message.returncode == 1
     assert message.stderr == "KeyError on line 4: key '[REDACTED]' doesn't exist\n"
+    published = await publish_and_read_back(message)
+    assert published.failure == CodeFailure(
+        code="user_code_error",
+        detail="KeyError on line 4: key '[REDACTED]' doesn't exist",
+        user_error=UserCodeError(
+            exception_type="KeyError", line=4, message="key '[REDACTED]' doesn't exist"
+        ),
+    )
+    assert (published.returncode, published.reference) == (1, None)
+
+
+async def test_a_secret_straddling_every_cut_comes_back_fully_masked(uow, runtime):
+    secret = "sk-live-0123456789abcdef"
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash=VENV_HASH))[0]
+    manager = build_manager(uow, runtime)
+
+    # The secret starts 10 characters before the failure file's bound (9 000) and well
+    # past what a user is shown (4 000).
+    await manager.submit(
+        execution_id=EXECUTION_ID,
+        session_id=7,
+        code="def main(value):\n    raise ValueError('x' * 8_990 + value)\n",
+        entrypoint="main",
+        global_kwargs={},
+        func_kwargs={"value": secret},
+        secrets={"TOKEN": secret},
+        venv_id=venv.id,
+        use_storage=False,
+        storage_allowed_paths=[],
+        storage_org_prefix=None,
+        storage_credentials=None,
+        timeout=None,
+        reply_to_crew_channel=False,
+    )
+    job = await QueueJobSource(runtime["job_queue"]).get()
+
+    await build_worker(runtime).execute(job)
+
+    message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
+    assert message.stderr == f"ValueError on line 2: {'x' * 8_990}[REDACTED]\n"
+    for shown in (message.failure.detail, message.failure.user_error.message):
+        assert secret[:4] not in shown
+
+
+async def publish_and_read_back(message: ExecutionResultMessage) -> CodeResultData:
+    """Publish ``message`` the way the manager does and parse what a consumer receives."""
+    redis = fakeredis.aioredis.FakeRedis()
+    pubsub = redis.pubsub()
+    await pubsub.subscribe("code:results")
+    publisher = RedisResultPublisher(
+        redis,
+        result_channel="code:results",
+        crew_result_channel="code:results:crew",
+        mutation_channel="storage:mutations",
+    )
+    await publisher.publish(message)
+    try:
+        for _ in range(50):
+            received = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.05)
+            if received is not None:
+                return CodeResultData.model_validate_json(received["data"])
+        raise AssertionError("nothing was published")
+    finally:
+        await redis.aclose()

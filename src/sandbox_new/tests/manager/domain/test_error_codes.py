@@ -9,9 +9,11 @@ once its module is loaded.
 import re
 
 import pytest
+from src.shared.models.code_failure import CodeFailureCode
 
 from manager.application import errors as application_errors
 from manager.application.ports import errors as port_errors
+from manager.domain.enums import VenvBuildErrorKind
 from manager.domain.errors import BaseError
 
 
@@ -60,3 +62,9 @@ def test_codes_stay_stable(error_class, code):
 
 def test_every_error_has_its_code_pinned():
     assert set(SERVICE_ERRORS) == set(PINNED_CODES)
+
+
+@pytest.mark.parametrize("kind", list(VenvBuildErrorKind), ids=str)
+def test_every_venv_build_error_kind_is_a_code_failure_code(kind):
+    # A job whose venv failed to build reports the kind as its failure's code.
+    assert CodeFailureCode(kind.value) == kind.value

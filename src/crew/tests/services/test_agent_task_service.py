@@ -263,7 +263,7 @@ async def test_llm_failure_shows_what_the_user_can_do_and_logs_only_its_kind(
 
     assert isinstance(result, AgentTaskError)
     assert str(result) == expected_text
-    assert result.correlation_id is None
+    assert result.reference is None
     assert _leftover_run_keys(client, service) == []
     [logged] = [record for record in warning_logs if "Agent run failed" in record]
     assert f"Agent run failed: {error_kind} (agent_correlation_id=" in logged
@@ -345,7 +345,7 @@ async def test_unexplained_fallback_failure_names_the_fallback_model(service, cl
         'The LLM request for model "claude-sonnet" failed. '
         f"Try again or contact your administrator (reference: {REFERENCE})."
     )
-    assert result.correlation_id == REFERENCE
+    assert result.reference == REFERENCE
 
 
 @ENVELOPE_TYPES
@@ -358,7 +358,7 @@ async def test_unexplained_llm_failure_cites_a_reference_logged_with_the_error_c
     result, _ = await _run(service, client, replies=[_llm_failure(envelope_type, error_kind)])
 
     assert str(result) == UNKNOWN_LLM_FAILURE_TEXT
-    assert result.correlation_id == REFERENCE
+    assert result.reference == REFERENCE
     [logged] = [record for record in warning_logs if REFERENCE in record]
     assert f"litellm.AuthenticationError: <redacted len={len(RAW_PROVIDER_TEXT)}>" in logged
     assert PROVIDER_SECRET not in "".join(warning_logs)
@@ -379,7 +379,7 @@ async def test_agent_failure_outside_the_llm_call_gets_the_generic_message(
     result, _ = await _run(service, client, replies=[reply])
 
     assert str(result) == f"Node execution failed (reference: {REFERENCE})"
-    assert result.correlation_id == REFERENCE
+    assert result.reference == REFERENCE
     [logged] = [record for record in warning_logs if REFERENCE in record]
     assert f"<unknown class>: <redacted len={len(reply[1]['error'])}>" in logged
     assert reply[1]["error"] not in "".join(warning_logs)
@@ -406,7 +406,7 @@ async def test_agent_time_limit_names_the_agent_and_its_limit(
         f"Agent \"researcher\" didn't finish within {expected_limit}. "
         "Raise its max execution time, or make the task simpler."
     )
-    assert result.correlation_id is None
+    assert result.reference is None
 
 
 @ENVELOPE_TYPES
@@ -421,7 +421,7 @@ async def test_agent_reported_timeout_without_a_limit_gets_the_generic_message(
     )
 
     assert str(result) == f"Node execution failed (reference: {REFERENCE})"
-    assert result.correlation_id == REFERENCE
+    assert result.reference == REFERENCE
 
 
 async def test_live_events_reach_on_event_in_order_and_others_are_skipped(service, client):
@@ -526,7 +526,7 @@ async def test_timeout_raises_after_forwarding_what_arrived_and_leaves_no_keys(c
 
     assert isinstance(result, AgentTaskTimeoutError)
     assert str(result) == AGENT_SERVICE_NO_ANSWER_TEXT
-    assert result.correlation_id == REFERENCE
+    assert result.reference == REFERENCE
     assert collected == ["agent.task_start"]
     assert _leftover_run_keys(client, service) == []
 
@@ -545,7 +545,7 @@ async def test_crew_giving_up_says_the_agent_service_didnt_answer_not_the_agents
 
     assert isinstance(result, AgentTaskTimeoutError)
     assert str(result) == AGENT_SERVICE_NO_ANSWER_TEXT
-    assert result.correlation_id == REFERENCE
+    assert result.reference == REFERENCE
     [logged] = [record for record in warning_logs if REFERENCE in record]
     assert "didn't answer within 1.2s" in logged
 

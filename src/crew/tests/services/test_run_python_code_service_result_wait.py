@@ -5,17 +5,19 @@ execution waiting for it; a wait ends on the result, the timeout, or a stop.
 """
 
 import asyncio
+import json
 
 import fakeredis
 import pytest
 import pytest_asyncio
+from loguru import logger
 
 import settings
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
 from services.redis_service import RedisService
-from services.run_python_code_service import TIMEOUT_STDERR_MESSAGE, RunPythonCodeService
-from src.shared.models import CodeResultData
+from services.run_python_code_service import RunPythonCodeService
+from src.shared.models import CodeFailure, CodeFailureCode, CodeResultData
 from tests.services.conftest import CREW_RESULT_CHANNEL, SHARED_RESULT_CHANNEL
 from utils.singleton_meta import SingletonMeta
 
@@ -73,8 +75,8 @@ async def test_returns_the_sandbox_result_through_real_redis_pubsub(
         run.cancel()
         await sandbox_redis.aclose()
 
-    assert result["result_data"] == "42"
-    assert result["returncode"] == 0
+    assert result.result_data == "42"
+    assert result.returncode == 0
 
 
 async def test_returns_the_result_the_sandbox_publishes_for_the_execution(
@@ -89,9 +91,9 @@ async def test_returns_the_result_the_sandbox_publishes_for_the_execution(
     result = await asyncio.wait_for(run, timeout=5)
 
     assert task["reply_to_crew_channel"] is True
-    assert result["execution_id"] == task["execution_id"]
-    assert result["result_data"] == "ok"
-    assert result["returncode"] == 0
+    assert result.execution_id == task["execution_id"]
+    assert result.result_data == "ok"
+    assert result.returncode == 0
 
 
 async def test_returns_a_result_published_before_the_wait_starts(
@@ -104,8 +106,8 @@ async def test_returns_a_result_published_before_the_wait_starts(
         timeout=5,
     )
 
-    assert result["execution_id"] == sandbox.tasks[0]["execution_id"]
-    assert result["result_data"] == "ok"
+    assert result.execution_id == sandbox.tasks[0]["execution_id"]
+    assert result.result_data == "ok"
 
 
 async def test_returns_timeout_result_when_no_result_arrives(
@@ -116,10 +118,18 @@ async def test_returns_timeout_result_when_no_result_arrives(
         timeout=5,
     )
 
-    assert result["execution_id"] == sandbox.tasks[0]["execution_id"]
-    assert result["returncode"] == 124
-    assert result["stderr"] == TIMEOUT_STDERR_MESSAGE
-    assert result["result_data"] is None
+    timeout_text = (
+        "The code's result didn't arrive in time. Try again or contact your administrator."
+    )
+    assert result == CodeResultData(
+        execution_id=sandbox.tasks[0]["execution_id"],
+        returncode=1,
+        stdout="",
+        stderr=timeout_text,
+        result_data=None,
+        failure=CodeFailure(code=CodeFailureCode.RESULT_TIMEOUT, detail=timeout_text),
+        reference=None,
+    )
 
 
 async def test_waits_until_the_result_when_timeout_is_none(
@@ -135,7 +145,7 @@ async def test_waits_until_the_result_when_timeout_is_none(
 
     result = await asyncio.wait_for(run, timeout=5)
 
-    assert result["result_data"] == "late"
+    assert result.result_data == "late"
 
 
 async def test_stop_event_set_during_the_wait_aborts_it(
@@ -186,8 +196,8 @@ async def test_ignores_results_not_addressed_to_the_execution(
 
     result = await asyncio.wait_for(run, timeout=5)
 
-    assert result["returncode"] == 124
-    assert result["result_data"] is None
+    assert result.failure.code is CodeFailureCode.RESULT_TIMEOUT
+    assert result.result_data is None
 
 
 async def test_unparseable_message_is_dropped_and_the_wait_continues(
@@ -202,7 +212,7 @@ async def test_unparseable_message_is_dropped_and_the_wait_continues(
 
     result = await asyncio.wait_for(run, timeout=5)
 
-    assert result["result_data"] == "ok"
+    assert result.result_data == "ok"
 
 
 async def test_concurrent_executions_each_get_their_own_result_from_one_subscription(
@@ -220,10 +230,10 @@ async def test_concurrent_executions_each_get_their_own_result_from_one_subscrip
 
     results = await asyncio.wait_for(asyncio.gather(*runs), timeout=5)
 
-    assert [result["result_data"] for result in results] == [
-        result["execution_id"] for result in results
+    assert [result.result_data for result in results] == [
+        result.execution_id for result in results
     ]
-    assert len({result["execution_id"] for result in results}) == 3
+    assert len({result.execution_id for result in results}) == 3
     assert len(pubsub.subscribers[CREW_RESULT_CHANNEL]) == 1
 
 
@@ -248,3 +258,60 @@ async def test_wait_leaves_no_pending_execution_behind(
     await asyncio.wait_for(asyncio.gather(run, return_exceptions=True), timeout=5)
 
     assert run_python_code_service._pending_results == {}
+
+
+RAW_OUTPUT = "secret output of the user's code"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param({"code": "not_a_code", "detail": RAW_OUTPUT}, id="unknown-code"),
+        pytest.param(
+            {"code": "user_code_error", "detail": RAW_OUTPUT}, id="user-error-without-its-parts"
+        ),
+    ],
+)
+async def test_result_that_fails_validation_fails_the_execution_at_once_under_a_reference(
+    run_python_code_service, sandbox, pubsub, make_python_code_data, monkeypatch, failure
+):
+    monkeypatch.setattr("foundation.utils.error_reference.new_reference", lambda: "0a1b2c3d4e5f")
+    monkeypatch.setattr(settings, "CODE_RESULT_TIMEOUT", None)
+    logged: list[str] = []
+    sink_id = logger.add(logged.append, level="ERROR")
+    run = asyncio.ensure_future(
+        run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={})
+    )
+    try:
+        [task] = await sandbox.wait_for_tasks(1)
+        await pubsub.apublish(
+            CREW_RESULT_CHANNEL,
+            json.dumps(
+                {
+                    "execution_id": task["execution_id"],
+                    "stdout": RAW_OUTPUT,
+                    "stderr": RAW_OUTPUT,
+                    "returncode": 1,
+                    "failure": failure,
+                }
+            ),
+        )
+        result = await asyncio.wait_for(run, timeout=5)
+    finally:
+        run.cancel()
+        logger.remove(sink_id)
+
+    public_text = "Node execution failed (reference: 0a1b2c3d4e5f)"
+    assert result == CodeResultData(
+        execution_id=task["execution_id"],
+        returncode=1,
+        stdout="",
+        stderr=public_text,
+        result_data=None,
+        failure=CodeFailure(code=CodeFailureCode.SANDBOX_ERROR, detail=public_text),
+        reference="0a1b2c3d4e5f",
+    )
+    [line] = [record for record in logged if "(reference: 0a1b2c3d4e5f)" in record]
+    assert task["execution_id"] in line
+    assert "ValidationError" in line
+    assert RAW_OUTPUT not in "".join(logged)

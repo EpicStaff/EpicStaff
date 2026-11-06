@@ -1,11 +1,10 @@
 """An execution the sandbox never produces a result for fails the node instead of hanging.
 
 The sandbox can stay full, be unreachable, or lose an execution it accepted (a
-restart, an undelivered result). Each ends the wait with a returncode-1 result whose
-stderr only cites a reference, the reason being logged under it; only the backstop keeps
-the timeout returncode. A session
-stop ends a submit that is still retrying a full sandbox instead of waiting out its
-retry budget.
+restart, an undelivered result). Each ends the wait with a result failed with
+`sandbox_error`, whose detail only cites a reference, the reason being logged under it.
+A session stop ends a submit that is still retrying a full sandbox instead of waiting out
+its retry budget.
 """
 
 import asyncio
@@ -21,6 +20,7 @@ from loguru import logger
 
 from services.graph.exceptions import StopSession
 from services.run_python_code_service import STOP_CHECK_INTERVAL_S, RunPythonCodeService
+from src.shared.models import CodeFailure, CodeFailureCode, CodeResultData
 from tests.services.conftest import REJECTED_RETRY_AFTER_S, SANDBOX_BASE_URL
 
 pytestmark = pytest.mark.asyncio
@@ -47,11 +47,19 @@ def captured_error_logs():
     logger.remove(sink_id)
 
 
-def assert_failed_under_the_reference(result: dict, logs: list[str], reason: str) -> None:
-    assert result["returncode"] == 1
-    assert result["stderr"] == f"Node execution failed (reference: {REFERENCE})"
-    assert result["correlation_id"] == REFERENCE
-    assert result["result_data"] is None
+def assert_failed_under_the_reference(
+    result: CodeResultData, logs: list[str], reason: str
+) -> None:
+    public_text = f"Node execution failed (reference: {REFERENCE})"
+    assert result == CodeResultData(
+        execution_id=result.execution_id,
+        returncode=1,
+        stdout="",
+        stderr=public_text,
+        result_data=None,
+        failure=CodeFailure(code=CodeFailureCode.SANDBOX_ERROR, detail=public_text),
+        reference=REFERENCE,
+    )
     [logged] = [record for record in logs if f"(reference: {REFERENCE})" in record]
     assert reason in logged
 
@@ -100,7 +108,7 @@ async def test_execution_the_sandbox_lost_fails_instead_of_waiting_for_the_backs
         timeout=5,
     )
 
-    assert result["execution_id"] == sandbox.submitted["execution_id"]
+    assert result.execution_id == sandbox.submitted["execution_id"]
     assert_failed_under_the_reference(
         result,
         captured_error_logs,
@@ -122,7 +130,7 @@ async def test_execution_the_sandbox_still_has_keeps_waiting_for_its_result(
     await sandbox.reply(task["execution_id"], result_data="late")
     result = await asyncio.wait_for(run, timeout=5)
 
-    assert (result["returncode"], result["result_data"]) == (0, "late")
+    assert (result.returncode, result.result_data) == (0, "late")
 
 
 async def test_a_stop_while_the_sandbox_stays_full_cancels_the_retrying_submit(
@@ -187,7 +195,7 @@ async def test_a_503_followed_by_a_retry_is_logged_as_sandbox_rejected(
         timeout=5,
     )
 
-    assert result["returncode"] == 0
+    assert result.returncode == 0
     assert of_type(checkpoints, "sandbox_rejected") == [
         {
             "checkpoint": "sandbox_rejected",

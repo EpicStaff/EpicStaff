@@ -237,16 +237,16 @@ class ClassificationDecisionTableNodeSubgraph:
         )
 
         check_code_ran(result, subject)
-        if result["returncode"] != 0:
-            raise user_code_error(subject, result["stderr"])
+        if result.failure is not None:
+            raise user_code_error(subject, result.failure)
 
         if output_variable_path:
             from utils.set_output_variables import set_output_variables
 
             try:
-                output = json.loads(result["result_data"])
+                output = json.loads(result.result_data)
             except (TypeError, ValueError) as error:
-                raise unreadable_result_error(subject, result["result_data"]) from error
+                raise unreadable_result_error(subject, result.result_data) from error
             set_output_variables(
                 state=state,
                 output_variable_path=output_variable_path,
@@ -368,23 +368,23 @@ class ClassificationDecisionTableNodeSubgraph:
         )
 
         check_code_ran(result, subject)
-        if result["returncode"] != 0:
+        if result.failure is not None:
             # The evaluation reports the rows' own errors in its result, so this is the
             # sandbox stopping the code, e.g. at its time limit.
-            raise DecisionTableError(f"{subject}: {result['stderr'].strip()}")
+            raise DecisionTableError(f"{subject}: {result.failure.detail}")
         try:
-            evaluation = json.loads(result["result_data"])
+            evaluation = json.loads(result.result_data)
             results = evaluation["results"]
             failure = ConditionFailure.from_result(evaluation["error"])
         except (TypeError, ValueError, KeyError) as error:
-            raise unreadable_result_error(subject, result["result_data"]) from error
+            raise unreadable_result_error(subject, result.result_data) from error
         if (
             not isinstance(results, list)
             or not all(isinstance(row_result, bool) for row_result in results)
             or len(results) + (failure is not None) > len(expressions)
             or (failure is None and not results)
         ):
-            raise unreadable_result_error(subject, result["result_data"])
+            raise unreadable_result_error(subject, result.result_data)
         return results, failure
 
     @staticmethod
@@ -475,14 +475,14 @@ def main(**kwargs) -> dict:
         )
 
         check_code_ran(result, condition_subject(condition_name))
-        if result["returncode"] != 0:
-            raise manipulation_error(condition_name, result["stderr"], parts)
+        if result.failure is not None:
+            raise manipulation_error(condition_name, result.failure, parts)
 
         try:
-            variables = json.loads(result["result_data"])
+            variables = json.loads(result.result_data)
         except (TypeError, ValueError) as error:
             raise unreadable_result_error(
-                condition_subject(condition_name), result["result_data"]
+                condition_subject(condition_name), result.result_data
             ) from error
         state["variables"].update(variables)
 
@@ -661,7 +661,7 @@ def main(**kwargs) -> dict:
         writer: StreamWriter,
         error: Exception,
         public_message: str,
-        correlation_id: str | None,
+        reference: str | None,
     ) -> None:
         """Show the error, then set the error route, or fail the session if there is none.
 
@@ -679,7 +679,7 @@ def main(**kwargs) -> dict:
         )
         await self._publish_message(msg)
         if self.node_data.next_error_node is None:
-            raise NodeExecutionError(public_message, correlation_id=correlation_id) from error
+            raise NodeExecutionError(public_message, reference=reference) from error
         state["system_variables"]["nodes"][self.node_name]["result_node"] = (
             self.node_data.next_error_node
         )
@@ -746,16 +746,12 @@ def main(**kwargs) -> dict:
                 raise
             except DecisionTableError as error:
                 logger.warning("Pre-computation error in '{}': {}", self.node_name, error)
-                await self._show_error_and_route(
-                    state, writer, error, str(error), error.correlation_id
-                )
+                await self._show_error_and_route(state, writer, error, str(error), error.reference)
             except Exception as error:
-                public_message, correlation_id = self._log_unexpected_error(
+                public_message, reference = self._log_unexpected_error(
                     error, PRE_COMPUTATION_SUBJECT
                 )
-                await self._show_error_and_route(
-                    state, writer, error, public_message, correlation_id
-                )
+                await self._show_error_and_route(state, writer, error, public_message, reference)
 
             return state
 
@@ -764,7 +760,7 @@ def main(**kwargs) -> dict:
             writer: StreamWriter,
             error: Exception,
             public_message: str,
-            correlation_id: str | None,
+            reference: str | None,
         ):
             """Show the error and route to the error node, then finish.
 
@@ -776,7 +772,7 @@ def main(**kwargs) -> dict:
             Raises:
                 NodeExecutionError: The node has no error route.
             """
-            await self._show_error_and_route(state, writer, error, public_message, correlation_id)
+            await self._show_error_and_route(state, writer, error, public_message, reference)
             decision_vars = state["system_variables"]["nodes"][self.node_name]
             msg = self.custom_session_message_writer.add_finish_message(
                 session_id=self.session_id,
@@ -917,14 +913,14 @@ def main(**kwargs) -> dict:
                         "Classification decision table '{}' failed: {}", self.node_name, error
                     )
                     return await route_to_error_node(
-                        state, writer, error, str(error), error.correlation_id
+                        state, writer, error, str(error), error.reference
                     )
                 except Exception as error:
-                    public_message, correlation_id = self._log_unexpected_error(
+                    public_message, reference = self._log_unexpected_error(
                         error, failure_subject or condition_subject(group.group_name)
                     )
                     return await route_to_error_node(
-                        state, writer, error, public_message, correlation_id
+                        state, writer, error, public_message, reference
                     )
 
             decision_vars["result_node"] = (
@@ -938,16 +934,12 @@ def main(**kwargs) -> dict:
                 raise
             except DecisionTableError as error:
                 logger.warning("Post-computation error in '{}': {}", self.node_name, error)
-                return await route_to_error_node(
-                    state, writer, error, str(error), error.correlation_id
-                )
+                return await route_to_error_node(state, writer, error, str(error), error.reference)
             except Exception as error:
-                public_message, correlation_id = self._log_unexpected_error(
+                public_message, reference = self._log_unexpected_error(
                     error, POST_COMPUTATION_SUBJECT
                 )
-                return await route_to_error_node(
-                    state, writer, error, public_message, correlation_id
-                )
+                return await route_to_error_node(state, writer, error, public_message, reference)
 
             logger.debug(
                 "Classification table '{}' result: result_node={}",

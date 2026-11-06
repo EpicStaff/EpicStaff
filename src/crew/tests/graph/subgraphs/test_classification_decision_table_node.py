@@ -36,7 +36,7 @@ from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
-from src.shared.models import PythonCodeData
+from src.shared.models import CodeFailure, CodeFailureCode, PythonCodeData
 from src.shared.models.ai_providers import LLMConfigData, LLMData
 from src.shared.models.sessions import TokenUsage
 from src.shared.models.system_one import (
@@ -47,6 +47,7 @@ from src.shared.models.system_one import (
 from src.shared.system_one.adapter import SYSTEM_ONE_ADAPTERS, SystemOneError
 from src.shared.system_one.llm_adapter import LlmSystemOneAdapter
 from src.shared.system_one.typesafe_adapter import TypeSafeAdapter
+from tests.graph.code_results import failed, succeeded
 from utils.singleton_meta import SingletonMeta
 
 
@@ -147,12 +148,7 @@ async def fake_run_code(
     exec(_SANDBOX_MODULE_PRELUDE + python_code_data.code, ns)  # noqa: S102
     # wrap_code calls the entrypoint with DotDict-wrapped kwargs.
     ret = ns[python_code_data.entrypoint](**DotDict(inputs))
-    return {
-        "returncode": 0,
-        "result_data": json.dumps(ret),
-        "stderr": "",
-        "execution_id": "test",
-    }
+    return succeeded(ret)
 
 
 async def fake_run_code_error(
@@ -163,12 +159,7 @@ async def fake_run_code_error(
     additional_global_kwargs=None,
     storage_credentials=None,
 ):
-    return {
-        "returncode": 1,
-        "result_data": "null",
-        "stderr": "boom",
-        "execution_id": "test",
-    }
+    return failed(CodeFailure(code=CodeFailureCode.CODE_EXITED, detail="boom"))
 
 
 # ---------------------------------------------------------------------------

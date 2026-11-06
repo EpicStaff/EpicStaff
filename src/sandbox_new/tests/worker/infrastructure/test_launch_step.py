@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode
 
 from worker.domain.enums import NetworkPolicy
 from worker.infrastructure.execution.steps import launch as launch_module
@@ -111,6 +112,30 @@ async def test_a_hanging_child_is_terminated_and_reported_as_a_timeout(tmp_path)
 
     assert context.returncode == 124
     assert context.stderr == "The code ran longer than 0.2 seconds and was stopped."
+    assert context.failure == CodeFailure(
+        code=CodeFailureCode.EXECUTION_TIMEOUT,
+        detail="The code ran longer than 0.2 seconds and was stopped.",
+    )
+    # The launch step only records why the run ended; the capture step finishes it.
+    assert context.completed is False
+
+
+async def test_the_timeout_line_follows_what_the_child_wrote_before_it_was_stopped(tmp_path):
+    source = "import sys, time\nprint('working', file=sys.stderr, flush=True)\ntime.sleep(30)\n"
+    context = launchable(tmp_path, source, timeout=0.5)
+
+    await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
+
+    assert context.stderr == "working\n\nThe code ran longer than 0.5 seconds and was stopped."
+    assert context.failure.detail == "The code ran longer than 0.5 seconds and was stopped."
+
+
+async def test_a_child_that_exits_on_its_own_gets_no_failure_from_the_launch(tmp_path):
+    context = launchable(tmp_path, "import sys\nsys.exit(3)\n")
+
+    await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
+
+    assert (context.returncode, context.failure) == (3, None)
 
 
 async def test_a_one_second_timeout_is_reported_in_the_singular(tmp_path):

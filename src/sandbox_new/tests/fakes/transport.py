@@ -8,9 +8,9 @@ import asyncio
 from typing import NamedTuple
 
 from common.contracts import ExecutionResultMessage
+from src.shared.models.code_failure import CodeFailure
 from manager.application.ports import AbstractJobDispatcher, AbstractJobFailureSink
 from manager.domain.models import Job as ManagerJob
-from manager.domain.types import NotRunReason
 from manager.infrastructure.transport.result_publisher import AbstractResultPublisher
 from worker.application.ports import AbstractJobSource, AbstractResultSink, UndecodableJobError
 from worker.domain.models import ExecutionResult, Job as WorkerJob, StorageMutations
@@ -38,9 +38,9 @@ class FakeJobDispatcher(AbstractJobDispatcher):
 
 class Failure(NamedTuple):
     execution_id: str
-    message: str
+    failure: CodeFailure
+    reference: str | None
     session_id: int | None
-    not_run_reason: NotRunReason
     reply_to_crew_channel: bool
 
 
@@ -51,14 +51,14 @@ class FakeJobFailureSink(AbstractJobFailureSink):
     async def fail(
         self,
         execution_id: str,
-        message: str,
+        failure: CodeFailure,
         *,
+        reference: str | None,
         session_id: int | None,
-        not_run_reason: NotRunReason,
         reply_to_crew_channel: bool,
     ) -> None:
         self.failures.append(
-            Failure(execution_id, message, session_id, not_run_reason, reply_to_crew_channel)
+            Failure(execution_id, failure, reference, session_id, reply_to_crew_channel)
         )
 
 

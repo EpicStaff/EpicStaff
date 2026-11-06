@@ -5,6 +5,7 @@ whatever the run did, secrets are scrubbed on the way out, and a result is alway
 """
 
 import pytest
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode, UserCodeError
 
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
@@ -65,6 +66,129 @@ async def test_secrets_are_scrubbed_from_every_output_field(result_sink):
     assert result.stdout == "token is [REDACTED]"
     assert result.stderr == "failed with [REDACTED]"
     assert result.result == '{"echo": "[REDACTED]"}'
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        CodeFailure(
+            code=CodeFailureCode.USER_CODE_ERROR,
+            detail="ValueError on line 2: bad token s3cret",
+            user_error=UserCodeError(
+                exception_type="ValueError", line=2, message="bad token s3cret"
+            ),
+        ),
+        CodeFailure(
+            code=CodeFailureCode.UNEXPECTED_ARGUMENT,
+            detail="TypeError: main() got an unexpected keyword argument 's3cret'",
+            attr="s3cret",
+        ),
+    ],
+    ids=["user-code-error", "argument"],
+)
+async def test_secrets_are_scrubbed_from_every_part_of_the_failure(result_sink, failure):
+    orchestrator = build(
+        pipeline_that(returncode=1, stderr=failure.detail, failure=failure), result_sink
+    )
+
+    await orchestrator.execute(make_worker_job(secrets={"TOKEN": "s3cret"}))
+
+    sent = result_sink.sent[0][0].failure
+    assert "s3cret" not in sent.model_dump_json()
+    assert sent.detail == failure.detail.replace("s3cret", "[REDACTED]")
+    assert sent.code == failure.code
+    if failure.user_error is not None:
+        assert sent.user_error.message == "bad token [REDACTED]"
+        assert (sent.user_error.exception_type, sent.user_error.line) == ("ValueError", 2)
+    if failure.attr is not None:
+        assert sent.attr == "[REDACTED]"
+
+
+SECRET = "sk-live-0123456789abcdef"
+
+
+async def test_a_secret_straddling_the_shortened_length_leaves_no_prefix(result_sink):
+    # The secret starts 10 characters before the 4000-character cut.
+    message = "x" * 3990 + SECRET + "y" * 100
+    failure = CodeFailure(
+        code=CodeFailureCode.USER_CODE_ERROR,
+        detail=f"ValueError: {message}",
+        user_error=UserCodeError(exception_type="ValueError", line=None, message=message),
+    )
+    orchestrator = build(
+        pipeline_that(returncode=1, stderr=failure.detail, failure=failure), result_sink
+    )
+
+    await orchestrator.execute(make_worker_job(secrets={"TOKEN": SECRET}))
+
+    result = result_sink.sent[0][0]
+    sent = result.failure
+    assert SECRET[:4] not in sent.detail
+    assert SECRET[:4] not in sent.user_error.message
+    assert sent.user_error.message == "x" * 3990 + "[REDACTED]"[:10] + "..."
+    assert len(sent.detail) == 4000 + len("...")
+    # Stderr is the run's whole output: masked, never shortened.
+    assert result.stderr == f"ValueError: {'x' * 3990}[REDACTED]{'y' * 100}"
+
+
+async def test_a_secret_in_the_exception_type_is_masked(result_sink):
+    failure = CodeFailure(
+        code=CodeFailureCode.USER_CODE_ERROR,
+        detail=f"{SECRET} on line 2",
+        user_error=UserCodeError(exception_type=SECRET, line=2, message=""),
+    )
+    orchestrator = build(
+        pipeline_that(returncode=1, stderr=failure.detail, failure=failure), result_sink
+    )
+
+    await orchestrator.execute(make_worker_job(secrets={"TOKEN": SECRET}))
+
+    assert result_sink.sent[0][0].failure.user_error.exception_type == "[REDACTED]"
+
+
+@pytest.mark.parametrize("mask_secrets", [True, False], ids=["masked", "unmasked"])
+async def test_the_texts_a_user_is_shown_are_shortened(result_sink, mask_secrets):
+    failure = CodeFailure(
+        code=CodeFailureCode.USER_CODE_ERROR,
+        detail="d" * 5000,
+        user_error=UserCodeError(exception_type="T" * 300, line=None, message="m" * 5000),
+    )
+    orchestrator = build(
+        pipeline_that(returncode=1, stderr=failure.detail, failure=failure),
+        result_sink,
+        mask_secrets=mask_secrets,
+    )
+
+    await orchestrator.execute(make_worker_job())
+
+    result = result_sink.sent[0][0]
+    assert result.failure.detail == "d" * 4000 + "..."
+    assert result.failure.user_error.message == "m" * 4000 + "..."
+    assert result.failure.user_error.exception_type == "T" * 200 + "..."
+    assert result.stderr == "d" * 5000
+
+
+async def test_an_argument_name_is_shortened(result_sink):
+    failure = CodeFailure(
+        code=CodeFailureCode.UNEXPECTED_ARGUMENT, detail="TypeError: unexpected", attr="a" * 300
+    )
+    orchestrator = build(pipeline_that(returncode=1, failure=failure), result_sink)
+
+    await orchestrator.execute(make_worker_job())
+
+    assert result_sink.sent[0][0].failure.attr == "a" * 200 + "..."
+
+
+async def test_the_failure_and_its_reference_reach_the_result(result_sink):
+    failure = CodeFailure(code=CodeFailureCode.EXECUTION_TIMEOUT, detail="ran too long")
+    orchestrator = build(
+        pipeline_that(returncode=124, failure=failure, reference="0a1b2c3d4e5f"), result_sink
+    )
+
+    await orchestrator.execute(make_worker_job())
+
+    result = result_sink.sent[0][0]
+    assert (result.failure, result.reference) == (failure, "0a1b2c3d4e5f")
 
 
 async def test_masking_can_be_turned_off(result_sink):
@@ -138,6 +262,8 @@ async def test_a_failing_pipeline_step_still_produces_a_result(result_sink, erro
     result, _ = result_sink.sent[0]
     assert result.returncode == 1
     reference = reference_in(SERVER_ERROR, result.stderr)
+    assert (result.failure.code, result.failure.detail) == ("sandbox_error", result.stderr)
+    assert result.reference == reference
     assert "resolve venv blew up" in logged_with(reference, error_logs)
 
 
@@ -173,19 +299,21 @@ async def test_failing_a_job_sends_a_failed_result_without_running_it(result_sin
 
     orchestrator = build(Pipeline().register(step), result_sink)
 
+    failure = CodeFailure(code=CodeFailureCode.SANDBOX_ERROR, detail="Sandbox failed to run it.")
+
     await orchestrator.fail(
-        "exec-1", "Sandbox failed to run the job.", session_id=7, reply_to_crew_channel=True
+        "exec-1", failure, reference="0a1b2c3d4e5f", session_id=7, reply_to_crew_channel=True
     )
 
     [(result, mutations)] = result_sink.sent
     assert ran == []
     assert result.execution_id == "exec-1"
-    assert result.stderr == "Sandbox failed to run the job."
+    assert result.stderr == "Sandbox failed to run it."
     assert result.returncode == 1
+    assert (result.failure, result.reference) == (failure, "0a1b2c3d4e5f")
     assert result.ran is False
     assert result.reply_to_crew_channel is True
     assert result.session_id == 7
-    assert result.not_run_reason is None
     assert mutations is None
 
 

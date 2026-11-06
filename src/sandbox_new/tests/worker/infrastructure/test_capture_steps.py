@@ -5,13 +5,16 @@ mutations step must never fail a run that already succeeded -- a broken mutation
 a reporting problem, not an execution failure.
 """
 
+import asyncio
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import settings
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode, UserCodeError
 
 from worker.infrastructure.execution.code_wrapper import RESULT_WRITE_FAILED_EXIT_CODE
 from worker.infrastructure.execution.steps import (
@@ -55,6 +58,218 @@ async def test_a_missing_result_file_does_not_raise(tmp_path):
 
     assert context.result_data is None
     assert context.completed is True
+
+
+def exited_text(returncode: int) -> str:
+    return (
+        f"The code exited with code {returncode} before it returned a result. Its error "
+        "output may say why."
+    )
+
+
+USER_CODE_FAILURE = CodeFailure(
+    code=CodeFailureCode.USER_CODE_ERROR,
+    detail="ValueError on line 2: bad input",
+    user_error=UserCodeError(exception_type="ValueError", line=2, message="bad input"),
+)
+
+
+def exited_context(tmp_path, *, returncode=1, stderr="", failure_file: str | None = None):
+    """A context for a run that exited ``returncode``, with ``failure_file`` as its file."""
+    failure_file_path = tmp_path / "failure.json"
+    if failure_file is not None:
+        failure_file_path.write_text(failure_file, encoding="utf-8")
+    return make_context(
+        returncode=returncode,
+        stderr=stderr,
+        result_file_path=tmp_path / "output.txt",
+        failure_file_path=failure_file_path,
+    )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        USER_CODE_FAILURE,
+        CodeFailure(
+            code=CodeFailureCode.UNEXPECTED_ARGUMENT,
+            detail="TypeError: main() got an unexpected keyword argument 'city'",
+            attr="city",
+        ),
+        CodeFailure(code=CodeFailureCode.NETWORK_DENIED, detail="Network access denied."),
+    ],
+    ids=["user-code-error", "argument", "network"],
+)
+async def test_the_failure_the_wrapper_reported_is_taken_without_repeating_its_line(
+    tmp_path, failure
+):
+    context = exited_context(
+        tmp_path, stderr=f"working\n{failure.detail}\n", failure_file=failure.model_dump_json()
+    )
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    assert context.failure == failure
+    assert context.stderr == f"working\n{failure.detail}\n"
+    assert (context.returncode, context.reference, context.completed) == (1, None, True)
+
+
+@pytest.mark.parametrize(
+    "claimed_code",
+    [
+        CodeFailureCode.SANDBOX_ERROR,
+        CodeFailureCode.UNSAFE_TO_RUN,
+        CodeFailureCode.EXECUTION_TIMEOUT,
+        CodeFailureCode.RESULT_TIMEOUT,
+    ],
+)
+async def test_a_failure_the_wrapper_cant_report_counts_as_the_code_exiting(
+    tmp_path, warning_logs, claimed_code
+):
+    claimed = CodeFailure(code=claimed_code, detail="Server error (reference: 0a1b2c3d4e5f).")
+    context = exited_context(tmp_path, stderr="forged", failure_file=claimed.model_dump_json())
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    assert context.failure == CodeFailure(code="code_exited", detail=exited_text(1))
+    assert context.stderr == f"forged\n{exited_text(1)}"
+    assert context.reference is None
+    assert any(claimed_code.value in line for line in warning_logs)
+
+
+@pytest.mark.parametrize(
+    "failure_file",
+    [
+        None,
+        "{not json",
+        '{"code": "user_code_error", "detail": "ValueError: bad"}',
+        "x" * (256 * 1024),
+    ],
+    ids=["missing", "garbage", "invalid", "oversized"],
+)
+async def test_a_failure_file_that_cant_be_used_counts_as_the_code_exiting(
+    tmp_path, failure_file
+):
+    context = exited_context(tmp_path, returncode=3, failure_file=failure_file)
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    assert context.failure == CodeFailure(code="code_exited", detail=exited_text(3))
+    assert context.stderr == exited_text(3)
+    assert (context.returncode, context.completed) == (3, True)
+
+
+async def test_a_failure_file_replaced_by_a_symlink_is_not_read(tmp_path, warning_logs):
+    outside = tmp_path / "outside.json"
+    outside.write_text(USER_CODE_FAILURE.model_dump_json(), encoding="utf-8")
+    context = exited_context(tmp_path)
+    context.failure_file_path.symlink_to(outside)
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    assert context.failure.code == "code_exited"
+    assert not any(str(outside) in line for line in warning_logs)
+
+
+async def test_a_failure_file_replaced_by_a_fifo_is_not_waited_on(tmp_path):
+    context = exited_context(tmp_path)
+    os.mkfifo(context.failure_file_path)
+
+    await asyncio.wait_for(CaptureResultStep(max_bytes=MAX_BYTES)(context), timeout=5)
+
+    assert context.failure.code == "code_exited"
+
+
+@pytest.mark.parametrize(
+    ("returncode", "expected_detail"),
+    [
+        (
+            3,
+            "The code exited with code 3 before it returned a result. Its error output may "
+            "say why.",
+        ),
+        (
+            -9,
+            "The code was stopped before it returned a result, most likely because it used "
+            "too much memory.",
+        ),
+        *[
+            (
+                returncode,
+                "The code crashed before it returned a result, most likely inside a library "
+                "it uses.",
+            )
+            for returncode in (-11, -7, -6, -4, -8)
+        ],
+        (
+            -15,
+            "The code was stopped by the system before it returned a result (SIGTERM).",
+        ),
+    ],
+    ids=["exit-code", "killed", "SIGSEGV", "SIGBUS", "SIGABRT", "SIGILL", "SIGFPE", "other"],
+)
+async def test_a_run_that_ended_without_reporting_why_says_how_it_ended(
+    tmp_path, returncode, expected_detail
+):
+    context = exited_context(tmp_path, returncode=returncode)
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    assert (context.failure.code, context.failure.detail) == ("code_exited", expected_detail)
+
+
+async def test_a_timed_out_run_keeps_the_failure_the_launch_step_recorded(tmp_path):
+    timeout = CodeFailure(code=CodeFailureCode.EXECUTION_TIMEOUT, detail="ran too long")
+    # The wrapper may have written a failure before it was killed; the timeout stands.
+    context = exited_context(
+        tmp_path, returncode=124, stderr="ran too long", failure_file=USER_CODE_FAILURE.model_dump_json()
+    )
+    context.failure = timeout
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    assert context.failure == timeout
+    assert (context.stderr, context.completed) == ("ran too long", True)
+
+
+async def test_the_users_own_exit_with_the_timeout_code_counts_as_the_code_exiting(tmp_path):
+    context = exited_context(tmp_path, returncode=124)
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    assert context.failure == CodeFailure(code="code_exited", detail=exited_text(124))
+
+
+async def test_a_real_failing_run_carries_the_wrappers_failure(tmp_path):
+    context = await run_wrapped_then_capture(
+        tmp_path, "def main():\n    raise ValueError('bad input')", tmp_path / "output.txt"
+    )
+
+    assert context.failure == USER_CODE_FAILURE
+    assert context.stderr == "ValueError on line 2: bad input\n"
+
+
+async def test_a_real_run_that_exits_on_its_own_counts_as_the_code_exiting(tmp_path):
+    context = await run_wrapped_then_capture(
+        tmp_path, "import sys\n\ndef main():\n    sys.exit(3)", tmp_path / "output.txt"
+    )
+
+    assert context.failure == CodeFailure(code="code_exited", detail=exited_text(3))
+
+
+async def test_a_real_run_that_exits_with_a_message_carries_it_as_a_user_error(tmp_path):
+    context = await run_wrapped_then_capture(
+        tmp_path,
+        "import sys\n\ndef main():\n    sys.exit('Missing API key')",
+        tmp_path / "output.txt",
+    )
+
+    assert context.failure == CodeFailure(
+        code="user_code_error",
+        detail="SystemExit on line 4: Missing API key",
+        user_error=UserCodeError(exception_type="SystemExit", line=4, message="Missing API key"),
+    )
+    assert context.stderr == "SystemExit on line 4: Missing API key\n"
 
 
 async def test_a_result_file_replaced_by_a_symlink_fails_the_run_without_reading_it(
@@ -196,7 +411,8 @@ async def test_the_users_own_exit_with_the_write_failure_code_is_an_ordinary_fai
 
     assert context.completed is True
     assert context.returncode == RESULT_WRITE_FAILED_EXIT_CODE
-    assert context.stderr == user_stderr
+    assert context.stderr == f"{user_stderr}\n{exited_text(RESULT_WRITE_FAILED_EXIT_CODE)}"
+    assert context.failure.code == "code_exited"
     assert context.result_data is None
     assert error_logs == []
 
@@ -223,6 +439,7 @@ async def run_wrapped_then_capture(tmp_path, code: str, result_file_path: Path):
         make_worker_job(code=code),
         code_path=tmp_path / "code.py",
         result_file_path=result_file_path,
+        failure_file_path=tmp_path / "failure.json",
     )
     await WrapCodeStep()(context)
     completed = subprocess.run(
@@ -254,7 +471,8 @@ async def test_real_code_exiting_with_the_write_failure_code_keeps_its_stderr(
     context = await run_wrapped_then_capture(tmp_path, code, tmp_path / "output.txt")
 
     assert context.returncode == RESULT_WRITE_FAILED_EXIT_CODE
-    assert context.stderr == "diagnostics\n"
+    assert context.stderr == f"diagnostics\n\n{exited_text(RESULT_WRITE_FAILED_EXIT_CODE)}"
+    assert context.failure.code == "code_exited"
     assert error_logs == []
 
 
@@ -270,6 +488,8 @@ async def test_a_real_unwritable_result_file_is_reported_without_its_path(tmp_pa
     assert "missing-directory" not in context.stderr
     reference = reference_in(SERVER_ERROR, public_text)
     assert "missing-directory" in logged_with(reference, error_logs)
+    assert (context.failure.code, context.failure.detail) == ("sandbox_error", public_text)
+    assert context.reference == reference
 
 
 async def test_a_result_over_the_cap_fails_without_naming_the_cap(tmp_path):
@@ -283,6 +503,8 @@ async def test_a_result_over_the_cap_fails_without_naming_the_cap(tmp_path):
     assert context.completed is True
     assert context.returncode == 1
     assert context.stderr == "The function's return value is too big to save. Return less data."
+    assert (context.failure.code, context.failure.detail) == ("result_too_large", context.stderr)
+    assert context.reference is None
 
 
 async def test_a_result_exactly_at_the_cap_is_read(tmp_path):

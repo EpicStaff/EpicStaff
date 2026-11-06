@@ -317,7 +317,7 @@ async def test_empty_query_tells_the_user_how_to_fix_it_without_searching(
     )
     assert details == [expected]
     assert error.public_message == expected
-    assert error.correlation_id is None
+    assert error.reference is None
     assert CountingKnowledgeClient.searches == 0
 
 
@@ -359,7 +359,7 @@ async def test_failed_search_shows_a_reference_and_logs_the_raw_error_under_it(
     )
     assert details == [expected]
     assert error.public_message == expected
-    assert error.correlation_id == reference
+    assert error.reference == reference
     reference_logs = [record for record in captured_error_logs if reference in record]
     assert len(reference_logs) == 1
     assert logged_error in reference_logs[0]

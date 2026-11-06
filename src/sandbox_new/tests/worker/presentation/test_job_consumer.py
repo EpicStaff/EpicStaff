@@ -137,6 +137,8 @@ async def test_an_expired_job_is_failed_without_waiting_for_a_slot(
 
     result = runtime.results()["exec-1"]
     assert result.stderr == EXPIRED_MESSAGE
+    assert (result.failure.code, result.failure.detail) == ("overloaded", EXPIRED_MESSAGE)
+    assert result.reference is None
     assert result.returncode == 1
     assert result.ran is False
     assert result.reply_to_crew_channel is True
@@ -200,8 +202,9 @@ async def test_a_run_that_raises_is_failed_and_frees_its_slot(result_sink, clock
     assert "exec-1" in logged_with(reference, error_logs)
     assert results["exec-1"].returncode == 1
     assert results["exec-1"].ran is False
-    # A plain failed run, not an overload: no reason, so it is published as "failed".
-    assert (results["exec-1"].session_id, results["exec-1"].not_run_reason) == (3, None)
+    # The sandbox's own failure, not an overload, cited by the reference it carries.
+    assert results["exec-1"].failure.code == "sandbox_error"
+    assert (results["exec-1"].reference, results["exec-1"].session_id) == (reference, 3)
     assert results["exec-2"].ran is True
 
 
@@ -220,7 +223,8 @@ async def test_an_undecodable_job_is_failed_and_the_loop_goes_on(result_sink, cl
     assert results["exec-bad"].returncode == 1
     assert results["exec-bad"].ran is False
     assert results["exec-bad"].reply_to_crew_channel is True
-    assert (results["exec-bad"].session_id, results["exec-bad"].not_run_reason) == (5, None)
+    assert results["exec-bad"].failure.code == "sandbox_error"
+    assert (results["exec-bad"].reference, results["exec-bad"].session_id) == (reference, 5)
     assert runtime.executed == ["exec-2"]
 
 

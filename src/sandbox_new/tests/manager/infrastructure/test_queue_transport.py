@@ -12,6 +12,8 @@ from common.contracts import (
     ExecutionResultMessage,
     StorageCredentialsMessage,
 )
+from src.shared.models.code_failure import CodeFailure
+
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
@@ -77,14 +79,17 @@ async def test_dispatch_does_not_put_the_venv_id_on_the_wire():
     assert "venv_id" not in queue.get_nowait().model_dump()
 
 
+VENV_FAILURE = CodeFailure(code="package_install_failed", detail="the venv failed to build")
+
+
 async def test_the_failure_sink_produces_a_failed_result_message():
     queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
 
     await QueueJobFailureSink(queue).fail(
         "exec-9",
-        "the venv failed to build",
+        VENV_FAILURE,
+        reference="0a1b2c3d4e5f",
         session_id=11,
-        not_run_reason="venv_failed",
         reply_to_crew_channel=False,
     )
 
@@ -95,7 +100,7 @@ async def test_the_failure_sink_produces_a_failed_result_message():
     assert message.result is None
     assert message.ran is False
     assert message.session_id == 11
-    assert message.not_run_reason == "venv_failed"
+    assert (message.failure, message.reference) == (VENV_FAILURE, "0a1b2c3d4e5f")
 
 
 async def test_exec_queued_reports_the_queue_depth_the_job_joined_at(checkpoints):
@@ -124,9 +129,9 @@ async def test_a_job_that_never_ran_keeps_the_crew_reply_flag_on_its_failed_resu
 
     await QueueJobFailureSink(queue).fail(
         "exec-9",
-        "the venv failed to build",
+        VENV_FAILURE,
+        reference=None,
         session_id=11,
-        not_run_reason="venv_failed",
         reply_to_crew_channel=True,
     )
 

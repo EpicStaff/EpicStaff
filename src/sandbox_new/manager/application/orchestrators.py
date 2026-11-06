@@ -8,13 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import settings
-from common.public_errors import (
-    SandboxFailureMessage,
-    log_sandbox_failure,
-    public_failure_text,
-)
+from common.public_errors import log_sandbox_failure, sandbox_failure
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode
 
 from manager.application.errors import VenvNotFoundError
 from manager.application.holding import JobHoldingRegistry
@@ -34,7 +31,6 @@ from manager.application.ports.errors import (
 from manager.application.registry import ExecutionRegistry
 from manager.domain.enums import ExecutionStatus, VenvBuildErrorKind, VenvOrder, VenvStatus
 from manager.domain.models import Job, Library, StorageCredentials, Venv
-from manager.domain.types import NotRunReason
 
 _VENV_BUILD_FAILED_MESSAGE = "Couldn't install the libraries: {error}"
 _HOLD_TIMED_OUT_MESSAGE = "The libraries are still being installed. Try again in a minute."
@@ -330,7 +326,7 @@ class JobOrchestrator:
 
         if venv.status is VenvStatus.FAILED:
             logger.warning("Execution {} rejected: venv {} failed to build", execution_id, venv.id)
-            await self._fail(job, _venv_build_failed_message(venv), not_run_reason="venv_failed")
+            await self._fail(job, _venv_build_failure(venv))
         elif venv.status is VenvStatus.COMPLETED:
             await self._dispatch(job)
         else:
@@ -361,16 +357,18 @@ class JobOrchestrator:
         """
         for job in self.holding.release_overdue(self.clock()):
             logger.warning("Execution {} held past its hold deadline; not run", job.execution_id)
-            await self._fail(job, _HOLD_TIMED_OUT_MESSAGE, not_run_reason="hold_timeout")
+            await self._fail(
+                job, CodeFailure(code=CodeFailureCode.HOLD_TIMEOUT, detail=_HOLD_TIMED_OUT_MESSAGE)
+            )
 
         for venv_id in self.holding.pending_venv_ids():
             async with self.uow:
                 venv = await self.uow.venv_repo.retrieve(venv_id)
 
             if venv is None or venv.status is VenvStatus.FAILED:
-                message = _venv_build_failed_message(venv)
+                failure = _venv_build_failure(venv)
                 for job in self.holding.release(venv_id):
-                    await self._fail(job, message, not_run_reason="venv_failed")
+                    await self._fail(job, failure)
                 continue
 
             if venv.status is VenvStatus.COMPLETED:
@@ -399,15 +397,15 @@ class JobOrchestrator:
                 f"Failed to dispatch the job: {type(error).__name__}",
                 execution_id=job.execution_id,
             )
-            message = public_failure_text(SandboxFailureMessage.SERVER_ERROR, reference)
-            await self._fail(job, message, not_run_reason="dispatch_failed")
+            failure = sandbox_failure(CodeFailureCode.DISPATCH_FAILED, reference)
+            await self._fail(job, failure, reference=reference)
 
-    async def _fail(self, job: Job, message: str, *, not_run_reason: NotRunReason) -> None:
+    async def _fail(self, job: Job, failure: CodeFailure, reference: str | None = None) -> None:
         await self.failure_sink.fail(
             job.execution_id,
-            message,
+            failure,
+            reference=reference,
             session_id=job.session_id,
-            not_run_reason=not_run_reason,
             reply_to_crew_channel=job.reply_to_crew_channel,
         )
 
@@ -422,13 +420,20 @@ class JobOrchestrator:
         return venv
 
 
-def _venv_build_failed_message(venv: Venv | None) -> str:
-    """The text a job gets when its venv failed to build, or vanished while it was held.
+def _venv_build_failure(venv: Venv | None) -> CodeFailure:
+    """The failure a job gets when its venv failed to build, or vanished while it was held.
 
-    Only an error whose kind says it names what the user declared is quoted; any other
-    failure, and one stored before kinds were, gets the generic hint.
+    The code is the build error's kind. Only an error whose kind says it names what the
+    user declared is quoted; any other failure, and one stored before kinds were, gets the
+    generic hint, and a failure with no kind, or a vanished venv, the generic code.
     """
-    detail = venv.build_error_detail if venv is not None else None
-    if detail is not None:
-        return _VENV_BUILD_FAILED_MESSAGE.format(error=detail)
-    return EnvironmentBuildError.default_message
+    kind = venv.error_kind if venv is not None else None
+    code = (
+        CodeFailureCode(kind.value) if kind is not None else CodeFailureCode.PACKAGE_INSTALL_FAILED
+    )
+    error = venv.build_error_detail if venv is not None else None
+    if error is not None:
+        detail = _VENV_BUILD_FAILED_MESSAGE.format(error=error)
+    else:
+        detail = EnvironmentBuildError.default_message
+    return CodeFailure(code=code, detail=detail)

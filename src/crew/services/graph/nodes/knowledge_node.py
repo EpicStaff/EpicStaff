@@ -128,7 +128,7 @@ class KnowledgeNode(BaseNode):
                 f'Knowledge Retriever node "{self.node_label}" '
                 "couldn't search its collection. "
                 f"Try again or contact your administrator (reference: {reference}).",
-                correlation_id=reference,
+                reference=reference,
             ) from e
 
         if not results:

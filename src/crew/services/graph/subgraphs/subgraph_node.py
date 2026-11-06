@@ -17,8 +17,8 @@ from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.exceptions import NodeExecutionError, SubflowPathError
 from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
 from src.shared.models.storage_scope import StorageCredentials
+from src.shared.runtime_node_name import parse_runtime_node_label
 from utils import map_variables_to_input
-from utils.node_label import node_label_from_runtime_name
 from utils.set_output_variables import set_output_variables
 
 
@@ -181,7 +181,7 @@ class SubGraphNode:
     @property
     def node_label(self) -> str:
         """The node's label as the user sees it on the canvas, e.g. "Run B #1"."""
-        return node_label_from_runtime_name(self.node_name)
+        return parse_runtime_node_label(self.node_name)
 
     def _raise_failure(
         self,
@@ -197,9 +197,9 @@ class SubGraphNode:
         """
         if isinstance(error, SubflowPathError):
             public_message = str(error)
-            correlation_id = None
+            reference = None
         else:
-            correlation_id = log_with_reference(
+            reference = log_with_reference(
                 "Subflow node failed: {error} (session_id={session_id}, node_name={node_name})",
                 error=str(error),
                 session_id=self.session_id,
@@ -208,7 +208,7 @@ class SubGraphNode:
             )
             public_message = (
                 f'Subflow node "{self.node_label}" couldn\'t {phase} {self._flow_description()}. '
-                f"Try again or contact your administrator (reference: {correlation_id})."
+                f"Try again or contact your administrator (reference: {reference})."
             )
         self.custom_session_message_writer.add_error_message(
             session_id=self.session_id,
@@ -218,7 +218,7 @@ class SubGraphNode:
             node_type=self.TYPE,
             public_details=public_message,
         )
-        raise NodeExecutionError(public_message, correlation_id=correlation_id) from error
+        raise NodeExecutionError(public_message, reference=reference) from error
 
     def _flow_description(self) -> str:
         # The flow is missing from the session data when it was deleted or never sent.

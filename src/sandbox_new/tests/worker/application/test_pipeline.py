@@ -6,7 +6,7 @@ failure is the sandbox's own, so the user sees a generic server error and the ra
 detail is only logged, under the reference the user's text cites.
 """
 
-from common.public_errors import SandboxFailureMessage
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode
 
 from worker.application.context import ExecutionContext, fail_on_sandbox_error
 from worker.application.pipeline import Pipeline
@@ -60,6 +60,8 @@ async def test_a_raising_step_becomes_a_failed_outcome_showing_only_a_reference(
     assert context.completed is True
     assert context.returncode == 1
     reference = reference_in(SERVER_ERROR, context.stderr)
+    assert (context.failure.code, context.failure.detail) == ("sandbox_error", context.stderr)
+    assert context.reference == reference
     log_line = logged_with(reference, error_logs)
     assert "exec-7" in log_line
     assert "step blew up at /srv/internal with SANDBOX_SETTING=1" in log_line
@@ -118,36 +120,52 @@ def test_every_sandbox_failure_gets_its_own_reference():
 def test_a_sandbox_failure_keeps_the_output_the_child_already_wrote():
     context = make_context(stderr="child wrote this")
 
-    fail_on_sandbox_error(context, "boom", public_message=SandboxFailureMessage.UNSAFE_TO_RUN)
+    fail_on_sandbox_error(context, "boom", code=CodeFailureCode.UNSAFE_TO_RUN)
 
     child_output, public_text = context.stderr.split("\n")
     assert child_output == "child wrote this"
-    reference_in(UNSAFE_TO_RUN, public_text)
+    assert context.reference == reference_in(UNSAFE_TO_RUN, public_text)
+    assert (context.failure.code, context.failure.detail) == ("unsafe_to_run", public_text)
 
 
-def test_fail_appends_to_an_existing_stderr():
+def _failure(detail: str) -> CodeFailure:
+    return CodeFailure(code=CodeFailureCode.RESULT_TOO_LARGE, detail=detail)
+
+
+def test_fail_appends_the_detail_to_an_existing_stderr():
     context = make_context(stderr="child wrote this")
 
-    context.fail("and then the step blew up")
+    context.fail(_failure("and then the step blew up"))
 
     assert context.stderr == "child wrote this\nand then the step blew up"
+    assert (context.returncode, context.completed) == (1, True)
+    assert context.failure == _failure("and then the step blew up")
 
 
 def test_fail_on_an_empty_stderr_does_not_add_a_leading_newline():
     context = make_context()
 
-    context.fail("step blew up")
+    context.fail(_failure("step blew up"))
 
     assert context.stderr == "step blew up"
 
 
-def test_fail_accepts_a_custom_return_code():
+def test_fail_accepts_a_custom_return_code_and_a_reference():
     context = make_context()
 
-    context.fail("timed out", returncode=124)
+    context.fail(_failure("timed out"), reference="0a1b2c3d4e5f", returncode=124)
 
-    assert context.returncode == 124
-    assert context.completed is True
+    assert (context.returncode, context.reference, context.completed) == (124, "0a1b2c3d4e5f", True)
+
+
+def test_recording_a_failure_leaves_the_run_open():
+    context = make_context(stderr="partial output")
+
+    context.record_failure(_failure("timed out"))
+
+    assert context.stderr == "partial output\ntimed out"
+    assert context.failure == _failure("timed out")
+    assert (context.returncode, context.completed) == (None, False)
 
 
 def test_complete_does_not_invent_a_return_code():

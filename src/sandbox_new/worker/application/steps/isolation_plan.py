@@ -9,8 +9,8 @@ returned, never raised. A refusal names the kernel requirement and the setting t
 lifts it; that goes to the log, and the user sees a fixed text citing its reference.
 """
 
-from common.public_errors import SandboxFailureMessage
 from loguru import logger
+from src.shared.models.code_failure import CodeFailureCode
 
 from worker.application.context import ExecutionContext, fail_on_sandbox_error
 from worker.application.ports.isolation_probe import AbstractIsolationProbe
@@ -113,4 +113,4 @@ class BuildIsolationPlan:
 
     @staticmethod
     def _refuse(context: ExecutionContext, detail: str) -> None:
-        fail_on_sandbox_error(context, detail, public_message=SandboxFailureMessage.UNSAFE_TO_RUN)
+        fail_on_sandbox_error(context, detail, code=CodeFailureCode.UNSAFE_TO_RUN)

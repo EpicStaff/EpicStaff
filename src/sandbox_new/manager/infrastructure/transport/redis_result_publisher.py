@@ -1,12 +1,13 @@
 """Publishes finished executions to Redis for the producers to consume.
 
-Results go to the result channel in the shape the existing consumers already read
-(``result_data``/``stdout``/``stderr``/``returncode``), so no consumer-side change is
-needed. A result whose job asked for it goes to crew's own result channel instead, so
-crew never has to sift through results meant for django_app, agent or realtime. Both
-channel names are configured here from the sandbox's own settings, never taken from a
-submission. Storage mutations, when present, go to their own channel as the mutation
-event the storage consumer expects, whichever result channel was used.
+Results go to the result channel as the shared ``CodeResultData``: the fields the
+existing consumers already read (``result_data``/``stdout``/``stderr``/``returncode``),
+plus ``failure`` and ``reference``, which a consumer that doesn't know them ignores. A
+result whose job asked for it goes to crew's own result channel instead, so crew never
+has to sift through results meant for django_app, agent or realtime. Both channel names
+are configured here from the sandbox's own settings, never taken from a submission.
+Storage mutations, when present, go to their own channel as the mutation event the
+storage consumer expects, whichever result channel was used.
 """
 
 import json
@@ -15,6 +16,7 @@ from common.contracts import ExecutionResultMessage
 from loguru import logger
 from redis.asyncio import Redis
 from src.shared.bench_log import BENCH_LEVEL
+from src.shared.models.tools import CodeResultData
 
 from manager.infrastructure.transport.result_publisher import AbstractResultPublisher
 
@@ -36,24 +38,26 @@ class RedisResultPublisher(AbstractResultPublisher):
         self._mutation_channel = mutation_channel
 
     async def publish(self, result: ExecutionResultMessage) -> None:
-        payload = {
-            "execution_id": result.execution_id,
-            "result_data": result.result,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode,
-        }
+        payload = CodeResultData(
+            execution_id=result.execution_id,
+            result_data=result.result,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            returncode=result.returncode,
+            failure=result.failure,
+            reference=result.reference,
+        )
         channel = (
             self._crew_result_channel if result.reply_to_crew_channel else self._result_channel
         )
-        await self._redis.publish(channel, json.dumps(payload))
+        await self._redis.publish(channel, payload.model_dump_json())
         logger.log(
             BENCH_LEVEL,
             "bench {checkpoint}",
             checkpoint="exec_published",
             session_id=result.session_id,
             execution_id=result.execution_id,
-            outcome=result.not_run_reason or ("ok" if result.returncode == 0 else "failed"),
+            outcome="ok" if result.failure is None else result.failure.code.value,
         )
 
         if result.mutations is not None and result.mutations.mutations:

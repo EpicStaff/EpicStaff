@@ -49,6 +49,7 @@ async def test_the_workspace_paths_are_recorded_on_the_context(tmp_path):
     assert context.work_dir == exec_dir / "work"
     assert context.code_path == exec_dir / "code.py"
     assert context.result_file_path == exec_dir / "output.txt"
+    assert context.failure_file_path == exec_dir / "failure.json"
 
 
 async def test_the_child_environment_points_home_and_tmp_into_the_workspace(tmp_path):

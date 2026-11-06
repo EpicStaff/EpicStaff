@@ -202,7 +202,7 @@ def make_python_code_data():
 def run_code(run_python_code_service, sandbox: FakeSandbox):
     """Run run_code() and answer the submitted execution with a successful result."""
 
-    async def run(result_data: str = "ok", **run_code_kwargs) -> dict[str, Any]:
+    async def run(result_data: str = "ok", **run_code_kwargs) -> CodeResultData:
         running = asyncio.ensure_future(run_python_code_service.run_code(**run_code_kwargs))
         [task] = await sandbox.wait_for_tasks(1)
         await sandbox.reply(task["execution_id"], result_data=result_data)

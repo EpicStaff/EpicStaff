@@ -21,6 +21,7 @@ async def test_the_wrap_step_writes_source_that_compiles_to_the_code_file(tmp_pa
         ),
         code_path=tmp_path / "code.py",
         result_file_path=tmp_path / "output.txt",
+        failure_file_path=tmp_path / "failure.json",
         storage_mutations_path=tmp_path / "storage_mutations.json" if use_storage else None,
     )
 
@@ -36,6 +37,7 @@ async def test_each_run_gets_its_own_result_write_marker(tmp_path):
             make_worker_job(),
             code_path=tmp_path / f"{run}.py",
             result_file_path=tmp_path / f"{run}-output.txt",
+            failure_file_path=tmp_path / f"{run}-failure.json",
         )
 
         await WrapCodeStep()(context)

@@ -158,7 +158,7 @@ class DecisionTableNodeSubgraph:
             code=code,
             entrypoint="main",
         )
-        python_code_execution_data: dict = await self.run_code_execution_service.run_code(
+        python_code_execution_data = await self.run_code_execution_service.run_code(
             python_code_data=python_code_data,
             inputs={"variables": state["variables"].model_dump()},
             stop_event=self.stop_event,
@@ -167,20 +167,20 @@ class DecisionTableNodeSubgraph:
 
         logger.debug(
             "Manipulation finished: execution_id={} returncode={}",
-            python_code_execution_data["execution_id"],
-            python_code_execution_data["returncode"],
+            python_code_execution_data.execution_id,
+            python_code_execution_data.returncode,
         )
         check_code_ran(python_code_execution_data, condition_subject(condition_name))
-        if python_code_execution_data["returncode"] != 0:
+        if python_code_execution_data.failure is not None:
             raise manipulation_error(
-                condition_name, python_code_execution_data["stderr"], [manipulation_part]
+                condition_name, python_code_execution_data.failure, [manipulation_part]
             )
 
         try:
-            variables = json.loads(python_code_execution_data["result_data"])
+            variables = json.loads(python_code_execution_data.result_data)
         except (TypeError, ValueError) as error:
             raise unreadable_result_error(
-                condition_subject(condition_name), python_code_execution_data["result_data"]
+                condition_subject(condition_name), python_code_execution_data.result_data
             ) from error
         state["variables"].update(variables)
 
@@ -191,7 +191,7 @@ class DecisionTableNodeSubgraph:
         state: State,
     ) -> bool:
         subject = condition_subject(condition_name)
-        python_code_execution_data: dict = await self.run_code_execution_service.run_code(
+        python_code_execution_data = await self.run_code_execution_service.run_code(
             python_code_data=PythonCodeData(code=_EVALUATE_CONDITION_CODE, entrypoint="main"),
             # Stripped: unlike the assignment it used to be pasted into, compile() in "eval"
             # mode rejects leading spaces.
@@ -203,12 +203,12 @@ class DecisionTableNodeSubgraph:
             storage_credentials=self.storage_credentials,
         )
         check_code_ran(python_code_execution_data, subject)
-        if python_code_execution_data["returncode"] != 0:
+        if python_code_execution_data.failure is not None:
             # The evaluation reports the expression's own errors in its result, so this is
             # the sandbox stopping the code, e.g. at its time limit.
-            raise DecisionTableError(f"{subject}: {python_code_execution_data['stderr'].strip()}")
+            raise DecisionTableError(f"{subject}: {python_code_execution_data.failure.detail}")
 
-        result_data = python_code_execution_data["result_data"]
+        result_data = python_code_execution_data.result_data
         try:
             evaluation = json.loads(result_data)
             failure = ConditionFailure.from_result(evaluation["error"])
@@ -227,7 +227,7 @@ class DecisionTableNodeSubgraph:
         writer: StreamWriter,
         error: Exception,
         public_message: str,
-        correlation_id: str | None,
+        reference: str | None,
     ) -> None:
         """Show the error, then take the error route, or fail the session if there is none.
 
@@ -246,7 +246,7 @@ class DecisionTableNodeSubgraph:
         await self._publish_message(msg)
         next_error_node = self.decision_table_node_data.next_error_node
         if next_error_node is None:
-            raise NodeExecutionError(public_message, correlation_id=correlation_id) from error
+            raise NodeExecutionError(public_message, reference=reference) from error
         decision_node_variables = state["system_variables"]["nodes"][self.node_name]
         decision_node_variables["result_node"] = next_error_node
         decision_node_variables["next_node"] = END
@@ -412,7 +412,7 @@ class DecisionTableNodeSubgraph:
                     raise
                 except DecisionTableError as error:
                     logger.warning("Decision table '{}' failed: {}", self.node_name, error)
-                    await self._fail(state, writer, error, str(error), error.correlation_id)
+                    await self._fail(state, writer, error, str(error), error.reference)
                 except Exception as error:
                     # The exception text can quote variables or code, so it stays in the
                     # log; the user sees a reference to that log line.

@@ -4,7 +4,7 @@ Every test runs the generated source in a real Python subprocess -- the same thi
 launch step does, minus the isolation -- with the shared ``dotdict`` and
 ``epicstaff_secrets`` packages importable, the way every sandbox venv has them. The
 assertions are on the outcome only: the exit code, the one line on stderr, the result
-file and what the code printed.
+and failure files and what the code printed.
 """
 
 import json
@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 import settings
+from src.shared.models.code_failure import CodeFailure, describe_user_code_error
 
 from worker.infrastructure.execution.code_wrapper import RESULT_WRITE_FAILED_EXIT_CODE, wrap_code
 
@@ -28,6 +29,8 @@ class Run:
     stdout: str
     stderr: str
     result: object
+    # The failure file, parsed the way the capture step parses it; None when there is none.
+    failure: CodeFailure | None
 
 
 def run(
@@ -37,12 +40,16 @@ def run(
     entrypoint="main",
     func_kwargs=None,
     result_file: Path | None = None,
+    failure_file: Path | None = None,
+    network_block_mode: str | None = None,
     **overrides,
 ) -> Run:
     result_file = result_file or tmp_path / "output.txt"
+    failure_file = failure_file or tmp_path / "failure.json"
     source = wrap_code(
         code=code,
         result_file_path=result_file,
+        failure_file_path=failure_file,
         entrypoint=entrypoint,
         func_kwargs=func_kwargs if func_kwargs is not None else {},
         result_write_marker=MARKER,
@@ -56,6 +63,8 @@ def run(
         "PYTHONIOENCODING": "utf-8",
     }
     environment.pop("SANDBOX_NETWORK_BLOCKED", None)
+    if network_block_mode is not None:
+        environment["SANDBOX_NETWORK_BLOCKED"] = network_block_mode
     completed = subprocess.run(
         [sys.executable, str(code_file)],
         capture_output=True,
@@ -66,7 +75,12 @@ def run(
         timeout=60,
     )
     result = json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else None
-    return Run(completed.returncode, completed.stdout, completed.stderr.strip(), result)
+    failure = (
+        CodeFailure.model_validate_json(failure_file.read_text(encoding="utf-8"))
+        if failure_file.exists()
+        else None
+    )
+    return Run(completed.returncode, completed.stdout, completed.stderr.strip(), result, failure)
 
 
 def test_the_return_value_is_written_to_the_result_file(tmp_path):
@@ -360,7 +374,8 @@ def test_names_the_users_code_rebinds_dont_change_the_outcome(
         "__sys_fail = None",
         "__sys_stderr = None",
         "__sys_builtins = None",
-        "__sys_error_message = None\n__sys_failure_message = None",
+        "__sys_error_message = None\n__sys_failure = None\n__sys_error_parts = None\n"
+        "__sys_describe_error = None\n__sys_exit_with_line = None",
     ],
     ids=["exit", "fail", "stderr", "builtins", "message-functions"],
 )
@@ -560,6 +575,7 @@ def test_a_network_denial_keeps_its_policy_message(tmp_path, monkeypatch, mode, 
     source = wrap_code(
         code=code,
         result_file_path=tmp_path / "output.txt",
+        failure_file_path=tmp_path / "failure.json",
         entrypoint="main",
         func_kwargs={},
         result_write_marker=MARKER,
@@ -598,6 +614,7 @@ def test_a_network_denial_is_recognised_when_the_users_code_rebinds_names_it_use
     source = wrap_code(
         code=code,
         result_file_path=tmp_path / "output.txt",
+        failure_file_path=tmp_path / "failure.json",
         entrypoint="main",
         func_kwargs={},
         result_write_marker=MARKER,
@@ -634,6 +651,7 @@ def test_a_dns_failure_the_users_code_catches_carries_the_policy_message(tmp_pat
     source = wrap_code(
         code=code,
         result_file_path=tmp_path / "output.txt",
+        failure_file_path=tmp_path / "failure.json",
         entrypoint="main",
         func_kwargs={},
         result_write_marker=MARKER,
@@ -680,6 +698,7 @@ def test_storage_mutations_are_written_when_a_path_is_given(tmp_path):
     source = wrap_code(
         code="def main():\n    return 1",
         result_file_path=tmp_path / "output.txt",
+        failure_file_path=tmp_path / "failure.json",
         entrypoint="main",
         func_kwargs={},
         result_write_marker=MARKER,
@@ -708,3 +727,328 @@ def test_no_mutations_file_without_a_mutations_path(tmp_path):
 
     assert outcome.returncode == 0
     assert not (tmp_path / "storage_mutations.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("code", "func_kwargs", "network_block_mode", "expected_code"),
+    [
+        pytest.param(
+            "def main():\n    raise ValueError('bad input')",
+            {},
+            None,
+            "user_code_error",
+            id="user-code-error",
+        ),
+        pytest.param("def main(:\n    return 1", {}, None, "user_code_error", id="syntax-error"),
+        pytest.param(
+            "def handler():\n    return 1", {}, None, "missing_entrypoint", id="entrypoint"
+        ),
+        pytest.param(
+            "def main():\n    return 1",
+            {"city": "Kyiv"},
+            None,
+            "unexpected_argument",
+            id="unexpected-argument",
+        ),
+        pytest.param(
+            "def main(city):\n    return city", {}, None, "missing_argument", id="missing-argument"
+        ),
+        pytest.param("def main():\n    return {1, 2}", {}, None, "bad_return_value", id="return"),
+        pytest.param(
+            "def main():\n    raise PermissionError(errno.EACCES, 'Permission denied')",
+            {},
+            "all",
+            "network_denied",
+            id="network",
+        ),
+    ],
+)
+def test_a_failure_is_reported_in_the_file_as_the_line_it_writes_to_stderr(
+    tmp_path, code, func_kwargs, network_block_mode, expected_code
+):
+    outcome = run(tmp_path, code, func_kwargs=func_kwargs, network_block_mode=network_block_mode)
+
+    assert outcome.returncode == 1
+    assert outcome.failure.code == expected_code
+    assert outcome.failure.detail == outcome.stderr.splitlines()[-1]
+
+
+def test_the_failure_detail_is_the_last_line_after_what_the_users_code_wrote(tmp_path):
+    outcome = run(
+        tmp_path,
+        "import sys\n\ndef main():\n    print('working', file=sys.stderr)\n"
+        "    raise ValueError('bad input')",
+    )
+
+    assert outcome.stderr == "working\nValueError on line 5: bad input"
+    assert outcome.failure.detail == "ValueError on line 5: bad input"
+
+
+@pytest.mark.parametrize(
+    ("code", "exception_type", "line", "message"),
+    [
+        pytest.param(
+            "def main():\n    user = {}\n    return user['email']",
+            "KeyError",
+            3,
+            "key 'email' doesn't exist",
+            id="runtime-error",
+        ),
+        pytest.param(
+            "def main():\n    values = [1, 2]\n    print(values[0]\n    return 1",
+            "SyntaxError",
+            3,
+            "'(' was never closed",
+            id="syntax-error",
+        ),
+        pytest.param(
+            "def main():\n    total = 0\n    assert total > 0",
+            "AssertionError",
+            3,
+            "",
+            id="no-message",
+        ),
+        pytest.param(
+            "import functools\n\nmain = functools.partial(exec, 'raise ValueError(\"inside\")', {})",
+            "ValueError",
+            None,
+            "inside",
+            id="no-line-in-the-users-code",
+        ),
+    ],
+)
+def test_an_error_in_the_users_code_is_reported_in_parts(
+    tmp_path, code, exception_type, line, message
+):
+    outcome = run(tmp_path, code)
+
+    user_error = outcome.failure.user_error
+    assert (user_error.exception_type, user_error.line, user_error.message) == (
+        exception_type,
+        line,
+        message,
+    )
+    assert outcome.failure.detail == describe_user_code_error(exception_type, line, message)
+
+
+@pytest.mark.parametrize(
+    ("code", "func_kwargs", "expected_code", "expected_argument"),
+    [
+        pytest.param(
+            "def main(city):\n    return city",
+            {"city": "Kyiv", "country": "UA"},
+            "unexpected_argument",
+            "country",
+            id="unexpected",
+        ),
+        pytest.param(
+            "def main(city, country):\n    return city",
+            {"city": "Kyiv"},
+            "missing_argument",
+            "country",
+            id="missing",
+        ),
+        pytest.param(
+            "def main(*, city):\n    return city",
+            {},
+            "missing_argument",
+            "city",
+            id="missing-keyword-only",
+        ),
+        pytest.param(
+            # Python reports an argument it doesn't take before one it misses.
+            "def main(city):\n    return city",
+            {"country": "UA"},
+            "unexpected_argument",
+            "country",
+            id="unexpected-before-missing",
+        ),
+        pytest.param(
+            "def main(city, /):\n    return city",
+            {"city": "Kyiv"},
+            "unexpected_argument",
+            "city",
+            id="positional-only-given-by-name",
+        ),
+        pytest.param(
+            # Extra arguments land in **kwargs; a required one can still be missing.
+            "def main(city, **rest):\n    return city",
+            {"country": "UA"},
+            "missing_argument",
+            "city",
+            id="kwargs-takes-extras",
+        ),
+        pytest.param(
+            "class Main:\n    def __init__(self, city):\n        self.city = city\n\nmain = Main",
+            {"country": "UA"},
+            "unexpected_argument",
+            "country",
+            id="class-entrypoint",
+        ),
+    ],
+)
+def test_an_argument_the_entrypoint_cant_take_or_misses_is_named(
+    tmp_path, code, func_kwargs, expected_code, expected_argument
+):
+    outcome = run(tmp_path, code, func_kwargs=func_kwargs)
+
+    assert outcome.returncode == 1
+    assert (outcome.failure.code, outcome.failure.attr) == (expected_code, expected_argument)
+    assert outcome.failure.detail == outcome.stderr
+    assert outcome.stderr.startswith("TypeError: ")
+
+
+@pytest.mark.parametrize(
+    ("code", "func_kwargs"),
+    [
+        pytest.param(
+            "def main(city):\n    return len(city, 2)",
+            {"city": "Kyiv"},
+            id="raised-inside-the-function",
+        ),
+        pytest.param(
+            "def check(value):\n    return value\n\ndef main(**kwargs):\n    return check(**kwargs)",
+            {"value": 1, "extra": 2},
+            id="raised-calling-the-users-own-helper",
+        ),
+        pytest.param("main = max", {"city": "Kyiv"}, id="signature-unreadable"),
+    ],
+)
+def test_a_type_error_that_isnt_the_entrypoints_arguments_stays_a_user_code_error(
+    tmp_path, code, func_kwargs
+):
+    outcome = run(tmp_path, code, func_kwargs=func_kwargs)
+
+    assert outcome.failure.code == "user_code_error"
+    assert outcome.failure.attr is None
+    assert outcome.failure.user_error.exception_type == "TypeError"
+
+
+def test_a_successful_run_leaves_no_failure_file(tmp_path):
+    outcome = run(tmp_path, "def main():\n    return 1")
+
+    assert (outcome.returncode, outcome.failure) == (0, None)
+
+
+def test_a_result_file_that_cannot_be_written_leaves_no_failure_file(tmp_path):
+    outcome = run(
+        tmp_path,
+        "def main():\n    return 1",
+        result_file=tmp_path / "missing-directory" / "output.txt",
+    )
+
+    assert outcome.returncode == RESULT_WRITE_FAILED_EXIT_CODE
+    assert outcome.failure is None
+
+
+def test_the_users_own_exit_leaves_no_failure_file(tmp_path):
+    outcome = run(tmp_path, "import sys\n\ndef main():\n    sys.exit(3)")
+
+    assert (outcome.returncode, outcome.failure) == (3, None)
+
+
+@pytest.mark.parametrize(
+    "rebinding",
+    [
+        "json = None",
+        "def open(*args, **kwargs):\n    raise RuntimeError('mine')",
+        "__sys_json_dumps = None\n__sys_failure_file_path = 'elsewhere.json'",
+    ],
+    ids=["json", "open", "wrappers-own-names"],
+)
+def test_names_the_users_code_rebinds_dont_stop_the_failure_file(tmp_path, rebinding):
+    code = f"{rebinding}\n\ndef main():\n    raise ValueError('bad input')"
+
+    outcome = run(tmp_path, code)
+
+    assert outcome.failure.code == "user_code_error"
+    assert outcome.failure.detail == outcome.stderr
+    assert not (tmp_path / "elsewhere.json").exists()
+
+
+def test_a_failure_file_that_cannot_be_written_still_exits_with_the_line(tmp_path):
+    failure_file = tmp_path / "missing-directory" / "failure.json"
+
+    outcome = run(
+        tmp_path, "def main():\n    raise ValueError('bad input')", failure_file=failure_file
+    )
+
+    assert outcome.returncode == 1
+    assert outcome.stderr == "ValueError on line 2: bad input"
+    assert outcome.failure is None
+
+
+def test_a_message_well_past_what_a_user_is_shown_reaches_the_worker_whole(tmp_path):
+    # The worker masks secrets before it shortens, so it needs the text uncut.
+    outcome = run(tmp_path, "def main():\n    raise ValueError('x' * 8_000)")
+
+    assert outcome.failure.user_error.message == "x" * 8_000
+    assert outcome.stderr == outcome.failure.detail == f"ValueError on line 2: {'x' * 8_000}"
+
+
+@pytest.mark.parametrize(
+    "character",
+    ["x", "é", "\U0001f600", "\x01"],
+    ids=["ascii", "latin", "emoji", "control-character"],
+)
+def test_a_huge_message_is_bounded_so_the_failure_file_stays_readable(tmp_path, character):
+    outcome = run(tmp_path, f"def main():\n    raise ValueError({character!r} * 1_000_000)")
+
+    assert outcome.failure.user_error.message == character * 9_000 + "..."
+    assert outcome.failure.detail == f"ValueError on line 2: {character * 9_000}..."
+    # The capture step reads at most 128 KiB.
+    assert (tmp_path / "failure.json").stat().st_size < 128 * 1024
+    # Stderr is the run's own output: never cut.
+    assert outcome.stderr == f"ValueError on line 2: {character * 1_000_000}"
+
+
+@pytest.mark.parametrize(
+    "raise_statement",
+    [
+        "raise ValueError(PADDING + SECRET)",
+        # json.dumps names the type of a value it can't save.
+        "return type(PADDING + SECRET, (), {})()",
+    ],
+    ids=["user-code-error", "bad-return-value"],
+)
+def test_a_secret_straddling_the_file_bound_reaches_stderr_whole(tmp_path, raise_statement):
+    # The worker masks only whole secret values; a cut through one would leave its prefix.
+    secret = "sk-live-0123456789abcdef"
+    code = f"PADDING = 'x' * 8_990\nSECRET = {secret!r}\n\ndef main():\n    {raise_statement}"
+
+    outcome = run(tmp_path, code)
+
+    assert secret in outcome.stderr
+    assert secret not in outcome.failure.detail
+
+
+def test_an_exit_with_a_message_is_reported_as_an_error_in_the_users_code(tmp_path):
+    outcome = run(
+        tmp_path, "import sys\n\ndef main():\n    \n    sys.exit('Missing API key')"
+    )
+
+    assert outcome.returncode == 1
+    assert outcome.stderr == "SystemExit on line 5: Missing API key"
+    assert outcome.failure.code == "user_code_error"
+    assert outcome.failure.detail == outcome.stderr
+    assert outcome.failure.user_error.exception_type == "SystemExit"
+
+
+@pytest.mark.parametrize("exit_call", ["sys.exit(0)", "sys.exit()", "sys.exit(True)"])
+def test_an_exit_with_a_status_writes_no_failure(tmp_path, exit_call):
+    outcome = run(tmp_path, f"import sys\n\ndef main():\n    {exit_call}")
+
+    assert outcome.failure is None
+    assert outcome.stderr == ""
+
+
+def test_an_inspect_the_users_code_broke_doesnt_leak_the_wrappers_traceback(tmp_path):
+    outcome = run(
+        tmp_path,
+        "import inspect\ninspect.Parameter = None\n\ndef main(value):\n    return value",
+        func_kwargs={"city": "Kyiv"},
+    )
+
+    assert outcome.returncode == 1
+    assert outcome.stderr == "TypeError: main() got an unexpected keyword argument 'city'"
+    assert outcome.failure.code == "user_code_error"

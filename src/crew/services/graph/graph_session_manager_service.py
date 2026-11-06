@@ -416,9 +416,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 session_id=session_id,
                 error=error.public_message,
             )
-            if error.correlation_id is None:
+            if error.reference is None:
                 return error.public_message
-            return SESSION_FAILED_MESSAGE.format(reference=error.correlation_id)
+            return SESSION_FAILED_MESSAGE.format(reference=error.reference)
         reference = log_with_reference(
             "Failed to start session {session_id}: {error}",
             session_id=session_id,

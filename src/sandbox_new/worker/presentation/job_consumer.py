@@ -15,13 +15,10 @@ import asyncio
 import time
 from collections.abc import Callable
 
-from common.public_errors import (
-    SandboxFailureMessage,
-    log_sandbox_failure,
-    public_failure_text,
-)
+from common.public_errors import log_sandbox_failure, sandbox_failure
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode
 
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.ports import AbstractAdmissionGate, AbstractJobSource, UndecodableJobError
@@ -76,7 +73,8 @@ class JobConsumer:
             )
             await self._orchestrator.fail(
                 error.execution_id,
-                public_failure_text(SandboxFailureMessage.SERVER_ERROR, reference),
+                sandbox_failure(CodeFailureCode.SANDBOX_ERROR, reference),
+                reference=reference,
                 session_id=error.session_id,
                 reply_to_crew_channel=error.reply_to_crew_channel,
             )
@@ -125,7 +123,8 @@ class JobConsumer:
                 )
                 await self._orchestrator.fail(
                     job.execution_id,
-                    public_failure_text(SandboxFailureMessage.SERVER_ERROR, reference),
+                    sandbox_failure(CodeFailureCode.SANDBOX_ERROR, reference),
+                    reference=reference,
                     session_id=job.session_id,
                     reply_to_crew_channel=job.reply_to_crew_channel,
                 )
@@ -163,8 +162,7 @@ class JobConsumer:
         )
         await self._orchestrator.fail(
             job.execution_id,
-            _EXPIRED_MESSAGE,
+            CodeFailure(code=CodeFailureCode.OVERLOADED, detail=_EXPIRED_MESSAGE),
             session_id=job.session_id,
             reply_to_crew_channel=job.reply_to_crew_channel,
-            not_run_reason="overloaded",
         )

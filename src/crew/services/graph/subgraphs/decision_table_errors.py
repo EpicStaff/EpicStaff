@@ -8,7 +8,6 @@ sandbox that couldn't run the code, or a result crew can't read, is logged and c
 reference.
 """
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,9 +15,15 @@ from foundation.utils.error_reference import log_with_reference
 from loguru import logger
 from services.agent_run_errors import llm_error_text
 from services.graph.exceptions import PublicNodeError
-from services.run_python_code_service import CORRELATION_ID_KEY, is_result_timeout
+from services.graph.nodes.code_result_errors import log_missing_failure
 from src.shared.llm_error_kind import classify_llm_error
-from src.shared.models import LLMData
+from src.shared.models import (
+    CodeFailure,
+    CodeFailureCode,
+    CodeResultData,
+    LLMData,
+    describe_user_code_error,
+)
 from src.shared.models.agent_service import LLMErrorKind
 
 PRE_COMPUTATION_SUBJECT = "Pre-computation code"
@@ -28,9 +33,19 @@ _SERVER_ERROR_TEXT = (
     "{subject}: the code couldn't run because of a server error. "
     "Try again or contact your administrator (reference: {reference})."
 )
+_UNSAFE_TO_RUN_TEXT = (
+    "{subject}: this server can't run code safely right now, so the code wasn't run. "
+    "Contact your administrator (reference: {reference})."
+)
 _RESULT_TIMEOUT_TEXT = (
     "{subject}: the code's result didn't arrive in time. Try again or contact your administrator."
 )
+# The failures of the server rather than of the user's code, by the text they show.
+_SERVER_FAILURE_TEXTS = {
+    CodeFailureCode.SANDBOX_ERROR: _SERVER_ERROR_TEXT,
+    CodeFailureCode.DISPATCH_FAILED: _SERVER_ERROR_TEXT,
+    CodeFailureCode.UNSAFE_TO_RUN: _UNSAFE_TO_RUN_TEXT,
+}
 _STRAY_BRACE_TEXT = (
     'Prompt "{prompt_id}" has a "{brace}" without a matching "{match}". '
     "To write a brace, double it: {{{{ or }}}}."
@@ -62,15 +77,6 @@ _STRAY_OPENING_BRACE_MESSAGES = (
     "unmatched '{' in format spec",
 )
 _STRAY_CLOSING_BRACE_MESSAGES = ("Single '}' encountered in format string",)
-
-# The sandbox reports a failure of the code as "<Type> on line <N>: <detail>", last in
-# stderr, where N counts lines of the source crew sent: the generated wrapper's, not the
-# user's. The detail is the exception's message, which can span lines, and whatever the
-# user's code wrote to stderr comes before it.
-_LOCATION_LINE = re.compile(r"\w+ on line \d+(?::|$)")
-_LOCATED_FAILURE = re.compile(
-    r"(?P<type>\w+) on line (?P<line>\d+)(?:: (?P<detail>.*))?", re.DOTALL
-)
 
 # Runs in the sandbox inside the generated condition code: turns an exception raised by a
 # condition expression into the failure crew reads with `ConditionFailure.from_result`.
@@ -182,12 +188,13 @@ def condition_error(condition_name: str, failure: ConditionFailure) -> DecisionT
     return DecisionTableError(f"{condition_subject(condition_name)}: {failure.message}")
 
 
-def check_code_ran(result: dict[str, Any], subject: str) -> None:
+def check_code_ran(result: CodeResultData, subject: str) -> None:
     """Raise if the sandbox couldn't run the code, or its result didn't reach crew in time.
 
     Both are failures of the server, not of the user's code. The sandbox's own failure was
-    logged by `RunPythonCodeService` under the result's correlation id, which the message
-    cites.
+    logged under the result's reference, which the message cites. A failed result that
+    doesn't say why is logged here, under a reference of its own. Once this returns, the
+    code ran, and `result.failure` is set exactly when it failed.
 
     Args:
         result: What `RunPythonCodeService.run_code` returned.
@@ -196,13 +203,22 @@ def check_code_ran(result: dict[str, Any], subject: str) -> None:
     Raises:
         DecisionTableError: The code didn't run, or its result didn't arrive.
     """
-    correlation_id = result.get(CORRELATION_ID_KEY)
-    if correlation_id is not None:
+    failure = result.failure
+    if failure is None:
+        if result.returncode == 0:
+            return
+        reference = log_missing_failure(result)
         raise DecisionTableError(
-            _SERVER_ERROR_TEXT.format(subject=subject, reference=correlation_id),
-            correlation_id=correlation_id,
+            _SERVER_ERROR_TEXT.format(subject=subject, reference=reference),
+            reference=reference,
         )
-    if is_result_timeout(result):
+    server_failure_text = _SERVER_FAILURE_TEXTS.get(failure.code)
+    if server_failure_text is not None:
+        raise DecisionTableError(
+            server_failure_text.format(subject=subject, reference=result.reference),
+            reference=result.reference,
+        )
+    if failure.code is CodeFailureCode.RESULT_TIMEOUT:
         raise DecisionTableError(_RESULT_TIMEOUT_TEXT.format(subject=subject))
 
 
@@ -218,54 +234,42 @@ def unreadable_result_error(subject: str, result_data: Any) -> DecisionTableErro
     )
     return DecisionTableError(
         _SERVER_ERROR_TEXT.format(subject=subject, reference=reference),
-        correlation_id=reference,
+        reference=reference,
     )
 
 
-def user_code_error(subject: str, stderr: str) -> DecisionTableError:
+def user_code_error(subject: str, failure: CodeFailure) -> DecisionTableError:
     """Return the error for code the user wrote whole, whose line numbers are already theirs."""
-    return DecisionTableError(f"{subject}: {stderr.strip()}")
+    return DecisionTableError(f"{subject}: {failure.detail}")
 
 
 def manipulation_error(
-    condition_name: str, stderr: str, parts: list[UserCodePart]
+    condition_name: str, failure: CodeFailure, parts: list[UserCodePart]
 ) -> DecisionTableError:
     """Return the error for a condition's manipulation code that failed in the sandbox.
 
-    The line the sandbox names is turned into a line of the part of the code it falls in.
-    A failure on a line of the generated code keeps the sandbox's text without the line
-    number. Only the sandbox's message is shown, not what the code printed before it; a
-    stderr without a located message is shown whole.
+    The line of an error in the code, which counts lines of the source crew generated, is
+    turned into a line of the part of the code it falls in. An error on a line of the
+    generated code is shown without a line number, and any other failure by its detail.
     """
     subject = condition_subject(condition_name)
-    text = stderr.strip()
-    located = _last_located_failure(text)
-    if located is None:
-        return DecisionTableError(f"{subject}, manipulation code: {text}")
+    user_error = failure.user_error
+    if user_error is None:
+        return DecisionTableError(f"{subject}, manipulation code: {failure.detail}")
 
-    error_type = located["type"]
-    detail = located["detail"]
-    source_line = int(located["line"])
-    for part in parts:
-        line = source_line - part.first_line + 1
-        if 1 <= line <= part.line_count:
-            if part.shows_line_numbers:
-                location = f"{error_type} on line {line}"
-                message = f"{location}: {detail}" if detail else location
-            else:
-                message = detail or error_type
-            return DecisionTableError(f"{subject}, {part.label}: {message}")
-    message = f"{error_type}: {detail}" if detail else error_type
+    if user_error.line is not None:
+        for part in parts:
+            line = user_error.line - part.first_line + 1
+            if 1 <= line <= part.line_count:
+                if part.shows_line_numbers:
+                    message = describe_user_code_error(
+                        user_error.exception_type, line, user_error.message
+                    )
+                else:
+                    message = user_error.message or user_error.exception_type
+                return DecisionTableError(f"{subject}, {part.label}: {message}")
+    message = describe_user_code_error(user_error.exception_type, None, user_error.message)
     return DecisionTableError(f"{subject}, manipulation code: {message}")
-
-
-def _last_located_failure(stderr: str) -> re.Match[str] | None:
-    # Searched from the end: a line the user printed earlier can look like a location too.
-    lines = stderr.splitlines()
-    for index in range(len(lines) - 1, -1, -1):
-        if _LOCATION_LINE.match(lines[index]):
-            return _LOCATED_FAILURE.fullmatch("\n".join(lines[index:]))
-    return None
 
 
 def stray_brace_error(prompt_id: str, format_error: ValueError) -> DecisionTableError | None:
@@ -311,5 +315,5 @@ def prompt_llm_error(prompt_id: str, llm: LLMData, error: Exception) -> Decision
         )
     return DecisionTableError(
         f"{subject}: {llm_error_text(LLMErrorKind.UNKNOWN, llm, reference)}",
-        correlation_id=reference,
+        reference=reference,
     )

@@ -3,6 +3,7 @@ from collections.abc import Iterable
 
 from django.db import connection
 from loguru import logger
+from src.shared.runtime_node_name import format_runtime_node_name
 from tables.models.base_models import BaseGlobalNode
 
 """
@@ -60,9 +61,8 @@ def runtime_node_name(*, node_name: str, node_number: int | None, node_id: int) 
     node, edge ends, decision-table routes, session entrypoint, session message
     name), so every builder must go through this function.
     """
-    # NOTE: crew parses this format back into the label in src/crew/utils/node_label.py
-    # (`node_label_from_runtime_name`); change both together.
-    return f"{node_label(node_name=node_name, node_number=node_number)} #{node_id}"
+    label = node_label(node_name=node_name, node_number=node_number)
+    return format_runtime_node_name(label, node_id)
 
 
 def generate_node_name(

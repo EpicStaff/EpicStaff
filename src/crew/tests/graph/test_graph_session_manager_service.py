@@ -40,6 +40,9 @@ from src.crew.services.graph.session_audit_provider import emit_session_audit_ev
 from src.shared.audit.writers.session_writer import SessionAuditWriter
 from src.shared.models import (
     AgentDefinitionData,
+    CodeFailure,
+    CodeFailureCode,
+    CodeResultData,
     EdgeData,
     KeyValueNodeData,
     LLMConfigData,
@@ -50,6 +53,7 @@ from src.shared.models import (
     SubGraphData,
 )
 from src.shared.models.graph_nodes import GraphData, SubGraphNodeData
+from tests.graph.code_results import failed
 from tests.graph.rebuild_counting_dict import RebuildCountingDict
 from tests.graph.recording_audit_client import RecordingAuditClient
 
@@ -525,7 +529,7 @@ async def test_failed_session_reports_public_error_to_redis_and_audit(
 
     The Redis session status is what the frontend polls, and the audit
     session-end row is what the organization's trail keeps forever; both get
-    the generic message plus the correlation id that the log line carries.
+    the generic message plus the reference that the log line carries.
     """
     audit_calls: list[tuple[str, dict]] = []
 
@@ -610,7 +614,7 @@ FIXED_REFERENCE = "0a1b2c3d4e5f"
 
 
 @pytest.fixture
-def fixed_correlation_id(monkeypatch):
+def fixed_reference(monkeypatch):
     """Give every new reference a node or the sandbox call cites the value FIXED_REFERENCE."""
     monkeypatch.setattr("foundation.utils.error_reference.new_reference", lambda: FIXED_REFERENCE)
 
@@ -618,15 +622,14 @@ def fixed_correlation_id(monkeypatch):
 class SandboxDownExecutor:
     """Answers every execution the way RunPythonCodeService does when the sandbox can't run it."""
 
-    async def run_code(self, python_code_data, inputs=None, **kwargs) -> dict:
-        return {
-            "execution_id": "execution-1",
-            "returncode": 1,
-            "stdout": "",
-            "stderr": f"Node execution failed (reference: {FIXED_REFERENCE})",
-            "result_data": None,
-            "correlation_id": FIXED_REFERENCE,
-        }
+    async def run_code(self, python_code_data, inputs=None, **kwargs) -> CodeResultData:
+        return failed(
+            CodeFailure(
+                code=CodeFailureCode.SANDBOX_ERROR,
+                detail=f"Node execution failed (reference: {FIXED_REFERENCE})",
+            ),
+            reference=FIXED_REFERENCE,
+        )
 
 
 def _subgraph_graph(child: GraphData, **services):
@@ -717,7 +720,7 @@ PYTHON_SANDBOX_DOWN_TEXT = (
         pytest.param(
             lambda: _one_node_graph(
                 RaisingNode(
-                    KnowledgeSearchError(KNOWLEDGE_SEARCH_FAILED_TEXT, correlation_id="509c403ac7ac")
+                    KnowledgeSearchError(KNOWLEDGE_SEARCH_FAILED_TEXT, reference="509c403ac7ac")
                 )
             ),
             KNOWLEDGE_SEARCH_FAILED_TEXT,
@@ -782,7 +785,7 @@ PYTHON_SANDBOX_DOWN_TEXT = (
     ],
 )
 async def test_session_failed_in_a_node_reports_what_the_node_showed(
-    service, monkeypatch, fixed_correlation_id, build_graph, expected_card, expected_session_error
+    service, monkeypatch, fixed_reference, build_graph, expected_card, expected_session_error
 ):
     audit_calls: list[tuple[str, dict]] = []
 

@@ -1,59 +1,88 @@
-"""The error a code node shows when its code ran and failed, or its result never arrived."""
+"""The error a code node shows when its code ran and failed, or couldn't run at all."""
 
-import re
-from typing import Any
+from foundation.utils.error_reference import log_with_reference
+from services.graph.exceptions import (
+    CodeExecutionUnavailableError,
+    PublicNodeError,
+    ReturnCodeError,
+)
+from src.shared.models import CodeFailureCode, CodeResultData
 
-from services.graph.exceptions import ReturnCodeError
-from services.run_python_code_service import is_result_timeout
-
-RESULT_TIMEOUT_TEXT = (
-    "The code's result didn't arrive in time. Try again or contact your administrator."
+_COULDNT_RUN_TEXT = (
+    '{kind_name} node "{node_label}" couldn\'t run its code. '
+    "Try again or contact your administrator (reference: {reference})."
+)
+_UNSAFE_TO_RUN_TEXT = (
+    "{kind_name} node \"{node_label}\" couldn't run its code: this server can't run code "
+    "safely right now. Contact your administrator (reference: {reference})."
 )
 _UNEXPECTED_ARGUMENT_TEXT = (
     'Input "{argument}" isn\'t a parameter of {entrypoint}(). '
     "Add it to {entrypoint}, or remove it from the input map."
 )
+# The failures a server log line explains, under the result's reference; their detail
+# names neither the node nor the code, so the node says which code couldn't run.
+_SERVER_FAILURE_TEXTS = {
+    CodeFailureCode.SANDBOX_ERROR: _COULDNT_RUN_TEXT,
+    CodeFailureCode.DISPATCH_FAILED: _COULDNT_RUN_TEXT,
+    CodeFailureCode.UNSAFE_TO_RUN: _UNSAFE_TO_RUN_TEXT,
+}
 
 
-def code_failure_error(result: dict[str, Any], entrypoint: str | None = None) -> ReturnCodeError:
-    """Return the error for a `run_code` result with a non-zero return code.
+def code_failure_error(
+    result: CodeResultData,
+    *,
+    kind_name: str,
+    node_label: str,
+    entrypoint: str | None,
+) -> PublicNodeError | None:
+    """Return the error a code node fails with for this `run_code` result, or None if it ran.
 
-    Code whose stderr is the user's own error is shown that stderr. A result crew gave up
-    waiting for, and, when `entrypoint` is given, an input the entrypoint has no parameter
-    for, are told in words instead.
+    A failure only a server log explains names the node and cites the result's
+    reference. An input the entrypoint has no parameter for is told in words, when the
+    node has an input map. Every other failure shows its `detail`.
 
     Args:
-        result: What `RunPythonCodeService.run_code` returned; the sandbox didn't fail.
+        kind_name: Names the node's kind in the message, e.g. "Python".
         entrypoint: The function the node's input map passes its inputs to. None for a
             node without an input map, whose inputs the user doesn't choose.
     """
-    if is_result_timeout(result):
-        return ReturnCodeError(RESULT_TIMEOUT_TEXT)
-    stderr = result["stderr"]
-    if entrypoint is not None:
-        argument = _unexpected_argument(stderr, entrypoint)
-        if argument is not None:
-            return ReturnCodeError(
-                _UNEXPECTED_ARGUMENT_TEXT.format(argument=argument, entrypoint=entrypoint)
-            )
-    return ReturnCodeError(stderr)
+    failure = result.failure
+    if failure is None:
+        if result.returncode == 0:
+            return None
+        reference = log_missing_failure(result)
+        return CodeExecutionUnavailableError(
+            _COULDNT_RUN_TEXT.format(
+                kind_name=kind_name, node_label=node_label, reference=reference
+            ),
+            reference=reference,
+        )
+    server_failure_text = _SERVER_FAILURE_TEXTS.get(failure.code)
+    if server_failure_text is not None:
+        return CodeExecutionUnavailableError(
+            server_failure_text.format(
+                kind_name=kind_name, node_label=node_label, reference=result.reference
+            ),
+            reference=result.reference,
+        )
+    if failure.code is CodeFailureCode.UNEXPECTED_ARGUMENT and entrypoint is not None:
+        return ReturnCodeError(
+            _UNEXPECTED_ARGUMENT_TEXT.format(argument=failure.attr, entrypoint=entrypoint)
+        )
+    return ReturnCodeError(failure.detail)
 
 
-def _unexpected_argument(stderr: str, entrypoint: str) -> str | None:
-    """Return the input the entrypoint was called with but has no parameter for, if that failed.
+def log_missing_failure(result: CodeResultData) -> str:
+    """Log a failed result that doesn't say why, and return the reference it is logged under.
 
-    The sandbox reports an error as "<Type> on line <N>: <detail>", its last stderr line,
-    and leaves out "on line" only when no line of the user's code raised it. Python raises
-    this TypeError while binding the call, before the entrypoint's first line runs, so a
-    report without a line is the sandbox's own call, and one with a line is a call the
-    user's code made.
+    Every failed result from the sandbox or crew carries its failure, so one without it
+    breaks their contract; only its return code is logged, since its output is the
+    user's.
     """
-    lines = stderr.strip().splitlines()
-    if not lines:
-        return None
-    match = re.fullmatch(
-        rf"TypeError: {re.escape(entrypoint)}\(\) got an unexpected keyword argument "
-        r"'(?P<argument>[^']+)'.*",
-        lines[-1],
+    return log_with_reference(
+        "Code execution {execution_id} failed with return code {returncode} but reported "
+        "no failure",
+        execution_id=result.execution_id,
+        returncode=result.returncode,
     )
-    return match["argument"] if match else None

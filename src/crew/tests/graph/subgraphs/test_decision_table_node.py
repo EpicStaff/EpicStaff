@@ -1,9 +1,9 @@
 """Tests for DecisionTableNodeSubgraph routing and the errors it shows the user.
 
-Conditions and manipulations run through the sandbox's own code wrapper
-(`SandboxWrapperRunCodeService`), so the messages are checked against what the sandbox
-really reports for the code the node generates. Failures of the sandbox service itself
-come from a stub returning the results `RunPythonCodeService` makes up for them.
+The code the node generates runs for real (`GeneratedCodeRunCodeService`), so conditions
+and manipulations give the results they really give. A failure is the result the sandbox
+sends for it (`tests.graph.code_results`): the user's error on a line of the code the node
+sent, or a failure of the sandbox or of crew's wait for the result.
 """
 
 from __future__ import annotations
@@ -20,40 +20,23 @@ from loguru import logger
 from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import NodeExecutionError, StopSession
-from services.run_python_code_service import (
-    CORRELATION_ID_KEY,
-    TIMEOUT_RETURNCODE,
-    TIMEOUT_STDERR_MESSAGE,
-)
-
 from src.crew.services.graph.subgraphs.decision_table_node import (
     DecisionTableNodeSubgraph,
 )
-from src.crew.tests.graph.subgraphs.sandbox_wrapper_runner import (
-    SandboxWrapperRunCodeService,
+from src.shared.models import (
+    CodeFailure,
+    CodeFailureCode,
+    CodeResultData,
+    ConditionData,
+    ConditionGroupData,
+    DecisionTableNodeData,
 )
-from src.shared.models import ConditionData, ConditionGroupData, DecisionTableNodeData
+from tests.graph.code_results import CannedRunCodeService, failed, raised_on
+from tests.graph.generated_code_runner import GeneratedCodeRunCodeService
 
 SANDBOX_REFERENCE = "0123456789ab"
 UNREADABLE_RESULT_DATA = "not json: sk-live-abcdef"
 _REFERENCE_PATTERN = r"[0-9a-f]{12}"
-
-
-class StubRunPythonCodeService:
-    """Return a fixed sandbox result for every run_code call."""
-
-    def __init__(self, result: dict):
-        self._result = {"execution_id": "test", "stdout": "", **result}
-
-    async def run_code(
-        self,
-        python_code_data,
-        inputs,
-        additional_global_kwargs=None,
-        stop_event=None,
-        storage_credentials=None,
-    ):
-        return dict(self._result)
 
 
 class RaisingRunPythonCodeService:
@@ -64,19 +47,29 @@ class RaisingRunPythonCodeService:
         raise self._error
 
 
-SANDBOX_UNAVAILABLE = StubRunPythonCodeService(
-    {
-        "returncode": 1,
-        "stderr": f"Node execution failed (reference: {SANDBOX_REFERENCE})",
-        "result_data": None,
-        CORRELATION_ID_KEY: SANDBOX_REFERENCE,
-    }
+SANDBOX_UNAVAILABLE = failed(
+    CodeFailure(
+        code=CodeFailureCode.SANDBOX_ERROR,
+        detail=f"Node execution failed (reference: {SANDBOX_REFERENCE})",
+    ),
+    reference=SANDBOX_REFERENCE,
 )
-RESULT_TIMED_OUT = StubRunPythonCodeService(
-    {"returncode": TIMEOUT_RETURNCODE, "stderr": TIMEOUT_STDERR_MESSAGE, "result_data": None}
+UNSAFE_TO_RUN = failed(
+    CodeFailure(
+        code=CodeFailureCode.UNSAFE_TO_RUN,
+        detail="This server can't run code safely right now, so the code wasn't run. Contact "
+        f"your administrator (reference: {SANDBOX_REFERENCE}).",
+    ),
+    reference=SANDBOX_REFERENCE,
 )
-UNREADABLE_RESULT = StubRunPythonCodeService(
-    {"returncode": 0, "stderr": "", "result_data": UNREADABLE_RESULT_DATA}
+RESULT_TIMED_OUT = failed(
+    CodeFailure(
+        code=CodeFailureCode.RESULT_TIMEOUT,
+        detail="The code's result didn't arrive in time. Try again or contact your administrator.",
+    )
+)
+UNREADABLE_RESULT = CodeResultData(
+    execution_id="test", returncode=0, stdout="", stderr="", result_data=UNREADABLE_RESULT_DATA
 )
 
 
@@ -194,7 +187,7 @@ def capture_logs() -> tuple[list[str], int]:
     ],
 )
 async def test_routing(group, variables, expected_route, expected_variables):
-    subgraph, redis_service = build_subgraph(table(group), SandboxWrapperRunCodeService())
+    subgraph, redis_service = build_subgraph(table(group), GeneratedCodeRunCodeService())
 
     result = await subgraph.ainvoke(make_state(variables))
 
@@ -228,45 +221,14 @@ async def test_routing(group, variables, expected_route, expected_variables):
             id="not-boolean",
         ),
         pytest.param(
-            complex_group("True", manipulation="variables.total = totl + 1"),
-            "Condition \"High score\", manipulation code: NameError on line 1: "
-            "name 'totl' is not defined",
-            id="manipulation-keeps-the-users-line-number",
-        ),
-        pytest.param(
-            # Only the first line is indented for the user, so further lines need their own.
-            complex_group(
-                "True",
-                manipulation="variables.a = 1\n    variables.b = 2\n    variables.c = total",
-            ),
-            "Condition \"High score\", manipulation code: NameError on line 3: "
-            "name 'total' is not defined",
-            id="manipulation-line-three",
-        ),
-        pytest.param(
             complex_group("exit()"),
             'Condition "High score" stopped the code with exit().',
             id="exit",
         ),
-        pytest.param(
-            complex_group("True", manipulation='raise ValueError("a\\nb")'),
-            'Condition "High score", manipulation code: ValueError on line 1: a\nb',
-            id="manipulation-multi-line-message",
-        ),
-        pytest.param(
-            complex_group(
-                "True",
-                manipulation="import sys\n"
-                "    print('ValueError on line 9: printed', file=sys.stderr)\n"
-                '    raise ValueError("a\\nb")',
-            ),
-            'Condition "High score", manipulation code: ValueError on line 3: a\nb',
-            id="manipulation-leaves-out-what-the-code-printed",
-        ),
     ],
 )
 async def test_condition_error_is_shown_against_the_condition(group, expected_error):
-    subgraph, redis_service = build_subgraph(table(group), SandboxWrapperRunCodeService())
+    subgraph, redis_service = build_subgraph(table(group), GeneratedCodeRunCodeService())
 
     result = await subgraph.ainvoke(make_state({"score": 5}))
 
@@ -276,26 +238,122 @@ async def test_condition_error_is_shown_against_the_condition(group, expected_er
     assert message_types[-2:] == ["error", "finish"]
 
 
+def manipulation_answered_with(answer) -> GeneratedCodeRunCodeService:
+    """Run the conditions for real, and answer the manipulation's run with `answer(code)`."""
+    return GeneratedCodeRunCodeService(
+        answer=lambda python_code_data, inputs: (
+            None if "expression" in inputs else answer(python_code_data.code)
+        )
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "group",
+    ("manipulation", "answer", "expected_error"),
     [
-        pytest.param(complex_group("True"), id="condition"),
         pytest.param(
-            # The condition itself passes through the wrapper; the stub then fails the manipulation.
-            complex_group("True", manipulation="variables.a = 1"),
-            id="manipulation",
+            "variables.total = totl + 1",
+            lambda code: raised_on(code, "totl", "NameError", "name 'totl' is not defined"),
+            "Condition \"High score\", manipulation code: NameError on line 1: "
+            "name 'totl' is not defined",
+            id="keeps-the-users-line-number",
+        ),
+        pytest.param(
+            # Only the first line is indented for the user, so further lines need their own.
+            "variables.a = 1\n    variables.b = 2\n    variables.c = total",
+            lambda code: raised_on(
+                code, "variables.c = total", "NameError", "name 'total' is not defined"
+            ),
+            "Condition \"High score\", manipulation code: NameError on line 3: "
+            "name 'total' is not defined",
+            id="line-three",
+        ),
+        pytest.param(
+            'raise ValueError("a\\nb")',
+            lambda code: raised_on(code, "raise ValueError", "ValueError", "a\nb"),
+            'Condition "High score", manipulation code: ValueError on line 1: a\nb',
+            id="multi-line-message",
+        ),
+        pytest.param(
+            "import sys\n"
+            "    print('ValueError on line 9: printed', file=sys.stderr)\n"
+            '    raise ValueError("a\\nb")',
+            lambda code: raised_on(
+                code,
+                "raise ValueError",
+                "ValueError",
+                "a\nb",
+                printed="ValueError on line 9: printed\n",
+            ),
+            'Condition "High score", manipulation code: ValueError on line 3: a\nb',
+            id="leaves-out-what-the-code-printed",
+        ),
+        pytest.param(
+            "variables.a = 1",
+            lambda code: raised_on(
+                code, "return variables", "NameError", "name 'variables' is not defined"
+            ),
+            "Condition \"High score\", manipulation code: NameError: "
+            "name 'variables' is not defined",
+            id="line-of-the-generated-code-has-no-number",
+        ),
+        pytest.param(
+            "variables.a = 1",
+            lambda code: failed(
+                CodeFailure(
+                    code=CodeFailureCode.CODE_EXITED,
+                    detail="The code exited with code 3 before it returned a result.",
+                )
+            ),
+            'Condition "High score", manipulation code: '
+            "The code exited with code 3 before it returned a result.",
+            id="failure-of-another-kind-shows-its-detail",
         ),
     ],
 )
+async def test_manipulation_error_is_shown_against_the_users_code(
+    manipulation, answer, expected_error
+):
+    subgraph, redis_service = build_subgraph(
+        table(complex_group("True", manipulation=manipulation)),
+        manipulation_answered_with(answer),
+    )
+
+    result = await subgraph.ainvoke(make_state({"score": 5}))
+
+    assert error_details(redis_service) == [expected_error]
+    assert result["system_variables"]["nodes"]["dt_node"]["result_node"] == "error_node"
+
+
+@pytest.mark.asyncio
+async def test_condition_the_sandbox_stopped_shows_the_failures_detail():
+    detail = "The code took longer than 30 seconds and was stopped."
+    service = CannedRunCodeService(
+        failed(CodeFailure(code=CodeFailureCode.EXECUTION_TIMEOUT, detail=detail))
+    )
+    subgraph, redis_service = build_subgraph(table(complex_group("True")), service)
+
+    await subgraph.ainvoke(make_state())
+
+    assert error_details(redis_service) == [f'Condition "High score": {detail}']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("part", ["condition", "manipulation"])
 @pytest.mark.parametrize(
-    ("failing_service", "expected_error"),
+    ("failed_result", "expected_error"),
     [
         pytest.param(
             SANDBOX_UNAVAILABLE,
             'Condition "High score": the code couldn\'t run because of a server error. '
             f"Try again or contact your administrator (reference: {SANDBOX_REFERENCE}).",
             id="sandbox-unavailable",
+        ),
+        pytest.param(
+            UNSAFE_TO_RUN,
+            'Condition "High score": this server can\'t run code safely right now, so the '
+            f"code wasn't run. Contact your administrator (reference: {SANDBOX_REFERENCE}).",
+            id="unsafe-to-run",
         ),
         pytest.param(
             RESULT_TIMED_OUT,
@@ -305,12 +363,13 @@ async def test_condition_error_is_shown_against_the_condition(group, expected_er
         ),
     ],
 )
-async def test_sandbox_failure_is_shown_against_the_condition(
-    group, failing_service, expected_error
-):
-    service = failing_service
-    if group.manipulation is not None:
-        service = ConditionPassesThenFails(failing_service)
+async def test_sandbox_failure_is_shown_against_the_condition(part, failed_result, expected_error):
+    if part == "manipulation":
+        group = complex_group("True", manipulation="variables.a = 1")
+        service = manipulation_answered_with(lambda code: failed_result)
+    else:
+        group = complex_group("True")
+        service = CannedRunCodeService(failed_result)
     subgraph, redis_service = build_subgraph(table(group), service)
 
     await subgraph.ainvoke(make_state())
@@ -318,22 +377,35 @@ async def test_sandbox_failure_is_shown_against_the_condition(
     assert error_details(redis_service) == [expected_error]
 
 
-class ConditionPassesThenFails:
-    """Run the condition for real, then answer every later call from `then`."""
+@pytest.mark.asyncio
+async def test_failed_result_without_a_failure_cites_a_new_reference():
+    broken = CodeResultData(
+        execution_id="test", returncode=3, stdout="", stderr="raw output", result_data=None
+    )
+    subgraph, redis_service = build_subgraph(
+        table(complex_group("True")), CannedRunCodeService(broken)
+    )
+    logged, sink_id = capture_logs()
+    try:
+        await subgraph.ainvoke(make_state())
+    finally:
+        logger.remove(sink_id)
 
-    def __init__(self, then):
-        self._real = SandboxWrapperRunCodeService()
-        self._then = then
-
-    async def run_code(self, python_code_data, inputs, **kwargs):
-        if "expression" in inputs:
-            return await self._real.run_code(python_code_data, inputs, **kwargs)
-        return await self._then.run_code(python_code_data, inputs, **kwargs)
+    [details] = error_details(redis_service)
+    match = re.fullmatch(
+        'Condition "High score": the code couldn\'t run because of a server error. '
+        rf"Try again or contact your administrator \(reference: ({_REFERENCE_PATTERN})\)\.",
+        details,
+    )
+    assert match is not None, details
+    assert any("reported no failure" in line and match.group(1) in line for line in logged)
 
 
 @pytest.mark.asyncio
 async def test_unreadable_result_cites_a_new_reference_and_logs_the_raw_result():
-    subgraph, redis_service = build_subgraph(table(complex_group("True")), UNREADABLE_RESULT)
+    subgraph, redis_service = build_subgraph(
+        table(complex_group("True")), CannedRunCodeService(UNREADABLE_RESULT)
+    )
     logged, sink_id = capture_logs()
     try:
         await subgraph.ainvoke(make_state())
@@ -372,16 +444,16 @@ async def test_unexpected_error_shows_a_reference_and_logs_the_exception_text():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("service", "expected_message", "expected_correlation_id"),
+    ("service", "expected_message", "expected_reference"),
     [
         pytest.param(
-            SandboxWrapperRunCodeService(),
+            GeneratedCodeRunCodeService(),
             "Condition \"High score\": name 'scroe' is not defined",
             None,
             id="condition-error",
         ),
         pytest.param(
-            SANDBOX_UNAVAILABLE,
+            CannedRunCodeService(SANDBOX_UNAVAILABLE),
             'Condition "High score": the code couldn\'t run because of a server error. '
             f"Try again or contact your administrator (reference: {SANDBOX_REFERENCE}).",
             SANDBOX_REFERENCE,
@@ -390,7 +462,7 @@ async def test_unexpected_error_shows_a_reference_and_logs_the_exception_text():
     ],
 )
 async def test_without_an_error_route_the_session_fails_with_the_shown_error(
-    service, expected_message, expected_correlation_id
+    service, expected_message, expected_reference
 ):
     subgraph, redis_service = build_subgraph(
         table(complex_group("scroe > 1"), next_error_node=None), service
@@ -400,7 +472,7 @@ async def test_without_an_error_route_the_session_fails_with_the_shown_error(
         await subgraph.ainvoke(make_state())
 
     assert raised.value.public_message == expected_message
-    assert raised.value.correlation_id == expected_correlation_id
+    assert raised.value.reference == expected_reference
     assert error_details(redis_service) == [expected_message]
     message_types = [message["message_type"] for message in published_messages(redis_service)]
     assert "finish" not in message_types
@@ -417,7 +489,7 @@ async def test_without_an_error_route_an_unexpected_error_fails_the_session_unde
         await subgraph.ainvoke(make_state())
 
     assert raised.value.public_message == (
-        f"Node execution failed (reference: {raised.value.correlation_id})"
+        f"Node execution failed (reference: {raised.value.reference})"
     )
     assert error_details(redis_service) == [raised.value.public_message]
 

@@ -15,6 +15,7 @@ class WrapCodeStep:
         source = wrap_code(
             code=job.code,
             result_file_path=context.result_file_path,
+            failure_file_path=context.failure_file_path,
             entrypoint=job.entrypoint,
             func_kwargs=job.func_kwargs,
             result_write_marker=context.result_write_marker,

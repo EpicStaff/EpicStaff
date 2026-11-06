@@ -1,6 +1,6 @@
 """File Extractor and Audio to text nodes tell the user, in words, why a file couldn't be used.
 
-The nodes' generated code runs through the sandbox's own wrapper with the real
+The nodes' generated code runs for real (`run_generated_code`), with the real
 `epicstaff_storage` library. Only what lies outside it is stood in for: the S3 client
 (`boto3`), and the extraction and audio libraries, which crew's venv doesn't have.
 """
@@ -22,7 +22,9 @@ from services.graph.exceptions import NodeExecutionError
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.graph.nodes.audio_transcription_node import AudioTranscriptionNode
 from services.graph.nodes.file_extractor_node import FileContentExtractorNode
-from tests.graph.subgraphs.sandbox_wrapper_runner import SandboxWrapperRunCodeService
+from src.shared.models import CodeFailure, CodeFailureCode
+from tests.graph.code_results import CannedRunCodeService, failed, raised_on
+from tests.graph.generated_code_runner import GeneratedCodeRunCodeService
 
 pytestmark = pytest.mark.asyncio
 
@@ -187,7 +189,7 @@ def session_error(error: NodeExecutionError) -> str:
 async def test_file_extractor_names_the_file_it_couldnt_use(
     stub_library_dir, environment, path, expected
 ):
-    service = SandboxWrapperRunCodeService((str(stub_library_dir),), environment)
+    service = GeneratedCodeRunCodeService((str(stub_library_dir),), environment)
 
     error, cards, shown_results = await run_failing(
         file_extractor(service), build_state(document=path)
@@ -209,7 +211,7 @@ async def test_file_extractor_names_the_file_it_couldnt_use(
 async def test_file_extractor_storage_failure_cites_a_reference_and_logs_the_raw_error(
     stub_library_dir, captured_logs, environment
 ):
-    service = SandboxWrapperRunCodeService((str(stub_library_dir),), environment)
+    service = GeneratedCodeRunCodeService((str(stub_library_dir),), environment)
 
     error, cards, shown_results = await run_failing(
         file_extractor(service), build_state(document="reports/report.pdf")
@@ -235,7 +237,7 @@ async def test_file_extractor_storage_failure_cites_a_reference_and_logs_the_raw
 async def test_file_extractor_raw_storage_text_reaches_only_the_log(
     stub_library_dir, captured_logs
 ):
-    service = SandboxWrapperRunCodeService(
+    service = GeneratedCodeRunCodeService(
         (str(stub_library_dir),), storage_environment(FAKE_STORAGE_DOWN="1")
     )
 
@@ -245,26 +247,36 @@ async def test_file_extractor_raw_storage_text_reaches_only_the_log(
 
     assert RAW_STORAGE_TEXT not in cards[0]
     assert RAW_STORAGE_TEXT not in json.dumps(shown_results)
+    assert [(shown["result_data"], shown["returncode"]) for shown in shown_results] == [(None, 1)]
     assert RAW_STORAGE_TEXT not in session_error(error)
     assert any(RAW_STORAGE_TEXT in record for record in captured_logs)
 
 
 async def test_file_extractor_still_reads_a_text_file(stub_library_dir):
-    service = SandboxWrapperRunCodeService(
+    service = GeneratedCodeRunCodeService(
         (str(stub_library_dir),), storage_environment({"notes/today.txt": b"hello"})
     )
+    messages: list[GraphMessage] = []
 
     state = await file_extractor(service).run(
-        build_state(document="notes/today.txt"), writer=lambda message: None
+        build_state(document="notes/today.txt"), writer=messages.append
     )
 
     assert state["variables"].content == {"document": "hello"}
+    # The message shows the content the node read, not the envelope it came in.
+    [shown] = [
+        message.message_data.python_code_execution_data
+        for message in messages
+        if isinstance(message.message_data, PythonMessageData)
+    ]
+    assert json.loads(shown["result_data"]) == {"document": "hello"}
+    assert shown["returncode"] == 0
 
 
 async def test_audio_to_text_file_it_cant_process_keeps_the_raw_error_in_the_log(
     stub_library_dir, captured_logs
 ):
-    service = SandboxWrapperRunCodeService(
+    service = GeneratedCodeRunCodeService(
         (str(stub_library_dir),), storage_environment({"calls/call.mp3": b"not audio"})
     )
 
@@ -283,7 +295,7 @@ async def test_audio_to_text_file_it_cant_process_keeps_the_raw_error_in_the_log
 
 
 async def test_audio_to_text_names_its_kind_in_storage_messages(stub_library_dir):
-    service = SandboxWrapperRunCodeService((str(stub_library_dir),), storage_environment())
+    service = GeneratedCodeRunCodeService((str(stub_library_dir),), storage_environment())
 
     _, cards, _ = await run_failing(
         audio_to_text(service), build_state(recording="calls/call.mp3")
@@ -303,7 +315,7 @@ async def test_audio_to_text_names_its_kind_in_storage_messages(stub_library_dir
 async def test_file_extractor_damaged_file_of_a_listed_type_is_named(
     stub_library_dir, captured_logs, path, content, expected_name
 ):
-    service = SandboxWrapperRunCodeService(
+    service = GeneratedCodeRunCodeService(
         (str(stub_library_dir),), storage_environment({path: content})
     )
 
@@ -320,7 +332,7 @@ async def test_file_extractor_damaged_file_of_a_listed_type_is_named(
 
 
 async def test_file_extractor_legacy_word_file_asks_for_docx(stub_library_dir):
-    service = SandboxWrapperRunCodeService(
+    service = GeneratedCodeRunCodeService(
         (str(stub_library_dir),), storage_environment({"reports/report.doc": b"\xd0\xcf\x11\xe0"})
     )
 
@@ -332,7 +344,7 @@ async def test_file_extractor_legacy_word_file_asks_for_docx(stub_library_dir):
 
 
 async def test_file_extractor_library_text_reaches_only_the_log(stub_library_dir, captured_logs):
-    service = SandboxWrapperRunCodeService(
+    service = GeneratedCodeRunCodeService(
         (str(stub_library_dir),), storage_environment({"reports/report.pdf": b"%PDF"})
     )
 
@@ -346,38 +358,34 @@ async def test_file_extractor_library_text_reaches_only_the_log(stub_library_dir
     assert any(RAW_LIBRARY_TEXT in record for record in captured_logs)
 
 
-async def test_file_extractor_csv_that_isnt_utf8_keeps_the_sandbox_text(stub_library_dir):
-    # A listed type that isn't UTF-8 text fails as it always has.
-    service = SandboxWrapperRunCodeService(
-        (str(stub_library_dir),),
-        storage_environment({"exports/clients.csv": "name;city\nZo\u00eb;K\u00f6ln\n".encode("latin-1")}),
+async def test_file_extractor_error_its_code_doesnt_report_shows_the_sandbox_text():
+    # The generated code has the UTF-8 decode line (raised_on fails without it), and a
+    # failed run the sandbox reports on that line is passed on to the base node: its
+    # detail is the error the node shows.
+    message = "'utf-8' codec can't decode byte 0xeb in position 11: invalid continuation byte"
+    node = file_extractor(None)
+    result = raised_on(
+        node.python_code_data.code,
+        'return file_bytes.decode("utf-8")',
+        "UnicodeDecodeError",
+        message,
     )
+    node.python_code_executor_service = CannedRunCodeService(result)
 
-    _, cards, shown_results = await run_failing(
-        file_extractor(service), build_state(document="exports/clients.csv")
-    )
+    _, cards, shown_results = await run_failing(node, build_state(document="exports/clients.csv"))
 
-    (card,) = cards
-    assert re.fullmatch(
-        r"UnicodeDecodeError on line \d+: 'utf-8' codec can't decode byte 0x\w+ in position \d+: "
-        r"invalid continuation byte",
-        card.strip(),
-    )
-    assert [result["stderr"] for result in shown_results] == [card]
+    assert cards == [result.failure.detail]
+    assert cards[0].startswith("UnicodeDecodeError on line ")
+    assert [shown["stderr"] for shown in shown_results] == cards
 
 
-class SandboxFailedRunCodeService:
-    """Stands in for RunPythonCodeService when the sandbox itself couldn't run the code."""
-
-    async def run_code(self, python_code_data, inputs, **kwargs):
-        return {
-            "execution_id": "test",
-            "returncode": 1,
-            "stdout": "",
-            "stderr": "Node execution failed (reference: 0a1b2c3d4e5f)",
-            "result_data": None,
-            "correlation_id": "0a1b2c3d4e5f",
-        }
+SANDBOX_FAILED = failed(
+    CodeFailure(
+        code=CodeFailureCode.SANDBOX_ERROR,
+        detail="Node execution failed (reference: 0a1b2c3d4e5f)",
+    ),
+    reference="0a1b2c3d4e5f",
+)
 
 
 @pytest.mark.parametrize(
@@ -399,7 +407,7 @@ class SandboxFailedRunCodeService:
 )
 async def test_sandbox_failure_names_the_nodes_own_kind(node, expected):
     error, cards, _ = await run_failing(
-        node(SandboxFailedRunCodeService()), build_state(document="a.pdf", recording="a.mp3")
+        node(CannedRunCodeService(SANDBOX_FAILED)), build_state(document="a.pdf", recording="a.mp3")
     )
 
     assert cards == [expected]

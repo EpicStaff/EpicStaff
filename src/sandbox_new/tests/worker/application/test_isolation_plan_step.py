@@ -65,6 +65,8 @@ async def test_a_kernel_without_landlock_refuses_when_isolation_is_required(cont
     assert context.returncode == 1
     reference = reference_in(UNSAFE_TO_RUN, context.stderr)
     assert "kernel lacks Landlock" in logged_with(reference, error_logs)
+    assert (context.failure.code, context.failure.detail) == ("unsafe_to_run", context.stderr)
+    assert context.reference == reference
 
 
 async def test_a_kernel_without_landlock_runs_unconfined_when_isolation_is_optional(context):

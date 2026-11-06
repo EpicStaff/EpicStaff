@@ -14,6 +14,8 @@ from common.contracts import (
     ExecutionResultMessage,
     StorageCredentialsMessage,
 )
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode
+
 from worker.application.ports import UndecodableJobError
 from worker.domain.models import ExecutionResult, StorageMutations
 from worker.infrastructure.transport.queue_job_source import QueueJobSource
@@ -100,7 +102,25 @@ async def test_a_result_without_mutations_encodes_onto_the_wire():
     assert message.returncode == 0
     assert message.session_id == 7
     assert message.mutations is None
-    assert message.not_run_reason is None
+    assert (message.failure, message.reference) == (None, None)
+
+
+async def test_a_failed_result_carries_its_failure_and_reference_onto_the_wire():
+    queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
+    failure = CodeFailure(code=CodeFailureCode.SANDBOX_ERROR, detail="server error")
+
+    await QueueResultSink(queue).send(
+        ExecutionResult(
+            execution_id="exec-1",
+            stderr="server error",
+            returncode=1,
+            failure=failure,
+            reference="0a1b2c3d4e5f",
+        )
+    )
+
+    message = queue.get_nowait()
+    assert (message.failure, message.reference) == (failure, "0a1b2c3d4e5f")
 
 
 async def test_mutations_are_carried_onto_the_wire():

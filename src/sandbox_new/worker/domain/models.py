@@ -8,10 +8,11 @@ object, not an entity with a lifecycle. ``Jail`` and ``NetworkDecision`` are the
 outputs of the isolation domain services (see ``domain/services/isolation.py``).
 """
 
-from typing import Any, Literal
+from typing import Any
 
 from foundation.base import ValueObject
 from pydantic import Field
+from src.shared.models.code_failure import CodeFailure
 
 from worker.domain.enums import NetworkPolicy
 
@@ -21,16 +22,9 @@ __all__ = [
     "Jail",
     "Job",
     "NetworkDecision",
-    "NotRunReason",
     "StorageCredentials",
     "StorageMutations",
 ]
-
-
-# Why the worker failed a job without running it, when the reason is one the manager
-# reports as an outcome of its own. A job that was run, or failed for another reason,
-# carries none.
-type NotRunReason = Literal["overloaded"]
 
 
 class StorageCredentials(ValueObject):
@@ -96,8 +90,10 @@ class ExecutionResult(ValueObject):
     ran: bool = False
     # Echoed from the job so the manager's BENCH checkpoint can name the session.
     session_id: int | None = None
-    # Feeds the manager's BENCH checkpoint only; see ``NotRunReason``.
-    not_run_reason: NotRunReason | None = None
+    # Why the execution failed; None exactly when ``returncode`` is 0.
+    failure: CodeFailure | None = None
+    # The reference of the log line that explains the failure, when one does.
+    reference: str | None = None
 
 
 class StorageMutations(ValueObject):

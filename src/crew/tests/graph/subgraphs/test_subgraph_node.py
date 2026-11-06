@@ -443,6 +443,6 @@ async def test_failing_node_inside_the_subflow_keeps_its_own_single_card():
     error, errors = await _run_failing(node)
 
     assert [(card.name, _error_details(card)) for card in errors] == [
-        ("produce", "bad total")
+        ("produce", "ValueError: bad total")
     ]
-    assert error.public_message == "bad total"
+    assert error.public_message == "ValueError: bad total"

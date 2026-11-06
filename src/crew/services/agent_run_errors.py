@@ -88,7 +88,7 @@ def agent_service_no_answer_error(
         agent_correlation_id=run_correlation_id,
     )
     return AgentTaskTimeoutError(
-        _AGENT_SERVICE_NO_ANSWER_TEXT.format(reference=reference), correlation_id=reference
+        _AGENT_SERVICE_NO_ANSWER_TEXT.format(reference=reference), reference=reference
     )
 
 
@@ -121,7 +121,7 @@ def agent_run_error(
             reference = _log_unexplained_failure(raw_error, run_correlation_id)
             return AgentTaskError(
                 build_public_error_message(PublicErrorMessage.NODE_EXECUTION_FAILED, reference),
-                correlation_id=reference,
+                reference=reference,
             )
         _log_explained_failure(StopReason.TIMEOUT.value, run_correlation_id)
         return _agent_time_limit_error(agent_definition.name, limit_s)
@@ -132,7 +132,7 @@ def agent_run_error(
         reference = _log_unexplained_failure(raw_error, run_correlation_id)
         return AgentTaskError(
             build_public_error_message(PublicErrorMessage.NODE_EXECUTION_FAILED, reference),
-            correlation_id=reference,
+            reference=reference,
         )
 
     # An llm_error without a kind comes from an agent service older than error_kind.
@@ -140,9 +140,7 @@ def agent_run_error(
     llm_that_failed = _llm_that_failed(payload.get("failed_llm"), agent_definition, llm)
     if kind is LLMErrorKind.UNKNOWN:
         reference = _log_unexplained_failure(raw_error, run_correlation_id)
-        return AgentTaskError(
-            llm_error_text(kind, llm_that_failed, reference), correlation_id=reference
-        )
+        return AgentTaskError(llm_error_text(kind, llm_that_failed, reference), reference=reference)
 
     _log_explained_failure(kind.value, run_correlation_id)
     return AgentTaskError(llm_error_text(kind, llm_that_failed))

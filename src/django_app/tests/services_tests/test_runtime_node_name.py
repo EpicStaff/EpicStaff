@@ -19,6 +19,7 @@ from tables.models.graph_models import (
     Graph,
     PythonNode,
 )
+from src.shared.runtime_node_name import parse_runtime_node_label
 from tables.models.python_models import PythonCode
 from tables.services.session_manager_service import SessionManagerService
 from utils.graph_utils import (
@@ -77,6 +78,20 @@ def test_runtime_node_name(node_name, node_number, node_id, expected):
         runtime_node_name(node_name=node_name, node_number=node_number, node_id=node_id)
         == expected
     )
+
+
+@pytest.mark.parametrize(
+    ("node_name", "node_number", "node_id"),
+    [
+        ("Python", 3, 12345),
+        ("Python", None, 12345),
+        ("Name with #hash", 12, 99),
+    ],
+)
+def test_crew_reads_back_the_label_django_put_into_a_runtime_name(node_name, node_number, node_id):
+    name = runtime_node_name(node_name=node_name, node_number=node_number, node_id=node_id)
+
+    assert parse_runtime_node_label(name) == node_label(node_name=node_name, node_number=node_number)
 
 
 @pytest.mark.django_db

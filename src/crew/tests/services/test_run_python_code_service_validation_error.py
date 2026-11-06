@@ -44,10 +44,10 @@ async def test_rejected_submit_fails_the_execution_without_waiting_for_a_result(
         timeout=5,
     )
 
-    assert result["returncode"] == 1
-    assert result["result_data"] is None
-    assert REJECTION not in result["stderr"]
-    assert result["execution_id"] == sandbox.submitted["execution_id"]
+    assert result.returncode == 1
+    assert result.result_data is None
+    assert REJECTION not in result.stderr
+    assert result.execution_id == sandbox.submitted["execution_id"]
     assert run_python_code_service._pending_results == {}
 
 
@@ -71,5 +71,5 @@ async def test_rejected_submit_keeps_secrets_out_of_stderr_and_logs(
 
     logged = "\n".join(captured_logs)
     for forbidden in (SECRET_VALUE, STORAGE_SECRET_KEY, "MY_SECRET", "input_value"):
-        assert forbidden not in result["stderr"]
+        assert forbidden not in result.stderr
         assert forbidden not in logged

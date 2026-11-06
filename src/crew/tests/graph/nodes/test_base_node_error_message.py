@@ -78,15 +78,15 @@ async def test_failing_node_streams_generic_details_and_raises_them_with_the_ref
     reference = re.fullmatch(GENERIC_DETAILS_PATTERN, details[0]).group(1)
     assert SECRET_TEXT not in details[0]
     assert error.public_message == details[0]
-    assert error.correlation_id == reference
+    assert error.reference == reference
     assert error.__cause__ is original_error
 
 
 @pytest.mark.asyncio
-async def test_raw_error_is_logged_with_the_streamed_correlation_id(captured_logs):
+async def test_raw_error_is_logged_with_the_streamed_reference(captured_logs):
     error, details = await run_failing(RaisingNode(RuntimeError(f"connection refused: {SECRET_TEXT}")))
 
-    matching_logs = [record for record in captured_logs if error.correlation_id in record]
+    matching_logs = [record for record in captured_logs if error.reference in record]
     assert len(matching_logs) == 1
     assert SECRET_TEXT in matching_logs[0]
     assert "leaky" in matching_logs[0]
@@ -94,13 +94,13 @@ async def test_raw_error_is_logged_with_the_streamed_correlation_id(captured_log
 
 
 @pytest.mark.asyncio
-async def test_each_failure_gets_its_own_correlation_id(captured_logs):
+async def test_each_failure_gets_its_own_reference(captured_logs):
     node = RaisingNode(RuntimeError(SECRET_TEXT))
 
     first_error, _ = await run_failing(node)
     second_error, _ = await run_failing(node)
 
-    assert first_error.correlation_id != second_error.correlation_id
+    assert first_error.reference != second_error.reference
 
 
 @pytest.mark.asyncio
@@ -131,7 +131,7 @@ async def test_public_error_is_shown_as_it_is_without_a_reference(public_error, 
 
     assert details == [str(public_error)]
     assert error.public_message == str(public_error)
-    assert error.correlation_id is None
+    assert error.reference is None
     assert captured_logs == []
 
 
@@ -143,12 +143,12 @@ async def test_public_error_citing_a_reference_passes_that_reference_on(captured
     )
 
     error, details = await run_failing(
-        RaisingNode(KnowledgeSearchError(message, correlation_id="509c403ac7ac"))
+        RaisingNode(KnowledgeSearchError(message, reference="509c403ac7ac"))
     )
 
     assert details == [message]
     assert error.public_message == message
-    assert error.correlation_id == "509c403ac7ac"
+    assert error.reference == "509c403ac7ac"
 
 
 @pytest.mark.asyncio

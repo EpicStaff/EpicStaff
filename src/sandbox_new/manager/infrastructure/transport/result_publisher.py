@@ -24,9 +24,10 @@ class LoggingResultPublisher(AbstractResultPublisher):
     async def publish(self, result: ExecutionResultMessage) -> None:
         mutation_count = 0 if result.mutations is None else len(result.mutations.mutations)
         logger.info(
-            "Execution {} finished: returncode={}, result={}, mutations={}",
+            "Execution {} finished: returncode={}, failure={}, result={}, mutations={}",
             result.execution_id,
             result.returncode,
+            "none" if result.failure is None else result.failure.code.value,
             "present" if result.result is not None else "none",
             mutation_count,
         )

@@ -1,19 +1,16 @@
-from typing import Any
-
 from services.graph.events import StopEvent
-from services.graph.exceptions import PublicNodeError
 from services.graph.nodes.node_file_failure import (
     NODE_FILE_FAILURE_SOURCE,
+    FileReadingNode,
     NodeFileFailureKind,
-    node_file_error,
+    node_file_main_source,
 )
-from services.graph.nodes.python_node import PythonNode
 from services.run_python_code_service import RunPythonCodeService
 from src.shared.models import PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 
 
-class FileContentExtractorNode(PythonNode):
+class FileContentExtractorNode(FileReadingNode):
     TYPE = "FILE_EXTRACTOR"
     KIND_NAME = "File Extractor"
 
@@ -57,14 +54,6 @@ class FileContentExtractorNode(PythonNode):
             python_code_data=code_data,
             storage_credentials=storage_credentials,
         )
-
-    def _result_error(self, result: dict[str, Any]) -> PublicNodeError | None:
-        return node_file_error(
-            result,
-            kind_name=self.KIND_NAME,
-            node_label=self.node_label,
-            session_id=self.session_id,
-        ) or super()._result_error(result)
 
     def _get_extractor_code(self, arg_names: list[str]):
         return f"""
@@ -174,10 +163,7 @@ def get_files_content(**files):
     return content
 
 
-def main({", ".join(arg_names)}):
-    content = get_files_content({", ".join(f"{a}={a}" for a in arg_names)})
-    return content
-
+{node_file_main_source(arg_names, "get_files_content")}
 {NODE_FILE_FAILURE_SOURCE}
 
 def extract_listed_type(extract, file_data_path, failure_kind="{NodeFileFailureKind.DAMAGED}"):
