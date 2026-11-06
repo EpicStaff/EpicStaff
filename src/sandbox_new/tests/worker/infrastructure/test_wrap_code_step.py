@@ -27,3 +27,20 @@ async def test_the_wrap_step_writes_source_that_compiles_to_the_code_file(tmp_pa
     await WrapCodeStep()(context)
 
     compile((tmp_path / "code.py").read_text(encoding="utf-8"), "code.py", "exec")
+
+
+async def test_each_run_gets_its_own_result_write_marker(tmp_path):
+    markers = []
+    for run in ("first", "second"):
+        context = make_context(
+            make_worker_job(),
+            code_path=tmp_path / f"{run}.py",
+            result_file_path=tmp_path / f"{run}-output.txt",
+        )
+
+        await WrapCodeStep()(context)
+
+        markers.append(context.result_write_marker)
+
+    assert all(markers)
+    assert markers[0] != markers[1]

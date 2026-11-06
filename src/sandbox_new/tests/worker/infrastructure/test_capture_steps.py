@@ -6,15 +6,25 @@ a reporting problem, not an execution failure.
 """
 
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
+import settings
 
 from worker.infrastructure.execution.code_wrapper import RESULT_WRITE_FAILED_EXIT_CODE
-from worker.infrastructure.execution.steps import CaptureMutationsStep, CaptureResultStep
+from worker.infrastructure.execution.steps import (
+    CaptureMutationsStep,
+    CaptureResultStep,
+    WrapCodeStep,
+)
 from tests.builders import make_context, make_worker_job
 from tests.public_errors import SERVER_ERROR, logged_with, reference_in
 
 MAX_BYTES = 1024
+MARKER = "5f0c2a9e7b1d4e6f8a3c0b2d9e4f7a1c"
 
 
 async def test_a_clean_run_reads_its_result_file(tmp_path):
@@ -76,8 +86,9 @@ async def test_a_result_file_the_code_could_not_write_fails_as_a_server_error(
     write_error = "PermissionError: [Errno 13] Permission denied: '/srv/executions/exec-1/output.txt'"
     context = make_context(
         returncode=RESULT_WRITE_FAILED_EXIT_CODE,
-        stderr=f"printed by the user\n{write_error}\n",
+        stderr=f"printed by the user\n\n{MARKER}{write_error}\n",
         result_file_path=tmp_path / "output.txt",
+        result_write_marker=MARKER,
     )
 
     await CaptureResultStep(max_bytes=MAX_BYTES)(context)
@@ -96,8 +107,9 @@ async def test_a_result_file_write_error_alone_on_stderr_leaves_no_user_output(
 ):
     context = make_context(
         returncode=RESULT_WRITE_FAILED_EXIT_CODE,
-        stderr="OSError: [Errno 28] No space left on device\n",
+        stderr=f"\n{MARKER}OSError: [Errno 28] No space left on device\n",
         result_file_path=tmp_path / "output.txt",
+        result_write_marker=MARKER,
     )
 
     await CaptureResultStep(max_bytes=MAX_BYTES)(context)
@@ -110,8 +122,9 @@ async def test_user_output_left_unfinished_stays_with_the_user(tmp_path, error_l
     write_error = "FileNotFoundError: [Errno 2] No such file or directory: '/srv/exec-1/output.txt'"
     context = make_context(
         returncode=RESULT_WRITE_FAILED_EXIT_CODE,
-        stderr=f"partial\n{write_error}\n",
+        stderr=f"partial\n{MARKER}{write_error}\n",
         result_file_path=tmp_path / "output.txt",
+        result_write_marker=MARKER,
     )
 
     await CaptureResultStep(max_bytes=MAX_BYTES)(context)
@@ -122,11 +135,79 @@ async def test_user_output_left_unfinished_stays_with_the_user(tmp_path, error_l
     assert write_error in logged_with(reference, error_logs)
 
 
-async def test_a_faked_write_error_is_logged_cut_short(tmp_path, error_logs):
+async def test_a_multi_line_write_error_is_logged_whole_on_one_line_and_none_reaches_the_user(
+    tmp_path, error_logs
+):
+    write_error = (
+        "OSError: could not write '/srv/executions/exec-1/output.txt'\n"
+        "2026-01-01 00:00:00 | ERROR | forged entry"
+    )
     context = make_context(
         returncode=RESULT_WRITE_FAILED_EXIT_CODE,
-        stderr="x" * 10_000 + "\n",
+        stderr=f"printed by the user\n\n{MARKER}{write_error}\n",
         result_file_path=tmp_path / "output.txt",
+        result_write_marker=MARKER,
+    )
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    user_output, public_text = context.stderr.split("\n")
+    assert user_output == "printed by the user"
+    reference = reference_in(SERVER_ERROR, public_text)
+    log_line = logged_with(reference, error_logs)
+    assert (
+        "OSError: could not write '/srv/executions/exec-1/output.txt'"
+        "\\n2026-01-01 00:00:00 | ERROR | forged entry"
+    ) in log_line
+    assert "\n2026-01-01" not in log_line
+
+
+async def test_the_user_echoing_the_marker_before_the_write_error_keeps_the_echo(
+    tmp_path, error_logs
+):
+    write_error = "OSError: [Errno 28] No space left on device"
+    context = make_context(
+        returncode=RESULT_WRITE_FAILED_EXIT_CODE,
+        stderr=f"echo {MARKER}\n\n{MARKER}{write_error}\n",
+        result_file_path=tmp_path / "output.txt",
+        result_write_marker=MARKER,
+    )
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    user_output, public_text = context.stderr.split("\n")
+    assert user_output == f"echo {MARKER}"
+    reference = reference_in(SERVER_ERROR, public_text)
+    log_line = logged_with(reference, error_logs)
+    assert f"result file: {write_error!r}" in log_line
+
+
+async def test_the_users_own_exit_with_the_write_failure_code_is_an_ordinary_failure(
+    tmp_path, error_logs
+):
+    user_stderr = "diagnostics\nsecond line\n"
+    context = make_context(
+        returncode=RESULT_WRITE_FAILED_EXIT_CODE,
+        stderr=user_stderr,
+        result_file_path=tmp_path / "output.txt",
+        result_write_marker=MARKER,
+    )
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    assert context.completed is True
+    assert context.returncode == RESULT_WRITE_FAILED_EXIT_CODE
+    assert context.stderr == user_stderr
+    assert context.result_data is None
+    assert error_logs == []
+
+
+async def test_text_written_past_the_marker_is_logged_cut_short(tmp_path, error_logs):
+    context = make_context(
+        returncode=RESULT_WRITE_FAILED_EXIT_CODE,
+        stderr=f"\n{MARKER}" + "x" * 10_000 + "\n",
+        result_file_path=tmp_path / "output.txt",
+        result_write_marker=MARKER,
     )
 
     await CaptureResultStep(max_bytes=MAX_BYTES)(context)
@@ -135,6 +216,61 @@ async def test_a_faked_write_error_is_logged_cut_short(tmp_path, error_logs):
     log_line = logged_with(reference, error_logs)
     assert "x" * 500 in log_line
     assert "x" * 501 not in log_line
+
+
+async def run_wrapped_then_capture(tmp_path, code: str, result_file_path: Path):
+    """Run ``code`` through the real wrap step and child interpreter, then capture it."""
+    context = make_context(
+        make_worker_job(code=code),
+        code_path=tmp_path / "code.py",
+        result_file_path=result_file_path,
+    )
+    await WrapCodeStep()(context)
+    completed = subprocess.run(
+        [sys.executable, str(context.code_path)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONPATH": str(settings.SHARED_DIR)},
+        cwd=tmp_path,
+        timeout=60,
+    )
+    context.returncode = completed.returncode
+    context.stderr = completed.stderr
+
+    await CaptureResultStep(max_bytes=MAX_BYTES)(context)
+
+    return context
+
+
+async def test_real_code_exiting_with_the_write_failure_code_keeps_its_stderr(
+    tmp_path, error_logs
+):
+    code = (
+        "import sys\n\ndef main():\n"
+        "    print('diagnostics', file=sys.stderr)\n"
+        f"    sys.exit({RESULT_WRITE_FAILED_EXIT_CODE})"
+    )
+
+    context = await run_wrapped_then_capture(tmp_path, code, tmp_path / "output.txt")
+
+    assert context.returncode == RESULT_WRITE_FAILED_EXIT_CODE
+    assert context.stderr == "diagnostics\n"
+    assert error_logs == []
+
+
+async def test_a_real_unwritable_result_file_is_reported_without_its_path(tmp_path, error_logs):
+    result_file = tmp_path / "missing-directory" / "output.txt"
+    code = "import sys\n\ndef main():\n    print('note', file=sys.stderr)\n    return 1"
+
+    context = await run_wrapped_then_capture(tmp_path, code, result_file)
+
+    assert context.returncode == 1
+    user_output, public_text = context.stderr.split("\n")
+    assert user_output == "note"
+    assert "missing-directory" not in context.stderr
+    reference = reference_in(SERVER_ERROR, public_text)
+    assert "missing-directory" in logged_with(reference, error_logs)
 
 
 @pytest.mark.parametrize(

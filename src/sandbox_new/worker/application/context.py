@@ -31,6 +31,8 @@ class ExecutionContext(BaseModel):
     code_path: Path | None = None
     result_file_path: Path | None = None
     storage_mutations_path: Path | None = None
+    # Set by the wrap step: the wrapped code writes it before a result-file write error.
+    result_write_marker: str | None = None
 
     # The isolation decisions for this run; set by the build-isolation-plan step.
     isolation: IsolationPlan | None = None

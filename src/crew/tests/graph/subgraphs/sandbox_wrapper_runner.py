@@ -7,6 +7,7 @@ the wrapper runs: the isolation the sandbox adds around it doesn't change the me
 """
 
 import os
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -34,7 +35,11 @@ def run_in_sandbox_wrapper(
     with tempfile.TemporaryDirectory() as directory:
         result_path = Path(directory) / "result.json"
         source = wrap_code(
-            code=code, result_file_path=result_path, entrypoint=entrypoint, func_kwargs=inputs
+            code=code,
+            result_file_path=result_path,
+            entrypoint=entrypoint,
+            func_kwargs=inputs,
+            result_write_marker=secrets.token_hex(16),
         )
         python_path = os.pathsep.join(
             path

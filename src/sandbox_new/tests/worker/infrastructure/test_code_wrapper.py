@@ -19,6 +19,8 @@ import settings
 
 from worker.infrastructure.execution.code_wrapper import RESULT_WRITE_FAILED_EXIT_CODE, wrap_code
 
+MARKER = "5f0c2a9e7b1d4e6f8a3c0b2d9e4f7a1c"
+
 
 @dataclass
 class Run:
@@ -43,6 +45,7 @@ def run(
         result_file_path=result_file,
         entrypoint=entrypoint,
         func_kwargs=func_kwargs if func_kwargs is not None else {},
+        result_write_marker=MARKER,
         **overrides,
     )
     code_file = tmp_path / "code.py"
@@ -125,6 +128,17 @@ def test_globals_are_injected(tmp_path):
     outcome = run(tmp_path, "def main():\n    return LIMIT * 2", global_kwargs={"LIMIT": 3})
 
     assert outcome.result == 6
+
+
+def test_the_secret_and_dot_access_helpers_are_usable_without_importing_them(tmp_path):
+    outcome = run(
+        tmp_path,
+        "def main():\n"
+        "    return [callable(get_secret), DotDict.__name__, DotObject.__name__, DotList.__name__]",
+    )
+
+    assert (outcome.returncode, outcome.stderr) == (0, "")
+    assert outcome.result == [True, "DotDict", "DotObject", "DotList"]
 
 
 def test_common_modules_are_usable_without_importing_them(tmp_path):
@@ -340,6 +354,57 @@ def test_names_the_users_code_rebinds_dont_change_the_outcome(
 
 
 @pytest.mark.parametrize(
+    "rebinding",
+    [
+        "__sys_exit = None",
+        "__sys_fail = None",
+        "__sys_stderr = None",
+        "__sys_builtins = None",
+        "__sys_error_message = None\n__sys_failure_message = None",
+    ],
+    ids=["exit", "fail", "stderr", "builtins", "message-functions"],
+)
+def test_the_wrappers_own_names_rebound_by_the_users_code_dont_change_an_error(
+    tmp_path, rebinding
+):
+    code = f"{rebinding}\n\ndef main():\n    raise ValueError('bad input')"
+    error_line = code.count("\n") + 1
+
+    outcome = run(tmp_path, code)
+
+    assert outcome.returncode == 1
+    assert outcome.stderr == f"ValueError on line {error_line}: bad input"
+
+
+def test_the_wrappers_own_names_rebound_by_the_users_code_dont_change_a_result(tmp_path):
+    outcome = run(
+        tmp_path,
+        "__sys_json_dumps = None\n__sys_result_file_path = 'elsewhere.txt'\n\n"
+        "def main():\n    return 'saved'",
+    )
+
+    assert (outcome.returncode, outcome.stderr) == (0, "")
+    assert outcome.result == "saved"
+
+
+def test_the_users_code_does_not_see_the_wrappers_names_or_the_write_marker(tmp_path):
+    code = (
+        "SEEN_AT_MODULE_LEVEL = [name for name in globals() if name.startswith('__sys')]\n"
+        "\n"
+        "def main():\n"
+        "    return {\n"
+        "        'module_level': SEEN_AT_MODULE_LEVEL,\n"
+        "        'in_main': [name for name in globals() if name.startswith('__sys')],\n"
+        f"        'marker_in_globals': {MARKER!r} in repr(globals()),\n"
+        "    }\n"
+    )
+
+    outcome = run(tmp_path, code)
+
+    assert outcome.result == {"module_level": [], "in_main": [], "marker_in_globals": False}
+
+
+@pytest.mark.parametrize(
     ("code", "expected"),
     [
         pytest.param(
@@ -396,7 +461,7 @@ def test_a_result_file_that_cannot_be_written_exits_with_its_own_code(tmp_path):
 
     assert outcome.returncode == RESULT_WRITE_FAILED_EXIT_CODE
     assert outcome.stderr == (
-        "note\n\nFileNotFoundError: [Errno 2] No such file or directory: "
+        f"note\n\n{MARKER}FileNotFoundError: [Errno 2] No such file or directory: "
         f"'{result_file.as_posix()}'"
     )
 
@@ -412,9 +477,21 @@ def test_a_result_write_error_starts_on_its_own_line_after_unfinished_user_outpu
 
     assert outcome.returncode == RESULT_WRITE_FAILED_EXIT_CODE
     assert outcome.stderr == (
-        "partial\nFileNotFoundError: [Errno 2] No such file or directory: "
+        f"partial\n{MARKER}FileNotFoundError: [Errno 2] No such file or directory: "
         f"'{result_file.as_posix()}'"
     )
+
+
+def test_the_users_own_exit_with_the_write_failure_code_carries_no_marker(tmp_path):
+    outcome = run(
+        tmp_path,
+        "import sys\n\ndef main():\n"
+        "    print('diagnostics', file=sys.stderr)\n"
+        f"    sys.exit({RESULT_WRITE_FAILED_EXIT_CODE})",
+    )
+
+    assert outcome.returncode == RESULT_WRITE_FAILED_EXIT_CODE
+    assert outcome.stderr == "diagnostics"
 
 
 @pytest.mark.parametrize(
@@ -463,13 +540,6 @@ def test_tracebacks_the_user_formats_show_their_own_source(tmp_path):
     assert "raise ValueError('shown')" in outcome.result
 
 
-def test_sys_exit_in_the_users_code_keeps_its_exit_code(tmp_path):
-    outcome = run(tmp_path, "import sys\n\ndef main():\n    sys.exit(3)")
-
-    assert outcome.returncode == 3
-    assert outcome.stderr == ""
-
-
 @pytest.mark.parametrize(
     ("mode", "expected"),
     [
@@ -488,7 +558,11 @@ def test_sys_exit_in_the_users_code_keeps_its_exit_code(tmp_path):
 def test_a_network_denial_keeps_its_policy_message(tmp_path, monkeypatch, mode, expected):
     code = "def main():\n    raise PermissionError(errno.EACCES, 'Permission denied')\n"
     source = wrap_code(
-        code=code, result_file_path=tmp_path / "output.txt", entrypoint="main", func_kwargs={}
+        code=code,
+        result_file_path=tmp_path / "output.txt",
+        entrypoint="main",
+        func_kwargs={},
+        result_write_marker=MARKER,
     )
     (tmp_path / "code.py").write_text(source, encoding="utf-8")
 
@@ -522,7 +596,11 @@ def test_a_network_denial_is_recognised_when_the_users_code_rebinds_names_it_use
         "    raise denial\n"
     )
     source = wrap_code(
-        code=code, result_file_path=tmp_path / "output.txt", entrypoint="main", func_kwargs={}
+        code=code,
+        result_file_path=tmp_path / "output.txt",
+        entrypoint="main",
+        func_kwargs={},
+        result_write_marker=MARKER,
     )
     (tmp_path / "code.py").write_text(source, encoding="utf-8")
 
@@ -542,6 +620,44 @@ def test_a_network_denial_is_recognised_when_the_users_code_rebinds_names_it_use
     assert completed.returncode == 1
     assert completed.stderr.strip() == (
         "Network access denied: the sandbox network policy blocks all outbound network access."
+    )
+
+
+def test_a_dns_failure_the_users_code_catches_carries_the_policy_message(tmp_path):
+    code = (
+        "def main():\n"
+        "    try:\n"
+        "        socket.getaddrinfo('host.invalid', 80)\n"
+        "    except socket.gaierror as error:\n"
+        "        return str(error)\n"
+    )
+    source = wrap_code(
+        code=code,
+        result_file_path=tmp_path / "output.txt",
+        entrypoint="main",
+        func_kwargs={},
+        result_write_marker=MARKER,
+    )
+    (tmp_path / "code.py").write_text(source, encoding="utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, str(tmp_path / "code.py")],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(settings.SHARED_DIR),
+            "SANDBOX_NETWORK_BLOCKED": "all",
+        },
+        cwd=tmp_path,
+        timeout=60,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    returned = json.loads((tmp_path / "output.txt").read_text(encoding="utf-8"))
+    # str() of an OSError starts with its errno, which differs between platforms.
+    assert returned.endswith(
+        "] Network access denied: the sandbox network policy blocks all outbound network access."
     )
 
 
@@ -566,6 +682,7 @@ def test_storage_mutations_are_written_when_a_path_is_given(tmp_path):
         result_file_path=tmp_path / "output.txt",
         entrypoint="main",
         func_kwargs={},
+        result_write_marker=MARKER,
         storage_mutations_path=mutations_file,
     )
     (tmp_path / "code.py").write_text(source, encoding="utf-8")
