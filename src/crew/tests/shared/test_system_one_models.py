@@ -8,7 +8,12 @@ from src.shared.models.system_one import (
     SystemOneConfigData,
     SystemOneResult,
 )
-from src.shared.system_one.constants import JEV_INPUT_PRICE_USD_PER_TOKEN, JEV_MODEL_VERSIONS
+from src.shared.system_one.constants import (
+    JEV_INPUT_PRICE_USD_PER_TOKEN,
+    JEV_MODEL_VERSIONS,
+    OPENAI_DECISIONS_MODELS,
+    OPENAI_INPUT_PRICE_USD_PER_TOKEN,
+)
 
 NOUL = {"type": "noul", "instructions": "Is this an engineering company?"}
 
@@ -183,6 +188,10 @@ def test_score_is_not_limited_to_zero_to_one():
 
 def test_every_pinned_jev_version_has_a_price():
     assert set(JEV_MODEL_VERSIONS) == set(JEV_INPUT_PRICE_USD_PER_TOKEN)
+
+
+def test_every_pinned_openai_model_has_a_price():
+    assert set(OPENAI_DECISIONS_MODELS) == set(OPENAI_INPUT_PRICE_USD_PER_TOKEN)
 
 
 def test_config_repr_hides_the_key():
