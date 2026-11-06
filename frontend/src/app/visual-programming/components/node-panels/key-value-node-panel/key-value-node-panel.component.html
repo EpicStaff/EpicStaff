@@ -5,14 +5,16 @@
             class="form-container"
         >
             <div class="field-isolated">
-                <app-custom-input
-                    label="Node Name"
-                    tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                    formControlName="node_name"
-                    placeholder="Enter node name"
-                    [activeColor]="activeColor"
-                    [readonly]="isReadOnly()"
-                ></app-custom-input>
+                <app-diff-field-mark [diffField]="'node_name'">
+                    <app-custom-input
+                        label="Node Name"
+                        tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                        formControlName="node_name"
+                        placeholder="Enter node name"
+                        [activeColor]="activeColor"
+                        [readonly]="isReadOnly()"
+                    ></app-custom-input>
+                </app-diff-field-mark>
                 <app-validation-errors [control]="form.get('node_name')!" />
             </div>
 
@@ -38,54 +40,69 @@
                             label="Table"
                             tooltipText="The key-value table this node reads from, writes to or deletes from."
                         />
-                        <app-select-dropdown
-                            mode="list"
-                            selectionMode="single"
-                            searchPlaceholder="Search tables..."
-                            emptyText="No tables yet"
-                            [items]="tableItems()"
-                            [selected]="selectedTableValue()"
-                            [headerAction]="createTableAction()"
-                            [readonly]="isReadOnly()"
-                            (selectionChange)="onTableSelectionChange($event)"
-                            (headerActionClick)="openCreateTable()"
+                        <app-diff-field-mark
+                            [diffField]="'key_value_table'"
+                            [diffFormat]="tableNameFormat"
                         >
-                            <button
-                                type="button"
-                                appSelectDropdownTrigger
-                                class="dropdown-trigger"
-                                [class.dropdown-trigger--readonly]="isReadOnly()"
-                                [disabled]="configurationLocked()"
+                            <app-select-dropdown
+                                mode="list"
+                                selectionMode="single"
+                                searchPlaceholder="Search tables..."
+                                emptyText="No tables yet"
+                                [items]="tableItems()"
+                                [selected]="selectedTableValue()"
+                                [headerAction]="createTableAction()"
+                                [readonly]="isReadOnly()"
+                                (selectionChange)="onTableSelectionChange($event)"
+                                (headerActionClick)="openCreateTable()"
                             >
-                                <span
-                                    class="dropdown-trigger__label"
-                                    [class.dropdown-trigger__label--placeholder]="!selectedTableName()"
-                                    appTooltipOnOverflow
-                                    [matTooltip]="selectedTableName() ?? ''"
+                                <button
+                                    type="button"
+                                    appSelectDropdownTrigger
+                                    class="dropdown-trigger"
+                                    [class.dropdown-trigger--readonly]="isReadOnly()"
+                                    [disabled]="configurationLocked()"
                                 >
-                                    {{ tableTriggerLabel() }}
-                                </span>
-                                @if (!isReadOnly()) {
-                                    <app-svg-icon
-                                        icon="chevron-down-filled"
-                                        size="8px"
-                                    />
-                                }
-                            </button>
-                        </app-select-dropdown>
+                                    <span
+                                        class="dropdown-trigger__label"
+                                        [class.dropdown-trigger__label--placeholder]="!selectedTableName()"
+                                        appTooltipOnOverflow
+                                        [matTooltip]="selectedTableName() ?? ''"
+                                    >
+                                        {{ tableTriggerLabel() }}
+                                    </span>
+                                    @if (!isReadOnly()) {
+                                        <app-svg-icon
+                                            icon="chevron-down-filled"
+                                            size="8px"
+                                        />
+                                    }
+                                </button>
+                            </app-select-dropdown>
+                        </app-diff-field-mark>
                         @if (!isReadOnly() && selectedTableId() === null) {
                             <div class="table-hint">Select a table for this node to run</div>
                         }
                     </div>
 
-                    <app-select
-                        label="Mode"
-                        tooltipText="Read copies stored values into flow variables, Write stores values taken from flow variables, Delete removes keys."
-                        formControlName="mode"
-                        [items]="modeItems()"
-                        [readonly]="isReadOnly()"
-                    />
+                    <app-diff-field-mark
+                        [diffField]="'mode'"
+                        [diffFormat]="modeLabelFormat"
+                    >
+                        <app-select
+                            label="Mode"
+                            tooltipText="Read copies stored values into flow variables, Write stores values taken from flow variables, Delete removes keys."
+                            formControlName="mode"
+                            [items]="modeItems()"
+                            [readonly]="isReadOnly()"
+                        />
+                    </app-diff-field-mark>
                 </div>
+                <!-- Under the whole row: the table column is too narrow for the note. -->
+                <app-missing-reference-note
+                    class="missing-reference-note"
+                    [fields]="['key_value_table']"
+                />
             </div>
 
             <div class="entries">
@@ -98,123 +115,184 @@
                     class="entries-list"
                 >
                     @for (entry of entries.controls; let i = $index; track entry) {
+                        <!-- Version diff (Changes tab): what a restore does to the row, paired with the canvas by key. -->
                         <div
-                            class="entry-row"
-                            [formGroupName]="i"
-                            [class.locked]="configurationLocked()"
+                            class="entry-row-mark"
+                            appDiffFieldMark
+                            [diffChange]="entryRowMarks()[i]?.change ?? null"
+                            [class.entry-row-mark--added]="entryRowMarks()[i]?.added"
+                            (diffTooltipSide)="onEntryDiffTooltipSide($event)"
                         >
-                            <ng-template #keyField>
-                                <div class="entry-field">
-                                    <div class="key-highlight">
-                                        <div
-                                            #keyBackdrop
-                                            class="entry-input key-backdrop"
-                                            aria-hidden="true"
-                                            [innerHTML]="keyHighlights()[i]"
-                                        ></div>
-                                        <input
-                                            #keyInput
-                                            type="text"
-                                            class="entry-input key-input"
-                                            formControlName="key"
-                                            aria-label="Key"
-                                            matTooltip="Key"
-                                            autocomplete="off"
-                                            role="combobox"
-                                            aria-autocomplete="list"
-                                            [placeholder]="keyPlaceholder"
-                                            [class.duplicate]="isDuplicateKey(i)"
-                                            [attr.aria-expanded]="isKeyListOpen(i)"
-                                            [attr.aria-controls]="keyVariablePicker.listboxIdFor(i)"
-                                            [attr.aria-activedescendant]="keyVariablePicker.activeDescendantFor(i)"
-                                            (input)="onKeyInput(i, $event)"
-                                            (keydown)="onKeyKeydown(i, $event)"
-                                            (focus)="onKeyFocus(i, $event)"
-                                            (blur)="onKeyBlur(i, $event)"
-                                            (click)="onKeyClick(i, $event)"
-                                            (keyup)="onKeyCaretMove(i, $event)"
-                                            (scroll)="keyBackdrop.scrollLeft = keyInput.scrollLeft"
-                                        />
-                                    </div>
-                                    @if (placeholderHints()[i]; as hint) {
-                                        <div class="entry-hint">{{ hint }}</div>
-                                    }
-                                    @if (keyHintFor(i); as hint) {
-                                        <div class="entry-hint">{{ hint }}</div>
-                                    }
-                                    @if (existenceHintFor(i); as hint) {
-                                        <div class="entry-hint">{{ hint }}</div>
-                                    }
-                                    @if (keyHelpFor(i); as help) {
-                                        <div class="entry-help">{{ help }}</div>
-                                    }
-                                </div>
-                            </ng-template>
-                            <ng-template #valueField>
-                                <div class="entry-field">
-                                    <div class="value-field-wrapper">
-                                        <span class="variables-prefix">&#64;</span>
-                                        <input
-                                            type="text"
-                                            class="entry-input"
-                                            [class.duplicate]="isConflictingVariable(i)"
-                                            [class.invalid-border]="isValueInvalid(i)"
-                                            [value]="getValueDisplayText(i)"
-                                            placeholder="All fields if empty"
-                                            aria-label="Variable path"
-                                            matTooltip="Variable path"
-                                            autocomplete="off"
-                                            role="combobox"
-                                            aria-autocomplete="list"
-                                            [disabled]="entries.at(i).disabled"
-                                            [attr.aria-expanded]="variablePicker.isOpenFor(i)"
-                                            [attr.aria-controls]="variablePicker.listboxIdFor(i)"
-                                            [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
-                                            (focus)="variablePicker.onFocus(i, $event)"
-                                            (input)="onValueInput(i, $event)"
-                                            (keydown)="onValueKeydown(i, $event)"
-                                            (blur)="onValueBlur(i, $event)"
-                                        />
-                                    </div>
-                                    @if (valueHintFor(i); as hint) {
-                                        <div class="entry-hint">{{ hint }}</div>
-                                    }
-                                </div>
-                            </ng-template>
-                            <!-- Read puts the stored value into the variable, so the variable goes first. -->
-                            @switch (mode()) {
-                                @case ('read') {
-                                    <ng-container [ngTemplateOutlet]="valueField" />
-                                    <div class="equals-sign">=</div>
-                                    <ng-container [ngTemplateOutlet]="keyField" />
-                                }
-                                @case ('write') {
-                                    <ng-container [ngTemplateOutlet]="keyField" />
-                                    <div class="equals-sign">=</div>
-                                    <ng-container [ngTemplateOutlet]="valueField" />
-                                }
-                                @case ('delete') {
-                                    <ng-container [ngTemplateOutlet]="keyField" />
-                                }
+                            @if (entryRowMarks()[i]?.added) {
+                                <span class="visually-hidden">Restore adds this key: </span>
                             }
-                            @if (!isReadOnly()) {
-                                <button
-                                    type="button"
-                                    class="remove-entry"
-                                    aria-label="Remove"
-                                    matTooltip="Remove"
-                                    [disabled]="configurationLocked()"
-                                    (click)="removeEntry(i)"
-                                >
-                                    <app-svg-icon
-                                        icon="trash"
-                                        size="1rem"
-                                    />
-                                </button>
-                            }
+                            <div
+                                class="entry-row"
+                                [formGroupName]="i"
+                                [class.locked]="configurationLocked()"
+                            >
+                                <ng-template #keyField>
+                                    <div class="entry-field">
+                                        <div class="key-highlight">
+                                            <div
+                                                #keyBackdrop
+                                                class="entry-input key-backdrop"
+                                                aria-hidden="true"
+                                                [innerHTML]="keyHighlights()[i]"
+                                            ></div>
+                                            <input
+                                                #keyInput
+                                                type="text"
+                                                class="entry-input key-input"
+                                                formControlName="key"
+                                                aria-label="Key"
+                                                matTooltip="Key"
+                                                [matTooltipPosition]="entryFieldTooltipPosition(i)"
+                                                autocomplete="off"
+                                                role="combobox"
+                                                aria-autocomplete="list"
+                                                [placeholder]="keyPlaceholder"
+                                                [class.duplicate]="isDuplicateKey(i)"
+                                                [attr.aria-expanded]="isKeyListOpen(i)"
+                                                [attr.aria-controls]="keyVariablePicker.listboxIdFor(i)"
+                                                [attr.aria-activedescendant]="keyVariablePicker.activeDescendantFor(i)"
+                                                (input)="onKeyInput(i, $event)"
+                                                (keydown)="onKeyKeydown(i, $event)"
+                                                (focus)="onKeyFocus(i, $event)"
+                                                (blur)="onKeyBlur(i, $event)"
+                                                (click)="onKeyClick(i, $event)"
+                                                (keyup)="onKeyCaretMove(i, $event)"
+                                                (scroll)="keyBackdrop.scrollLeft = keyInput.scrollLeft"
+                                            />
+                                        </div>
+                                        @if (placeholderHints()[i]; as hint) {
+                                            <div class="entry-hint">{{ hint }}</div>
+                                        }
+                                        @if (keyHintFor(i); as hint) {
+                                            <div class="entry-hint">{{ hint }}</div>
+                                        }
+                                        @if (existenceHintFor(i); as hint) {
+                                            <div class="entry-hint">{{ hint }}</div>
+                                        }
+                                        @if (keyHelpFor(i); as help) {
+                                            <div class="entry-help">{{ help }}</div>
+                                        }
+                                    </div>
+                                </ng-template>
+                                <ng-template #valueField>
+                                    <div class="entry-field">
+                                        <div class="value-field-wrapper">
+                                            <span class="variables-prefix">&#64;</span>
+                                            <input
+                                                type="text"
+                                                class="entry-input"
+                                                [class.duplicate]="isConflictingVariable(i)"
+                                                [class.invalid-border]="isValueInvalid(i)"
+                                                [value]="getValueDisplayText(i)"
+                                                placeholder="All fields if empty"
+                                                aria-label="Variable path"
+                                                matTooltip="Variable path"
+                                                [matTooltipPosition]="entryFieldTooltipPosition(i)"
+                                                autocomplete="off"
+                                                role="combobox"
+                                                aria-autocomplete="list"
+                                                [disabled]="entries.at(i).disabled"
+                                                [attr.aria-expanded]="variablePicker.isOpenFor(i)"
+                                                [attr.aria-controls]="variablePicker.listboxIdFor(i)"
+                                                [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
+                                                (focus)="variablePicker.onFocus(i, $event)"
+                                                (input)="onValueInput(i, $event)"
+                                                (keydown)="onValueKeydown(i, $event)"
+                                                (blur)="onValueBlur(i, $event)"
+                                            />
+                                        </div>
+                                        @if (valueHintFor(i); as hint) {
+                                            <div class="entry-hint">{{ hint }}</div>
+                                        }
+                                    </div>
+                                </ng-template>
+                                <!-- Read puts the stored value into the variable, so the variable goes first. -->
+                                @switch (mode()) {
+                                    @case ('read') {
+                                        <ng-container [ngTemplateOutlet]="valueField" />
+                                        <div class="equals-sign">=</div>
+                                        <ng-container [ngTemplateOutlet]="keyField" />
+                                    }
+                                    @case ('write') {
+                                        <ng-container [ngTemplateOutlet]="keyField" />
+                                        <div class="equals-sign">=</div>
+                                        <ng-container [ngTemplateOutlet]="valueField" />
+                                    }
+                                    @case ('delete') {
+                                        <ng-container [ngTemplateOutlet]="keyField" />
+                                    }
+                                }
+                                @if (!isReadOnly()) {
+                                    <button
+                                        type="button"
+                                        class="remove-entry"
+                                        aria-label="Remove"
+                                        matTooltip="Remove"
+                                        [disabled]="configurationLocked()"
+                                        (click)="removeEntry(i)"
+                                    >
+                                        <app-svg-icon
+                                            icon="trash"
+                                            size="1rem"
+                                        />
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    <!-- Rows only on the current canvas: the version does not have them, a restore removes them. -->
+                    <!-- The variable path as the value field shows it: the @ prefix, then the path without "variables". -->
+                    <ng-template
+                        #removedValue
+                        let-value
+                    >
+                        <div class="entry-field">
+                            <div class="value-field-wrapper">
+                                <span class="variables-prefix">&#64;</span>
+                                <div class="entry-input entry-input--removed">{{ value }}</div>
+                            </div>
+                        </div>
+                    </ng-template>
+                    @for (removed of removedEntries(); track $index) {
+                        <div class="entry-row-mark entry-row-mark--removed">
+                            <span class="visually-hidden">Restore removes this key: </span>
+                            <div class="entry-row">
+                                @switch (mode()) {
+                                    @case ('read') {
+                                        <ng-container
+                                            [ngTemplateOutlet]="removedValue"
+                                            [ngTemplateOutletContext]="{ $implicit: removed.value }"
+                                        />
+                                        <div class="equals-sign">=</div>
+                                        <div class="entry-input entry-input--removed">{{ removed.key }}</div>
+                                    }
+                                    @case ('write') {
+                                        <div class="entry-input entry-input--removed">{{ removed.key }}</div>
+                                        <div class="equals-sign">=</div>
+                                        <ng-container
+                                            [ngTemplateOutlet]="removedValue"
+                                            [ngTemplateOutletContext]="{ $implicit: removed.value }"
+                                        />
+                                    }
+                                    @case ('delete') {
+                                        <div class="entry-input entry-input--removed">{{ removed.key }}</div>
+                                    }
+                                }
+                            </div>
                         </div>
                     }
                 </div>
+                <!-- Version diff (Changes tab): the rows are paired by key, so a moved row has no mark of its own. -->
+                @if (entriesReordered()) {
+                    <app-warning-note class="entry-order-note"
+                        >Restore changes the order of the entries.</app-warning-note
+                    >
+                }
                 <!-- Hidden in a read-only flow, as the other panels hide what only edits. -->
                 @if (!isReadOnly()) {
                     <button

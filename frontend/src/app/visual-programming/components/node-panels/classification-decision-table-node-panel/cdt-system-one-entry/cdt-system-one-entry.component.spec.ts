@@ -4,11 +4,19 @@ import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TooltipComponent } from '@shared/components';
-import { SystemOneConfig } from '@shared/models';
+import { SystemOneConfig, SystemOneQuestion } from '@shared/models';
 import { FullLLMConfigService, SystemOneConfigStorageService } from '@shared/services';
 import { of } from 'rxjs';
 
 import { PromptConfig } from '../../../../core/models/classification-decision-table.model';
+import { NodePanelDiff } from '../../../../core/providers/node-panel-diff.token';
+import { FieldChange, FieldName } from '../../../../utils/diff';
+import {
+    missingReference,
+    provideChangesTabDiff,
+    shownMissingReferenceNotes,
+} from '../../../missing-reference-note/missing-reference-note.testing';
+import { SHOWN_DIFF_MARKS } from '../../node-panel-diff.testing';
 import { CdtSystemOneEntryComponent } from './cdt-system-one-entry.component';
 
 const TYPESAFE_CONFIG = { id: 7, custom_name: 'jev', provider: 'typesafe', model_name: 'Jev 1.14' } as SystemOneConfig;
@@ -432,5 +440,246 @@ describe('CdtSystemOneEntryComponent', () => {
         );
 
         expect(button!.disabled).toBe(true);
+    });
+});
+
+describe('CdtSystemOneEntryComponent on the Changes tab of a version preview', () => {
+    let fixture: ComponentFixture<CdtSystemOneEntryComponent>;
+
+    /** A change of one field of the entry "company_check" (or of the entry `promptKey`), as the diff reports it. */
+    const promptChange = (
+        field: string,
+        current: unknown,
+        version: unknown,
+        promptKey = 'company_check'
+    ): FieldChange => ({
+        path: `prompts[key=${promptKey}].${field}`,
+        field: `prompts[].${field}` as FieldName,
+        status: 'changed',
+        current,
+        version,
+    });
+
+    /** The version entry, read-only, on a node a restore changes by `diff`. */
+    async function open(prompt: Entry, diff: Partial<NodePanelDiff>): Promise<HTMLElement> {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                provideChangesTabDiff(diff),
+                {
+                    provide: SystemOneConfigStorageService,
+                    useValue: {
+                        configs: signal([TYPESAFE_CONFIG, LLM_CONFIG]),
+                        getAllConfigs: () => of([TYPESAFE_CONFIG, LLM_CONFIG]),
+                    },
+                },
+                {
+                    provide: FullLLMConfigService,
+                    useValue: { fullLLMConfigs: signal([{ id: 4, custom_name: 'gpt-4o' }]) },
+                },
+            ],
+        });
+        fixture = TestBed.createComponent(CdtSystemOneEntryComponent);
+        fixture.componentRef.setInput('prompt', prompt);
+        fixture.componentRef.setInput('readOnly', true);
+        fixture.detectChanges();
+        // The fields take their values from `ngModel`, which writes them after the first check.
+        await fixture.whenStable();
+        fixture.detectChanges();
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    /** What a screen reader hears as the description of `element`: for a mark, the tooltip's text. */
+    const descriptionOf = (element: Element | null): string =>
+        document.getElementById(element?.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+    const shownMarks = (root: HTMLElement): HTMLElement[] =>
+        Array.from(root.querySelectorAll<HTMLElement>('.diff-field-mark--shown'));
+    const questionNamed = (root: HTMLElement, name: string): HTMLElement =>
+        Array.from(root.querySelectorAll<HTMLElement>('.question')).find(
+            (question) => question.querySelector('.question__name')?.textContent?.trim() === name
+        )!;
+
+    const QUESTIONS: Record<'correct' | 'tone' | 'quality', SystemOneQuestion> = {
+        correct: { type: 'noul', instructions: 'Is it correct?' },
+        tone: { type: 'choice', instructions: 'Which tone?', criteria: { calm: 'Calm', angry: 'Angry' } },
+        quality: { type: 'score', instructions: 'How good?', criteria: ['low', 'high'] },
+    };
+    const versionEntry = entry({ system_one_config: 7, questions: QUESTIONS, input_map: { text: 'variables.text' } });
+
+    it.each([
+        { canvas: 8, shown: 'cheap — LLM: gpt-4o' },
+        { canvas: 5, shown: 'System One config #5' },
+        { canvas: null, shown: 'empty' },
+    ])(
+        'marks a changed config with the canvas config by its name ($canvas → $shown), without a badge',
+        async ({ canvas, shown }) => {
+            const root = await open(versionEntry, { fields: [promptChange('system_one_config', canvas, 7)] });
+
+            const [mark] = shownMarks(root);
+            expect(mark.querySelector('app-select')).not.toBeNull();
+            expect(descriptionOf(mark)).toBe(`Current canvas: ${shown}`);
+            expect(mark.classList).toContain('diff-value-marked--no-badge');
+        }
+    );
+
+    it('marks a changed result variable without a badge', async () => {
+        const root = await open(versionEntry, {
+            fields: [promptChange('result_variable', 'verdict', 'company_check')],
+        });
+
+        const [mark] = shownMarks(root);
+        expect(mark.querySelector('app-custom-input')).not.toBeNull();
+        expect(descriptionOf(mark)).toBe('Current canvas: verdict');
+        expect(mark.classList).toContain('diff-value-marked--no-badge');
+    });
+
+    it('marks only the fields of its own entry', async () => {
+        const root = await open(versionEntry, {
+            fields: [
+                promptChange('system_one_config', 8, 7, 'other_entry'),
+                promptChange('result_variable', 'a', 'b', 'other_entry'),
+            ],
+        });
+
+        expect(shownMarks(root)).toEqual([]);
+    });
+
+    it('marks the input rows a restore changes, adds and removes', async () => {
+        const root = await open(entry({ input_map: { text: 'variables.text', lang: 'variables.lang' } }), {
+            fields: [
+                promptChange(
+                    'input_map',
+                    { text: 'variables.body', author: 'variables.author' },
+                    { text: 'variables.text', lang: 'variables.lang' }
+                ),
+            ],
+        });
+
+        const changed = root.querySelector('.readonly-row.diff-field-mark--shown');
+        expect(changed?.textContent).toContain('text');
+        expect(descriptionOf(changed)).toContain('variables.body');
+        expect(root.querySelector('.readonly-row--added')?.textContent).toContain('lang');
+        expect(root.querySelector('.readonly-row--removed')?.textContent).toContain('author');
+    });
+
+    it('marks each question a restore changes, naming the changed parts in its tooltip, and leaves the others', async () => {
+        const root = await open(versionEntry, {
+            fields: [
+                promptChange(
+                    'questions',
+                    {
+                        ...QUESTIONS,
+                        correct: { type: 'noul', instructions: 'Is it right?' },
+                        tone: { type: 'choice', instructions: 'Which tone?', criteria: { calm: 'Calm' } },
+                    },
+                    QUESTIONS
+                ),
+            ],
+        });
+
+        expect(descriptionOf(questionNamed(root, 'correct'))).toBe(
+            'Restore changes this question. Changed fields: Instructions.'
+        );
+        expect(descriptionOf(questionNamed(root, 'tone'))).toBe(
+            'Restore changes this question. Changed fields: Options.'
+        );
+        expect(questionNamed(root, 'quality').classList).not.toContain('diff-field-mark--shown');
+        const changed = questionNamed(root, 'correct');
+        expect(changed.getAttribute('role')).toBe('group');
+        expect(changed.getAttribute('aria-label')).toBe('Question correct');
+        expect(changed.getAttribute('tabindex')).toBe('0');
+    });
+
+    it("shows only the type help over its help icon, and the question's tooltip elsewhere in the question", async () => {
+        const root = await open(versionEntry, {
+            fields: [
+                promptChange(
+                    'questions',
+                    { ...QUESTIONS, correct: { type: 'noul', instructions: 'Is it right?' } },
+                    QUESTIONS
+                ),
+            ],
+        });
+        const question = questionNamed(root, 'correct');
+        const diffTooltip = (): string | null =>
+            document.querySelector('.diff-field-mark__tooltip')?.textContent?.trim() ?? null;
+        const pointAt = (element: Element): void => {
+            element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            fixture.detectChanges();
+        };
+        question.dispatchEvent(new Event('mouseenter'));
+
+        pointAt(question.querySelector('.question__name')!);
+        expect(diffTooltip()).toBe('Changed fields: Instructions.');
+
+        pointAt(question.querySelector('button[aria-label="Question type help"]')!);
+        expect(diffTooltip()).toBeNull();
+    });
+
+    it('names a question whose type changed by its type and its new criteria', async () => {
+        const root = await open(versionEntry, {
+            fields: [
+                promptChange(
+                    'questions',
+                    { ...QUESTIONS, quality: { type: 'choice', instructions: 'How good?', criteria: { ok: 'OK' } } },
+                    QUESTIONS
+                ),
+            ],
+        });
+
+        expect(descriptionOf(questionNamed(root, 'quality'))).toBe(
+            'Restore changes this question. Changed fields: Type, Levels.'
+        );
+    });
+
+    it('shows a question a restore adds framed, and one it removes struck after the others', async () => {
+        const canvasQuestions = { correct: QUESTIONS.correct, tone: QUESTIONS.tone };
+        const root = await open(versionEntry, {
+            fields: [
+                promptChange(
+                    'questions',
+                    { ...canvasQuestions, legacy: { type: 'score', instructions: 'Old scale', criteria: ['a'] } },
+                    QUESTIONS
+                ),
+            ],
+        });
+
+        const added = questionNamed(root, 'quality');
+        expect(added.classList).toContain('question--added');
+        expect(added.textContent).toContain('Restore adds this question');
+        const removed = root.querySelector<HTMLElement>('.question--removed');
+        expect(removed?.textContent).toContain('Restore removes this question');
+        expect(removed?.textContent).toContain('legacy');
+        expect(removed?.textContent).toContain('Score');
+        expect(removed?.textContent).toContain('Old scale');
+    });
+
+    it('says under the config that the config of this entry no longer exists, and not for another entry', async () => {
+        const root = await open(entry({ system_one_config: null }), {
+            missingReferences: [
+                missingReference('prompts[].system_one_config', 9, 'prompts[key=company_check].system_one_config'),
+                missingReference('prompts[].system_one_config', 10, 'prompts[key=other_entry].system_one_config'),
+            ],
+        });
+
+        expect(shownMissingReferenceNotes(root).map(({ text }) => text)).toEqual([
+            'This version uses System One config #9; it no longer exists.',
+        ]);
+    });
+
+    it.each([
+        { case: 'the node is added', diff: { status: 'added' as const } },
+        { case: 'the node is unchanged', diff: { status: 'unchanged' as const } },
+    ])('shows no marks when $case', async ({ diff }) => {
+        const root = await open(versionEntry, {
+            ...diff,
+            fields: [
+                promptChange('system_one_config', 8, 7),
+                promptChange('questions', { ...QUESTIONS, extra: QUESTIONS.correct }, QUESTIONS),
+            ],
+        });
+
+        expect(root.querySelectorAll(SHOWN_DIFF_MARKS)).toHaveLength(0);
     });
 });

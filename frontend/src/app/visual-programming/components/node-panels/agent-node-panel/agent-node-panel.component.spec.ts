@@ -39,6 +39,7 @@ function agentNode(id: string, tempIdPrefix = ''): AgentNodeModel {
     return {
         id,
         backendId: 1,
+        nodeUuid: null,
         type: NodeType.AGENT,
         position: { x: 0, y: 0 },
         ports: null,

@@ -16,6 +16,12 @@ export interface BaseNodeModel {
     id: string;
     /** Backend primary key — set on load, null for newly created nodes. */
     backendId: number | null;
+    /**
+     * Stable node identity, kept across save, reload, restore and replace-import.
+     * Generated on the canvas for new, pasted and converted nodes and sent on create only.
+     * Null only for nodes from old version snapshots that predate node uuids.
+     */
+    nodeUuid: string | null;
     position: { x: number; y: number };
     ports: ViewPort[] | null;
     node_name: string;
