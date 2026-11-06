@@ -570,3 +570,12 @@ def test_a_download_without_ticket_or_credentials_is_refused(stored_export, api_
     response = api_client.get(reverse("transfer-jobs-download", args=[stored_export.id]))
 
     assert response.status_code == 401
+
+
+def test_a_ticketed_head_is_refused_and_leaves_the_ticket_usable(
+    client_in, exporter, acme, stored_export, fake_redis, api_client
+):
+    url = _issue_ticket(client_in(exporter, acme), stored_export)
+
+    assert api_client.head(url).status_code == 405
+    assert api_client.get(url).status_code == 200

@@ -388,3 +388,37 @@ async def test_a_collection_archive_is_stored_and_queued(
     assert (job.main_entity, job.request) == ("SourceCollection", {"settings": {}})
     assert backend.objects[job.archive_key] == body
     assert enqueued == [job.id]
+
+
+async def test_a_lost_queue_entry_still_answers_with_the_committed_job(
+    custom_role_user, acme, backend, temp_files, monkeypatch
+):
+    def redis_down(job):
+        raise ConnectionError("redis is down")
+
+    monkeypatch.setattr(job_service, "enqueue_transfer_job", redis_down)
+    user = await sync_to_async(_user)(custom_role_user, acme)
+    body = _zip(await sync_to_async(_envelope)(acme))
+
+    response = await _post(FLOWS, user, acme, body)
+
+    # The job is committed; the sweep fails it as not started, so its archive must stay.
+    assert response.status_code == 202, response.text
+    job = await TransferJob.objects.aget(pk=response.json()["job_id"])
+    assert job.status == TransferJob.Status.QUEUED
+    assert backend.objects[job.archive_key] == body
+
+
+@override_settings(MAX_KNOWLEDGE_ARCHIVE_SIZE=100)
+async def test_an_oversized_upload_is_refused_before_the_job_limit_is_counted(
+    custom_role_user, acme, backend, enqueued, temp_files, monkeypatch
+):
+    def limits_must_not_be_counted(self, **_):
+        raise AssertionError("the job limit was counted for an upload past the size cap")
+
+    monkeypatch.setattr(job_service.TransferJobService, "check_limits", limits_must_not_be_counted)
+    user = await sync_to_async(_user)(custom_role_user, acme)
+
+    response = await _post(FLOWS, user, acme, b"PK\x03\x04" + b"x" * 200)
+
+    assert response.status_code == 413

@@ -4,6 +4,7 @@ rights, the error a creator sees, the files left behind, the sweep, and the cons
 import io
 import json
 import os
+import uuid
 import zipfile
 from datetime import timedelta
 
@@ -38,6 +39,7 @@ from tables.clients.errors import (
     ClientTimeoutError,
     ClientValidationError,
 )
+from tables.services.transfer_jobs import runner as runner_module
 from tables.services.transfer_jobs.runner import (
     EXPORT_ARCHIVE_NAME,
     IMPORT_ARCHIVE_NAME,
@@ -368,6 +370,37 @@ def test_a_project_error_keeps_its_own_code():
 
 
 # --- sweep -------------------------------------------------------------------------------
+
+
+def test_sweep_deletes_old_archives_no_job_owns(store, backend, flow, regular_user, settings):
+    settings.TRANSFER_ARCHIVE_TTL = 3600
+    now = timezone.now()
+    old, young = uuid.uuid4(), uuid.uuid4()
+    owned = _export_job(flow, regular_user)
+    old_key = store.upload_file(old, IMPORT_ARCHIVE_NAME, io.BytesIO(b"orphan"))
+    young_key = store.upload_file(young, IMPORT_ARCHIVE_NAME, io.BytesIO(b"in flight"))
+    owned_key = store.upload_file(owned.id, EXPORT_ARCHIVE_NAME, io.BytesIO(b"owned"))
+    TransferJob.objects.filter(pk=owned.pk).update(expires_at=now + timedelta(hours=1))
+    for key in (old_key, owned_key):
+        backend.modified[key] = now - timedelta(hours=2)
+
+    counts = sweep_transfer_jobs(now, store=store)
+
+    assert counts["orphans_deleted"] == 1
+    # An upload whose job row is still being created is young; a job's own archive stays.
+    assert set(backend.objects) == {young_key, owned_key}
+
+
+def test_sweep_deletes_a_bounded_number_of_orphans(store, backend, monkeypatch, settings):
+    settings.TRANSFER_ARCHIVE_TTL = 3600
+    monkeypatch.setattr(runner_module, "MAX_ORPHANED_ARCHIVES_PER_SWEEP", 2)
+    now = timezone.now()
+    for _ in range(3):
+        key = store.upload_file(uuid.uuid4(), IMPORT_ARCHIVE_NAME, io.BytesIO(b"orphan"))
+        backend.modified[key] = now - timedelta(hours=2)
+
+    assert sweep_transfer_jobs(now, store=store)["orphans_deleted"] == 2
+    assert len(backend.objects) == 1
 
 
 def test_sweep_deletes_expired_jobs_with_their_archives(store, backend, flow, regular_user):
