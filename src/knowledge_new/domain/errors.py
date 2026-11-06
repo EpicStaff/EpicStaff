@@ -1,11 +1,14 @@
 __all__ = [
+    "ArtifactStorageError",
     "ChunkingError",
     "ChunksNotIndexedError",
     "DocumentNotFoundError",
     "EmbeddingConfigNotFoundError",
     "EmbeddingError",
     "FileTextExtractingError",
+    "GraphArtifactsNotReadyError",
     "GraphRagConfigNotFoundError",
+    "InvalidArtifactArchiveError",
     "KnowledgeError",
     "NoPreviewChunksProducedError",
     "NotRunningOperationError",
@@ -79,3 +82,15 @@ class NotRunningOperationError(KnowledgeError):
 
 class RagInProcessingError(KnowledgeError):
     default_message = "Cannot remove RAG(id={rag_id}) while it is being processed."
+
+
+class InvalidArtifactArchiveError(KnowledgeError):
+    default_message = "Invalid artifact archive: {reason}."
+
+
+class GraphArtifactsNotReadyError(KnowledgeError):
+    default_message = "Graph artifacts not ready for RAG(id={rag_id})."
+
+
+class ArtifactStorageError(KnowledgeError):
+    default_message = "Could not delete {failed_count} object(s) under '{prefix}'."

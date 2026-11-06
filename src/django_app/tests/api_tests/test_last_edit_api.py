@@ -1,4 +1,3 @@
-import json
 from datetime import timedelta
 
 import pytest
@@ -15,6 +14,10 @@ from agents.models import AgentDefinition
 from rbac.authorship import record_last_edit, record_last_edits
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import Organization, OrganizationUser, ResourceLastEdit
+from tables.import_export.enums import EntityType
+from tables.import_export.permissions import ExportAccessPolicy
+from tables.import_export.registry import entity_registry
+from tables.import_export.services.export_service import ExportService
 from tables.models import (
     ElevenLabsRealtimeConfig,
     EmbeddingConfig,
@@ -564,13 +567,20 @@ def _keys_anywhere(value) -> set[str]:
 
 
 @pytest.mark.django_db
-def test_graph_export_carries_no_last_edit_data(auth_client, regular_user, graph, note):
+def test_graph_export_carries_no_last_edit_data(regular_user, graph, note):
     record_last_edit(graph, regular_user)
 
-    response = auth_client.get(reverse("graphs-export", args=[graph.pk]))
+    exported = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.GRAPH,
+            [graph.pk],
+            org_id=graph.org_id,
+            policy=ExportAccessPolicy.for_user(regular_user, graph.org_id),
+        )
+        .data
+    )
 
-    assert response.status_code == status.HTTP_200_OK
-    exported = json.loads(b"".join(response.streaming_content) if response.streaming else response.content)
     assert not {"last_edited_by", "last_edited_at", "last_edits", "edited_by"} & _keys_anywhere(
         exported
     )

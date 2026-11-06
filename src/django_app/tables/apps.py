@@ -36,6 +36,7 @@ class TablesConfig(AppConfig):
             mcp_tools,
             python_tools,
             session,
+            source_collection,
             surface,
             tags,
             venv,
@@ -154,3 +155,4 @@ class TablesConfig(AppConfig):
         entity_registry.register(agent_node.AgentNodeStrategy())
         entity_registry.register(task_node.TaskNodeStrategy())
         entity_registry.register(knowledge_node.KnowledgeNodeStrategy())
+        entity_registry.register(source_collection.SourceCollectionStrategy())

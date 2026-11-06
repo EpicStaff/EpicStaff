@@ -50,7 +50,14 @@ class KnowledgeNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.Mo
     graph_local_search_config = _GraphLocalSearchConfigImportSerializer(read_only=True)
     graph_global_search_config = _GraphGlobalSearchConfigImportSerializer(read_only=True)
     graph_drift_search_config = _GraphDriftSearchConfigImportSerializer(read_only=True)
+    # Lets an import into another instance tell a same-id collection that is a different one.
+    source_collection_name = serializers.SerializerMethodField()
 
     class Meta:
         model = KnowledgeNode
         exclude = ["created_at", "updated_at", "created_by"]
+
+    def get_source_collection_name(self, node: KnowledgeNode) -> str | None:
+        if node.source_collection_id is None:
+            return None
+        return node.source_collection.collection_name

@@ -1,4 +1,9 @@
-from agents.models import InlineSurface, InlineSurfaceMcpTool, InlineSurfacePythonTool
+from agents.models import (
+    InlineSurface,
+    InlineSurfaceKnowledge,
+    InlineSurfaceMcpTool,
+    InlineSurfacePythonTool,
+)
 from django.core.exceptions import ObjectDoesNotExist
 from rbac.authorship import resolve_author
 
@@ -43,6 +48,9 @@ class TaskNodeStrategy(EntityImportExportStrategy):
             deps[EntityType.MCP_TOOL] = list(
                 inline_surface.mcp_tools.values_list("mcp_tool_id", flat=True)
             )
+            deps[EntityType.SOURCE_COLLECTION] = list(
+                inline_surface.knowledge.values_list("collection_id", flat=True)
+            )
 
         return deps
 
@@ -72,9 +80,11 @@ class TaskNodeStrategy(EntityImportExportStrategy):
             {"task_node": task_node},
             InlineSurfacePythonTool,
             InlineSurfaceMcpTool,
+            InlineSurfaceKnowledge,
             "inline_surface",
             inline_surface_data,
             id_mapper,
+            kwargs.get("org_id"),
         )
 
         return task_node

@@ -3,8 +3,10 @@ from collections import defaultdict
 from copy import deepcopy
 
 from agents.models import (
+    AgentInlineSurfaceKnowledge,
     AgentInlineSurfaceMcpTool,
     AgentInlineSurfacePythonTool,
+    InlineSurfaceKnowledge,
     InlineSurfaceMcpTool,
     InlineSurfacePythonTool,
     Surface,
@@ -141,6 +143,23 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
         deps[EntityType.VENV].discard(None)
+
+        # Collections the flow's knowledge nodes and inline surfaces search. Like the
+        # environments above, the node strategies collect the same for a partial export.
+        deps[EntityType.SOURCE_COLLECTION] = (
+            set(instance.knowledge_node_list.values_list("source_collection_id", flat=True))
+            | set(
+                InlineSurfaceKnowledge.objects.filter(
+                    inline_surface__task_node__graph=instance
+                ).values_list("collection_id", flat=True)
+            )
+            | set(
+                AgentInlineSurfaceKnowledge.objects.filter(
+                    agent_inline_surface__agent_node__graph=instance
+                ).values_list("collection_id", flat=True)
+            )
+        )
+        deps[EntityType.SOURCE_COLLECTION].discard(None)
 
         return deps
 
@@ -498,7 +517,10 @@ class GraphStrategy(EntityImportExportStrategy):
                 id_mapper.map(EntityType.GRAPH, node_data["graph"], graph.id, was_created=False)
 
             strategy = entity_registry.get_strategy(entity_type)
-            node = strategy.create_entity(node_data, id_mapper, user=user, node_number=node_number)
+            # The graph's org: a node relinks to collections and other rows of that org.
+            node = strategy.create_entity(
+                node_data, id_mapper, user=user, node_number=node_number, org_id=graph.org_id
+            )
             if node:
                 created_nodes.append(node)
 

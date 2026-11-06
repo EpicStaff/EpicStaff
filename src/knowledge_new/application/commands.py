@@ -1,12 +1,16 @@
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
     "Command",
+    "ExportGraphArtifacts",
     "GetIndexEstimate",
     "GetMetrics",
     "RemoveRag",
+    "RestoreGraphArtifacts",
+    "RewriteGraphDocumentIds",
     "RunIndex",
     "RunPrechunk",
     "RunSearch",
@@ -66,3 +70,21 @@ class GetIndexEstimate(Command):
     document_ids: frozenset[int]
     # Chunking settings the user has not saved yet, by document id; they replace the stored ones.
     chunking_overrides: dict[int, ChunkingConfig] = field(default_factory=dict)
+
+
+# GraphRAG artifact transfer (export, restore, document id rewrite)
+@dataclass(frozen=True)
+class ExportGraphArtifacts(Command):
+    rag_id: int
+
+
+@dataclass(frozen=True)
+class RestoreGraphArtifacts(Command):
+    rag_id: int
+    archive_path: str
+
+
+@dataclass(frozen=True)
+class RewriteGraphDocumentIds(Command):
+    rag_id: int
+    document_id_map: Mapping[str, int]

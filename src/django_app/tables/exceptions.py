@@ -1061,3 +1061,43 @@ class InvalidTestRunPayloadError(CustomAPIExeption):
     def __init__(self, messages: list[str]):
         self.errors = messages
         super().__init__(detail={"payload": messages}, code=self.default_code)
+
+
+class ExportEntitiesNotFoundError(CustomAPIExeption):
+    """An export named an id that is not an item of the active organization.
+
+    400, as the synchronous bulk exports answer: the message names no id, so it
+    tells nothing about which ids exist in another organization.
+    """
+
+    status_code = 400
+    default_code = "export_entities_not_found"
+    default_detail = "Some entity IDs do not exist"
+
+
+class TooManyTransferJobsError(CustomAPIExeption):
+    """Starting a transfer job would pass the caller's or the organization's unfinished-job limit."""
+
+    status_code = 429
+    default_code = "too_many_jobs"
+    default_detail = "Too many exports or imports are running; wait for one to finish."
+
+
+class TransferJobRequiresUserError(CustomAPIExeption):
+    """The caller is no user (a system API key, a plugin service account) who could own a job.
+
+    A job runs with its creator's permissions and only its creator may read it,
+    so a caller with no user row cannot start one.
+    """
+
+    status_code = 403
+    default_code = "transfer_job_requires_user"
+    default_detail = "Exports and imports are started by a user or a personal API key."
+
+
+class TransferJobNotReadyError(CustomAPIExeption):
+    """The job's archive cannot be downloaded: it is not a completed export."""
+
+    status_code = 409
+    default_code = "job_not_ready"
+    default_detail = "The job has no archive to download yet."

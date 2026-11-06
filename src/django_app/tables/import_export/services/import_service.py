@@ -8,6 +8,7 @@ from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
 from rest_framework.exceptions import PermissionDenied
 
+from tables.import_export.archive import ImportArchive, InvalidArchiveError
 from tables.import_export.constants import DEPENDENCY_ORDER
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
@@ -15,6 +16,8 @@ from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.schemas import ImportSettings
+from tables.import_export.strategies.source_collection import remove_restored_graph_indexes
+from tables.services.storage_service.archive_unpacking.extraction_guard import ArchiveLimitExceeded
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 
 
@@ -30,6 +33,7 @@ class ImportService:
         org_id: int | None = None,
         user=None,
         effective_permissions=None,
+        archive: ImportArchive | None = None,
     ):
         """Import `export_data` into `org_id`, `main_entity` being the file's main type.
 
@@ -52,6 +56,8 @@ class ImportService:
         # Venvs are created in the sandbox service, which the transaction does not
         # cover; a rollback has to undo them by hand.
         created_venv_ids: list[int] = []
+        # Graph indexes are restored in the knowledge service, outside the transaction.
+        created_graph_rag_ids: list[int] = []
 
         try:
             with transaction.atomic():
@@ -84,6 +90,8 @@ class ImportService:
                             effective_permissions=effective_permissions,
                             created_resources=created_resources,
                             created_venv_ids=created_venv_ids,
+                            created_graph_rag_ids=created_graph_rag_ids,
+                            archive=archive,
                         )
 
                 if denied_resources:
@@ -92,8 +100,13 @@ class ImportService:
                         f"Missing CREATE permission on: {names}. No changes were made."
                     )
                 record_last_edits(created_resources, user)
-        except Exception:
+        except Exception as error:
             VenvService().remove_upstream(created_venv_ids)
+            remove_restored_graph_indexes(created_graph_rag_ids)
+            if isinstance(error, ArchiveLimitExceeded):
+                raise InvalidArchiveError(
+                    {"code": "invalid_archive", "detail": str(error)}
+                ) from error
             raise
 
         return id_mapper, self.registry
@@ -127,7 +140,7 @@ class ImportService:
         old_id = entity_data["id"]
 
         existing = None
-        if not is_main:
+        if not is_main or strategy.reuse_when_main:
             existing = strategy.find_existing(entity_data, id_mapper, org_id=org_id)
 
         was_created = existing is None
@@ -155,7 +168,7 @@ class ImportService:
         # at creation time so downstream logic within the same
         # create_entity call can resolve it. Don't overwrite that mapping.
         if not id_mapper.has_mapping(entity_type, old_id):
-            id_mapper.map(entity_type, old_id, instance.id, was_created)
+            id_mapper.map(entity_type, old_id, instance.pk, was_created)
         return denied
 
     def _resolve_graph_order(self, graphs: list[dict]) -> list[dict]:

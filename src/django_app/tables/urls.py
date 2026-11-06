@@ -106,6 +106,7 @@ from tables.views.sse_views import (
     RunSessionSSEViewSwagger,
 )
 from tables.views.storage_views import StorageAPIView
+from tables.views.transfer_job_views import TransferJobViewSet
 from tables.views.views import (
     CancelRagIndexingView,
     GetUpdates,
@@ -200,6 +201,7 @@ router.register(
     r"key-value-table-entries", KeyValueTableEntryViewSet, basename="key-value-table-entries"
 )
 router.register(r"storage", StorageAPIView, basename="storage")
+router.register(r"transfer-jobs", TransferJobViewSet, basename="transfer-jobs")
 
 urlpatterns = [
     path(

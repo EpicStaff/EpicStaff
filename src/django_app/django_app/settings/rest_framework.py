@@ -33,5 +33,6 @@ REST_FRAMEWORK = {
         "password_reset_confirm": env.str("DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE"),
         "token_refresh": env.str("DJANGO_TOKEN_REFRESH_THROTTLE_RATE"),
         "notify_email": env.str("DJANGO_NOTIFY_EMAIL_THROTTLE_RATE"),
+        "transfer_job_create": env.str("DJANGO_TRANSFER_JOB_CREATE_THROTTLE_RATE"),
     },
 }

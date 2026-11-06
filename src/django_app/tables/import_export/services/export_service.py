@@ -26,6 +26,7 @@ class ExportService:
         org_id: int | None = None,
         *,
         policy: ExportAccessPolicy,
+        include_knowledge: bool = False,
     ) -> ExportResult:
         """Export entities with their dependencies, leaving out those `policy` denies.
 
@@ -33,7 +34,9 @@ class ExportService:
         reached from them are, and anything reachable only through a denied
         dependency is dropped with it.
         """
-        collector = DependencyCollector(self.registry, org_id=org_id, policy=policy)
+        collector = DependencyCollector(
+            self.registry, org_id=org_id, policy=policy, include_knowledge=include_knowledge
+        )
 
         for entity_id in entity_ids:
             collector.collect(entity_type, entity_id)
@@ -53,12 +56,14 @@ class DependencyCollector:
         org_id: int | None = None,
         *,
         policy: ExportAccessPolicy,
+        include_knowledge: bool = False,
     ):
         self.registry = registry
         self.org_id = org_id
         self.collected = defaultdict(dict)
         self._exclusions = ExcludedEntityRecorder(registry, policy, org_id)
         self._path: list[tuple[str, int]] = []
+        self._include_knowledge = include_knowledge
 
     @property
     def excluded(self) -> list[ExcludedEntity]:
@@ -90,6 +95,10 @@ class DependencyCollector:
             dependencies = self._extract_dependencies(strategy, instance)
 
             for dep_type, dep_ids in dependencies.items():
+                # A collection travels only inside an archive; elsewhere a link
+                # relinks by id on import.
+                if dep_type == EntityType.SOURCE_COLLECTION and not self._include_knowledge:
+                    continue
                 for dep_id in dep_ids:
                     if not self._exclusions.admits(dep_type, dep_id):
                         continue

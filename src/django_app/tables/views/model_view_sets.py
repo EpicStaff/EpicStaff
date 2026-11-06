@@ -269,6 +269,7 @@ from tables.serializers.serializers import (
     GraphNodesPartialExportSerializer,
     ImportRequestSerializer,
 )
+from tables.serializers.transfer_job_serializers import FlowExportJobCreateSerializer
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.services.cdt_explain.service import CdtExplainService
 from tables.services.classification_decision_table_node_service import (
@@ -411,6 +412,7 @@ from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.views.mixins import (
     BulkDeleteActionMixin,
     CopyActionMixin,
+    ExportJobActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
     TriggerNodeUsePermissionMixin,
@@ -869,11 +871,13 @@ class PythonCodeResultReadViewSet(
 @extend_schema_view(
     bulk_delete=extend_schema(**GRAPH_BULK_DELETE_POST),
     copy=extend_schema(**GRAPH_COPY_POST),
+    export_jobs=extend_schema(request=FlowExportJobCreateSerializer),
 )
 class GraphViewSet(
     OrgScopedViewSetMixin,
     BulkDeleteActionMixin,
     CopyActionMixin,
+    ExportJobActionMixin,
     InspectActionMixin,
     RecycleBinActionsMixin,
     viewsets.ModelViewSet,
@@ -884,8 +888,7 @@ class GraphViewSet(
         **DEFAULT_ACTION_MAP,
         **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
-        "export": Permission.EXPORT,
-        "bulk_export": Permission.EXPORT,
+        "export_jobs": Permission.EXPORT,
         "partial_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
@@ -899,6 +902,8 @@ class GraphViewSet(
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
     delete_service_class = GraphDeleteService
+    export_job_entity_type = EntityType.GRAPH
+    export_job_request_serializer_class = FlowExportJobCreateSerializer
 
     serializer_class = GraphSerializer
     filter_backends = [DjangoFilterBackend, LabelFilterBackend]
@@ -1020,31 +1025,6 @@ class GraphViewSet(
         declared = SecretCodeInspector.declared_in_graph(instance)
         if declared:
             secret_code_access.assert_user_may_recreate(request.user, instance.org_id, declared)
-
-    @action(detail=True, methods=["get"])
-    def export(self, request, pk: int):
-        return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id(), user=request.user
-        )
-
-    @action(detail=False, methods=["post"], url_path="bulk-export")
-    def bulk_export(self, request):
-        serializer = BulkExportSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        entity_ids = serializer.validated_data["ids"]
-
-        existing_ids = Graph.objects.filter(
-            id__in=entity_ids, org_id=self.get_active_org_id()
-        ).values_list("id", flat=True)
-        if len(existing_ids) != len(entity_ids):
-            return Response(
-                {"message": "Some entity IDs do not exist"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return self.import_export_service.bulk_export(
-            entity_ids, org_id=self.get_active_org_id(), user=request.user
-        )
 
     @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
     @action(detail=True, methods=["post"], url_path="partial-export")

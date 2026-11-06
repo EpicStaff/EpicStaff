@@ -1,11 +1,15 @@
 from django.db import IntegrityError, transaction
+from drf_spectacular.utils import extend_schema
 from rbac.access.effective import EffectivePermissions
 from rbac.access.resolver import PermissionResolver
+from rbac.authorship import resolve_author
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
+from tables.exceptions import TransferJobRequiresUserError
+from tables.import_export.enums import EntityType
 from tables.serializers.serializers import (
     BulkDeleteQuerySerializer,
     BulkDeleteRequestSerializer,
@@ -14,9 +18,15 @@ from tables.serializers.serializers import (
     ToolUsageDetailSerializer,
     ToolUsageSerializer,
 )
+from tables.serializers.transfer_job_serializers import (
+    ExportJobCreatedSerializer,
+    ExportJobCreateSerializer,
+)
 from tables.services.delete_services import BaseDeleteService
 from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
+from tables.services.transfer_jobs.job_service import TransferJobService
 from tables.services.trigger_nodes import trigger_node_access
+from tables.throttles import TransferJobCreateThrottle
 from utils.logger import logger
 
 
@@ -240,3 +250,38 @@ class InspectActionMixin:
             serializer.validated_data["file"], org_id=self.get_active_org_id()
         )
         return Response(result, status=status.HTTP_200_OK)
+
+
+class ExportJobActionMixin:
+    """Adds an ``export_jobs`` action that queues a background export of the viewset's items.
+
+    Set `export_job_entity_type` (an entity `TransferJob.MainEntity` lists) and, when the body
+    takes more than `ids`, `export_job_request_serializer_class`; map
+    `export_jobs` to `Permission.EXPORT` in `rbac_action_map`. The job belongs
+    to the requesting user, so a caller with no user row is refused.
+    """
+
+    export_job_entity_type: EntityType
+    export_job_request_serializer_class = ExportJobCreateSerializer
+
+    @extend_schema(responses={202: ExportJobCreatedSerializer})
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="export-jobs",
+        throttle_classes=[*api_settings.DEFAULT_THROTTLE_CLASSES, TransferJobCreateThrottle],
+    )
+    def export_jobs(self, request):
+        author = resolve_author(request.user)
+        if author is None:
+            raise TransferJobRequiresUserError()
+        serializer = self.export_job_request_serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        job = TransferJobService().start_export(
+            user=author,
+            org_id=self.get_active_org_id(),
+            entity_type=self.export_job_entity_type,
+            ids=serializer.validated_data["ids"],
+            include_knowledge=serializer.validated_data.get("include_knowledge"),
+        )
+        return Response({"job_id": str(job.id)}, status=status.HTTP_202_ACCEPTED)

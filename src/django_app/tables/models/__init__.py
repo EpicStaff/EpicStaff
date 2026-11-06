@@ -149,6 +149,7 @@ from .tag_models import (
     Tag,
 )
 from .tool_filter_preset_models import ToolFilterPreset
+from .transfer_job_models import TransferJob
 from .user import User, UserTourProgress
 from .webhook_models import (
     LOCAL_ONLY_PROVIDERS,
@@ -294,6 +295,7 @@ __all__ = [
     "TemplateAgent",
     "TimestampMixin",
     "ToolFilterPreset",
+    "TransferJob",
     "TunnelConfig",
     "TwilioChannel",
     "User",
