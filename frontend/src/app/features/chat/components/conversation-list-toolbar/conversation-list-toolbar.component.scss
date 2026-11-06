@@ -1,5 +1,4 @@
 @use '../../../../../styles/breakpoints' as bp;
-@use '../../../../../styles/column-toggle';
 @use '../../../../../styles/touch';
 
 // Fills the column at any width: the tab switch takes the first row, the field the next.
@@ -11,15 +10,10 @@
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
-// The switch (projected; it stretches itself) takes the row. Compact, the expand button stacks above it.
+// The switch (projected; it stretches itself) takes the row.
 .conversation-list-toolbar__head {
     display: flex;
     align-items: center;
-    gap: 8px;
-
-    :host(.conversation-list-toolbar--compact) & {
-        flex-direction: column;
-    }
 }
 
 // The field taking the rest, then Mine (Inbox) or New Test Chat (Bot Testing); all 28px tall (the small search), a
@@ -33,29 +27,6 @@
 .conversation-list-toolbar__search {
     flex: 1;
     min-width: 0;
-}
-
-// The desk rail's toggle, 40px square, with the tab switch's corners and border. Hover and focus stay the shared ones.
-.conversation-list-toolbar__compact-toggle {
-    @include column-toggle.button;
-    position: relative;
-    width: 40px;
-    height: 40px;
-    box-sizing: border-box;
-    // Figma's Line is #2B2D30; the nearest token is --color-ks-line (#2c2c2e), as on the tab switch.
-    border-color: var(--color-ks-line);
-    border-radius: 8px;
-}
-
-.conversation-list-toolbar__filtered-dot {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: var(--accent-color);
-    box-shadow: 0 0 0 2px var(--color-background-body);
 }
 
 .conversation-list-toolbar__error {

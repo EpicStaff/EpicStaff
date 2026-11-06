@@ -23,8 +23,11 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    // Scrolling a focused row or a section into view leaves it below the stuck header.
+    // The headers' layering (the pinned ones over the rows and each other) stays inside the column.
+    isolation: isolate;
+    // Scrolling a focused row or a section into view leaves it clear of the stuck headers, the pinned one included.
     scroll-padding-top: var(--conversation-section-header-height);
+    scroll-padding-bottom: calc(2 * var(--conversation-section-header-height));
 }
 
 // Sticky within its own section: it stays on top while the section scrolls by and leaves with the section's end.
@@ -34,6 +37,24 @@
     // Above the rows' own positioned parts (the Take over button) as they scroll under it.
     z-index: 1;
     background-color: var(--color-background-body);
+}
+
+// A pinned section (Bot, Closed) has no box of its own, so its header is sticky within the whole list: at the bottom,
+// above the pinned headers under it (--pinned-below), while the section is below the view, so it is never lost under
+// many open sections; on top once scrolled to. There a later one covers it: the later, the higher.
+.conversation-list__section--pinned {
+    display: contents;
+
+    > .conversation-list__section-header {
+        bottom: calc(var(--pinned-below) * var(--conversation-section-header-height));
+        z-index: calc(3 - var(--pinned-below));
+        // A line above it while it sits over the rows; in the flow it falls on the row's own border above.
+        box-shadow: 0 -1px 0 var(--color-divider-subtle);
+    }
+}
+
+.conversation-list__section-start {
+    height: 0;
 }
 
 .conversation-list__loading {

@@ -3,7 +3,8 @@ import { formatDate } from '@angular/common';
 import { ChatBinding, ChatConversation, ChatConversationStyle } from '../models/chat.model';
 import { deskInitials } from './desk-avatar.util';
 
-const MINUTE = 60_000;
+const SECOND = 1_000;
+const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 // Older than this many calendar days, a time shows as a date rather than a weekday.
@@ -115,13 +116,16 @@ export function conversationTimeLabel(iso: string | null, now: number, locale: s
     return formatDate(date, date.getFullYear() === new Date(now).getFullYear() ? 'MMMM d' : 'MMMM d, y', locale);
 }
 
-/** How long someone has waited: "<1m", "4m", "1h 5m", "3h", "2d". Empty without a usable time. */
+/**
+ * How long someone has waited, to the second while under an hour: "16s", "12m 16s", "1h 5m", "3h", "2d". Empty without
+ * a usable time.
+ */
 export function waitDuration(sinceIso: string | null | undefined, now: number): string {
     const since = sinceIso ? Date.parse(sinceIso) : NaN;
     if (Number.isNaN(since)) return '';
     const waited = Math.max(0, now - since);
-    if (waited < MINUTE) return '<1m';
-    if (waited < HOUR) return `${Math.floor(waited / MINUTE)}m`;
+    if (waited < MINUTE) return `${Math.floor(waited / SECOND)}s`;
+    if (waited < HOUR) return `${Math.floor(waited / MINUTE)}m ${Math.floor((waited % MINUTE) / SECOND)}s`;
     if (waited < DAY) {
         const hours = Math.floor(waited / HOUR);
         const minutes = Math.floor((waited % HOUR) / MINUTE);

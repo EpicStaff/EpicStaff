@@ -419,6 +419,38 @@ describe('ChatPageComponent', () => {
         expect(list().selectedId()).toBe('c-4');
     });
 
+    it('marks the open conversation read up to its last message, and each message that comes while it is open', () => {
+        const seen = (): Record<string, string> =>
+            JSON.parse(localStorage.getItem('chat:readMarks:3') ?? '{"seen":{}}').seen;
+        fixture.componentInstance.selectConversation(row({ id: 'c-1', last_message_at: '2026-10-10T10:00:00Z' }));
+        fixture.detectChanges();
+        expect(seen()['c-1']).toBe('2026-10-10T10:00:00Z');
+
+        conversationUpdated$.next(row({ id: 'c-1', last_message_at: '2026-10-10T10:05:00Z' }));
+        fixture.detectChanges();
+        expect(seen()['c-1']).toBe('2026-10-10T10:05:00Z');
+    });
+
+    it('offers New Test Chat on a desk only, disabled while the desk loads', () => {
+        expect(newTestChat()).toBeUndefined();
+
+        const desks$ = new Subject<ChatBinding[]>();
+        chatApi.getBindings.mockReturnValueOnce(desks$);
+        scopeTo('b-1');
+        const button = (): HTMLButtonElement => newTestChat()!;
+        const tooltip = (): MatTooltip =>
+            fixture.debugElement
+                .queryAll(By.directive(MatTooltip))
+                .find((element) => element.nativeElement === button())!
+                .injector.get(MatTooltip);
+        expect(button().disabled).toBe(true);
+        expect(tooltip().message).toBe('Loading the desk…');
+
+        desks$.next([binding]);
+        fixture.detectChanges();
+        expect(button().disabled).toBe(false);
+    });
+
     it('moves the conversations column to Bot Testing when a test conversation starts, the remembered choices unchanged', () => {
         expect(openSections()).toEqual(['waiting']);
         fixture.componentInstance.onTestConversationStarted(row({ id: 'c-9', is_test: true, last_message_at: null }));
@@ -698,11 +730,7 @@ describe('ChatPageComponent', () => {
         const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
         const column = (): HTMLElement => host().querySelector('.inbox__sidebar') as HTMLElement;
         const handle = (): HTMLElement | null => host().querySelector('[role="separator"]');
-        const compactToggle = (): HTMLButtonElement | null =>
-            host().querySelector('app-conversation-list-toolbar button[aria-controls]');
         const searchField = (): HTMLInputElement | null => host().querySelector('app-conversation-list-toolbar input');
-        const list = (): ConversationListComponent =>
-            fixture.debugElement.query(By.directive(ConversationListComponent)).componentInstance;
 
         function press(key: string, times = 1): void {
             for (let time = 0; time < times; time++) {
@@ -711,42 +739,22 @@ describe('ChatPageComponent', () => {
             }
         }
 
-        function pressToggle(): void {
-            compactToggle()!.click();
-            fixture.detectChanges();
-        }
-
-        it('starts 427px wide beside a handle that resizes it, with no toggle while expanded', () => {
+        it('starts 427px wide beside a handle that resizes it', () => {
             expect(column().style.width).toBe('427px');
             expect(handle()?.getAttribute('aria-label')).toBe('Resize conversations column');
-            expect(compactToggle()).toBeNull();
         });
 
-        it('makes the same live list compact with Enter on the handle, and lists it in full again at 422px with the toggle', () => {
-            const shown = list();
-            press('Enter');
-            expect(column().style.width).toBe('64px');
-            expect(list()).toBe(shown);
-            expect(searchField()).toBeNull();
-            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
-            expect(compactToggle()?.getAttribute('aria-expanded')).toBe('false');
-
-            pressToggle();
-            expect(column().style.width).toBe('422px');
-            expect(searchField()).not.toBeNull();
-        });
-
-        it('resizes between 422px and 480px with the handle, and goes compact past the narrowest', () => {
+        it('resizes between 343px and 480px with the handle, and never goes compact', () => {
             press('ArrowRight', 20);
             expect(column().style.width).toBe('480px');
 
-            press('ArrowLeft', 4);
-            expect(column().style.width).toBe('422px');
+            press('ArrowLeft', 20);
+            expect(column().style.width).toBe('343px');
             expect(searchField()).not.toBeNull();
 
-            press('ArrowLeft');
-            expect(column().style.width).toBe('64px');
-            expect(searchField()).toBeNull();
+            press('Enter');
+            expect(column().style.width).toBe('343px');
+            expect(searchField()).not.toBeNull();
         });
 
         it('keeps its width when the page opens again', () => {
@@ -757,12 +765,11 @@ describe('ChatPageComponent', () => {
             expect(column().style.width).toBe('443px');
         });
 
-        it('is never compact nor resizable on a phone: the full list, whatever the width', () => {
-            press('Enter');
+        it('is not resizable on a phone: the full list, whatever the width', () => {
+            press('ArrowLeft', 20);
             isPhone.set(true);
             fixture.detectChanges();
             expect(handle()).toBeNull();
-            expect(compactToggle()).toBeNull();
             expect(column().style.width).toBe('');
             expect(searchField()).not.toBeNull();
         });

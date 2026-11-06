@@ -1,24 +1,19 @@
-<!-- The tab switch is the toolbar's first row, beside the column's toggle. -->
+<!-- The tab switch is the toolbar's first row. -->
 <app-conversation-list-toolbar
     [isMineOnly]="isMineOnly()"
     [canFilterMine]="canUse()"
     [tab]="tab()"
     [searchError]="store.searchError()"
-    [canCollapse]="canCollapse()"
-    [isCompact]="isCompact()"
-    [columnId]="bodyIdPrefix"
-    [canStartTest]="canBuildDesks()"
+    [canStartTest]="canBuildDesks() && !!bindingId()"
     [testStartBlockedReason]="testStartBlockedReason()"
     (searchChange)="search.set($event)"
     (mineOnlyChange)="setMineOnly($event)"
-    (compactToggle)="compactToggle.emit()"
     (testStartRequested)="testStartRequested.emit()"
 >
     <app-conversation-list-tabs
         [tab]="tab()"
         [inboxCount]="waitingCount()"
         [canTest]="canBuildDesks()"
-        [isCompact]="isCompact()"
         (tabChange)="setTab($event)"
     />
 </app-conversation-list-toolbar>
@@ -33,19 +28,30 @@
         @for (item of store.view(); track item.section.id) {
             @let section = item.section;
             @let state = item.state;
+            <!-- Bot and Closed are pinned: their headers stay at the bottom, stacked, while the sections are below. -->
             <section
-                #sectionElement
                 class="conversation-list__section"
+                [class.conversation-list__section--pinned]="section.pinnedBelow !== undefined"
+                [style.--pinned-below]="section.pinnedBelow ?? null"
                 [attr.data-section]="section.id"
             >
+                <!-- Where the section starts, measurable even when the pinned section has no box of its own. -->
+                <div
+                    #sectionElement
+                    class="conversation-list__section-start"
+                    aria-hidden="true"
+                    [attr.data-section]="section.id"
+                ></div>
                 <app-conversation-section-header
                     class="conversation-list__section-header"
                     [label]="section.label"
                     [icon]="section.icon"
+                    [iconSize]="section.iconSize"
+                    [iconColor]="section.iconColor"
                     [isExpanded]="item.isExpanded"
-                    [isCompact]="isCompact()"
                     [controlsId]="sectionBodyId(section.id)"
                     [count]="section.id === 'waiting' ? waitingCount() : null"
+                    [isCountWaiting]="section.id === 'waiting'"
                     (toggled)="toggle(section.id)"
                 />
                 <!-- Present while collapsed too, so the header's aria-controls always points at it; empty then. -->
@@ -62,7 +68,7 @@
                         @if (state.isLoading && !state.nextCursor && !state.rows.length) {
                             <app-spinner
                                 class="conversation-list__loading"
-                                [text]="isCompact() ? '' : 'Loading conversations…'"
+                                text="Loading conversations…"
                                 [size]="24"
                                 [isOverlay]="false"
                             />
@@ -73,7 +79,7 @@
                                     it only after that row has faded, so the note does not vanish first and shift it.
                                 -->
                                 <div>
-                                    @if (section.orderNote && !isCompact()) {
+                                    @if (section.orderNote) {
                                         <p class="conversation-list__section-note text-body-small">
                                             {{ section.orderNote }}
                                         </p>
@@ -90,14 +96,14 @@
                                             >
                                                 <app-conversation-row
                                                     [conversation]="conversation"
-                                                    [now]="now()"
+                                                    [now]="section.id === 'waiting' ? waitNow() : now()"
                                                     [deskName]="deskNames()?.get(conversation.binding_id) ?? null"
                                                     [rules]="deskRules().get(conversation.binding_id) ?? null"
                                                     [isSelected]="conversation.id === selectedId()"
                                                     [isTabStop]="conversation.id === tabStopId()"
                                                     [canTakeOver]="canUse()"
                                                     [isActionPending]="isActionPending()"
-                                                    [isCompact]="isCompact()"
+                                                    [marksUnread]="section.id === 'in_progress'"
                                                     (selectRequested)="selectedChange.emit(conversation)"
                                                     (takeOverRequested)="takeOver(conversation)"
                                                     (moveRequested)="move(conversation, $event)"
@@ -106,7 +112,7 @@
                                         }
                                     </ul>
                                 </div>
-                            } @else if (!isCompact()) {
+                            } @else {
                                 <div class="conversation-list__section-empty">
                                     @if (store.isSearching()) {
                                         <p class="conversation-list__empty-title text-body-medium">No matches</p>
@@ -119,7 +125,10 @@
                                             {{ section.emptyTitle }}
                                         </p>
                                         <p class="conversation-list__empty-description text-body-small">
-                                            {{ section.emptyDescription }}
+                                            {{
+                                                (!bindingId() && section.allDesksEmptyDescription) ||
+                                                    section.emptyDescription
+                                            }}
                                         </p>
                                     }
                                 </div>

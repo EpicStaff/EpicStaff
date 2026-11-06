@@ -69,6 +69,7 @@
     --graphite-900: #212325;
     --graphite-875: #1e1e1e;
     --graphite-878: #1e1e20; // value-preview-tooltip background
+    --graphite-872: #1e1f21; // conversation-row holder badge border
     --graphite-875-alpha-40: rgba(30, 30, 30, 0.4);
     --graphite-875-alpha-92: rgba(30, 30, 30, 0.92);
     --graphite-850: #222225;
@@ -393,6 +394,7 @@
     --terracotta-500: #ce9178; // expression-editor family "string" syntax-highlight color (VS Code Dark+)
     --umber-950: #0a0808; // flow-session-status-badge "stopped" background base
     --umber-950-alpha-18: rgba(10, 8, 8, 0.18);
+    --umber-800: #332c27; // conversation-row holder badge background
     --red-550: #e63838; // danger hover
     --red-600: #dc5b60;
     --red-700: #b32b36;
@@ -538,8 +540,15 @@
     --color-table-border: var(--graphite-750);
     --color-control-outline: var(--graphite-750); // outlined chat controls: column toggles, desk status select
     --color-status-paused: var(--orange-500);
+    --color-status-waiting: var(--orange-500); // a visitor waiting for a person: section icon, row badge, wait chip
+    --color-status-waiting-background: var(--orange-alpha-8);
+    --color-status-unread: var(--green-500); // a conversation with news the operator has not opened: the row's dot
+    --color-error-background: var(--red-alpha-8); // an error colour's chip behind its text (an overdue wait)
     --color-surface-card: var(--graphite-825);
     --color-drag-drop-active: var(--black-alpha-28);
+    // The badge of whoever holds a conversation, on the corner of the visitor's avatar; its border cuts it out of it.
+    --color-holder-badge-background: var(--umber-800);
+    --color-holder-badge-border: var(--graphite-872);
 
     // ------------------------------------------------------------------
     // SEMANTIC — interactive (accent, buttons)
@@ -775,6 +784,7 @@
     --white-alpha-10: rgba(15, 23, 42, 0.1);
 
     // Explicit semantic exceptions
+    --color-holder-badge-border: var(--color-background-body);
     --color-text-secondary: #64748b;
     --color-text-subtle: rgba(15, 23, 42, 0.7);
     --color-input-text-placeholder: #94a3b8;

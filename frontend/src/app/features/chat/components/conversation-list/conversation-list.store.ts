@@ -67,25 +67,39 @@ export interface ConversationSectionView {
     shows?: (row: ChatConversation) => boolean;
     label: string;
     icon: string;
+    // The icon's box when it is not the default one.
+    iconSize?: string;
+    // The icon's colour, a CSS value; muted when absent.
+    iconColor?: string;
     emptyTitle: string;
     emptyDescription: string;
     // Said instead under Mine; only the sections Mine lists have one.
     mineEmptyTitle?: string;
+    // Said instead on All desks, where nothing that starts with a desk is there to point at.
+    allDesksEmptyDescription?: string;
     // Above the rows of a section that is not newest first, which every other one is.
     orderNote?: string;
+    /**
+     * Pinned at the column's bottom while the section is below the view, so the last ones are not lost under many open
+     * sections: the number of pinned headers under its own. Absent: only on top, while the section scrolls by.
+     */
+    pinnedBelow?: number;
 }
 
 /**
- * Top to bottom. Inbox: the queue first (the one open by default), then what operators are on, Closed (there to look
- * into, not to work through), and Bot last — always live and endless, so anything below it would be out of reach.
- * Bot Testing: the tests still running, then the closed ones; both by the latest message, as the server sorts them.
+ * Top to bottom. Inbox: the queue first (the one open by default), then what operators are on, what the bot is on,
+ * and Closed last — there to look into, not to work through, and an endless history, so it goes below the live ones.
+ * Bot Testing the same way: the tests still running, then the closed ones; both by the latest message, as the server
+ * sorts them.
  */
 export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
     {
         id: 'waiting',
         list: 'waiting',
         label: 'Waiting for a person',
-        icon: 'hourglass',
+        icon: 'waiting',
+        iconSize: '12px',
+        iconColor: 'var(--color-status-waiting)',
         emptyTitle: 'Nobody is waiting',
         emptyDescription: 'Visitors the bot hands over, or who write after an operator took over, line up here.',
         mineEmptyTitle: 'Nobody is waiting for you',
@@ -95,45 +109,56 @@ export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
         id: 'in_progress',
         list: 'in_progress',
         label: 'In progress',
-        icon: 'user',
+        icon: 'user-outline',
         emptyTitle: 'Nothing in progress',
         emptyDescription: 'Conversations an operator took over and answered last show up here.',
         mineEmptyTitle: 'None of yours in progress',
     },
     {
-        id: 'closed',
-        list: 'closed',
-        label: 'Closed',
-        icon: 'circle-check',
-        emptyTitle: 'Nothing closed yet',
-        emptyDescription: 'Conversations an operator resolved, the visitor ended or that went quiet end up here.',
-        orderNote: 'Most recently closed first',
-    },
-    {
         id: 'bot',
         list: 'bot',
         label: 'Bot',
-        icon: 'robot',
+        icon: 'bot',
+        iconSize: '14px',
+        iconColor: 'var(--accent-color)',
         emptyTitle: 'No conversations yet',
         emptyDescription: 'Conversations from your website the bot is answering show up here.',
+        pinnedBelow: 1,
+    },
+    {
+        id: 'closed',
+        list: 'closed',
+        label: 'Closed',
+        icon: 'closed',
+        iconSize: '12px',
+        emptyTitle: 'Nothing closed yet',
+        emptyDescription: 'Conversations an operator resolved, the visitor ended or that went quiet end up here.',
+        orderNote: 'Most recently closed first',
+        pinnedBelow: 0,
     },
     {
         id: 'test_bot',
         list: 'test',
         shows: (row) => !isClosed(row),
         label: 'Bot',
-        icon: 'robot',
+        icon: 'bot',
+        iconSize: '14px',
+        iconColor: 'var(--accent-color)',
         emptyTitle: 'No test conversations',
         emptyDescription: 'Start one with New Test Chat above.',
+        allDesksEmptyDescription: 'Open a desk to start one with New Test Chat.',
+        pinnedBelow: 1,
     },
     {
         id: 'test_closed',
         list: 'test',
         shows: isClosed,
         label: 'Closed',
-        icon: 'circle-check',
+        icon: 'closed',
+        iconSize: '12px',
         emptyTitle: 'No closed tests',
         emptyDescription: 'Test conversations that were closed or went quiet end up here.',
+        pinnedBelow: 0,
     },
 ];
 

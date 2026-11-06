@@ -50,6 +50,8 @@ import { ConversationListMotion } from './conversation-list-motion';
 
 // Relative times ("6m") move on without a reload.
 const NOW_TICK_MS = 30_000;
+// A wait counts the seconds ("12m 16s"): only Waiting's rows take this clock, so the others do not redraw every second.
+const WAIT_TICK_MS = 1_000;
 // A section's next page starts loading a little before its end scrolls into view.
 const SENTINEL_MARGIN = '0px 0px 200px 0px';
 
@@ -76,20 +78,14 @@ export type ConversationLookup = ChatConversation | 'loading' | 'missing';
     providers: [ConversationListStore],
     templateUrl: './conversation-list.component.html',
     styleUrl: './conversation-list.component.scss',
-    host: {
-        '[id]': 'bodyIdPrefix',
-    },
 })
 export class ConversationListComponent {
     /** The desk listed; null lists every desk. */
     readonly bindingId = input<string | null>(null);
     readonly selectedId = input<string | null>(null);
-    readonly canCollapse = input(false);
-    readonly isCompact = input(false);
     /** Why a test cannot start now (no desk open, one starting); null when New Test Chat may start one. */
     readonly testStartBlockedReason = input<string | null>(null);
     readonly selectedChange = output<ChatConversation>();
-    readonly compactToggle = output<void>();
     /** New Test Chat was pressed: the page starts the test, as the column has no desk actions of its own. */
     readonly testStartRequested = output<void>();
 
@@ -106,6 +102,7 @@ export class ConversationListComponent {
     /** The desk whose conversations the column holds (null: every desk); the `bindingId` input until it has reloaded. */
     readonly listedBindingId = computed(() => this.store.query().bindingId);
     protected readonly now = tickingNow(NOW_TICK_MS);
+    protected readonly waitNow = tickingNow(WAIT_TICK_MS);
     /** Take over, and Mine: both are about conversations the user holds. */
     protected readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
     /** Bot Testing: tests are for whoever builds desks (chats create or update), not for support staff. */
@@ -298,13 +295,31 @@ export class ConversationListComponent {
     /**
      * Collapsing a section whose header is stuck (the user is deep inside it) would leave that header far above the
      * view, with the focus on it, and opening one folds the open one above it, which would pull the header out of view:
-     * the column scrolls so the header stays where it was pressed.
+     * the column scrolls so the header stays where it was pressed. Opened from the bottom, where a pinned section's
+     * header (Bot, Closed) waits while the section is below the view, the section comes up to the top instead: it would open out
+     * of sight.
      */
     protected toggle(section: ConversationListSection): void {
         const scroller = this.scroller().nativeElement;
         const sectionTop = this.sectionTopInScroller(section);
         this.store.toggle(section);
         if (sectionTop === null) return;
+        // The scroller's top padding is a header's height: past this, the header is pinned at the bottom, its own and
+        // the pinned ones under it.
+        const headerHeight = parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0;
+        const pinnedBelow = CONVERSATION_SECTIONS.find(({ id }) => id === section)?.pinnedBelow;
+        const pinnedFrom = scroller.clientHeight - ((pinnedBelow ?? 0) + 1) * headerHeight;
+        if (pinnedBelow !== undefined && sectionTop - scroller.scrollTop > pinnedFrom) {
+            afterNextRender(
+                () => {
+                    if (this.store.view().find((item) => item.section.id === section)?.isExpanded) {
+                        this.sectionElement(section)?.scrollIntoView({ block: 'start' });
+                    }
+                },
+                { injector: this.injector }
+            );
+            return;
+        }
         const offsetInView = Math.max(0, sectionTop - scroller.scrollTop);
         afterNextRender(
             () => {
@@ -377,7 +392,7 @@ export class ConversationListComponent {
     }
 }
 
-/** The section a section wrapper or a sentinel belongs to, from its `data-section`. */
+/** The section a section's start marker or a sentinel belongs to, from its `data-section`. */
 function sectionOf(element: Element): ConversationListSection | null {
     const value = (element as HTMLElement).dataset['section'];
     return CONVERSATION_SECTIONS.find(({ id }) => id === value)?.id ?? null;

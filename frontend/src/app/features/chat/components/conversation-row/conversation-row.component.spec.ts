@@ -1,11 +1,30 @@
-import { signal } from '@angular/core';
+import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ChatConversation } from '../../models/chat.model';
+import { ConversationReadMarksService } from '../../services/conversation-read-marks.service';
 import { ConversationRowComponent, ConversationRowMove } from './conversation-row.component';
+
+interface CurrentUser {
+    id: number;
+    display_name: string;
+    email: string;
+    avatar_url: string | null;
+}
+
+// The conversations listed as unread; the real service keeps them per browser and per user.
+class FakeReadMarks {
+    readonly unreadIds = signal(new Set<string>());
+
+    isUnread(row: ChatConversation): boolean {
+        return this.unreadIds().has(row.id);
+    }
+
+    markRead(): void {}
+}
 
 // The Take over button collapses its label on overflow, which jsdom cannot measure.
 class ResizeObserverStub {
@@ -86,21 +105,17 @@ describe('ConversationRowComponent', () => {
     const tooltipOf = (selector: string): MatTooltip =>
         fixture.debugElement.query(By.css(selector)).injector.get(MatTooltip);
 
+    let currentUser: WritableSignal<CurrentUser>;
+    let readMarks: FakeReadMarks;
+
     beforeEach(() => {
         vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        currentUser = signal({ id: 3, display_name: 'Ada Lovelace', email: 'ada@x', avatar_url: null });
+        readMarks = new FakeReadMarks();
         TestBed.configureTestingModule({
             providers: [
-                {
-                    provide: ProfileService,
-                    useValue: {
-                        currentUserSignal: signal({
-                            id: 3,
-                            display_name: 'Ada Lovelace',
-                            email: 'ada@x',
-                            avatar_url: null,
-                        }),
-                    },
-                },
+                { provide: ProfileService, useValue: { currentUserSignal: currentUser } },
+                { provide: ConversationReadMarksService, useValue: readMarks },
             ],
         });
     });
@@ -177,15 +192,31 @@ describe('ConversationRowComponent', () => {
     });
 
     describe('waiting for a person', () => {
-        it('marks a waiting conversation with a bold name, a dot and how long the visitor has waited', () => {
+        const waitChip = (): HTMLElement | null => host().querySelector('.conversation-row__wait');
+
+        it('marks a waiting conversation with a bold name and, beside the row, how long the visitor has waited', () => {
             render(waiting());
             expect(rowButton().classList).toContain('conversation-row--waiting');
-            expect(host().querySelector('.conversation-row__waiting-dot')).not.toBeNull();
-            expect(textOf('.conversation-row__waiting')).toBe('10m');
+            expect(rowButton().contains(waitChip())).toBe(false);
+            expect(waitChip()?.querySelector('use[href="#icon-clock"]')).not.toBeNull();
+            expect(textOf('.conversation-row__wait')).toBe('10m 0s');
+            expect(host().querySelector('.conversation-row__time')).toBeNull();
+
+            fixture.componentRef.setInput('now', NOW + 16_000);
+            fixture.detectChanges();
+            expect(textOf('.conversation-row__wait')).toBe('10m 16s');
 
             fixture.componentRef.setInput('now', NOW + 50 * 60_000);
             fixture.detectChanges();
-            expect(textOf('.conversation-row__waiting')).toBe('1h');
+            expect(textOf('.conversation-row__wait')).toBe('1h');
+        });
+
+        it('opens the conversation when its wait is clicked, as the row does', () => {
+            render(waiting());
+            const opened = vi.fn();
+            fixture.componentInstance.selectRequested.subscribe(opened);
+            waitChip()!.click();
+            expect(opened).toHaveBeenCalledTimes(1);
         });
 
         it('waits by the waiting time, not the mode: a taken conversation whose visitor wrote again waits too', () => {
@@ -201,7 +232,8 @@ describe('ConversationRowComponent', () => {
 
             render(conversation({ mode: 'human', assigned_operator_id: 7 }));
             expect(rowButton().classList).not.toContain('conversation-row--waiting');
-            expect(host().querySelector('.conversation-row__waiting')).toBeNull();
+            expect(waitChip()).toBeNull();
+            expect(textOf('.conversation-row__time')).toBe('6m');
         });
 
         it('treats a row without the field (an older chat service) as not waiting, with no Take over', () => {
@@ -209,7 +241,7 @@ describe('ConversationRowComponent', () => {
             delete withoutField.visitor_waiting_since;
             render(withoutField as ChatConversation, { canTakeOver: true });
             expect(rowButton().classList).not.toContain('conversation-row--waiting');
-            expect(host().querySelector('.conversation-row__waiting')).toBeNull();
+            expect(waitChip()).toBeNull();
             expect(takeOverButton()).toBeNull();
             expect(host().textContent).not.toContain('NaN');
             expect(accessibleName()).not.toContain('waiting');
@@ -225,7 +257,7 @@ describe('ConversationRowComponent', () => {
                 fixture.detectChanges();
                 expect(accessibleName()).toBe(expected);
             }
-            expect(textOf('.conversation-row__time')).toBe('51m');
+            expect(textOf('.conversation-row__wait')).toBe('55m 0s');
         });
 
         it('marks a test with its chip', () => {
@@ -238,21 +270,21 @@ describe('ConversationRowComponent', () => {
         // A desk whose response time is 10 minutes, then "mark overdue".
         const marksAfterTenMinutes = { style: 'support', overdueAfterMs: 10 * 60_000 } as const;
         const overdueMark = (): Element | null =>
-            host().querySelector('.conversation-row__waiting--overdue use[href="#icon-alert-circle"]');
+            host().querySelector('.conversation-row__wait--overdue use[href="#icon-alert-circle"]');
 
         it('turns the wait into an alert icon in the error colour once past the response time, as the clock ticks', () => {
             render(waiting(), { rules: marksAfterTenMinutes });
             expect(overdueMark()).toBeNull();
-            expect(host().querySelector('.conversation-row__waiting-dot')).not.toBeNull();
+            expect(host().querySelector('.conversation-row__wait use[href="#icon-clock"]')).not.toBeNull();
             expect(accessibleName()).not.toContain('overdue');
 
             fixture.componentRef.setInput('now', NOW + 60_000);
             fixture.detectChanges();
             expect(overdueMark()).not.toBeNull();
-            expect(host().querySelector('.conversation-row__waiting-dot')).toBeNull();
-            expect(textOf('.conversation-row__waiting')).toBe('11m');
-            expect(tooltipOf('.conversation-row__waiting').disabled).toBe(false);
-            expect(tooltipOf('.conversation-row__waiting').message).toBe(
+            expect(host().querySelector('.conversation-row__wait use[href="#icon-clock"]')).toBeNull();
+            expect(textOf('.conversation-row__wait')).toBe('11m 0s');
+            expect(tooltipOf('.conversation-row__wait').disabled).toBe(false);
+            expect(tooltipOf('.conversation-row__wait').message).toBe(
                 "Overdue: waiting longer than the desk's response time"
             );
             expect(accessibleName()).toBe(
@@ -313,8 +345,8 @@ describe('ConversationRowComponent', () => {
                 canTakeOver: true,
                 rules: { style: 'support', overdueAfterMs: 60_000 },
             });
-            expect(host().querySelector('app-user-avatar')).toBeNull();
-            expect(host().querySelector('.conversation-row__waiting')).toBeNull();
+            expect(host().querySelector('.conversation-row__holder')).toBeNull();
+            expect(host().querySelector('.conversation-row__wait')).toBeNull();
             expect(takeOverButton()).toBeNull();
             expect(textOf('.conversation-row__preview')).toBe('Where is my order?');
             expect(accessibleName()).not.toContain('taken by');
@@ -330,20 +362,87 @@ describe('ConversationRowComponent', () => {
     });
 
     describe('who holds it', () => {
-        it("shows the holder's small avatar and names them: you, their name, or their number", () => {
+        const holderBadge = (): HTMLElement | null => host().querySelector('.conversation-row__holder');
+        const holderImage = (): HTMLImageElement | null =>
+            host().querySelector<HTMLImageElement>('.conversation-row__holder-image');
+
+        it('badges the avatar with the holder and names them: you, their name, or their number', () => {
             render(conversation({ mode: 'human', assigned_operator_id: 3 }));
-            expect(textOf('app-user-avatar')).toBe('AL');
-            expect(tooltipOf('app-user-avatar').message).toBe('Taken by you');
+            expect(tooltipOf('.conversation-row__holder').message).toBe('Taken by you');
             expect(accessibleName()).toContain('taken by you');
 
             render(conversation({ mode: 'human', assigned_operator_id: 7, assigned_operator_name: 'Grace Hopper' }));
-            expect(textOf('app-user-avatar')).toBe('GH');
-            expect(tooltipOf('app-user-avatar').message).toBe('Taken by Grace Hopper');
+            expect(tooltipOf('.conversation-row__holder').message).toBe('Taken by Grace Hopper');
             expect(accessibleName()).toContain('taken by Grace Hopper');
 
             render(conversation({ mode: 'human', assigned_operator_id: 7 }));
-            expect(tooltipOf('app-user-avatar').message).toBe('Taken by Operator #7');
+            expect(tooltipOf('.conversation-row__holder').message).toBe('Taken by Operator #7');
             expect(accessibleName()).toContain('taken by Operator #7');
+        });
+
+        it("shows the current user's picture in the badge, and a person icon for anyone else or without one", () => {
+            currentUser.update((user) => ({ ...user, avatar_url: 'https://cdn.example/ada.png' }));
+            render(conversation({ mode: 'human', assigned_operator_id: 3 }));
+            expect(holderImage()?.getAttribute('src')).toBe('https://cdn.example/ada.png');
+            expect(holderBadge()?.querySelector('use[href="#icon-user"]')).toBeNull();
+
+            render(conversation({ mode: 'human', assigned_operator_id: 7, assigned_operator_name: 'Grace Hopper' }));
+            expect(holderImage()).toBeNull();
+            expect(holderBadge()?.querySelector('use[href="#icon-user"]')).not.toBeNull();
+
+            currentUser.update((user) => ({ ...user, avatar_url: null }));
+            render(conversation({ mode: 'human', assigned_operator_id: 3 }));
+            expect(holderImage()).toBeNull();
+            expect(holderBadge()?.querySelector('use[href="#icon-user"]')).not.toBeNull();
+        });
+
+        it('falls back to the person icon when the picture fails to load', () => {
+            currentUser.update((user) => ({ ...user, avatar_url: 'https://cdn.example/expired.png' }));
+            render(conversation({ mode: 'human', assigned_operator_id: 3 }));
+            holderImage()!.dispatchEvent(new Event('error'));
+            fixture.detectChanges();
+            expect(holderImage()).toBeNull();
+            expect(holderBadge()?.querySelector('use[href="#icon-user"]')).not.toBeNull();
+        });
+
+        it('shows no badge on a conversation nobody holds', () => {
+            render(conversation());
+            expect(holderBadge()).toBeNull();
+            expect(accessibleName()).not.toContain('taken by');
+        });
+    });
+
+    describe('unread', () => {
+        const unreadDot = (): Element | null => host().querySelector('.conversation-row__unread');
+        const isPreviewUnread = (): boolean =>
+            host().querySelector('.conversation-row__preview')!.classList.contains('conversation-row__preview--unread');
+
+        it('marks news the user has not opened, where the section asks: a dot before the time and a brighter preview', () => {
+            readMarks.unreadIds.set(new Set(['c-1']));
+            render(conversation(), { marksUnread: true });
+            expect(unreadDot()?.nextElementSibling?.classList).toContain('conversation-row__time');
+            expect(isPreviewUnread()).toBe(true);
+            expect(accessibleName()).toBe('Visitor 1, last message today at 2:24 PM, unread');
+        });
+
+        it.each([
+            { case: 'a section that does not mark news', marksUnread: false, unreadIds: ['c-1'] },
+            { case: 'a conversation already read', marksUnread: true, unreadIds: [] },
+        ])('marks nothing on $case', ({ marksUnread, unreadIds }) => {
+            readMarks.unreadIds.set(new Set(unreadIds));
+            render(conversation(), { marksUnread });
+            expect(unreadDot()).toBeNull();
+            expect(isPreviewUnread()).toBe(false);
+            expect(accessibleName()).not.toContain('unread');
+        });
+
+        it('drops the marks once the conversation is read', () => {
+            readMarks.unreadIds.set(new Set(['c-1']));
+            render(conversation(), { marksUnread: true });
+            readMarks.unreadIds.set(new Set());
+            fixture.detectChanges();
+            expect(unreadDot()).toBeNull();
+            expect(isPreviewUnread()).toBe(false);
         });
     });
 
@@ -359,6 +458,15 @@ describe('ConversationRowComponent', () => {
             takeOverButton()!.click();
             expect(takeOver).toHaveBeenCalledTimes(1);
             expect(opened).not.toHaveBeenCalled();
+        });
+
+        it('sits beside the row, after the wait: a button cannot hold another', () => {
+            render(waiting(), { canTakeOver: true });
+            const actions = host().querySelector('.conversation-row__actions')!;
+            expect(rowButton().contains(actions)).toBe(false);
+            const [first, second] = Array.from(actions.children);
+            expect(first.matches('.conversation-row__wait')).toBe(true);
+            expect(second.matches('.conversation-row__take-over')).toBe(true);
         });
 
         it('is offered on a waiting row another operator holds (the take over then asks), not on one you hold', () => {
@@ -422,51 +530,6 @@ describe('ConversationRowComponent', () => {
         it('shows the desk under the visitor when given one (All desks)', () => {
             render(conversation(), { deskName: 'Sales' });
             expect(textOf('.conversation-row__desk')).toBe('Sales');
-        });
-    });
-
-    describe('compact', () => {
-        const rowTooltip = (): MatTooltip => tooltipOf('button.conversation-row');
-
-        it('shows only the avatar, the visitor in a tooltip on the row, and the full accessible name', () => {
-            render(waiting(), { isCompact: true });
-            expect(rowButton().children).toHaveLength(1);
-            expect(rowButton().firstElementChild?.tagName.toLowerCase()).toBe('app-conversation-avatar');
-            expect(rowTooltip().message).toBe('Visitor 1');
-            expect(rowTooltip().disabled).toBe(false);
-            expect(accessibleName()).toMatch(/^Visitor 1, /);
-            expect(accessibleName()).toContain('waiting for a person since');
-            expect(rowButton().getAttribute('aria-describedby') ?? '').not.toContain('conversation-preview');
-        });
-
-        it('names the visitor in a tooltip only while compact', () => {
-            render(waiting());
-            expect(rowTooltip().disabled).toBe(true);
-        });
-
-        it('rings the open conversation instead of filling its row', () => {
-            render(conversation(), { isCompact: true, isSelected: true });
-            expect(rowButton().classList).toContain('conversation-row--compact');
-            expect(rowButton().classList).toContain('conversation-row--selected');
-            expect(rowButton().getAttribute('aria-current')).toBe('true');
-        });
-
-        it('offers no Take over: there is no room for it', () => {
-            render(waiting(), { isCompact: true, canTakeOver: true });
-            expect(takeOverButton()).toBeNull();
-        });
-
-        it('opens on click and moves with the keys as the full row does', () => {
-            render(conversation(), { isCompact: true });
-            const opened = vi.fn();
-            const moves: ConversationRowMove[] = [];
-            fixture.componentInstance.selectRequested.subscribe(opened);
-            fixture.componentInstance.moveRequested.subscribe((move) => moves.push(move));
-
-            rowButton().click();
-            rowButton().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true }));
-            expect(opened).toHaveBeenCalledTimes(1);
-            expect(moves).toEqual(['next']);
         });
     });
 });

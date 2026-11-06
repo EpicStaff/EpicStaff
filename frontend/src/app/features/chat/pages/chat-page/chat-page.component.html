@@ -95,6 +95,7 @@
             #conversationsColumn
             class="inbox__sidebar"
             [style.width.px]="isPhone() ? null : conversationsWidth()"
+            [style.min-width.px]="isPhone() ? null : conversationsWidthOptions.minWidth"
             [attr.inert]="isPhone() && selected() ? '' : null"
         >
             @if (isPhone()) {
@@ -144,11 +145,8 @@
             <app-conversation-list
                 [bindingId]="bindingId() ?? null"
                 [selectedId]="selectedId()"
-                [canCollapse]="!isPhone()"
-                [isCompact]="isConversationsCompact()"
                 (selectedChange)="selectConversation($event)"
                 [testStartBlockedReason]="testStartBlockedReason()"
-                (compactToggle)="toggleConversations()"
                 (testStartRequested)="startTest()"
             />
             @if (!isPhone()) {
@@ -159,7 +157,6 @@
                     [sidebarTarget]="conversationsColumn"
                     [sidebarMinWidth]="conversationsWidthOptions.minWidth"
                     [sidebarMaxWidth]="conversationsWidthOptions.maxWidth"
-                    [sidebarCollapse]="conversationsWidthOptions.collapse"
                 ></div>
             }
         </aside>

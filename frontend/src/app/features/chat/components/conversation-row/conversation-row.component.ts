@@ -1,9 +1,20 @@
-import { Component, computed, ElementRef, inject, input, LOCALE_ID, output, viewChild } from '@angular/core';
+import {
+    Component,
+    computed,
+    ElementRef,
+    inject,
+    input,
+    linkedSignal,
+    LOCALE_ID,
+    output,
+    viewChild,
+} from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, ButtonComponent, UserAvatarComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ChatConversation } from '../../models/chat.model';
+import { ConversationReadMarksService } from '../../services/conversation-read-marks.service';
 import { closeReasonLabel, closeReasonWord, isClosed } from '../../utils/conversation-close.util';
 import {
     ConversationDeskRules,
@@ -27,8 +38,7 @@ const ROW_MOVES: Record<string, ConversationRowMove> = {
 };
 
 interface ConversationHolder {
-    /** For the avatar's initials; null while the chat service does not know the name. */
-    name: string | null;
+    /** Only the current user's is known; anyone else's badge shows a person icon. */
     avatarUrl: string | null;
     /** "you", their name, or "Operator #7". */
     label: string;
@@ -36,14 +46,15 @@ interface ConversationHolder {
 
 /**
  * One conversation in the list, as chat apps draw it: the visitor's avatar, name and last activity, then the last
- * message after who wrote it ("Bot is replying…" while a run is in flight). A conversation where the visitor waits for
- * a person has a bold name, a dot and how long they have waited (an alert icon instead, in the error colour, once
- * overdue); a taken one its operator's small avatar. On a waiting row the current user does not hold, hover or keyboard
- * focus reveals Take over. A closed one is done: it says why and when it closed, and nothing else.
+ * message after who wrote it ("Bot is replying…" while a run is in flight). A taken one has its operator's badge on the
+ * avatar's corner. A conversation where the visitor waits for a person has a bold name and, on its right, how long they
+ * have waited and Take over (unless the current user holds it); the wait gets an alert icon and the error colour once
+ * overdue. In progress, one with news the user has not opened has a green dot by its time and a brighter preview. A
+ * closed one says why and when it closed.
  */
 @Component({
     selector: 'app-conversation-row',
-    imports: [MatTooltipModule, AppSvgIconComponent, ButtonComponent, UserAvatarComponent, ConversationAvatarComponent],
+    imports: [MatTooltipModule, AppSvgIconComponent, ButtonComponent, ConversationAvatarComponent],
     templateUrl: './conversation-row.component.html',
     styleUrl: './conversation-row.component.scss',
 })
@@ -61,7 +72,8 @@ export class ConversationRowComponent {
     /** The current user may take conversations over (chats use). */
     readonly canTakeOver = input(false);
     readonly isActionPending = input(false);
-    readonly isCompact = input(false);
+    /** The row's section marks news the user has not opened (In progress): a dot and a brighter preview. */
+    readonly marksUnread = input(false);
     readonly selectRequested = output<void>();
     readonly takeOverRequested = output<void>();
     readonly moveRequested = output<ConversationRowMove>();
@@ -69,6 +81,7 @@ export class ConversationRowComponent {
     private readonly selectButton = viewChild.required<ElementRef<HTMLButtonElement>>('selectButton');
 
     private readonly myUserId = computed(() => this.profileService.currentUserSignal()?.id ?? null);
+    protected readonly isUnread = computed(() => this.marksUnread() && this.readMarks.isUnread(this.conversation()));
     protected readonly name = computed(() => visitorName(this.conversation()));
     /** A signed visitor's id can be long: the full value is in a tooltip. */
     protected readonly isSigned = computed(() => !!this.conversation().chat_user_id);
@@ -111,9 +124,18 @@ export class ConversationRowComponent {
         const { assigned_operator_id: operatorId, assigned_operator_name: operatorDisplayName } = this.conversation();
         if (operatorId === null || this.isClosed()) return null;
         const me = this.profileService.currentUserSignal();
-        if (me?.id === operatorId) return { name: me.display_name || me.email, avatarUrl: me.avatar_url, label: 'you' };
-        return { name: operatorDisplayName, avatarUrl: null, label: operatorName(operatorId, operatorDisplayName) };
+        if (me?.id === operatorId) return { avatarUrl: me.avatar_url, label: 'you' };
+        return { avatarUrl: null, label: operatorName(operatorId, operatorDisplayName) };
     });
+    // Resets on every new URL, so a fresh link (an expired signed one renewed) gets a fresh try.
+    protected readonly holderImageFailed = linkedSignal({
+        source: () => this.holder()?.avatarUrl ?? null,
+        computation: () => false,
+    });
+    /** The badge is too small for initials: the holder's picture, or else a person icon. */
+    protected readonly holderImageUrl = computed(() =>
+        this.holderImageFailed() ? null : (this.holder()?.avatarUrl ?? null)
+    );
     /** Why it closed, in a word ("Resolved"), with the full reason ("Resolved by Mike") as its tooltip. */
     protected readonly closeWord = computed(() =>
         this.isClosed() ? closeReasonWord(this.conversation().close_reason, this.rules()?.style ?? null) : ''
@@ -123,11 +145,7 @@ export class ConversationRowComponent {
     );
     /** Not for a conversation the current user holds; one another operator holds asks before it is taken from them. */
     protected readonly offersTakeOver = computed(
-        () =>
-            !this.isCompact() &&
-            this.isWaiting() &&
-            this.canTakeOver() &&
-            this.conversation().assigned_operator_id !== this.myUserId()
+        () => this.isWaiting() && this.canTakeOver() && this.conversation().assigned_operator_id !== this.myUserId()
     );
     /**
      * Visitor, desk (All desks only), last activity in words (the close, on a row timed by it), and what the
@@ -152,6 +170,7 @@ export class ConversationRowComponent {
             this.isOverdue() ? 'overdue' : null,
             holder ? `taken by ${holder.label}` : null,
             this.isReplying() ? 'bot is replying' : null,
+            this.isUnread() ? 'unread' : null,
         ]
             .filter(Boolean)
             .join(', ');
@@ -159,6 +178,7 @@ export class ConversationRowComponent {
     protected readonly previewId = computed(() => `conversation-preview-${this.conversation().id}`);
 
     private readonly profileService = inject(ProfileService);
+    private readonly readMarks = inject(ConversationReadMarksService);
     private readonly locale = inject(LOCALE_ID);
 
     focus(options?: FocusOptions): void {

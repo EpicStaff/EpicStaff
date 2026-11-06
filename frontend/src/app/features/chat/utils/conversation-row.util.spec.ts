@@ -145,13 +145,16 @@ describe('conversationTimeLabel', () => {
 
 describe('waitDuration', () => {
     it.each([
-        [at(2026, 10, 12, 14, 29, 30), '<1m'],
-        [at(2026, 10, 12, 14, 26), '4m'],
+        [at(2026, 10, 12, 14, 29, 15), '45s'],
+        [at(2026, 10, 12, 14, 29, 1), '59s'],
+        [at(2026, 10, 12, 14, 29), '1m 0s'],
+        [at(2026, 10, 12, 14, 17, 44), '12m 16s'],
+        [at(2026, 10, 12, 13, 30, 1), '59m 59s'],
         [at(2026, 10, 12, 13, 25), '1h 5m'],
         [at(2026, 10, 12, 11, 30), '3h'],
         [at(2026, 10, 10, 13, 0), '2d'],
         // Clock skew: never a negative wait.
-        [at(2026, 10, 12, 14, 35), '<1m'],
+        [at(2026, 10, 12, 14, 35), '0s'],
     ])('waited since %s: %s', (since, expected) => {
         expect(waitDuration(iso(since), NOW)).toBe(expected);
     });

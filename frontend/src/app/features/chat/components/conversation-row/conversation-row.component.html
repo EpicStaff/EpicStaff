@@ -3,103 +3,128 @@
     #selectButton
     type="button"
     class="conversation-row"
-    matTooltipPosition="right"
     [class.conversation-row--selected]="isSelected()"
     [class.conversation-row--waiting]="isWaiting()"
-    [class.conversation-row--compact]="isCompact()"
     [attr.aria-current]="isSelected() ? 'true' : null"
     [attr.aria-label]="accessibleName()"
-    [attr.aria-describedby]="isCompact() ? null : previewId()"
+    [attr.aria-describedby]="previewId()"
     [tabIndex]="isTabStop() ? 0 : -1"
-    [matTooltip]="name()"
-    [matTooltipDisabled]="!isCompact()"
     (click)="selectRequested.emit()"
     (keydown)="onKeydown($event)"
 >
-    <app-conversation-avatar
-        class="conversation-row__avatar"
-        [conversation]="conversation()"
-    />
-    @if (!isCompact()) {
-        <span class="conversation-row__body">
-            <span class="conversation-row__line">
-                <span
-                    class="conversation-row__name"
-                    matTooltipPosition="above"
-                    [matTooltip]="name()"
-                    [matTooltipDisabled]="!isSigned()"
-                    >{{ name() }}</span
-                >
-                @if (conversation().is_test) {
-                    <span class="conversation-row__test-chip">Test</span>
-                }
-                <span class="conversation-row__time">{{ time() }}</span>
-            </span>
-            @if (deskName(); as desk) {
-                <span class="conversation-row__desk">{{ desk }}</span>
-            }
-            <span class="conversation-row__line">
-                <span
-                    class="conversation-row__preview"
-                    [id]="previewId()"
-                    [class.conversation-row__preview--replying]="isReplying()"
-                    [class.conversation-row__preview--system]="isSystemNote()"
-                >
-                    @if (sender(); as from) {
-                        <span class="conversation-row__sender">{{ from }}</span>
-                    }
-                    {{ preview() }}
-                </span>
-                @if (holder(); as taker) {
-                    <app-user-avatar
-                        class="conversation-row__holder"
-                        matTooltipPosition="above"
-                        [name]="taker.name"
-                        [avatarUrl]="taker.avatarUrl"
-                        [matTooltip]="'Taken by ' + taker.label"
+    <!-- The visitor, with whoever holds the conversation on the avatar's corner. -->
+    <span class="conversation-row__picture">
+        <app-conversation-avatar
+            class="conversation-row__avatar"
+            [conversation]="conversation()"
+        />
+        @if (holder(); as taker) {
+            <span
+                class="conversation-row__holder"
+                matTooltipPosition="above"
+                [class.conversation-row__holder--image]="holderImageUrl()"
+                [matTooltip]="'Taken by ' + taker.label"
+            >
+                @if (holderImageUrl(); as imageUrl) {
+                    <img
+                        class="conversation-row__holder-image"
+                        alt=""
+                        [src]="imageUrl"
+                        (error)="holderImageFailed.set(true)"
+                    />
+                } @else {
+                    <app-svg-icon
+                        icon="user"
+                        size="6px"
                     />
                 }
-                @if (closeWord(); as word) {
-                    <span
-                        class="conversation-row__closed"
-                        matTooltipPosition="above"
-                        [matTooltip]="closeReason()"
-                        >{{ word }}</span
-                    >
-                }
-                @if (isWaiting()) {
-                    <!-- Overdue is said by the icon too, not by the colour alone. -->
-                    <span
-                        class="conversation-row__waiting"
-                        matTooltipPosition="above"
-                        matTooltip="Overdue: waiting longer than the desk's response time"
-                        [class.conversation-row__waiting--overdue]="isOverdue()"
-                        [matTooltipDisabled]="!isOverdue()"
-                    >
-                        @if (isOverdue()) {
-                            <app-svg-icon
-                                icon="alert-circle"
-                                size="14px"
-                            />
-                        } @else {
-                            <span class="conversation-row__waiting-dot"></span>
-                        }
-                        {{ waitedFor() }}
-                    </span>
-                }
             </span>
+        }
+    </span>
+    <span class="conversation-row__body">
+        <span class="conversation-row__line">
+            <span
+                class="conversation-row__name"
+                matTooltipPosition="above"
+                [matTooltip]="name()"
+                [matTooltipDisabled]="!isSigned()"
+                >{{ name() }}</span
+            >
+            @if (conversation().is_test) {
+                <span class="conversation-row__test-chip">Test</span>
+            }
+            <!-- A waiting row says how long instead, beside the row: see the wait chip below. -->
+            @if (!isWaiting()) {
+                <!-- Said in the row's name too: the dot is not the only sign. -->
+                @if (isUnread()) {
+                    <span
+                        class="conversation-row__unread"
+                        aria-hidden="true"
+                    ></span>
+                }
+                <span class="conversation-row__time">{{ time() }}</span>
+            }
         </span>
-    }
+        @if (deskName(); as desk) {
+            <span class="conversation-row__desk">{{ desk }}</span>
+        }
+        <span class="conversation-row__line">
+            <span
+                class="conversation-row__preview"
+                [id]="previewId()"
+                [class.conversation-row__preview--replying]="isReplying()"
+                [class.conversation-row__preview--unread]="isUnread()"
+                [class.conversation-row__preview--system]="isSystemNote()"
+            >
+                @if (sender(); as from) {
+                    <span class="conversation-row__sender">{{ from }}</span>
+                }
+                {{ preview() }}
+            </span>
+            @if (closeWord(); as word) {
+                <span
+                    class="conversation-row__closed"
+                    matTooltipPosition="above"
+                    [matTooltip]="closeReason()"
+                    >{{ word }}</span
+                >
+            }
+        </span>
+    </span>
 </button>
-@if (offersTakeOver()) {
-    <app-button
-        class="conversation-row__take-over"
-        type="primary"
-        mod="small"
-        [ariaLabel]="'Take over ' + name()"
-        [disabled]="isActionPending()"
-        (click)="onTakeOver($event)"
-    >
-        Take over
-    </app-button>
+<!-- Beside the row's button, not in it: a button cannot hold another. -->
+@if (isWaiting()) {
+    <div class="conversation-row__actions">
+        <!--
+            The row's name says the wait already, so the chip is hidden from assistive technology; a click on it opens
+            the conversation as the row does. Overdue is said by the icon too, not by the colour alone.
+        -->
+        <span
+            class="conversation-row__wait"
+            aria-hidden="true"
+            matTooltipPosition="above"
+            matTooltip="Overdue: waiting longer than the desk's response time"
+            [class.conversation-row__wait--overdue]="isOverdue()"
+            [matTooltipDisabled]="!isOverdue()"
+            (click)="selectRequested.emit()"
+        >
+            <app-svg-icon
+                size="10px"
+                [icon]="isOverdue() ? 'alert-circle' : 'clock'"
+            />
+            {{ waitedFor() }}
+        </span>
+        @if (offersTakeOver()) {
+            <app-button
+                class="conversation-row__take-over"
+                type="outline-primary"
+                mod="small"
+                [ariaLabel]="'Take over ' + name()"
+                [disabled]="isActionPending()"
+                (click)="onTakeOver($event)"
+            >
+                Take over
+            </app-button>
+        }
+    </div>
 }

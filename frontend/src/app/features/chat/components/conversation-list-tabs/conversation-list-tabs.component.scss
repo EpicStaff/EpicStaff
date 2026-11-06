@@ -1,8 +1,9 @@
-@use '../../../../../styles/count-badge';
+@use '../../../../../styles/breakpoints' as bp;
 
-// Takes the width its row leaves (beside the column's toggle), and the whole width when stacked under it.
+// Takes the whole row; a container, so the switch follows its own width (below).
 :host {
     display: block;
+    container-type: inline-size;
     flex: 1 1 auto;
     align-self: stretch;
     min-width: 0;
@@ -11,10 +12,6 @@
 // Two equal segments filling the row; the second has no left border, so the first's right border divides them.
 .conversation-list-tabs {
     display: flex;
-
-    :host(.conversation-list-tabs--compact) & {
-        flex-direction: column;
-    }
 }
 
 .conversation-list-tabs__tab {
@@ -67,35 +64,23 @@
         color: var(--color-text-disabled);
         cursor: default;
     }
+}
 
-    // Stacked icon-only: the shared border runs across, and the ends round at the top and bottom instead.
-    :host(.conversation-list-tabs--compact) & {
-        height: 32px;
-        padding: 0;
-    }
-
-    :host(.conversation-list-tabs--compact) &--first {
-        border-radius: 8px 8px 0 0;
-    }
-
-    :host(.conversation-list-tabs--compact) &--last {
-        border-left: 1px solid var(--color-ks-line);
-        border-top: none;
-        border-radius: 0 0 8px 8px;
+// Narrower than at the column's default width (402px), as the column shrinks with the screen or is dragged in: 28px
+// tall, as the search row under it (318px at the column's minimum). Not on phones: the column is narrow there by
+// nature, and the switch stays a finger's size.
+@media (min-width: #{bp.$breakpoint-phone + 0.02px}) {
+    @container (max-width: 401px) {
+        .conversation-list-tabs__tab {
+            height: 28px;
+            padding: 0 8px;
+        }
     }
 }
 
 .conversation-list-tabs__icon {
-    position: relative;
     display: inline-flex;
     flex-shrink: 0;
-}
-
-.conversation-list-tabs__badge {
-    @include count-badge.pill;
-    position: absolute;
-    top: -8px;
-    right: -12px;
 }
 
 .conversation-list-tabs__label {

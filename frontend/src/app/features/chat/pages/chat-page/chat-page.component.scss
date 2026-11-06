@@ -137,6 +137,7 @@
         border-right: 1px solid var(--color-divider-regular);
     }
 
+    // Shrinks with the screen, leaving the thread 320px, down to the column's minimum (set on the element).
     &:not(.inbox--stack) &__sidebar {
         max-width: calc(100% - 320px);
     }

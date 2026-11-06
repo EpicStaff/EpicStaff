@@ -20,11 +20,7 @@ describe('ConversationListToolbarComponent', () => {
         fixture.detectChanges();
     }
 
-    function setInputs(
-        inputs: Partial<
-            Record<'isMineOnly' | 'canFilterMine' | 'searchError' | 'canCollapse' | 'isCompact' | 'columnId', unknown>
-        >
-    ): void {
+    function setInputs(inputs: Partial<Record<'isMineOnly' | 'canFilterMine' | 'searchError', unknown>>): void {
         for (const [name, value] of Object.entries(inputs)) fixture.componentRef.setInput(name, value);
         fixture.detectChanges();
     }
@@ -112,66 +108,6 @@ describe('ConversationListToolbarComponent', () => {
         it('is not there without chats use', () => {
             setInputs({ canFilterMine: false });
             expect(button('Mine')).toBeUndefined();
-        });
-    });
-
-    describe('compact column', () => {
-        const compactToggle = (): HTMLButtonElement | null =>
-            host().querySelector<HTMLButtonElement>('button[aria-controls]');
-        const filteredDot = (): Element | null =>
-            compactToggle()?.querySelector('.conversation-list-toolbar__filtered-dot') ?? null;
-
-        it('offers no compact toggle unless the column can be compact', () => {
-            setInputs({ columnId: 'conversations' });
-            expect(compactToggle()).toBeNull();
-        });
-
-        it('offers no toggle while expanded: the switch has the first row, and the handle collapses the column', () => {
-            setInputs({ canCollapse: true, columnId: 'conversations' });
-            expect(compactToggle()).toBeNull();
-            expect(host().querySelector('app-search')).not.toBeNull();
-        });
-
-        it('shows only the toggle while compact, which asks to expand the column', () => {
-            setInputs({ canCollapse: true, columnId: 'conversations', isCompact: true });
-            const requests: number[] = [];
-            fixture.componentInstance.compactToggle.subscribe(() => requests.push(1));
-
-            expect(host().querySelectorAll('button')).toHaveLength(1);
-            expect(host().querySelector('input')).toBeNull();
-            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
-            expect(compactToggle()?.getAttribute('aria-expanded')).toBe('false');
-            compactToggle()!.click();
-            expect(requests).toEqual([1]);
-        });
-
-        it('marks the compact toggle with a dot, and says so in its name, while Mine filters the list', () => {
-            setInputs({ canCollapse: true, columnId: 'conversations', isMineOnly: true, isCompact: true });
-            expect(filteredDot()).not.toBeNull();
-            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations, filtered');
-        });
-
-        it('marks the compact toggle while a search filters the list', () => {
-            setInputs({ canCollapse: true, columnId: 'conversations' });
-            type('ada');
-            setInputs({ isCompact: true });
-            expect(filteredDot()).not.toBeNull();
-            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations, filtered');
-        });
-
-        it('leaves the toggle unmarked when nothing filters the list', () => {
-            setInputs({ canCollapse: true, columnId: 'conversations', isCompact: true });
-            expect(filteredDot()).toBeNull();
-            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
-        });
-
-        it('keeps the typed search through a compact spell', async () => {
-            setInputs({ canCollapse: true });
-            type('ada');
-            setInputs({ isCompact: true });
-            setInputs({ isCompact: false });
-            await Promise.resolve();
-            expect(field().value).toBe('ada');
         });
     });
 });

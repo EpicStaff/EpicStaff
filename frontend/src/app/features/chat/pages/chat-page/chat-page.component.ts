@@ -43,11 +43,7 @@ import {
     DeskRunState,
     DeskStatusSelectComponent,
 } from '../../components/desk-status-select/desk-status-select.component';
-import {
-    CONVERSATIONS_WIDTH_KEY,
-    CONVERSATIONS_WIDTH_OPTIONS,
-    isCompactColumn,
-} from '../../constants/column-widths.constants';
+import { CONVERSATIONS_WIDTH_KEY, CONVERSATIONS_WIDTH_OPTIONS } from '../../constants/column-widths.constants';
 import { DESKS_ROUTE } from '../../constants/routes.constants';
 import { ChatConversation } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
@@ -55,6 +51,7 @@ import { ChatBindingActionsService } from '../../services/chat-binding-actions.s
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
 import { ChatVisitorTokensStore } from '../../services/chat-visitor-tokens.store';
+import { ConversationReadMarksService } from '../../services/conversation-read-marks.service';
 import { DeskDrawerService } from '../../services/desk-drawer.service';
 import { OpenConversationService } from '../../services/open-conversation.service';
 import { OpenConversationSyncService } from '../../services/open-conversation-sync.service';
@@ -104,9 +101,6 @@ export class ChatPageComponent {
         CONVERSATIONS_WIDTH_KEY,
         CONVERSATIONS_WIDTH_OPTIONS
     );
-    protected readonly isConversationsCompact = computed(
-        () => !this.isPhone() && isCompactColumn(this.conversationsWidth())
-    );
     // The desk list asked for once the route moved to a desk the list lacked: only that list can say it is gone.
     private readonly deskListRequestedFor = signal<{ bindingId: string; request: number } | null>(null);
 
@@ -139,9 +133,12 @@ export class ChatPageComponent {
         return title ? `Switch desk, current: ${title}` : 'Switch desk';
     });
     readonly pauseLabel = computed(() => (this.routeBinding()?.is_active ? 'Pause' : 'Resume'));
-    /** Why New Test Chat cannot start a test now; null when it can. A test is of one desk, and one starts at a time. */
+    /**
+     * Why New Test Chat cannot start a test now; null when it can. A test is of one desk, so All desks has no button;
+     * on a desk it waits for the desk to load, and one test starts at a time.
+     */
     readonly testStartBlockedReason = computed((): string | null => {
-        if (!this.routeBinding()) return 'Open a desk to start a test';
+        if (!this.routeBinding()) return 'Loading the desk…';
         return this.isStartingTest() ? 'Starting a test…' : null;
     });
     readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
@@ -275,6 +272,11 @@ export class ChatPageComponent {
         const list = this.conversationList();
         if (row && list) untracked(() => list.revealConversation(row));
     });
+    // The conversation shown is read up to its last message, and so is every message that comes while it stays open.
+    private readonly markShownConversationRead = effect(() => {
+        const conversation = this.selected();
+        if (conversation) untracked(() => this.readMarks.markRead(conversation));
+    });
     // Phones: the focus goes with the screen the user moved to: the thread's Back, or the row the thread was opened from.
     private readonly moveFocusWithStack = effect(() => {
         const openId = this.isPhone() ? this.shownConversationId() : undefined;
@@ -317,8 +319,8 @@ export class ChatPageComponent {
     private readonly desksStorage = inject(ChatDesksStorageService);
     private readonly myAliasesStorage = inject(ChatMyAliasesStorageService);
     private readonly visitorTokens = inject(ChatVisitorTokensStore);
+    private readonly readMarks = inject(ConversationReadMarksService);
     private readonly openConversationSync = inject(OpenConversationSyncService);
-    private readonly sidebarWidthService = inject(SidebarWidthService);
     private readonly injector = inject(Injector);
     private scope: string | null | undefined = undefined;
     // Phones: the conversation the stack showed last (null: the list); undefined off phones and before the first look.
@@ -337,10 +339,6 @@ export class ChatPageComponent {
     onTestConversationStarted(conversation: ChatConversation): void {
         this.openConversation.open(conversation);
         this.conversationList()?.reveal('test_bot');
-    }
-
-    protected toggleConversations(): void {
-        this.sidebarWidthService.toggleCollapsed(CONVERSATIONS_WIDTH_KEY, CONVERSATIONS_WIDTH_OPTIONS);
     }
 
     /** The slide has ended: later moves are instant unless one made here asks again. */

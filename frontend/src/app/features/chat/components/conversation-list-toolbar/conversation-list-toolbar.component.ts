@@ -10,19 +10,15 @@ import { ConversationListTab } from '../../utils/conversation-list-tab.util';
 export const SEARCH_DEBOUNCE_MS = 250;
 
 /**
- * Above the conversations: a first row with the column's tab switch (projected), and while the column is compact the
- * button that expands it; then the search (server-side, every section of the tab at once) with Mine (Inbox) or New
- * Test Chat (Bot Testing) beside it. It only says what the user chose or asked for; the column decides what that
- * lists, and the page starts a test.
+ * Above the conversations: a first row with the column's tab switch (projected), then the search (server-side, every
+ * section of the tab at once) with Mine (Inbox) or New Test Chat (Bot Testing) beside it. It only says what the user
+ * chose or asked for; the column decides what that lists, and the page starts a test.
  */
 @Component({
     selector: 'app-conversation-list-toolbar',
     imports: [AppSvgIconComponent, ButtonComponent, MatTooltipModule, SearchComponent],
     templateUrl: './conversation-list-toolbar.component.html',
     styleUrl: './conversation-list-toolbar.component.scss',
-    host: {
-        '[class.conversation-list-toolbar--compact]': 'isCompact()',
-    },
 })
 export class ConversationListToolbarComponent {
     readonly isMineOnly = input.required<boolean>();
@@ -32,9 +28,6 @@ export class ConversationListToolbarComponent {
     readonly tab = input<ConversationListTab>('inbox');
     /** Why the server refused the search; shown under the field. */
     readonly searchError = input<string | null>(null);
-    readonly canCollapse = input(false);
-    readonly isCompact = input(false);
-    readonly columnId = input<string | null>(null);
     /** New Test Chat is for whoever builds desks, on Bot Testing only. */
     readonly canStartTest = input(false);
     /** Why New Test Chat is disabled now; null while it can start a test. */
@@ -42,19 +35,11 @@ export class ConversationListToolbarComponent {
     /** The trimmed search, once typing settles; at once when cleared. */
     readonly searchChange = output<string>();
     readonly mineOnlyChange = output<boolean>();
-    /** The compact column's button was pressed: the page expands the column. */
-    readonly compactToggle = output<void>();
     readonly testStartRequested = output<void>();
 
     protected readonly searchText = signal('');
     protected readonly showsMine = computed(() => this.canFilterMine() && this.tab() === 'inbox');
     protected readonly showsNewTestChat = computed(() => this.canStartTest() && this.tab() === 'testing');
-    protected readonly isFilteredWhileCompact = computed(
-        () => this.isCompact() && ((this.showsMine() && this.isMineOnly()) || !!this.searchText().trim())
-    );
-    protected readonly compactToggleLabel = computed(() =>
-        this.isFilteredWhileCompact() ? 'Conversations, filtered' : 'Conversations'
-    );
 
     private readonly typedSearches = new Subject<string>();
 

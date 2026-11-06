@@ -366,7 +366,7 @@ describe('ChatPageComponent and the URL', () => {
 
             expect(page().selected()?.id).toBe('c-8');
             expect(chatApi.getConversation).toHaveBeenCalledWith('c-8');
-            expect(openSections()).toEqual(['closed', 'bot']);
+            expect(openSections()).toEqual(['bot', 'closed']);
             expect(toast.error).not.toHaveBeenCalled();
             expect(host().querySelector('.thread-closed')?.textContent).toContain('Resolved by Mike');
             expect(host().querySelector('app-chat-thread-composer')).toBeNull();
@@ -403,7 +403,7 @@ describe('ChatPageComponent and the URL', () => {
 
             await settle();
             expect(field.value).toBe('');
-            expect(openSections()).toEqual(['closed', 'bot']);
+            expect(openSections()).toEqual(['bot', 'closed']);
             expect(page().selected()?.id).toBe('x-9');
             expect(currentRow()).not.toBeNull();
             expect(toast.error).not.toHaveBeenCalled();

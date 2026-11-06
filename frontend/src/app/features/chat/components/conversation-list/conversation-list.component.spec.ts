@@ -282,7 +282,7 @@ describe('ConversationListComponent', () => {
 
     /** Opens every Inbox section for this column, beside the remembered one. */
     function showEverySection(): void {
-        for (const section of ['waiting', 'in_progress', 'closed', 'bot'] as const) store().openForColumn(section);
+        for (const section of ['waiting', 'in_progress', 'bot', 'closed'] as const) store().openForColumn(section);
         fixture.detectChanges();
     }
 
@@ -367,21 +367,22 @@ describe('ConversationListComponent', () => {
             expect(scrolling).toEqual([scrollers[0]]);
         });
 
-        it('lists Waiting for a person, In progress, Closed and Bot in that order on Inbox, only Waiting open', () => {
+        it('lists Waiting for a person, In progress, Bot and Closed in that order on Inbox, only Waiting open', () => {
             expect(tabButton('Inbox').getAttribute('aria-pressed')).toBe('true');
             expect(text('.conversation-section-header__label')).toEqual([
                 'Waiting for a person',
                 'In progress',
-                'Closed',
                 'Bot',
+                'Closed',
             ]);
             expect(headerStates()).toEqual(['true', 'false', 'false', 'false']);
         });
 
         it('gives each section a sticky header heading the section it collapses', () => {
-            for (const section of Array.from(host().querySelectorAll<HTMLElement>('.conversation-list__section'))) {
-                const header = section.firstElementChild as HTMLElement;
-                expect(header.tagName.toLowerCase()).toBe('app-conversation-section-header');
+            for (const section of Array.from(
+                host().querySelectorAll<HTMLElement>('section.conversation-list__section')
+            )) {
+                const header = section.querySelector<HTMLElement>(':scope > app-conversation-section-header')!;
                 expect(getComputedStyle(header).position).toBe('sticky');
                 expect(header.getAttribute('role')).toBe('heading');
                 const button = header.querySelector('button')!;
@@ -391,13 +392,27 @@ describe('ConversationListComponent', () => {
             }
         });
 
-        it('counts Waiting only, from the stream, for the desk shown; the other sections have no count', () => {
+        it('pins the Bot and Closed headers: their sections give up their own box, so the headers stick to the bottom', () => {
+            const pinnedSections = (): (string | undefined)[] =>
+                Array.from(host().querySelectorAll<HTMLElement>('section.conversation-list__section'))
+                    .filter((section) => getComputedStyle(section).display === 'contents')
+                    .map((section) => section.dataset['section']);
+            expect(pinnedSections()).toEqual(['bot', 'closed']);
+
+            switchTab('Bot Testing');
+            expect(pinnedSections()).toEqual(['test_bot', 'test_closed']);
+        });
+
+        it('counts Waiting only, from the stream, for the desk shown, in the waiting colours; the other sections have no count', () => {
             waitingCount.set(3);
             scopeTo('b-2');
             const counts = Array.from(host().querySelectorAll('.conversation-section-header')).map(
                 (button) => button.querySelector('.conversation-section-header__count')?.textContent?.trim() ?? null
             );
             expect(counts).toEqual(['3', null, null, null]);
+            expect(host().querySelector('.conversation-section-header__count')?.classList).toContain(
+                'conversation-section-header__count--waiting'
+            );
             expect(chatInboxStream.waitingCountFor).toHaveBeenLastCalledWith('b-2', null);
 
             waitingCount.set(4);
@@ -433,13 +448,13 @@ describe('ConversationListComponent', () => {
     describe('one section open at a time', () => {
         it('opens a folded section from its header as the only open one, and remembers it per browser', () => {
             toggle('Bot');
-            expect(headerStates()).toEqual(['false', 'false', 'false', 'true']);
+            expect(headerStates()).toEqual(['false', 'false', 'true', 'false']);
             expect(text('.conversation-row__preview')).toEqual(['hello']);
             expect(rememberedSection()).toBe('bot');
 
             fixture = TestBed.createComponent(ConversationListComponent);
             fixture.detectChanges();
-            expect(headerStates()).toEqual(['false', 'false', 'false', 'true']);
+            expect(headerStates()).toEqual(['false', 'false', 'true', 'false']);
 
             toggle('In progress');
             expect(headerStates()).toEqual(['false', 'true', 'false', 'false']);
@@ -522,16 +537,17 @@ describe('ConversationListComponent', () => {
             let scroller: HTMLElement;
             let botTop: number;
 
-            /** The column is scrolled `scrollTop` down; the Bot section starts at `sectionTopOnScreen`. */
+            /** The column, 600px tall, is scrolled `scrollTop` down; the Bot section starts at `sectionTopOnScreen`. */
             function scrolledWithBotAt(sectionTopOnScreen: number, scrollTop = 500): void {
                 scroller = host().querySelector<HTMLElement>('.conversation-list__scroller')!;
-                const botSection = host().querySelector<HTMLElement>(
-                    '.conversation-list__section[data-section="bot"]'
+                const botStart = host().querySelector<HTMLElement>(
+                    '.conversation-list__section-start[data-section="bot"]'
                 )!;
                 Object.defineProperty(scroller, 'scrollTop', { value: scrollTop, writable: true, configurable: true });
+                Object.defineProperty(scroller, 'clientHeight', { value: 600, configurable: true });
                 scroller.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
                 botTop = sectionTopOnScreen;
-                botSection.getBoundingClientRect = () => ({ top: botTop }) as DOMRect;
+                botStart.getBoundingClientRect = () => ({ top: botTop }) as DOMRect;
             }
 
             async function openBot(): Promise<void> {
@@ -564,8 +580,43 @@ describe('ConversationListComponent', () => {
                 fixture.detectChanges();
                 await fixture.whenStable();
 
-                expect(headerStates()).toEqual(['false', 'false', 'false', 'true']);
+                expect(headerStates()).toEqual(['false', 'false', 'true', 'false']);
                 expect(scroller.scrollTop).toBe(100);
+            });
+
+            describe('a pinned header pressed at the bottom, its section below the view', () => {
+                let scrolled: Element[];
+
+                beforeEach(() => {
+                    scrolled = [];
+                    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+                        scrolled.push(this);
+                    });
+                });
+
+                afterEach(() => delete (Element.prototype as Partial<Element>).scrollIntoView);
+
+                it('brings the section up to the top as it opens: it would open out of sight', async () => {
+                    scrolledWithBotAt(750);
+                    toggle('Bot');
+                    await fixture.whenStable();
+
+                    expect(headerButton('Bot').getAttribute('aria-expanded')).toBe('true');
+                    expect(scrolled.map((element) => (element as HTMLElement).dataset['section'])).toEqual(['bot']);
+                    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+                    expect(scroller.scrollTop).toBe(500);
+                });
+
+                it('scrolls nowhere as it folds', async () => {
+                    await openBot();
+                    scrolledWithBotAt(750);
+                    toggle('Bot');
+                    await fixture.whenStable();
+
+                    expect(headerButton('Bot').getAttribute('aria-expanded')).toBe('false');
+                    expect(scrolled).toEqual([]);
+                    expect(scroller.scrollTop).toBe(500);
+                });
             });
         });
 
@@ -1054,7 +1105,7 @@ describe('ConversationListComponent', () => {
                 answerNextSearch({ closed: page([closedRow('x-1', '2026-10-10T12:00:00Z')]) });
                 typeSearch('12');
                 settle();
-                expect(expandedSections()).toEqual(['waiting', 'in_progress', 'closed', 'bot']);
+                expect(expandedSections()).toEqual(['waiting', 'in_progress', 'bot', 'closed']);
                 expect(sentParams()).toContainEqual(listParams('closed', { q: '12' }));
                 expect(ids('closed')).toEqual(['x-1']);
                 expect(rememberedSection()).toBe('waiting');
@@ -1084,7 +1135,7 @@ describe('ConversationListComponent', () => {
 
                 chatApi.getConversations.mockReturnValueOnce(page([]));
                 toggle('Closed');
-                expect(expandedSections()).toEqual(['waiting', 'in_progress', 'closed', 'bot']);
+                expect(expandedSections()).toEqual(['waiting', 'in_progress', 'bot', 'closed']);
 
                 toggle('Waiting for a person');
                 expect(expandedSections()).not.toContain('waiting');
@@ -1119,7 +1170,7 @@ describe('ConversationListComponent', () => {
                     handedOff('h-2', '2026-10-10T09:00:00Z', { binding_id: 'b-2' }),
                 ]),
             });
-            const overdue = Array.from(host().querySelectorAll('.conversation-row__waiting--overdue')).map((mark) =>
+            const overdue = Array.from(host().querySelectorAll('.conversation-row__wait--overdue')).map((mark) =>
                 mark.closest('[data-id]')?.getAttribute('data-id')
             );
             expect(overdue).toEqual(['h-1']);
@@ -1810,7 +1861,7 @@ describe('ConversationListComponent', () => {
                 expect(tooltip.disabled).toBe(false);
                 click(testing);
                 expect(tabButton('Inbox').getAttribute('aria-pressed')).toBe('true');
-                expect(sectionLabels()).toEqual(['Waiting for a person', 'In progress', 'Closed', 'Bot']);
+                expect(sectionLabels()).toEqual(['Waiting for a person', 'In progress', 'Bot', 'Closed']);
 
                 fixture.componentInstance.reveal('test_bot');
                 fixture.detectChanges();
@@ -1851,99 +1902,44 @@ describe('ConversationListComponent', () => {
             expect(region.textContent?.trim()).toBe('');
         });
 
-        it('moves the relative times on every 30 seconds and stops when the list goes away', () => {
+        it('moves the times on every second, a wait to the second, and stops when the list goes away', () => {
             vi.useFakeTimers();
             vi.setSystemTime(new Date('2026-10-10T10:05:00Z'));
-            TestBed.inject(ConversationListPreferencesService).setExpanded('bot');
+            nextPages = { waiting: page([handedOff('h-1', '2026-10-10T10:00:00Z')]) };
             fixture = TestBed.createComponent(ConversationListComponent);
             fixture.detectChanges();
-            expect(text('.conversation-row__time')).toEqual(['5m']);
+            expect(text('.conversation-row__wait')).toEqual(['5m 0s']);
 
-            vi.advanceTimersByTime(4 * 60_000);
+            vi.advanceTimersByTime(1_000);
             fixture.detectChanges();
-            expect(text('.conversation-row__time')).toEqual(['9m']);
+            expect(text('.conversation-row__wait')).toEqual(['5m 1s']);
 
             const timersBefore = vi.getTimerCount();
             fixture.destroy();
             expect(vi.getTimerCount()).toBeLessThan(timersBefore);
         });
-    });
 
-    describe('compact', () => {
-        const headerNames = (): (string | null)[] =>
-            Array.from(host().querySelectorAll('.conversation-section-header')).map((button) =>
-                button.getAttribute('aria-label')
-            );
-        const compactHeader = (label: string): HTMLButtonElement =>
-            Array.from(host().querySelectorAll<HTMLButtonElement>('.conversation-section-header')).find((button) =>
-                button.getAttribute('aria-label')?.startsWith(label)
-            )!;
-
-        function compact(): void {
-            fixture.componentRef.setInput('canCollapse', true);
-            fixture.componentRef.setInput('isCompact', true);
-            fixture.detectChanges();
-        }
-
-        it('keeps only the toggle in the toolbar, above the tabs, which asks to expand the column it controls', () => {
-            compact();
-            const requests: number[] = [];
-            fixture.componentInstance.compactToggle.subscribe(() => requests.push(1));
-            const toolbarButtons = Array.from(
-                host().querySelectorAll<HTMLButtonElement>('app-conversation-list-toolbar button')
-            ).filter((button) => !button.closest('app-conversation-list-tabs'));
-
-            expect(toolbarButtons).toHaveLength(1);
-            expect(toolbarButtons[0].nextElementSibling?.tagName.toLowerCase()).toBe('app-conversation-list-tabs');
-            expect(host().querySelector('app-conversation-list-toolbar input')).toBeNull();
-            expect(toolbarButtons[0].getAttribute('aria-controls')).toBe(host().id);
-            toolbarButtons[0].click();
-            expect(requests).toEqual([1]);
-        });
-
-        it('names each section header by its label, the Waiting count included, instead of showing it', () => {
-            waitingCount.set(3);
-            compact();
-            expect(headerNames()).toEqual(['Waiting for a person, 3', 'In progress', 'Closed', 'Bot']);
-            expect(sectionLabels()).toEqual([]);
-        });
-
-        it('shows each conversation as its avatar, opened by a click and moved through with the keys', () => {
-            compact();
+        it('marks the news the user has not opened in In progress only', () => {
+            // Marks that began before every row's last message: whatever a section marks is news.
+            localStorage.setItem('chat:readMarks:3', JSON.stringify({ since: '2026-10-01T00:00:00Z', seen: {} }));
+            showEverySection();
             reloadWith({
-                waiting: page([handedOff('h-1', '2026-10-10T08:00:00Z'), handedOff('h-2', '2026-10-10T09:00:00Z')]),
+                waiting: page([handedOff('h-1', '2026-10-10T08:00:00Z')]),
+                in_progress: page([answered('p-1', '2026-10-10T09:00:00Z')]),
             });
-            const opened: string[] = [];
-            fixture.componentInstance.selectedChange.subscribe((conversation) => opened.push(conversation.id));
-
-            expect(text('.conversation-row__preview')).toEqual([]);
-            expect(rowButtons().map((button) => button.querySelectorAll('app-conversation-avatar').length)).toEqual([
-                1, 1,
-            ]);
-            rowButtons()[0].click();
-            rowButtons()[0].focus();
-            rowButtons()[0].dispatchEvent(
-                new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true, bubbles: true })
+            const unreadRows = Array.from(host().querySelectorAll('.conversation-row__preview--unread')).map(
+                (preview) => preview.closest('[data-id]')?.getAttribute('data-id')
             );
-            expect(opened).toEqual(['h-1', 'h-2']);
+            expect(unreadRows).toEqual(['p-1']);
+            expect(host().querySelectorAll('.conversation-row__unread')).toHaveLength(1);
         });
 
-        it('opens a section from its header as the expanded column does', () => {
-            compact();
-            compactHeader('Bot').click();
-            fixture.detectChanges();
-            expect(expandedSections()).toEqual(['bot']);
-            expect(rememberedSection()).toBe('bot');
-        });
+        it('offers New Test Chat on a desk only: a test is of one desk', () => {
+            switchTab('Bot Testing');
+            expect(toolbarButton('New Test Chat')).toBeUndefined();
 
-        it('leaves out the section notes and the empty-state texts', () => {
-            compact();
-            reloadWith({ waiting: page([handedOff('h-1', '2026-10-10T08:00:00Z')]) });
-            expect(host().querySelector('.conversation-list__section-note')).toBeNull();
-
-            compactHeader('In progress').click();
-            fixture.detectChanges();
-            expect(host().querySelector('.conversation-list__section-empty')).toBeNull();
+            scopeTo('b-1');
+            expect(toolbarButton('New Test Chat')).toBeDefined();
         });
     });
 
