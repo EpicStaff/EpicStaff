@@ -49,7 +49,7 @@ describe('VenvsListPageComponent', () => {
     }
 
     function openFilterMenu(): void {
-        host.querySelector<HTMLElement>('.filter-trigger')!.click();
+        host.querySelector<HTMLElement>('.filter-trigger__toggle')!.click();
         fixture.detectChanges();
     }
 

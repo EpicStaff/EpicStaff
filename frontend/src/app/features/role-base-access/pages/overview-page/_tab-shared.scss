@@ -42,12 +42,12 @@
         cursor: pointer;
         transition: all 0.3s ease;
 
-        &:hover:not(:disabled):not(.open) {
+        &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true'], .open) {
             color: var(--accent-color);
             border-color: var(--accent-color);
         }
 
-        &:disabled {
+        &:is(:disabled, [aria-disabled='true']) {
             opacity: 0.5;
             cursor: not-allowed;
         }
@@ -90,13 +90,12 @@
             border-bottom: 1px solid var(--color-input-border);
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--transparent-white-8);
         }
 
-        // Inset, so the dropdown's overflow clipping cannot cut the ring off.
+        // Drawn inside: the dropdown clips its items.
         &:focus-visible {
-            outline: 2px solid var(--accent-color);
             outline-offset: -2px;
         }
     }

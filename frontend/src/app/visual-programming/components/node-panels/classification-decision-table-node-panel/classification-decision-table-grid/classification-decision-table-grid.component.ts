@@ -1,3 +1,4 @@
+import { A11yModule } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
@@ -21,9 +22,11 @@ import {
     untracked,
     ViewChild,
     viewChild,
+    viewChildren,
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -32,6 +35,7 @@ import {
     MultiSelectComponent,
     SelectItem,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { AgGridAngular, AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -40,12 +44,15 @@ import {
     CellValueChangedEvent,
     ColDef,
     ColGroupDef,
+    Column,
+    ColumnGroup,
     ColumnMovedEvent,
     ColumnResizedEvent,
     EditableCallbackParams,
     GridApi,
     GridOptions,
     GridReadyEvent,
+    HeaderFocusedEvent,
     IRowNode,
     ModuleRegistry,
     RowSpanParams,
@@ -54,6 +61,7 @@ import {
     ValueSetterParams,
 } from 'ag-grid-community';
 
+import { ToastService } from '../../../../../services/notifications';
 import {
     CDT_SECTION_LEGACY_WHITE_COLOR,
     CdtSection,
@@ -76,12 +84,29 @@ import {
     toDisplayExpression,
 } from '../../../../utils/condition-expression.helper';
 import {
+    ConditionGroupNameCellParams,
+    ConditionGroupNameCellRendererComponent,
+} from '../../shared/condition-group-row-marks/condition-group-name-cell-renderer.component';
+import {
+    ConditionGroupGridRowChanges,
+    isRemovedGroupRow,
+    lockRemovedRows,
+    rowMarkClass,
+    rowStatusText,
+    showsRowTooltip,
+} from '../../shared/condition-group-row-marks/condition-group-row-marks';
+import { ConditionGroupRowTooltipsDirective } from '../../shared/condition-group-row-marks/condition-group-row-tooltips.directive';
+import {
     CDT_COLUMN_KIND,
     CDT_ENABLE_CONTINUE_DIALOG_WIDTH,
+    CDT_EXPR_PARAMS_GROUP_ID,
     CDT_FIELD_PREFIX,
+    CDT_FREEZE_COPY,
+    CDT_FREEZE_MAX_WIDTH_RATIO,
     CDT_GRID_HEADER_HEIGHT,
     CDT_GRID_ROW_HEIGHT,
     CDT_GROUP_TOGGLE_ANIMATION_MS,
+    CDT_MANIP_PARAMS_GROUP_ID,
     CDT_MANIP_PREFIX,
     CDT_OVERLAY_ROW_HEIGHT,
     CDT_ROUTE_CONTINUE_COPY,
@@ -98,6 +123,7 @@ import {
     normalizeRouteCode,
     routePortIdForRow,
 } from '../cdt-route-continue.util';
+import { withRemovedRows } from './cdt-row-changes';
 import { ColumnHeaderMenuComponent } from './column-header-menu/column-header-menu.component';
 import { EnableFilterHeaderComponent, EnableFilterMode } from './enable-filter-header/enable-filter-header.component';
 import { ExpressionBuilderCellEditorComponent } from './expression-builder/expression-builder-cell-editor.component';
@@ -109,10 +135,26 @@ import { PromptTooltipRendererComponent } from './prompt-tooltip-renderer/prompt
 import { RouteCodeCellRendererComponent } from './route-code-cell-renderer/route-code-cell-renderer.component';
 import { SelectionCellRendererComponent } from './selection-cell-renderer/selection-cell-renderer.component';
 import { SelectionCountHeaderComponent } from './selection-count-header/selection-count-header.component';
+import { buildFreezeMenuItems, CdtFreezeSide, CdtFreezeState } from './shared/column-freeze.util';
+import {
+    badgeClosingHeader,
+    HeaderBadgeBoundary,
+    headerPositionOf,
+    HeaderTabStop,
+    HeaderTabTarget,
+    headerTabTarget,
+    navigatePastActionlessHeaders,
+    stopPastActionlessHeader,
+    tabPastActionlessHeaders,
+} from './shared/header-keyboard.util';
 import { NoDragGhostComponent } from './shared/no-drag-ghost.component';
 import { OverlayMenuController } from './shared/overlay-menu.util';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+/** Elements the browser's Tab can stop on; `tabIndex` filters out the explicitly skipped ones. */
+const TABBABLE_SELECTOR =
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex], [contenteditable="true"]';
 
 /** Emitted when the user confirms Continue on a wired route code; see `enableContinueRequest`. */
 export interface CdtEnableContinueRequest {
@@ -130,6 +172,13 @@ export interface CdtRuleIdentityEdit {
     readonly rowsAfter: ConditionGroup[];
     /** The edited row, at the same index in both. */
     readonly rowIndex: number;
+}
+
+/** A restore badge for one or more hidden columns, placed on the header boundary where they were. */
+interface HiddenColumnBadge extends HeaderBadgeBoundary {
+    entries: Array<{ colId: string; label: string }>;
+    x: number;
+    y: number;
 }
 
 interface GroupOverlayMember {
@@ -160,10 +209,21 @@ interface GroupOverlayItem {
 
 @Component({
     selector: 'app-classification-decision-table-grid',
-    imports: [AgGridModule, AppSvgIconComponent, ButtonComponent, HelpTooltipComponent, MultiSelectComponent],
+    imports: [
+        A11yModule,
+        AgGridModule,
+        AppSvgIconComponent,
+        ButtonComponent,
+        ConditionGroupRowTooltipsDirective,
+        HelpTooltipComponent,
+        MatTooltipModule,
+        MultiSelectComponent,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './classification-decision-table-grid.component.html',
     styleUrls: ['./classification-decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: { '[class.decision-grid--diff-rows]': 'rowChanges() !== null' },
 })
 export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public conditionGroups = input.required<ConditionGroup[]>();
@@ -183,6 +243,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public routePortIdsWithTarget = input<ReadonlySet<string>>(new Set<string>());
     public readonly = input<boolean>(false);
     public sections = input<CdtSection[]>([]);
+    /**
+     * Changes tab of a version preview: what a restore does to each row, and the groups it removes, shown as extra
+     * rows in their section (`withRemovedRows`). `null` anywhere else.
+     */
+    public readonly rowChanges = input<ConditionGroupGridRowChanges | null>(null);
 
     public conditionGroupsChange = output<ConditionGroup[]>();
     public sectionsChange = output<CdtSection[]>();
@@ -214,6 +279,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     private overlay = inject(Overlay);
     private vcr = inject(ViewContainerRef);
     private confirmDialog = inject(ConfirmationDialogService);
+    private toastService = inject(ToastService);
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private injector = inject(Injector);
@@ -247,9 +313,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     private preDragExprAnchor: string | null = null;
     private preDragManipAnchor: string | null = null;
 
-    // Frozen column IDs (pinned left)
-    public frozenColIds = signal<Set<string>>(new Set());
-    public freezeAnchorColId = signal<string | null>(null);
+    // The frozen side and its anchor; which columns that pins is derived (`frozenColIdsFor`).
+    public freezeState = signal<CdtFreezeState | null>(null);
 
     // User-hidden column IDs
     public hiddenColIds = signal<Set<string>>(new Set());
@@ -258,9 +323,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     // Hidden-column restore badges: position computed from DOM.
     // Each badge can hold multiple entries when adjacent hidden columns are merged.
-    public hiddenColumnBadges = signal<
-        Array<{ entries: Array<{ colId: string; label: string }>; x: number; y: number }>
-    >([]);
+    public hiddenColumnBadges = signal<HiddenColumnBadge[]>([]);
+    /** The badge buttons, in the order of `hiddenColumnBadges`. */
+    private readonly hiddenColumnBadgeButtons = viewChildren<ElementRef<HTMLButtonElement>>('hiddenColumnBadge');
+    /** The header cell that last took the focus; the Tab routing reads it while that cell is focused. */
+    private focusedHeader: Column | ColumnGroup | null = null;
 
     // Selection state for toolbar buttons
     public selectedRowCount = signal<number>(0);
@@ -286,8 +353,17 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     // Precomputed set of group_name keys that should remain visible given collapse + enable filter state
     public visibleRowKeys = signal<Set<string>>(new Set<string>());
 
+    /** Whether the row marks are on: the columns change with it, the marks themselves only redraw the rows. */
+    private readonly isDiffShown = computed(() => this.rowChanges() !== null);
+
+    /** The table's rows with the groups a restore removes put in; those are never edited, emitted or saved. */
+    private readonly rowsWithRemoved = computed<ConditionGroup[]>(() => {
+        const removed = this.rowChanges()?.removed ?? [];
+        return removed.length > 0 ? withRemovedRows(this.rowData(), removed) : this.rowData();
+    });
+
     public displayedRowData = computed<ConditionGroup[]>(() => {
-        const rows = this.rowData();
+        const rows = this.rowsWithRemoved();
         const collapsed = this.collapsedGroups();
         const mode = this.enableFilterMode();
         return rows.filter((row) => {
@@ -774,9 +850,17 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         });
         effect(() => {
             this.readonly();
+            // Version diff: the name column tells the row status and the removed rows are locked. New row changes
+            // only redraw the rows.
+            this.isDiffShown();
             untracked(() => {
                 this.rebuildColumnDefs();
             });
+        });
+        effect(() => {
+            this.rowChanges();
+            // Row classes and the name cells' status are drawn with the rows.
+            untracked(() => this.gridApi?.redrawRows());
         });
     }
 
@@ -852,10 +936,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 widths,
                 order: this.movableColumnOrder(),
                 manipOrder: this.manipColumnOrder(),
-                pinned: [...this.frozenColIds()],
+                pinned: this.frozenColIdsFor(this.freezeState()),
                 hiddenColIds: [...this.hiddenColIds()],
                 hiddenColumnGroups: [...this.hiddenColumnGroups()],
-                freezeAnchor: this.freezeAnchorColId(),
+                freezeAnchor: this.freezeState()?.anchorColId ?? null,
+                freezeSide: this.freezeState()?.side ?? null,
                 collapsedGroups: [...this.collapsedGroups()],
                 enableFilterMode: this.enableFilterMode(),
                 exprParamsAfter: this.exprParamsAfter(),
@@ -882,9 +967,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
             if (state.manipOrder?.length > 0) {
                 this.manipColumnOrder.set(state.manipOrder);
-            }
-            if (Array.isArray(state.pinned) && state.pinned.length > 0) {
-                this.frozenColIds.set(new Set(state.pinned as string[]));
             }
             if (Array.isArray(state.hiddenColIds) && state.hiddenColIds.length > 0) {
                 this.hiddenColIds.set(new Set(state.hiddenColIds as string[]));
@@ -916,7 +998,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 this.fixedColumnOrder.set(state.fixedColumnOrder);
             }
             if (typeof state.freezeAnchor === 'string') {
-                this.freezeAnchorColId.set(state.freezeAnchor);
+                // State saved before right freeze existed has no side: it was a left freeze.
+                const side: CdtFreezeSide = state.freezeSide === 'right' ? 'right' : 'left';
+                this.freezeState.set({ side, anchorColId: this.toFreezeAnchor(state.freezeAnchor) });
             } else if (Array.isArray(state.pinned) && state.pinned.length > 0) {
                 const fullOrder = this.getFullColOrder();
                 let anchor: string | null = null;
@@ -928,7 +1012,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                         anchorIdx = idx;
                     }
                 }
-                if (anchor) this.freezeAnchorColId.set(anchor);
+                if (anchor) this.freezeState.set({ side: 'left', anchorColId: this.toFreezeAnchor(anchor) });
             }
         } catch {}
     }
@@ -941,18 +1025,31 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         suppressRowTransform: true,
         suppressCellFocus: false,
         stopEditingWhenCellsLoseFocus: true,
+        tooltipShowMode: 'whenTruncated',
+        tooltipShowDelay: inject(MAT_TOOLTIP_DEFAULT_OPTIONS).showDelay,
         domLayout: 'normal',
         rowDragManaged: false,
         animateRows: true,
         suppressColumnMoveAnimation: true,
         dragAndDropImageComponent: NoDragGhostComponent,
         suppressDragLeaveHidesColumns: true,
+        // The row-selection header holds nothing to act on, so the keyboard goes past it.
+        tabToNextHeader: tabPastActionlessHeaders,
+        navigateToNextHeader: navigatePastActionlessHeaders,
+        onHeaderFocused: (event: HeaderFocusedEvent) => {
+            this.focusedHeader = event.column;
+            // An actionless header reached by Tab into the grid, ArrowUp or a click hands the focus on.
+            const target = stopPastActionlessHeader(event.api, this.hiddenColumnBadges(), event.column);
+            if (target) this.focusHeaderTabTarget(target);
+        },
         rowSelection: {
             mode: 'multiRow',
             checkboxes: false,
             headerCheckbox: false,
             enableClickSelection: false,
+            isRowSelectable: (node) => !isRemovedGroupRow(node.data),
         },
+        getRowClass: (params) => rowMarkClass(this.rowChanges(), params.data),
         context: {
             onManualRowReorder: (source: IRowNode, over: IRowNode) => this.handleManualRowReorder(source, over),
         },
@@ -1014,53 +1111,101 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         return {
             label,
             colId,
-            onFreezeToggle: (id: string) => this.toggleFreeze(id),
             onHide: (id: string) => this.hideColumn(id),
-            isPinned: () => this.freezeAnchorColId() === colId,
+            ...this.makeFreezeMenuParams(colId),
         };
     }
 
-    public toggleFreeze(colId: string): void {
-        const fullOrder = this.getFullColOrder();
-        const targetIdx = fullOrder.indexOf(colId);
-        if (targetIdx === -1) return;
+    /** Header params for the freeze items of `anchorId`: a column id, or a Params group id. */
+    private makeFreezeMenuParams(anchorId: string): object {
+        return {
+            getFreezeMenuItems: () =>
+                buildFreezeMenuItems(this.freezeState(), anchorId, (side) =>
+                    this.isTooWideToFreeze({ side, anchorColId: anchorId })
+                ),
+            onFreezeToggle: (side: CdtFreezeSide) => this.toggleFreeze(side, anchorId),
+        };
+    }
 
-        const isAnchor = this.freezeAnchorColId() === colId;
+    /**
+     * Freezes `colId` (a column or a Params group) and every column on its `side` (left: from the
+     * first column; right: through the actions column), or clears the freeze when `colId` already
+     * anchors it. Ignored while the other side is frozen; refused, with a toast, when the columns
+     * would take up too much of the table width.
+     */
+    public toggleFreeze(side: CdtFreezeSide, colId: string): void {
+        const current = this.freezeState();
+        if (current && current.side !== side) return;
+        // Not a column of this grid: nothing to freeze from.
+        if (this.frozenColIdsFor({ side, anchorColId: colId }).length === 0) return;
 
-        // Determine the new frozen prefix
-        let newFrozenIds: string[];
-        if (isAnchor) {
-            // Unfreeze: clear the entire frozen set
-            newFrozenIds = [];
-            this.freezeAnchorColId.set(null);
-        } else {
-            // Freeze: pin every column from index 0 up to and including targetIdx
-            newFrozenIds = fullOrder.slice(0, targetIdx + 1);
-            this.freezeAnchorColId.set(colId);
+        const next: CdtFreezeState | null = current?.anchorColId === colId ? null : { side, anchorColId: colId };
+        if (next && this.isTooWideToFreeze(next)) {
+            this.toastService.warning(CDT_FREEZE_COPY.tooWide, undefined, 'bottom-right');
+            return;
         }
-
-        const newFrozenSet = new Set(newFrozenIds);
-
-        // Build state updates: set pinned:'left' for new frozen set, null for previously frozen cols no longer in set
-        const stateUpdates: { colId: string; pinned: 'left' | null }[] = [];
-        const previouslyFrozen = this.frozenColIds();
-        for (const id of fullOrder) {
-            const shouldBeFrozen = newFrozenSet.has(id);
-            const wasPinned = previouslyFrozen.has(id);
-            if (shouldBeFrozen && !wasPinned) {
-                stateUpdates.push({ colId: id, pinned: 'left' });
-            } else if (!shouldBeFrozen && wasPinned) {
-                stateUpdates.push({ colId: id, pinned: null });
-            }
-        }
-
-        this.frozenColIds.set(newFrozenSet);
-        if (stateUpdates.length > 0) {
-            this.gridApi?.applyColumnState({ state: stateUpdates });
-        }
-        this.gridApi?.refreshHeader();
+        this.freezeState.set(next);
+        // A rebuild, not just a re-pin: whether a Params group's children may move is set in the
+        // column defs. It re-applies the freeze (`reapplyColumnState`) and keeps the widths.
+        this.rebuildColumnDefs();
         this.saveGridState();
         this.cdr.markForCheck();
+    }
+
+    /** True when the visible columns `freeze` would pin are wider than the allowed share of the table. */
+    private isTooWideToFreeze(freeze: CdtFreezeState): boolean {
+        const tableWidth = this.gridElementRef()?.nativeElement.clientWidth ?? 0;
+        const frozen = new Set(this.frozenColIdsFor(freeze));
+        const frozenWidth = (this.gridApi?.getColumnState() ?? [])
+            .filter((column) => !column.hide && frozen.has(column.colId))
+            .reduce((sum, column) => sum + (column.width ?? 0), 0);
+        return frozenWidth > tableWidth * CDT_FREEZE_MAX_WIDTH_RATIO;
+    }
+
+    /**
+     * The columns `freeze` pins, in grid order: left from the first column through the anchor,
+     * right from the anchor through the actions column. A Params group anchor covers the children
+     * it has now, so a field added to it is frozen with it. Empty when the anchor is not in the grid.
+     */
+    private frozenColIdsFor(freeze: CdtFreezeState | null): string[] {
+        if (!freeze) return [];
+        // The actions column is not in the full order, but sits at the right edge.
+        const order = [...this.getFullColOrder(), 'actions'];
+        const group = this.columnDefs.find(
+            (def): def is ColGroupDef => 'groupId' in def && def.groupId === freeze.anchorColId
+        );
+        const children = (group?.children ?? []) as ColDef[];
+        const anchorColId = group
+            ? (freeze.side === 'left' ? children.at(-1) : children[0])?.colId
+            : freeze.anchorColId;
+        const anchorIdx = anchorColId ? order.indexOf(anchorColId) : -1;
+        if (anchorIdx === -1) return [];
+        return freeze.side === 'left' ? order.slice(0, anchorIdx + 1) : order.slice(anchorIdx);
+    }
+
+    /**
+     * A saved anchor in a Params group's field (the only way one was saved, before the group itself
+     * became the anchor) means that group.
+     */
+    private toFreezeAnchor(colId: string): string {
+        if (colId.startsWith(CDT_FIELD_PREFIX)) return CDT_EXPR_PARAMS_GROUP_ID;
+        if (colId.startsWith(CDT_MANIP_PREFIX)) return CDT_MANIP_PARAMS_GROUP_ID;
+        return colId;
+    }
+
+    /** Pins exactly the columns the current freeze covers, against the current columns, and unpins the rest. */
+    private applyFreeze(): void {
+        if (!this.gridApi) return;
+        const freeze = this.freezeState();
+        const frozen = new Set(this.frozenColIdsFor(freeze));
+        const pinnedSide = (colId: string): CdtFreezeSide | null => (freeze && frozen.has(colId) ? freeze.side : null);
+        const state = this.gridApi
+            .getColumnState()
+            .filter((column) => (column.pinned ?? null) !== pinnedSide(column.colId))
+            .map((column) => ({ colId: column.colId, pinned: pinnedSide(column.colId) }));
+        if (state.length > 0) {
+            this.gridApi.applyColumnState({ state });
+        }
     }
 
     public hideColumn(colId: string): void {
@@ -1130,6 +1275,14 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: ids.map((colId) => ({ colId, hide: false })),
         });
     }
+
+    /** What clicking a hidden-column badge does: expands its only column, or lists how many it hides. */
+    public hiddenBadgeLabel(badge: { entries: Array<{ colId: string; label: string }> }): string {
+        return badge.entries.length === 1
+            ? `Expand ${badge.entries[0].label}`
+            : `${badge.entries.length} hidden columns`;
+    }
+
     public onHiddenBadgeClick(event: MouseEvent, badge: { entries: Array<{ colId: string; label: string }> }): void {
         event.stopPropagation();
         if (badge.entries.length === 1) {
@@ -1137,7 +1290,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             return;
         }
         this.activeBadgeEntries = badge.entries;
-        this.hiddenBadgeMenuCtrl.toggle(event.currentTarget as HTMLElement, this.hiddenBadgeMenuTemplate);
+        this.hiddenBadgeMenuCtrl.toggle(event.currentTarget as HTMLElement, this.hiddenBadgeMenuTemplate, {
+            closeOnEscape: true,
+        });
     }
 
     public activeBadgeEntries: Array<{ colId: string; label: string }> = [];
@@ -1177,39 +1332,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.saveGridState();
         this.ensureColumnsFitViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
-        this.cdr.markForCheck();
-    }
-
-    /** Freeze all columns from index 0 through the last colId in childColIds. */
-    public freezeThroughLastChild(childColIds: string[]): void {
-        if (childColIds.length === 0) return;
-        const fullOrder = this.getFullColOrder();
-        const lastChild = childColIds[childColIds.length - 1];
-        const targetIdx = fullOrder.indexOf(lastChild);
-        if (targetIdx === -1) return;
-
-        const newFrozenIds = fullOrder.slice(0, targetIdx + 1);
-        const newFrozenSet = new Set(newFrozenIds);
-        const previouslyFrozen = this.frozenColIds();
-
-        const stateUpdates: { colId: string; pinned: 'left' | null }[] = [];
-        for (const id of fullOrder) {
-            const shouldBeFrozen = newFrozenSet.has(id);
-            const wasPinned = previouslyFrozen.has(id);
-            if (shouldBeFrozen && !wasPinned) {
-                stateUpdates.push({ colId: id, pinned: 'left' });
-            } else if (!shouldBeFrozen && wasPinned) {
-                stateUpdates.push({ colId: id, pinned: null });
-            }
-        }
-
-        this.frozenColIds.set(newFrozenSet);
-        this.freezeAnchorColId.set(lastChild);
-        if (stateUpdates.length > 0) {
-            this.gridApi?.applyColumnState({ state: stateUpdates });
-        }
-        this.gridApi?.refreshHeader();
-        this.saveGridState();
         this.cdr.markForCheck();
     }
 
@@ -1358,6 +1480,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         return CDT_COLUMN_KIND.EXPRESSION;
     }
 
+    /** True when `anchorId` (a column or a Params group) anchors the freeze. */
+    private isFreezeAnchor(anchorId: string): boolean {
+        return this.freezeState()?.anchorColId === anchorId;
+    }
+
     // Compute the full ordered list of all colIds (excluding structural ones like 'actions')
     private getFullColOrder(): string[] {
         const order: string[] = [];
@@ -1400,7 +1527,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
         }
 
-        const computeBoundaryX = (anchorColId: string): number | null => {
+        type Boundary = { x: number; prevColId: string | null; nextColId: string | null };
+        const computeBoundary = (anchorColId: string): Boundary | null => {
             const anchorIdx = fullOrder.indexOf(anchorColId);
             if (anchorIdx === -1) return null;
 
@@ -1436,24 +1564,27 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             const prevRect = prevHeader?.getBoundingClientRect() ?? null;
             const nextRect = nextHeader?.getBoundingClientRect() ?? null;
 
+            let x: number;
             if (prevRect && nextRect) {
-                return (prevRect.right + nextRect.left) / 2 - containerRect.left - 10;
+                x = (prevRect.right + nextRect.left) / 2 - containerRect.left - 10;
             } else if (nextRect) {
-                return nextRect.left - containerRect.left - 10;
+                x = nextRect.left - containerRect.left - 10;
             } else {
-                return prevRect!.right - containerRect.left - 10;
+                x = prevRect!.right - containerRect.left - 10;
             }
+            // The neighbours place the badge in the header's Tab order (`headerTabTarget`).
+            return { x, prevColId: prevVisibleColId, nextColId: nextVisibleColId };
         };
 
         // Collect raw entries with their boundary positions
-        type RawEntry = { colId: string; label: string; boundaryX: number };
+        type RawEntry = { colId: string; label: string; boundary: Boundary };
         const rawEntries: RawEntry[] = [];
 
         for (const hiddenId of hidden) {
             if (groupedColIdToGroupId.has(hiddenId)) continue;
-            const boundaryX = computeBoundaryX(hiddenId);
-            if (boundaryX === null) continue;
-            rawEntries.push({ colId: hiddenId, label: this.getColLabel(hiddenId), boundaryX });
+            const boundary = computeBoundary(hiddenId);
+            if (boundary === null) continue;
+            rawEntries.push({ colId: hiddenId, label: this.getColLabel(hiddenId), boundary });
         }
 
         const emittedGroups = new Set<string>();
@@ -1468,23 +1599,30 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 .sort((a, b) => fullOrder.indexOf(a) - fullOrder.indexOf(b));
             if (sortedColIds.length === 0) continue;
 
-            const boundaryX = computeBoundaryX(sortedColIds[0]);
-            if (boundaryX === null) continue;
-            rawEntries.push({ colId: groupId, label: info.label, boundaryX });
+            const boundary = computeBoundary(sortedColIds[0]);
+            if (boundary === null) continue;
+            rawEntries.push({ colId: groupId, label: info.label, boundary });
         }
 
         // Sort by position, then merge entries whose positions are within 5px (adjacent)
-        rawEntries.sort((a, b) => a.boundaryX - b.boundaryX);
+        rawEntries.sort((a, b) => a.boundary.x - b.boundary.x);
 
         const mergeThreshold = 5;
-        const badges: Array<{ entries: Array<{ colId: string; label: string }>; x: number; y: number }> = [];
+        const badges: HiddenColumnBadge[] = [];
 
         for (const entry of rawEntries) {
             const last = badges.length > 0 ? badges[badges.length - 1] : null;
-            if (last && Math.abs(last.x - entry.boundaryX) < mergeThreshold) {
+            // Merged entries share one boundary, so the first entry's neighbours stand for all of them.
+            if (last && Math.abs(last.x - entry.boundary.x) < mergeThreshold) {
                 last.entries.push({ colId: entry.colId, label: entry.label });
             } else {
-                badges.push({ entries: [{ colId: entry.colId, label: entry.label }], x: entry.boundaryX, y });
+                badges.push({
+                    entries: [{ colId: entry.colId, label: entry.label }],
+                    x: entry.boundary.x,
+                    y,
+                    prevColId: entry.boundary.prevColId,
+                    nextColId: entry.boundary.nextColId,
+                });
             }
         }
 
@@ -1610,7 +1748,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }),
             // Allow plain Enter to insert newlines inside the popup editor.
             // Ctrl/Cmd+Enter (handled by ExpressionBuilderComponent) commits.
-            suppressKeyboardEvent: (params) => params.editing && params.event.key === 'Enter',
+            // Tab moves between the popup's own controls instead of to the next cell.
+            suppressKeyboardEvent: (params) =>
+                params.editing && (params.event.key === 'Enter' || params.event.key === 'Tab'),
             cellStyle: { fontSize: '13px', fontFamily: 'monospace', color: '#d4d4d4' },
             valueGetter: (params: ValueGetterParams<ConditionGroup>) =>
                 toDisplayExpression(params.data?.manipulation ?? ''),
@@ -1640,7 +1780,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             cellEditorParams: () => ({ variables: this.collectExpressionVariables() }),
             // Allow plain Enter to insert newlines inside the popup editor.
             // Ctrl/Cmd+Enter (handled by ExpressionBuilderComponent) commits.
-            suppressKeyboardEvent: (params) => params.editing && params.event.key === 'Enter',
+            // Tab moves between the popup's own controls instead of to the next cell.
+            suppressKeyboardEvent: (params) =>
+                params.editing && (params.event.key === 'Enter' || params.event.key === 'Tab'),
             cellStyle: () => ({ fontSize: '13px', fontFamily: 'monospace', color: '#d4d4d4' }),
             valueGetter: (params: ValueGetterParams<ConditionGroup>) =>
                 toDisplayExpression(params.data?.expression ?? ''),
@@ -1717,6 +1859,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             editable: true,
             flex: 1,
             minWidth: 140,
+            tooltipValueGetter: (params) => params.value,
             suppressMovable: true,
             cellStyle: {
                 fontSize: '14px',
@@ -1736,6 +1879,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             cellClassRules: {
                 'cell-required-invalid': (p) => String(p.value ?? '').trim().length === 0,
             },
+            ...this.rowStatusRenderer(),
         };
 
         // Expression section
@@ -1746,8 +1890,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const hasFieldCols = visibleFieldCols.length > 0;
         const expressionCol = this.buildExpressionColDef();
 
-        const exprGroupIsPinned =
-            hasFieldCols && this.freezeAnchorColId() === visibleFieldCols[visibleFieldCols.length - 1].colId;
+        const exprGroupIsPinned = hasFieldCols && this.isFreezeAnchor(CDT_EXPR_PARAMS_GROUP_ID);
         const exprGroupChildren: ColDef[] = exprGroupIsPinned
             ? visibleFieldCols.map((c) => ({ ...c, suppressMovable: true }))
             : visibleFieldCols;
@@ -1755,34 +1898,21 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         let exprGroupDef: ColGroupDef | null = null;
         if (hasFieldCols) {
             exprGroupDef = {
-                groupId: 'expr-params-group',
+                groupId: CDT_EXPR_PARAMS_GROUP_ID,
                 marryChildren: true,
                 headerGroupComponent: ParamsGroupHeaderComponent,
                 headerGroupComponentParams: {
                     mode: 'full',
                     ownerLabel: 'Expression',
                     onAdd: (event: MouseEvent) => this.toggleFieldPicker(event),
-                    onFreeze: () => {
-                        const ids = visibleFieldCols.map((c) => c.colId!);
-                        if (ids.length === 0) return;
-                        const lastChild = ids[ids.length - 1];
-                        if (this.freezeAnchorColId() === lastChild) {
-                            this.toggleFreeze(lastChild);
-                        } else {
-                            this.freezeThroughLastChild(ids);
-                        }
-                    },
+                    ...this.makeFreezeMenuParams(CDT_EXPR_PARAMS_GROUP_ID),
                     onHide: () =>
                         this.hideColumnGroup(
-                            'expr-params-group',
+                            CDT_EXPR_PARAMS_GROUP_ID,
                             'Params',
                             visibleFieldCols.map((c) => c.colId!)
                         ),
-                    isPinned: () => {
-                        const ids = visibleFieldCols.map((c) => c.colId!);
-                        if (ids.length === 0) return false;
-                        return this.freezeAnchorColId() === ids[ids.length - 1];
-                    },
+                    isPinned: () => this.isFreezeAnchor(CDT_EXPR_PARAMS_GROUP_ID),
                 },
                 children: exprGroupChildren,
             } as ColGroupDef;
@@ -1838,8 +1968,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const manipCol = this.buildManipulationColDef();
 
         // Freeze guard — see the equivalent comment above the expr group.
-        const manipGroupIsPinned =
-            hasManipCols && this.freezeAnchorColId() === visibleManipCols[visibleManipCols.length - 1].colId;
+        const manipGroupIsPinned = hasManipCols && this.isFreezeAnchor(CDT_MANIP_PARAMS_GROUP_ID);
         const manipGroupChildren: ColDef[] = manipGroupIsPinned
             ? visibleManipCols.map((c) => ({ ...c, suppressMovable: true }))
             : visibleManipCols;
@@ -1847,34 +1976,21 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         let manipGroupDef: ColGroupDef | null = null;
         if (hasManipCols) {
             manipGroupDef = {
-                groupId: 'manip-params-group',
+                groupId: CDT_MANIP_PARAMS_GROUP_ID,
                 marryChildren: true,
                 headerGroupComponent: ParamsGroupHeaderComponent,
                 headerGroupComponentParams: {
                     mode: 'full',
                     ownerLabel: 'Manipulation',
                     onAdd: (event: MouseEvent) => this.toggleManipFieldPicker(event),
-                    onFreeze: () => {
-                        const ids = visibleManipCols.map((c) => c.colId!);
-                        if (ids.length === 0) return;
-                        const lastChild = ids[ids.length - 1];
-                        if (this.freezeAnchorColId() === lastChild) {
-                            this.toggleFreeze(lastChild);
-                        } else {
-                            this.freezeThroughLastChild(ids);
-                        }
-                    },
+                    ...this.makeFreezeMenuParams(CDT_MANIP_PARAMS_GROUP_ID),
                     onHide: () =>
                         this.hideColumnGroup(
-                            'manip-params-group',
+                            CDT_MANIP_PARAMS_GROUP_ID,
                             'Params',
                             visibleManipCols.map((c) => c.colId!)
                         ),
-                    isPinned: () => {
-                        const ids = visibleManipCols.map((c) => c.colId!);
-                        if (ids.length === 0) return false;
-                        return this.freezeAnchorColId() === ids[ids.length - 1];
-                    },
+                    isPinned: () => this.isFreezeAnchor(CDT_MANIP_PARAMS_GROUP_ID),
                 },
                 children: manipGroupChildren,
             } as ColGroupDef;
@@ -1912,6 +2028,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const skipCol: ColDef = {
             colId: 'continue_flag',
             headerName: 'Continue',
+            // A menu with the freeze items only: the column is not hideable, so no `onHide`.
+            headerComponent: ColumnHeaderMenuComponent,
+            headerComponentParams: {
+                label: 'Continue',
+                colId: 'continue_flag',
+                ...this.makeFreezeMenuParams('continue_flag'),
+            },
             field: 'continue_flag',
             editable: true,
             minWidth: 80,
@@ -1984,7 +2107,18 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             if (this.manipParamsFirst()) groupsAfterCol.reverse();
             result.push(...groupsAfterCol);
         }
-        return readOnly ? this.stripEditability(result) : result;
+        const defs = readOnly ? this.stripEditability(result) : result;
+        return this.isDiffShown() ? lockRemovedRows(defs) : defs;
+    }
+
+    /** Changes tab: the Condition Name tells screen readers what a restore does to the row before the name. */
+    private rowStatusRenderer(): Pick<ColDef, 'cellRenderer' | 'cellRendererParams'> {
+        if (!this.isDiffShown()) return {};
+        const params: ConditionGroupNameCellParams = {
+            statusOf: (data) => rowStatusText(this.rowChanges(), data),
+            showsRowTooltip: (data) => showsRowTooltip(this.rowChanges(), data, 'group_name'),
+        };
+        return { cellRenderer: ConditionGroupNameCellRendererComponent, cellRendererParams: params };
     }
 
     /**
@@ -2116,18 +2250,22 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         });
     }
 
-    /** Re-applies the stored pinned/hidden state to the live grid after a column defs rebuild. */
+    /**
+     * Re-applies the freeze and hidden state to the live grid after a column defs rebuild. The
+     * frozen columns are worked out again, so a column added inside the freeze is pinned and a
+     * removed one drops out; a freeze whose anchor column was removed is cleared.
+     */
     private reapplyColumnState(): void {
-        const frozen = this.frozenColIds();
+        const freeze = this.freezeState();
+        if (freeze && this.frozenColIdsFor(freeze).length === 0) {
+            this.freezeState.set(null);
+            this.saveGridState();
+        }
+        this.applyFreeze();
+
         const hidden = this.hiddenColIds();
-        if (frozen.size === 0 && hidden.size === 0) return;
-
-        const stateUpdates: { colId: string; pinned?: 'left' | null; hide?: boolean }[] = [];
-
-        frozen.forEach((colId) => stateUpdates.push({ colId, pinned: 'left' }));
-        hidden.forEach((colId) => stateUpdates.push({ colId, hide: true }));
-
-        this.gridApi.applyColumnState({ state: stateUpdates });
+        if (hidden.size === 0) return;
+        this.gridApi.applyColumnState({ state: [...hidden].map((colId) => ({ colId, hide: true })) });
         setTimeout(() => this.updateBadgePositions(), 50);
     }
 
@@ -2325,6 +2463,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.setupBodyClickListener();
         this.setupOutsideClickListener();
         this.setupRowDragListener();
+        // Capture phase: the decision is made before ag-grid's header handles the Tab.
+        this.elRef.nativeElement.addEventListener('keydown', this.routeHeaderTab, true);
         this.gridApi.addEventListener('selectionChanged', () => {
             const nodes = this.gridApi.getSelectedNodes();
             this.selectedRowCount.set(nodes.length);
@@ -2418,6 +2558,91 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.hiddenBadgeMenuCtrl.dispose();
         const hostEl = this.elRef.nativeElement;
         hostEl.removeEventListener('mousedown', this.rowDragMouseDown, true);
+        hostEl.removeEventListener('keydown', this.routeHeaderTab, true);
+    }
+
+    /**
+     * Tab and Shift+Tab through the header cells and the hidden-column badges, so a
+     * badge is reached between the headers it sits between rather than after the
+     * whole grid. The util decides; this only applies its answer.
+     */
+    private readonly routeHeaderTab = (event: KeyboardEvent): void => {
+        if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey || !this.gridApi) return;
+        const target = this.headerTabTargetFor(event);
+        if (!target) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.focusHeaderTabTarget(target);
+    };
+
+    private headerTabTargetFor(event: KeyboardEvent): HeaderTabTarget | null {
+        const badges = this.hiddenColumnBadges();
+        if (event.shiftKey && this.isFirstBodyCell(event.target)) return badgeClosingHeader(this.gridApi, badges);
+        const from = this.headerTabStopOf(event.target);
+        return from ? headerTabTarget(this.gridApi, badges, from, event.shiftKey) : null;
+    }
+
+    /** Whether `element` is the focused first body cell, from which ag-grid's Shift+Tab goes up to the header. */
+    private isFirstBodyCell(element: EventTarget | null): boolean {
+        if (!(element instanceof HTMLElement) || !element.matches('.ag-cell')) return false;
+        const focusedCell = this.gridApi.getFocusedCell();
+        return (
+            !!focusedCell &&
+            focusedCell.rowIndex === 0 &&
+            !focusedCell.rowPinned &&
+            focusedCell.column === this.gridApi.getAllDisplayedColumns()[0] &&
+            this.gridApi.getEditingCells().length === 0
+        );
+    }
+
+    /** The Tab stop `element` is: a badge button or a focused header cell; null for anything else. */
+    private headerTabStopOf(element: EventTarget | null): HeaderTabStop | null {
+        if (!(element instanceof HTMLElement)) return null;
+        const badgeIndex = this.hiddenColumnBadgeButtons().findIndex((button) => button.nativeElement === element);
+        if (badgeIndex !== -1) return { kind: 'badge', badgeIndex };
+        // Only the cell itself: a key pressed on a control inside it is that control's own business.
+        if (this.focusedHeader && element.matches('.ag-header-cell, .ag-header-group-cell')) {
+            return { kind: 'header', position: headerPositionOf(this.focusedHeader) };
+        }
+        return null;
+    }
+
+    private focusHeaderTabTarget(target: HeaderTabTarget): void {
+        switch (target.kind) {
+            case 'badge':
+                this.hiddenColumnBadgeButtons()[target.badgeIndex]?.nativeElement.focus();
+                break;
+            case 'header':
+                this.gridApi.setFocusedHeader(target.position.column);
+                break;
+            case 'body':
+                this.gridApi.ensureIndexVisible(0);
+                this.gridApi.ensureColumnVisible(target.column);
+                this.gridApi.setFocusedCell(0, target.column);
+                break;
+            case 'beforeGrid':
+                this.focusBeforeGrid();
+                break;
+        }
+    }
+
+    /**
+     * Focuses the last keyboard-reachable element before the grid, where Shift+Tab out
+     * of the header lands. A badge is rendered after the grid, so the browser's own
+     * Shift+Tab from it would land in the grid instead.
+     */
+    private focusBeforeGrid(): void {
+        const grid: HTMLElement | undefined = this.gridElementRef()?.nativeElement;
+        if (!grid) return;
+        const candidates = Array.from(grid.ownerDocument.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)).filter(
+            (element) =>
+                element.tabIndex >= 0 &&
+                !element.contains(grid) &&
+                (element.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 &&
+                !element.closest('[inert]') &&
+                (element.checkVisibility?.() ?? true)
+        );
+        candidates[candidates.length - 1]?.focus();
     }
 
     private rowDragMouseDown = (e: MouseEvent): void => {
@@ -2583,7 +2808,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     onCellValueChanged(event: CellValueChangedEvent): void {
         // Guard against recursive loops triggered by programmatic cell writes
         if (this.isSyncing) return;
-        if (this.readonly()) return;
+        if (this.readonly() || isRemovedGroupRow(event.data)) return;
 
         const colId: string = event.colDef.colId ?? '';
         const rowData = event.data as ConditionGroup;
@@ -2993,6 +3218,27 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                     queueMicrotask(() => this.recomputeGroupOverlays());
                 }
             });
+    }
+
+    /** Escape closes only the group menu; its focus trap gives the focus back to the group's chevron. */
+    protected onGroupMenuEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.closeGroupMenu();
+    }
+
+    /** Escape closes only the row menu, and goes no further. */
+    protected onContextMenuEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.contextMenu.set(null);
+    }
+
+    /** A group's edit and ungroup chip shows while the pointer is over the group or the focus is in it. */
+    protected onGroupOverlayFocusOut(key: string, event: FocusEvent): void {
+        const overlay = event.currentTarget as HTMLElement;
+        if (event.relatedTarget instanceof Node && overlay.contains(event.relatedTarget)) return;
+        if (this.hoveredSectionId() === key) this.hoveredSectionId.set(null);
     }
 
     public handleGroupMenuUngroup(): void {

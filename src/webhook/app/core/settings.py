@@ -48,8 +48,11 @@ class Settings:
 
     # --- Upstream targets ---
     REALTIME_URL: str = env.str("REALTIME_URL", "http://realtime:8050")
+    # nginx's webhook tunnel listener, which serves only /webhooks/ and /voice/. Never port 80:
+    # an ngrok tunnel publishes its target, and 80 is all of EpicStaff (src/nginx/templates/
+    # default.conf.template; src/nginx/tests/check_templates.sh checks the two ports agree).
     NGROK_TARGET_HOST: str = env.str("NGROK_TARGET_HOST", "epicstaff-nginx")
-    NGROK_TARGET_PORT: int = env.int("NGROK_TARGET_PORT", 80)
+    NGROK_TARGET_PORT: int = env.int("NGROK_TARGET_PORT", 8083)
     LOCALHOST_TARGET_HOST: str = env.str("LOCALHOST_TARGET_HOST", "localhost")
     LOCALHOST_TARGET_PORT: int = env.int("LOCALHOST_TARGET_PORT", 8009)
 

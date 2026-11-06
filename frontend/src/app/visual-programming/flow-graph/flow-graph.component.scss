@@ -8,6 +8,25 @@
     overflow: hidden;
 }
 
+// Crosshair cursor while the user draws a note area region.
+.visual-programming-flow.note-draw-mode {
+    cursor: crosshair !important;
+
+    // Suppress the default "grab" cursor on every child so the crosshair stays consistent.
+    * {
+        cursor: crosshair !important;
+    }
+}
+
+// Live rectangle drawn while the user drags out a note region.
+.note-draw-overlay {
+    position: absolute;
+    pointer-events: none;
+    border: 1.5px dashed var(--gold-460);
+    background: var(--gold-460-alpha-18);
+    z-index: 9999;
+}
+
 // Must stay z-index/transform/isolation-free: it is moved inside `f-canvas`'s
 // stacking context, and any stacking context of its own would trap its
 // children's z-index instead of letting it compete with `.f-nodes-container`.
@@ -42,7 +61,6 @@
     }
 
     .f-connection {
-        z-index: 2;
         .f-connection-drag-handle {
             fill: transparent;
         }
@@ -109,6 +127,13 @@
             }
         }
 
+        // The snap and drag previews have positioned hosts, so the z-index lifts them over the edges. A
+        // plain `f-connection` host is not positioned: its paint order is the DOM order (`sortedConnections`).
+        &.f-snap-connection,
+        &.f-connection-for-create {
+            z-index: 2;
+        }
+
         &.is-dimmed {
             opacity: 0.25;
             transition: opacity 0.15s ease;
@@ -168,6 +193,51 @@
             opacity: 0.3;
         }
 
+        // Version diff: an edge a restore adds is green, one it removes is red and faded; an unchanged
+        // edge keeps the default look. The colour wins over the gradient stroke and the arrow colours. The
+        // dash stays the normal one (a virtual or backward edge is dashed, the rest solid).
+        &.diff-added {
+            --diff-edge-color: var(--color-diff-added);
+        }
+
+        &.diff-deleted {
+            --diff-edge-color: var(--color-diff-deleted);
+        }
+
+        // On the host, so the path and its arrow markers fade together. A highlighted edge is back at full
+        // strength; a reassign follower or an edge off the hover path keeps its own fade.
+        &.diff-deleted:not(:hover, .on-hover-path, .f-selected, .is-reassign-follower, .is-dimmed) {
+            opacity: var(--diff-deleted-opacity);
+        }
+
+        // Hovered, or an edge on the hovered node's path: the diff colour stays (it does not turn purple like an
+        // unchanged edge); a brighter tint and a thicker stroke mark the highlight instead.
+        &.diff-added:is(:hover, .on-hover-path) {
+            --diff-edge-color: var(--color-diff-added-highlight);
+        }
+
+        &.diff-deleted:is(:hover, .on-hover-path) {
+            --diff-edge-color: var(--color-diff-deleted-highlight);
+        }
+
+        // Not while selected: the selection highlight wins.
+        &.diff-added:not(.f-selected),
+        &.diff-deleted:not(.f-selected) {
+            .f-connection-path {
+                stroke: var(--diff-edge-color) !important;
+            }
+
+            svg.f-marker path,
+            svg.f-marker circle {
+                fill: var(--diff-edge-color) !important;
+            }
+
+            &:is(:hover, .on-hover-path) .f-connection-path {
+                // 3.5, not 4: the arrow markers scale with the stroke width.
+                stroke-width: 3.5;
+            }
+        }
+
         .connection-center {
             display: none;
             align-items: center;
@@ -189,7 +259,7 @@
                 padding: 0;
                 transition: all 0.15s cubic-bezier(0.25, 0.8, 0.25, 1);
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     background-color: var(--graphite-600);
                 }
 
@@ -287,6 +357,8 @@
 
     .f-selection-area {
         background-color: var(--vp-selection-area-color);
+        border: 1px solid var(--vp-selection-area-border-color);
+        box-sizing: border-box;
     }
 
     .f-minimap {
@@ -516,11 +588,9 @@ app-nodes-search {
         background 0.15s,
         color 0.15s,
         border 0.15s;
-    outline: none;
     height: 36px;
 
-    &:hover,
-    &:focus {
+    &:is(:hover, :focus-visible) {
         background: var(--graphite-822);
         color: var(--white);
     }
@@ -579,12 +649,10 @@ app-nodes-search {
         background 0.15s,
         color 0.15s,
         border 0.15s;
-    outline: none;
     height: 36px;
     white-space: nowrap;
 }
-.show-inputs-btn:hover,
-.show-inputs-btn:focus {
+.show-inputs-btn:is(:hover, :focus-visible) {
     background: var(--graphite-822);
     color: var(--white);
 }
@@ -624,23 +692,21 @@ app-nodes-search {
     transition:
         background-color 0.2s ease,
         border-color 0.2s ease;
-    outline: none;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not([aria-disabled='true']) {
         background-color: var(--gray-750);
     }
 
-    &:active:not(:disabled) {
+    &:active:not([aria-disabled='true']) {
         transform: scale(0.95);
         background-color: var(--accent-color);
         border-color: transparent;
     }
 
-    &:disabled {
+    &[aria-disabled='true'] {
         --arrange-icon-left: var(--graphite-750);
         --arrange-icon-right: var(--fog-alpha-16);
         cursor: not-allowed;
-        pointer-events: all;
     }
 }
 
@@ -648,7 +714,7 @@ app-nodes-search {
     color: var(--fog-alpha-70);
     font-size: 1.25rem;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--fog-200);
     }
 }
@@ -657,7 +723,7 @@ app-nodes-search {
     color: var(--fog-alpha-70);
     font-size: 1.125rem;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--fog-200);
     }
 }

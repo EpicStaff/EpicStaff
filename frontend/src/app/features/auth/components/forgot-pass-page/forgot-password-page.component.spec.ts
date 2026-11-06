@@ -1,6 +1,6 @@
 import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import { provideRouter } from '@angular/router';
 import { ResetPasswordResponse } from '@shared/models';
 import { of, throwError } from 'rxjs';
 
@@ -34,7 +34,7 @@ describe('ForgotPasswordPageComponent result state', () => {
         TestBed.configureTestingModule({
             imports: [ForgotPasswordPageComponent],
             providers: [
-                { provide: Router, useValue: { navigate: vi.fn() } as unknown as Router },
+                provideRouter([]),
                 { provide: AuthService, useValue: { requestResetPassword } as unknown as AuthService },
                 { provide: ToastService, useValue: { error: toastError } as unknown as ToastService },
             ],
@@ -100,6 +100,7 @@ describe('ForgotPasswordPageComponent result state', () => {
         expect(fixture.nativeElement.textContent).not.toContain(SUBMITTED_EMAIL);
         expect(fixture.nativeElement.textContent).not.toContain('We have sent');
         expect(normalizedText('.back-link')).toBe('Back to Login');
+        expect(fixture.nativeElement.querySelector('.back-link').getAttribute('href')).toBe('/login');
     });
 
     it('treats a response without the SMTP flag as unavailable rather than claiming a link was sent', () => {

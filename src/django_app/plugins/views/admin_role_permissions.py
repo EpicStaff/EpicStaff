@@ -36,19 +36,27 @@ class PluginRolePermissionViewSet(CrossOrgAdminViewSet):
     _service = PluginRolePermissionService()
 
     def rows(self, request):
-        query = RequiredOrganizationQuerySerializer(data=request.query_params)
-        query.is_valid(raise_exception=True)
-        result = self._service.rows_for_organization(request.user, query.validated_data["org_id"])
+        # A key caller's org is its key's, so `?org_id=` is neither required nor read.
+        org_id = self.key_org_id(request)
+        if org_id is None:
+            query = RequiredOrganizationQuerySerializer(data=request.query_params)
+            query.is_valid(raise_exception=True)
+            org_id = query.validated_data["org_id"]
+        result = self._service.rows_for_organization(request.user, org_id)
         return Response(PluginRoleRowsResponseSerializer(result).data)
 
     def retrieve(self, request, role_id: int):
-        query = OptionalOrganizationQuerySerializer(data=request.query_params)
-        query.is_valid(raise_exception=True)
+        org_id = self.key_org_id(request)
+        if org_id is None:
+            query = OptionalOrganizationQuerySerializer(data=request.query_params)
+            query.is_valid(raise_exception=True)
+            org_id = query.validated_data.get("org_id")
         result = self._service.role_permissions(
             request.user,
             role_id,
-            query.validated_data.get("org_id"),
+            org_id,
             scopes=getattr(request, "_rbac_org_scopes", None),
+            limit_to_org_ids=self.key_org_ids(request),
         )
         return Response(PluginRolePermissionsResponseSerializer(result).data)
 

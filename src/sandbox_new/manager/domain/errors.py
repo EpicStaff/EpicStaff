@@ -7,7 +7,9 @@ __all__ = [
     "CustomLibraryNotFoundError",
     "CustomLibraryNotPublishedError",
     "CustomLibraryStillBuildingError",
+    "ExecutionNotFoundError",
     "NotFoundError",
+    "SandboxOverloadedError",
     "UVBuildError",
     "UVDependencyResolutionError",
     "UVPackageNotFoundError",
@@ -155,3 +157,24 @@ class UVDependencyResolutionError(BaseError):
         "Package '{package}' requires versions of its dependencies "
         "that conflict with the other requested packages."
     )
+
+
+class ExecutionNotFoundError(BaseError):
+    default_message: str = "Execution(id={execution_id}) not found."
+
+    def __init__(self, execution_id: str) -> None:
+        super().__init__(execution_id=execution_id)
+
+
+class SandboxOverloadedError(BaseError):
+    """The sandbox cannot take another execution now.
+
+    Args:
+        retry_after: Seconds the caller should wait before re-posting.
+    """
+
+    default_message: str = "The sandbox is full; retry later."
+
+    def __init__(self, *, retry_after: int) -> None:
+        super().__init__()
+        self.retry_after = retry_after

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, signal, ViewEncapsulation } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ICellRendererParams } from 'ag-grid-community';
 
 import { PromptConfig } from '../../../../../core/models/classification-decision-table.model';
@@ -17,9 +18,13 @@ interface PromptTooltipParams extends ICellRendererParams {
     onOpenInPromptLibrary: (promptId: string) => void;
 }
 
+/**
+ * The Prompt ID cell. Its "Open in Prompt Library" button carries `data-own-tooltip` (`OWN_TOOLTIP_ATTRIBUTE`): a
+ * version diff's cell tooltip stays closed over it.
+ */
 @Component({
     selector: 'app-prompt-tooltip-renderer',
-    imports: [],
+    imports: [MatTooltipModule],
     template: `
         <div class="prompt-id-cell">
             @if (!value()) {
@@ -34,8 +39,11 @@ interface PromptTooltipParams extends ICellRendererParams {
                         <span class="chip-id">{{ value() }}</span>
                     </div>
                     <button
+                        type="button"
                         class="open-in-library-btn"
-                        title="Open in Prompt Library"
+                        aria-label="Open in Prompt Library"
+                        matTooltip="Open in Prompt Library"
+                        data-own-tooltip
                         (click)="onOpenLibrary($event)"
                     >
                         <i class="ti ti-arrow-up-right"></i>

@@ -3,6 +3,7 @@
         <h3 class="removals__title text-body-bold">Deleted organizations</h3>
         <label class="removals__toggle text-body">
             <app-checkbox
+                ariaLabel="Show finished"
                 [checked]="showFinished()"
                 (changed)="onShowFinishedChange($event)"
             />

@@ -7,29 +7,35 @@ from infrastructure.messaging.redis_service import RedisService
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
-from infrastructure.sandbox.sandbox_client import SandboxExecutionClient
+from infrastructure.sandbox.sandbox_client import SandboxClient
 from src.shared.models import RealtimeAgentChatData
 from tool_executors.base_tool_executor import BaseToolExecutor
 from tests.conftest import CONNECTION_KEY
 
 
 class RecordingSandboxIntake:
-    """Stands in for the sandbox HTTP intake: records every submitted body and
-    answers with `status_code`, so tests exercise the real client and the real
-    request serialization and only the network is replaced."""
+    """Stands in for the sandbox HTTP API: records every submitted body and answers
+    with `status_code`, so tests exercise the real client and the real request
+    serialization and only the network is replaced. `GET /executions/{id}` reports
+    every execution as running, or as unknown (404) once `loses_executions` is set."""
 
     BASE_URL = "http://sandbox.test"
 
     def __init__(self, status_code: int = 202):
         self.status_code = status_code
         self.bodies: list[dict] = []
+        self.loses_executions = False
 
-    def client(self) -> SandboxExecutionClient:
-        return SandboxExecutionClient(
-            base_url=self.BASE_URL, transport=httpx.MockTransport(self._handle)
-        )
+    def client(self, **httpx_options) -> SandboxClient:
+        # No retry budget: a full or unreachable sandbox fails the first submit.
+        httpx_options.setdefault("transport", httpx.MockTransport(self._handle))
+        return SandboxClient(queue_timeout=0, base_url=self.BASE_URL, **httpx_options)
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            if self.loses_executions:
+                return httpx.Response(404, json={"detail": "not found"})
+            return httpx.Response(200, json={"status": "running"})
         assert request.url.path == "/executions"
         body = json.loads(request.content)
         self.bodies.append(body)

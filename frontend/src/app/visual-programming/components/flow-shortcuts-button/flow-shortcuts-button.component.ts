@@ -15,6 +15,8 @@ export class FlowShortcutsButtonComponent {
     /** Moves the icon vertically, for icons whose drawing sits off-centre in their box. */
     iconOffsetY = input<string>('0px');
     active = input<boolean>(false);
+    /** A toggle (Multi-select): `active` is its on/off state, read out as pressed. */
+    readonly pressable = input<boolean>(false);
     /** The button's name for screen readers; the button shows only an icon. */
     ariaLabel = input<string>('Keyboard shortcuts');
     tooltip = input<string>('Keyboard shortcuts');

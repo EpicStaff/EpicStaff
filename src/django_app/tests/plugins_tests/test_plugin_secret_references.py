@@ -6,12 +6,14 @@ organization's secrets, it could aim one at a server of its own and read the val
 """
 
 from contextlib import contextmanager
+from unittest.mock import patch
 
 import pytest
 from django.db import connection
 from django.contrib.contenttypes.models import ContentType
 from plugins.identity.service_account_authentication import PluginServiceAccountAuthentication
 from plugins.models import PluginGrant, PluginOwnedResource
+from proxies.sandbox.models import SandboxVenvBinding
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from rest_framework.exceptions import ValidationError
@@ -22,6 +24,7 @@ from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
+from tables.exceptions import CodeWithSecretsRequiresSecretsUsePermissionError
 from tables.graph_versioning.services import GraphVersioningService
 from tables.models import EmbeddingConfig, Graph, LLMConfig, Secret
 from tables.models.graph_models import PythonNode, StartNode, TelegramTriggerNode
@@ -46,6 +49,7 @@ ACCESS = [
     {"resource_type": "tools", "actions": ["read", "create", "update"], "reason": "Its tools."},
     {"resource_type": "flows", "actions": ["read", "create", "update", "use"], "reason": "Its flows."},
     {"resource_type": "webhooks", "actions": ["read", "create", "update"], "reason": "Its bots."},
+    {"resource_type": "venvs", "actions": ["read", "update"], "reason": "Its environments."},
 ]
 # The guarded (serializer, field) pairs found today; a floor, so the walk below can never
 # lose serializers silently.
@@ -738,3 +742,154 @@ def test_a_person_restoring_a_version_still_rebinds_the_org_secret(acme, org_sec
 
     reader = Graph.objects.filter(org=acme).exclude(pk=source.pk).get().python_node_list.get()
     assert list(reader.python_code.secrets.values_list("pk", flat=True)) == [org_secret.pk]
+
+
+# ---- copying or restoring code that declares secrets needs secrets:USE, a plugin's too ----
+
+_NO_SECRETS_USE_ACCESS = [
+    {**entry, "actions": ["read", "create"]} if entry["resource_type"] == "secrets" else entry
+    for entry in ACCESS
+]
+_RECREATE_REFUSED = CodeWithSecretsRequiresSecretsUsePermissionError.default_code
+
+
+@pytest.fixture
+def no_secrets_use_client(weather_backend, service_account_key, acme):
+    plugin = weather_backend(access=_NO_SECRETS_USE_ACCESS)
+    return service_account_client(service_account_key(plugin, acme), acme)
+
+
+def _declaring_tool(organization, secret):
+    python_code = PythonCode.objects.create(code=_READS_SECRET.format(name=secret.name), entrypoint="main")
+    python_code.secrets.add(secret)
+    return PythonCodeTool.objects.create(
+        name="Declaring tool", description="reads a secret", python_code=python_code, org=organization
+    )
+
+
+def _restore_version(client, version):
+    return client.post(
+        f"/api/graph-versions/{version.id}/restore/",
+        {"save_version": Graph.objects.get(pk=version.graph_id).save_version},
+        format="json",
+    )
+
+
+def _create_graph_from(client, version):
+    return client.post(f"/api/graph-versions/{version.id}/create-graph/")
+
+
+def _assert_recreate_refused(response):
+    assert response.status_code == 403, response.content
+    assert response.json()["code"] == _RECREATE_REFUSED
+
+
+@pytest.mark.parametrize("recreate", [_restore_version, _create_graph_from], ids=["restore", "create-graph"])
+def test_a_plugin_without_secrets_use_cannot_restore_a_version_declaring_secrets(
+    no_secrets_use_client, acme, org_secret, recreate
+):
+    source = _flow_with_a_declaring_node(acme, org_secret)
+    version = GraphVersioningService().save_version(graph=source, name="v1")
+    graph_ids_before = set(Graph.objects.values_list("pk", flat=True))
+    reader_before = source.python_node_list.get().pk
+
+    _assert_recreate_refused(recreate(no_secrets_use_client, version))
+
+    assert set(Graph.objects.values_list("pk", flat=True)) == graph_ids_before
+    assert source.python_node_list.get().pk == reader_before
+
+
+def test_a_plugin_with_secrets_use_restores_but_drops_an_org_secret(client, acme, org_secret):
+    source = _flow_with_a_declaring_node(acme, org_secret)
+    version = GraphVersioningService().save_version(graph=source, name="v1")
+
+    response = _restore_version(client, version)
+
+    assert response.status_code == 200, response.content
+    assert any(warning["type"] == "secret_declaration_dropped" for warning in response.json()["warnings"])
+    assert list(source.python_node_list.get().python_code.secrets.all()) == []
+
+
+def test_a_plugin_with_secrets_use_creates_a_flow_keeping_its_own_secret(client, acme, own_secret):
+    version = GraphVersioningService().save_version(graph=_flow_with_a_declaring_node(acme, own_secret), name="v1")
+
+    response = _create_graph_from(client, version)
+
+    assert response.status_code == 201, response.content
+    reader = Graph.objects.get(pk=response.json()["graph_id"]).python_node_list.get()
+    assert list(reader.python_code.secrets.values_list("pk", flat=True)) == [own_secret.pk]
+
+
+def _copy_flow(client, organization, secret):
+    return client.post(f"/api/graphs/{_flow_with_a_declaring_node(organization, secret).pk}/copy/")
+
+
+def _copy_tool(client, organization, secret):
+    return client.post(f"/api/python-code-tool/{_declaring_tool(organization, secret).pk}/copy/")
+
+
+COPIES = [pytest.param(_copy_flow, id="flow"), pytest.param(_copy_tool, id="tool")]
+
+
+@pytest.mark.parametrize("copy", COPIES)
+def test_a_plugin_without_secrets_use_cannot_copy_code_declaring_secrets(no_secrets_use_client, acme, org_secret, copy):
+    codes_before = PythonCode.objects.count() + 1  # the source's own code, created by `copy`
+
+    _assert_recreate_refused(copy(no_secrets_use_client, acme, org_secret))
+
+    assert PythonCode.objects.count() == codes_before
+
+
+@pytest.mark.parametrize("copy", COPIES)
+def test_a_plugin_with_secrets_use_cannot_copy_code_declaring_an_org_secret(client, acme, org_secret, copy):
+    response = copy(client, acme, org_secret)
+
+    _assert_recreate_refused(response)
+    assert REFUSED in response.json()["message"]
+    assert ORG_SECRET_NAME not in response.content.decode()
+
+
+@pytest.mark.parametrize("copy", COPIES)
+def test_a_plugin_with_secrets_use_copies_code_declaring_its_own_secret(client, acme, own_secret, copy):
+    response = copy(client, acme, own_secret)
+
+    assert response.status_code == 201, response.content
+
+
+# ---- a plugin changing the libraries of a venv its code runs in ----
+
+_VENV_CLIENT_PATH = "proxies.sandbox.services.VenvService.client_class"
+
+
+@pytest.fixture
+def sandbox_venvs():
+    with patch(_VENV_CLIENT_PATH) as client_class:
+        upstream = client_class.return_value.__enter__.return_value
+        upstream.retrieve.return_value = {"id": 4711, "name": "env", "libs": []}
+        upstream.update.side_effect = lambda venv_id, data: {"id": int(venv_id), **data}
+        yield upstream
+
+
+def _venv_running_code_declaring(organization, secret):
+    binding = SandboxVenvBinding.objects.create(org_id=organization.id, resource_id="4711")
+    python_code = PythonCode.objects.create(code=_READS_SECRET.format(name=secret.name), venv=binding)
+    python_code.secrets.add(secret)
+    return binding
+
+
+def _add_a_library(client, binding):
+    return client.patch(f"/api/venvs/{binding.pk}/", {"libs": [{"name": "evil-pth"}]}, format="json")
+
+
+def test_a_plugin_cannot_change_libraries_where_code_reads_an_org_secret(client, acme, org_secret, sandbox_venvs):
+    response = _add_a_library(client, _venv_running_code_declaring(acme, org_secret))
+
+    _refused(response, "libs")
+    sandbox_venvs.update.assert_not_called()
+
+
+def test_a_plugin_changes_libraries_where_code_reads_only_its_own_secret(client, acme, own_secret, sandbox_venvs):
+    response = _add_a_library(client, _venv_running_code_declaring(acme, own_secret))
+
+    assert response.status_code == 200, response.content
+    sandbox_venvs.update.assert_called_once()

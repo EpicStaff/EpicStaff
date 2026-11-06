@@ -9,41 +9,19 @@
     </div>
 
     <div class="toolbar-actions">
-        @if (orgFilterItems().length) {
-            <app-multi-select
-                #orgMs
-                [hideTrigger]="true"
-                [items]="orgFilterItems()"
-                searchPlaceholder="Search organization"
-                (selectionChange)="onOrgFilterChange($event)"
-            >
-                <button
-                    type="button"
-                    class="org-trigger"
-                    [class.org-trigger--active]="orgFilterIds().length"
-                    [appMultiSelectTrigger]="orgMs"
-                >
-                    <span class="org-trigger__label">{{
-                        orgFilterIds().length
-                            ? orgFilterIds().length + ' organization' + (orgFilterIds().length === 1 ? '' : 's')
-                            : 'All Organizations'
-                    }}</span>
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="1rem"
-                    />
-                </button>
-            </app-multi-select>
-        }
-
+        <app-table-column-picker [table]="table" />
+        <!-- aria-disabled, not disabled: it keeps the focus when a bulk action clears the selection. -->
         <button
+            #bulkButton
             type="button"
             class="settings-btn"
             aria-label="Bulk actions"
+            matTooltip="Bulk actions"
+            aria-haspopup="menu"
             [attr.aria-expanded]="isBulkMenuOpen()"
             [class.active]="selectedItems().length > 0"
             [class.open]="isBulkMenuOpen()"
-            [disabled]="selectedItems().length === 0 || isBulkLoading()"
+            [attr.aria-disabled]="isBulkDisabled()"
             cdkOverlayOrigin
             #bulkOrigin="cdkOverlayOrigin"
             (click)="toggleBulkMenu()"
@@ -65,10 +43,18 @@
             (overlayOutsideClick)="closeBulkMenu()"
             (detach)="closeBulkMenu()"
         >
-            <div class="settings-dropdown">
+            <!-- Takes the focus when it opens and hands it back to the Bulk actions button when it closes. -->
+            <div
+                class="settings-dropdown"
+                role="menu"
+                cdkTrapFocus
+                [cdkTrapFocusAutoCapture]="true"
+            >
                 <button
                     type="button"
                     class="settings-dropdown-item"
+                    role="menuitem"
+                    matTooltip="Revoke selected keys"
                     (click)="onBulkRevoke()"
                 >
                     Revoke
@@ -76,6 +62,8 @@
                 <button
                     type="button"
                     class="settings-dropdown-item"
+                    role="menuitem"
+                    matTooltip="Delete selected keys"
                     (click)="onBulkDelete()"
                 >
                     Delete
@@ -86,6 +74,8 @@
 </div>
 
 <app-table
+    #table
+    layoutKey="workspace-api-keys"
     [columns]="columns()"
     [data]="tableData()"
     [selectable]="true"
@@ -126,6 +116,14 @@
             [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
             >{{ row['name'] }}</span
         >
+    </ng-template>
+
+    <!-- ORGANIZATION -->
+    <ng-template
+        appTableCell="orgName"
+        let-row
+    >
+        <span class="cell-text">{{ row['orgName'] }}</span>
     </ng-template>
 
     <!-- KEY -->

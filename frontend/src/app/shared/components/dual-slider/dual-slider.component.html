@@ -25,6 +25,8 @@
             <button
                 type="button"
                 class="btn"
+                [attr.aria-label]="'Decrease ' + firstName()"
+                [matTooltip]="'Decrease ' + firstName()"
                 (click)="onFirstStepDown()"
                 [disabled]="firstValue() <= min()"
             >
@@ -47,6 +49,8 @@
             <button
                 type="button"
                 class="btn"
+                [attr.aria-label]="'Increase ' + firstName()"
+                [matTooltip]="'Increase ' + firstName()"
                 (click)="onFirstStepUp()"
                 [disabled]="firstValue() >= max()"
             >
@@ -69,6 +73,8 @@
         <input
             type="range"
             class="slider left-slider"
+            [attr.aria-label]="firstName()"
+            [matTooltip]="firstName()"
             [class.active]="activeThumb() === 'left'"
             [style.--slider-percentage]="firstPercentage() + '%'"
             [min]="min()"
@@ -78,11 +84,14 @@
             [disabled]="disabled()"
             (input)="updateFirst($any($event.target).valueAsNumber)"
             (mousedown)="activeThumb.set('left')"
+            (focus)="activeThumb.set('left')"
         />
 
         <input
             type="range"
             class="slider right-slider"
+            [attr.aria-label]="secondName()"
+            [matTooltip]="secondName()"
             [class.active]="activeThumb() === 'right'"
             [style.--slider-percentage]="secondPercentage() + '%'"
             [min]="min()"
@@ -92,6 +101,7 @@
             [disabled]="disabled()"
             (input)="updateSecond($any($event.target).valueAsNumber)"
             (mousedown)="activeThumb.set('right')"
+            (focus)="activeThumb.set('right')"
         />
     </div>
     @if (disabled()) {
@@ -101,6 +111,8 @@
             <button
                 type="button"
                 class="btn"
+                [attr.aria-label]="'Decrease ' + secondName()"
+                [matTooltip]="'Decrease ' + secondName()"
                 (click)="onSecondStepDown()"
                 [disabled]="secondValue() <= min()"
             >
@@ -123,6 +135,8 @@
             <button
                 type="button"
                 class="btn"
+                [attr.aria-label]="'Increase ' + secondName()"
+                [matTooltip]="'Increase ' + secondName()"
                 (click)="onSecondStepUp()"
                 [disabled]="secondValue() >= max()"
             >

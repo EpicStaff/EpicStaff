@@ -37,8 +37,6 @@ function makeNode(
         size,
         ports,
         node_name: id,
-        color: '#555',
-        icon: '',
         input_map: {},
         output_variable_path: null,
         data: null,

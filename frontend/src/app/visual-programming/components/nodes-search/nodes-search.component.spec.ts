@@ -176,4 +176,28 @@ describe('NodesSearchComponent', () => {
         expect(fixture.componentInstance.isSearchVisible()).toBe(false);
         fixture.nativeElement.remove();
     });
+
+    it('keeps the Escape that closes it from the canvas and gives the focus back to its button', async () => {
+        const fixture = openSearch();
+        document.body.appendChild(fixture.nativeElement);
+        const canvasKeydown = vi.fn();
+        window.addEventListener('keydown', canvasKeydown);
+        try {
+            const searchBox = (fixture.nativeElement as HTMLElement).querySelector('input')!;
+            searchBox.focus();
+
+            searchBox.dispatchEvent(
+                new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true, cancelable: true })
+            );
+            fixture.detectChanges();
+            await fixture.whenStable();
+
+            expect(fixture.componentInstance.isSearchVisible()).toBe(false);
+            expect(canvasKeydown).not.toHaveBeenCalled();
+            expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.search-button'));
+        } finally {
+            window.removeEventListener('keydown', canvasKeydown);
+            fixture.nativeElement.remove();
+        }
+    });
 });

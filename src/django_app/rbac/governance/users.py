@@ -29,7 +29,7 @@ from rbac.governance.guards import UserManagementGuards
 from rbac.identity.credential_revocation import (
     CredentialRevocationService,
 )
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import ApiKey, Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, ResourceType
 
 
@@ -77,6 +77,8 @@ class UserManagementService(CrossOrgResourceService):
         status_value=None,
         role_id=None,
         scopes=None,
+        *,
+        membership_org_ids: list[int] | None = None,
     ) -> QuerySet:
         """Cross-org user list, optionally scoped to `org_ids` through the
         accounts' memberships. Filtering by `search` (email/display_name),
@@ -85,13 +87,18 @@ class UserManagementService(CrossOrgResourceService):
 
         `org_ids` and `role_id` both traverse a multi-valued join, so the
         result is DISTINCT.
+
+        `membership_org_ids` limits the prefetched `organization_memberships`
+        to those orgs (None: every membership), so a caller confined to some
+        orgs -- a USER API key -- never sees a user's membership or role elsewhere;
+        `role_id` then matches only a membership held in those orgs.
         """
         UserModel = get_user_model()  # noqa: N806
+        memberships = OrganizationUser.objects.select_related("org", "role")
+        if membership_org_ids is not None:
+            memberships = memberships.filter(org_id__in=membership_org_ids)
         base_qs = UserModel.objects.all().prefetch_related(
-            Prefetch(
-                "organization_memberships",
-                queryset=OrganizationUser.objects.select_related("org", "role"),
-            )
+            Prefetch("organization_memberships", queryset=memberships)
         )
         qs = self.apply_org_scope(
             actor=actor,
@@ -109,7 +116,11 @@ class UserManagementService(CrossOrgResourceService):
         elif status_value == "inactive":
             qs = qs.filter(is_active=False)
         if role_id is not None:
-            qs = qs.filter(organization_memberships__role_id=role_id)
+            role_lookup = {"organization_memberships__role_id": role_id}
+            if membership_org_ids is not None:
+                # Same .filter() call, so role and org must match the same membership row.
+                role_lookup["organization_memberships__org_id__in"] = membership_org_ids
+            qs = qs.filter(**role_lookup)
         return qs.distinct()
 
     # ---- create ----
@@ -202,7 +213,8 @@ class UserManagementService(CrossOrgResourceService):
     def revoke_superadmin(self, actor, target_user_id):
         """Sets is_superadmin=False on target_user_id and clears their authorship in
         every org they are not a member of, including the authorship recorded in that
-        org's flow version snapshots. Last-active-superadmin guard.
+        org's flow version snapshots. Deletes their USER API keys bound to those orgs,
+        which the account can no longer act in. Last-active-superadmin guard.
         Idempotent if already False."""
         UserModel = get_user_model()  # noqa: N806
         superadmins = (
@@ -224,6 +236,7 @@ class UserManagementService(CrossOrgResourceService):
 
         released = 0
         scrubbed_snapshots = 0
+        deleted_api_keys = 0
         if target.is_superadmin:
             target.is_superadmin = False
             target.save(update_fields=["is_superadmin", "updated_at"])
@@ -232,14 +245,20 @@ class UserManagementService(CrossOrgResourceService):
             scrubbed_snapshots = SnapshotAuthorshipScrubService().scrub_outside_memberships(
                 user_id=target.pk
             )
+            deleted_api_keys, _ = (
+                ApiKey.objects.filter(created_by=target, key_type=ApiKey.KeyType.USER)
+                .exclude(org_id__in=OrganizationUser.objects.filter(user=target).values("org_id"))
+                .delete()
+            )
 
         logger.info(
             "UserManagementService.revoke_superadmin actor={a} target={t} released_authorship={r} "
-            "scrubbed_snapshots={v}",
+            "scrubbed_snapshots={v} deleted_api_keys={k}",
             a=getattr(actor, "email", "system"),
             t=target.email,
             r=released,
             v=scrubbed_snapshots,
+            k=deleted_api_keys,
         )
 
         return target

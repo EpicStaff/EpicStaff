@@ -63,7 +63,10 @@ class GraphVersionPreviewResponseSerializer(serializers.Serializer):
     """What restoring a version would apply; renders `GraphVersioningService.preview_version`.
 
     `node_authorship` is keyed by the snapshot's node ids and empty for a version saved
-    before node authorship was recorded.
+    before node authorship was recorded. `resolved_secrets` maps each declared secret name
+    a restore would re-link to its secret id; names that no longer resolve are absent and
+    reported in `warnings` instead. A name whose secret is in the recycle bin is listed
+    and also warned about in `warnings`.
     """
 
     snapshot = serializers.DictField(read_only=True)
@@ -71,3 +74,4 @@ class GraphVersionPreviewResponseSerializer(serializers.Serializer):
     node_authorship = serializers.DictField(
         child=GraphVersionNodeAuthorshipSerializer(), read_only=True
     )
+    resolved_secrets = serializers.DictField(child=serializers.IntegerField(), read_only=True)

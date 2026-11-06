@@ -65,8 +65,7 @@
         background-color: var(--accent-color);
         color: var(--color-text-primary);
 
-        &:hover,
-        &:focus {
+        &:is(:hover, :focus-visible) {
             background-color: var(--graphite-700);
             color: var(--color-text-primary);
         }

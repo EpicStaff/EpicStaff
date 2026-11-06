@@ -5,17 +5,18 @@ lifespan hooks open a database pool, connect to Redis and build the default venv
 of which belong in a unit suite. ``debug=True`` so an unexpected failure shows its
 traceback in the response body instead of a bare 500.
 
-``job_intake`` and ``custom_library_storage`` mirror what the startup hooks publish on
-``app.state``. They are rebuilt here from fakes instead of imported, so importing this
-conftest does not register the real runtime's startup hooks. The dependencies are the
-real ones, with only the unit of work swapped, so a controller reaching the object store
-goes through the same provider it would in production.
+``runtime_state`` mirrors what the startup hooks publish on ``app.state`` -- the job
+orchestrator's factory, the intake gate, the execution registry and the object store. It
+is rebuilt here from fakes instead of imported, so importing this conftest does not
+register the real runtime's startup hooks. The dependency providers are the real ones
+from ``manager.bootstrap.di``; only ``uow`` is swapped for the fake, so a controller
+reaching the object store goes through the same provider it would in production.
 
 The error handlers are the real ones, so a test can assert the status a rejected request
 actually gets rather than the one the controller hoped for.
 """
 
-from dataclasses import dataclass
+from functools import partial
 
 import pytest
 from foundation.utils.litestar import di, error_handler
@@ -25,7 +26,10 @@ from litestar.testing import create_test_client
 
 import manager.bootstrap  # noqa: F401  registers the error handlers below
 from manager.application.holding import JobHoldingRegistry
+from manager.application.intake import IntakeGate
+from manager.application.orchestrators import JobOrchestrator
 from manager.application.ports import AbstractUnitOfWork
+from manager.application.registry import ExecutionRegistry
 from manager.presentation.rest.controllers import (
     CustomLibraryController,
     ExecutionController,
@@ -34,12 +38,11 @@ from manager.presentation.rest.controllers import (
 )
 from tests.fakes import FakeJobDispatcher, FakeJobFailureSink
 
-
-@dataclass
-class JobIntakeDouble:
-    dispatcher: FakeJobDispatcher
-    holding: JobHoldingRegistry
-    failure_sink: FakeJobFailureSink
+# Small, so a test reaches either cap with a few reservations.
+MAX_ACCEPTED = 3
+MAX_HELD = 2
+QUEUE_TIMEOUT = 120.0
+HOLD_TIMEOUT = 1800.0
 
 
 @pytest.fixture
@@ -48,12 +51,46 @@ def holding() -> JobHoldingRegistry:
 
 
 @pytest.fixture
-def job_intake(dispatcher, holding, failure_sink) -> JobIntakeDouble:
-    return JobIntakeDouble(dispatcher=dispatcher, holding=holding, failure_sink=failure_sink)
+def registry(clock) -> ExecutionRegistry:
+    return ExecutionRegistry(clock=clock)
 
 
 @pytest.fixture
-def client(uow, job_intake, file_storage):
+def runtime_state(
+    dispatcher: FakeJobDispatcher,
+    holding: JobHoldingRegistry,
+    failure_sink: FakeJobFailureSink,
+    registry: ExecutionRegistry,
+    file_storage,
+) -> State:
+    intake_gate = IntakeGate(
+        registry,
+        lambda: True,
+        max_accepted=MAX_ACCEPTED,
+        max_held=MAX_HELD,
+        queue_timeout=QUEUE_TIMEOUT,
+    )
+    build_job_orchestrator = partial(
+        JobOrchestrator,
+        dispatcher=dispatcher,
+        holding=holding,
+        failure_sink=failure_sink,
+        registry=registry,
+        intake_gate=intake_gate,
+        hold_timeout=HOLD_TIMEOUT,
+    )
+    return State(
+        {
+            "build_job_orchestrator": build_job_orchestrator,
+            "intake_gate": intake_gate,
+            "execution_registry": registry,
+            "custom_library_storage": file_storage,
+        }
+    )
+
+
+@pytest.fixture
+def client(uow, runtime_state):
     async def provide_uow() -> AbstractUnitOfWork:
         return uow
 
@@ -65,7 +102,7 @@ def client(uow, job_intake, file_storage):
             WheelController,
         ],
         dependencies={**di.get_dependencies(), "uow": Provide(provide_uow)},
-        state=State({"job_intake": job_intake, "custom_library_storage": file_storage}),
+        state=runtime_state,
         exception_handlers=error_handler.get_handlers(),
         debug=True,
     ) as test_client:

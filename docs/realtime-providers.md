@@ -151,7 +151,7 @@ Server event: tool_call
   ▼
 GeminiServerEventHandler._handle_tool_call()
   │
-  ├─ asyncio.ensure_future(client.call_tool(...))   ← non-blocking
+  ├─ asyncio.create_task(client.call_tool(...))   ← non-blocking; task held in _tool_call_tasks until done
   │     │
   │     ▼  (runs concurrently)
   │   ToolManagerService.execute() via Redis
@@ -330,7 +330,7 @@ This prevents sending a tool response to a session that didn't request it (which
 ```
 msg #5: tool_call received
   │
-  ├─ asyncio.ensure_future(call_tool("ls", {command: "ls"}))
+  ├─ asyncio.create_task(call_tool("ls", {command: "ls"}))   ← held in _tool_call_tasks
   │     └─ tool starts executing concurrently
   │
   ├─ receive loop continues: msg #6, #7, ... #25

@@ -54,6 +54,9 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         [attr.autocomplete]="effectiveAutocomplete"
                         [attr.spellcheck]="spellcheck"
                         [attr.aria-label]="ariaLabel() || null"
+                        [attr.aria-describedby]="ariaDescribedby()"
+                        [attr.aria-invalid]="errorMessage || invalid() ? true : null"
+                        [matTooltip]="fieldName"
                         [placeholder]="placeholder"
                         [(ngModel)]="value"
                         (focus)="focused.set(true)"
@@ -62,7 +65,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         [class.transparent]="transparent()"
                         [class.has-toggle]="hasToggle"
                         [class.masked]="isMasked"
-                        [class.error]="errorMessage"
+                        [class.error]="errorMessage || invalid()"
                         [attr.disabled]="isDisabled || null"
                         [style.--active-color]="activeColor"
                     />
@@ -70,10 +73,9 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         <button
                             type="button"
                             class="toggle-visibility"
-                            [matTooltip]="passwordVisible ? 'Hide' : 'Show'"
-                            matTooltipPosition="above"
+                            [attr.aria-label]="passwordVisible ? 'Hide password' : 'Show password'"
+                            [matTooltip]="passwordVisible ? 'Hide password' : 'Show password'"
                             (click)="togglePasswordVisibility()"
-                            tabindex="-1"
                         >
                             <i [class]="'ti ' + (passwordVisible ? 'ti-eye' : 'ti-eye-off')"></i>
                         </button>
@@ -94,6 +96,8 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
     `,
     styles: [
         `
+            @use '../../../../styles/diff-value-mark' as diff-value-mark;
+
             :host {
                 width: 100%;
             }
@@ -176,7 +180,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     align-items: center;
                     transition: color 0.2s ease;
 
-                    &:hover {
+                    &:is(:hover, :focus-visible) {
                         color: rgba(255, 255, 255, 0.9);
                     }
 
@@ -213,6 +217,10 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
                 }
             }
+
+            // Version diff: a changed read-only value, boxed like an input so every marked value has one width.
+            // Keep last: it overrides the read-only value's own look above.
+            @include diff-value-mark.marked('.readonly-value', $draws-box: true, $display: block);
         `,
     ],
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -241,10 +249,14 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     @Input() activeColor: string = '#685fff';
     @Input() errorMessage: string = '';
     @Input() cautionMessage: string = '';
+    /** Shows the invalid state when the error is said elsewhere (e.g. `app-validation-errors` under the input). */
+    readonly invalid = input<boolean>(false);
     transparent = input<boolean>(false);
     readonly = input<boolean>(false);
     readonlyEmptyPlaceholder = input<string>('—');
     readonly ariaLabel = input<string>('');
+    /** Ids of what describes the input, e.g. the `app-validation-errors` saying why it is invalid. */
+    readonly ariaDescribedby = input<string | null>(null);
 
     @Output() blur = new EventEmitter<void>();
 
@@ -284,6 +296,11 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
 
     get isDisabled(): boolean {
         return this._disabled || this._controlDisabled;
+    }
+
+    /** The input's tooltip. */
+    get fieldName(): string {
+        return this.label || this.ariaLabel() || this.placeholder;
     }
 
     get isSecret(): boolean {

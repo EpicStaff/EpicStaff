@@ -26,21 +26,36 @@
     list-style: none;
 }
 
+.recent-tool-item {
+    display: flex;
+    flex-shrink: 0;
+    min-width: 0;
+    max-width: 240px;
+}
+
 .recent-tool-card {
     display: flex;
     align-items: center;
     justify-content: flex-start;
+    min-width: 0;
     height: 28px;
     padding: 0 8px;
     background: var(--color-flow-card-bg);
+    border: none;
     border-radius: 4px;
+    font-family: inherit;
     cursor: pointer;
     flex-shrink: 0;
     max-width: 240px;
     box-shadow: var(--shadow-raised);
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--graphite-690);
+    }
+
+    // The row clips anything drawn beside the first and last cards.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 }
 

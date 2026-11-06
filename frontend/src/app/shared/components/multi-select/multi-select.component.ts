@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ConnectedPosition, Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
@@ -17,7 +18,10 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { filter } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../buttons';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
@@ -32,7 +36,14 @@ export type MultiSelectOrigin = HTMLElement | { x: number; y: number; width?: nu
 
 @Component({
     selector: 'app-multi-select',
-    imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent],
+    imports: [
+        AppSvgIconComponent,
+        CheckboxComponent,
+        ButtonComponent,
+        CdkTrapFocus,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './multi-select.component.html',
     styleUrls: ['./multi-select.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -72,10 +83,21 @@ export class MultiSelectComponent implements OnInit {
     /** Maps a group name to an app-svg-icon id, rendered as a trailing action button on that group's header row.
      *  Groups present here are "pinned": their header is always rendered, even when they have zero items. */
     groupActionIcon = input<Record<string, string>>({});
+    /** Maps a group name to the name (aria-label and tooltip) of its trailing action button, e.g. "Edit group". */
+    groupActionLabel = input<Record<string, string>>({});
     /** Show a "Clear Filter" button in the footer that deselects all items without saving. */
     showClearFilter = input<boolean>(false);
     /** Text of the primary (save) button. */
     saveLabel = input<string>('Save Selection');
+    /** When set, a header with this title and a "selected / total" count tops the dropdown. */
+    headerTitle = input<string | null>(null);
+    /** When set, a footer button with this text ticks every item without saving (e.g. "Show All"). */
+    selectAllLabel = input<string | null>(null);
+    /**
+     * `outlined`: the table column picker's look — rows keep their look when checked (the checkbox alone
+     * shows the state), light checkboxes, and line-coloured frame and row borders.
+     */
+    variant = input<'default' | 'outlined'>('default');
     readonlyView = input<boolean>(false);
     /** When true (default), selected items float to the top of the list (within their group). */
     sortSelectedToTop = input<boolean>(true);
@@ -233,6 +255,14 @@ export class MultiSelectComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.close());
 
+        this.overlayRef
+            .keydownEvents()
+            .pipe(
+                filter((event) => event.key === 'Escape'),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.close());
+
         this.tempSelected.set([...(seedValues ?? this.selectedValues())]);
         this.search.set('');
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
@@ -284,6 +314,16 @@ export class MultiSelectComponent implements OnInit {
 
     clearFilter() {
         this.tempSelected.set([]);
+    }
+
+    /** Ticks every enabled item; a disabled item keeps its current state. */
+    selectAll(): void {
+        const current = this.tempSelected();
+        this.tempSelected.set(
+            this.items()
+                .filter((item) => !item.disabled || current.includes(item.value))
+                .map((item) => item.value)
+        );
     }
 
     save() {

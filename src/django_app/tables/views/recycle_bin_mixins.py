@@ -29,6 +29,7 @@ from tables.services.recycle_bin.purge_service import PurgeService
 from tables.services.recycle_bin.registry import BinResource, bin_resources
 from tables.services.recycle_bin.restore_service import RestoreService
 from tables.services.recycle_bin.sources import RecycleBinSource
+from tables.services.secrets.secret_code_inspector import secret_code_access
 from tables.services.trigger_nodes import trigger_node_access
 from tables.swagger_schemas.recycle_bin_schemas import (
     RECYCLE_BIN_CONTENTS_GET,
@@ -37,7 +38,8 @@ from tables.swagger_schemas.recycle_bin_schemas import (
 
 # Seeing the bin is a read and restoring brings an item back (a create). One bit
 # per action, so the any-bit can() is exact. A restore that brings trigger nodes
-# back also needs flows:USE, checked per item by TriggerNodeAccess. The purges are
+# back also needs flows:USE, checked per item by TriggerNodeAccess, and one that brings
+# code declaring secrets back needs secrets:USE (SecretCodeAccess). The purges are
 # left out on purpose: they are superadmin-only (purge_permissions), and an
 # unmapped action is denied, so a purge stays closed if a view ever loses that gate.
 RECYCLE_BIN_ACTION_MAP = {
@@ -78,8 +80,10 @@ class RecycleBinActionsMixin:
     whole bin does: a purge can't be undone, so neither an org admin nor a leaked
     key may wipe the bin type by type. Listing and restoring follow the viewset's
     permission bits and stay open to API keys. A restore that brings trigger nodes
-    back or live also needs flows:USE: a single restore is a 403, a bulk one
-    reports the item as failed.
+    back or live also needs flows:USE, and one that brings Python code declaring a
+    secret back or live (a flow's nodes, a tool, the nodes a webhook trigger
+    reconnects) also needs secrets:USE: a single restore is a 403, a bulk one reports
+    the item as failed. The flows:USE check runs first.
 
     `perform_destroy` bins the row and records the request user as who deleted it.
     A viewset that overrides it, or deletes outside it (a bulk delete), calls
@@ -147,6 +151,7 @@ class RecycleBinActionsMixin:
     def restore(self, request, pk=None):
         root = self._get_binned_or_404(pk)
         trigger_node_access.assert_user_may_restore(request.user, self.get_active_org_id(), root)
+        secret_code_access.assert_user_may_restore(request.user, self.get_active_org_id(), root)
         result = RestoreService.restore(root)
         resource = self._bin_resource()
         restored = result.object

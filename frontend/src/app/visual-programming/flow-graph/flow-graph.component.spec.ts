@@ -26,10 +26,11 @@ import {
 import { ConfirmationDialogService } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode, ShortcutSettings } from '@shared/models';
+import { SECRET_CODE_COPY_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { EMPTY, of } from 'rxjs';
 
-import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
-import { USE_PERMISSION_REQUIRED_TITLE } from '../../features/flows/services/flow-use-permission-refusal.service';
+import { GetGraphLightRequest, GraphDto } from '../../features/flows/models/graph.model';
+import { USE_PERMISSION_REQUIRED_TITLE } from '../../features/flows/services/use-permission-refusal.service';
 import { PermissionRequirement, PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
@@ -38,9 +39,14 @@ import { NodePanelShellComponent } from '../components/node-panels/node-panel-sh
 import { ScheduleTriggerNodePanelComponent } from '../components/node-panels/schedule-trigger-node-panel/schedule-trigger-node-panel.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
-import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../core/helpers/helpers';
+import {
+    generatePortsForClassificationDecisionTableNode,
+    generatePortsForDecisionTableNode,
+    generatePortsForNode,
+} from '../core/helpers/helpers';
 import { subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
 import { AgentNodeTaskWrite } from '../core/models/agent-node.model';
+import { ConnectionModel } from '../core/models/connection.model';
 import { ConditionGroup } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
 import {
@@ -54,21 +60,33 @@ import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from '../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
+import { SavedFlowStateService } from '../services/saved-flow-state.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
 import { createFlowConnection } from '../utils/connection.factory';
-import { createStartNode } from '../utils/load';
+import { EdgeDiffStatus, FlowDiffCanvasState } from '../utils/diff';
+import { buildFlowModelFromGraphDto, createStartNode } from '../utils/load';
 import { mapGraphDtoToFlowModel } from '../utils/load/map-graph-dto-to-flow-model';
+import { mapDecisionTableNodeToModel } from '../utils/load/nodes/decision-table-node.mapper';
 import {
     buildBulkSavePayload,
     buildUuidToBackendIdMap,
+    clearStaleIds,
     cloneFlowState,
     getConnectionDiff,
     getNodeDiff,
     hasTriggerNodeWrites,
 } from '../utils/save';
-import { liveAgent, liveGraph, liveNote, livePython, liveStart } from '../utils/testing/live-graph.fixture';
+import {
+    liveAgent,
+    liveDecisionTable,
+    liveGraph,
+    liveNote,
+    livePython,
+    liveStart,
+    liveTask,
+} from '../utils/testing/live-graph.fixture';
 import {
     FLOW_ACTIONS_WITH_USE,
     FLOW_ACTIONS_WITHOUT_USE,
@@ -89,13 +107,12 @@ function noteNode(): GraphNoteModel {
     return {
         id: 'note-1',
         backendId: null,
+        nodeUuid: 'node-uuid-note-1',
         type: NodeType.NOTE,
         node_name: 'Note',
         data: { content: 'hello' },
         position: { x: 200, y: 0 },
         ports: [],
-        color: '',
-        icon: '',
         size: { width: 200, height: 100 },
         input_map: {},
         output_variable_path: null,
@@ -106,6 +123,7 @@ function scheduleTriggerNode(): ScheduleTriggerNodeModel {
     return {
         id: 'schedule-1',
         backendId: 7,
+        nodeUuid: 'node-uuid-schedule-1',
         type: NodeType.SCHEDULE_TRIGGER,
         node_name: 'Schedule #1',
         data: {
@@ -123,8 +141,6 @@ function scheduleTriggerNode(): ScheduleTriggerNodeModel {
         },
         position: { x: 0, y: 400 },
         ports: [],
-        color: '',
-        icon: '',
         size: { width: 200, height: 100 },
         input_map: {},
         output_variable_path: null,
@@ -139,7 +155,8 @@ function mount(
     flowState: FlowModel,
     beforeCreate: () => void = () => undefined,
     canUpdateFlows = true,
-    canRunFlows = true
+    canRunFlows = true,
+    diffState: FlowDiffCanvasState | null = null
 ): ComponentFixture<FlowGraphComponent> {
     TestBed.configureTestingModule({
         providers: [
@@ -176,6 +193,7 @@ function mount(
     beforeCreate();
     const fixture = TestBed.createComponent(FlowGraphComponent);
     fixture.componentRef.setInput('flowState', flowState);
+    fixture.componentRef.setInput('diffState', diffState);
     fixture.detectChanges();
     return fixture;
 }
@@ -1245,6 +1263,213 @@ describe('FlowGraphComponent', () => {
         });
     });
 
+    describe('version diff canvas', () => {
+        const KEPT_NOTE = noteNode();
+        const REMOVED_NOTE: GraphNoteModel = { ...noteNode(), id: 'note-removed', position: { x: 600, y: 0 } };
+        const DIFF_STATE: FlowDiffCanvasState = {
+            nodes: new Map([
+                [KEPT_NOTE.id, { status: 'unchanged', fields: [], missingReferences: [] }],
+                [REMOVED_NOTE.id, { status: 'deleted', fields: [], missingReferences: [] }],
+            ]),
+            connections: new Map(),
+            versionOnlyPortIds: new Set(),
+            currentOnlyRoutePortIds: new Set(),
+            nodeIdByKey: new Map(),
+        };
+
+        function mountDiff(flowState: FlowModel, diffState: FlowDiffCanvasState | null = DIFF_STATE) {
+            return mount(true, flowState, undefined, true, true, diffState);
+        }
+
+        function select(component: FlowGraphComponent, nodeIds: string[]): void {
+            component['fFlowComponent'] = {
+                getSelection: () => ({ fNodeIds: nodeIds, fGroupIds: [], fConnectionIds: [] }),
+            } as unknown as FlowGraphComponent['fFlowComponent'];
+        }
+
+        describe('the Domain window of a Start node a restore changes', () => {
+            const START = { ...createStartNode(), data: { initialState: { variables: { topic: 'b' } } } };
+            const VARIABLES_CHANGE = {
+                path: 'variables',
+                field: 'variables',
+                status: 'changed' as const,
+                current: { variables: { topic: 'a' } },
+                version: { variables: { topic: 'b' } },
+            };
+            const diffWithStart = (
+                status: 'changed' | 'unchanged',
+                fields = [VARIABLES_CHANGE]
+            ): FlowDiffCanvasState => ({
+                nodes: new Map([[START.id, { status, fields, missingReferences: [] }]]),
+                connections: new Map(),
+                versionOnlyPortIds: new Set(),
+                currentOnlyRoutePortIds: new Set(),
+                nodeIdByKey: new Map(),
+            });
+
+            /** The variables diff each opened Domain window was given (Start node, then the toolbar button). */
+            function variablesDiffsShown(diffState: FlowDiffCanvasState | null): unknown[] {
+                const component = mountDiff({ nodes: [START], connections: [] }, diffState).componentInstance;
+                const dialogOpen = (TestBed.inject(Dialog) as unknown as { open: ReturnType<typeof vi.fn> }).open;
+                dialogOpen.mockReturnValue({ closed: of(null) });
+
+                component.onOpenNodePanel(START);
+                component.onDomainClick();
+
+                return dialogOpen.mock.calls.map(([, config]) => config.data.variablesDiff);
+            }
+
+            it('gets the variables on the canvas and in the version as JSON (Start node and toolbar)', () => {
+                const expected = {
+                    current: '{\n  "variables": {\n    "topic": "a"\n  }\n}',
+                    version: '{\n  "variables": {\n    "topic": "b"\n  }\n}',
+                };
+
+                expect(variablesDiffsShown(diffWithStart('changed'))).toEqual([expected, expected]);
+            });
+
+            it.each([
+                { case: 'the variables are unchanged', diffState: () => diffWithStart('changed', []) },
+                { case: 'the Start node is unchanged', diffState: () => diffWithStart('unchanged') },
+                { case: 'on the Preview tab (no diff)', diffState: () => null },
+            ])('gets no diff when $case', ({ diffState }) => {
+                expect(variablesDiffsShown(diffState())).toEqual([null, null]);
+            });
+        });
+
+        it('copies the version nodes of a selection, never a node a restore removes, and says why', () => {
+            const component = mountDiff({ nodes: [KEPT_NOTE, REMOVED_NOTE], connections: [] }).componentInstance;
+            const info = vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
+            const copied = vi.fn();
+            component.copied.subscribe(copied);
+            select(component, [KEPT_NOTE.id, REMOVED_NOTE.id]);
+
+            component.onCopy();
+
+            expect(
+                TestBed.inject(ClipboardService)
+                    .getClipboardData()
+                    ?.nodes.map((node) => node.id)
+            ).toEqual([KEPT_NOTE.id]);
+            expect(copied).toHaveBeenCalledTimes(1);
+            expect(info).toHaveBeenCalledWith(
+                'Nodes that a restore would remove cannot be copied',
+                3000,
+                'bottom-right'
+            );
+        });
+
+        it('copies the version part only: no edge a restore removes, and a table at its version size', () => {
+            const otherNote: GraphNoteModel = { ...noteNode(), id: 'note-2', position: { x: 0, y: 400 } };
+            const keptEdge = createFlowConnection(KEPT_NOTE.id, otherNote.id, 'note-1_a', 'note-2_a');
+            const removedEdge = createFlowConnection(KEPT_NOTE.id, otherNote.id, 'note-1_b', 'note-2_b');
+            // One condition group: 240 high in the version; the diff canvas grew it by a removed route's row.
+            const grownTable = { ...mapDecisionTableNodeToModel(liveDecisionTable), size: { width: 330, height: 300 } };
+            const component = mountDiff(
+                { nodes: [KEPT_NOTE, otherNote, grownTable], connections: [keptEdge, removedEdge] },
+                {
+                    nodes: new Map([
+                        [KEPT_NOTE.id, { status: 'unchanged', fields: [], missingReferences: [] }],
+                        [otherNote.id, { status: 'unchanged', fields: [], missingReferences: [] }],
+                        [grownTable.id, { status: 'changed', fields: [], missingReferences: [] }],
+                    ]),
+                    connections: new Map([
+                        [keptEdge.id, 'unchanged'],
+                        [removedEdge.id, 'deleted'],
+                    ]),
+                    versionOnlyPortIds: new Set(),
+                    currentOnlyRoutePortIds: new Set(),
+                    nodeIdByKey: new Map(),
+                }
+            ).componentInstance;
+            select(component, [KEPT_NOTE.id, otherNote.id, grownTable.id]);
+
+            component.onCopy();
+
+            const copied = TestBed.inject(ClipboardService).getClipboardData()!;
+            expect(copied.connections.map((connection) => connection.id)).toEqual([keptEdge.id]);
+            expect(copied.nodes.find((node) => node.id === grownTable.id)?.size).toEqual({ width: 330, height: 240 });
+        });
+
+        it('copies nothing when the selection holds only nodes a restore removes', () => {
+            const component = mountDiff({ nodes: [KEPT_NOTE, REMOVED_NOTE], connections: [] }).componentInstance;
+            vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
+            const copied = vi.fn();
+            component.copied.subscribe(copied);
+            select(component, [REMOVED_NOTE.id]);
+
+            component.onCopy();
+
+            expect(TestBed.inject(ClipboardService).getClipboardData()).toBeNull();
+            expect(copied).not.toHaveBeenCalled();
+        });
+
+        it('draws a node a restore removes behind the others, until it is hovered', () => {
+            const component = mountDiff({ nodes: [KEPT_NOTE, REMOVED_NOTE], connections: [] }).componentInstance;
+
+            expect(component.getNodeZIndex(REMOVED_NOTE)).toBeLessThan(component.getNodeZIndex(KEPT_NOTE));
+            component.hoveredNodeId.set(REMOVED_NOTE.id);
+            expect(component.getNodeZIndex(REMOVED_NOTE)).toBeGreaterThan(component.getNodeZIndex(KEPT_NOTE));
+        });
+
+        // A decision table on both sides carries the route ports of both; one only the canvas has is not in its data.
+        const table = mapDecisionTableNodeToModel(liveDecisionTable);
+        const canvasOnlyGroup = { ...table.data.table.condition_groups[0], group_name: 'canvas only' };
+        const unionTable = {
+            ...table,
+            ports: generatePortsForDecisionTableNode(table.id, [...table.data.table.condition_groups, canvasOnlyGroup]),
+        };
+        const canvasOnlyPortId = `${table.id}_decision-out-canvas-only`;
+        const tablePortIds = () =>
+            (
+                TestBed.inject(FlowService)
+                    .nodes()
+                    .find((node) => node.id === table.id)?.ports ?? []
+            ).map((port) => port.id);
+
+        it('keeps the ports a diff canvas gives its nodes', () => {
+            mountDiff({ nodes: [unionTable], connections: [] });
+
+            expect(tablePortIds()).toContain(canvasOnlyPortId);
+        });
+
+        it('still fits the ports of a plain canvas to the node data', () => {
+            mountDiff({ nodes: [unionTable], connections: [] }, null);
+
+            expect(tablePortIds()).not.toContain(canvasOnlyPortId);
+        });
+
+        describe('the hover title of an edge (colour is not its only status cue)', () => {
+            const otherNote: GraphNoteModel = { ...noteNode(), id: 'note-2', position: { x: 0, y: 400 } };
+            const edge = createFlowConnection(KEPT_NOTE.id, otherNote.id, 'note-1_a', 'note-2_a');
+
+            function edgeTitle(diffState: FlowDiffCanvasState | null): string | null {
+                const component = mountDiff(
+                    { nodes: [KEPT_NOTE, otherNote], connections: [edge] },
+                    diffState
+                ).componentInstance;
+                return component['connectionDiffTitle'](edge.id);
+            }
+
+            const diffWithEdge = (status: EdgeDiffStatus): FlowDiffCanvasState => ({
+                ...DIFF_STATE,
+                connections: new Map([[edge.id, status]]),
+            });
+
+            it.each([
+                { status: 'added' as const, expected: 'Restore adds this connection' },
+                { status: 'deleted' as const, expected: 'Restore removes this connection' },
+                { status: 'unchanged' as const, expected: null },
+            ])('titles an $status edge "$expected"', ({ status, expected }) => {
+                expect(edgeTitle(diffWithEdge(status))).toBe(expected);
+            });
+
+            it('is none off a diff canvas', () => {
+                expect(edgeTitle(null)).toBeNull();
+            });
+        });
+    });
+
     describe('Viewer (no Flows:Update) in the live editor', () => {
         it('blocks edits with the read-only-access message, shown once, and still copies', () => {
             const fixture = mount(false, { nodes: [createStartNode(), noteNode()], connections: [] }, undefined, false);
@@ -1396,8 +1621,6 @@ describe('FlowGraphComponent', () => {
                 data: {},
                 position,
                 ports: generatePortsForNode(id, NodeType.PYTHON),
-                color: '',
-                icon: '',
                 size: { width: 200, height: 100 },
                 input_map: {},
                 output_variable_path: null,
@@ -1528,7 +1751,7 @@ describe('FlowGraphComponent', () => {
                     trigger,
                 ]);
                 const before = cloneFlowState(flowService.getFlowState());
-                expect(autoArrangeButton().disabled).toBe(false);
+                expect(autoArrangeButton().getAttribute('aria-disabled')).toBeNull();
                 expect(autoArrangeButton().getAttribute('aria-label')).toBe('Auto arrange');
 
                 autoArrange();
@@ -1580,6 +1803,49 @@ describe('FlowGraphComponent', () => {
             });
         });
 
+        it.each([
+            { canUseSecrets: true, pasted: ['python-plain', 'python-secret'] },
+            { canUseSecrets: false, pasted: ['python-plain'] },
+        ])(
+            'pastes a node whose code reads secrets only with Secrets:Use ($canUseSecrets)',
+            async ({ canUseSecrets, pasted }) => {
+                const secretNode = {
+                    ...pythonNode('python-secret', { x: 0, y: 0 }),
+                    data: { secret_ids: [7] },
+                } as unknown as NodeModel;
+                mountCanvas(FLOW_ACTIONS_WITH_USE, [pythonNode('python-plain', { x: 400, y: 0 }), secretNode]);
+                grantPermissions({
+                    [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE,
+                    [ResourceCode.Secrets]: canUseSecrets ? [ActionCode.Use] : [ActionCode.Read],
+                });
+                vi.spyOn(flowElement().injector.get(FFlowComponent), 'getSelection').mockReturnValue({
+                    fNodeIds: ['python-plain', 'python-secret'],
+                    fGroupIds: [],
+                    fConnectionIds: [],
+                });
+
+                pressShortcut('c');
+                pressShortcut('v');
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const pastedNames = flowService
+                    .nodes()
+                    .filter((node) => !['python-plain', 'python-secret'].includes(node.id))
+                    .map((node) => node.node_name)
+                    .sort();
+                expect(pastedNames).toEqual(pasted);
+                if (canUseSecrets) {
+                    expect(warning).not.toHaveBeenCalled();
+                } else {
+                    expect(warning).toHaveBeenCalledWith(
+                        `1 node was not pasted. ${SECRET_CODE_COPY_NEEDS_USE_MESSAGE}`,
+                        6000,
+                        'bottom-right'
+                    );
+                }
+            }
+        );
+
         // Auto arrange needs two nodes it may move; a trigger node counts only for a user with Use.
         it.each([
             { flow: 'one other node and a trigger node', use: false, otherNodes: 1, disabled: true },
@@ -1594,7 +1860,7 @@ describe('FlowGraphComponent', () => {
                 );
                 mountCanvas(use ? FLOW_ACTIONS_WITH_USE : FLOW_ACTIONS_WITHOUT_USE, [...others, scheduleTriggerNode()]);
 
-                expect(autoArrangeButton().disabled).toBe(disabled);
+                expect(autoArrangeButton().getAttribute('aria-disabled') === 'true').toBe(disabled);
             }
         );
 
@@ -1810,8 +2076,6 @@ describe('FlowGraphComponent', () => {
                 data: { name: 'Triage', table: { condition_groups: rows } },
                 position: { x: 0, y: 0 },
                 ports: generatePortsForClassificationDecisionTableNode('table1', rows),
-                color: '',
-                icon: '',
                 size: { width: 300, height: 200 },
                 input_map: {},
                 output_variable_path: null,
@@ -1827,8 +2091,6 @@ describe('FlowGraphComponent', () => {
                 data: {},
                 position: { x: 400, y: 0 },
                 ports: generatePortsForNode(id, NodeType.PYTHON),
-                color: '',
-                icon: '',
                 size: { width: 200, height: 100 },
                 input_map: {},
                 output_variable_path: null,
@@ -1914,6 +2176,234 @@ describe('FlowGraphComponent', () => {
 
             expect(flowService.connections().map((connection) => connection.targetPortId)).toEqual(['py2_python-in']);
             expect(warning).not.toHaveBeenCalled();
+        });
+    });
+
+    // DOM order is the paint order of the connections (a later one is drawn on top): the Foblex
+    // connection host is not positioned, so a z-index on it would have no effect. These specs check the
+    // order `sortedConnections` gives, through a stand-in template; they do not render the Foblex canvas.
+    describe('connection paint order', () => {
+        // Same width and row: an edge left to right runs forward, one right to left runs backward.
+        const LEFT: GraphNoteModel = { ...noteNode(), id: 'left', position: { x: 0, y: 0 } };
+        const RIGHT: GraphNoteModel = { ...noteNode(), id: 'right', position: { x: 600, y: 0 } };
+        const OTHER: GraphNoteModel = { ...noteNode(), id: 'other', position: { x: 0, y: 600 } };
+        const forward = (port: string) => createFlowConnection(LEFT.id, RIGHT.id, `left_${port}`, `right_${port}`);
+        const backward = (port: string) => createFlowConnection(RIGHT.id, LEFT.id, `right_${port}`, `left_${port}`);
+
+        let fixture: ComponentFixture<FlowGraphComponent>;
+
+        function mountCanvas(connections: ConnectionModel[], edgeStatuses: Record<string, EdgeDiffStatus> | null) {
+            const diffState: FlowDiffCanvasState | null = edgeStatuses && {
+                nodes: new Map(
+                    [LEFT, RIGHT, OTHER].map((node) => [
+                        node.id,
+                        { status: 'unchanged', fields: [], missingReferences: [] },
+                    ])
+                ),
+                connections: new Map(Object.entries(edgeStatuses)),
+                versionOnlyPortIds: new Set(),
+                currentOnlyRoutePortIds: new Set(),
+                nodeIdByKey: new Map(),
+            };
+            fixture = mount(
+                edgeStatuses !== null,
+                { nodes: [LEFT, RIGHT, OTHER], connections },
+                () =>
+                    // The node and connection loops of the real template with their hover bindings, without
+                    // the Foblex canvas jsdom cannot lay out.
+                    TestBed.overrideComponent(FlowGraphComponent, {
+                        set: {
+                            template: `<f-flow #flowHost><f-minimap></f-minimap></f-flow>
+                                @for (node of flowService.nodes(); track node.id) {
+                                    <app-flow-base-node
+                                        [attr.data-node-id]="node.id"
+                                        (mouseenter)="hoveredNodeId.set(node.id)"
+                                    ></app-flow-base-node>
+                                }
+                                @for (connection of sortedConnections(); track connection.id) {
+                                    <f-connection
+                                        [attr.data-connection-id]="connection.id"
+                                        (mouseenter)="hoveredConnectionId.set(connection.id)"
+                                    ></f-connection>
+                                }`,
+                        },
+                    }),
+                true,
+                true,
+                diffState
+            );
+        }
+
+        function hover(selector: string): void {
+            fixture.detectChanges();
+            (fixture.nativeElement as HTMLElement).querySelector(selector)!.dispatchEvent(new MouseEvent('mouseenter'));
+        }
+
+        function paintOrder(): string[] {
+            fixture.detectChanges();
+            return Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll('f-connection'),
+                (connection) => connection.getAttribute('data-connection-id')!
+            );
+        }
+
+        it('draws a backward edge over a forward one in the live editor', () => {
+            mountCanvas([backward('a'), forward('b')], null);
+
+            expect(paintOrder()).toEqual([forward('b').id, backward('a').id]);
+        });
+
+        it('draws an edge a restore removes under the added and unchanged ones, even a backward one', () => {
+            mountCanvas([forward('added'), forward('unchanged'), forward('removed'), backward('removed-back')], {
+                [forward('added').id]: 'added',
+                [forward('unchanged').id]: 'unchanged',
+                [forward('removed').id]: 'deleted',
+                [backward('removed-back').id]: 'deleted',
+            });
+
+            expect(paintOrder()).toEqual([
+                forward('removed').id,
+                backward('removed-back').id,
+                forward('added').id,
+                forward('unchanged').id,
+            ]);
+        });
+
+        it('lifts an edge a restore removes to the top while it is hovered', () => {
+            mountCanvas([forward('removed'), forward('added')], {
+                [forward('removed').id]: 'deleted',
+                [forward('added').id]: 'added',
+            });
+
+            hover(`f-connection[data-connection-id="${forward('removed').id}"]`);
+
+            expect(paintOrder()).toEqual([forward('added').id, forward('removed').id]);
+        });
+
+        it('lifts the edges of a hovered node, removed ones included, over the other edges', () => {
+            const unrelated = createFlowConnection(OTHER.id, RIGHT.id, 'other_c', 'right_c');
+            mountCanvas([forward('removed'), unrelated], {
+                [forward('removed').id]: 'deleted',
+                [unrelated.id]: 'added',
+            });
+
+            hover(`app-flow-base-node[data-node-id="${LEFT.id}"]`);
+
+            expect(paintOrder()).toEqual([unrelated.id, forward('removed').id]);
+        });
+    });
+
+    // The flow page's own spec stands in a stub for this canvas, so the wire routing that runs when
+    // the canvas opens a flow can only be reached here. The page's part of the load and of the save is
+    // repeated as it does it: the canvas model built from the graph is both the live flow and the saved
+    // baseline, and a save diffs the live flow against the model built from the graph last loaded.
+    describe('opening a flow saved before node sizes came from the frontend', () => {
+        // Hand-placed bends that met the agent's right port while the agent was stored 900x40 at
+        // (0, 0): the port sat at (905, 20). The task at (1300, 400) has its left port at (1295, 430).
+        const HAND_PLACED_BENDS = [
+            { x: 1100, y: 20 },
+            { x: 1100, y: 430 },
+        ];
+        const WIRE_ID = 1;
+
+        function graphWithOutdatedAgentSize(): GraphDto {
+            return {
+                ...liveGraph,
+                agent_node_list: [
+                    {
+                        ...liveAgent,
+                        metadata: {
+                            position: { x: 0, y: 0 },
+                            color: '#ff0000',
+                            icon: 'ti ti-bug',
+                            size: { width: 900, height: 40 },
+                        },
+                    },
+                ],
+                task_node_list: [
+                    { ...liveTask, metadata: { position: { x: 1300, y: 400 }, color: '#00ff00', icon: 'ti ti-x' } },
+                ],
+                edge_list: [
+                    {
+                        id: WIRE_ID,
+                        graph: 1,
+                        start_node_id: liveAgent.id,
+                        end_node_id: liveTask.id,
+                        metadata: { waypoints: HAND_PLACED_BENDS },
+                    },
+                ],
+            };
+        }
+
+        function open(graph: GraphDto): void {
+            const loadedFlow = buildFlowModelFromGraphDto(graph);
+            mount(false, loadedFlow, () => {
+                TestBed.inject(FlowService).setFlow(loadedFlow);
+                TestBed.inject(SavedFlowStateService).setSavedFlow(cloneFlowState(loadedFlow));
+            });
+        }
+
+        function save(graph: GraphDto): Record<string, unknown> {
+            const previous = buildFlowModelFromGraphDto(graph);
+            const flowToSave = clearStaleIds(previous, TestBed.inject(FlowService).getFlowState());
+            const idMap = buildUuidToBackendIdMap(flowToSave.nodes);
+            return buildBulkSavePayload(
+                graph.id,
+                getNodeDiff(previous, flowToSave),
+                getConnectionDiff(previous, flowToSave, idMap),
+                flowToSave,
+                idMap,
+                graph.save_version
+            );
+        }
+
+        /** The graph as the backend holds it after the save: every row written takes the metadata it was sent. */
+        function withSavedRows(graph: GraphDto, payload: Record<string, unknown>): GraphDto {
+            const sentMetadata = (listKey: string) =>
+                new Map(
+                    (payload[listKey] as { id?: number; metadata?: Record<string, unknown> }[]).map((row) => [
+                        row.id,
+                        row.metadata,
+                    ])
+                );
+            const sentAgents = sentMetadata('agent_node_list');
+            const sentEdges = sentMetadata('edge_list');
+            return {
+                ...graph,
+                agent_node_list: graph.agent_node_list!.map((row) => ({
+                    ...row,
+                    metadata: sentAgents.get(row.id) ?? row.metadata,
+                })),
+                edge_list: graph.edge_list.map((row) => ({ ...row, metadata: sentEdges.get(row.id) ?? row.metadata })),
+            };
+        }
+
+        function hasUnsavedChanges(): boolean {
+            return TestBed.inject(SavedFlowStateService).hasUnsavedChanges();
+        }
+
+        it('does not report the flow as changed once its wires are routed', () => {
+            open(graphWithOutdatedAgentSize());
+
+            expect(hasUnsavedChanges()).toBe(false);
+        });
+
+        it('still does not report it as changed when reopened after the agent was edited and saved', () => {
+            const graph = graphWithOutdatedAgentSize();
+            open(graph);
+            const flowService = TestBed.inject(FlowService);
+            const agent = flowService.nodes().find((node) => node.type === NodeType.AGENT)!;
+            flowService.updateNode({ ...agent, node_name: 'Researcher' });
+
+            const payload = save(graph);
+            // The save drops the agent's stored size, so on reopening nothing marks it as outdated.
+            expect(payload['agent_node_list']).toEqual([
+                expect.objectContaining({ id: liveAgent.id, metadata: { position: { x: 0, y: 0 } } }),
+            ]);
+            TestBed.resetTestingModule();
+            open(withSavedRows(graph, payload));
+
+            expect(hasUnsavedChanges()).toBe(false);
         });
     });
 });

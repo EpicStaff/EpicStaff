@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
@@ -16,6 +16,7 @@ import {
     SearchComponent,
     SelectItem,
     StopButtonComponent,
+    TableColumnPickerComponent,
     TableRow,
     UserAvatarComponent,
 } from '@shared/components';
@@ -69,6 +70,7 @@ const STATUS_ITEMS: SelectItem[] = [
     imports: [
         AppTableComponent,
         AppTableCellDirective,
+        TableColumnPickerComponent,
         ButtonComponent,
         SearchComponent,
         LoadingSpinnerComponent,
@@ -88,6 +90,9 @@ const STATUS_ITEMS: SelectItem[] = [
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UsersTabComponent {
+    // Takes the focus when an action removes or swaps the row button that had it.
+    private readonly mainAction = viewChild<ButtonComponent>('mainAction');
+
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private adminUserService = inject(AdminUserService);
@@ -128,25 +133,27 @@ export class UsersTabComponent {
     });
 
     columns = computed<AppTableColumnDef[]>(() => [
-        { key: 'user', label: 'USER', width: 'minmax(200px, 2fr)' },
+        { key: 'user', label: 'User', width: '240px', pinned: 'start' },
         {
             key: 'roles',
-            label: 'ROLE',
+            label: 'Role',
             width: 'minmax(150px, 1.5fr)',
+            hideable: false,
             filterItems: this.roleFilterItems(),
         },
         {
             key: 'organization',
-            label: 'ORGANIZATION',
+            label: 'Organization',
             width: 'minmax(175px, 1.5fr)',
+            hideable: false,
             filterItems: this.orgFilterItems(),
             filterKind: 'multi',
             filterServerSide: true,
             defaultValues: this.activeOrgDefault(),
         },
-        { key: 'lastActive', label: 'LAST ACTIVE', width: 'minmax(140px, 1.5fr)' },
-        { key: 'status', label: 'STATUS', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'end' },
+        { key: 'lastActive', label: 'Last Active', width: 'minmax(140px, 1.5fr)' },
+        { key: 'status', label: 'Status', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
+        { key: 'actions', label: 'Actions', width: 'max-content', pinned: 'end' },
     ]);
 
     /** Permission-aware; rendered together in the ACTIONS cell (see `actions` ng-template). */
@@ -270,6 +277,7 @@ export class UsersTabComponent {
             .subscribe((result) => {
                 if (result === null) return;
                 this.toast.success('Account deactivated.');
+                this.focusMainAction();
                 this.reloadTrigger.update((v) => v + 1);
             });
     }
@@ -300,6 +308,7 @@ export class UsersTabComponent {
             .subscribe((result) => {
                 if (result === null) return;
                 this.toast.success('Account reactivated.');
+                this.focusMainAction();
                 this.reloadTrigger.update((v) => v + 1);
             });
     }
@@ -324,7 +333,10 @@ export class UsersTabComponent {
                 filter((deleted) => deleted === true),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe(() => this.reloadTrigger.update((v) => v + 1));
+            .subscribe(() => {
+                this.reloadTrigger.update((v) => v + 1);
+                this.focusMainAction();
+            });
     }
 
     /** Delegated admin: confirm + DELETE every membership in orgs where I hold `users:delete`. */
@@ -369,6 +381,7 @@ export class UsersTabComponent {
                     this.toast.error(`Removed from some orgs; failed on: ${failedOrgs}.`);
                 }
                 this.reloadTrigger.update((v) => v + 1);
+                this.focusMainAction();
             });
     }
 
@@ -411,6 +424,10 @@ export class UsersTabComponent {
                 this.reloadTrigger.update((v) => v + 1);
             }
         });
+    }
+
+    private focusMainAction(): void {
+        this.mainAction()?.focus();
     }
 
     private loadFromAdminUsers(orgIds: number[], searchTerm: string): Observable<AggregatedUser[]> {

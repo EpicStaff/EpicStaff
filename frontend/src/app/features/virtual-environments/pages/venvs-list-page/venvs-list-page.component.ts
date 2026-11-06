@@ -1,7 +1,17 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
+import {
+    afterNextRender,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    Injector,
+    signal,
+    viewChild,
+    viewChildren,
+} from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
@@ -67,6 +77,9 @@ const SEARCH_DEBOUNCE_MS = 300;
     styleUrls: ['./venvs-list-page.component.scss'],
 })
 export class VenvsListPageComponent {
+    private readonly venvCards = viewChildren(VenvCardComponent);
+    private readonly createButton = viewChild('createButton', { read: ButtonComponent });
+
     readonly activeTab = signal<VenvsPageTab>('venvs');
     readonly isLoading = signal(true);
     readonly loadError = signal<string | null>(null);
@@ -129,6 +142,7 @@ export class VenvsListPageComponent {
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     private pollSubscription: Subscription | null = null;
     // Dropped before the next request is sent, so a slow answer to an old search cannot
@@ -277,6 +291,9 @@ export class VenvsListPageComponent {
             .subscribe({
                 next: () => {
                     this.toastService.success(`Venv "${venv.name}" deleted`);
+                    const index = this.venvs().findIndex((item) => item.id === venv.id);
+                    this.venvs.update((venvs) => venvs.filter((item) => item.id !== venv.id));
+                    this.keepFocusAfterRemoval(index);
                     this.loadVenvs();
                 },
                 error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
@@ -303,6 +320,19 @@ export class VenvsListPageComponent {
                     this.toastService.error(extractHttpErrorMessage(error));
                 },
             });
+    }
+
+    /** The deleted card takes its focused Delete button along: the focus moves to the card now in its place. */
+    private keepFocusAfterRemoval(index: number): void {
+        if (index === -1) return;
+        afterNextRender(
+            () => {
+                const cards = this.venvCards();
+                if (cards.length) cards[Math.min(index, cards.length - 1)].focus();
+                else this.createButton()?.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     private setFavoriteLocally(id: number, favorite: boolean): void {

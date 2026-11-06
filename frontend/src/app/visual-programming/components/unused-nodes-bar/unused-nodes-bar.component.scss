@@ -33,7 +33,7 @@
         cursor: pointer;
         transition: color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }

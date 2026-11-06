@@ -10,6 +10,7 @@ import {
     CustomInputComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { Observable } from 'rxjs';
 
@@ -29,6 +30,7 @@ export interface KeyValueTableDialogData {
         ButtonComponent,
         AppSvgIconComponent,
         MatTooltipModule,
+        EnterSubmitDirective,
     ],
     templateUrl: './key-value-table-dialog.component.html',
     styleUrls: ['./key-value-table-dialog.component.scss'],

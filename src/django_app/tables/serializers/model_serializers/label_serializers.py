@@ -66,6 +66,8 @@ class LabelSerializer(serializers.ModelSerializer):
 
         if "parent" in attrs:
             parent = attrs["parent"]
+            if parent is not None and scope == Label.Scope.AGENT:
+                raise serializers.ValidationError({"parent": "Groups cannot be nested."})
             if parent is not None and parent.scope != scope:
                 raise serializers.ValidationError(
                     {"parent": "Parent label must belong to the same label tree (scope)."}

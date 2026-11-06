@@ -6,12 +6,12 @@
                 class="config__tooltip"
                 text="Choose how to split your document into chunks. Different strategies work better for different document types."
                 position="right"
-                tooltipClass="dialog__label-tooltip"
             />
         </div>
         <div class="config__grid-item config__grid-item--short">
             @if (canUpdateKnowledges()) {
                 <app-select
+                    tooltip="Chunk Strategy"
                     [selectedValue]="selectedStrategy()"
                     [items]="chunkStrategySelectItems"
                     (changed)="onSelectedStrategyChange($event)"
