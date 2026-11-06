@@ -3,7 +3,6 @@ from infrastructure.database.config import BaseModel
 from sqlalchemy import (
     ARRAY,
     JSON,
-    Boolean,
     Column,
     DateTime,
     Float,
@@ -18,17 +17,17 @@ from sqlalchemy.orm import relationship
 
 
 class LLMModel(BaseModel):
-    """An LLM offered by a `Provider`."""
+    """An LLM offered by a `Provider`.
+
+    Maps only the columns the knowledge role may read: KNOWLEDGE_LLM_MODEL_COLUMNS in
+    src/django_app/tables/service_db_grants.py. A column added here is "permission denied"
+    at runtime until it is granted there too.
+    """
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
-    predefined = Column(Boolean, default=False)
-    description = Column(Text, nullable=True)
     base_url = Column(Text, nullable=True)
-    deployment_id = Column(Text, nullable=True)
     api_version = Column(Text, nullable=True)
-    is_visible = Column(Boolean, default=True)
-    is_custom = Column(Boolean, default=False)
 
     llm_provider_id = Column(Integer, ForeignKey("tables_provider.id"), nullable=True)
 
@@ -42,24 +41,24 @@ class LLMModel(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """Generation parameters and credentials for invoking an `LLMModel`."""
+    """Generation parameters and prices for invoking an `LLMModel`.
+
+    Maps only the columns the knowledge role may read: KNOWLEDGE_LLM_CONFIG_COLUMNS in
+    src/django_app/tables/service_db_grants.py. Credentials such as extra_headers are
+    deliberately absent; they arrive resolved in each request.
+    """
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    custom_name = Column(Text, unique=True, nullable=False)
     temperature = Column(Float, default=0.5, nullable=True)
     top_p = Column(Float, default=1.0, nullable=True)
-    stop = Column(JSON, nullable=True)
     max_tokens = Column(Integer, nullable=True)
     presence_penalty = Column(Float, nullable=True)
     frequency_penalty = Column(Float, nullable=True)
     logit_bias = Column(JSON, nullable=True)
     seed = Column(Integer, nullable=True)
-    extra_headers = Column(JSON, nullable=True, default=dict)
-    timeout = Column(Float, nullable=True)
     input_cost_per_token = Column(Float, nullable=True)
     output_cost_per_token = Column(Float, nullable=True)
     reasoning_effort = Column(Text, nullable=True)
-    is_visible = Column(Boolean, default=True)
 
     model_id = Column(Integer, ForeignKey("tables_llmmodel.id"), nullable=True)
 
@@ -68,7 +67,7 @@ class LLMConfig(BaseModel):
     __tablename__ = "tables_llmconfig"
 
     def __str__(self):
-        return self.custom_name
+        return f"LLMConfig {self.id}"
 
 
 class GraphRagIndexConfig(BaseModel):
