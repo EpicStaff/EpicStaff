@@ -90,7 +90,7 @@ export class ProfilePageComponent implements OnInit {
         if (!user) return;
         this.dialog.open(ProfileEditDialogComponent, {
             width: '560px',
-            data: { name: user.display_name, email: user.email, avatarUrl: user.avatar_url },
+            data: { name: user.display_name, avatarUrl: user.avatar_url },
         });
     }
 }
