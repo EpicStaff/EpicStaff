@@ -361,13 +361,15 @@ renewal and refuses the old one, so a saved state is signed out once the first t
 
 The suite signs the person in seven times per browser, 21 times for a run of all three, and every EpicStaff page it
 opens renews EpicStaff's session, all from your address within a minute. EpicStaff's default throttles
-(`DJANGO_LOGIN_THROTTLE_RATE=5/min`, `DJANGO_LOGIN_IP_THROTTLE_RATE=20/min`, `DJANGO_TOKEN_REFRESH_THROTTLE_RATE=30/min`)
+(`DJANGO_LOGIN_THROTTLE_RATE=5/min`, `DJANGO_LOGIN_IP_THROTTLE_RATE=20/min`, `DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE=30/hour`,
+`DJANGO_TOKEN_REFRESH_THROTTLE_RATE=30/min`)
 stop a run part-way: a test then waits on a login form that says "Too many login attempts" until it times out. On
 your local stack only, raise them in `src/.env`:
 
 ```bash
 DJANGO_LOGIN_THROTTLE_RATE=100/min
 DJANGO_LOGIN_IP_THROTTLE_RATE=300/min
+DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE=1000/hour
 DJANGO_TOKEN_REFRESH_THROTTLE_RATE=600/min
 ```
 
