@@ -19,6 +19,7 @@ from src.shared.redis_streams import (
     TRANSFER_JOB_STREAM,
     TRANSFER_JOB_SWEEP_REQUESTED_AT_FIELD,
 )
+from tables.exceptions import ExportCycleError
 from tables.import_export.archive import ENVELOPE_MEMBER
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import ArchiveExportFormatStrategy
@@ -357,6 +358,13 @@ def test_an_export_the_sweep_took_over_keeps_its_outcome_and_leaves_no_archive(
 )
 def test_knowledge_service_failures_name_what_the_creator_can_do(error, kind, code):
     assert public_error(error, kind)["code"] == code
+
+
+def test_a_project_error_keeps_its_own_code():
+    # A cyclic export used to answer `export_cycle_detected` synchronously; a job says the same.
+    error = ExportCycleError([(EntityType.GRAPH, 1), (EntityType.GRAPH, 2), (EntityType.GRAPH, 1)])
+
+    assert public_error(error, TransferJob.Kind.EXPORT)["code"] == "export_cycle_detected"
 
 
 # --- sweep -------------------------------------------------------------------------------

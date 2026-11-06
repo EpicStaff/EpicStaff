@@ -1,13 +1,14 @@
 import pytest
-from rest_framework.test import APIClient
 
 from agents.models import AgentInlineSurface, AgentInlineSurfacePythonTool
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
 from rbac.models.role import RolePermission
+from tables.import_export.enums import EntityType
 from tables.models import AgentNode, Graph
 from tables.models.label_models import Label
 from tables.models.python_models import PythonCode, PythonCodeTool
+from tables.services.import_export_service import ViewSetImportExportService
 
 
 @pytest.fixture
@@ -21,7 +22,7 @@ def org_b(db):
 
 
 @pytest.fixture
-def client_a(db, django_user_model, org_a):
+def exporter_a(db, django_user_model, org_a):
     role = Role.objects.create(name="FlowExporter", org=org_a, is_built_in=False)
     RolePermission.objects.create(
         role=role,
@@ -37,10 +38,7 @@ def client_a(db, django_user_model, org_a):
         email="flow_exporter_a@example.com", password="StrongPass123!"
     )
     OrganizationUser.objects.create(user=user, org=org_a, role=role)
-    client = APIClient()
-    client.force_authenticate(user=user)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(org_a.id))
-    return client
+    return user
 
 
 @pytest.fixture
@@ -63,11 +61,20 @@ def flow_using_shared_built_in_tool(org_a, org_b):
     return graph
 
 
+def _graph_export_service():
+    # The flow export payload the export job writes into its archive.
+    return ViewSetImportExportService(
+        entity_type=EntityType.GRAPH, export_prefix="graph", filename_attr="name"
+    )
+
+
 @pytest.mark.django_db
 def test_flow_export_does_not_leak_other_org_labels_on_shared_tool(
-    client_a, flow_using_shared_built_in_tool
+    exporter_a, org_a, flow_using_shared_built_in_tool
 ):
-    response = client_a.get(f"/api/graphs/{flow_using_shared_built_in_tool.id}/export/")
+    response = _graph_export_service().export_entity(
+        flow_using_shared_built_in_tool, org_id=org_a.id, user=exporter_a
+    )
 
     assert response.status_code == 200, response.content
     body = response.content.decode()
@@ -78,12 +85,10 @@ def test_flow_export_does_not_leak_other_org_labels_on_shared_tool(
 
 @pytest.mark.django_db
 def test_flow_bulk_export_does_not_leak_other_org_labels_on_shared_tool(
-    client_a, flow_using_shared_built_in_tool
+    exporter_a, org_a, flow_using_shared_built_in_tool
 ):
-    response = client_a.post(
-        "/api/graphs/bulk-export/",
-        {"ids": [flow_using_shared_built_in_tool.id]},
-        format="json",
+    response = _graph_export_service().bulk_export(
+        [flow_using_shared_built_in_tool.id], org_id=org_a.id, user=exporter_a
     )
 
     assert response.status_code == 200, response.content
