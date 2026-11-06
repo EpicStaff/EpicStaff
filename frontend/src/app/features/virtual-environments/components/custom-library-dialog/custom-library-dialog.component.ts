@@ -3,16 +3,22 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, ButtonComponent, ConfirmationDialogService } from '@shared/components';
-import { TooltipOnOverflowDirective } from '@shared/directives';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    DragDropAreaComponent,
+    FileUploaderComponent,
+    HelpTooltipComponent,
+} from '@shared/components';
+import { EnterSubmitDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { extractHttpErrorMessage } from '@shared/utils';
 import {
     catchError,
+    concat,
     concatMap,
     EMPTY,
     filter,
-    finalize,
     from,
     map,
     Observable,
@@ -20,6 +26,7 @@ import {
     repeat,
     Subscription,
     switchMap,
+    tap,
     timer,
     toArray,
 } from 'rxjs';
@@ -28,6 +35,13 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import { BUILDING_WHEEL_STATUSES, CustomLibrary, Wheel, WHEEL_FILE_SUFFIXES } from '../../models/custom-library.model';
 import { CustomLibrariesApiService } from '../../services/custom-libraries-api.service';
+import {
+    detectedLibraryName,
+    diagnoseStagedWheels,
+    hasIssue,
+    STAGED_WHEEL_ISSUE_TEXT,
+    StagedWheel,
+} from '../../utils/staged-wheel';
 import { VenvStatusBadgeComponent } from '../venv-status-badge/venv-status-badge.component';
 
 const POLL_INTERVAL_MS = 2_000;
@@ -36,9 +50,19 @@ export interface CustomLibraryDialogData {
     library?: CustomLibrary;
 }
 
-/** The created library, `'changed'` when versions of an existing one were added or removed, and
- *  `null` when the list the dialog was opened from has nothing to reload. */
+/** The created library, `'changed'` when an existing one gained or lost versions, and `null` when
+ *  the list the dialog was opened from has nothing to reload. */
 export type CustomLibraryDialogResult = CustomLibrary | 'changed' | null;
+
+/** One line of the Versions list: a version the library already holds, or a file about to become
+ *  one. Both carry a label on the right -- a number, a build status, or what is wrong with it. */
+export interface VersionRow {
+    readonly key: string;
+    readonly filename: string;
+    readonly version: string | null;
+    readonly wheel: Wheel | null;
+    readonly staged: StagedWheel | null;
+}
 
 @Component({
     selector: 'app-custom-library-dialog',
@@ -46,6 +70,10 @@ export type CustomLibraryDialogResult = CustomLibrary | 'changed' | null;
         MatTooltipModule,
         AppSvgIconComponent,
         ButtonComponent,
+        DragDropAreaComponent,
+        FileUploaderComponent,
+        HelpTooltipComponent,
+        EnterSubmitDirective,
         TooltipOnOverflowDirective,
         VenvStatusBadgeComponent,
     ],
@@ -62,33 +90,77 @@ export class CustomLibraryDialogComponent {
 
     readonly wheels = signal<Wheel[]>([]);
     readonly isLoadingWheels = signal(false);
-    /** Files chosen before the library exists; uploaded one after another once it does. */
-    readonly stagedFiles = signal<File[]>([]);
-    readonly isSubmitting = signal(false);
-    readonly isUploading = signal(false);
-    readonly deletePending = signal(false);
+    /** Versions marked for deletion. Nothing is deleted until the dialog is saved. */
+    readonly removedWheelIds = signal<ReadonlySet<number>>(new Set<number>());
+    /** Files chosen in this dialog, in the order they were chosen. */
+    readonly chosenFiles = signal<File[]>([]);
+    readonly isSaving = signal(false);
 
-    /** Unnamed while the library exists but a source archive still has to build: nothing has told
-     *  it its distribution yet. */
+    readonly keptWheels = computed(() => this.wheels().filter((wheel) => !this.removedWheelIds().has(wheel.id)));
+
+    /** Every chosen file with what its name says and what is wrong with it, read against the
+     *  versions the library keeps and the files chosen before it. */
+    readonly staged = computed<StagedWheel[]>(() =>
+        diagnoseStagedWheels(this.chosenFiles(), {
+            libraryName: this.library()?.name ?? null,
+            storedVersions: this.keptWheels()
+                .map((wheel) => wheel.version)
+                .filter((version): version is string => version !== null),
+        })
+    );
+
+    readonly rows = computed<VersionRow[]>(() => [
+        ...this.keptWheels().map((wheel) => ({
+            key: `wheel-${wheel.id}`,
+            filename: wheel.wheel_filename ?? wheel.source_filename ?? '',
+            version: wheel.version,
+            wheel,
+            staged: null,
+        })),
+        ...this.staged().map((staged, index) => ({
+            key: `file-${index}-${staged.file.name}`,
+            filename: staged.file.name,
+            version: staged.issue === null ? staged.version : null,
+            wheel: null,
+            staged,
+        })),
+    ]);
+
+    /** The name the library has, or the one its first readable file gives it. */
+    readonly detectedName = computed(() => this.library()?.name ?? detectedLibraryName(this.staged()));
+    readonly uploadableFiles = computed(() =>
+        this.staged()
+            .filter((staged) => !hasIssue(staged))
+            .map((staged) => staged.file)
+    );
+
     readonly title = computed(() => {
         const library = this.library();
         if (!library) return 'Create Custom Library';
-        return library.name ?? 'Naming pending…';
+        return library.name ?? 'Naming pending...';
     });
-    readonly submitLabel = computed(() => (this.isSubmitting() ? 'Creating...' : 'Create'));
+    readonly submitLabel = computed(() => (this.isManaging() ? 'Save Changes' : 'Create Library'));
+    readonly canSubmit = computed(
+        () => this.uploadableFiles().length > 0 || (this.isManaging() && this.removedWheelIds().size > 0)
+    );
     readonly canUpload = computed(() => this.permissions.can(ResourceCode.CustomLibraries, ActionCode.Create));
     readonly canDeleteWheel = computed(() => this.permissions.can(ResourceCode.CustomLibraries, ActionCode.Delete));
 
-    protected readonly fileAccept = WHEEL_FILE_SUFFIXES.join(',');
+    protected readonly fileHint = 'Wheel (.whl) or source archive (.tar.gz, .zip) · Max 100 MB per file';
+    protected readonly nameHint =
+        'Read off the first file you add and spelled the way a package index would. A venv installs the library under this name, which is why it cannot be typed or changed.';
+    // Named without their dot: the drop overlay spells them out in capitals.
+    protected readonly allowedTypes = WHEEL_FILE_SUFFIXES.map((suffix) => suffix.slice(1));
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 
-    // Whether anything was uploaded or removed, so the list behind the dialog knows to reload.
+    // Whether anything reached the backend, so the list behind the dialog knows to reload.
     private changed = false;
     private pollSubscription: Subscription | null = null;
 
     private readonly dialogRef = inject<DialogRef<CustomLibraryDialogResult>>(DialogRef);
     private readonly customLibrariesApi = inject(CustomLibrariesApiService);
     private readonly permissions = inject(PermissionsService);
-    private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
 
@@ -96,55 +168,69 @@ export class CustomLibraryDialogComponent {
         if (this.library()) this.loadWheels(true);
     }
 
-    /** Wheels and source archives chosen in the file picker: staged while the library is still to
-     *  be created, uploaded straight away once it exists. Names the files it refuses rather than
-     *  dropping them quietly. Either kind can create the library -- a wheel names it at once, a
-     *  source archive leaves it unnamed until a background build names it. */
-    onFilesSelected(event: Event): void {
-        const input = event.target as HTMLInputElement;
-        const chosen = Array.from(input.files ?? []);
-        // The same file can be picked twice in a row, and the picker emits nothing on the second
-        // pick unless its value is cleared.
-        input.value = '';
-
-        const accepted = chosen.filter((file) => this.hasWheelSuffix(file.name));
-        for (const file of chosen) {
-            if (!accepted.includes(file)) {
-                this.toastService.error(`"${file.name}" is not a wheel or a source archive`);
-            }
-        }
-        if (!accepted.length) return;
-
-        const library = this.library();
-        if (!library) {
-            this.stagedFiles.update((files) => [...files, ...accepted]);
-            return;
-        }
-        this.uploadAll(library, accepted);
+    /** Files chosen in the picker or dropped on the area. Nothing is refused here: a file this
+     *  dialog cannot use gets a line of its own saying why, which is the point of the list. */
+    onFilesChosen(files: FileList): void {
+        const chosen = Array.from(files);
+        if (!chosen.length) return;
+        this.chosenFiles.update((current) => [...current, ...chosen]);
     }
 
-    removeStagedFile(index: number): void {
-        this.stagedFiles.update((files) => files.filter((_, position) => position !== index));
+    onFilePicked(event: Event): void {
+        const input = event.target as HTMLInputElement;
+        if (input.files) this.onFilesChosen(input.files);
+        // The same file can be picked twice in a row, and the picker stays quiet on the second
+        // pick unless its value is cleared.
+        input.value = '';
+    }
+
+    /** Take a line out: a chosen file is forgotten, a stored version is marked for deletion and
+     *  goes when the dialog is saved. */
+    removeRow(row: VersionRow): void {
+        if (this.isSaving()) return;
+        if (row.wheel) {
+            const id = row.wheel.id;
+            this.removedWheelIds.update((ids) => new Set([...ids, id]));
+            return;
+        }
+        const file = row.staged?.file;
+        this.chosenFiles.update((files) => files.filter((candidate) => candidate !== file));
+    }
+
+    /** What the line shows on its right: a build status, a version, or what is wrong with it. */
+    issueText(row: VersionRow): { label: string; reason: string } | null {
+        const issue = row.staged?.issue;
+        return issue ? STAGED_WHEEL_ISSUE_TEXT[issue] : null;
     }
 
     submit(): void {
-        const files = this.stagedFiles();
-        if (!files.length || this.isSubmitting()) return;
+        if (!this.canSubmit() || this.isSaving()) return;
+        this.isSaving.set(true);
+        const files = this.uploadableFiles();
+        const library = this.library();
 
-        this.isSubmitting.set(true);
+        if (!library) {
+            this.create(files);
+            return;
+        }
+        this.applyChanges(library, files);
+    }
+
+    cancel(): void {
+        this.dialogRef.close(this.changed ? 'changed' : null);
+    }
+
+    private create(files: File[]): void {
         const [first, ...rest] = files;
-        // Counts the first file too: it is `files[0]`, already spent on creating the library, so a
-        // later failure is reported against the right file in `files` by the same index.
-        let uploaded = 1;
         this.customLibrariesApi
             .createCustomLibrary(first)
             .pipe(
-                switchMap((library: CustomLibrary) => {
+                switchMap((library) => {
                     this.library.set(library);
-                    if (!rest.length) return of(library);
-                    return from(rest).pipe(
-                        concatMap((file) => this.customLibrariesApi.uploadWheel(library.id, file)),
-                        map(() => (uploaded += 1)),
+                    this.changed = true;
+                    this.forget([first]);
+                    // `toArray`, so the chain answers once however many files it uploaded.
+                    return this.uploadEach(library, rest).pipe(
                         toArray(),
                         map(() => library)
                     );
@@ -152,87 +238,62 @@ export class CustomLibraryDialogComponent {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: (library) => this.dialogRef.close(library),
-                error: (error: HttpErrorResponse) => {
-                    this.isSubmitting.set(false);
-                    const library = this.library();
-                    if (!library) {
-                        this.toastService.error(extractHttpErrorMessage(error));
-                        return;
-                    }
-                    // The library is there, a version is not: say which file stopped and leave the
-                    // dialog on that library, so the rest are added rather than created again.
-                    this.changed = true;
-                    this.stagedFiles.set([]);
-                    this.toastService.error(
-                        `Library created, but "${files[uploaded].name}" was not uploaded: ${extractHttpErrorMessage(error)}`
-                    );
-                    this.loadWheels(true);
-                },
+                next: (library) => this.settle(library),
+                error: (error: HttpErrorResponse) => this.reportFailure(error),
             });
     }
 
-    onDeleteWheel(wheel: Wheel): void {
-        const library = this.library();
-        if (!library || this.deletePending()) return;
-        this.deletePending.set(true);
-        // `confirmDelete` completes without emitting when it is dismissed, so `finalize` is what
-        // clears the pending flag on both the delete and the dismissed-dialog paths.
-        this.confirmationDialogService
-            .confirmDelete(this.wheelLabel(wheel))
-            .pipe(
-                filter((confirmed) => confirmed === true),
-                switchMap(() => this.customLibrariesApi.deleteWheel(library.id, wheel.id)),
-                finalize(() => this.deletePending.set(false)),
-                takeUntilDestroyed(this.destroyRef)
-            )
+    private applyChanges(library: CustomLibrary, files: File[]): void {
+        const removals = [...this.removedWheelIds()].map((id) => this.customLibrariesApi.deleteWheel(library.id, id));
+
+        concat(...removals, this.uploadEach(library, files))
+            .pipe(toArray(), takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => {
                     this.changed = true;
-                    this.loadWheels();
-                },
-                error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
-            });
-    }
-
-    /** What a version is called in the list and in its delete confirmation. */
-    wheelLabel(wheel: Wheel): string {
-        return wheel.version ?? wheel.wheel_filename ?? wheel.source_filename ?? `#${wheel.id}`;
-    }
-
-    cancel(): void {
-        this.dialogRef.close(null);
-    }
-
-    close(): void {
-        this.dialogRef.close(this.changed ? 'changed' : null);
-    }
-
-    private uploadAll(library: CustomLibrary, files: File[]): void {
-        this.isUploading.set(true);
-        let uploaded = 0;
-        from(files)
-            .pipe(
-                concatMap((file) => this.customLibrariesApi.uploadWheel(library.id, file)),
-                map(() => (uploaded += 1)),
-                toArray(),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe({
-                next: () => {
-                    this.isUploading.set(false);
-                    this.changed = true;
-                    this.loadWheels();
+                    this.removedWheelIds.set(new Set<number>());
+                    this.settle(library);
                 },
                 error: (error: HttpErrorResponse) => {
-                    this.isUploading.set(false);
-                    if (uploaded > 0) this.changed = true;
-                    this.toastService.error(
-                        `"${files[uploaded].name}" was not uploaded: ${extractHttpErrorMessage(error)}`
-                    );
-                    this.loadWheels();
+                    this.changed = true;
+                    this.reportFailure(error);
                 },
             });
+    }
+
+    /** Upload the files one after another, forgetting each as it lands: what is left in the list
+     *  after a failure is exactly what still has to go. */
+    private uploadEach(library: CustomLibrary, files: File[]): Observable<unknown> {
+        if (!files.length) return of(null);
+        return from(files).pipe(
+            concatMap((file) =>
+                this.customLibrariesApi.uploadWheel(library.id, file).pipe(tap(() => this.forget([file])))
+            )
+        );
+    }
+
+    private forget(files: File[]): void {
+        this.chosenFiles.update((current) => current.filter((file) => !files.includes(file)));
+    }
+
+    /** Close when everything the dialog was asked to do is done; stay open on the files it could
+     *  not use, so the refusal is read where it was made. */
+    private settle(library: CustomLibrary): void {
+        this.isSaving.set(false);
+        if (this.chosenFiles().length === 0) {
+            this.dialogRef.close(this.data.library ? 'changed' : library);
+            return;
+        }
+        this.toastService.success(
+            this.data.library ? 'Versions saved' : `Custom library "${library.name ?? ''}" created`
+        );
+        this.loadWheels();
+    }
+
+    private reportFailure(error: HttpErrorResponse): void {
+        this.isSaving.set(false);
+        this.toastService.error(extractHttpErrorMessage(error));
+        if (this.library()) this.loadWheels();
     }
 
     private loadWheels(showLoader = false): void {
@@ -301,10 +362,5 @@ export class CustomLibraryDialogComponent {
     private stopPolling(): void {
         this.pollSubscription?.unsubscribe();
         this.pollSubscription = null;
-    }
-
-    private hasWheelSuffix(name: string): boolean {
-        const lowered = name.toLowerCase();
-        return WHEEL_FILE_SUFFIXES.some((suffix) => lowered.endsWith(suffix));
     }
 }

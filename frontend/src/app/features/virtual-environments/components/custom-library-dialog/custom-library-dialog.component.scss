@@ -1,9 +1,18 @@
-.custom-library-dialog {
-    display: flex;
-    flex-direction: column;
+// One size whatever the dialog holds: the list scrolls inside instead of growing it. The size
+// sits here rather than on the element below, which is the drop area's host and carries a height
+// rule of its own.
+:host {
+    display: block;
     width: 560px;
+    height: 600px;
     max-width: 95vw;
-    max-height: 80vh;
+    max-height: 85vh;
+}
+
+.custom-library-dialog {
+    // The column layout comes from the drop area this is the host of.
+    display: block;
+    height: 100%;
     background-color: var(--color-modals-background);
     border: 1px solid var(--color-divider-subtle);
     border-radius: 10px;
@@ -30,13 +39,6 @@
         white-space: nowrap;
     }
 
-    &__header-actions {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex-shrink: 0;
-    }
-
     &__body {
         flex: 1;
         min-height: 0;
@@ -48,6 +50,53 @@
         flex-direction: column;
         gap: 8px;
         padding: 20px 24px;
+
+        & + & {
+            padding-top: 0;
+        }
+    }
+
+    &__label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    // Not an input: the name is read off the first file and can never be typed.
+    &__name {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 40px;
+        box-sizing: border-box;
+        padding: 0 8px 0 12px;
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        background-color: var(--color-input-background);
+    }
+
+    &__name-value {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__name-placeholder {
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__detected {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background-color: var(--purple-alpha-8);
+        color: var(--accent-color);
     }
 
     &__section-header {
@@ -55,28 +104,62 @@
         align-items: center;
         justify-content: space-between;
         gap: 16px;
+        min-height: 28px;
+    }
 
-        h3 {
-            margin: 0;
+    &__section-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+    }
+
+    &__count {
+        color: var(--accent-color);
+    }
+
+    &__section-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    &__text-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 28px;
+        padding: 0 8px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background-color: var(--transparent-white-8);
+        color: var(--color-ks-transparent-text-80);
+        cursor: pointer;
+
+        &:hover:not(:disabled) {
+            color: var(--color-text-primary);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        &--accent {
+            border-color: var(--accent-color);
+            background-color: transparent;
+            color: var(--accent-color);
+
+            &:hover:not(:disabled) {
+                background-color: var(--color-ghost-btn-hover);
+                color: var(--accent-color);
+            }
         }
     }
 
     &__muted {
         margin: 0;
         color: var(--color-ks-transparent-text-60);
-    }
-
-    &__add {
-        padding: 0;
-        border: none;
-        background: transparent;
-        color: var(--accent-color);
-        cursor: pointer;
-
-        &:disabled {
-            opacity: 0.5;
-            cursor: default;
-        }
     }
 
     &__rows {
@@ -93,15 +176,20 @@
         align-items: center;
         gap: 12px;
         min-width: 0;
-        height: 32px;
-        padding: 0 8px;
+        height: 40px;
+        padding: 0 8px 0 12px;
         border-radius: 4px;
         background-color: var(--transparent-white-8);
+
+        &--refused {
+            background-color: var(--color-divider-subtle);
+        }
     }
 
-    &__version {
+    &__row-number {
         flex-shrink: 0;
-        color: var(--accent-color);
+        width: 12px;
+        color: var(--color-ks-transparent-text-60);
     }
 
     &__file {
@@ -110,7 +198,34 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    &__version {
+        flex-shrink: 0;
         color: var(--color-ks-transparent-text-60);
+    }
+
+    &__badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+        height: 24px;
+        box-sizing: border-box;
+        padding: 0 8px;
+        border-radius: 4px;
+        white-space: nowrap;
+        cursor: help;
+
+        &--other {
+            background-color: var(--orange-alpha-8);
+            color: var(--color-ks-status-processing);
+        }
+
+        &--failed {
+            background-color: var(--red-alpha-8);
+            color: var(--color-ks-status-failed);
+        }
     }
 
     &__icon-btn {
@@ -127,7 +242,7 @@
         color: var(--color-ks-transparent-text-60);
         cursor: pointer;
 
-        &:hover {
+        &:hover:not(:disabled) {
             color: var(--color-text-primary);
             background-color: var(--color-ghost-btn-hover);
         }
@@ -136,6 +251,16 @@
             opacity: 0.5;
             cursor: default;
         }
+    }
+
+    &__footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px;
+        flex-shrink: 0;
+        padding: 16px 24px;
+        border-top: 1px solid var(--color-divider-subtle);
     }
 
     &__file-input {
