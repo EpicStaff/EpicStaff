@@ -26,10 +26,10 @@ describe('ImportExportService export header', () => {
 
     function exportWithHeader(header: string | null): { result: ExportResult; blob: Blob } {
         const results: ExportResult[] = [];
-        service.exportFlow('5').subscribe((result) => results.push(result));
+        service.partialExport(5, {} as PartialExportRequest).subscribe((result) => results.push(result));
         const headers: Record<string, string> = header === null ? {} : { 'X-Export-Excluded': header };
         const blob = new Blob(['{}']);
-        httpMock.expectOne('/api/graphs/5/export/').flush(blob, { headers });
+        httpMock.expectOne('/api/graphs/5/partial-export/').flush(blob, { headers });
         return { result: results[0], blob };
     }
 
@@ -54,27 +54,5 @@ describe('ImportExportService export header', () => {
         ['names that are not strings', '[{"type":"Flow","count":1,"names":[1]}]'],
     ])('returns no excluded entities when the header is %s', (_label, header) => {
         expect(exportWithHeader(header).result.excluded).toEqual([]);
-    });
-
-    it('reads the header on bulk export too', () => {
-        const results: ExportResult[] = [];
-        service.bulkExportFlow([1, 2]).subscribe((result) => results.push(result));
-
-        httpMock.expectOne('/api/graphs/bulk-export/').flush(new Blob(['{}']), {
-            headers: { 'X-Export-Excluded': '[{"type":"PythonCodeTool","count":2,"names":[]}]' },
-        });
-
-        expect(results[0].excluded).toEqual([{ type: 'PythonCodeTool', count: 2, names: [] }]);
-    });
-
-    it('reads the header on partial export too', () => {
-        const results: ExportResult[] = [];
-        service.partialExport(9, {} as PartialExportRequest).subscribe((result) => results.push(result));
-
-        httpMock.expectOne('/api/graphs/9/partial-export/').flush(new Blob(['{}']), {
-            headers: { 'X-Export-Excluded': '[{"type":"MCPTool","count":1,"names":["T"]}]' },
-        });
-
-        expect(results[0].excluded).toEqual([{ type: 'MCPTool', count: 1, names: ['T'] }]);
     });
 });

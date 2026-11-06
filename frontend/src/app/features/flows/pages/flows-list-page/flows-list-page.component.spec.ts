@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
 import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
@@ -6,17 +7,17 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ConfirmationDialogService, LabelSidebarComponent, SearchComponent } from '@shared/components';
 import { EXPORT_WARNING_DURATION_MS } from '@shared/constants';
-import { ExcludedExportEntity } from '@shared/models';
 import { AppStorageService } from '@shared/services';
-import { EMPTY, Observable, of } from 'rxjs';
+import { EMPTY, Observable } from 'rxjs';
 
-import { ImportResult } from '../../../../core/models/import-result.model';
+import { EntityTypeResult, FlowImportResultItem, ImportResult } from '../../../../core/models/import-result.model';
 import { ImportReviewDialogData, ReviewItem } from '../../../../core/models/review-item.model';
-import { ImportExportService } from '../../../../core/services/import-export.service';
+import { TransferJob } from '../../../../core/models/transfer-job.model';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { storedZip } from '../../../../shared/utils/read-export-envelope.testing';
 import { FlowsFilterMenuComponent } from '../../components/filter/flows-filter-menu/flows-filter-menu.component';
 import { ImportFlowOptionsPopoverComponent } from '../../components/import-flow-options-popover/import-flow-options-popover.component';
 import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
@@ -28,6 +29,7 @@ import { FlowsListPageComponent } from './flows-list-page.component';
 
 const INSPECT_URL = '/api/graphs/import/inspect/';
 const IMPORT_URL = '/api/graphs/import/';
+const IMPORT_JOBS_URL = '/api/graphs/import-jobs/';
 const SUMMARY: ImportResult = {
     Flow: { total: 1, created: { count: 1, items: [{ id: 3, name: 'Orders' }] }, reused: { count: 0, items: [] } },
 };
@@ -46,6 +48,22 @@ const IMPORT_REFUSAL_WARNING = {
     cancelText: 'OK',
 };
 
+function transferJob(overrides: Partial<TransferJob>): TransferJob {
+    return {
+        id: 'job-1',
+        kind: 'export',
+        main_entity: 'Flow',
+        status: 'running',
+        file_name: null,
+        result: null,
+        error: null,
+        created_at: '2026-11-06T10:00:00Z',
+        finished_at: null,
+        expires_at: null,
+        ...overrides,
+    } as TransferJob;
+}
+
 // jsdom has no ResizeObserver; the overflow directives in the header only need it to exist.
 class ResizeObserverStub {
     observe(): void {}
@@ -53,74 +71,95 @@ class ResizeObserverStub {
     disconnect(): void {}
 }
 
+let dialogOpen: ReturnType<typeof vi.fn>;
+let confirm: ReturnType<typeof vi.fn>;
+let toastError: ReturnType<typeof vi.fn>;
+let toastWarning: ReturnType<typeof vi.fn>;
+let toastShow: ReturnType<typeof vi.fn>;
+let toastRemove: ReturnType<typeof vi.fn>;
+let httpMock: HttpTestingController;
+let fixture: ComponentFixture<FlowsListPageComponent>;
+
+/** Renders the page header; in select mode, with these flows picked, when any are given. */
+function renderPage(selectedFlowIds: number[] = []): void {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+    dialogOpen = vi.fn(() => ({ closed: EMPTY }));
+    confirm = vi.fn();
+    toastError = vi.fn();
+    toastWarning = vi.fn();
+    toastShow = vi.fn(() => 1);
+    toastRemove = vi.fn();
+
+    TestBed.configureTestingModule({
+        providers: [
+            provideRouter([]),
+            provideHttpClient(),
+            provideHttpClientTesting(),
+            { provide: ConfigService, useValue: { apiUrl: '/api/' } },
+            { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
+            { provide: Dialog, useValue: { open: dialogOpen } },
+            { provide: ConfirmationDialogService, useValue: { confirm } },
+            {
+                provide: ToastService,
+                useValue: {
+                    error: toastError,
+                    warning: toastWarning,
+                    success: vi.fn(),
+                    show: toastShow,
+                    remove: toastRemove,
+                },
+            },
+            { provide: AppStorageService, useValue: { invalidate: vi.fn() } },
+            { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
+            {
+                provide: FlowsStorageService,
+                useValue: {
+                    selectMode: signal(selectedFlowIds.length > 0),
+                    selectedFlowIds: signal(selectedFlowIds),
+                    isDeleting: signal(false),
+                    isAllFlowsSelected: () => false,
+                    filter: signal(EMPTY_FLOWS_FILTER),
+                    flows: signal([]),
+                    getFlows: () => EMPTY,
+                    setFilter: vi.fn(),
+                    resetFilter: vi.fn(),
+                    setSelectMode: vi.fn(),
+                },
+            },
+            {
+                provide: LabelsStorageService,
+                useValue: {
+                    activeLabelFilter: signal('all'),
+                    labels: signal([]),
+                    setActiveLabelFilter: vi.fn(),
+                    loadLabels: () => EMPTY,
+                },
+            },
+        ],
+    });
+    // The header with its Import button is under test; these children bring their own services.
+    TestBed.overrideComponent(FlowsListPageComponent, {
+        remove: {
+            imports: [
+                LabelSidebarComponent,
+                SearchComponent,
+                FlowsFilterMenuComponent,
+                ImportFlowOptionsPopoverComponent,
+            ],
+        },
+        add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+    });
+    httpMock = TestBed.inject(HttpTestingController);
+    fixture = TestBed.createComponent(FlowsListPageComponent);
+    fixture.detectChanges();
+}
+
 describe('FlowsListPageComponent flow import', () => {
-    let dialogOpen: ReturnType<typeof vi.fn>;
-    let confirm: ReturnType<typeof vi.fn>;
-    let toastError: ReturnType<typeof vi.fn>;
-    let httpMock: HttpTestingController;
-    let fixture: ComponentFixture<FlowsListPageComponent>;
     let file: File;
 
     beforeEach(() => {
-        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
-        dialogOpen = vi.fn(() => ({ closed: EMPTY }));
-        confirm = vi.fn();
-        toastError = vi.fn();
         file = new File(['{}'], 'flow.json');
-
-        TestBed.configureTestingModule({
-            providers: [
-                provideRouter([]),
-                provideHttpClient(),
-                provideHttpClientTesting(),
-                { provide: ConfigService, useValue: { apiUrl: '/api/' } },
-                { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
-                { provide: Dialog, useValue: { open: dialogOpen } },
-                { provide: ConfirmationDialogService, useValue: { confirm } },
-                { provide: ToastService, useValue: { error: toastError, success: vi.fn() } },
-                { provide: AppStorageService, useValue: { invalidate: vi.fn() } },
-                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
-                {
-                    provide: FlowsStorageService,
-                    useValue: {
-                        selectMode: signal(false),
-                        selectedFlowIds: signal([]),
-                        isDeleting: signal(false),
-                        isAllFlowsSelected: () => false,
-                        filter: signal(EMPTY_FLOWS_FILTER),
-                        flows: signal([]),
-                        getFlows: () => EMPTY,
-                        setFilter: vi.fn(),
-                        resetFilter: vi.fn(),
-                        setSelectMode: vi.fn(),
-                    },
-                },
-                {
-                    provide: LabelsStorageService,
-                    useValue: {
-                        activeLabelFilter: signal('all'),
-                        labels: signal([]),
-                        setActiveLabelFilter: vi.fn(),
-                        loadLabels: () => EMPTY,
-                    },
-                },
-            ],
-        });
-        // The header with its Import button is under test; these children bring their own services.
-        TestBed.overrideComponent(FlowsListPageComponent, {
-            remove: {
-                imports: [
-                    LabelSidebarComponent,
-                    SearchComponent,
-                    FlowsFilterMenuComponent,
-                    ImportFlowOptionsPopoverComponent,
-                ],
-            },
-            add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
-        });
-        httpMock = TestBed.inject(HttpTestingController);
-        fixture = TestBed.createComponent(FlowsListPageComponent);
-        fixture.detectChanges();
+        renderPage();
     });
 
     afterEach(() => {
@@ -158,6 +197,75 @@ describe('FlowsListPageComponent flow import', () => {
         );
         expect(confirm).not.toHaveBeenCalled();
         expect(toastError).not.toHaveBeenCalled();
+    });
+
+    describe('by export version', () => {
+        const FLOW_IN_FILE = { id: 3, name: 'Orders', description: 'Daily orders' };
+        // The summary's flow, with the description the import file gives it.
+        const ENRICHED_FLOWS: EntityTypeResult<FlowImportResultItem> = {
+            total: 1,
+            created: { count: 1, items: [{ id: 3, name: 'Orders', description: 'Daily orders' }] },
+            reused: { count: 0, items: [] },
+        };
+        const ENRICHED_SUMMARY: ImportResult = { Flow: ENRICHED_FLOWS };
+
+        it('imports a version 5 export file with the synchronous import', async () => {
+            const envelope = { main_entity: 'Flow', version: 5, Flow: [FLOW_IN_FILE] };
+            file = new File([JSON.stringify(envelope)], 'flow.json');
+
+            (await importFileWithoutCodeToReview()).flush(SUMMARY);
+
+            expect(dialogOpen).toHaveBeenCalledWith(
+                ImportResultDialogComponent,
+                expect.objectContaining({ data: { importResult: ENRICHED_SUMMARY } })
+            );
+            httpMock.expectNone((request) => request.url === IMPORT_JOBS_URL);
+        });
+
+        it('imports a version 6 archive as a background job and shows its result', async () => {
+            const envelope = { main_entity: 'Flow', version: 6, Flow: [FLOW_IN_FILE] };
+            file = storedZip('flows.zip', {
+                'export.json': JSON.stringify(envelope),
+                'files/collection-1/manual.pdf': '%PDF',
+            });
+
+            (await chooseFileToImport()).flush({ review_items: [] });
+            httpMock.expectNone(IMPORT_URL);
+            const upload = httpMock.expectOne((request) => request.url === IMPORT_JOBS_URL);
+            expect(upload.request.body).toBe(file);
+            expect(toastShow).toHaveBeenCalledWith('Importing…', 'info', expect.any(Number));
+            upload.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+
+            const poll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-1/'));
+            poll.flush(transferJob({ kind: 'import', status: 'completed', result: SUMMARY }));
+
+            expect(dialogOpen).toHaveBeenCalledWith(
+                ImportResultDialogComponent,
+                expect.objectContaining({ data: { importResult: ENRICHED_SUMMARY } })
+            );
+            expect(toastRemove).toHaveBeenCalled();
+            expect(toastError).not.toHaveBeenCalled();
+        });
+
+        it("reports a failed import job with the server's reason", async () => {
+            file = storedZip('flows.zip', { 'export.json': JSON.stringify({ main_entity: 'Flow', version: 6 }) });
+
+            (await chooseFileToImport()).flush({ review_items: [] });
+            httpMock
+                .expectOne((request) => request.url === IMPORT_JOBS_URL)
+                .flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+            const poll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-1/'));
+            poll.flush(
+                transferJob({
+                    kind: 'import',
+                    status: 'failed',
+                    error: { code: 'invalid_archive', message: 'manual.pdf is missing.' },
+                })
+            );
+
+            expect(toastError).toHaveBeenCalledExactlyOnceWith('manual.pdf is missing.');
+            expect(dialogOpen).not.toHaveBeenCalled();
+        });
     });
 
     it('explains an import refused over trigger nodes in the Use permission warning, with no toast and no result', async () => {
@@ -218,58 +326,92 @@ describe('FlowsListPageComponent flow import', () => {
 });
 
 describe('FlowsListPageComponent bulk export', () => {
-    const toastWarning = vi.fn();
-    const setSelectMode = vi.fn();
+    const clickedLinks: string[] = [];
 
-    function confirmExportWith(excluded: ExcludedExportEntity[]): void {
-        toastWarning.mockReset();
-        setSelectMode.mockReset();
-        window.URL.createObjectURL = vi.fn(() => 'blob:x');
-        window.URL.revokeObjectURL = vi.fn();
-        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    beforeEach(() => {
+        clickedLinks.length = 0;
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            clickedLinks.push(this.href);
+        });
+        renderPage([1, 2]);
+    });
 
-        TestBed.configureTestingModule({
-            providers: [
-                provideRouter([]),
-                provideHttpClient(),
-                provideHttpClientTesting(),
-                {
-                    provide: FlowsStorageService,
-                    useValue: { selectedFlowIds: signal([1, 2]), setSelectMode, resetFilter: vi.fn() },
-                },
-                { provide: LabelsStorageService, useValue: {} },
-                { provide: ToastService, useValue: { warning: toastWarning, error: vi.fn() } },
-                {
-                    provide: ImportExportService,
-                    useValue: { bulkExportFlow: () => of({ blob: new Blob(['{}']), excluded }) },
-                },
-            ],
-        });
-        // The template is irrelevant to the export flow, so it is replaced with an empty one.
-        TestBed.overrideComponent(FlowsListPageComponent, {
-            set: { template: '', templateUrl: undefined, styleUrls: [], imports: [] },
-        });
-        const fixture = TestBed.createComponent(FlowsListPageComponent);
-        fixture.componentInstance.confirmExport();
+    afterEach(() => {
+        httpMock.verify();
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    function clickButton(container: HTMLElement, label: string): void {
+        const button = [...container.querySelectorAll('button')].find(
+            (candidate) => candidate.textContent?.trim() === label
+        );
+        expect(button, `a "${label}" button`).toBeDefined();
+        button!.click();
+        fixture.detectChanges();
     }
 
-    afterEach(() => vi.restoreAllMocks());
+    /** Clicks "Export 2 flows", then Export in the options it opens, leaving them as they open. */
+    function exportSelectedFlows(): void {
+        clickButton(fixture.nativeElement as HTMLElement, 'Export 2 flows');
+        clickButton(TestBed.inject(OverlayContainer).getContainerElement(), 'Export');
+    }
 
-    it('warns, with a long duration, about entities left out of the export', () => {
-        confirmExportWith([{ type: 'Flow', count: 1, names: [] }]);
+    it('exports the selected flows with their knowledge as a job, downloads the archive and warns about what was left out', async () => {
+        exportSelectedFlows();
 
-        expect(setSelectMode).toHaveBeenCalledWith(false);
+        const start = httpMock.expectOne('/api/graphs/export-jobs/');
+        expect(start.request.body).toEqual({ ids: [1, 2], include_knowledge: true });
+        expect(toastShow).toHaveBeenCalledWith('Preparing export…', 'info', expect.any(Number));
+        start.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+
+        const poll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-1/'));
+        poll.flush(
+            transferJob({
+                status: 'completed',
+                file_name: 'bulk_2.zip',
+                result: { excluded: [{ entity_type: 'Flow', entity_id: 4, name: 'Child' }] },
+            })
+        );
+        httpMock
+            .expectOne('/api/transfer-jobs/job-1/download-ticket/')
+            .flush({ download_url: '/api/transfer-jobs/job-1/download/?ticket=t-1' });
+
+        expect(clickedLinks).toEqual([new URL('/api/transfer-jobs/job-1/download/?ticket=t-1', document.baseURI).href]);
         expect(toastWarning).toHaveBeenCalledWith(
-            expect.stringContaining('1 subflow'),
+            expect.stringContaining('1 subflow (Child)'),
             EXPORT_WARNING_DURATION_MS,
             undefined
         );
+        expect(toastRemove).toHaveBeenCalled();
     });
 
-    it('shows no warning when nothing was excluded', () => {
-        confirmExportWith([]);
+    it("reports a failed export job with the server's reason and downloads nothing", async () => {
+        exportSelectedFlows();
 
-        expect(setSelectMode).toHaveBeenCalledWith(false);
-        expect(toastWarning).not.toHaveBeenCalled();
+        httpMock
+            .expectOne('/api/graphs/export-jobs/')
+            .flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+        const poll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-1/'));
+        poll.flush(
+            transferJob({ status: 'failed', error: { code: 'export_failed', message: 'Storage is unavailable.' } })
+        );
+
+        expect(toastError).toHaveBeenCalledExactlyOnceWith('Storage is unavailable.');
+        expect(clickedLinks).toEqual([]);
+    });
+
+    it('reports a refused start with the reason from the error envelope', () => {
+        exportSelectedFlows();
+
+        httpMock
+            .expectOne('/api/graphs/export-jobs/')
+            .flush(
+                { status_code: 429, code: 'too_many_jobs', message: 'Too many exports are running. Try again later.' },
+                { status: 429, statusText: 'Too Many Requests' }
+            );
+
+        expect(toastError).toHaveBeenCalledExactlyOnceWith('Too many exports are running. Try again later.');
+        expect(clickedLinks).toEqual([]);
     });
 });

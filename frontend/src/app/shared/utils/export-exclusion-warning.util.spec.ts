@@ -1,5 +1,5 @@
-import { ExcludedExportEntity } from '../models/export-result.model';
-import { formatExportExclusionWarning } from './export-exclusion-warning.util';
+import { ExcludedExportEntity, ExcludedExportItem } from '../models/export-result.model';
+import { formatExportExclusionWarning, groupExcludedExportItems } from './export-exclusion-warning.util';
 
 const TAIL = 'You do not have permission to export these. Re-assign them after import.';
 
@@ -36,6 +36,11 @@ describe('formatExportExclusionWarning', () => {
             expected: `Exported without 2 subflows. ${TAIL}`,
         },
         {
+            name: 'labels knowledge collections',
+            excluded: [{ type: 'SourceCollection', count: 2, names: ['Docs'] }],
+            expected: `Exported without 2 knowledge collections (Docs +1 more). ${TAIL}`,
+        },
+        {
             name: 'joins two types with "and"',
             excluded: [
                 { type: 'AgentDefinition', count: 3, names: ['A', 'B', 'C'] },
@@ -65,5 +70,39 @@ describe('formatExportExclusionWarning', () => {
 
     it('returns null when nothing was excluded', () => {
         expect(formatExportExclusionWarning([])).toBeNull();
+    });
+});
+
+describe('groupExcludedExportItems', () => {
+    const item = (entity_type: string, entity_id: number, name: string | null): ExcludedExportItem => ({
+        entity_type,
+        entity_id,
+        name,
+    });
+
+    it('counts every item per type and lists only the names the user may see', () => {
+        const grouped = groupExcludedExportItems([
+            item('AgentDefinition', 1, 'A'),
+            item('Flow', 7, null),
+            item('AgentDefinition', 2, null),
+            item('AgentDefinition', 3, 'C'),
+        ]);
+
+        expect(grouped).toEqual([
+            { type: 'AgentDefinition', count: 3, names: ['A', 'C'] },
+            { type: 'Flow', count: 1, names: [] },
+        ]);
+    });
+
+    it('lists at most five names per type', () => {
+        const items = ['A', 'B', 'C', 'D', 'E', 'F'].map((name, index) => item('MCPTool', index, name));
+
+        expect(groupExcludedExportItems(items)).toEqual([
+            { type: 'MCPTool', count: 6, names: ['A', 'B', 'C', 'D', 'E'] },
+        ]);
+    });
+
+    it('returns nothing when nothing was excluded', () => {
+        expect(groupExcludedExportItems([])).toEqual([]);
     });
 });
