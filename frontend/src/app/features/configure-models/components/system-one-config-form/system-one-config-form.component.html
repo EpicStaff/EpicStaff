@@ -13,36 +13,27 @@
             <app-validation-errors [control]="form.controls.custom_name" />
         </div>
         <div>
-            <app-select
+            <app-grouped-picker
                 label="Provider"
-                variant="boxed"
                 placeholder="Select provider"
                 tooltipText="TypeSafe runs a Jev model and OpenAI runs a Decisions model, each with your API key. LLM answers with one of your LLM configurations."
-                [items]="providerItems"
-                [selectedValue]="selectedProvider()"
-                [disabled]="isEditMode()"
+                emptyGroupText="No LLM configs yet. Add one in the LLM tab first."
                 [required]="true"
-                (changed)="selectProvider($event)"
+                [groups]="groups()"
+                [selected]="selectedKey()"
+                (picked)="pick($event)"
+                (closed)="form.controls.model.markAsTouched()"
             />
+            @if (!hasLlmConfigs() && !usesKey()) {
+                <app-hint-message>No LLM configs yet. Add one in the <strong>LLM tab</strong> first.</app-hint-message>
+            }
+            @if (selectedProvider() === 'llm') {
+                <app-hint-message>Its probabilities are the LLM's own estimate, not calibrated.</app-hint-message>
+            }
+            <app-validation-errors [control]="form.controls.model" />
         </div>
 
         @if (usesKey()) {
-            <div>
-                <app-select
-                    formControlName="model_name"
-                    [label]="selectedProvider() === 'openai' ? 'Model' : 'Jev Version'"
-                    variant="boxed"
-                    [placeholder]="selectedProvider() === 'openai' ? 'Select a model' : 'Select a version'"
-                    [tooltipText]="
-                        selectedProvider() === 'openai'
-                            ? 'The OpenAI model that answers the questions'
-                            : 'The Jev model version that answers the questions'
-                    "
-                    [items]="modelItems()"
-                    [required]="true"
-                />
-                <app-validation-errors [control]="form.controls.model_name" />
-            </div>
             <div>
                 <app-select
                     formControlName="api_key_secret_id"
@@ -69,27 +60,6 @@
                     <app-hint-message>OpenAI does not document how its probabilities are computed.</app-hint-message>
                 }
                 <app-validation-errors [control]="form.controls.api_key_secret_id" />
-            </div>
-        } @else {
-            <div>
-                <app-select
-                    formControlName="llm_config"
-                    label="LLM Configuration"
-                    variant="boxed"
-                    placeholder="Select an LLM configuration"
-                    tooltipText="The LLM configuration that answers the questions"
-                    [items]="llmConfigItems()"
-                    [required]="true"
-                    [showSearch]="true"
-                    searchPlaceholder="Search a configuration..."
-                />
-                @if (llmConfigItems().length === 0) {
-                    <app-hint-message
-                        >No LLM configs yet. Add one in the <strong>LLM tab</strong> first.</app-hint-message
-                    >
-                }
-                <app-hint-message>Its probabilities are the LLM's own estimate, not calibrated.</app-hint-message>
-                <app-validation-errors [control]="form.controls.llm_config" />
             </div>
         }
     </section>

@@ -49,7 +49,11 @@ describe('AddConfigurationDialogComponent embedding extra headers and LLM pricin
                 },
                 {
                     provide: LlmConfigStorageService,
-                    useValue: { createConfig: createLlmConfig } as unknown as LlmConfigStorageService,
+                    useValue: {
+                        createConfig: createLlmConfig,
+                        configs: signal([]),
+                        getAllConfigs: () => of([]),
+                    } as unknown as LlmConfigStorageService,
                 },
                 {
                     provide: SecretsStorageService,
@@ -264,7 +268,14 @@ async function render(
                 useValue: { keydownEvents: new Subject<KeyboardEvent>(), close: vi.fn() } as unknown as DialogRef,
             },
             { provide: DIALOG_DATA, useValue: { initialTab: 'llm' } },
-            { provide: LlmConfigStorageService, useValue: { createConfig } as unknown as LlmConfigStorageService },
+            {
+                provide: LlmConfigStorageService,
+                useValue: {
+                    createConfig,
+                    configs: signal([]),
+                    getAllConfigs: () => of([]),
+                } as unknown as LlmConfigStorageService,
+            },
             {
                 provide: LlmModelsStorageService,
                 useValue: { getModelById } as unknown as LlmModelsStorageService,
@@ -655,6 +666,14 @@ describe('AddConfigurationDialogComponent System One tab', () => {
         fixture.componentInstance.setActiveTab('system_one');
         fixture.detectChanges();
         typeSystemOneName(fixture, 'Jev prod');
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('app-system-one-config-form app-grouped-picker button[aria-expanded]')!
+            .click();
+        fixture.detectChanges();
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.cdk-overlay-container button'))
+            .find((button) => button.textContent!.trim() === 'jev-1.14.0')!
+            .click();
+        fixture.detectChanges();
         (fixture.nativeElement as HTMLElement)
             .querySelector<HTMLButtonElement>(
                 'app-system-one-config-form app-select[formcontrolname="api_key_secret_id"] .selector__btn'
