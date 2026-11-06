@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 from dataclasses import dataclass
+from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -87,3 +88,19 @@ sse_ticket_service = TicketService(
     prefix="rbac:sse_ticket:",
     ttl_seconds=settings.SSE_TICKET_TTL,
 )
+
+
+# Long enough for the browser to navigate to the URL right after asking for it.
+TRANSFER_DOWNLOAD_TICKET_TTL_SECONDS = 60
+
+
+def transfer_download_ticket_service(job_id: UUID) -> TicketService:
+    """Return the ticket store for downloading the archive of transfer job `job_id`.
+
+    The job id is part of the key, so a ticket opens only the job it was issued
+    for: on another job's download URL it is an unknown ticket, and stays unused.
+    """
+    return TicketService(
+        prefix=f"rbac:transfer_download_ticket:{job_id}:",
+        ttl_seconds=TRANSFER_DOWNLOAD_TICKET_TTL_SECONDS,
+    )

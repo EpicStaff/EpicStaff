@@ -36,6 +36,13 @@ class ExportJobCreatedSerializer(serializers.Serializer):
     job_id = serializers.UUIDField()
 
 
+class TransferJobDownloadTicketSerializer(serializers.Serializer):
+    download_url = serializers.CharField(
+        help_text="Path of the archive download, carrying a one-time `ticket`; "
+        "needs no Authorization header."
+    )
+
+
 class _ImportJobQuerySerializer(serializers.Serializer):
     """Query parameters of an import-job upload; a parameter it does not declare is refused.
 
