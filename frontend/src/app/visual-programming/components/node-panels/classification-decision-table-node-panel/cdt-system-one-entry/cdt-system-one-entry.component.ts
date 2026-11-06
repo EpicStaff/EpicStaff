@@ -23,7 +23,7 @@ import { linkedEntityFormat, mapFieldRowChanges } from '../../../../utils/diff';
 import { DiffFieldMarkComponent } from '../../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../../input-map/input-map.component';
 import { MissingReferenceNoteComponent } from '../../../missing-reference-note/missing-reference-note.component';
-import { isCompleteQuestion, isValidQuestionName } from './question-name.util';
+import { isCompleteQuestion, isValidQuestionName, MAX_SYSTEM_ONE_QUESTIONS } from './question-name.util';
 import { KEPT_QUESTION_ROW, QuestionRowMark, systemOneQuestionRowChanges } from './system-one-question-row-changes';
 
 type QuestionType = SystemOneQuestion['type'];
@@ -51,8 +51,14 @@ interface QuestionViewRow {
 
 const NAME_ERROR = "Use letters, digits and _; don't start with _ or use a Python keyword.";
 const DUPLICATE_NAME_ERROR = 'This name is already used by another question.';
-const NOT_SAVED_NOTE = 'Not saved yet: add a name, instructions and any options or levels it needs.';
+const NOT_SAVED_NOTE =
+    'Not saved yet: add a name, instructions and at least two options or levels where the type needs them.';
 const KEPT_VERSION_NOTE = 'Not saved yet; the last saved version is kept.';
+
+const LLM_CALIBRATION_NOTE =
+    "This config uses an LLM. Its probabilities are the LLM's own estimate, so thresholds tuned on Jev may behave differently.";
+const OPENAI_CALIBRATION_NOTE =
+    'This config uses OpenAI Decisions. OpenAI does not document how its probabilities are computed, so thresholds tuned on another provider may behave differently.';
 
 const QUESTION_TYPE_ITEMS: SelectItem<QuestionType>[] = [
     { name: 'Noul', value: 'noul' },
@@ -98,11 +104,20 @@ export class CdtSystemOneEntryComponent implements OnInit {
         this.configStorage.configs().map((config) => ({ name: this.configLabel(config), value: config.id }))
     );
 
-    protected readonly isLlmBacked = computed(
-        () =>
-            this.configStorage.configs().find((config) => config.id === this.prompt().system_one_config)?.provider ===
-            'llm'
-    );
+    protected readonly calibrationNote = computed<string | null>(() => {
+        switch (
+            this.configStorage.configs().find((config) => config.id === this.prompt().system_one_config)?.provider
+        ) {
+            case 'llm':
+                return LLM_CALIBRATION_NOTE;
+            case 'openai':
+                return OPENAI_CALIBRATION_NOTE;
+            default:
+                return null;
+        }
+    });
+
+    protected readonly atQuestionLimit = computed(() => this.rows().length >= MAX_SYSTEM_ONE_QUESTIONS);
 
     protected readonly questionViews = computed<QuestionViewRow[]>(() => this.viewRows(this.rows()));
 
@@ -335,9 +350,10 @@ export class CdtSystemOneEntryComponent implements OnInit {
             const llmName = llm ? llm.custom_name || `LLM #${llm.id}` : '';
             return llmName ? `${config.custom_name} — LLM: ${llmName}` : `${config.custom_name} — LLM`;
         }
+        const provider = config.provider === 'openai' ? 'OpenAI' : 'TypeSafe';
         return config.model_name
-            ? `${config.custom_name} — ${config.model_name} (TypeSafe)`
-            : `${config.custom_name} — TypeSafe`;
+            ? `${config.custom_name} — ${config.model_name} (${provider})`
+            : `${config.custom_name} — ${provider}`;
     }
 
     private conditionFor(question: SystemOneQuestion): string {

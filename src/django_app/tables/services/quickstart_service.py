@@ -1,11 +1,13 @@
 from django.db import transaction
 from loguru import logger
 from rbac.authorship import record_last_edits, resolve_author
+from src.shared.system_one.constants import OPENAI_DECISIONS_MODELS, OPENAI_PROVIDER
 from tables.models.default_models import DefaultModels
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
 from tables.models.llm_models import (
     LLMConfig,
     LLMModel,
+    SystemOneConfig,
 )
 from tables.models.provider import Provider
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
@@ -119,9 +121,15 @@ class QuickstartService(metaclass=SingletonMeta):
                 )
 
                 realtime_configs = []
+                system_one_configs = []
                 if provider == "openai":
                     realtime_configs.append(
                         self._create_openai_realtime_config(
+                            bundle_secret, config_name, org_id=org_id, author=author
+                        )
+                    )
+                    system_one_configs.append(
+                        self._create_openai_system_one_config(
                             bundle_secret, config_name, org_id=org_id, author=author
                         )
                     )
@@ -137,7 +145,9 @@ class QuickstartService(metaclass=SingletonMeta):
                     embedding_config=embedding_config,
                     org_id=org_id,
                 )
-                record_last_edits([llm_config, embedding_config, *realtime_configs], user)
+                record_last_edits(
+                    [llm_config, embedding_config, *realtime_configs, *system_one_configs], user
+                )
 
             logger.success(f"Quickstart configuration: {config_name} created successfully!")
             return {
@@ -298,6 +308,18 @@ class QuickstartService(metaclass=SingletonMeta):
             created_by=author,
         )
 
+    def _create_openai_system_one_config(
+        self, secret: Secret, config_name: str, org_id: int, author: User | None
+    ) -> SystemOneConfig:
+        return SystemOneConfig.objects.create(
+            custom_name=config_name,
+            provider=OPENAI_PROVIDER,
+            model_name=OPENAI_DECISIONS_MODELS[0],
+            api_key_secret=secret,
+            org_id=org_id,
+            created_by=author,
+        )
+
     def _create_gemini_realtime_config(
         self, secret: Secret, config_name: str, org_id: int, author: User | None
     ) -> GeminiRealtimeConfig:
@@ -441,6 +463,7 @@ class QuickstartService(metaclass=SingletonMeta):
         config_models = [
             LLMConfig,
             EmbeddingConfig,
+            SystemOneConfig,
         ]
 
         for model in config_models:

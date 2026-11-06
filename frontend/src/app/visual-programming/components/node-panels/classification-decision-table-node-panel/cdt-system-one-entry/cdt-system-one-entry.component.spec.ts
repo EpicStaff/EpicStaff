@@ -21,6 +21,8 @@ import { CdtSystemOneEntryComponent } from './cdt-system-one-entry.component';
 
 const TYPESAFE_CONFIG = { id: 7, custom_name: 'jev', provider: 'typesafe', model_name: 'Jev 1.14' } as SystemOneConfig;
 const LLM_CONFIG = { id: 8, custom_name: 'cheap', provider: 'llm', llm_config: 4 } as SystemOneConfig;
+const OPENAI_CONFIG = { id: 9, custom_name: 'oai', provider: 'openai', model_name: 'gpt-6-luna' } as SystemOneConfig;
+const OPENAI_NOTE = 'This config uses OpenAI Decisions.';
 
 type Entry = PromptConfig & { id: string };
 
@@ -64,8 +66,8 @@ describe('CdtSystemOneEntryComponent', () => {
                 {
                     provide: SystemOneConfigStorageService,
                     useValue: {
-                        configs: signal([TYPESAFE_CONFIG, LLM_CONFIG]),
-                        getAllConfigs: () => of([TYPESAFE_CONFIG, LLM_CONFIG]),
+                        configs: signal([TYPESAFE_CONFIG, LLM_CONFIG, OPENAI_CONFIG]),
+                        getAllConfigs: () => of([TYPESAFE_CONFIG, LLM_CONFIG, OPENAI_CONFIG]),
                     },
                 },
                 {
@@ -181,7 +183,7 @@ describe('CdtSystemOneEntryComponent', () => {
         expect(changes).toEqual([{ system_one_config: 7 }]);
     });
 
-    it('labels an LLM-backed config with the LLM it uses', () => {
+    it('labels an LLM-backed config with the LLM it uses and an OpenAI config with its model', () => {
         mount();
 
         field<HTMLElement>('.config-select .selector__btn').click();
@@ -190,7 +192,7 @@ describe('CdtSystemOneEntryComponent', () => {
             option.textContent?.trim()
         );
 
-        expect(names).toEqual(['jev — Jev 1.14 (TypeSafe)', 'cheap — LLM: gpt-4o']);
+        expect(names).toEqual(['jev — Jev 1.14 (TypeSafe)', 'cheap — LLM: gpt-4o', 'oai — gpt-6-luna (OpenAI)']);
     });
 
     it('emits the result variable as it is typed', () => {
@@ -287,7 +289,7 @@ describe('CdtSystemOneEntryComponent', () => {
         expect(lastQuestions()).toEqual({ q: { type: 'noul', instructions: 'Is it?' } });
     });
 
-    it('emits a Choice question once it has an option', async () => {
+    it('emits a Choice question once it has two options', async () => {
         mount();
         addQuestion();
         typeInto(field('input[aria-label="Question name"]'), 'department');
@@ -299,9 +301,17 @@ describe('CdtSystemOneEntryComponent', () => {
 
         typeInto(field('input[aria-label="Option name, row 1"]'), 'eng');
         typeInto(field('input[aria-label="Option value, row 1"]'), 'Engineering');
+        expect(lastQuestions()).toEqual({ department: { type: 'noul', instructions: 'Which department?' } });
+
+        typeInto(field('input[aria-label="Option name, row 2"]'), 'ops');
+        typeInto(field('input[aria-label="Option value, row 2"]'), 'Operations');
 
         expect(lastQuestions()).toEqual({
-            department: { type: 'choice', instructions: 'Which department?', criteria: { eng: 'Engineering' } },
+            department: {
+                type: 'choice',
+                instructions: 'Which department?',
+                criteria: { eng: 'Engineering', ops: 'Operations' },
+            },
         });
     });
 
@@ -316,6 +326,9 @@ describe('CdtSystemOneEntryComponent', () => {
             const levelInput = field<HTMLInputElement>('input[placeholder="Add a level…"]');
             typeInto(levelInput, level);
             pressEnter(levelInput);
+            if (level === 'junior') {
+                expect(lastQuestions()).toEqual({ seniority: { type: 'noul', instructions: 'How senior?' } });
+            }
         }
 
         expect(lastQuestions()).toEqual({
@@ -418,6 +431,42 @@ describe('CdtSystemOneEntryComponent', () => {
         expect(host().textContent?.includes('This config uses an LLM.')).toBe(warns);
     });
 
+    it.each([
+        [7, false],
+        [8, false],
+        [9, true],
+        [null, false],
+    ])('shows the OpenAI note only for an OpenAI config (config %s -> %s)', (config, shown) => {
+        mount(entry({ system_one_config: config }));
+
+        expect(host().textContent?.includes(OPENAI_NOTE)).toBe(shown);
+    });
+
+    it('tells a new question what it still needs', () => {
+        mount();
+        addQuestion();
+
+        expect(host().textContent).toContain(
+            'Not saved yet: add a name, instructions and at least two options or levels where the type needs them.'
+        );
+    });
+
+    it('disables "Add question" once the 400th question is added', () => {
+        const questions = Object.fromEntries(
+            Array.from({ length: 399 }, (_, index) => [`q${index}`, { type: 'noul', instructions: 'x' }])
+        ) as Record<string, SystemOneQuestion>;
+        const addButton = (): HTMLButtonElement =>
+            [...host().querySelectorAll('button')].find((candidate) =>
+                candidate.textContent?.includes('Add question')
+            )!;
+
+        mount(entry({ questions }));
+        expect(addButton().disabled).toBe(false);
+
+        addQuestion();
+        expect(addButton().disabled).toBe(true);
+    }, 60_000);
+
     it('names the entry and its first question in the routing hint', () => {
         mount(
             entry({ result_variable: 'verdict', questions: { is_engineering: { type: 'noul', instructions: 'x' } } })
@@ -470,8 +519,8 @@ describe('CdtSystemOneEntryComponent on the Changes tab of a version preview', (
                 {
                     provide: SystemOneConfigStorageService,
                     useValue: {
-                        configs: signal([TYPESAFE_CONFIG, LLM_CONFIG]),
-                        getAllConfigs: () => of([TYPESAFE_CONFIG, LLM_CONFIG]),
+                        configs: signal([TYPESAFE_CONFIG, LLM_CONFIG, OPENAI_CONFIG]),
+                        getAllConfigs: () => of([TYPESAFE_CONFIG, LLM_CONFIG, OPENAI_CONFIG]),
                     },
                 },
                 {
