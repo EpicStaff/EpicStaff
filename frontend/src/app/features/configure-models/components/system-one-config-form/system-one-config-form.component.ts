@@ -22,17 +22,16 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { JEV_MODEL_VERSIONS } from '@shared/constants';
+import { JEV_MODEL_VERSIONS, SYSTEM_ONE_MODELS } from '@shared/constants';
 import { SystemOneConfig, SystemOneConfigWrite, SystemOneProvider } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService, SystemOneConfigStorageService } from '@shared/services';
 import { extractHttpErrorMessage, isClientError, trackPickedSecrets } from '@shared/utils';
 
 const PROVIDERS: { key: SystemOneProvider; label: string }[] = [
     { key: 'typesafe', label: 'TypeSafe' },
+    { key: 'openai', label: 'OpenAI' },
     { key: 'llm', label: 'LLM' },
 ];
-
-const JEV_ITEMS: SelectItem[] = JEV_MODEL_VERSIONS.map((version) => ({ name: version, value: version }));
 
 /**
  * The fields of a System One configuration for each provider, and saving them. Used by both the
@@ -63,6 +62,12 @@ export class SystemOneConfigFormComponent implements OnInit {
     readonly errorMessage = signal<string | null>(null);
     protected readonly selectedProvider = linkedSignal<SystemOneProvider>(() => this.config()?.provider ?? 'typesafe');
     protected readonly isEditMode = computed(() => this.config() !== null);
+    /** TypeSafe and OpenAI answer with a model and your API key; LLM answers with one of your LLM configs. */
+    protected readonly usesKey = computed(() => this.selectedProvider() !== 'llm');
+    protected readonly modelItems = computed<SelectItem[]>(() => {
+        const provider = this.selectedProvider();
+        return provider === 'llm' ? [] : SYSTEM_ONE_MODELS[provider].map((model) => ({ name: model, value: model }));
+    });
     protected readonly apiKeyItems = computed<SelectItem[]>(() =>
         this.secretsStorage.selectItems(this.pickedApiKeyIds())
     );
@@ -71,7 +76,6 @@ export class SystemOneConfigFormComponent implements OnInit {
     );
 
     protected readonly providers = PROVIDERS;
-    protected readonly jevItems = JEV_ITEMS;
     protected readonly form = new FormGroup({
         custom_name: new FormControl('', { nonNullable: true, validators: Validators.required }),
         model_name: new FormControl<string | null>(JEV_MODEL_VERSIONS[0], Validators.required),
@@ -134,20 +138,21 @@ export class SystemOneConfigFormComponent implements OnInit {
     protected selectProvider(provider: SystemOneProvider): void {
         if (this.isEditMode()) return;
         this.selectedProvider.set(provider);
+        if (provider !== 'llm') this.form.controls.model_name.setValue(SYSTEM_ONE_MODELS[provider][0]);
         this.applyProvider(provider);
         this.errorMessage.set(null);
     }
 
-    /** Only the active provider's fields are validated and sent; the other provider's are disabled. */
+    /** Only the active provider's fields are validated and sent; the other fields are disabled. */
     private applyProvider(provider: SystemOneProvider): void {
         const { model_name, api_key_secret_id, llm_config } = this.form.controls;
-        const typesafe = provider === 'typesafe';
+        const usesKey = provider !== 'llm';
         const toggle = (control: AbstractControl, enabled: boolean): void =>
             enabled ? control.enable() : control.disable();
-        toggle(model_name, typesafe);
-        toggle(api_key_secret_id, typesafe);
-        toggle(llm_config, !typesafe);
-        if (!typesafe) {
+        toggle(model_name, usesKey);
+        toggle(api_key_secret_id, usesKey);
+        toggle(llm_config, !usesKey);
+        if (!usesKey) {
             this.llmConfigStorage
                 .getAllConfigs()
                 .pipe(takeUntilDestroyed(this.destroyRef))
@@ -157,8 +162,9 @@ export class SystemOneConfigFormComponent implements OnInit {
 
     private buildBody(): SystemOneConfigWrite {
         const { custom_name, model_name, api_key_secret_id, llm_config } = this.form.getRawValue();
-        return this.selectedProvider() === 'typesafe'
-            ? { custom_name, provider: 'typesafe', model_name, api_key_secret_id, llm_config: null }
-            : { custom_name, provider: 'llm', model_name: null, api_key_secret_id: null, llm_config };
+        const provider = this.selectedProvider();
+        return provider === 'llm'
+            ? { custom_name, provider, model_name: null, api_key_secret_id: null, llm_config }
+            : { custom_name, provider, model_name, api_key_secret_id, llm_config: null };
     }
 }

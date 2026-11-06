@@ -17,7 +17,7 @@
                 <span>Provider</span>
                 <span class="required">*</span>
                 <app-help-tooltip
-                    text="TypeSafe runs a Jev model with your API key. LLM answers with one of your LLM configurations."
+                    text="TypeSafe runs a Jev model and OpenAI runs gpt-6-luna, each with your API key. LLM answers with one of your LLM configurations."
                     position="right"
                 />
             </div>
@@ -41,15 +41,19 @@
             </div>
         </div>
 
-        @if (selectedProvider() === 'typesafe') {
+        @if (usesKey()) {
             <div>
                 <app-select
                     formControlName="model_name"
-                    label="Jev Version"
+                    [label]="selectedProvider() === 'openai' ? 'Model' : 'Jev Version'"
                     variant="boxed"
-                    placeholder="Select a version"
-                    tooltipText="The Jev model version that answers the questions"
-                    [items]="jevItems"
+                    [placeholder]="selectedProvider() === 'openai' ? 'Select a model' : 'Select a version'"
+                    [tooltipText]="
+                        selectedProvider() === 'openai'
+                            ? 'The OpenAI model that answers the questions'
+                            : 'The Jev model version that answers the questions'
+                    "
+                    [items]="modelItems()"
                     [required]="true"
                 />
                 <app-validation-errors [control]="form.controls.model_name" />
@@ -60,7 +64,11 @@
                     label="API Key"
                     variant="boxed"
                     placeholder="Select a secret"
-                    tooltipText="The stored secret holding your TypeSafe API key"
+                    [tooltipText]="
+                        selectedProvider() === 'openai'
+                            ? 'The stored secret holding your OpenAI API key'
+                            : 'The stored secret holding your TypeSafe API key'
+                    "
                     [items]="apiKeyItems()"
                     [required]="true"
                     [showSearch]="true"
@@ -71,6 +79,9 @@
                     <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
                     </app-hint-message>
+                }
+                @if (selectedProvider() === 'openai') {
+                    <app-hint-message>OpenAI does not document how its probabilities are computed.</app-hint-message>
                 }
                 <app-validation-errors [control]="form.controls.api_key_secret_id" />
             </div>

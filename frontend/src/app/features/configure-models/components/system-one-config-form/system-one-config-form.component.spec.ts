@@ -26,6 +26,15 @@ const TYPESAFE_CONFIG: SystemOneConfig = {
     last_edited_at: null,
 };
 
+const OPENAI_CONFIG: SystemOneConfig = {
+    ...TYPESAFE_CONFIG,
+    id: 12,
+    custom_name: 'OpenAI prod',
+    provider: 'openai',
+    model_name: 'gpt-6-luna',
+};
+const OPENAI_HINT = 'OpenAI does not document how its probabilities are computed.';
+
 class ResizeObserverStub {
     observe(): void {}
     unobserve(): void {}
@@ -122,6 +131,28 @@ describe('SystemOneConfigFormComponent', () => {
         expect(host(fixture).textContent).toContain(LLM_HINT);
     });
 
+    it('shows the model (default gpt-6-luna) and API key selects, and no LLM config select, for OpenAI', () => {
+        const { fixture } = render();
+
+        providerButton(fixture, 'OpenAI').click();
+        fixture.detectChanges();
+
+        expect(selectFor(fixture, 'model_name')!.textContent).toContain('gpt-6-luna');
+        expect(selectFor(fixture, 'api_key_secret_id')).not.toBeNull();
+        expect(selectFor(fixture, 'llm_config')).toBeNull();
+        expect(host(fixture).textContent).toContain(OPENAI_HINT);
+    });
+
+    it('offers the providers in the order TypeSafe, OpenAI, LLM', () => {
+        const { fixture } = render();
+
+        const labels = Array.from(host(fixture).querySelectorAll('.provider-btn')).map((button) =>
+            button.textContent!.trim()
+        );
+
+        expect(labels).toEqual(['TypeSafe', 'OpenAI', 'LLM']);
+    });
+
     it('tells the user to add an LLM config first when there are none to pick', () => {
         const { fixture } = render(null, []);
 
@@ -157,6 +188,48 @@ describe('SystemOneConfigFormComponent', () => {
             llm_config: null,
         });
         expect(saved).toHaveBeenCalledOnce();
+    });
+
+    it('creates an OpenAI config with gpt-6-luna and the chosen secret', () => {
+        const { fixture, http, saved } = render();
+        providerButton(fixture, 'OpenAI').click();
+        fixture.detectChanges();
+        type(fixture, 'Configuration Name', 'OpenAI prod');
+        pick(fixture, 'api_key_secret_id', 'Jev key');
+
+        fixture.componentInstance.submit();
+        const request = http.expectOne({ method: 'POST', url: '/api/system-one-configs/' });
+        request.flush({ ...OPENAI_CONFIG, ...request.request.body });
+
+        expect(request.request.body).toEqual({
+            custom_name: 'OpenAI prod',
+            provider: 'openai',
+            model_name: 'gpt-6-luna',
+            api_key_secret_id: 5,
+            llm_config: null,
+        });
+        expect(saved).toHaveBeenCalledOnce();
+    });
+
+    it('goes back to the default Jev version after switching TypeSafe, OpenAI, TypeSafe', () => {
+        const { fixture, http } = render();
+        providerButton(fixture, 'OpenAI').click();
+        fixture.detectChanges();
+        providerButton(fixture, 'TypeSafe').click();
+        fixture.detectChanges();
+        type(fixture, 'Configuration Name', 'Jev prod');
+        pick(fixture, 'api_key_secret_id', 'Jev key');
+
+        fixture.componentInstance.submit();
+        const request = http.expectOne({ method: 'POST', url: '/api/system-one-configs/' });
+
+        expect(request.request.body).toEqual({
+            custom_name: 'Jev prod',
+            provider: 'typesafe',
+            model_name: 'jev-1.14.0',
+            api_key_secret_id: 5,
+            llm_config: null,
+        });
     });
 
     it('creates an LLM config without a Jev version or secret', () => {
@@ -213,6 +286,25 @@ describe('SystemOneConfigFormComponent', () => {
 
         expect(providerButton(fixture, 'TypeSafe').disabled).toBe(false);
         expect(providerButton(fixture, 'LLM').disabled).toBe(true);
+    });
+
+    it('keeps the provider of an edited OpenAI config fixed and updates it with its model', () => {
+        const { fixture, http } = render(OPENAI_CONFIG);
+
+        expect(providerButton(fixture, 'OpenAI').disabled).toBe(false);
+        expect(providerButton(fixture, 'TypeSafe').disabled).toBe(true);
+        expect(providerButton(fixture, 'LLM').disabled).toBe(true);
+
+        fixture.componentInstance.submit();
+        const request = http.expectOne({ method: 'PATCH', url: '/api/system-one-configs/12/' });
+
+        expect(request.request.body).toEqual({
+            custom_name: 'OpenAI prod',
+            provider: 'openai',
+            model_name: 'gpt-6-luna',
+            api_key_secret_id: 5,
+            llm_config: null,
+        });
     });
 
     it("reports the server's message on a 400 and stays unsaved", () => {
