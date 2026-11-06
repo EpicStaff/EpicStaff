@@ -37,8 +37,10 @@ class NotifyEmailThrottle(SimpleRateThrottle):
 
 class TransferJobCreateThrottle(SimpleRateThrottle):
     """
-    Throttle for starting export jobs (`POST /api/graphs/export-jobs/` and
-    `POST /api/source-collections/export-jobs/`), one bucket for both.
+    Throttle for starting transfer jobs, one bucket for all of them: export jobs
+    (`POST /api/graphs/export-jobs/`, `POST /api/source-collections/export-jobs/`)
+    and import uploads (`POST /api/graphs/import-jobs/`,
+    `POST /api/source-collections/import-jobs/`).
 
     The unfinished-job limit caps how many jobs run at once; this caps how
     fast one caller can start them, since a job that fails fast frees its slot

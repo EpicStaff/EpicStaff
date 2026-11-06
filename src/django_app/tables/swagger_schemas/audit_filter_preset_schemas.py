@@ -82,9 +82,8 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = {
         "Bulk counterpart to the single-preset export above - always "
         'returns the `{"presets": [...]}` batch shape (even for one id), '
         "matching what `import`'s batch mode accepts. `ids` is required "
-        "and non-empty (same `BulkExportSerializer` GraphViewSet.bulk_export "
-        "uses) - an id outside the active org, a colleague's private preset, "
-        "or one that doesn't exist, 400s "
+        "and non-empty (`BulkExportSerializer`) - an id outside the active "
+        "org, a colleague's private preset, or one that doesn't exist, 400s "
         "the whole request rather than being silently dropped."
     ),
     "request": BulkExportSerializer,

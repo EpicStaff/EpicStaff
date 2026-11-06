@@ -1,10 +1,12 @@
 """Storage of transfer-job archives, outside every organization's files and quota."""
 
 from collections.abc import Iterator
+from datetime import datetime
 from typing import BinaryIO
 from uuid import UUID
 
 from tables.services.storage_service import get_storage_backend
+from utils.logger import logger
 
 TRANSFERS_PREFIX = "system/transfers/"
 _DEFAULT_CHUNK_SIZE = 1 << 20
@@ -44,3 +46,22 @@ class TransferArchiveStore:
     def delete_job(self, job_id: UUID) -> None:
         """Delete everything stored for the job; nothing to delete is fine."""
         self._backend.delete_prefix(self._job_prefix(job_id))
+
+    def list_jobs(self) -> dict[UUID, datetime]:
+        """Map each job with stored files to the newest last-modified time of its files.
+
+        Lists every object under `system/transfers/`; a key that is not under a
+        job id is logged and left out.
+        """
+        jobs: dict[UUID, datetime] = {}
+        for key, _size, modified_iso in self._backend.list_all_objects(TRANSFERS_PREFIX):
+            job_segment = key.removeprefix(TRANSFERS_PREFIX).split("/", 1)[0]
+            try:
+                job_id = UUID(job_segment)
+            except ValueError:
+                logger.warning("Storage key {} is under no transfer job id; skipped", key)
+                continue
+            modified = datetime.fromisoformat(modified_iso)
+            if job_id not in jobs or modified > jobs[job_id]:
+                jobs[job_id] = modified
+        return jobs

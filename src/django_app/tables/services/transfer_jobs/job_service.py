@@ -3,7 +3,7 @@
 import uuid
 from dataclasses import asdict
 
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.db.models import Count, Q
 from rbac.models import Organization
 from tables.exceptions import ExportEntitiesNotFoundError, TooManyTransferJobsError
@@ -41,7 +41,9 @@ class TransferJobService:
         """Queue an export of the items `ids` of `org_id`, owned by `user`.
 
         The job is handed to the background consumer once the transaction commits.
-        The caller has already checked `user`'s EXPORT right; the runner checks it again.
+        A failed hand-off is only logged: the job stays queued until the sweep fails
+        it as `job_not_started`, which the polling client then sees. The caller has
+        already checked `user`'s EXPORT right; the runner checks it again.
 
         Args:
             ids: Distinct ids of `entity_type` items; every one must be in `org_id`.
@@ -72,7 +74,7 @@ class TransferJobService:
                 main_entity=entity_type.value,
                 request=request,
             )
-            transaction.on_commit(lambda: enqueue_transfer_job(job))
+            transaction.on_commit(lambda: enqueue_transfer_job(job), robust=True)
         return job
 
     def start_import(
@@ -90,9 +92,11 @@ class TransferJobService:
         The archive is checked first (`check_job_archive`), so a refused one is never
         stored. It is then stored under a job id made here, and the job row is created
         once the limits are checked again under the organization's lock. If anything
-        fails after the archive is stored, the stored archive is deleted and no job
-        is left. The caller has already checked `user`'s CREATE right (and UPDATE for
-        `replace_existing`), and keeps owning the file at `archive_path`.
+        fails after the archive is stored and before the job row is committed, the
+        stored archive is deleted and no job is left; a failed hand-off to the
+        consumer after the commit is handled as in `start_export`. The caller has
+        already checked `user`'s CREATE right (and UPDATE for `replace_existing`),
+        and keeps owning the file at `archive_path`.
 
         Args:
             settings: The import settings of a flow import; None for an import that
@@ -107,6 +111,12 @@ class TransferJobService:
 
         store = store if store is not None else TransferArchiveStore()
         job_id = uuid.uuid4()
+        # The upload can take minutes; a connection kept checked out across it holds
+        # a pool slot for nothing. Inside a caller's transaction it cannot be given
+        # back without breaking that transaction, so it is kept then.
+        if not transaction.get_connection().in_atomic_block:
+            close_old_connections()
+        committed = False
         try:
             with open(archive_path, "rb") as archive:
                 archive_key = store.upload_file(job_id, IMPORT_ARCHIVE_NAME, archive)
@@ -122,9 +132,13 @@ class TransferJobService:
                     request={"settings": asdict(settings) if settings is not None else {}},
                     archive_key=archive_key,
                 )
-                transaction.on_commit(lambda: enqueue_transfer_job(job))
+                transaction.on_commit(lambda: enqueue_transfer_job(job), robust=True)
+            committed = True
         except BaseException:
-            _discard_archive(store, job_id)
+            # Once the row is committed the archive is the job's: the runner or the
+            # sweep deletes it.
+            if not committed:
+                _discard_archive(store, job_id)
             raise
         return job
 

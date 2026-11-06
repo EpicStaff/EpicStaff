@@ -166,8 +166,9 @@ def _admit(scope, route: ImportJobRoute) -> _Admission:
         NotAuthenticated, PermissionDenied, Throttled: see `authorize_request`.
         TransferJobRequiresUserError: The caller is no user who could own a job.
         ValidationError: An unknown or invalid query parameter.
-        TooManyTransferJobsError: The caller or the organization is at its job limit.
         ImportArchiveTooLargeError: Content-Length is past `MAX_KNOWLEDGE_ARCHIVE_SIZE`.
+        PermissionDenied: `replace_existing` without the UPDATE right.
+        TooManyTransferJobsError: The caller or the organization is at its job limit.
     """
     view = TransferImportAccessView(rbac_resource_type=route.resource_type)
     request = authorize_request(view, scope, IMPORT_JOBS_ACTION)
@@ -180,15 +181,15 @@ def _admit(scope, route: ImportJobRoute) -> _Admission:
     query.is_valid(raise_exception=True)
     # A route whose query declares no settings (collections) imports with the defaults.
     import_settings = ImportSettings(**query.validated_data) if query.validated_data else None
+    body_size = declared_size(request)
+    if body_size is not None and body_size > settings.MAX_KNOWLEDGE_ARCHIVE_SIZE:
+        raise ImportArchiveTooLargeError()
+
     org_id = view.get_active_org_id()
     if import_settings is not None and import_settings.replace_existing:
         # Replacing overwrites existing items in place; the gate above only checks CREATE.
         assert_org_permission(request.user, org_id, route.resource_type, Permission.UPDATE)
-
     TransferJobService().check_limits(user=user, org_id=org_id)
-    body_size = declared_size(request)
-    if body_size is not None and body_size > settings.MAX_KNOWLEDGE_ARCHIVE_SIZE:
-        raise ImportArchiveTooLargeError()
     return _Admission(user=user, org_id=org_id, import_settings=import_settings)
 
 

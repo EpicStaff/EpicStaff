@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from uuid import UUID
 
+from django.conf import settings
 from django.utils import timezone
 from rbac.access.asserts import assert_org_permission
 from rbac.models.enums import Permission
@@ -25,6 +26,10 @@ from tables.services.transfer_jobs.archive_store import TransferArchiveStore
 from tables.utils.helpers import generate_file_name
 from utils.exception_handler import flatten_error_detail
 from utils.logger import logger
+
+# At most this many archives without a job row are deleted per sweep; the rest wait
+# for the next one.
+MAX_ORPHANED_ARCHIVES_PER_SWEEP = 100
 
 # A job still running after this long was cut off (its container stopped), and one still
 # queued after this long lost its stream entry; the sweep fails both.
@@ -223,7 +228,12 @@ class TransferJobRunner:
 def sweep_transfer_jobs(now: datetime, store: TransferArchiveStore | None = None) -> dict:
     """Delete expired jobs with their archives, and fail jobs left running or never started.
 
-    Returns how many jobs were deleted, failed while running, and failed before starting.
+    Also deletes stored archives that have no job row (an import refused after its
+    upload whose own cleanup failed, or a job deleted without its archive), once
+    they are older than `TRANSFER_ARCHIVE_TTL`.
+
+    Returns how many jobs were deleted, failed while running, and failed before
+    starting, and how many archives without a job were deleted.
     """
     store = store if store is not None else TransferArchiveStore()
     stale_before = now - TRANSFER_JOB_STALE_AFTER
@@ -257,4 +267,39 @@ def sweep_transfer_jobs(now: datetime, store: TransferArchiveStore | None = None
         TransferJob.objects.filter(pk=job_id).delete()
         deleted += 1
 
-    return {"deleted": deleted, "interrupted": interrupted, "not_started": not_started}
+    orphans_deleted = _delete_orphaned_archives(now, store)
+
+    return {
+        "deleted": deleted,
+        "interrupted": interrupted,
+        "not_started": not_started,
+        "orphans_deleted": orphans_deleted,
+    }
+
+
+def _delete_orphaned_archives(now: datetime, store: TransferArchiveStore) -> int:
+    # Only archives older than a job's whole lifetime: a younger one may belong to
+    # an import whose row is about to be created after its upload.
+    stored_before = now - timedelta(seconds=settings.TRANSFER_ARCHIVE_TTL)
+    old_job_ids = [
+        job_id for job_id, modified in store.list_jobs().items() if modified <= stored_before
+    ]
+    with_row = set(TransferJob.objects.filter(pk__in=old_job_ids).values_list("id", flat=True))
+    orphans = [job_id for job_id in old_job_ids if job_id not in with_row]
+    if len(orphans) > MAX_ORPHANED_ARCHIVES_PER_SWEEP:
+        logger.warning(
+            "{} transfer archives have no job; deleting {} now, the rest next sweep",
+            len(orphans),
+            MAX_ORPHANED_ARCHIVES_PER_SWEEP,
+        )
+
+    deleted = 0
+    for job_id in orphans[:MAX_ORPHANED_ARCHIVES_PER_SWEEP]:
+        try:
+            store.delete_job(job_id)
+        except Exception:
+            logger.exception("Could not delete the transfer archive {} that has no job", job_id)
+            continue
+        logger.info("Deleted the transfer archive {} that has no job", job_id)
+        deleted += 1
+    return deleted

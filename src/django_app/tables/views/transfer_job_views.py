@@ -18,7 +18,7 @@ from rbac.models.enums import Permission
 from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import MethodNotAllowed, NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.exceptions import TransferJobNotReadyError
@@ -110,7 +110,8 @@ class TransferJobViewSet(OrgScopedResolverMixin, viewsets.GenericViewSet):
                 description=(
                     "One-time ticket from `download-ticket`, in place of the "
                     "Authorization header. An unknown, expired or used ticket, or one "
-                    "issued for another job, is a 404."
+                    "issued for another job, is a 404. A HEAD request with a ticket "
+                    "is a 405 and leaves the ticket unspent."
                 ),
             )
         ],
@@ -124,6 +125,10 @@ class TransferJobViewSet(OrgScopedResolverMixin, viewsets.GenericViewSet):
     @action(detail=True, methods=["get"])
     def download(self, request, pk=None):
         if self._is_ticketed_download():
+            # DRF routes HEAD here too; only the GET that fetches the archive may
+            # spend the single-use ticket.
+            if request.method != "GET":
+                raise MethodNotAllowed(request.method)
             job = self._redeem_download_ticket(request.query_params[TICKET_QUERY_PARAM])
         else:
             job = self.get_object()

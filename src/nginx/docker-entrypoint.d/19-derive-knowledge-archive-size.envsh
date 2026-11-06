@@ -1,14 +1,15 @@
 # Sourced by the nginx image's /docker-entrypoint.sh before 20-envsubst-on-templates.sh. The
 # import-job upload routes (/api/graphs/import-jobs/, /api/source-collections/import-jobs/) cap
 # their body at DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE, the limit Django applies to the same upload.
-# Django reads it as a byte size (src/shared/humanize.py to_byte_size: a whole number of bytes, or
-# a number and one of b, kb, mb, gb, binary multiples, in any case); nginx has no such units, so
-# this exports the value as bytes in KNOWLEDGE_ARCHIVE_MAX_BYTES. A value Django would refuse, or
-# none (Django refuses it for this setting), stops the container (exit 64).
+# Django reads it as a byte size (src/shared/humanize.py to_byte_size: a whole number of bytes as
+# Python's int() reads it, so with an optional + and _ between digits, or a number and one of b,
+# kb, mb, gb, binary multiples, in any case); nginx has no such units, so this exports the value as
+# bytes in KNOWLEDGE_ARCHIVE_MAX_BYTES. A value Django would refuse, none (Django refuses it for
+# this setting), and 0 or a negative number (no cap, to nginx) stop the container (exit 64).
 knowledge_archive_size=$(printf '%s' "${DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE-}" \
   | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
 knowledge_archive_bytes=$(printf '%s\n' "$knowledge_archive_size" | awk '
-  /^[0-9]+$/ { printf "%.0f", $0; exit }
+  /^[+]?[0-9]+(_[0-9]+)*$/ { gsub(/[+_]/, ""); printf "%.0f", $0; exit }
   match($0, /^[0-9]+(\.[0-9]+)?[[:space:]]*/) {
     number = substr($0, 1, RLENGTH)
     unit = substr($0, RLENGTH + 1)
