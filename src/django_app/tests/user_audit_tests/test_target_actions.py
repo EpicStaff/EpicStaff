@@ -133,24 +133,23 @@ def test_storage_mkdir_records_the_folder_not_its_new_ancestors(
 
     folder = StorageFile.objects.get(org=acme, path="reports/2026/")
     assert StorageFile.objects.filter(org=acme, path="reports/").exists()
-    assert _target(_only_event(sent_events)) == ("created", "storage file", str(folder.id), "2026")
+    assert _target(_only_event(sent_events)) == ("created", "storage file", str(folder.id), "reports/2026/")
 
 
 @pytest.mark.parametrize(
-    "seeded_path, from_path, to_path, entry_path, new_name, old_name",
+    "seeded_path, from_path, to_path, entry_path, old_path",
     [
-        ("docs/old.txt", "docs/old.txt", "docs/new.txt", "docs/new.txt", "new.txt", "old.txt"),
-        ("docs/a.txt", "docs", "papers", "papers/", "papers", "docs"),
+        ("docs/old.txt", "docs/old.txt", "docs/new.txt", "docs/new.txt", "docs/old.txt"),
+        ("docs/a.txt", "docs", "papers", "papers/", "docs/"),
     ],
     ids=["file", "folder"],
 )
-def test_storage_rename_records_renamed_with_the_old_name(
+def test_storage_rename_records_renamed_with_the_old_path(
     seeded_path,
     from_path,
     to_path,
     entry_path,
-    new_name,
-    old_name,
+    old_path,
     admin_client,
     acme,
     storage_manager,
@@ -168,8 +167,8 @@ def test_storage_rename_records_renamed_with_the_old_name(
 
     entry = StorageFile.objects.get(org=acme, path=entry_path)
     event = _only_event(sent_events)
-    assert _target(event) == ("renamed", "storage file", str(entry.id), new_name)
-    assert event.previous_name == old_name
+    assert _target(event) == ("renamed", "storage file", str(entry.id), entry_path)
+    assert event.previous_name == old_path
 
 
 def test_storage_move_records_moved_with_both_paths(

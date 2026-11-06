@@ -426,7 +426,7 @@ def _record_move(org_id: int, source_path: str, entry_path: str, *, user: object
             action=UserAction.RENAMED,
             org_id=org_id,
             target=entry,
-            previous_name=_name_of(source_path),
+            previous_name=source_path,
         )
 
 

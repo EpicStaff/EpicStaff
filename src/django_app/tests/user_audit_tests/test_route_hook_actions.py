@@ -651,6 +651,26 @@ def test_bulk_delete_of_a_config_deleted_for_good_records_it_by_name(
     ]
 
 
+def test_single_delete_of_a_config_deleted_for_good_records_it_by_name(
+    admin_client, acme, sent_events, django_capture_on_commit_callbacks
+):
+    llm_config = _llm_config(acme)
+    llm_config_id = llm_config.id
+
+    response = _send(
+        admin_client,
+        "delete",
+        f"/api/llm-configs/{llm_config_id}/",
+        django_capture_on_commit_callbacks,
+    )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
+    assert not LLMConfig.objects.filter(id=llm_config_id).exists()
+    assert [_target(event) for event in _hook_events(sent_events)] == [
+        ("deleted", "LLM config", str(llm_config_id), "Writer LLM")
+    ]
+
+
 @pytest.mark.parametrize(
     "method, url, body",
     [

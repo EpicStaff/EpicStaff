@@ -4,6 +4,10 @@ from django.db import models
 
 # The first of these a model has, and has filled, names the target.
 TARGET_NAME_FIELDS = ("name", "node_name", "custom_name", "collection_name", "file_name", "path")
+# Models named by another field than the first of TARGET_NAME_FIELDS, keyed by
+# `app_label.model_name`. A storage entry is known by its full path: one file name repeats
+# across folders, and a move or copy records the path too.
+TARGET_NAME_FIELD_OVERRIDES = {"tables.storagefile": "path"}
 # Labels a reader knows a model by, where its verbose_name is an internal word.
 TARGET_TYPE_LABELS = {
     "graph": "flow",
@@ -69,10 +73,12 @@ def describe(instance: models.Model) -> TargetDescription:
 
     A row of a model in `TARGET_NAMED_AFTER_PARENT` is named after its parent.
     """
+    override = TARGET_NAME_FIELD_OVERRIDES.get(instance._meta.label_lower)
+    name_fields = (override,) if override else TARGET_NAME_FIELDS
     name = next(
         (
             str(getattr(instance, field_name))
-            for field_name in TARGET_NAME_FIELDS
+            for field_name in name_fields
             if getattr(instance, field_name, None)
         ),
         None,

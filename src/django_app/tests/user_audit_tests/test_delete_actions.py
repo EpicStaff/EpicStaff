@@ -258,7 +258,7 @@ def test_empty_bin_records_one_per_item(
         [
             ("deleted", "flow", str(flow.id), "Orders"),
             ("deleted", "secret", str(secret.id), "api-key"),
-            ("deleted", "storage file", str(binned_file.id), "march.pdf"),
+            ("deleted", "storage file", str(binned_file.id), "reports/march.pdf"),
         ]
     )
     assert {event.org_id for event in sent_events} == {acme.id}
@@ -352,7 +352,7 @@ def test_storage_file_delete_records_moved_to_recycle_bin(
 
     binned = StorageFile.deleted_objects.get(org=acme, path="reports/march.pdf")
     [event] = sent_events
-    assert _target(event) == ("moved_to_recycle_bin", "storage file", str(binned.id), "march.pdf")
+    assert _target(event) == ("moved_to_recycle_bin", "storage file", str(binned.id), "reports/march.pdf")
     assert (event.org_id, event.actor_user_id) == (acme.id, admin_acme.id)
 
 
@@ -367,7 +367,7 @@ def test_storage_folder_delete_records_one_not_per_file(
 
     folder = StorageFile.deleted_objects.get(org=acme, path="reports/")
     [event] = sent_events
-    assert _target(event) == ("moved_to_recycle_bin", "storage file", str(folder.id), "reports")
+    assert _target(event) == ("moved_to_recycle_bin", "storage file", str(folder.id), "reports/")
 
 
 def test_storage_restore_records_restored(
@@ -384,7 +384,7 @@ def test_storage_restore_records_restored(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     [event] = sent_events
-    assert _target(event) == ("restored", "storage file", str(binned.id), "march.pdf")
+    assert _target(event) == ("restored", "storage file", str(binned.id), "reports/march.pdf")
     assert event.org_id == acme.id
 
 

@@ -6,6 +6,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
+from src.shared.models import UserAction
+from tables.models.base_models import SoftDeleteMixin
 from tables.serializers.serializers import (
     BulkDeleteQuerySerializer,
     BulkDeleteRequestSerializer,
@@ -19,6 +21,7 @@ from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usa
 from tables.services.trigger_nodes import trigger_node_access
 from user_audit.context import mark_request_handled
 from user_audit.read_only import reads_only
+from user_audit.recorder import record_user_action
 from utils.logger import logger
 
 
@@ -127,6 +130,12 @@ class BulkDeleteActionMixin:
         # usage when the delete runs.
         with transaction.atomic():
             service.assert_deletable(instance)
+            if not isinstance(instance, SoftDeleteMixin):
+                # Recorded while the row still exists, as on the bulk path: once it is gone
+                # the request's fallback record could not name it. A soft delete records itself.
+                record_user_action(
+                    action=UserAction.DELETED, org_id=service.org_id, target=instance
+                )
             super().perform_destroy(instance)
 
     @action(detail=False, methods=["post"], url_path="bulk-delete")
