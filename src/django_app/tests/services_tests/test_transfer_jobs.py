@@ -545,3 +545,96 @@ def test_consumer_sweeps_when_asked(redis_client):
 
     assert len(sweeps) == 1
     assert _pending(redis_client) == 0
+
+
+# --- stored export archives -----------------------------------------------------------------
+
+
+def test_an_export_past_the_import_size_limit_fails_and_stores_nothing(
+    runner, backend, flow, regular_user, settings, monkeypatch
+):
+    settings.MAX_KNOWLEDGE_ARCHIVE_SIZE = 10
+    written = []
+    render = ArchiveExportFormatStrategy.render_to_file
+
+    def recording_render(self, result):
+        path = render(self, result)
+        written.append(path)
+        return path
+
+    monkeypatch.setattr(ArchiveExportFormatStrategy, "render_to_file", recording_render)
+    job = _export_job(flow, regular_user)
+
+    runner.run(job.id)
+
+    job.refresh_from_db()
+    assert (job.status, job.error["code"]) == (TransferJob.Status.FAILED, "archive_too_large")
+    assert backend.objects == {}
+    assert written and not os.path.exists(written[0])
+
+
+def _completed_export(store, user, org, finished_at) -> TransferJob:
+    job = _job(org, user, kind=TransferJob.Kind.EXPORT, request={"ids": []})
+    key = store.upload_file(job.id, EXPORT_ARCHIVE_NAME, io.BytesIO(b"archive"))
+    TransferJob.objects.filter(pk=job.pk).update(
+        status=TransferJob.Status.COMPLETED, archive_key=key, finished_at=finished_at
+    )
+    job.refresh_from_db()
+    return job
+
+
+def test_a_user_keeps_only_their_newest_export_archives(
+    runner, store, backend, flow, regular_user, default_org, django_user_model
+):
+    now = timezone.now()
+    older = [
+        _completed_export(store, regular_user, default_org, now - timedelta(hours=hours))
+        for hours in (4, 3, 2)
+    ]
+    colleague = django_user_model.objects.create_user(
+        email="colleague-exports@example.com", password="StrongPass123!"
+    )
+    colleagues_export = _completed_export(store, colleague, default_org, now - timedelta(hours=9))
+    job = _export_job(flow, regular_user)
+
+    runner.run(job.id)
+
+    oldest, *kept = older
+    oldest.refresh_from_db()
+    assert (oldest.status, oldest.archive_key, oldest.error["code"]) == (
+        TransferJob.Status.COMPLETED,
+        "",
+        "archive_removed",
+    )
+    for export in kept:
+        export.refresh_from_db()
+        assert export.archive_key in backend.objects
+    job.refresh_from_db()
+    assert job.archive_key in backend.objects
+    # Another user's exports are never touched.
+    colleagues_export.refresh_from_db()
+    assert colleagues_export.archive_key in backend.objects
+
+
+def test_an_archive_that_cannot_be_deleted_is_left_as_it_was(
+    runner, store, backend, flow, regular_user, default_org, monkeypatch
+):
+    now = timezone.now()
+    older = [
+        _completed_export(store, regular_user, default_org, now - timedelta(hours=hours))
+        for hours in (4, 3, 2)
+    ]
+    real_delete = TransferArchiveStore.delete_job
+
+    def failing_delete(self, job_id):
+        if job_id == older[0].id:
+            raise RuntimeError("storage down")
+        return real_delete(self, job_id)
+
+    monkeypatch.setattr(TransferArchiveStore, "delete_job", failing_delete)
+
+    runner.run(_export_job(flow, regular_user).id)
+
+    older[0].refresh_from_db()
+    assert older[0].archive_key in backend.objects
+    assert older[0].error is None

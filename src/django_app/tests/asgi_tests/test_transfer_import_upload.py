@@ -19,7 +19,9 @@ from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.models import Graph, TransferJob
+from tables.services.storage_service.upload.admission import get_upload_admission
 from tables.services.transfer_jobs import job_service
+from tables.services.transfer_jobs.job_service import import_uploads_in_progress
 from tables.services.transfer_jobs.archive_store import TransferArchiveStore
 from tables.services.trigger_nodes import TRIGGER_NODE_TYPES
 from tables.views import transfer_import_upload_view
@@ -422,3 +424,41 @@ async def test_an_oversized_upload_is_refused_before_the_job_limit_is_counted(
     response = await _post(FLOWS, user, acme, b"PK\x03\x04" + b"x" * 200)
 
     assert response.status_code == 413
+
+
+async def test_an_upload_in_progress_counts_against_the_job_limit(
+    custom_role_user, acme, backend, enqueued, temp_files
+):
+    user = await sync_to_async(_user)(custom_role_user, acme)
+    for _ in range(2):
+        await TransferJob.objects.acreate(
+            org=acme, created_by=user, kind="export", main_entity="Flow"
+        )
+
+    # A third slot is taken by an upload still streaming in.
+    with import_uploads_in_progress.hold(org_id=acme.id, user_id=user.id):
+        response = await _post(FLOWS, user, acme, b"PK\x03\x04")
+
+    assert response.status_code == 429
+    assert response.json()["code"] == "too_many_jobs"
+    assert temp_files == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(b"not a zip", id="refused"),
+        pytest.param(None, id="accepted"),
+    ],
+)
+async def test_an_upload_gives_back_its_hold_and_slot_however_it_ends(
+    custom_role_user, acme, backend, enqueued, temp_files, body
+):
+    user = await sync_to_async(_user)(custom_role_user, acme)
+    if body is None:
+        body = _zip(await sync_to_async(_envelope)(acme))
+
+    await _post(FLOWS, user, acme, body)
+
+    assert import_uploads_in_progress._uploads[(acme.id, user.id)] == 0
+    assert get_upload_admission().uploads_of(acme.id) == 0

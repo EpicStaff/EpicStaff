@@ -579,3 +579,25 @@ def test_a_ticketed_head_is_refused_and_leaves_the_ticket_usable(
 
     assert api_client.head(url).status_code == 405
     assert api_client.get(url).status_code == 200
+
+
+@pytest.mark.parametrize("route", ["transfer-jobs-download", "transfer-jobs-download-ticket"])
+def test_an_export_whose_archive_was_removed_answers_gone(
+    client_in, exporter, acme, backend, fake_redis, route
+):
+    job = _job(
+        exporter,
+        acme,
+        status=TransferJob.Status.COMPLETED,
+        archive_key="",
+        error={"code": "archive_removed", "message": "removed"},
+    )
+    client = client_in(exporter, acme)
+
+    if route == "transfer-jobs-download":
+        response = client.get(reverse(route, args=[job.id]))
+    else:
+        response = client.post(reverse(route, args=[job.id]))
+
+    assert response.status_code == 410
+    assert response.json()["code"] == "archive_removed"
