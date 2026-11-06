@@ -21,9 +21,24 @@ side and must be read defensively since it crosses a service boundary.
 
 from __future__ import annotations
 
+import unicodedata
+
 from shared.models.agent_service import ContextAttachment, S3FileSpec
 
 _FLAG_ORDER = ("can_list", "can_view", "can_edit", "can_delete")
+
+_CHARACTER_ESCAPES = {"\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+
+_LINE_BREAKING_CATEGORIES = frozenset({"Cc", "Zl", "Zp"})
+
+
+def _is_line_breaking_character(character: str) -> bool:
+    """True for a character a line-based reader treats as ending a line.
+
+    Covers Cc (C0/C1 controls, e.g. NEL U+0085), Zl (U+2028) and Zp (U+2029) —
+    a superset of what str.splitlines() treats as a line boundary.
+    """
+    return unicodedata.category(character) in _LINE_BREAKING_CATEGORIES
 
 _FILE_OPERATION_DESCRIPTIONS = {
     "list": "list: see this file in directory listings",
@@ -155,7 +170,7 @@ def _render_line(spec: S3FileSpec) -> str:
     descriptor = _render_descriptor(metadata)
     allowed_operations, denied_operations = _render_operations(metadata)
 
-    line = f"- {spec.path}"
+    line = f"- {_escape_path(spec.path)}"
 
     if descriptor:
         line += f" ({descriptor})"
@@ -167,6 +182,34 @@ def _render_line(spec: S3FileSpec) -> str:
         line += f" — may not: {', '.join(denied_operations)}"
 
     return line
+
+
+def _escape_path(path: str) -> str:
+    """Escape control characters so a path cannot forge manifest lines.
+
+    Escaping, not stripping, keeps distinct paths distinct — the backslash is
+    escaped too so a literal "\\n" and a real newline can't collide. A legacy
+    name holding a control character becomes unaddressable by the agent (not
+    by the user), which is preferred over letting it forge a manifest line.
+    """
+    return "".join(_escape_character(character) for character in path)
+
+
+def _escape_character(character: str) -> str:
+    escape = _CHARACTER_ESCAPES.get(character)
+
+    if escape is not None:
+        return escape
+
+    if not _is_line_breaking_character(character):
+        return character
+
+    code_point = ord(character)
+
+    if code_point <= 0xFF:
+        return f"\\x{code_point:02x}"
+
+    return f"\\u{code_point:04x}"
 
 
 def _render_descriptor(metadata: dict) -> str:

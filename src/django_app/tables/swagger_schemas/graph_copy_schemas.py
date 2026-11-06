@@ -3,7 +3,7 @@ from rest_framework import serializers as drf_serializers
 
 from tables.serializers.model_serializers import GraphLightSerializer
 from tables.swagger_schemas.common_schemas import (
-    FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+    FLOW_WITH_TRIGGER_NODES_OR_SECRET_CODE_403_RESPONSE,
     UNAUTHORIZED_401_RESPONSE,
 )
 
@@ -14,7 +14,10 @@ GRAPH_COPY_POST = {
         "organization, with its nodes and edges. Requires CREATE on flows. A flow holding "
         "a trigger node (webhook, Telegram, schedule) also requires USE on flows: copied "
         "trigger nodes are live at once. Without it the response is 403 "
-        "`flow_with_trigger_nodes_requires_use_permission` and nothing is written."
+        "`flow_with_trigger_nodes_requires_use_permission` and nothing is written. A flow "
+        "whose code declares a secret also requires USE on secrets: the copied code is the "
+        "caller's own. Without it the response is 403 "
+        "`code_with_secrets_requires_secrets_use_permission` and nothing is written."
     ),
     "request": inline_serializer(
         name="GraphCopyRequest",
@@ -32,7 +35,7 @@ GRAPH_COPY_POST = {
         201: OpenApiResponse(response=GraphLightSerializer, description="The new flow."),
         400: OpenApiResponse(description="The copy name raced with another copy; retry."),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+        403: FLOW_WITH_TRIGGER_NODES_OR_SECRET_CODE_403_RESPONSE,
         404: OpenApiResponse(description="No such flow in the active organization."),
     },
 }

@@ -1,0 +1,10 @@
+// No box at all without a note, so a parent's gap does not leave an empty slot.
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+:host:empty {
+    display: none;
+}

@@ -207,3 +207,8 @@ ELEVENLABS_REALTIME_CONFIG_BULK_DELETE_POST = _bulk_delete_post_schema(
 GEMINI_REALTIME_CONFIG_BULK_DELETE_POST = _bulk_delete_post_schema(
     model_name="GeminiRealtimeConfig", **_REALTIME_CONFIG
 )
+SYSTEM_ONE_CONFIG_BULK_DELETE_POST = _bulk_delete_post_schema(
+    model_name="SystemOneConfig",
+    gate=ResourceType.LLM_CONFIGS,
+    bucket_types=(),
+)

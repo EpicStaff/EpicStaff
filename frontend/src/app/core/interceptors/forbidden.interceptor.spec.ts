@@ -137,34 +137,35 @@ describe('forbiddenInterceptor', () => {
         message: 'Trigger nodes require the Flows Use permission.',
     };
 
-    it('passes a flow_with_trigger_nodes_requires_use_permission 403 to the caller without a refresh or toast', () =>
-        new Promise<void>((resolve, reject) => {
-            httpClient.post('/api/graphs/1/copy/', { name: 'Orders' }).subscribe({
-                next: () => reject(new Error('expected the request to error')),
-                error: (err: HttpErrorResponse) => {
-                    try {
-                        expect(err.status).toBe(403);
-                        expect(err.error.code).toBe('flow_with_trigger_nodes_requires_use_permission');
-                        expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
-                        expect(profileService.bootstrapUser).not.toHaveBeenCalled();
-                        expect(router.navigateByUrl).not.toHaveBeenCalled();
-                        expect(toastService.error).not.toHaveBeenCalled();
-                        resolve();
-                    } catch (e) {
-                        reject(e as Error);
-                    }
-                },
-            });
+    it.each([
+        ['flow_with_trigger_nodes_requires_use_permission', 'This flow contains trigger nodes.'],
+        ['code_with_secrets_requires_secrets_use_permission', 'This contains code that reads secrets.'],
+    ])(
+        'passes a %s 403 to the caller without a refresh or toast',
+        (code, message) =>
+            new Promise<void>((resolve, reject) => {
+                httpClient.post('/api/graphs/1/copy/', { name: 'Orders' }).subscribe({
+                    next: () => reject(new Error('expected the request to error')),
+                    error: (err: HttpErrorResponse) => {
+                        try {
+                            expect(err.status).toBe(403);
+                            expect(err.error.code).toBe(code);
+                            expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
+                            expect(profileService.bootstrapUser).not.toHaveBeenCalled();
+                            expect(router.navigateByUrl).not.toHaveBeenCalled();
+                            expect(toastService.error).not.toHaveBeenCalled();
+                            resolve();
+                        } catch (e) {
+                            reject(e as Error);
+                        }
+                    },
+                });
 
-            httpMock.expectOne('/api/graphs/1/copy/').flush(
-                {
-                    status_code: 403,
-                    code: 'flow_with_trigger_nodes_requires_use_permission',
-                    message: 'This flow contains trigger nodes.',
-                },
-                { status: 403, statusText: 'Forbidden' }
-            );
-        }));
+                httpMock
+                    .expectOne('/api/graphs/1/copy/')
+                    .flush({ status_code: 403, code, message }, { status: 403, statusText: 'Forbidden' });
+            })
+    );
 
     it('refreshes permissions on a trigger_nodes_require_use_permission 403 (Use may just have been revoked)', () =>
         new Promise<void>((resolve, reject) => {

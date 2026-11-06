@@ -110,7 +110,7 @@ For end node `output_map`: every value path must appear in the writers table or 
 
 For each node type, verify the per-type invariants.
 
-- **start**: `variables` is a non-empty dict; every path any downstream `input_map` references is declared (even as `null`).
+- **start**: `variables` is a non-empty dict; every path any downstream `input_map` references is declared (even as `null`); no variable holds a credential (`api_key`, `token`, `password`, `service_account_info`, …) — that is a **warning**, the fix is the Secrets store read with `get_secret("NAME")` (see `flow-ddd`).
 - **end**: `output_map` non-empty; every referenced path is written upstream (or acknowledged as default `"not found"`).
 - **python**: code contains `def main(...)`; every import satisfies one of (a) stdlib, (b) appears in `libraries`; `input_map` keys map to kwargs of `main` or are explicit paths; `output_variable_path` set if output is used downstream.
 - **webhook_trigger**: `python_code_summary.code` contains `def main(trigger_payload=None)`; `libraries` present; bad-input branches return `{"error": ..., "status": 400}`.

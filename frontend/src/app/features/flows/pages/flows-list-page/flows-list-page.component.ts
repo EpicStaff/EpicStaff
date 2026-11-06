@@ -422,7 +422,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
-        dialogRef.closed.subscribe((result: GraphDto | undefined) => {
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result: GraphDto | undefined) => {
             if (result) {
                 this.router.navigate(['/flows', result.id]);
             }
@@ -435,6 +435,11 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     public closeImportOptions(): void {
         this.importOptionsOpen.set(false);
+    }
+
+    public onImportFromOptions(): void {
+        this.closeImportOptions();
+        this.onImportClick();
     }
 
     public onImportClick(): void {

@@ -15,8 +15,11 @@ Keying rules:
   otherwise raise ``MultipleObjectsReturned`` or silently collapse rows.
 """
 
+from collections import Counter
 from typing import Any
 
+from rest_framework import serializers
+from src.shared.models.system_one import LLM_PROMPT_KIND, SYSTEM_ONE_PROMPT_KIND
 from tables.exceptions import (
     PromptNotFoundError,
     SectionIdConflictError,
@@ -87,7 +90,23 @@ def sync_classification_decision_table_children(
 
 
 def _sync_prompt_configs(node, prompt_configs_data):
-    incoming_keys = {pd["prompt_key"] for pd in prompt_configs_data}
+    incoming_keys = [pd["prompt_key"] for pd in prompt_configs_data]
+    key_counts = Counter(incoming_keys)
+    duplicate_key = next((key for key in incoming_keys if key_counts[key] > 1), None)
+    if duplicate_key is not None:
+        raise serializers.ValidationError(
+            {
+                "prompt_configs": {
+                    duplicate_key: {"prompt_key": "Each prompt name can appear only once."}
+                }
+            }
+        )
+    existing_by_key = {
+        row.prompt_key: row
+        for row in ClassificationDecisionTablePrompt.objects.filter(cdt_node=node)
+    }
+    for prompt_data in prompt_configs_data:
+        _assert_prompt_kind_fields(prompt_data, existing_by_key.get(prompt_data["prompt_key"]))
     ClassificationDecisionTablePrompt.objects.filter(cdt_node=node).exclude(
         prompt_key__in=incoming_keys
     ).delete()
@@ -98,6 +117,25 @@ def _sync_prompt_configs(node, prompt_configs_data):
             prompt_key=prompt_data["prompt_key"],
             defaults=defaults,
         )
+
+
+def _assert_prompt_kind_fields(prompt_data, existing):
+    """Refuse a prompt entry that changes its kind or carries the other kind's config.
+
+    Saves merge into the stored row, so the kind in force is the sent one, else the
+    stored one, else ``llm``. Raised here as 400s so the database constraint is never hit.
+    """
+    sent_kind = prompt_data.get("kind")
+    errors = {}
+    if existing is not None and sent_kind is not None and sent_kind != existing.kind:
+        errors["kind"] = "Delete the entry and add a new one to change its kind."
+    effective_kind = sent_kind or (existing.kind if existing else LLM_PROMPT_KIND)
+    if effective_kind == LLM_PROMPT_KIND and prompt_data.get("system_one_config") is not None:
+        errors.setdefault("kind", "Set kind to system_one to use a System One config.")
+    if effective_kind == SYSTEM_ONE_PROMPT_KIND and prompt_data.get("llm_config") is not None:
+        errors["llm_config"] = "A System One entry can't have an LLM config."
+    if errors:
+        raise serializers.ValidationError({"prompt_configs": {prompt_data["prompt_key"]: errors}})
 
 
 def _sync_condition_group_sections(node, sections_data):

@@ -9,6 +9,7 @@ import { buildBulkSavePayload } from './payload';
 
 const dto: GetKnowledgeRetrieverNodeRequest = {
     id: 0,
+    uuid: '00000000-0000-4000-8000-0000000000a1',
     graph: 1,
     source_collection: 5,
     search_configs: null,

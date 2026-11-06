@@ -12,7 +12,7 @@
 
 import { CdtExplainBlock, CdtExplainRule, CdtExplainTable } from '../../../../core/models/cdt-explain-api.model';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
-import { resolveLlmLabel } from '../cdt-llm-label.util';
+import { resolveLlmLabel, resolvePromptModelLabel } from '../cdt-llm-label.util';
 import {
     enabledRowsInOrder,
     resolveNodeName,
@@ -125,7 +125,7 @@ export function buildCdtExplainBlocks(input: CdtDecisionTreeInput): ReadonlyMap<
                 block: 'prompt',
                 rule_name: name,
                 prompt_key: row.prompt_id,
-                model: resolveLlmLabel(prompt.llm_config, input.llmConfigOptions),
+                model: resolvePromptModelLabel(prompt, input.llmConfigOptions, input.systemOneConfigs ?? []),
                 result_variable: prompt.result_variable,
                 result_mappings: prompt.variable_mappings ?? {},
                 answer_schema: Object.keys(prompt.output_schema ?? {}).length > 0,
@@ -181,7 +181,7 @@ export function resolveExplainLlmConfig(input: CdtDecisionTreeInput): number | n
     if (input.defaultLlmConfig != null) return input.defaultLlmConfig;
 
     for (const prompt of Object.values(input.prompts ?? {})) {
-        if (prompt?.llm_config != null) return prompt.llm_config;
+        if (prompt?.kind !== 'system_one' && prompt?.llm_config != null) return prompt.llm_config;
     }
 
     return null;
