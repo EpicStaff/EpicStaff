@@ -23,7 +23,9 @@ s3-storage = [
 ]
 
 transitive-pins = [
+    "certifi==2026.10.23",
     "idna==3.18",
+    "urllib3==2.7.0",
 ]
 
 [build-system]

@@ -13,54 +13,35 @@
             <app-validation-errors [control]="form.controls.custom_name" />
         </div>
         <div>
-            <div class="provider-label">
-                <span>Provider</span>
-                <span class="required">*</span>
-                <app-help-tooltip
-                    text="TypeSafe runs a Jev model with your API key. LLM answers with one of your LLM configurations."
-                    position="right"
-                />
-            </div>
-            <div
-                class="provider-buttons"
-                role="group"
-                aria-label="Provider"
-            >
-                @for (provider of providers; track provider.key) {
-                    <button
-                        type="button"
-                        class="provider-btn"
-                        [class.active]="selectedProvider() === provider.key"
-                        [attr.aria-pressed]="selectedProvider() === provider.key"
-                        [disabled]="isEditMode() && selectedProvider() !== provider.key"
-                        (click)="selectProvider(provider.key)"
-                    >
-                        {{ provider.label }}
-                    </button>
-                }
-            </div>
+            <app-grouped-picker
+                label="Provider"
+                placeholder="Select provider"
+                tooltipText="TypeSafe runs a Jev model and OpenAI runs a Decisions model, each with your API key. LLM answers with one of your LLM configurations."
+                emptyGroupText="No LLM configs yet. Add one in the LLM tab first."
+                [required]="true"
+                [groups]="groups()"
+                [selected]="selectedKey()"
+                (picked)="pick($event)"
+                (closed)="form.controls.model.markAsTouched()"
+            />
+            @if (selectedProvider() === 'llm') {
+                <app-hint-message>Its probabilities are the LLM's own estimate, not calibrated.</app-hint-message>
+            }
+            <app-validation-errors [control]="form.controls.model" />
         </div>
 
-        @if (selectedProvider() === 'typesafe') {
-            <div>
-                <app-select
-                    formControlName="model_name"
-                    label="Jev Version"
-                    variant="boxed"
-                    placeholder="Select a version"
-                    tooltipText="The Jev model version that answers the questions"
-                    [items]="jevItems"
-                    [required]="true"
-                />
-                <app-validation-errors [control]="form.controls.model_name" />
-            </div>
+        @if (usesKey()) {
             <div>
                 <app-select
                     formControlName="api_key_secret_id"
                     label="API Key"
                     variant="boxed"
                     placeholder="Select a secret"
-                    tooltipText="The stored secret holding your TypeSafe API key"
+                    [tooltipText]="
+                        selectedProvider() === 'openai'
+                            ? 'The stored secret holding your OpenAI API key'
+                            : 'The stored secret holding your TypeSafe API key'
+                    "
                     [items]="apiKeyItems()"
                     [required]="true"
                     [showSearch]="true"
@@ -72,28 +53,10 @@
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
                     </app-hint-message>
                 }
-                <app-validation-errors [control]="form.controls.api_key_secret_id" />
-            </div>
-        } @else {
-            <div>
-                <app-select
-                    formControlName="llm_config"
-                    label="LLM Configuration"
-                    variant="boxed"
-                    placeholder="Select an LLM configuration"
-                    tooltipText="The LLM configuration that answers the questions"
-                    [items]="llmConfigItems()"
-                    [required]="true"
-                    [showSearch]="true"
-                    searchPlaceholder="Search a configuration..."
-                />
-                @if (llmConfigItems().length === 0) {
-                    <app-hint-message
-                        >No LLM configs yet. Add one in the <strong>LLM tab</strong> first.</app-hint-message
-                    >
+                @if (selectedProvider() === 'openai') {
+                    <app-hint-message>OpenAI does not document how its probabilities are computed.</app-hint-message>
                 }
-                <app-hint-message>Its probabilities are the LLM's own estimate, not calibrated.</app-hint-message>
-                <app-validation-errors [control]="form.controls.llm_config" />
+                <app-validation-errors [control]="form.controls.api_key_secret_id" />
             </div>
         }
     </section>
