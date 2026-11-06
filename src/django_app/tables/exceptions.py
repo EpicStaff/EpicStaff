@@ -1086,6 +1086,14 @@ class TransferJobNotReadyError(CustomAPIExeption):
     default_detail = "The job has no archive to download yet."
 
 
+class TransferJobArchiveRemovedError(CustomAPIExeption):
+    """The export completed, but its archive was deleted to make room for the creator's newer ones."""
+
+    status_code = 410
+    default_code = "archive_removed"
+    default_detail = "This archive was deleted to make room for newer exports. Export again."
+
+
 class ImportArchiveTooLargeError(CustomAPIExeption):
     """An import upload is larger than `MAX_KNOWLEDGE_ARCHIVE_SIZE`."""
 

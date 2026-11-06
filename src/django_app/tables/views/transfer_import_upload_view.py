@@ -3,7 +3,8 @@
 Served as raw ASGI apps (routed by `django_app/asgi.py`), so an archive is written to a
 temporary file as it arrives instead of being spooled by Django first. Every refusal
 answers before a job row exists, and leaves neither the temporary file nor a stored
-archive behind.
+archive behind. While its body arrives, an upload holds one of the storage uploads'
+slots and counts as an unfinished job of its user.
 """
 
 import asyncio
@@ -39,11 +40,15 @@ from tables.serializers.transfer_job_serializers import (
     CollectionImportJobQuerySerializer,
     FlowImportJobQuerySerializer,
 )
+from tables.services.storage_service.upload.admission import get_upload_admission
 from tables.services.storage_service.upload.guards import (
     storage_errors_as_unavailable,
     within_time_limits,
 )
-from tables.services.transfer_jobs.job_service import TransferJobService
+from tables.services.transfer_jobs.job_service import (
+    TransferJobService,
+    import_uploads_in_progress,
+)
 from tables.throttles import TransferJobCreateThrottle
 from tables.views.raw_asgi import (
     ClientDisconnectedError,
@@ -133,20 +138,34 @@ async def _serve_import_upload(route: ImportJobRoute, scope, receive, send) -> N
         reject_non_utf8_query(scope)
         admission = await sync_to_async(_admit)(scope, route)
 
-        # No database connection is held while the body arrives.
-        await sync_to_async(close_old_connections)()
-        async with _received_archive(receive) as archive_path:
-            try:
-                with storage_errors_as_unavailable():
-                    job = await sync_to_async(TransferJobService().start_import)(
-                        user=admission.user,
-                        org_id=admission.org_id,
-                        entity_type=route.entity_type,
-                        settings=admission.import_settings,
-                        archive_path=archive_path,
-                    )
-            except ValidationError as error:
-                raise _rejection(error) from error
+        # Each context below releases what it holds on every way out: success,
+        # refusal, timeout, disconnect or cancellation.
+        with import_uploads_in_progress.hold(
+            org_id=admission.org_id, user_id=admission.user.pk
+        ) as other_uploads:
+            await sync_to_async(TransferJobService().check_limits)(
+                user=admission.user,
+                org_id=admission.org_id,
+                uploads_in_progress=other_uploads,
+            )
+            # No database connection is held while waiting for a slot or while the body arrives.
+            await sync_to_async(close_old_connections)()
+            # The storage uploads' slots: 429 past the organization's share, 503 when none frees up.
+            async with (
+                get_upload_admission().admit(admission.org_id),
+                _received_archive(receive) as archive_path,
+            ):
+                try:
+                    with storage_errors_as_unavailable():
+                        job = await sync_to_async(TransferJobService().start_import)(
+                            user=admission.user,
+                            org_id=admission.org_id,
+                            entity_type=route.entity_type,
+                            settings=admission.import_settings,
+                            archive_path=archive_path,
+                        )
+                except ValidationError as error:
+                    raise _rejection(error) from error
 
         await send_json(send, scope, 202, {"job_id": str(job.id)})
 
@@ -168,7 +187,6 @@ def _admit(scope, route: ImportJobRoute) -> _Admission:
         ValidationError: An unknown or invalid query parameter.
         ImportArchiveTooLargeError: Content-Length is past `MAX_KNOWLEDGE_ARCHIVE_SIZE`.
         PermissionDenied: `replace_existing` without the UPDATE right.
-        TooManyTransferJobsError: The caller or the organization is at its job limit.
     """
     view = TransferImportAccessView(rbac_resource_type=route.resource_type)
     request = authorize_request(view, scope, IMPORT_JOBS_ACTION)
@@ -189,7 +207,6 @@ def _admit(scope, route: ImportJobRoute) -> _Admission:
     if import_settings is not None and import_settings.replace_existing:
         # Replacing overwrites existing items in place; the gate above only checks CREATE.
         assert_org_permission(request.user, org_id, route.resource_type, Permission.UPDATE)
-    TransferJobService().check_limits(user=user, org_id=org_id)
     return _Admission(user=user, org_id=org_id, import_settings=import_settings)
 
 

@@ -1,6 +1,9 @@
 """Starting transfer jobs: the checks a job passes before it is queued."""
 
+import contextlib
 import uuid
+from collections import Counter
+from collections.abc import Iterator
 from dataclasses import asdict
 
 from django.db import close_old_connections, transaction
@@ -19,7 +22,8 @@ from utils.logger import logger
 
 # Unfinished (queued or running) jobs one user may have in one organization, and
 # that one organization may have in all. Each job holds a container's worker and a
-# temporary archive on disk until it finishes.
+# temporary archive on disk until it finishes. An import upload still receiving its
+# body counts against the per-user limit too (`ImportUploadsInProgress`).
 MAX_UNFINISHED_JOBS_PER_USER = 3
 MAX_UNFINISHED_JOBS_PER_ORG = 10
 
@@ -142,16 +146,20 @@ class TransferJobService:
             raise
         return job
 
-    def check_limits(self, *, user: User, org_id: int) -> None:
-        """Refuse early when `user` or `org_id` is at its unfinished-job limit.
+    def check_limits(self, *, user: User, org_id: int, uploads_in_progress: int) -> None:
+        """Refuse an import upload when `user` or `org_id` is at its unfinished-job limit.
 
-        Takes no lock, so it only spares a doomed upload: starting the job checks
-        the limits again, atomically.
+        Takes no lock: starting the job checks the job rows again, atomically.
+
+        Args:
+            uploads_in_progress: `user`'s other import uploads in `org_id` still
+                receiving their body (`ImportUploadsInProgress`); each counts as
+                an unfinished job of `user`.
 
         Raises:
             TooManyTransferJobsError: `user` or `org_id` is at its unfinished-job limit.
         """
-        self._assert_below_limits(user=user, org_id=org_id)
+        self._assert_below_limits(user=user, org_id=org_id, uploads_by_user=uploads_in_progress)
 
     @staticmethod
     def _lock_job_creation(org_id: int) -> None:
@@ -166,7 +174,7 @@ class TransferJobService:
         )
 
     @staticmethod
-    def _assert_below_limits(*, user: User, org_id: int) -> None:
+    def _assert_below_limits(*, user: User, org_id: int, uploads_by_user: int = 0) -> None:
         counts = TransferJob.objects.filter(
             org_id=org_id, status__in=_UNFINISHED_STATUSES
         ).aggregate(
@@ -174,10 +182,43 @@ class TransferJobService:
             by_user=Count("pk", filter=Q(created_by=user)),
         )
         if (
-            counts["by_user"] >= MAX_UNFINISHED_JOBS_PER_USER
+            counts["by_user"] + uploads_by_user >= MAX_UNFINISHED_JOBS_PER_USER
             or counts["in_org"] >= MAX_UNFINISHED_JOBS_PER_ORG
         ):
             raise TooManyTransferJobsError()
+
+
+class ImportUploadsInProgress:
+    """Import uploads of this worker still receiving their body, per organization and user.
+
+    Such an upload has no job row yet, so the unfinished-job limit cannot see it in
+    the database; it is counted here for as long as it is held. Per worker, like the
+    storage upload slots (`UploadAdmission`): used only from the worker's event loop,
+    so the counter needs no lock.
+    """
+
+    def __init__(self):
+        self._uploads: Counter[tuple[int, int]] = Counter()
+
+    @contextlib.contextmanager
+    def hold(self, *, org_id: int, user_id: int) -> Iterator[int]:
+        """Count one upload of `user_id` in `org_id` for the block; released on every exit.
+
+        Yields how many other uploads of that user in that organization were held
+        when this one started.
+        """
+        key = (org_id, user_id)
+        others = self._uploads[key]
+        self._uploads[key] += 1
+        try:
+            yield others
+        finally:
+            self._uploads[key] -= 1
+            if not self._uploads[key]:
+                del self._uploads[key]
+
+
+import_uploads_in_progress = ImportUploadsInProgress()
 
 
 def _discard_archive(store: TransferArchiveStore, job_id: uuid.UUID) -> None:

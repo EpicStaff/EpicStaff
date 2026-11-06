@@ -17,7 +17,8 @@ class TransferJob(OrgScopedModel, TimestampMixin):
 
     Only its creator, in its organization, may see it. Its archive lives in the
     storage bucket under `system/transfers/<id>/` until `expires_at`, when the
-    sweep deletes the job and the archive together.
+    sweep deletes the job and the archive together; an export's archive goes
+    earlier once its creator has newer ones (`MAX_STORED_EXPORTS_PER_USER`).
     """
 
     class Kind(models.TextChoices):
@@ -42,6 +43,7 @@ class TransferJob(OrgScopedModel, TimestampMixin):
     # the import settings of an import.
     request = models.JSONField(default=dict, blank=True)
     # Storage key of the archive: the one an export wrote, or the upload an import reads.
+    # Emptied when a completed export's archive is deleted for newer ones.
     archive_key = models.CharField(max_length=512, blank=True, default="")
     # Name the archive is downloaded under.
     file_name = models.CharField(max_length=255, blank=True, default="")

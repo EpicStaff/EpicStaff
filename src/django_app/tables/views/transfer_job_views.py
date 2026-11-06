@@ -21,7 +21,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from tables.exceptions import TransferJobNotReadyError
+from tables.exceptions import TransferJobArchiveRemovedError, TransferJobNotReadyError
 from tables.import_export.enums import EntityType
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.models import TransferJob
@@ -79,6 +79,10 @@ class TransferJobViewSet(OrgScopedResolverMixin, viewsets.GenericViewSet):
         responses={
             200: TransferJobDownloadTicketSerializer,
             409: OpenApiResponse(description="`job_not_ready`: not a completed export."),
+            410: OpenApiResponse(
+                description="`archive_removed`: the archive was deleted to make room for "
+                "the caller's newer exports."
+            ),
         },
         description=(
             "Issue a one-time URL that downloads the job's archive without the "
@@ -120,6 +124,10 @@ class TransferJobViewSet(OrgScopedResolverMixin, viewsets.GenericViewSet):
                 response=OpenApiTypes.BINARY, description="The export archive."
             ),
             409: OpenApiResponse(description="`job_not_ready`: not a completed export."),
+            410: OpenApiResponse(
+                description="`archive_removed`: the archive was deleted to make room for "
+                "the caller's newer exports."
+            ),
         },
     )
     @action(detail=True, methods=["get"])
@@ -196,6 +204,9 @@ def _assert_downloadable(job: TransferJob, user, api_key_org_id: int | None) -> 
         not_found=NotFound(),
         api_key_org_id=api_key_org_id,
     )
+    # Checked after the right, so only a caller still allowed to export learns of it.
+    if not job.archive_key:
+        raise TransferJobArchiveRemovedError()
 
 
 def _stream(

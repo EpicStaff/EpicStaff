@@ -11,7 +11,7 @@ from rbac.access.asserts import assert_org_permission
 from rbac.models.enums import Permission
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from tables.clients.errors import ClientError, ClientValidationError
-from tables.exceptions import CustomAPIExeption
+from tables.exceptions import CustomAPIExeption, TransferJobArchiveRemovedError
 from tables.import_export.archive import temporary_archive
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import ArchiveExportFormatStrategy
@@ -35,8 +35,21 @@ MAX_ORPHANED_ARCHIVES_PER_SWEEP = 100
 # queued after this long lost its stream entry; the sweep fails both.
 TRANSFER_JOB_STALE_AFTER = timedelta(hours=2)
 
+# Export archives one user keeps stored in one organization. Each one sits in the
+# shared bucket, outside every organization's quota, until it expires; when an
+# export completes, the archives of that user's older completed exports past this
+# many are deleted.
+MAX_STORED_EXPORTS_PER_USER = 3
+
 EXPORT_ARCHIVE_NAME = "export.zip"
 IMPORT_ARCHIVE_NAME = "import.zip"
+
+# Left on a completed export whose archive was deleted to keep the newest
+# `MAX_STORED_EXPORTS_PER_USER`, so its status says what its download answers.
+ARCHIVE_REMOVED_ERROR = {
+    "code": TransferJobArchiveRemovedError.default_code,
+    "message": TransferJobArchiveRemovedError.default_detail,
+}
 
 # The main entities a job carries: their model, and the prefix of their archive's name.
 MAIN_ENTITY_MODELS = {
@@ -136,8 +149,10 @@ class TransferJobRunner:
         """Record the outcome, unless the sweep failed or deleted the job meanwhile.
 
         Written only over a row still `running`, so an outcome never overwrites the
-        sweep's. An export nobody can reach any more has its stored archive deleted;
-        an import's uploaded archive is deleted either way.
+        sweep's. A completed export makes room for itself by deleting the creator's
+        older archives (past `MAX_STORED_EXPORTS_PER_USER`); an export nobody can reach any
+        more has its stored archive deleted; an import's uploaded archive is deleted
+        either way.
         """
         finished_at = timezone.now()
         # update() skips auto_now, so updated_at is set by hand.
@@ -150,6 +165,12 @@ class TransferJobRunner:
             finished_at=finished_at,
             updated_at=finished_at,
         )
+        if (
+            recorded
+            and job.kind == TransferJob.Kind.EXPORT
+            and job.status == TransferJob.Status.COMPLETED
+        ):
+            self._remove_older_export_archives(job)
         if not recorded:
             logger.warning(
                 "Transfer job {} was failed or deleted while it ran; its {} outcome is dropped",
@@ -179,6 +200,14 @@ class TransferJobRunner:
         )
         path = ArchiveExportFormatStrategy().render_to_file(result)
         try:
+            # An archive past the import cap could not be imported again, and would
+            # only take room in the shared bucket.
+            if os.path.getsize(path) > settings.MAX_KNOWLEDGE_ARCHIVE_SIZE:
+                raise TransferJobError(
+                    "archive_too_large",
+                    "The export is larger than the import size limit, so it could not be "
+                    "imported again either. Export fewer items, or export without knowledge.",
+                )
             with open(path, "rb") as archive:
                 job.archive_key = self._store.upload_file(job.id, EXPORT_ARCHIVE_NAME, archive)
         finally:
@@ -216,6 +245,37 @@ class TransferJobRunner:
                 entity_type=entity_type, export_prefix=prefix, filename_attr="name"
             ).import_archive(
                 path, org_id=org_id, user=user, settings=settings, main_entity=entity_type
+            )
+
+    def _remove_older_export_archives(self, job: TransferJob) -> None:
+        """Delete the archives of the creator's completed exports in the org past the newest few.
+
+        Each removed job stays `completed`, with no archive and the error
+        `archive_removed`, so its status and download say why. An archive that
+        could not be deleted keeps its job as it was, to be tried again at the next
+        export; the sweep deletes it with its job at the latest.
+        """
+        older = (
+            TransferJob.objects.filter(
+                org_id=job.org_id,
+                created_by_id=job.created_by_id,
+                kind=TransferJob.Kind.EXPORT,
+                status=TransferJob.Status.COMPLETED,
+            )
+            .exclude(archive_key="")
+            .order_by("-finished_at", "-created_at")
+            .values_list("pk", flat=True)[MAX_STORED_EXPORTS_PER_USER:]
+        )
+        for job_id in older:
+            try:
+                self._store.delete_job(job_id)
+            except Exception:
+                logger.exception("Could not delete the archive of older export job {}", job_id)
+                continue
+            TransferJob.objects.filter(pk=job_id).update(
+                archive_key="",
+                error=ARCHIVE_REMOVED_ERROR,
+                updated_at=timezone.now(),
             )
 
     def _delete_archives(self, job: TransferJob) -> None:

@@ -379,7 +379,10 @@ _IMPORT_JOB_DESCRIPTION = (
     "caps, version and main entity are checked before the job is created; a plain .json "
     "export goes to the synchronous import/ endpoint instead. Started by a user or a personal "
     "API key; throttled with the export jobs (transfer_job_create), and at most 3 unfinished "
-    "jobs per user and 10 per organization. Poll GET /api/transfer-jobs/{job_id}/."
+    "jobs per user and 10 per organization, a user's uploads still in progress counting as "
+    "unfinished jobs. Uploads share the storage uploads' slots per worker "
+    "(DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG, DJANGO_UPLOAD_MAX_CONCURRENCY). "
+    "Poll GET /api/transfer-jobs/{job_id}/."
 )
 
 
@@ -407,8 +410,13 @@ def _import_job_responses(permission: str) -> dict:
         },
         "413": {"description": "archive_too_large."},
         "429": {
-            "description": "Throttled, or too_many_jobs: the caller or the organization "
-            "is at its unfinished-job limit."
+            "description": "Throttled; too_many_jobs: the caller or the organization "
+            "is at its unfinished-job limit; or org_upload_limit_reached: the organization "
+            "already runs its share of uploads."
+        },
+        "503": {
+            "description": "upload_slots_busy (with Retry-After): no upload slot freed up "
+            "in time; or the storage is unreachable."
         },
     }
 
