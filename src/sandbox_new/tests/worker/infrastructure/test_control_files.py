@@ -79,8 +79,7 @@ def test_a_file_over_the_size_limit_is_refused(tmp_path, size, refused):
     path.write_text("x" * size, encoding="utf-8")
 
     if refused:
-        with pytest.raises(ControlFileTooLargeError) as raised:
+        with pytest.raises(ControlFileTooLargeError, match="larger than 10 bytes"):
             read_control_file(path, max_bytes=10)
-        assert raised.value.max_bytes == 10
     else:
         assert read_control_file(path, max_bytes=10) == "x" * size

@@ -11,7 +11,7 @@ so the user sees a generic server error.
 
 import json
 
-from worker.application.context import ExecutionContext
+from worker.application.context import ExecutionContext, fail_on_sandbox_error
 
 __all__ = ["ConfigureStorageStep"]
 
@@ -27,13 +27,13 @@ class ConfigureStorageStep:
             return
 
         if not job.storage_org_prefix:
-            context.fail_on_sandbox_error("storage_org_prefix is required when use_storage is set")
+            fail_on_sandbox_error(context, "storage_org_prefix is required when use_storage is set")
             return
 
         credentials = job.storage_credentials
         if credentials is None:
-            context.fail_on_sandbox_error(
-                "storage_credentials are required when use_storage is set"
+            fail_on_sandbox_error(
+                context, "storage_credentials are required when use_storage is set"
             )
             return
 

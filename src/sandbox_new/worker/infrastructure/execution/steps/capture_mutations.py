@@ -10,7 +10,7 @@ import json
 
 from loguru import logger
 
-from worker.application.context import ExecutionContext
+from worker.application.context import ExecutionContext, fail_on_sandbox_error
 from worker.domain.models import StorageMutations
 from worker.infrastructure.execution.control_files import (
     UnsafeControlFileError,
@@ -39,7 +39,7 @@ class CaptureMutationsStep:
                 return
             mutations = json.loads(text)
         except UnsafeControlFileError as error:
-            context.fail_on_sandbox_error(f"Rejected the storage mutations file: {error}.")
+            fail_on_sandbox_error(context, f"Rejected the storage mutations file: {error}.")
             return
         except Exception:
             logger.exception("Failed to read storage mutations for {}", job.execution_id)

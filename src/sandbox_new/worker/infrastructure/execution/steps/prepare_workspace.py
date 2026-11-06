@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 
-from worker.application.context import ExecutionContext
+from worker.application.context import ExecutionContext, fail_on_sandbox_error
 from worker.infrastructure.execution.environment import build_base_env
 from worker.infrastructure.execution.privileges import (
     SANDBOX_GID,
@@ -46,8 +46,8 @@ class PrepareWorkspaceStep:
                 for directory in (exec_dir, home_dir, tmp_dir, work_dir):
                     os.chown(directory, SANDBOX_UID, SANDBOX_GID)
             except OSError as error:
-                context.fail_on_sandbox_error(
-                    f"Security setup failed: could not chown execution dirs: {error}"
+                fail_on_sandbox_error(
+                    context, f"Security setup failed: could not chown execution dirs: {error}"
                 )
                 return
 

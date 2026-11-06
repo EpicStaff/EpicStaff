@@ -11,7 +11,7 @@ from enum import StrEnum
 from loguru import logger
 from src.shared.public_error import new_error_correlation_id
 
-__all__ = ["SandboxFailureMessage", "report_sandbox_failure"]
+__all__ = ["SandboxFailureMessage", "log_sandbox_failure", "public_failure_text"]
 
 
 class SandboxFailureMessage(StrEnum):
@@ -27,10 +27,13 @@ class SandboxFailureMessage(StrEnum):
     )
 
 
-def report_sandbox_failure(
-    message: SandboxFailureMessage, detail: str, *, execution_id: str | None
-) -> str:
-    """Log ``detail`` under a fresh reference and return the user-facing text citing it.
+def public_failure_text(message: SandboxFailureMessage, reference: str) -> str:
+    """Return ``message`` citing ``reference``, the text the user sees."""
+    return message.format(reference=reference)
+
+
+def log_sandbox_failure(detail: str, *, execution_id: str | None) -> str:
+    """Log ``detail`` at ERROR under a fresh reference and return the reference.
 
     Args:
         detail: Logged as it is. Mask the job's secrets in it first; where the secrets
@@ -45,4 +48,4 @@ def report_sandbox_failure(
         reference,
         detail,
     )
-    return message.format(reference=reference)
+    return reference

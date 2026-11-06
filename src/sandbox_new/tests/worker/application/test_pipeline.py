@@ -8,7 +8,7 @@ detail is only logged, under the reference the user's text cites.
 
 from common.public_errors import SandboxFailureMessage
 
-from worker.application.context import ExecutionContext
+from worker.application.context import ExecutionContext, fail_on_sandbox_error
 from worker.application.pipeline import Pipeline
 from tests.builders import make_context, make_worker_job
 from tests.public_errors import SERVER_ERROR, UNSAFE_TO_RUN, logged_with, reference_in
@@ -82,7 +82,7 @@ async def test_a_secret_quoted_by_a_raising_step_is_masked_in_the_log(error_logs
 def test_a_secret_in_a_text_detail_is_masked_in_the_log(error_logs):
     context = make_context(make_worker_job(secrets={"API_TOKEN": "s3cret-value"}))
 
-    context.fail_on_sandbox_error("storage rejected key s3cret-value")
+    fail_on_sandbox_error(context, "storage rejected key s3cret-value")
 
     log_line = logged_with(reference_in(SERVER_ERROR, context.stderr), error_logs)
     assert log_line.rstrip("\n").endswith("storage rejected key [REDACTED]")
@@ -109,8 +109,8 @@ async def test_an_empty_pipeline_fails_the_run():
 def test_every_sandbox_failure_gets_its_own_reference():
     first, second = make_context(), make_context()
 
-    first.fail_on_sandbox_error("boom")
-    second.fail_on_sandbox_error("boom")
+    fail_on_sandbox_error(first, "boom")
+    fail_on_sandbox_error(second, "boom")
 
     assert reference_in(SERVER_ERROR, first.stderr) != reference_in(SERVER_ERROR, second.stderr)
 
@@ -118,7 +118,7 @@ def test_every_sandbox_failure_gets_its_own_reference():
 def test_a_sandbox_failure_keeps_the_output_the_child_already_wrote():
     context = make_context(stderr="child wrote this")
 
-    context.fail_on_sandbox_error("boom", public_message=SandboxFailureMessage.UNSAFE_TO_RUN)
+    fail_on_sandbox_error(context, "boom", public_message=SandboxFailureMessage.UNSAFE_TO_RUN)
 
     child_output, public_text = context.stderr.split("\n")
     assert child_output == "child wrote this"

@@ -23,7 +23,6 @@ class ControlFileTooLargeError(UnsafeControlFileError):
 
     def __init__(self, *, max_bytes: int) -> None:
         super().__init__(f"the file is larger than {max_bytes} bytes")
-        self.max_bytes = max_bytes
 
 
 def read_control_file(path: Path, *, max_bytes: int) -> str | None:

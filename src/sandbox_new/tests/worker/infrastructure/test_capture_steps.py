@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 import settings
 
 from worker.infrastructure.execution.code_wrapper import RESULT_WRITE_FAILED_EXIT_CODE
@@ -273,45 +272,17 @@ async def test_a_real_unwritable_result_file_is_reported_without_its_path(tmp_pa
     assert "missing-directory" in logged_with(reference, error_logs)
 
 
-@pytest.mark.parametrize(
-    ("max_bytes", "size_text"),
-    [
-        (4, "4 bytes"),
-        (1024, "1 KB"),
-        (1536, "1.5 KB"),
-        (1024 * 1024, "1 MB"),
-        (1024 * 1024 + 512 * 1024, "1.5 MB"),
-    ],
-    ids=["bytes", "one-kb", "fractional-kb", "one-mb", "fractional-mb"],
-)
-async def test_a_result_over_the_configured_cap_fails_with_the_cap_in_its_message(
-    tmp_path, max_bytes, size_text
-):
+async def test_a_result_over_the_cap_fails_without_naming_the_cap(tmp_path):
     result_file = tmp_path / "output.txt"
-    result_file.write_bytes(b"x" * (max_bytes + 1))
+    result_file.write_bytes(b"x" * 5)
     context = make_context(returncode=0, result_file_path=result_file)
 
-    await CaptureResultStep(max_bytes=max_bytes)(context)
+    await CaptureResultStep(max_bytes=4)(context)
 
     assert context.result_data is None
     assert context.completed is True
     assert context.returncode == 1
-    assert context.stderr == (
-        f"The function's return value is too big to save (over {size_text}). Return less data."
-    )
-
-
-async def test_a_result_over_the_default_cap_is_reported_as_over_16_mb(tmp_path):
-    result_file = tmp_path / "output.txt"
-    result_file.write_bytes(b"x" * (16777216 + 1))
-    context = make_context(returncode=0, result_file_path=result_file)
-
-    await CaptureResultStep(max_bytes=16777216)(context)
-
-    assert context.result_data is None
-    assert context.stderr == (
-        "The function's return value is too big to save (over 16 MB). Return less data."
-    )
+    assert context.stderr == "The function's return value is too big to save. Return less data."
 
 
 async def test_a_result_exactly_at_the_cap_is_read(tmp_path):

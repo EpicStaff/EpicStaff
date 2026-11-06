@@ -11,7 +11,7 @@ that fails after the output is captured cannot bypass it.
 
 from loguru import logger
 
-from worker.application.context import ExecutionContext
+from worker.application.context import ExecutionContext, fail_on_sandbox_error
 from worker.infrastructure.execution.code_wrapper import RESULT_WRITE_FAILED_EXIT_CODE
 from worker.infrastructure.execution.control_files import (
     ControlFileTooLargeError,
@@ -21,10 +21,9 @@ from worker.infrastructure.execution.control_files import (
 
 __all__ = ["CaptureResultStep"]
 
-_RESULT_TOO_LARGE_MESSAGE = (
-    "The function's return value is too big to save (over {size}). Return less data."
-)
-_SIZE_UNITS = (("MB", 1024 * 1024), ("KB", 1024))
+# The limit is left out: the text would have to repeat how an administrator spelled
+# SANDBOX_MAX_RESULT_SIZE, and drift from it when the setting's format changes.
+_RESULT_TOO_LARGE_MESSAGE = "The function's return value is too big to save. Return less data."
 # A real write error is short. User code can still write past the marker (an atexit
 # handler, or code that read the marker out of its own process), so the log is capped.
 _MAX_LOGGED_WRITE_ERROR_LENGTH = 500
@@ -47,10 +46,10 @@ class CaptureResultStep:
                 )
             except ControlFileTooLargeError as error:
                 logger.warning("Rejected result file of {}: {}", context.job.execution_id, error)
-                context.fail(_RESULT_TOO_LARGE_MESSAGE.format(size=_format_size(error.max_bytes)))
+                context.fail(_RESULT_TOO_LARGE_MESSAGE)
                 return
             except UnsafeControlFileError as error:
-                context.fail_on_sandbox_error(f"Rejected the result file: {error}.")
+                fail_on_sandbox_error(context, f"Rejected the result file: {error}.")
                 return
             except Exception:
                 logger.exception("Exception reading result file")
@@ -91,18 +90,6 @@ def _fail_on_unwritten_result_file(context: ExecutionContext, marker: str) -> No
     write_error = write_error[:_MAX_LOGGED_WRITE_ERROR_LENGTH]
     # A real write error is one line. repr keeps anything else on one log line, so text
     # written past the marker can't pass itself off as separate log entries.
-    context.fail_on_sandbox_error(
-        f"The wrapped code couldn't write the result file: {write_error!r}"
+    fail_on_sandbox_error(
+        context, f"The wrapped code couldn't write the result file: {write_error!r}"
     )
-
-
-def _format_size(size_bytes: int) -> str:
-    """Name a size in the largest unit it reaches, the way the size settings spell it.
-
-    One decimal at most, dropped when it is zero: 16777216 bytes is "16 MB". The units
-    are binary, matching how ``SANDBOX_MAX_RESULT_SIZE`` reads "16mb".
-    """
-    for unit, unit_bytes in _SIZE_UNITS:
-        if size_bytes >= unit_bytes:
-            return f"{size_bytes / unit_bytes:.1f}".removesuffix(".0") + f" {unit}"
-    return f"{size_bytes} bytes"

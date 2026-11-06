@@ -15,7 +15,11 @@ import asyncio
 import time
 from collections.abc import Callable
 
-from common.public_errors import SandboxFailureMessage, report_sandbox_failure
+from common.public_errors import (
+    SandboxFailureMessage,
+    log_sandbox_failure,
+    public_failure_text,
+)
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
 
@@ -66,13 +70,13 @@ class JobConsumer:
         try:
             job = await self._job_source.get()
         except UndecodableJobError as error:
+            reference = log_sandbox_failure(
+                "The job could not be decoded; it was not run.",
+                execution_id=error.execution_id,
+            )
             await self._orchestrator.fail(
                 error.execution_id,
-                report_sandbox_failure(
-                    SandboxFailureMessage.SERVER_ERROR,
-                    "The job could not be decoded; it was not run.",
-                    execution_id=error.execution_id,
-                ),
+                public_failure_text(SandboxFailureMessage.SERVER_ERROR, reference),
                 session_id=error.session_id,
                 reply_to_crew_channel=error.reply_to_crew_channel,
             )
@@ -115,13 +119,13 @@ class JobConsumer:
             await self._orchestrator.execute(job)
         except Exception as error:
             try:
+                reference = log_sandbox_failure(
+                    f"The worker failed to run the job: {type(error).__name__}",
+                    execution_id=job.execution_id,
+                )
                 await self._orchestrator.fail(
                     job.execution_id,
-                    report_sandbox_failure(
-                        SandboxFailureMessage.SERVER_ERROR,
-                        f"The worker failed to run the job: {type(error).__name__}",
-                        execution_id=job.execution_id,
-                    ),
+                    public_failure_text(SandboxFailureMessage.SERVER_ERROR, reference),
                     session_id=job.session_id,
                     reply_to_crew_channel=job.reply_to_crew_channel,
                 )

@@ -18,6 +18,10 @@ credentials then reach every consumer listed above, including persisted rows and
 container logs. It is a development affordance, not something to carry into an
 environment holding real credentials. scrub() itself always masks unconditionally.
 
+The switch covers only what reaches the consumer (ExecutionOrchestrator._build_result).
+The sandbox's own failure logs, written by fail_on_sandbox_error, are always masked,
+even when it is false.
+
 The orchestrator runs scrub() on the way out rather than a pipeline step, so a
 step that fails after the child's output is captured cannot bypass it.
 """

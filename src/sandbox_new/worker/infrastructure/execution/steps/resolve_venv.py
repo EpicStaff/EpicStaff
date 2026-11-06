@@ -8,7 +8,7 @@ venv is missing it fails the job rather than launching against a bad path.
 
 from pathlib import Path
 
-from worker.application.context import ExecutionContext
+from worker.application.context import ExecutionContext, fail_on_sandbox_error
 
 __all__ = ["ResolveVenvStep"]
 
@@ -23,8 +23,8 @@ class ResolveVenvStep:
         python_executable = venv_path / "bin" / "python"
 
         if not python_executable.exists():
-            context.fail_on_sandbox_error(
-                f"Venv for hash {venv_hash} not found at {venv_path}; refusing to execute."
+            fail_on_sandbox_error(
+                context, f"Venv for hash {venv_hash} not found at {venv_path}; refusing to execute."
             )
             return
 

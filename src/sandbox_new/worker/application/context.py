@@ -5,18 +5,27 @@ also carries the outcome: once the pipeline finishes, the orchestrator reads
 ``returncode``/``stdout``/``stderr``/``result_data`` off the context to build the
 wire result. Errors are recorded here via ``fail`` rather than raised, so a failing
 step ends the run cleanly instead of taking the worker down.
+
+``fail_on_sandbox_error`` sits beside the model rather than on it, so the model stays a
+state carrier. It lives in this module because pipeline steps in ``worker.infrastructure``
+call it, and the import contracts let them reach the application layer only through its
+ports and this module.
 """
 
 import traceback
 from pathlib import Path
 
-from common.public_errors import SandboxFailureMessage, report_sandbox_failure
+from common.public_errors import (
+    SandboxFailureMessage,
+    log_sandbox_failure,
+    public_failure_text,
+)
 from pydantic import BaseModel, ConfigDict
 
 from worker.application.secret_scrubber import scrub
 from worker.domain.models import IsolationPlan, Job, StorageMutations
 
-__all__ = ["ExecutionContext"]
+__all__ = ["ExecutionContext", "fail_on_sandbox_error"]
 
 
 class ExecutionContext(BaseModel):
@@ -63,24 +72,22 @@ class ExecutionContext(BaseModel):
         self.returncode = returncode
         self.completed = True
 
-    def fail_on_sandbox_error(
-        self,
-        detail: Exception | str,
-        *,
-        public_message: SandboxFailureMessage = SandboxFailureMessage.SERVER_ERROR,
-    ) -> None:
-        """Fail the run on the sandbox's own error, not the user's code.
 
-        ``detail`` can name server settings or quote raw exception text, so it is only
-        logged, under a fresh reference; the user sees ``public_message`` citing it.
-        An exception is logged with its traceback. Either way the job's secret values
-        are masked first, since an exception's text can quote them.
-        """
-        if isinstance(detail, BaseException):
-            detail = "".join(traceback.format_exception(detail)).rstrip("\n")
-        logged_detail = scrub(text=detail, secrets=self.job.secrets or {})
-        self.fail(
-            report_sandbox_failure(
-                public_message, logged_detail, execution_id=self.job.execution_id
-            )
-        )
+def fail_on_sandbox_error(
+    context: ExecutionContext,
+    detail: Exception | str,
+    *,
+    public_message: SandboxFailureMessage = SandboxFailureMessage.SERVER_ERROR,
+) -> None:
+    """Fail the run on the sandbox's own error, not the user's code.
+
+    ``detail`` can name server settings or quote raw exception text, so it is only
+    logged, under a fresh reference; the user sees ``public_message`` citing it.
+    An exception is logged with its traceback. Either way the job's secret values
+    are masked first, since an exception's text can quote them.
+    """
+    if isinstance(detail, BaseException):
+        detail = "".join(traceback.format_exception(detail)).rstrip("\n")
+    logged_detail = scrub(text=detail, secrets=context.job.secrets or {})
+    reference = log_sandbox_failure(logged_detail, execution_id=context.job.execution_id)
+    context.fail(public_failure_text(public_message, reference))

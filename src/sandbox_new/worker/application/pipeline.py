@@ -11,7 +11,7 @@ user sees a generic server error citing the log line's reference.
 
 from typing import Protocol, runtime_checkable
 
-from worker.application.context import ExecutionContext
+from worker.application.context import ExecutionContext, fail_on_sandbox_error
 
 __all__ = ["Pipeline", "Step"]
 
@@ -34,12 +34,12 @@ class Pipeline:
             try:
                 await step(context)
             except Exception as error:
-                context.fail_on_sandbox_error(error)
+                fail_on_sandbox_error(context, error)
                 break
             if context.completed:
                 break
 
         if not context.completed:
-            context.fail_on_sandbox_error("Execution pipeline produced no result.")
+            fail_on_sandbox_error(context, "Execution pipeline produced no result.")
 
         return context

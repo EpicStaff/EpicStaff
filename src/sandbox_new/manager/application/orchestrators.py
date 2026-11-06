@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Any
 
 import settings
-from common.public_errors import SandboxFailureMessage, report_sandbox_failure
+from common.public_errors import (
+    SandboxFailureMessage,
+    log_sandbox_failure,
+    public_failure_text,
+)
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
 
@@ -365,11 +369,11 @@ class JobOrchestrator:
             await self.dispatcher.dispatch(job)
         except Exception as error:
             # Type only: a validation error's text would quote the job's secrets.
-            message = report_sandbox_failure(
-                SandboxFailureMessage.SERVER_ERROR,
+            reference = log_sandbox_failure(
                 f"Failed to dispatch the job: {type(error).__name__}",
                 execution_id=job.execution_id,
             )
+            message = public_failure_text(SandboxFailureMessage.SERVER_ERROR, reference)
             await self._fail(job, message, not_run_reason="dispatch_failed")
 
     async def _fail(self, job: Job, message: str, *, not_run_reason: NotRunReason) -> None:

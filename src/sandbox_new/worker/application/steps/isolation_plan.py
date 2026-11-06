@@ -12,7 +12,7 @@ lifts it; that goes to the log, and the user sees a fixed text citing its refere
 from common.public_errors import SandboxFailureMessage
 from loguru import logger
 
-from worker.application.context import ExecutionContext
+from worker.application.context import ExecutionContext, fail_on_sandbox_error
 from worker.application.ports.isolation_probe import AbstractIsolationProbe
 from worker.domain.enums import (
     FilesystemIsolationPolicy,
@@ -113,4 +113,4 @@ class BuildIsolationPlan:
 
     @staticmethod
     def _refuse(context: ExecutionContext, detail: str) -> None:
-        context.fail_on_sandbox_error(detail, public_message=SandboxFailureMessage.UNSAFE_TO_RUN)
+        fail_on_sandbox_error(context, detail, public_message=SandboxFailureMessage.UNSAFE_TO_RUN)
