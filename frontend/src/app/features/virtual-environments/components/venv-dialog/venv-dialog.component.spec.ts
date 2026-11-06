@@ -281,7 +281,11 @@ describe('VenvDialogComponent library rows', () => {
         const message =
             'libs: Changing code that reads secrets, or what it runs with, requires the "Use" permission on Secrets. ' +
             'The existing value was left unchanged. Ask an organization admin to grant it.';
-        open({ venv: storedVenv([{ name: 'requests', specification: '', version: '2.31.0', description: null }]) });
+        open({
+            venv: storedVenv([
+                { name: 'requests', specification: '', version: '2.31.0', description: null, is_custom: false },
+            ]),
+        });
         type(0, 'Version', '2.32.0');
 
         save();
