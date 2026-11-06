@@ -798,9 +798,15 @@ class SessionManagerService(metaclass=SingletonMeta):
                 start_node_id=start_node.id if start_node else None,
             )
 
-        # NOTE: a node list not passed through this is checked and sent whole, as
-        # before any node was left out; that fails closed, so a list added later and
-        # missed here only loses the filtering.
+        # Unreached nodes are left out of the payload too, not only out of the checks:
+        # building the data of a node broken after setup can fail on its own (an LLM
+        # whose provider was deleted, a Knowledge node whose RAG is gone, a subflow
+        # without Start). The End node lookup below uses the same reachable set as the
+        # edge filter, or crew gets an edge to a node it was never sent.
+        # NOTE: so a route `FlowRoutes.from_rows` doesn't follow drops the nodes behind
+        # it from the payload, and crew fails when a run takes that route. A test in
+        # test_flow_reachability.py catches a new integer field ending in `node_id`, not
+        # a route stored any other way. A node list missed here is checked and sent whole.
         def reached(node_list: Iterable[NodeT]) -> list[NodeT]:
             if reachable_node_ids is None:
                 return list(node_list)

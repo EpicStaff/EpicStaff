@@ -13,7 +13,7 @@ A Subflow node runs its flow, then goes on along its edges like any other node.
 
 NOTE: a new node type that picks its next node at run time must add its routes in
 `FlowRoutes.from_rows`, or the nodes behind it are neither checked before a run nor
-sent to crew.
+sent to crew, and crew fails when a run takes one of those routes.
 """
 
 from collections import deque

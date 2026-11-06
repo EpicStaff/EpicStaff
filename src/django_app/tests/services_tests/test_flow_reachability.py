@@ -1,6 +1,8 @@
 """Which nodes a run of a flow reaches from its Start node, along every route crew takes."""
 
 import pytest
+from django.apps import apps
+from django.db import models
 from django.utils import timezone
 
 from tables.models import Edge, Graph, StartNode
@@ -126,3 +128,43 @@ def test_classification_table_routes_are_followed_except_a_disabled_row(
 
     expected = {start.id, table.id} | ({end_node.id} if reaches_end else set())
     assert nodes_reachable_from_start(flow.id) == expected
+
+
+# A route is stored as a plain integer holding a node's global id, not a foreign key,
+# since it may point to a node of any type: an edge's ends, or a table's next node.
+def _is_route_field(field) -> bool:
+    return (
+        not field.is_relation
+        and isinstance(field, models.IntegerField)
+        and field.attname.endswith("node_id")
+    )
+
+
+# The route fields the tests above show FlowRoutes following, by model label.
+_ROUTE_FIELDS_FLOW_ROUTES_FOLLOWS = {
+    "tables.Edge.start_node_id",
+    "tables.Edge.end_node_id",
+    "tables.DecisionTableNode.default_next_node_id",
+    "tables.DecisionTableNode.next_error_node_id",
+    "tables.ConditionGroup.next_node_id",
+    "tables.ClassificationDecisionTableNode.default_next_node_id",
+    "tables.ClassificationDecisionTableNode.next_error_node_id",
+    "tables.ClassificationConditionGroup.next_node_id",
+}
+
+
+def test_every_route_field_of_a_model_is_one_flow_routes_follows():
+    route_fields = {
+        f"{model._meta.label}.{field.attname}"
+        for model in apps.get_models()
+        for field in model._meta.concrete_fields
+        if _is_route_field(field)
+    }
+
+    assert route_fields == _ROUTE_FIELDS_FLOW_ROUTES_FOLLOWS, (
+        "A route field was added or removed. Handle a new one in every place "
+        "`next_error_node_id` is read: FlowRoutes.from_rows (and a test above), "
+        "`edge_referenced_ids` in SessionManagerService._build_graph_data (name "
+        "resolution), and crew's routing. A run leaves out every node behind a route "
+        "FlowRoutes doesn't follow, and crew fails when the run takes that route."
+    )

@@ -2,8 +2,9 @@
 
 import pytest
 
+from agents.models import AgentDefinition
 from tables.exceptions import AgentNodeRunValidationError
-from tables.models import Edge, Graph, PythonCode, PythonNode, StartNode
+from tables.models import Edge, Graph, KnowledgeNode, PythonCode, PythonNode, StartNode
 from tables.models.graph_models import (
     AgentNode,
     AgentNodeTask,
@@ -11,6 +12,9 @@ from tables.models.graph_models import (
     SubGraphNode,
     TelegramTriggerNode,
 )
+from tables.models.knowledge_models.collection_models import SourceCollection
+from tables.models.llm_models import LLMConfig, LLMModel
+from tables.models.provider import Provider
 from tables.models.session_models import Session, SessionPrincipal
 from tables.services.session_manager_service import SessionManagerService
 from tests.fixtures import *
@@ -74,6 +78,63 @@ def test_nodes_edges_subflows_and_end_the_run_does_not_reach_are_left_out(flow, 
     assert graph_data.end_node is None
     assert session_data.unique_subgraph_list == []
 
+
+def _agent_node_whose_llm_provider_was_deleted(flow: Graph) -> None:
+    provider = Provider.objects.create(name="Deleted provider")
+    llm_config = LLMConfig.objects.create(
+        custom_name="Main LLM",
+        model=LLMModel.objects.create(name="gpt-4o", org=flow.org, llm_provider=provider),
+        org=flow.org,
+    )
+    agent_definition = AgentDefinition.objects.create(
+        org=flow.org, name="Copywriter", llm_config=llm_config
+    )
+    agent_node = AgentNode.objects.create(
+        graph=flow, node_name="Writer", node_number=2, agent_definition=agent_definition
+    )
+    AgentNodeTask.objects.create(agent_node=agent_node, name="Draft", order=0)
+    provider.delete()
+
+
+def _knowledge_node_whose_rag_is_missing(flow: Graph) -> None:
+    KnowledgeNode.objects.create(
+        graph=flow,
+        node_name="Search",
+        node_number=2,
+        source_collection=SourceCollection.objects.create(
+            collection_name="Docs", org=flow.org
+        ),
+        rag_type="naive",
+        rag_id=999999,
+        query="Find the refund policy",
+    )
+
+
+# Each node passes the checks a run makes, yet building its session data fails, so
+# it would block every run if it were sent whether the run reaches it or not.
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "add_unreached_node",
+    [
+        pytest.param(_agent_node_whose_llm_provider_was_deleted, id="agent-llm-provider-deleted"),
+        pytest.param(_knowledge_node_whose_rag_is_missing, id="knowledge-rag-missing"),
+    ],
+)
+def test_node_the_run_does_not_reach_whose_session_data_cannot_be_built_does_not_block_it(
+    flow, add_unreached_node
+):
+    start = StartNode.objects.create(graph=flow, variables={})
+    _edge(flow, start, _python_node(flow, "Prepare", 1))
+    add_unreached_node(flow)
+
+    session_data = SessionManagerService().create_session_data(
+        _session(flow), start_node=start
+    )
+
+    graph_data = session_data.graph
+    assert len(graph_data.python_node_list) == 1
+    assert graph_data.agent_node_list == []
+    assert graph_data.knowledge_node_list == []
 
 
 @pytest.mark.django_db
