@@ -22,7 +22,7 @@ NOUL = {"type": "noul", "instructions": "Is this an engineering company?"}
             "dept": {
                 "type": "choice",
                 "instructions": "Department",
-                "criteria": {"eng": "Engineering"},
+                "criteria": {"eng": "Engineering", "ops": "Operations"},
             }
         },
         {
@@ -46,6 +46,15 @@ NOUL = {"type": "noul", "instructions": "Is this an engineering company?"}
             {"level": {"type": "score", "instructions": "x", "criteria": ["l"] * 10}},
             id="score-10-is-the-upper-limit",
         ),
+        pytest.param(
+            {"dept": {"type": "choice", "instructions": "x", "criteria": {"a": "d", "b": "d"}}},
+            id="choice-2-is-the-lower-limit",
+        ),
+        pytest.param(
+            {"level": {"type": "score", "instructions": "x", "criteria": ["low", "high"]}},
+            id="score-2-is-the-lower-limit",
+        ),
+        pytest.param({f"q{i}": NOUL for i in range(400)}, id="400-questions-is-the-upper-limit"),
     ],
 )
 def test_valid_questions_are_accepted(questions):
@@ -65,11 +74,11 @@ def test_valid_questions_are_accepted(questions):
         pytest.param({"q": {**NOUL, "criteria": {"maybe": "x"}}}, id="noul-criteria-key"),
         pytest.param({"q": {**NOUL, "box": True}}, id="noul-unknown-field"),
         pytest.param(
-            {"q": {"type": "choice", "instructions": "x", "criteria": {"a": "d"}, "box": True}},
+            {"q": {"type": "choice", "instructions": "x", "criteria": {"a": "d", "b": "d"}, "box": True}},
             id="choice-unknown-field",
         ),
         pytest.param(
-            {"q": {"type": "score", "instructions": "x", "criteria": ["l"], "box": True}},
+            {"q": {"type": "score", "instructions": "x", "criteria": ["l", "m"], "box": True}},
             id="score-unknown-field",
         ),
         pytest.param({"q": {"type": "box", "instructions": "x"}}, id="box-out-of-scope"),
@@ -88,6 +97,13 @@ def test_valid_questions_are_accepted(questions):
         pytest.param(
             {"q": {"type": "score", "instructions": "x", "criteria": ["l"] * 11}}, id="score-11"
         ),
+        pytest.param(
+            {"q": {"type": "choice", "instructions": "x", "criteria": {"a": "d"}}}, id="choice-1"
+        ),
+        pytest.param(
+            {"q": {"type": "score", "instructions": "x", "criteria": ["l"]}}, id="score-1"
+        ),
+        pytest.param({f"q{i}": NOUL for i in range(401)}, id="401-questions"),
     ],
 )
 def test_invalid_questions_are_refused(questions):

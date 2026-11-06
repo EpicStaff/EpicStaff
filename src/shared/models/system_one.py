@@ -21,14 +21,14 @@ class ChoiceQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["choice"]
     instructions: str = Field(min_length=1)
-    criteria: dict[str, str] = Field(min_length=1, max_length=255)  # option -> description
+    criteria: dict[str, str] = Field(min_length=2, max_length=255)  # option -> description
 
 
 class ScoreQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["score"]
     instructions: str = Field(min_length=1)
-    criteria: list[str] = Field(min_length=1, max_length=10)  # ordered levels; index = score
+    criteria: list[str] = Field(min_length=2, max_length=10)  # ordered levels; index = score
 
 
 SystemOneQuestion = Annotated[
@@ -46,8 +46,12 @@ def _require_identifier_names(questions: dict) -> dict:
     return questions
 
 
+MAX_SYSTEM_ONE_QUESTIONS = 400
+
 SystemOneQuestions = Annotated[
-    dict[str, SystemOneQuestion], Field(min_length=1), AfterValidator(_require_identifier_names)
+    dict[str, SystemOneQuestion],
+    Field(min_length=1, max_length=MAX_SYSTEM_ONE_QUESTIONS),
+    AfterValidator(_require_identifier_names),
 ]
 SYSTEM_ONE_QUESTIONS_ADAPTER = TypeAdapter(SystemOneQuestions)
 
