@@ -44,7 +44,9 @@
                             type="button"
                             class="header-action header-action--ghost"
                             aria-label="Settings"
+                            matTooltip="Settings"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
                             collapseOnOverflowRequireSelector="app-svg-icon"
@@ -62,7 +64,9 @@
                             type="button"
                             class="header-action header-action--ghost"
                             aria-label="Delete"
+                            matTooltip="Delete"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
                             collapseOnOverflowRequireSelector="app-svg-icon"
@@ -91,7 +95,9 @@
                             type="button"
                             class="header-action header-action--outline"
                             [attr.aria-label]="pauseLabel()"
+                            [matTooltip]="pauseLabel()"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
                             collapseOnOverflowRequireSelector="app-svg-icon"
@@ -109,7 +115,9 @@
                             type="button"
                             class="header-action header-action--primary"
                             aria-label="Test"
+                            matTooltip="Test"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
                             collapseOnOverflowRequireSelector="app-svg-icon"
@@ -153,6 +161,7 @@
                             type="button"
                             class="phone-bar__switcher"
                             [attr.aria-label]="deskSwitcherLabel()"
+                            [matTooltip]="deskSwitcherLabel()"
                             (click)="deskDrawer.open()"
                         >
                             <app-desk-avatar
@@ -182,6 +191,7 @@
                                 type="button"
                                 class="phone-bar__icon-button phone-bar__icon-button--primary"
                                 aria-label="Test"
+                                matTooltip="Test"
                                 [disabled]="!canStartTest()"
                                 (click)="startTest()"
                             >

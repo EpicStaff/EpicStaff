@@ -128,6 +128,7 @@ HOOK_RECORDED_ROUTES = frozenset(
         "POST api/graphs/bulk-delete/",
         "POST api/llm-configs/bulk-delete/",
         "POST api/openai-realtime-configs/bulk-delete/",
+        "POST api/system-one-configs/bulk-delete/",
         # move_to_recycle_bin (DeleteService) records each binned row.
         "POST api/mcp-tools/bulk-delete/",
         "POST api/python-code-tool/bulk-delete/",
@@ -136,6 +137,7 @@ HOOK_RECORDED_ROUTES = frozenset(
         # SessionViewSet.bulk_delete records each deleted session under its flow.
         "POST api/sessions/bulk_delete/",
         # ImportService records each main entity the file creates.
+        "POST api/agent-definitions/import/",
         "POST api/audit-filter-presets/import/",
         "POST api/graphs/import/",
         "POST api/mcp-tools/import/",

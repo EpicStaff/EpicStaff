@@ -1,8 +1,10 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -14,7 +16,7 @@ import {
 } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
 import { ActionCode, GetRoleResponse, ResourceCode } from '@shared/models';
-import { finalize, switchMap } from 'rxjs';
+import { filter, finalize, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -39,6 +41,7 @@ export interface CopyRoleDialogData {
         ReactiveFormsModule,
         SelectComponent,
         ValidationErrorsComponent,
+        MatTooltip,
     ],
 })
 export class CopyRoleDialogComponent {
@@ -67,6 +70,17 @@ export class CopyRoleDialogComponent {
 
     constructor() {
         this.loadCreatableOrgs();
+        // disableClose keeps a stray backdrop click from losing the form; Escape is asked for, so it cancels.
+        // A dropdown that closed on this Escape has taken it.
+        this.dialogRef.keydownEvents
+            .pipe(
+                filter((event) => event.key === 'Escape' && !hasModifierKey(event) && !event.defaultPrevented),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((event) => {
+                event.preventDefault();
+                this.onCancel();
+            });
     }
 
     private loadCreatableOrgs(): void {

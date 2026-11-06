@@ -49,15 +49,15 @@ The shared abstract bases in
 
 | Field | Type | Notes |
 |---|---|---|
-| `organization` | FK → `rbac.Organization`, `CASCADE` | owning organization |
-| `name` | `CharField(max_length=255)` | unique per organization via `UniqueConstraint("organization", "name")` named `uniq_surface_org_name` |
+| `org` | FK → `rbac.Organization`, `CASCADE`, nullable | owning organization; inherited from `OrgScopedModel`, together with `created_by` |
+| `name` | `CharField(max_length=255)` | unique per organization via `UniqueConstraint("org", "name")` over active rows (`condition=Q(active=True)`) named `uniq_surface_org_name` |
 | `instructions` | `TextField`, blank/default `""` | appended to the agent prompt when the surface is active |
 | `owner_agent` | FK → `AgentDefinition`, `CASCADE`, nullable | `None` = shared (any agent may use it); set = agent-specific (only that agent) |
 | `created_at` / `updated_at` | via `TimestampMixin` | standard timestamps |
 
 ### `InlineSurface` / `AgentInlineSurface` fields
 
-Both are much smaller — no `organization`, `name`, or `owner_agent`, since they
+Both are much smaller — no `org`, `name`, or `owner_agent`, since they
 are not catalog entries:
 
 | Field | Type | Notes |
@@ -189,9 +189,10 @@ Both are combined at runtime (see [Runtime resolution](#runtime-resolution)).
 `PUT` is not allowed (`http_method_names` omits it) and returns 405; use `PATCH`.
 | `/api/surfaces/combine/` | `POST` | merges N surfaces (by id) into one combined payload |
 
-Organization scoping is hardcoded: `get_queryset()` always filters
-`organization=Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)` — there
-is currently no multi-tenant org selection at this layer.
+Organization comes from the caller's active organization: `OrgScopedViewSetMixin`
+(`rbac/scoping/mixins.py`) filters the queryset to `get_active_org_id()` and stamps
+that org (and `created_by`) on create, and the serializer context carries the same
+`org_id`, so another organization's surfaces are not found (404).
 
 `create`/`partial_update` are wrapped in `@transaction.atomic`, always
 build a write serializer, save it, `refresh_from_db()`, then re-serialize the

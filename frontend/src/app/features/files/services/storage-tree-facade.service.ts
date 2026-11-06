@@ -85,6 +85,8 @@ export class StorageTreeFacade {
 
     readonly selectInTree = new Subject<StorageItem>();
     readonly renameInTree = new Subject<StorageItem>();
+    /** The path a failed rename asked for; the tree stops waiting to focus the row under it. */
+    readonly renameFailed = new Subject<string>();
 
     afterTreeLoad: (() => void) | null = null;
 
@@ -563,7 +565,10 @@ export class StorageTreeFacade {
                     const extras = event.item.type === 'folder' ? [to] : [];
                     this.reloadTreePreservingExpansion(extras);
                 },
-                error: () => this.toastService.error('Failed to rename'),
+                error: () => {
+                    this.toastService.error('Failed to rename');
+                    this.renameFailed.next(to);
+                },
             });
     }
 

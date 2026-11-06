@@ -22,7 +22,7 @@
     flex-direction: column;
 }
 
-.field label {
+.field-label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -32,6 +32,7 @@
     margin-bottom: 0.5rem;
 }
 
+// Also on the field mark around the select, the row's item while it shows (it leaves no box otherwise).
 .select-field {
     flex: 1;
     min-width: 0;
@@ -43,6 +44,14 @@
     align-items: center;
 }
 
+.missing-flow-hint {
+    margin-top: 4px;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-status-error);
+}
+
 .selected-flow-row app-go-to-button {
     flex: 0 0 auto;
 }
@@ -50,4 +59,9 @@
 app-go-to-button.is-disabled {
     pointer-events: none;
     opacity: 0.5;
+}
+
+// Spaced off the field above it, like the recycle-bin note.
+.missing-reference-note {
+    margin-top: 0.5rem;
 }

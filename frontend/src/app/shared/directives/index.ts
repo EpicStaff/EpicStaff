@@ -1,5 +1,6 @@
 export * from './click-outside.directive';
 export * from './collapse-on-overflow.directive';
+export * from './content-text.directive';
 export * from './drag-hover.directive';
 export * from './drag-scroll.directive';
 export * from './enter-blur.directive';
@@ -13,4 +14,6 @@ export * from './resizable-section.directive';
 export * from './resizable-sidebar.directive';
 export * from './search-shortcut.directive';
 export * from './server-errors.directive';
+export * from './tab-through-menu.directive';
 export * from './tooltip-on-overflow.directive';
+export * from './tooltip-when-collapsed.directive';

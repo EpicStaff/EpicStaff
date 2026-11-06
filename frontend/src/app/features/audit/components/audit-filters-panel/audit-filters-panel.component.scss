@@ -37,7 +37,7 @@
     font-size: 14px;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }
@@ -133,7 +133,7 @@
     white-space: nowrap;
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-secondary-btn-background-hover);
     }
 
@@ -147,7 +147,7 @@
     border-color: var(--accent-color);
     color: var(--accent-color);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-ghost-btn-hover);
     }
 }
@@ -156,7 +156,7 @@
     background-color: var(--accent-color);
     border-color: var(--accent-color);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--accent-color-hover);
     }
 }
@@ -188,7 +188,7 @@
     line-height: var(--text-body-small-line-height);
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-secondary-btn-background-hover);
     }
 
@@ -217,7 +217,7 @@
     line-height: var(--text-caption-line-height);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 }
@@ -238,9 +238,10 @@
         color: var(--color-input-text-placeholder);
     }
 
-    &:focus-visible {
-        outline: 2px solid var(--accent-color);
-        outline-offset: 1px;
+    // A text field shows its focus with its border, like the other fields, not with the ring.
+    &:focus {
+        outline: none;
+        border-color: var(--accent-color);
     }
 }
 
@@ -282,7 +283,7 @@
     text-align: left;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-input-background-hover);
     }
 }
@@ -303,7 +304,7 @@
     font-size: 11px;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-input-background-hover);
     }
 }

@@ -219,6 +219,7 @@ def test_row_in_another_org_answers_the_views_own_not_found(principal, beta):
             ResourceType.FLOWS,
             Permission.READ,
             not_found=GraphNotFoundError(),
+            api_key_org_id=None,
         )
 
 
@@ -230,6 +231,7 @@ def test_row_in_the_pinned_org_without_the_declared_action_is_403(principal, acm
             ResourceType.FLOWS,
             Permission.DELETE,
             not_found=GraphNotFoundError(),
+            api_key_org_id=None,
         )
 
 
@@ -237,7 +239,7 @@ def test_running_another_orgs_flow_is_not_found(principal, beta):
     other_graph = Graph.objects.create(name="beta flow", org=beta)
 
     with pytest.raises(GraphNotFoundError):
-        get_runnable_graph(principal, graph_id=other_graph.id)
+        get_runnable_graph(principal, graph_id=other_graph.id, api_key_org_id=None)
 
 
 # ---- OrgContextService ----

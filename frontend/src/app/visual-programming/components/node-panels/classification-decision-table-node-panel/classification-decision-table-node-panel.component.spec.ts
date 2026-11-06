@@ -5,9 +5,10 @@ import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, Provider, s
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
-import { ExecutionTimeoutFieldComponent, ExecutionTimeoutFormField } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { ExecutionTimeoutFieldComponent, ExecutionTimeoutFormField, JsonEditorComponent } from '@shared/components';
+import { NodeType, ResourceCode } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
+import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { of } from 'rxjs';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
@@ -30,8 +31,16 @@ import { SavedFlowStateService } from '../../../services/saved-flow-state.servic
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
+import { FieldChange, FieldName, NodeDiffStatus } from '../../../utils/diff';
 import { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from '../../../utils/save/diff';
 import { buildBulkSavePayload } from '../../../utils/save/payload';
+import {
+    codeMarkDescriptions,
+    renderCodeDiffViewWithStubEditor,
+    shownCodeDiffs,
+} from '../../code-diff-view/code-diff-view.testing';
+import { provideChangesTabDiff } from '../../missing-reference-note/missing-reference-note.testing';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
@@ -78,6 +87,7 @@ class GridStubComponent {
     readonly domainKeys = input<unknown>();
     readonly routePortIdsWithTarget = input<ReadonlySet<string>>(new Set());
     readonly readonly = input(false);
+    readonly rowChanges = input<unknown>(null);
     readonly conditionGroupsChange = output<ConditionGroup[]>();
     readonly sectionsChange = output<unknown>();
     readonly enableContinueRequest = output<CdtEnableContinueRequest>();
@@ -118,8 +128,6 @@ function tableNode(): ClassificationDecisionTableNodeModel {
         data: { name: 'Triage', table: { condition_groups: CANVAS_ROWS, prompts: {} } },
         position: { x: 0, y: 0 },
         ports: generatePortsForClassificationDecisionTableNode(NODE_ID, CANVAS_ROWS),
-        color: '',
-        icon: '',
         size: { width: 300, height: 200 },
         input_map: {},
         output_variable_path: null,
@@ -135,8 +143,6 @@ function pythonNode(id: string): NodeModel {
         data: {},
         position: { x: 400, y: 0 },
         ports: generatePortsForNode(id, NodeType.PYTHON),
-        color: '',
-        icon: '',
         size: { width: 200, height: 100 },
         input_map: {},
         output_variable_path: null,
@@ -176,6 +182,16 @@ function configurePanelTestBed({ isPreview = false, providers = [] as Provider[]
         add: { imports: [GridStubComponent, CodeEditorStubComponent] },
     });
 }
+
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
 
 describe('ClassificationDecisionTableNodePanelComponent — enabling Continue on a wired route code', () => {
     let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
@@ -706,7 +722,7 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         return item['pre_python_code'] as Record<string, unknown> | null;
     }
 
-    it('shows and enables the timeout of every block, with or without code, like its libraries', () => {
+    it('shows and enables the timeout of every block, with or without code', () => {
         open(90, undefined, '  ');
 
         expect(showsTimeoutOnTab('precomputation')).toBe(true);
@@ -754,5 +770,672 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
 
         expect(fields().preExecutionTimeout.control.disabled).toBe(true);
         expect(fields().postExecutionTimeout.control.disabled).toBe(true);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — the pre- and post-computation on the Changes tab of a version preview', () => {
+    type ComputationTab = 'precomputation' | 'postcomputation';
+
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    const changeOf = (field: FieldName, current: unknown, version: unknown): FieldChange => ({
+        path: field,
+        field,
+        status: 'changed',
+        current,
+        version,
+    });
+    const CODE_CHANGES: Record<ComputationTab, FieldChange> = {
+        precomputation: changeOf('pre_computation.code', 'pre = 1\n', 'pre = 2\n'),
+        postcomputation: changeOf('post_computation.code', 'post = 1\n', 'post = 2\n'),
+    };
+
+    /** The panel on `tab`, widened unless `expanded` is false; with no diff off the Changes tab. */
+    function open(
+        tab: ComputationTab | 'table',
+        diff: { status: NodeDiffStatus; fields: FieldChange[] } | null,
+        expanded = true
+    ): HTMLElement {
+        configurePanelTestBed({ isPreview: true, providers: diff ? [provideChangesTabDiff(diff)] : [] });
+        renderCodeDiffViewWithStubEditor();
+        const flowService = TestBed.inject(FlowService);
+        flowService.setFlow({ nodes: [tableNode()], connections: [] });
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', flowService.nodes()[0]);
+        fixture.componentRef.setInput('isExpanded', expanded);
+        fixture.detectChanges();
+        // The panel opens on the Decision Table tab.
+        if (tab !== 'table') {
+            const label = tab === 'precomputation' ? 'Pre-computation' : 'Post-computation';
+            Array.from(fixture.nativeElement.querySelectorAll('.tab-link') as NodeListOf<HTMLElement>)
+                .find((link) => link.textContent!.trim().startsWith(label))!
+                .click();
+            fixture.detectChanges();
+        }
+        return fixture.nativeElement;
+    }
+
+    const codeEditors = (root: HTMLElement): number => root.querySelectorAll('app-code-editor').length;
+
+    it.each(['precomputation', 'postcomputation'] as const)(
+        'shows the changed code of the %s tab as a diff of the current canvas code and the version code, widened',
+        (tab) => {
+            const root = open(tab, { status: 'changed', fields: Object.values(CODE_CHANGES) });
+
+            expect(shownCodeDiffs(fixture.debugElement)).toEqual([
+                { current: CODE_CHANGES[tab].current, version: CODE_CHANGES[tab].version },
+            ]);
+            expect(codeEditors(root)).toBe(0);
+            expect(codeMarkDescriptions(root)).toEqual([]);
+        }
+    );
+
+    it.each(['precomputation', 'postcomputation'] as const)(
+        'marks the code column of the %s tab in the minimized panel, with the expand hint',
+        (tab) => {
+            const root = open(tab, { status: 'changed', fields: Object.values(CODE_CHANGES) }, false);
+
+            expect(codeMarkDescriptions(root)).toEqual(['Expand the panel to see the changes.']);
+            expect(codeEditors(root)).toBe(1);
+            expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+        }
+    );
+
+    const KEEPS_EDITOR = [
+        {
+            case: 'only the other code changed',
+            diff: { status: 'changed' as const, fields: [CODE_CHANGES.postcomputation] },
+        },
+        { case: 'the node is added', diff: { status: 'added' as const, fields: [CODE_CHANGES.precomputation] } },
+        { case: 'the node is removed', diff: { status: 'deleted' as const, fields: [CODE_CHANGES.precomputation] } },
+        { case: 'off the Changes tab (Preview tab, live editor)', diff: null },
+    ].flatMap((keeps) => [true, false].map((expanded) => ({ ...keeps, expanded })));
+
+    it.each(KEEPS_EDITOR)(
+        'keeps the normal pre-computation editor when $case (widened: $expanded)',
+        ({ diff, expanded }) => {
+            const root = open('precomputation', diff, expanded);
+
+            expect(codeEditors(root)).toBe(1);
+            expect(codeMarkDescriptions(root)).toEqual([]);
+            expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+        }
+    );
+
+    /** The tab links with a "changed" dot, each by its accessible name. */
+    const flaggedTabs = (root: HTMLElement): string[] =>
+        Array.from(root.querySelectorAll<HTMLElement>('.tab-link'))
+            .filter((link) => link.querySelector('.tab-link__changed-dot') !== null)
+            .map((link) => link.textContent!.replace(/\s+/g, ' ').trim());
+
+    it.each([
+        {
+            changed: changeOf('pre_computation.code', 'a', 'b'),
+            flagged: ['Pre-computation (restore changes this tab)'],
+        },
+        {
+            changed: changeOf('pre_computation.execution_timeout', 90, 120),
+            flagged: ['Pre-computation (restore changes this tab)'],
+        },
+        {
+            changed: changeOf('post_use_storage', false, true),
+            flagged: ['Post-computation (restore changes this tab)'],
+        },
+        {
+            changed: {
+                ...changeOf('prompts[].result_variable', 'a', 'b'),
+                path: 'prompts[key=triage].result_variable',
+            },
+            flagged: ['Prompt library (restore changes this tab)'],
+        },
+        { changed: changeOf('node_name', 'Triage', 'Sort'), flagged: [] },
+    ])('flags the tab of a changed $changed.field, on any tab', ({ changed, flagged }) => {
+        expect(flaggedTabs(open('table', { status: 'changed', fields: [changed] }))).toEqual(flagged);
+    });
+
+    /** The current canvas value each shown field mark describes, as a screen reader hears it. */
+    const markDescriptions = (root: HTMLElement): string[] =>
+        Array.from(root.querySelectorAll('.diff-field-mark--shown')).map(
+            (mark) => document.getElementById(mark.getAttribute('aria-describedby') ?? '')?.textContent ?? ''
+        );
+
+    it.each([
+        {
+            tab: 'precomputation' as const,
+            change: changeOf('pre_computation.output_variable_path', 'pre.out', null),
+            description: 'Current canvas: pre.out',
+        },
+        {
+            tab: 'precomputation' as const,
+            change: changeOf('pre_computation.secret_names', ['API_KEY'], []),
+            description: 'Current canvas: API_KEY',
+        },
+        {
+            tab: 'postcomputation' as const,
+            change: changeOf('post_computation.execution_timeout', 30, 120),
+            description: 'Current canvas: 00:00:30',
+        },
+        {
+            tab: 'postcomputation' as const,
+            change: changeOf('post_use_storage', true, false),
+            description: 'Current canvas: on',
+        },
+    ])('marks the changed $change.field on its tab, with the current canvas value', ({ tab, change, description }) => {
+        const root = open(tab, { status: 'changed', fields: [change] }, false);
+
+        expect(markDescriptions(root)).toEqual([description]);
+    });
+
+    it.each([
+        { case: 'on an added node', diff: { status: 'added' as const, fields: [CODE_CHANGES.precomputation] } },
+        { case: 'off the Changes tab', diff: null },
+    ])('flags no tab $case', ({ diff }) => {
+        expect(flaggedTabs(open('table', diff))).toEqual([]);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — the prompts and the default LLM on the Changes tab of a version preview', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    const TRIAGE_PROMPT = {
+        prompt_text: 'Sort the ticket',
+        llm_config: 3,
+        output_schema: { type: 'object' },
+        result_variable: 'category',
+        variable_mappings: { ticket: 'variables.ticket' },
+    };
+
+    const promptChange = (field: string, current: unknown, version: unknown): FieldChange => ({
+        path: `prompts[key=triage].${field}`,
+        field: `prompts[].${field}` as FieldName,
+        status: 'changed',
+        current,
+        version,
+    });
+    const defaultLlmChange: FieldChange = {
+        path: 'default_llm_config',
+        field: 'default_llm_config',
+        status: 'changed',
+        current: 5,
+        version: 7,
+    };
+
+    /** The version table with the prompt "triage" and default LLM 7, on the Prompt library tab. */
+    function open(diff: { status: NodeDiffStatus; fields: FieldChange[] } | null): HTMLElement {
+        configurePanelTestBed({ isPreview: true, providers: diff ? [provideChangesTabDiff(diff)] : [] });
+        renderCodeDiffViewWithStubEditor();
+        // The JSON editor runs Monaco, which jsdom cannot.
+        TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
+            remove: { imports: [JsonEditorComponent] },
+            add: { schemas: [NO_ERRORS_SCHEMA] },
+        });
+        const node = tableNode();
+        const flowService = TestBed.inject(FlowService);
+        flowService.setFlow({
+            nodes: [
+                {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        table: { ...node.data.table, prompts: { triage: TRIAGE_PROMPT }, default_llm_config: 7 },
+                    },
+                } as NodeModel,
+            ],
+            connections: [],
+        });
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', flowService.nodes()[0]);
+        fixture.detectChanges();
+        Array.from(fixture.nativeElement.querySelectorAll('.tab-link') as NodeListOf<HTMLElement>)
+            .find((link) => link.textContent!.trim().startsWith('Prompt library'))!
+            .click();
+        fixture.detectChanges();
+        return fixture.nativeElement;
+    }
+
+    const descriptionOf = (element: Element | null): string =>
+        document.getElementById(element?.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+    const card = (root: HTMLElement, promptId: string): HTMLElement =>
+        Array.from(root.querySelectorAll<HTMLElement>('.prompt-card')).find(
+            (candidate) => candidate.querySelector('.prompt-id')?.textContent?.trim() === promptId
+        )!;
+    const openCard = (root: HTMLElement): void => {
+        card(root, 'triage').querySelector<HTMLElement>('.prompt-card-header')!.click();
+        fixture.detectChanges();
+    };
+
+    it('marks a changed prompt card with the fields a restore changes, those without a field of their own too', () => {
+        const root = open({
+            status: 'changed',
+            fields: [
+                promptChange('prompt_text', 'Sort it', 'Sort the ticket'),
+                promptChange('variable_mappings', {}, TRIAGE_PROMPT.variable_mappings),
+            ],
+        });
+
+        const header = card(root, 'triage').querySelector('.prompt-card-header');
+        expect(header?.classList).toContain('diff-field-mark--shown');
+        expect(descriptionOf(header)).toBe(
+            'Restore changes this field. Changed fields: Prompt text, Variable mappings.'
+        );
+    });
+
+    it('lists a kind change and the System One fields a restore changes in the card tooltip', () => {
+        const root = open({
+            status: 'changed',
+            fields: [
+                promptChange('kind', 'system_one', 'llm'),
+                promptChange('prompt_text', '', 'Sort the ticket'),
+                promptChange('system_one_config', 4, null),
+                promptChange('input_map', { text: 'variables.text' }, {}),
+                promptChange('questions', { correct: { type: 'noul', instructions: 'Right?', criteria: {} } }, {}),
+            ],
+        });
+
+        expect(descriptionOf(card(root, 'triage').querySelector('.prompt-card-header'))).toBe(
+            'Restore changes this field. Changed fields: Kind, Prompt text, System One config, Input to classify, Questions.'
+        );
+    });
+
+    it('tags a System One entry a restore removes as the other System One cards are', () => {
+        const root = open({
+            status: 'changed',
+            fields: [
+                {
+                    path: 'prompts[key=Company check]',
+                    field: 'prompts[]',
+                    status: 'deleted',
+                    current: { kind: 'system_one', result_variable: 'checked' },
+                    version: null,
+                },
+            ],
+        });
+
+        const removed = card(root, 'Company check');
+        expect(removed.classList).toContain('prompt-card--removed');
+        expect(removed.querySelector('.prompt-kind-tag')?.textContent?.trim()).toBe('S1');
+    });
+
+    it.each(['Enter', ' '])(
+        'opens and closes a marked card from the keyboard (%j), as its header is focusable',
+        (key) => {
+            const root = open({ status: 'changed', fields: [promptChange('result_variable', 'kind', 'category')] });
+            const header = card(root, 'triage').querySelector<HTMLElement>('.prompt-card-header')!;
+            const press = (): KeyboardEvent => {
+                const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+                header.dispatchEvent(event);
+                fixture.detectChanges();
+                return event;
+            };
+
+            expect(header.getAttribute('tabindex')).toBe('0');
+            const opening = press();
+            expect(card(root, 'triage').querySelector('.prompt-card-body')).not.toBeNull();
+            expect(opening.defaultPrevented).toBe(key === ' ');
+            press();
+            expect(card(root, 'triage').querySelector('.prompt-card-body')).toBeNull();
+        }
+    );
+
+    it.each(['Enter', ' '])(
+        'leaves a key (%j) on the prompt-id button of a marked header to the button, which clicks the header itself',
+        (key) => {
+            const root = open({ status: 'changed', fields: [promptChange('result_variable', 'kind', 'category')] });
+            const idButton = card(root, 'triage').querySelector<HTMLButtonElement>('.prompt-card-header .prompt-id')!;
+
+            idButton.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+            fixture.detectChanges();
+            expect(card(root, 'triage').querySelector('.prompt-card-body')).toBeNull();
+
+            idButton.click();
+            fixture.detectChanges();
+            expect(card(root, 'triage').querySelector('.prompt-card-body')).not.toBeNull();
+        }
+    );
+
+    it('marks a prompt a restore adds, and shows a canvas prompt it removes as a read-only struck card', () => {
+        const root = open({
+            status: 'changed',
+            fields: [
+                {
+                    path: 'prompts[key=triage]',
+                    field: 'prompts[]',
+                    status: 'added',
+                    current: null,
+                    version: TRIAGE_PROMPT,
+                },
+                {
+                    path: 'prompts[key=legacy]',
+                    field: 'prompts[]',
+                    status: 'deleted',
+                    current: { ...TRIAGE_PROMPT, result_variable: 'old_category' },
+                    version: null,
+                },
+            ],
+        });
+
+        // The status is heard, not hovered: a card-wide tooltip would cover the tooltips of the controls inside.
+        const added = card(root, 'triage');
+        expect(added.classList).toContain('prompt-card--added');
+        expect(added.querySelector(':scope > .visually-hidden')?.textContent).toBe('Restore adds this prompt: ');
+        expect(added.hasAttribute('title')).toBe(false);
+        const removed = card(root, 'legacy');
+        expect(removed.classList).toContain('prompt-card--removed');
+        expect(removed.querySelector(':scope > .visually-hidden')?.textContent).toBe('Restore removes this prompt: ');
+        expect(removed.hasAttribute('title')).toBe(false);
+        expect(removed.textContent).toContain('old_category');
+        expect(removed.querySelector('button')).toBeNull();
+    });
+
+    it('marks each changed field of an opened card, an LLM by its name or number', () => {
+        const root = open({
+            status: 'changed',
+            fields: [promptChange('llm_config', 5, 3), promptChange('result_variable', 'kind', 'category')],
+        });
+        openCard(root);
+
+        const fieldMarks = Array.from(
+            card(root, 'triage').querySelectorAll('.prompt-card-body .diff-field-mark--shown')
+        );
+        expect(fieldMarks.map(descriptionOf)).toEqual(['Current canvas: LLM #5', 'Current canvas: kind']);
+    });
+
+    it('shows a changed output schema as a JSON diff in the side editor', () => {
+        const root = open({
+            status: 'changed',
+            fields: [promptChange('output_schema', { type: 'string' }, TRIAGE_PROMPT.output_schema)],
+        });
+        openCard(root);
+        fixture.componentInstance.openSideEditor('triage', 'schema');
+        fixture.detectChanges();
+
+        expect(shownCodeDiffs(fixture.debugElement)).toEqual([
+            { current: '{\n  "type": "string"\n}', version: '{\n  "type": "object"\n}' },
+        ]);
+    });
+
+    const defaultLlmLine = (root: HTMLElement): string | null =>
+        root.querySelector('.default-llm-line')?.textContent?.trim() ?? null;
+
+    it('shows the default LLM as a marked line when a restore changes it', () => {
+        const root = open({ status: 'changed', fields: [defaultLlmChange] });
+
+        expect(defaultLlmLine(root)).toBe('Default LLM: LLM #7');
+        expect(descriptionOf(root.querySelector('.default-llm-mark'))).toBe('Current canvas: LLM #5');
+    });
+
+    it.each([
+        {
+            case: 'a restore changes another field',
+            diff: { status: 'changed' as const, fields: [promptChange('result_variable', 'a', 'b')] },
+        },
+        { case: 'the node is added', diff: { status: 'added' as const, fields: [defaultLlmChange] } },
+        { case: 'off the Changes tab', diff: null },
+    ])('shows no default LLM line when $case', ({ diff }) => {
+        expect(defaultLlmLine(open(diff))).toBeNull();
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — code that reads secrets', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    /** Only the pre-computation code reads a secret. */
+    function open(canUseSecrets: boolean): void {
+        configurePanelTestBed({
+            providers: [
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode) => resource !== ResourceCode.Secrets || canUseSecrets,
+                        canEditSecrets: () => canUseSecrets,
+                    },
+                },
+            ],
+        });
+        const node = tableNode();
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...node,
+            data: {
+                ...node.data,
+                table: {
+                    ...node.data.table,
+                    pre_computation: { code: 'def main(): pass', secret_ids: [7], secret_names: ['STRIPE_KEY'] },
+                    post_computation: { code: 'def main(): pass' },
+                },
+            },
+        } as ClassificationDecisionTableNodeModel);
+        fixture.detectChanges();
+    }
+
+    function showTab(tab: 'precomputation' | 'postcomputation'): void {
+        fixture.componentInstance.activeTab.set(tab);
+        fixture.detectChanges();
+    }
+
+    function codeEditorReadOnly(): boolean {
+        return (
+            fixture.debugElement.query(By.directive(CodeEditorStubComponent))
+                .componentInstance as CodeEditorStubComponent
+        ).readOnly();
+    }
+
+    function storageReadOnly(): boolean {
+        return (
+            fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
+                .componentInstance as NodeStorageSectionComponent
+        ).readonly();
+    }
+
+    function showsLockHint(): boolean {
+        return (fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE) ?? false;
+    }
+
+    it('locks only the block whose code reads secrets, with its storage toggle, without Secrets:Use', () => {
+        open(false);
+
+        showTab('precomputation');
+        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([true, true, true]);
+
+        showTab('postcomputation');
+        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([false, false, false]);
+    });
+
+    it('leaves both blocks editable with Secrets:Use', () => {
+        open(true);
+
+        showTab('precomputation');
+        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([false, false, false]);
+    });
+
+    it('locks the storage toggles in a version preview', () => {
+        configurePanelTestBed({ isPreview: true });
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', tableNode());
+        fixture.detectChanges();
+
+        showTab('postcomputation');
+        expect(storageReadOnly()).toBe(true);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — stored code fields', () => {
+    it('saves the stored entrypoint and global kwargs of each block, which it does not edit', () => {
+        configurePanelTestBed();
+        const node = tableNode();
+        const stored = { code: 'def run(): pass', entrypoint: 'run', global_kwargs: { retries: 3 } };
+        const fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...node,
+            data: { ...node.data, table: { ...node.data.table, pre_computation: stored, post_computation: stored } },
+        } as ClassificationDecisionTableNodeModel);
+        fixture.detectChanges();
+
+        const { pre_computation, post_computation } = fixture.componentInstance.createUpdatedNode().data.table;
+
+        expect([pre_computation?.entrypoint, pre_computation?.global_kwargs]).toEqual(['run', { retries: 3 }]);
+        expect([post_computation?.entrypoint, post_computation?.global_kwargs]).toEqual(['run', { retries: 3 }]);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — System One entries in the Prompt Library', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+    let panel: ClassificationDecisionTableNodePanelComponent;
+
+    function open(prompts: ClassificationDecisionTableNodeModel['data']['table']['prompts'] = {}): void {
+        configurePanelTestBed();
+        const node = tableNode();
+        const flowService = TestBed.inject(FlowService);
+        flowService.setFlow({
+            nodes: [{ ...node, data: { ...node.data, table: { ...node.data.table, prompts } } }],
+            connections: [],
+        });
+        TestBed.inject(SavedFlowStateService).setSavedFlow(flowService.getFlowState());
+
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', flowService.nodes()[0]);
+        fixture.detectChanges();
+        panel = fixture.componentInstance;
+        panel.activeTab.set('prompts');
+        fixture.detectChanges();
+    }
+
+    function headerButton(label: string): HTMLButtonElement {
+        const button = [
+            ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+                '.prompt-section-header button'
+            ),
+        ].find((candidate) => candidate.textContent?.trim() === label);
+        if (!button) throw new Error(`no header button ${label}`);
+        return button;
+    }
+
+    function click(button: HTMLElement): void {
+        button.click();
+        fixture.detectChanges();
+    }
+
+    function sentPromptConfigs(): Record<string, unknown>[] {
+        const node = panel.onSaveSilently()!;
+        const current: FlowModel = { nodes: [node], connections: [] };
+        const idMap = buildUuidToBackendIdMap(current.nodes);
+        const payload = buildBulkSavePayload(
+            1,
+            getNodeDiff({ nodes: [], connections: [] }, current),
+            getConnectionDiff({ nodes: [], connections: [] }, current, idMap),
+            current,
+            idMap,
+            1
+        );
+        const [item] = payload['classification_decision_table_node_list'] as Record<string, unknown>[];
+        return item['prompt_configs'] as Record<string, unknown>[];
+    }
+
+    it('offers both kinds of entry, with the LLM button keeping its behaviour', () => {
+        open();
+
+        // Not through `click()`: it would render the LLM card, whose JSON editor needs Monaco.
+        headerButton('LLM prompt').click();
+
+        expect(Object.keys(panel.prompts())).toEqual(['prompt_1']);
+        expect(panel.prompts()['prompt_1'].kind).toBeUndefined();
+    });
+
+    const SYSTEM_ONE_ENTRY = {
+        prompt_text: '',
+        llm_config: null,
+        output_schema: null,
+        variable_mappings: {},
+        kind: 'system_one' as const,
+    };
+
+    it('adds a System One entry with the empty System One shape, named System One', () => {
+        open();
+
+        click(headerButton('System One'));
+
+        expect(panel.prompts()['System One']).toEqual({
+            kind: 'system_one',
+            system_one_config: null,
+            questions: {},
+            input_map: {},
+            prompt_text: '',
+            llm_config: null,
+            output_schema: null,
+            result_variable: 'system_one_1',
+            variable_mappings: {},
+        });
+        expect(panel.editingPromptId()).toBe('System One');
+    });
+
+    it('names a further entry after the first free number and keeps its result variable an identifier', () => {
+        open({
+            'System One': { ...SYSTEM_ONE_ENTRY, result_variable: 'system_one_1' },
+            'System One 3': { ...SYSTEM_ONE_ENTRY, result_variable: 'system_one_2' },
+        });
+
+        click(headerButton('System One'));
+
+        expect(Object.keys(panel.prompts())).toEqual(['System One', 'System One 3', 'System One 2']);
+        expect(panel.prompts()['System One 2'].result_variable).toBe('system_one_3');
+    });
+
+    it('does not reuse a result variable that another entry already holds', () => {
+        open({ checker: { ...SYSTEM_ONE_ENTRY, result_variable: 'system_one_1' } });
+
+        click(headerButton('System One'));
+
+        expect(panel.prompts()['System One'].result_variable).toBe('system_one_2');
+    });
+
+    it('puts the Name field beside the System One config and keeps it renamable', () => {
+        open();
+        click(headerButton('System One'));
+        const nameInput = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+            'app-cdt-system-one-entry .prompt-name--paired .field-input'
+        )!;
+
+        nameInput.value = 'Fit check';
+        nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        nameInput.dispatchEvent(new Event('blur'));
+
+        expect(Object.keys(panel.prompts())).toEqual(['Fit check']);
+    });
+
+    it('sends the new System One entry as a System One entry, with no config and no questions yet', () => {
+        open();
+
+        click(headerButton('System One'));
+
+        expect(sentPromptConfigs()).toEqual([
+            expect.objectContaining({
+                prompt_key: 'System One',
+                kind: 'system_one',
+                system_one_config: null,
+                questions: {},
+                input_map: {},
+                llm_config: null,
+            }),
+        ]);
+    });
+
+    it('shows the new entry as a System One card with its own body instead of the LLM fields', () => {
+        open();
+
+        click(headerButton('System One'));
+        const card = (fixture.nativeElement as HTMLElement).querySelector('.prompt-card')!;
+
+        expect(card.querySelector('.prompt-kind-tag')?.textContent?.trim()).toBe('S1');
+        expect(card.querySelector('app-cdt-system-one-entry')).not.toBeNull();
+        expect(card.textContent).not.toContain('LLM Override');
+    });
+
+    it('stores what the System One card emits on the entry', () => {
+        open();
+        click(headerButton('System One'));
+
+        panel.updatePromptFields('System One', { system_one_config: 7 });
+
+        expect(sentPromptConfigs()[0]).toMatchObject({ system_one_config: 7 });
     });
 });

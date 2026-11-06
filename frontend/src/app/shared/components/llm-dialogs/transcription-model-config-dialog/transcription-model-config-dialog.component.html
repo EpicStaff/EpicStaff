@@ -27,6 +27,16 @@
         [formGroup]="form"
     >
         <div>
+            <app-custom-input
+                formControlName="custom_name"
+                label="Configuration Name"
+                placeholder="Enter a custom name"
+                tooltipText="A friendly name to identify this configuration across the app"
+                [required]="true"
+            />
+            <app-validation-errors [control]="form.get('custom_name')!" />
+        </div>
+        <div>
             <app-llm-model-selector
                 formControlName="realtime_transcription_model"
                 label="Provider"
@@ -55,16 +65,6 @@
                 </app-hint-message>
             }
             <app-validation-errors [control]="form.get('api_key_secret_id')!" />
-        </div>
-        <div>
-            <app-custom-input
-                formControlName="custom_name"
-                label="Configuration Name"
-                placeholder="Enter a custom name"
-                tooltipText="A friendly name to identify this configuration across the app"
-                [required]="true"
-            />
-            <app-validation-errors [control]="form.get('custom_name')!" />
         </div>
     </div>
 

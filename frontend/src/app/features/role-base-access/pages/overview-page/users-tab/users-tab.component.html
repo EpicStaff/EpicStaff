@@ -6,7 +6,9 @@
     />
     <span class="count-label">{{ usersData().length }} users</span>
     <div class="toolbar-actions">
+        <app-table-column-picker [table]="table" />
         <app-button
+            #mainAction
             *appHasPermissionInAnyOrg="[ResourceCode.Memberships, ActionCode.Create]"
             type="primary"
             leftIcon="plus"
@@ -26,6 +28,8 @@
 </div>
 
 <app-table
+    #table
+    layoutKey="workspace-users"
     [columns]="columns()"
     [data]="usersData()"
     [selectable]="false"
@@ -97,7 +101,7 @@
                         appOverflowItem
                         [appOverflowLabel]="org.name"
                         [name]="org.name"
-                        [title]="org.name"
+                        [matTooltip]="org.name"
                     />
                 }
                 <span

@@ -8,8 +8,10 @@
     <span class="count-label"> {{ organizations().length }} organizations </span>
 
     <div class="toolbar-actions">
+        <app-table-column-picker [table]="table" />
         @if (isSuperadmin) {
             <app-button
+                #mainAction
                 type="primary"
                 leftIcon="plus"
                 (click)="onCreateOrganization()"
@@ -20,6 +22,8 @@
     </div>
 </div>
 <app-table
+    #table
+    layoutKey="workspace-organizations"
     [columns]="columns"
     [data]="tableData()"
     rowId="id"
@@ -50,6 +54,34 @@
         let-row
     >
         <span class="cell-text">{{ row['members'] }}</span>
+    </ng-template>
+
+    <!-- RETENTION -->
+    <ng-template
+        appTableCell="sessions"
+        let-row
+    >
+        <span class="cell-text">{{ row['sessions'] }}</span>
+    </ng-template>
+    <ng-template
+        appTableCell="auditEvents"
+        let-row
+    >
+        <span class="cell-text">{{ row['auditEvents'] }}</span>
+    </ng-template>
+    <ng-template
+        appTableCell="conversations"
+        let-row
+    >
+        <span class="cell-text">{{ row['conversations'] }}</span>
+    </ng-template>
+
+    <!-- AUDIT VISIBILITY -->
+    <ng-template
+        appTableCell="auditVisibility"
+        let-row
+    >
+        <span class="cell-text">{{ row['auditVisibility'] }}</span>
     </ng-template>
 
     <!-- CREATED -->

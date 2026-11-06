@@ -33,7 +33,9 @@ class OrganizationRetentionAdminViewSet(CrossOrgAdminViewSet):
 
     @extend_schema(**ORGANIZATION_RETENTION_GET)
     def retrieve(self, request, pk=None):
-        retention = self._service.get_retention(actor=request.user, org_id=int(pk))
+        org_id = int(pk)
+        self.require_key_org(request, org_id)
+        retention = self._service.get_retention(actor=request.user, org_id=org_id)
         return self._respond(request, retention)
 
     @extend_schema(**ORGANIZATION_RETENTION_PATCH)

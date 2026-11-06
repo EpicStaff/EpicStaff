@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import {
@@ -43,8 +44,8 @@ import { finalize, tap } from 'rxjs/operators';
 import { ToastService } from '../../../../services/notifications';
 import { GraphVersionDto } from '../../models/graph.model';
 import { CreateGraphWarningsService } from '../../services/create-graph-warnings.service';
-import { FlowUsePermissionRefusalService } from '../../services/flow-use-permission-refusal.service';
 import { FlowsApiService } from '../../services/flows-api.service';
+import { UsePermissionRefusalService } from '../../services/use-permission-refusal.service';
 
 const VERSION_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'version', plural: 'versions' };
 
@@ -54,6 +55,7 @@ const RENAME_DOUBLE_CLICK_WINDOW_MS = 250;
 @Component({
     selector: 'app-version-history-panel',
     imports: [
+        CdkTrapFocus,
         IconButtonComponent,
         CommonModule,
         FormsModule,
@@ -95,7 +97,7 @@ export class VersionHistoryPanelComponent implements OnInit {
 
     private destroyRef = inject(DestroyRef);
     private bulkDeleteService = inject(BulkDeleteService);
-    private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
+    private readonly usePermissionRefusal = inject(UsePermissionRefusalService);
 
     private readonly bulkDeleteTarget: BulkDeleteTarget = {
         previewBulkDelete: (ids) => this.flowApiService.bulkDeleteGraphVersions(ids, { dryRun: true }),

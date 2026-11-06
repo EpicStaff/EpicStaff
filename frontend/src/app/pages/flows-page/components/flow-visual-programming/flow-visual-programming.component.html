@@ -8,7 +8,7 @@
         [isRunning]="isRunning()"
         [runStatus]="activeRunStatus()"
         [isPreviewMode]="isPreviewing()"
-        [hasUnsavedChanges]="hasUnsavedChangesSignal()"
+        [saveStatus]="saveStatus()"
         (save)="onHeaderSave()"
         (saveVersion)="onSaveVersion()"
         (viewVersionHistory)="onViewVersionHistory()"
@@ -23,6 +23,7 @@
     <div class="body">
         @if (activeRestoreWarnings().length > 0 && !isPreviewing()) {
             <button
+                type="button"
                 class="restore-warning-btn"
                 (click)="onShowRestoreWarnings()"
             >
@@ -39,6 +40,7 @@
             <app-flow-version-preview
                 [version]="version"
                 [flowsLight]="availableFlowLights()"
+                [liveFlow]="currentFlowState()"
                 (closed)="onPreviewExit()"
                 (openShortcuts)="openShortcutsModal($event)"
             />
@@ -84,9 +86,12 @@
         >
             @if (!isVersionHistoryOpen()) {
                 <button
+                    type="button"
                     class="collapse-toggle"
                     (mousedown)="$event.stopPropagation()"
                     (click)="togglePanelCollapsed()"
+                    [attr.aria-label]="isPanelCollapsed() ? 'Open sessions panel' : 'Close sessions panel'"
+                    [attr.aria-expanded]="!isPanelCollapsed()"
                     [matTooltip]="isPanelCollapsed() ? 'Open sessions panel' : 'Close sessions panel'"
                     matTooltipPosition="left"
                 >
@@ -132,7 +137,8 @@
         @if (isSaving()) {
             <div
                 class="saving-lock-overlay"
-                title="Saving… editing is locked until the save completes"
+                matTooltip="Saving… editing is locked until the save completes"
+                [matTooltipPositionAtOrigin]="true"
             ></div>
         }
     </div>

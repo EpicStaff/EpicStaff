@@ -50,7 +50,7 @@
         color: var(--accent-color);
         font-weight: 500;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
 
@@ -67,15 +67,18 @@
     padding: 1.25rem;
     min-height: 250px;
 
+    // Hidden, not only squeezed: the fields of the other tabs stay out of the Tab order.
     .tab-content {
         display: block;
         height: 0;
         overflow: hidden;
+        visibility: hidden;
     }
 
     .visible-tab {
         height: auto;
         overflow: visible;
+        visibility: visible;
     }
 }
 

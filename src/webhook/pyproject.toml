@@ -32,7 +32,7 @@ transitive-pins = [
     "anyio==4.14.2",
     "certifi==2026.7.22",
     "idna==3.18",
-    "pyjwt==2.13.0",
+    "pyjwt==2.15.1",
     "python-dotenv==1.2.2",
     "starlette==1.6.0",
 ]

@@ -1,16 +1,14 @@
 import dataclasses
 
 from drf_spectacular.utils import extend_schema
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.models.user import User
 
-from rbac.access.gates import IsSuperadmin, RestrictApiKeyToUserKeyReads
+from rbac.access.gates import IsSuperadmin
 from rbac.governance.users import UserManagementService
-from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.schemas.users import (
     USERS_CREATE_POST,
     USERS_DEACTIVATE_POST,
@@ -26,7 +24,7 @@ from rbac.serializers.users import (
 )
 from rbac.validation.hard_delete import HardDeleteValidationService
 from rbac.validation.user import UserValidationService
-from rbac.views.cross_org_base import CrossOrgAdminViewSet
+from rbac.views.cross_org_base import CrossOrgAdminPagination, CrossOrgAdminViewSet
 
 _ORDERING_WHITELIST = {
     "email": "email",
@@ -36,15 +34,7 @@ _ORDERING_WHITELIST = {
 _DEFAULT_ORDERING = ("-created_at", "email")
 
 
-class UserPagination(PageNumberPagination):
-    """Cross-org user list pagination."""
-
-    page_size = 50
-    page_size_query_param = "page_size"
-    max_page_size = 200
-
-
-class UserAdminViewSet(viewsets.ViewSet):
+class UserAdminViewSet(CrossOrgAdminViewSet):
     """Superadmin-only management of Users (the global account entity).
 
     GET (list paginated), POST (create with optional initial org+role),
@@ -62,38 +52,28 @@ class UserAdminViewSet(viewsets.ViewSet):
     # Names the served model for user-action and plugin-activity records (`model_of`); never
     # queried, every action reads through its own lookup.
     queryset = User.objects.none()
-
-    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, IsSuperadmin]
-    pagination_class = UserPagination
-    lookup_value_regex = "[0-9]+"
+    pagination_class = CrossOrgAdminPagination
 
     _service = UserManagementService()
     _validator = UserValidationService()
     _hard_delete_validator = HardDeleteValidationService()
 
-    def get_permissions(self):
-        """Prepend the API-key gate to whatever `permission_classes` resolved to.
-
-        Added here rather than listed in `permission_classes`, so an
-        `@action(permission_classes=...)` cannot drop it.
-        """
-        # Writes are JWT-only; the SYSTEM key is rejected outright.
-        return [RestrictApiKeyToUserKeyReads(), *super().get_permissions()]
-
     @extend_schema(**USERS_LIST_GET)
     def list(self, request):
-        org_ids = CrossOrgAdminViewSet.parse_org_ids(request.query_params.get("org_ids"))
+        org_ids = self.parse_org_ids(request.query_params.get("org_ids"))
         cleaned = self._validator.validate_list_users_query(request.query_params)
         if org_ids is None and cleaned["organization_id"] is not None:
             org_ids = [cleaned["organization_id"]]
+        key_org_ids = self.key_org_ids(request)
         qs = self._service.list_users(
             actor=request.user,
             search=cleaned["search"],
             is_superadmin=cleaned["is_superadmin"],
-            org_ids=org_ids,
+            org_ids=key_org_ids or org_ids,
             status_value=cleaned["status_value"],
             role_id=cleaned["role_id"],
+            membership_org_ids=key_org_ids,
         )
         qs = self._apply_ordering(qs, request.query_params.get("ordering"))
         paginator = self.pagination_class()

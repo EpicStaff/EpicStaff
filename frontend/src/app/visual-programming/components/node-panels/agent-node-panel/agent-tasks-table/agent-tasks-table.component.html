@@ -1,6 +1,7 @@
 <div
     class="att"
     #tableWrapper
+    [class.att--diff]="rowChanges() !== null"
 >
     <div class="att__scroll">
         <div class="att__inner">
@@ -13,9 +14,11 @@
                 <div class="att-cell att-cell--delete">
                     @if (!readonly()) {
                         <button
+                            #clearAllButton
                             type="button"
                             class="att-clear-all"
-                            title="Clear all tasks"
+                            aria-label="Clear all tasks"
+                            matTooltip="Clear all tasks"
                             (click)="clearAll()"
                         >
                             <app-svg-icon
@@ -35,12 +38,21 @@
                 (cdkDropListDropped)="onDrop($event)"
             >
                 @for (task of tasks(); track trackByTempId($index, task); let i = $index) {
+                    @let rowMark = rowMarks()[i];
+                    <!-- Version diff (Changes tab): what a restore does to the row; tasks are paired by position. -->
                     <div
                         class="att-row"
                         [class.att-row--even]="i % 2 === 1"
+                        [class.att-row--added]="rowMark.added"
                         cdkDrag
                         [cdkDragDisabled]="readonly()"
+                        appDiffFieldMark
+                        [diffChange]="rowMark.change"
+                        [diffHint]="rowMark.hint"
                     >
+                        @if (rowMark.added) {
+                            <span class="visually-hidden">Restore adds this task: </span>
+                        }
                         <div class="att-cell att-cell--index">
                             @if (!readonly()) {
                                 <span
@@ -62,6 +74,7 @@
                                 [class.att-input--invalid]="isNameInvalid(task) && !readonly()"
                                 type="text"
                                 placeholder="Enter name..."
+                                aria-label="Task name"
                                 [value]="task.name"
                                 [readonly]="readonly()"
                                 (input)="onNameInput(i, $event)"
@@ -77,18 +90,24 @@
                                 class="att-textarea-highlight"
                                 [class.att-textarea-highlight--invalid]="isInstructionsInvalid(task) && !readonly()"
                                 placeholder="Describe what this task should do..."
+                                ariaLabel="Task instructions"
                                 [value]="task.instructions"
                                 [variables]="variableNames()"
                                 [disabled]="readonly()"
                                 (valueChange)="onInstructionsInput(i, $event)"
                             ></app-variable-highlight-textarea>
-                            <app-svg-icon
+                            <button
+                                type="button"
                                 class="att-expand-icon"
-                                icon="editor-expand"
-                                size="0.875rem"
-                                title="Expand"
+                                aria-label="Expand instructions"
+                                matTooltip="Expand"
                                 (click)="onExpandCell(i, 'instructions', $event)"
-                            />
+                            >
+                                <app-svg-icon
+                                    icon="editor-expand"
+                                    size="0.875rem"
+                                />
+                            </button>
                         </div>
 
                         <div
@@ -99,48 +118,67 @@
                                 class="att-textarea att-textarea--schema"
                                 [class.att-textarea--invalid]="invalidSchemaIds().has(task.tempId) && !readonly()"
                                 placeholder="Add schema..."
+                                aria-label="Output schema"
                                 [value]="getSchemaText(task)"
                                 [readonly]="readonly()"
                                 (input)="onSchemaInput(task.tempId, $event)"
                                 (blur)="onSchemaBlur(i, task)"
                             ></textarea>
-                            <app-svg-icon
+                            <button
+                                type="button"
                                 class="att-expand-icon"
-                                icon="editor-expand"
-                                size="0.875rem"
-                                title="Expand"
+                                aria-label="Expand output schema"
+                                matTooltip="Expand"
                                 (click)="onExpandCell(i, 'schema', $event)"
-                            />
+                            >
+                                <app-svg-icon
+                                    icon="editor-expand"
+                                    size="0.875rem"
+                                />
+                            </button>
                         </div>
 
                         <div
                             class="att-cell att-cell--context"
                             [class.att-cell--readonly]="readonly()"
-                            (click)="openContextPopup(i, $event)"
                         >
-                            @if (getResolvedContext(task).length === 0) {
-                                @if (!readonly()) {
-                                    <span class="att-context-placeholder">Add context...</span>
-                                }
-                            } @else {
-                                <div class="att-context-chips">
-                                    @for (chip of getResolvedContext(task); track chip.tempId) {
-                                        <span class="att-context-chip">
-                                            <span class="att-context-chip__name">{{ chip.name || 'Untitled' }}</span>
-                                            <span class="att-context-chip__order">{{ chip.order }}</span>
-                                        </span>
+                            <!-- Fills the cell, so the whole cell still opens the context list on a click. -->
+                            <button
+                                type="button"
+                                class="att-context-trigger"
+                                aria-haspopup="dialog"
+                                [attr.aria-label]="getResolvedContext(task).length ? null : 'Task context'"
+                                [disabled]="readonly()"
+                                (click)="openContextPopup(i, $event)"
+                            >
+                                @if (getResolvedContext(task).length === 0) {
+                                    @if (!readonly()) {
+                                        <span class="att-context-placeholder">Add context...</span>
                                     }
-                                </div>
-                            }
+                                } @else {
+                                    <span class="att-context-chips">
+                                        @for (chip of getResolvedContext(task); track chip.tempId) {
+                                            <span class="att-context-chip">
+                                                <span class="att-context-chip__name">{{
+                                                    chip.name || 'Untitled'
+                                                }}</span>
+                                                <span class="att-context-chip__order">{{ chip.order }}</span>
+                                            </span>
+                                        }
+                                    </span>
+                                }
+                            </button>
                         </div>
 
                         <div class="att-cell att-cell--delete">
                             @if (!readonly()) {
                                 <button
+                                    #removeButton
                                     type="button"
                                     class="att-remove-btn"
-                                    title="Remove task"
-                                    (click)="removeTask(i)"
+                                    aria-label="Remove task"
+                                    matTooltip="Remove task"
+                                    (click)="onRemoveButtonClick(i)"
                                 >
                                     <app-svg-icon
                                         icon="x"
@@ -152,7 +190,39 @@
                     </div>
                 }
 
-                @if (tasks().length === 0) {
+                <!-- Tasks only on the current canvas: the version does not have them, a restore removes them. -->
+                @for (removed of removedTasks(); track removed.position) {
+                    <div class="att-row att-row--removed">
+                        <span class="visually-hidden">Restore removes this task: </span>
+                        <div class="att-cell att-cell--index">
+                            <span class="att-row-number">{{ removed.position }}</span>
+                        </div>
+                        <div class="att-cell att-cell--name">
+                            <span class="att-removed-text">{{ removed.name }}</span>
+                        </div>
+                        <div class="att-cell att-cell--instructions">
+                            <span class="att-removed-text">{{ removed.instructions }}</span>
+                        </div>
+                        <div class="att-cell att-cell--schema">
+                            <span class="att-removed-text att-removed-text--schema">{{ removed.outputSchema }}</span>
+                        </div>
+                        <div class="att-cell att-cell--context att-cell--readonly">
+                            @if (removed.contextPositions.length > 0) {
+                                <div class="att-context-chips">
+                                    @for (position of removed.contextPositions; track $index) {
+                                        <span class="att-context-chip">
+                                            <span class="att-context-chip__name">Task</span>
+                                            <span class="att-context-chip__order">{{ position }}</span>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="att-cell att-cell--delete"></div>
+                    </div>
+                }
+
+                @if (tasks().length === 0 && removedTasks().length === 0) {
                     <div class="att-empty">No tasks yet — click "+ Add Task" below to create one.</div>
                 }
             </div>

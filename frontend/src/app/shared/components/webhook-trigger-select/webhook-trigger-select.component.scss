@@ -1,3 +1,5 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
 :host {
     display: block;
     width: 100%;
@@ -29,7 +31,7 @@
         transition: border-color 0.2s ease;
         min-width: 0;
 
-        &:hover:not(:disabled):not(.wts__trigger--readonly) {
+        &:is(:hover, :focus-visible):not(:disabled):not(.wts__trigger--readonly) {
             border-color: var(--purple-primary);
         }
 
@@ -139,7 +141,7 @@
         line-height: 1;
         transition: filter 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             opacity: 0.8;
         }
     }
@@ -157,6 +159,11 @@
     }
 
     &__item {
+        display: block;
+        width: 100%;
+        background: transparent;
+        font-family: inherit;
+        text-align: left;
         padding: 0.5rem 0.75rem;
         border-radius: 4px;
         flex-shrink: 0;
@@ -169,8 +176,13 @@
         overflow: hidden;
         text-overflow: ellipsis;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--color-ks-hover-row);
+        }
+
+        // Inside the scrolling list, which clips anything drawn outside it.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         &--selected {
@@ -183,7 +195,7 @@
             opacity: 0.5;
             cursor: not-allowed;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: transparent;
             }
         }
@@ -202,3 +214,7 @@
         text-align: center;
     }
 }
+
+// Version diff (flow editor node panel, Changes tab): a changed read-only trigger, boxed like an input. Keep last: it
+// overrides the read-only trigger's plain-text look above.
+@include diff-value-mark.marked('.wts__trigger', $draws-box: true);

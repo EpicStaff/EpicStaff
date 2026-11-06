@@ -49,6 +49,11 @@ function buildSources(): Record<LlmLibrarySelectionKind, LlmLibraryBulkDeleteSou
             target: noopTarget(),
             configs: [{ id: 40, custom_name: 'Gemini voice A' }],
         },
+        system_one: {
+            label: { singular: 'System One config', plural: 'System One configs' },
+            target: noopTarget(),
+            configs: [{ id: 50, custom_name: 'Jev prod' }],
+        },
     };
 }
 

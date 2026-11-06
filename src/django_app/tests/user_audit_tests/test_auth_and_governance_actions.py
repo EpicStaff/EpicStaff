@@ -40,13 +40,14 @@ def request_contexts(monkeypatch):
     return contexts
 
 
-def _make_key(owner, name):
+def _make_key(owner, org, name):
     return ApiKey.objects.create(
         name=name,
         key_type=ApiKey.KeyType.USER,
         prefix="es-test",
         key_hash=f"hash-{owner.pk}-{name}",
         created_by=owner,
+        org=org,
     )
 
 
@@ -289,24 +290,19 @@ def test_role_create_update_and_delete_record_the_role_name(
     ]
 
 
-def test_api_key_create_records_created(
-    admin_in_two_orgs, acme, beta, sent_events, django_capture_on_commit_callbacks
+def test_api_key_create_records_created_in_the_keys_org_only(
+    admin_in_two_orgs, beta, sent_events, django_capture_on_commit_callbacks
 ):
     with django_capture_on_commit_callbacks(execute=True):
         response = _jwt_client(admin_in_two_orgs).post(
-            "/api/profile/api-keys/", {"name": "mcp-laptop"}, format="json"
+            "/api/profile/api-keys/", {"name": "mcp-laptop", "org_id": beta.id}, format="json"
         )
 
-    assert response.status_code == status.HTTP_201_CREATED
+    assert response.status_code == status.HTTP_201_CREATED, response.content
     key = ApiKey.objects.get(name="mcp-laptop")
-    assert sorted(
+    assert [
         (e.action, e.org_id, e.target_type, e.target_id, e.target_name) for e in sent_events
-    ) == sorted(
-        [
-            ("created", acme.id, "api key", str(key.id), "mcp-laptop"),
-            ("created", beta.id, "api key", str(key.id), "mcp-laptop"),
-        ]
-    )
+    ] == [("created", beta.id, "api key", str(key.id), "mcp-laptop")]
 
 
 def test_api_key_revoke_records_updated_once(
@@ -314,7 +310,9 @@ def test_api_key_revoke_records_updated_once(
     admin_acme, acme, sent_events, django_capture_on_commit_callbacks
 ):
     client = _jwt_client(admin_acme)
-    key_id = client.post("/api/profile/api-keys/", {"name": "ci"}, format="json").json()["id"]
+    key_id = client.post(
+        "/api/profile/api-keys/", {"name": "ci", "org_id": acme.id}, format="json"
+    ).json()["id"]
     sent_events.clear()
 
     with django_capture_on_commit_callbacks(execute=True):
@@ -332,7 +330,9 @@ def test_api_key_delete_records_deleted_with_the_key_name(
     admin_acme, acme, sent_events, django_capture_on_commit_callbacks
 ):
     client = _jwt_client(admin_acme)
-    key_id = client.post("/api/profile/api-keys/", {"name": "ci"}, format="json").json()["id"]
+    key_id = client.post(
+        "/api/profile/api-keys/", {"name": "ci", "org_id": acme.id}, format="json"
+    ).json()["id"]
     sent_events.clear()
 
     with django_capture_on_commit_callbacks(execute=True):
@@ -344,7 +344,7 @@ def test_api_key_delete_records_deleted_with_the_key_name(
     ]
 
 
-def test_admin_revoke_and_delete_record_in_the_key_owners_orgs(
+def test_admin_revoke_and_delete_record_in_the_keys_org_only(
     client_as,
     admin_acme,
     member_only,
@@ -356,7 +356,7 @@ def test_admin_revoke_and_delete_record_in_the_key_owners_orgs(
 ):
     # The owner also belongs to beta, where the acme admin has no say.
     OrganizationUser.objects.create(user=member_only, org=beta, role=role_member)
-    key = _make_key(member_only, "owned")
+    key = _make_key(member_only, acme, "owned")
     client = client_as(admin_acme)
 
     with django_capture_on_commit_callbacks(execute=True):
@@ -364,13 +364,12 @@ def test_admin_revoke_and_delete_record_in_the_key_owners_orgs(
         assert client.post(f"/api/admin/api-keys/{key.id}/revoke/").status_code == 200
         assert client.delete(f"/api/admin/api-keys/{key.id}/").status_code == 204
 
-    assert sorted(
+    assert [
         (e.action, e.org_id, e.target_id, e.target_name, e.actor_email) for e in sent_events
-    ) == sorted(
-        (action, org_id, str(key.id), "owned", admin_acme.email)
+    ] == [
+        (action, acme.id, str(key.id), "owned", admin_acme.email)
         for action in ("updated", "deleted")
-        for org_id in (acme.id, beta.id)
-    )
+    ]
 
 
 def test_password_reset_confirm_records_password_reset_in_the_users_active_orgs(

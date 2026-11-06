@@ -1,4 +1,5 @@
 from django.core.exceptions import PermissionDenied
+from django.db import OperationalError
 from django.http import Http404, JsonResponse
 from django.utils.log import log_response
 from django_app.settings import DEBUG
@@ -9,6 +10,7 @@ from foundation.transport.http.errors import (
     ClientRateLimitError,
     ClientValidationError,
 )
+from psycopg_pool import PoolTimeout
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, Throttled, ValidationError
 from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
@@ -16,6 +18,7 @@ from rest_framework.settings import api_settings
 from rest_framework.views import exception_handler
 from tables.clients.errors import ClientError as OutboundClientError
 
+from utils.exceptions import DatabasePoolExhaustedError
 from utils.logger import logger
 
 # Keys DRF generates itself; naming them back at the client adds no information.
@@ -100,16 +103,26 @@ def _outbound_client_error_as_api_exception(exc: OutboundClientError) -> APIExce
     return api_exception
 
 
+def _is_database_pool_exhausted(exc: Exception) -> bool:
+    """Tell whether `exc` is the pool's timeout waiting for a free connection.
+
+    Django re-raises driver errors as its own `OperationalError` with the original as
+    `__cause__`; a `PoolTimeout` raised outside Django's wrapper arrives as it is.
+    """
+    return isinstance(exc, PoolTimeout) or (
+        isinstance(exc, OperationalError) and isinstance(exc.__cause__, PoolTimeout)
+    )
+
+
 def _log_unhandled_exception(exc: Exception, request, response) -> None:
     """Log the traceback of an exception answered with the generic 500.
 
     Returning a response stops DRF from re-raising, so Django would log only
     the status line. Django's own request logger records it with the
     traceback, and marks the response as logged so that line is not repeated.
-    It goes through stdlib logging rather than the loguru sink on purpose: the
-    sink keeps loguru's `diagnose` on, which prints every local variable of
-    every frame -- secrets and request payloads included -- and an unhandled
-    exception can come from any code path.
+    It goes through stdlib `log_response` rather than loguru on purpose: only
+    that call marks the response as logged, so a loguru call would leave
+    Django to repeat the line.
     """
     path = request.path if request is not None else "unknown path"
     log_response(
@@ -150,6 +163,9 @@ def custom_exception_handler(exc, context):
         exc = _client_error_as_api_exception(exc)
     elif isinstance(exc, OutboundClientError):
         exc = _outbound_client_error_as_api_exception(exc)
+    elif _is_database_pool_exhausted(exc):
+        logger.warning("No pooled database connection freed up in time: {}", exc)
+        exc = DatabasePoolExhaustedError()
 
     response = exception_handler(exc, context)
 

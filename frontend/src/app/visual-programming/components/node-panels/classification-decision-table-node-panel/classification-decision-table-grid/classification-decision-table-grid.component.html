@@ -10,7 +10,8 @@
                     <button
                         type="button"
                         class="grid-header-icon-btn"
-                        title="Delete selected"
+                        aria-label="Delete selected"
+                        matTooltip="Delete selected"
                         (click)="deleteSelectedRows()"
                     >
                         <app-svg-icon
@@ -49,20 +50,24 @@
         <!-- Above-grid "+" buttons: shown only when the corresponding params group is empty -->
         @if (!readonly() && !hasFieldCols() && exprAddPos()) {
             <button
+                type="button"
                 class="col-above-add-btn"
                 [style.left.px]="exprAddPos()!.x"
                 (click)="toggleFieldPicker($event)"
-                title="Add expression variable"
+                aria-label="Add expression variable"
+                matTooltip="Add expression variable"
             >
                 <i class="ti ti-plus"></i>
             </button>
         }
         @if (!readonly() && !hasManipCols() && manipAddPos()) {
             <button
+                type="button"
                 class="col-above-add-btn"
                 [style.left.px]="manipAddPos()!.x"
                 (click)="toggleManipFieldPicker($event)"
-                title="Add manipulation variable"
+                aria-label="Add manipulation variable"
+                matTooltip="Add manipulation variable"
             >
                 <i class="ti ti-plus"></i>
             </button>
@@ -79,6 +84,8 @@
                     [class.collapsed]="item.isCollapsed"
                     [style.top.px]="item.top"
                     [style.height.px]="item.height"
+                    (focusin)="hoveredSectionId.set(item.key)"
+                    (focusout)="onGroupOverlayFocusOut(item.key, $event)"
                 >
                     <div class="group-overlay-gutter">
                         <button
@@ -92,7 +99,8 @@
                             (click)="toggleGroupFromOverlay(item, $event)"
                             (contextmenu)="openGroupMenuFromOverlay(item, $event)"
                             (mouseenter)="hoveredSectionId.set(item.key)"
-                            [title]="groupOverlayIconTitle(item)"
+                            [attr.aria-label]="groupOverlayIconTitle(item)"
+                            [matTooltip]="groupOverlayIconTitle(item)"
                         >
                             @if (item.members) {
                                 <app-svg-icon
@@ -138,14 +146,16 @@
                         >
                             <span
                                 class="group-overlay-chip-name"
-                                [title]="item.name"
+                                appTooltipOnOverflow
+                                [matTooltip]="item.name"
                                 >{{ item.name }}</span
                             >
                             @if (!item.members) {
                                 <button
                                     type="button"
                                     class="group-overlay-chip-btn"
-                                    title="Edit group"
+                                    aria-label="Edit group"
+                                    matTooltip="Edit group"
                                     (click)="openEditGroupDialog(item.sectionId, $event)"
                                 >
                                     <app-svg-icon
@@ -156,7 +166,8 @@
                                 <button
                                     type="button"
                                     class="group-overlay-chip-btn group-overlay-chip-btn--delete"
-                                    title="Ungroup"
+                                    aria-label="Ungroup"
+                                    matTooltip="Ungroup"
                                     (click)="handleChipUngroup(item.sectionId, $event)"
                                 >
                                     <app-svg-icon
@@ -175,6 +186,7 @@
             class="decision-grid ag-theme-quartz-dark"
             [class.empty-state]="isEmpty()"
             style="width: 100%"
+            [appConditionGroupRowTooltips]="rowChanges()"
             [rowData]="displayedRowData()"
             [columnDefs]="columnDefs"
             [defaultColDef]="defaultColDef"
@@ -194,15 +206,20 @@
 
         <!-- Hidden-column restore badges -->
         @for (badge of hiddenColumnBadges(); track badge.entries[0].colId) {
+            <!--
+                Out of the DOM Tab order: the component routes Tab and Shift+Tab to and from
+                it between the headers it sits between, and out to the body or to what
+                precedes the grid at either end.
+            -->
             <button
+                #hiddenColumnBadge
+                type="button"
                 class="hidden-col-badge"
+                tabindex="-1"
                 [style.left.px]="badge.x"
                 [style.top.px]="badge.y"
-                [title]="
-                    badge.entries.length === 1
-                        ? 'Expand ' + badge.entries[0].label
-                        : badge.entries.length + ' hidden columns'
-                "
+                [attr.aria-label]="hiddenBadgeLabel(badge)"
+                [matTooltip]="hiddenBadgeLabel(badge)"
                 (click)="onHiddenBadgeClick($event, badge)"
             >
                 <i class="ti ti-arrows-horizontal"></i>
@@ -214,23 +231,32 @@
     </div>
 
     @if (contextMenu()) {
+        <!-- The focus moves in on open and back to what had it on close; Escape closes only this menu. -->
         <div
             class="context-menu"
+            role="menu"
+            cdkTrapFocus
+            [cdkTrapFocusAutoCapture]="true"
             [style.left.px]="contextMenu()!.x"
             [style.top.px]="contextMenu()!.y"
+            (keydown.escape)="onContextMenuEscape($event)"
         >
-            <div
+            <button
+                type="button"
+                role="menuitem"
                 class="context-menu-item"
                 (click)="addRowAbove()"
             >
                 <i class="ti ti-row-insert-top"></i> Add Row Above
-            </div>
-            <div
+            </button>
+            <button
+                type="button"
+                role="menuitem"
                 class="context-menu-item"
                 (click)="addRowBelow()"
             >
                 <i class="ti ti-row-insert-bottom"></i> Add Row Below
-            </div>
+            </button>
         </div>
     }
 
@@ -272,9 +298,17 @@
 </div>
 
 <ng-template #groupMenuTemplate>
-    <div class="group-menu-dropdown">
+    <div
+        class="group-menu-dropdown"
+        role="menu"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+        (keydown.escape)="onGroupMenuEscape($event)"
+    >
         @if (isMergedGroupMenu()) {
-            <div
+            <button
+                type="button"
+                role="menuitem"
                 class="group-menu-item group-menu-item--submenu"
                 [class.active]="expandGroupMultiSelect?.isOpen()"
                 (click)="openExpandGroupSubmenu($event)"
@@ -284,45 +318,61 @@
                     icon="chevron-right"
                     size="12px"
                 ></app-svg-icon>
-            </div>
+            </button>
         } @else {
-            <div
+            <button
+                type="button"
+                role="menuitem"
                 class="group-menu-item"
+                matTooltip="Ungroup"
                 (click)="handleGroupMenuUngroup()"
             >
                 Ungroup
-            </div>
+            </button>
         }
-        <div
+        <button
+            type="button"
+            role="menuitem"
             class="group-menu-item"
             (click)="handleGroupMenuExpandAll()"
         >
             Expand All Groups
-        </div>
-        <div
+        </button>
+        <button
+            type="button"
+            role="menuitem"
             class="group-menu-item"
             (click)="handleGroupMenuCollapseAll()"
         >
             Collapse All Groups
-        </div>
+        </button>
     </div>
 </ng-template>
 
 <ng-template #hiddenBadgeMenuTemplate>
-    <div class="chm-dropdown">
+    <div
+        class="chm-dropdown"
+        role="menu"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
         @for (entry of activeBadgeEntries; track entry.colId) {
-            <div
+            <button
+                type="button"
+                role="menuitem"
                 class="chm-menu-item"
                 (click)="handleExpandHiddenEntry(entry.colId)"
             >
                 <span>Expand {{ entry.label }}</span>
-            </div>
+            </button>
         }
-        <div
+        <button
+            type="button"
+            role="menuitem"
             class="chm-menu-item"
             (click)="handleExpandAllBadgeEntries()"
         >
             <span>Expand All</span>
-        </div>
+        </button>
     </div>
 </ng-template>

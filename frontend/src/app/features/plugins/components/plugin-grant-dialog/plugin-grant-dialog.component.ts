@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, SelectComponent, SelectItem } from '@shared/components';
 import { GetOrganizationResponse } from '@shared/models';
 import { finalize } from 'rxjs';
@@ -23,7 +24,7 @@ export const PLUGIN_GRANT_DIALOG_TITLE_ID = 'plugin-grant-dialog-title';
 /** Grants a plugin to one active organization, picked from the SuperAdmin's organization list. */
 @Component({
     selector: 'app-plugin-grant-dialog',
-    imports: [AppSvgIconComponent, ButtonComponent, SelectComponent],
+    imports: [MatTooltip, AppSvgIconComponent, ButtonComponent, SelectComponent],
     templateUrl: './plugin-grant-dialog.component.html',
     styleUrl: './plugin-grant-dialog.component.scss',
 })

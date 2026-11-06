@@ -1,4 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -15,7 +16,7 @@ import { ButtonComponent, HelpTooltipComponent, SelectComponent, SelectItem } fr
 import { EnterSubmitDirective } from '@shared/directives';
 import { AssignableUsersResponse, FullMembership, Organization } from '@shared/models';
 import { forkJoin, map, Observable, of } from 'rxjs';
-import { catchError, finalize } from 'rxjs/operators';
+import { catchError, filter, finalize } from 'rxjs/operators';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
@@ -68,15 +69,27 @@ export class CreateMembershipDialogComponent implements OnInit {
     );
     userSelectValue = computed<number | string | null>(() => this.selectedUserId() ?? this.customEmail());
 
-    submitDisabled = computed(() => {
-        if (this.isSubmitting()) return true;
+    hasInvalidInput = computed(() => {
         if (!this.editMode() && this.selectedUserId() == null && !this.customEmail()) return true;
         const step = this.assignToOrgStep();
         if (!step || step.selectedOrganizations().length === 0) return true;
         return step.hasInvalidRow();
     });
+    submitDisabled = computed(() => this.isSubmitting() || this.hasInvalidInput());
 
     ngOnInit(): void {
+        // disableClose keeps a stray backdrop click from losing the form; Escape is asked for, so it cancels.
+        // A dropdown that closed on this Escape has taken it.
+        this.dialogRef.keydownEvents
+            .pipe(
+                filter((event) => event.key === 'Escape' && !hasModifierKey(event) && !event.defaultPrevented),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((event) => {
+                event.preventDefault();
+                this.onClose();
+            });
+
         const currentUser = this.profileService.currentUserSignal();
         if (currentUser) {
             this.availableOrganizations.set(

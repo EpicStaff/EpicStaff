@@ -1,5 +1,6 @@
 import {
     getHeaderRowError,
+    getRowError,
     HEADER_NAME_DUPLICATE_ERROR,
     HEADER_NAME_FORMAT_ERROR,
     HEADER_NAME_REQUIRED_ERROR,
@@ -36,5 +37,18 @@ describe('getHeaderRowError', () => {
 
     it('rejects values with line breaks', () => {
         expect(getHeaderRowError('X-Team', 'a\nb', [])).toBe(HEADER_VALUE_LINE_BREAK_ERROR);
+    });
+});
+
+describe('getRowError', () => {
+    it.each<[string, string, string[], string | null]>([
+        ['', '', [], null],
+        ['', 'v', [], 'Name is required'],
+        ['Very senior', 'v', [], null],
+        ['eng', '', [], 'Value is required'],
+        ['eng', 'v', ['eng'], 'Duplicate name'],
+        ['eng', 'v', ['Eng'], null],
+    ])('(%j, %j, %j) -> %j', (name, value, others, expected) => {
+        expect(getRowError(name, value, others)).toBe(expected);
     });
 });

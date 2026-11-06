@@ -1,5 +1,6 @@
 import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
@@ -7,8 +8,10 @@ import {
     effect,
     ElementRef,
     inject,
+    Injector,
     input,
     output,
+    reflectComponentType,
     Signal,
     signal,
     TemplateRef,
@@ -16,14 +19,18 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { TooltipOnOverflowDirective } from '@shared/directives';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
+import { NODE_DIFF_BADGES } from '../../../core/constants/node-diff-badges';
 import { COMPACT_HEADER_NODE_TYPES, PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { hasNodeDetails } from '../../../core/helpers/node-details.util';
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
+import { NODE_PANEL_DIFF, NodePanelDiff } from '../../../core/providers/node-panel-diff.token';
+import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { KeymapService } from '../../../services/keymap.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
@@ -46,14 +53,18 @@ interface PanelInstanceView {
 
 @Component({
     selector: 'app-node-panel-shell',
-    imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule],
+    imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule, TooltipOnOverflowDirective],
     template: `
         @if (node() && panelComponent()) {
+            <!-- Escape is handled here, ahead of the tooltip of the focused control, which would take the first one, and
+                 ahead of the canvas, which would clear its selection on the same press. -->
             <aside
                 #panel
                 class="node-panel"
+                [attr.aria-label]="nodeNameToDisplay() || 'Node panel'"
                 [class.shake-attention]="isShaking()"
                 [class.expanded]="isExpanded()"
+                (keydown.escape)="onPanelEscape($event)"
             >
                 <header
                     class="dialog-header"
@@ -61,11 +72,17 @@ interface PanelInstanceView {
                 >
                     <div class="icon-and-title">
                         <i
-                            [class]="node()!.icon"
-                            [style.color]="node()!.color || '#685fff'"
+                            [class]="nodeIcons[node()!.type]"
+                            [style.color]="nodeColors[node()!.type] || '#685fff'"
                         ></i>
                         <span class="title-with-number">
-                            <span class="title">{{ nodeNameToDisplay() }}</span>
+                            <span
+                                class="title"
+                                appTooltipOnOverflow
+                                [matTooltip]="nodeNameToDisplay()"
+                                matTooltipPosition="below"
+                                >{{ nodeNameToDisplay() }}</span
+                            >
                             @if (nodeNumberToDisplay(); as nodeNumber) {
                                 <span class="node-number">#{{ nodeNumber }}</span>
                             }
@@ -82,13 +99,17 @@ interface PanelInstanceView {
                             ></ng-container>
                         }
                         @if (showSaveButton()) {
+                            <!-- aria-disabled, not disabled: a disabled button would drop the keyboard focus. -->
                             <button
                                 class="save-btn"
                                 [class.save-btn--icon-only]="!isExpanded()"
                                 type="button"
+                                aria-label="Save"
                                 matTooltip="Save local node changes"
                                 matTooltipPosition="below"
-                                [disabled]="panelInstanceSig()?.form?.invalid || panelInstanceSig()?.isSaving()"
+                                [attr.aria-disabled]="isSaveDisabled() || null"
+                                (focus)="saveButtonHasFocus = true"
+                                (blur)="saveButtonHasFocus = false"
                                 (click)="onHeaderSaveClick()"
                             >
                                 <app-svg-icon
@@ -103,8 +124,9 @@ interface PanelInstanceView {
                         }
                         @if (shouldShowExpandButton()) {
                             <button
+                                type="button"
                                 class="expand-btn"
-                                aria-label="Toggle panel size"
+                                [attr.aria-label]="isExpanded() ? 'Minimize panel' : 'Expand panel'"
                                 [matTooltip]="isExpanded() ? 'Minimize panel' : 'Expand panel'"
                                 matTooltipPosition="below"
                                 (click)="toggleExpanded()"
@@ -116,10 +138,11 @@ interface PanelInstanceView {
                             </button>
                         }
                         <div class="close-action">
-                            <span class="esc-label">ESC</span>
                             <button
+                                #closeButton
+                                type="button"
                                 class="close-btn"
-                                aria-label="Close dialog"
+                                aria-label="Close"
                                 matTooltip="Close"
                                 matTooltipPosition="below"
                                 (click)="onCloseClick()"
@@ -152,10 +175,27 @@ interface PanelInstanceView {
                     }
                 </ng-template>
 
+                <!-- Changes tab of a version preview: what a restore does to an added or removed node. -->
+                @if (diffBanner(); as banner) {
+                    <div
+                        class="diff-banner diff-banner--{{ banner.status }}"
+                        role="status"
+                    >
+                        <span class="diff-banner__icon">
+                            <i
+                                [class]="banner.icon"
+                                aria-hidden="true"
+                            ></i>
+                        </span>
+                        <span class="diff-banner__text">{{ banner.text }}</span>
+                    </div>
+                }
+
                 <main>
                     <ng-container
                         [ngComponentOutlet]="panelComponent()"
                         [ngComponentOutletInputs]="componentInputs()"
+                        [ngComponentOutletInjector]="outletInjector"
                         #outlet="ngComponentOutlet"
                     ></ng-container>
                 </main>
@@ -218,15 +258,40 @@ export class NodePanelShellComponent {
 
     protected readonly outlet = viewChild(NgComponentOutlet);
     private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
+    private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
+    /** The inputs the open panel declares: setting any other one is an error (NG0303). */
+    private readonly panelInputNames = computed(() => {
+        const component = this.panelComponent();
+        const inputs = component ? (reflectComponentType(component)?.inputs ?? []) : [];
+        return new Set(inputs.map((panelInput) => panelInput.templateName));
+    });
     protected readonly componentInputs = computed(() => {
-        const node = this.node();
-
-        return {
-            node,
+        const offered: Record<string, unknown> = {
+            node: this.node(),
             isExpanded: this.isExpanded(),
             graphId: this.currentFlowId(),
-            ...(node?.type === 'subgraph' ? { currentFlowId: this.currentFlowId() } : {}),
+            currentFlowId: this.currentFlowId(),
         };
+        const declared = this.panelInputNames();
+        return Object.fromEntries(Object.entries(offered).filter(([name]) => declared.has(name)));
+    });
+
+    /** The open node's diff on the Changes tab of a version preview; `null` elsewhere. */
+    private readonly panelDiff = computed<NodePanelDiff | null>(() => {
+        const node = this.node();
+        return node ? this.flowDiffState.nodeDiff(node.id) : null;
+    });
+    /** Changed and unchanged nodes get no banner: only a node a restore adds or removes as a whole. */
+    protected readonly diffBanner = computed(() => {
+        const status = this.panelDiff()?.status;
+        if (status !== 'added' && status !== 'deleted') return null;
+        const badge = NODE_DIFF_BADGES[status];
+        return { status, icon: badge.icon, text: `${badge.label}.` };
+    });
+    /** Gives the panel, and the notes inside it, the open node's diff without a new input on every panel. */
+    protected readonly outletInjector = Injector.create({
+        providers: [{ provide: NODE_PANEL_DIFF, useValue: this.panelDiff }],
+        parent: inject(Injector),
     });
 
     protected readonly isShaking = signal(false);
@@ -257,6 +322,14 @@ export class NodePanelShellComponent {
         const hasSomethingToSave = (panel?.isDirty?.() ?? false) || (panel?.needsSave?.() ?? false);
         return hasSomethingToSave && !!panel?.onSaveClick;
     });
+    protected readonly isSaveDisabled = computed(() => {
+        const panel = this.panelInstanceSig();
+        return !!panel?.form?.invalid || !!panel?.isSaving?.();
+    });
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
+    /** Set while the Save button has the focus: once it is gone after the save, the focus moves to Close. */
+    protected saveButtonHasFocus = false;
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
     private isAutosaving = false;
@@ -265,10 +338,12 @@ export class NodePanelShellComponent {
     private readonly sidePanelService = inject(SidePanelService);
     private readonly toastService = inject(ToastService);
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly flowDiffState = inject(FlowDiffStateService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly keymap = inject(KeymapService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     constructor() {
         this.keymap.register('editing.escape', () => this.onEscape(), {
@@ -326,6 +401,13 @@ export class NodePanelShellComponent {
             }
         });
 
+        // The saved node has nothing left to save, so Save goes away: the focus it had stays in the panel.
+        effect(() => {
+            if (this.showSaveButton() || !this.saveButtonHasFocus) return;
+            this.saveButtonHasFocus = false;
+            afterNextRender(() => this.closeButton()?.nativeElement.focus(), { injector: this.injector });
+        });
+
         effect(() => {
             const shouldExpand = this.sidePanelService.expandRequest();
             if (shouldExpand) {
@@ -336,7 +418,15 @@ export class NodePanelShellComponent {
     }
 
     protected onHeaderSaveClick(): void {
+        if (this.isSaveDisabled()) return;
         this.panelInstanceSig()?.onSaveClick?.();
+    }
+
+    /** Escape closes the panel, unless a control inside it already used this Escape (it marks it handled). */
+    protected onPanelEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.saveSidePanel();
     }
 
     protected openNodeDetails(trigger: HTMLElement): void {

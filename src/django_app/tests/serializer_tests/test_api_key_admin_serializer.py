@@ -1,35 +1,25 @@
 import pytest
 
-from rbac.models import ApiKey
 from rbac.serializers.api_keys import ApiKeyAdminSerializer
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
 @pytest.fixture
-def key(db, django_user_model):
+def key(issue_api_key, django_user_model, acme):
     owner = django_user_model.objects.create_user(
         email="serialized@example.com", password="StrongPass123!"
     )
-    return ApiKey.objects.create(
-        name="k",
-        key_type=ApiKey.KeyType.USER,
-        prefix="es-000000000",
-        key_hash="hash-serializer",
-        created_by=owner,
-    )
+    _, key = issue_api_key(user=owner, org=acme, name="k")
+    return key
 
 
 @pytest.mark.django_db
-def test_org_ids_come_from_the_attached_attribute(key):
-    key._visible_org_ids = [7, 9]
+def test_admin_row_carries_the_keys_single_org(key, acme):
+    data = ApiKeyAdminSerializer(key).data
 
-    assert ApiKeyAdminSerializer(key).data["org_ids"] == [7, 9]
-
-
-@pytest.mark.django_db
-def test_org_ids_default_to_empty_when_not_attached(key):
-    assert ApiKeyAdminSerializer(key).data["org_ids"] == []
+    assert (data["org_id"], data["org_name"]) == (acme.id, acme.name)
+    assert "org_ids" not in data
 
 
 @pytest.mark.django_db

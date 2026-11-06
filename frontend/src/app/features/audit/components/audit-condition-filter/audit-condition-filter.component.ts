@@ -1,5 +1,16 @@
 import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
-import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
+import {
+    afterNextRender,
+    ChangeDetectionStrategy,
+    Component,
+    ElementRef,
+    inject,
+    Injector,
+    input,
+    model,
+    viewChild,
+    viewChildren,
+} from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
 import {
@@ -35,7 +46,12 @@ export class AuditConditionFilterComponent {
     public showKey = input<boolean>(true);
     public keyOptions = input<{ value: string; label: string }[]>([]);
 
+    private readonly addConditionButtons = viewChildren<ElementRef<HTMLButtonElement>>('addConditionButton');
+    private readonly addGroupButton = viewChild.required<ElementRef<HTMLButtonElement>>('addGroupButton');
+
     protected readonly joinOptions = JOIN_OPTIONS;
+
+    private readonly injector = inject(Injector);
 
     protected addGroup(): void {
         this.groups.update((current) => [...current, createAuditConditionGroup(this.operators())]);
@@ -62,6 +78,16 @@ export class AuditConditionFilterComponent {
 
     protected removeCondition(groupId: string, conditionId: string): void {
         this.groups.update((current) => removeAuditCondition(current, groupId, conditionId));
+        // the remove button goes with its row: the focus moves to its group's Add condition, or to Add group when the
+        // group went with its last row
+        afterNextRender(
+            () =>
+                (
+                    this.addConditionButtons().find((button) => button.nativeElement.dataset['groupId'] === groupId) ??
+                    this.addGroupButton()
+                ).nativeElement.focus(),
+            { injector: this.injector }
+        );
     }
 
     protected reorderCondition(groupId: string, event: CdkDragDrop<AuditCondition[]>): void {

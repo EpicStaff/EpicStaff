@@ -11,6 +11,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { renderAsync } from 'docx-preview';
 import * as Papa from 'papaparse';
@@ -34,6 +35,7 @@ interface SheetData {
 const MAX_SHEET_ROWS = 1000;
 // One <pre> is laid out on the main thread (~4.5 s for 5 MB).
 const MAX_TEXT_PREVIEW_CHARS = 256 * 1024;
+const SAFE_LINK_PROTOCOLS = ['http:', 'https:', 'mailto:'];
 
 function getExtension(fileName: string): string {
     return fileName.split('.').pop()?.toLowerCase() ?? '';
@@ -61,7 +63,7 @@ export function canPreviewFilePart(fileName: string): boolean {
     selector: 'app-blob-preview',
     templateUrl: './blob-preview.component.html',
     styleUrls: ['./blob-preview.component.scss'],
-    imports: [DecimalPipe, JsonPipe, AppSvgIconComponent, ButtonComponent],
+    imports: [DecimalPipe, JsonPipe, AppSvgIconComponent, ButtonComponent, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BlobPreviewComponent {
@@ -303,9 +305,32 @@ export class BlobPreviewComponent {
             // renderAltChunks=false: altChunk embeds raw HTML from the .docx
             // into an iframe srcdoc in the same origin — a known XSS vector.
             await renderAsync(blob, container, undefined, { renderAltChunks: false });
+            this.removeUnsafeLinks(container);
         } catch {
             this.previewError.set('Failed to render document preview');
         }
+    }
+
+    private removeUnsafeLinks(container: HTMLElement): void {
+        container.querySelectorAll('a[href]').forEach((link) => {
+            const href = link.getAttribute('href') ?? '';
+            if (href.startsWith('#')) return;
+
+            let protocol: string;
+            try {
+                protocol = new URL(href, window.location.href).protocol;
+            } catch {
+                link.removeAttribute('href');
+                return;
+            }
+
+            if (!SAFE_LINK_PROTOCOLS.includes(protocol)) {
+                link.removeAttribute('href');
+                return;
+            }
+            link.setAttribute('target', '_blank');
+            link.setAttribute('rel', 'noopener noreferrer');
+        });
     }
 
     private revokeBlobUrl(): void {

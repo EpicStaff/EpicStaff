@@ -32,6 +32,7 @@
                                 (mousedown)="$event.preventDefault()"
                                 (click)="dismissTip(i)"
                                 aria-label="Dismiss tip"
+                                matTooltip="Dismiss tip"
                             >
                                 ×
                             </button>
@@ -43,6 +44,8 @@
             <textarea
                 #editor
                 class="eb-editor"
+                aria-label="Expression"
+                matTooltip="Expression"
                 [value]="displayValue()"
                 (input)="onInput($event)"
                 (keydown)="onKeydown($event)"
@@ -86,6 +89,7 @@
                     type="text"
                     class="eb-search"
                     placeholder="Search object..."
+                    aria-label="Search object"
                     [ngModel]="searchTerm()"
                     (ngModelChange)="searchTerm.set($event)"
                 />
@@ -93,13 +97,17 @@
 
             <div class="eb-vars-list">
                 @for (v of filteredVars(); track v) {
-                    <div
+                    <!-- The name has a tooltip only while it is cut short. -->
+                    <button
+                        type="button"
                         class="eb-var-row"
+                        appTooltipOnOverflow
+                        [matTooltip]="'@' + v"
                         (mousedown)="$event.preventDefault()"
                         (click)="insertVariable(v)"
                     >
                         {{ '@' }}{{ v }}
-                    </div>
+                    </button>
                 }
             </div>
         </div>
@@ -109,11 +117,11 @@
     <div class="eb-templates-row">
         <span class="eb-templates-label">Quick templates:</span>
         @for (tpl of templates(); track tpl) {
+            <!-- Focusable while it has no example, so the keyboard reaches the 'Coming soon' tooltip too. -->
             <button
                 type="button"
                 class="eb-template-btn"
-                [disabled]="!hasTemplateExample(tpl)"
-                [title]="hasTemplateExample(tpl) ? tpl : 'Coming soon'"
+                [matTooltip]="hasTemplateExample(tpl) ? '' : 'Coming soon'"
                 [attr.aria-disabled]="!hasTemplateExample(tpl) || null"
                 (click)="onTemplateClick(tpl)"
             >

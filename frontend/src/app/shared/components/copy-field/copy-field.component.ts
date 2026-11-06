@@ -1,3 +1,4 @@
+import { Clipboard } from '@angular/cdk/clipboard';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -8,6 +9,7 @@ import {
     output,
     signal,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { ToastService } from '../../../services/notifications';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -20,11 +22,12 @@ export type CopyFieldInfoType = 'info' | 'warning';
     selector: 'app-copy-field',
     templateUrl: './copy-field.component.html',
     styleUrls: ['./copy-field.component.scss'],
-    imports: [AppSvgIconComponent, TooltipComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, TooltipComponent, ButtonComponent, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CopyFieldComponent {
     private readonly toast = inject(ToastService);
+    private readonly clipboard = inject(Clipboard);
 
     readonly value = input.required<string>();
     readonly tooltipText = input<string>('');
@@ -48,18 +51,12 @@ export class CopyFieldComponent {
     }
 
     protected onCopy(): void {
-        const value = this.value();
-        if (!navigator.clipboard) {
-            this.toast.error('Copy is not supported in this browser');
+        if (!this.clipboard.copy(this.value())) {
+            this.toast.error('Failed to copy to clipboard');
             return;
         }
-        navigator.clipboard.writeText(value).then(
-            () => {
-                this.isCopied.set(true);
-                this.toast.info('Copied to clipboard');
-                this.onCopied.emit();
-            },
-            () => this.toast.error('Failed to copy to clipboard')
-        );
+        this.isCopied.set(true);
+        this.toast.info('Copied to clipboard');
+        this.onCopied.emit();
     }
 }

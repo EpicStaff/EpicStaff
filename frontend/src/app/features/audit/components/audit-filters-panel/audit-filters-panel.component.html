@@ -7,10 +7,12 @@
         />
         <span class="filters-panel__title">Filters</span>
         <button
+            #closeButton
             class="filters-panel__close"
             type="button"
             (click)="closed.emit()"
             aria-label="Close filters"
+            matTooltip="Close filters"
         >
             ✕
         </button>

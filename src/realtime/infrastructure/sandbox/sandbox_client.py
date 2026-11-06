@@ -1,63 +1,242 @@
-"""HTTP intake client for the sandbox code-execution service.
+"""HTTP client realtime uses to hand python tool code to the sandbox.
 
-realtime submits a code execution over HTTP (`POST /executions`) and receives its
-result back on the Redis result channel, unchanged. The request body mirrors the
-sandbox's own submit schema: the venv is addressed by `venv_id` (None means the
-sandbox's default venv), and the storage credentials django mints for the realtime
-chat are handed over here -- the sandbox mints none of its own and rejects a
-storage execution that arrives without them.
+realtime submits a code execution over HTTP (`POST /executions`, answered 202) and
+receives the result on the Redis result channel, which this client never touches. What
+it adds is the guarantee that a realtime tool call never waits forever: a full sandbox is
+retried for a bounded budget, and a pending result is checked against the sandbox every
+`STATUS_POLL_INTERVAL_SECONDS` so an execution the sandbox lost is reported, not awaited.
 """
 
-from typing import Any
+import asyncio
+import math
+import random
+from asyncio import sleep
+from collections.abc import Awaitable, Callable
+from time import monotonic
+from urllib.parse import quote
 
 import httpx
-from src.shared.models import CodeTaskData
+from foundation.transport.http import (
+    AsyncClient,
+    ClientBadGatewayError,
+    ClientConnectionError,
+    ClientError,
+    ClientGatewayTimeoutError,
+    ClientHTTPStatusError,
+    ClientNotFoundError,
+    ClientTimeoutError,
+    ClientUnavailableError,
+)
+from src.shared.models.sandbox_execution import ExecutionRequest
+from src.shared.sandbox_errors import (
+    SandboxError,
+    SandboxExecutionLostError,
+    SandboxOverloadedError,
+    SandboxResultTimeoutError,
+    SandboxUnreachableError,
+)
+
+__all__ = [
+    "BACKOFF_BASE_SECONDS",
+    "BACKOFF_CAP_SECONDS",
+    "MAX_STATUS_FAILURES",
+    "STATUS_POLL_INTERVAL_SECONDS",
+    "SandboxClient",
+]
+
+# How long a pending result may stay silent before the sandbox is asked whether it still has it.
+STATUS_POLL_INTERVAL_SECONDS = 30.0
+# Consecutive failed status checks after which the sandbox counts as unreachable.
+MAX_STATUS_FAILURES = 3
+# First upper bound of the jittered wait between submit retries; doubles every retry.
+BACKOFF_BASE_SECONDS = 0.5
+# The jittered wait between submit retries never draws from a wider range than this.
+BACKOFF_CAP_SECONDS = 10.0
+
+# Beyond this exponent the bound is far past the cap; stops `2**attempt` overflowing a float.
+_MAX_BACKOFF_EXPONENT = 32
+
+# No answer, so the sandbox may or may not have accepted the request.
+_UNANSWERED_ERRORS = (
+    ClientTimeoutError,
+    ClientConnectionError,
+    ClientBadGatewayError,
+    ClientGatewayTimeoutError,
+)
 
 
-class SandboxExecutionClient:
-    """Submits code executions to the sandbox HTTP intake."""
+class SandboxClient(AsyncClient):
+    """Submit executions to the sandbox and watch over the ones awaiting a result.
 
-    def __init__(self, base_url: str, timeout: float | None = None, **httpx_options):
-        self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout, **httpx_options)
+    Built like any httpx client (`base_url`, `timeout`, ...); `queue_timeout` is the
+    total time `submit` keeps retrying a sandbox that is full or unreachable. Zero
+    makes a single attempt.
 
-    async def close(self) -> None:
-        await self._client.aclose()
+    Raises:
+        ValueError: `queue_timeout` is None, negative or not a number.
+    """
 
-    async def submit(self, code_task_data: CodeTaskData) -> dict:
-        """Hand one execution to the sandbox and return its acceptance payload.
+    def __init__(self, *, queue_timeout: float, **httpx_options) -> None:
+        # `not >= 0` rather than `< 0`, so NaN is refused too: it would never expire.
+        if queue_timeout is None or not queue_timeout >= 0:
+            raise ValueError(f"queue_timeout must be zero or more seconds, got {queue_timeout!r}")
+        super().__init__(**httpx_options)
+        self.queue_timeout = queue_timeout
+
+    async def submit(
+        self,
+        request: ExecutionRequest,
+        *,
+        on_rejected: Callable[[int, float], None] | None = None,
+    ) -> None:
+        """Hand an execution to the sandbox, retrying while it is full or unreachable.
+
+        Every retry re-posts the same `execution_id`, which the sandbox treats as the
+        same execution, so a retry after a lost 202 never runs the code twice. Retries
+        stop `queue_timeout` seconds after the first attempt; the attempt in flight at
+        that moment may still finish, so the call can outlast the budget by one request
+        timeout. When that last attempt went unanswered, the sandbox is asked once whether
+        it has the execution after all before the submission counts as failed.
+
+        Args:
+            on_rejected: Called each time the sandbox answered 503 and a retry is
+                scheduled -- never when the budget is spent -- with the retry's number,
+                counting every retry from 1, and the seconds it waits first.
 
         Raises:
-            httpx.HTTPError: The sandbox was unreachable, timed out, or rejected
-                the submission. Nothing will arrive on the result channel.
+            SandboxOverloadedError: The sandbox was still full when the budget ran out.
+            SandboxUnreachableError: The sandbox could not be reached within the budget.
+            SandboxError: The sandbox refused the execution; the message is its error body.
         """
-        response = await self._client.post("/executions", json=_submit_body(code_task_data))
-        response.raise_for_status()
-        return response.json()
+        payload = request.model_dump(mode="json")
+        deadline = monotonic() + self.queue_timeout
+        attempt = 0
+        earlier_attempt_unanswered = False
+        while True:
+            try:
+                await self.post("/executions", json=payload)
+                return
+            except ClientUnavailableError as error:
+                # An unanswered attempt may have been accepted just before the sandbox
+                # filled up; re-posting would then wait on a 503 for nothing.
+                if earlier_attempt_unanswered and await self._is_known(request.execution_id):
+                    return
+                failure: SandboxError = SandboxOverloadedError(self.queue_timeout)
+                requested_wait = _retry_after_seconds(error.response)
+            except _UNANSWERED_ERRORS:
+                earlier_attempt_unanswered = True
+                failure = SandboxUnreachableError()
+                requested_wait = 0.0
+            except ClientHTTPStatusError as error:
+                raise SandboxError(error.response.text) from error
+
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                # The last attempt went unanswered, so it may have been accepted after all.
+                if isinstance(failure, SandboxUnreachableError) and await self._is_known(
+                    request.execution_id
+                ):
+                    return
+                raise failure
+            delay = min(max(requested_wait, _backoff_seconds(attempt)), remaining)
+            attempt += 1
+            if on_rejected is not None and isinstance(failure, SandboxOverloadedError):
+                on_rejected(attempt, delay)
+            await sleep(delay)
+
+    async def status(self, execution_id: str) -> str:
+        """Return the sandbox's status for an execution it still knows.
+
+        Raises:
+            SandboxExecutionLostError: The sandbox does not know the execution: it was
+                lost on a restart, or its result was published long enough ago to be
+                forgotten.
+        """
+        try:
+            response = await self.get(f"/executions/{quote(execution_id, safe='')}")
+        except ClientNotFoundError:
+            raise SandboxExecutionLostError() from None
+        return response.json()["status"]
+
+    async def wait_for_result[T](
+        self, execution_id: str, result: Awaitable[T], *, backstop: float | None
+    ) -> T:
+        """Await `result`, checking every so often that the sandbox still has the execution.
+
+        The first status check happens only after `STATUS_POLL_INTERVAL_SECONDS` without a
+        result, so a fast execution costs no extra request. `result` is wrapped in a task
+        that is cancelled if this method leaves before it finishes.
+
+        Args:
+            result: Completes with the execution's result, typically when realtime's Redis
+                listener receives it. Whatever it raises propagates unchanged.
+            backstop: Seconds to wait in total before giving up; None waits as long as
+                the sandbox keeps reporting the execution.
+
+        Raises:
+            SandboxExecutionLostError: The sandbox no longer knows the execution and no
+                result arrived.
+            SandboxUnreachableError: `MAX_STATUS_FAILURES` status checks in a row failed.
+            SandboxResultTimeoutError: `backstop` seconds passed without a result.
+        """
+        result_task = asyncio.ensure_future(result)
+        timeout = asyncio.timeout(backstop)
+        try:
+            async with timeout:
+                return await self._watch(execution_id, result_task)
+        except TimeoutError:
+            # The result itself may raise TimeoutError; only an expired backstop is ours.
+            if timeout.expired():
+                raise SandboxResultTimeoutError(backstop) from None
+            raise
+        finally:
+            result_task.cancel()
+
+    async def _watch[T](self, execution_id: str, result_task: asyncio.Future[T]) -> T:
+        consecutive_failures = 0
+        while True:
+            done, _ = await asyncio.wait({result_task}, timeout=STATUS_POLL_INTERVAL_SECONDS)
+            if done:
+                return result_task.result()
+            try:
+                await self.status(execution_id)
+            except SandboxExecutionLostError:
+                # The result and the 404 can arrive together; the result wins.
+                if result_task.done():
+                    return result_task.result()
+                raise
+            except (ClientTimeoutError, ClientConnectionError):
+                consecutive_failures += 1
+            except ClientHTTPStatusError as error:
+                if error.response.status_code < 500:
+                    raise
+                consecutive_failures += 1
+            else:
+                consecutive_failures = 0
+            if consecutive_failures >= MAX_STATUS_FAILURES:
+                raise SandboxUnreachableError()
+
+    async def _is_known(self, execution_id: str) -> bool:
+        try:
+            await self.status(execution_id)
+        except (SandboxExecutionLostError, ClientError):
+            return False
+        return True
 
 
-def _submit_body(code_task_data: CodeTaskData) -> dict[str, Any]:
-    """Render a `CodeTaskData` as the intake's request body.
+def _retry_after_seconds(response: httpx.Response) -> float:
+    """Return the `Retry-After` delay in seconds, or 0 when it is absent or not a number.
 
-    The intake types `global_kwargs`, `func_kwargs` and `storage_allowed_paths` as
-    containers with an empty default, so the optional ones are sent empty rather
-    than null. `timeout` carries the code's own execution timeout; None lets the
-    sandbox apply its default.
+    Only the delay-seconds form is read: the sandbox never sends an HTTP date.
     """
-    storage_credentials = code_task_data.storage_credentials
-    return {
-        "execution_id": code_task_data.execution_id,
-        "session_id": code_task_data.session_id,
-        "code": code_task_data.code,
-        "entrypoint": code_task_data.entrypoint,
-        "global_kwargs": code_task_data.global_kwargs or {},
-        "func_kwargs": code_task_data.func_kwargs or {},
-        "secrets": code_task_data.secrets,
-        "venv_id": code_task_data.venv_id,
-        "use_storage": code_task_data.use_storage,
-        "storage_allowed_paths": code_task_data.storage_allowed_paths or [],
-        "storage_org_prefix": code_task_data.storage_org_prefix,
-        "storage_credentials": (
-            storage_credentials.model_dump() if storage_credentials is not None else None
-        ),
-        "timeout": code_task_data.execution_timeout,
-    }
+    try:
+        seconds = float(response.headers.get("Retry-After", ""))
+    except ValueError:
+        return 0.0
+    return seconds if math.isfinite(seconds) and seconds > 0 else 0.0
+
+
+def _backoff_seconds(attempt: int) -> float:
+    """Exponential backoff with full jitter."""
+    exponent = min(attempt, _MAX_BACKOFF_EXPONENT)
+    return random.uniform(0, min(BACKOFF_CAP_SECONDS, BACKOFF_BASE_SECONDS * 2**exponent))

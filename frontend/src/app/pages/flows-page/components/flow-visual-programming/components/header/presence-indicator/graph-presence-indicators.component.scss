@@ -12,8 +12,9 @@
     justify-content: center;
     font-size: 0.6875rem;
     font-weight: 500;
-    color: var(--white);
-    border: 2px solid var(--graphite-875);
+    color: var(--avatar-color);
+    background-color: color-mix(in srgb, var(--avatar-color) 15%, var(--graphite-875));
+    border: 1.5px solid var(--avatar-color);
     cursor: default;
     flex-shrink: 0;
     animation: avatar-in 0.25s ease;
@@ -23,7 +24,7 @@
     }
 
     &--overflow {
-        background-color: var(--gray-555);
+        --avatar-color: var(--presence-gray);
         font-size: 0.625rem;
     }
 

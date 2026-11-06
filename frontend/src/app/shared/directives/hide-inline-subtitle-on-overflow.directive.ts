@@ -1,5 +1,10 @@
-import { AfterViewInit, Directive, ElementRef, input, NgZone, OnDestroy, Renderer2 } from '@angular/core';
+import { AfterViewInit, Directive, ElementRef, inject, input, NgZone, OnDestroy, Renderer2 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
+/**
+ * Hides a title's inline hint (then its trailing summary) when they do not fit. A matTooltip on the same element shows
+ * only while the hint is hidden, so give it the full title.
+ */
 @Directive({
     selector: '[appHideInlineSubtitleOnOverflow]',
 })
@@ -15,6 +20,7 @@ export class HideInlineSubtitleOnOverflowDirective implements AfterViewInit, OnD
     private mutationObserver: MutationObserver | null = null;
     private frameId: number | null = null;
     private observedTrailing: HTMLElement | null = null;
+    private readonly tooltip = inject(MatTooltip, { self: true, optional: true });
 
     constructor(
         private readonly hostRef: ElementRef<HTMLElement>,
@@ -23,6 +29,7 @@ export class HideInlineSubtitleOnOverflowDirective implements AfterViewInit, OnD
     ) {}
 
     public ngAfterViewInit(): void {
+        if (this.tooltip) this.tooltip.disabled = true;
         this.ngZone.runOutsideAngular(() => {
             const host = this.hostRef.nativeElement;
             const title = this.getTitleElement();
@@ -92,6 +99,7 @@ export class HideInlineSubtitleOnOverflowDirective implements AfterViewInit, OnD
         this.frameId = requestAnimationFrame(() => {
             this.frameId = null;
             this.evaluateOverflow();
+            this.syncTooltip();
         });
     }
 
@@ -134,6 +142,14 @@ export class HideInlineSubtitleOnOverflowDirective implements AfterViewInit, OnD
 
         if (subtitle && hintOverflows() && host.classList.contains('hide-inline-trailing')) {
             host.classList.add('hide-inline-subtitle');
+        }
+    }
+
+    private syncTooltip(): void {
+        if (!this.tooltip) return;
+        const hintHidden = this.hostRef.nativeElement.classList.contains('hide-inline-subtitle');
+        if (this.tooltip.disabled === hintHidden) {
+            this.ngZone.run(() => (this.tooltip!.disabled = !hintHidden));
         }
     }
 

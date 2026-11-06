@@ -12,6 +12,7 @@
                 {{ selectionLabel() }}
             </label>
             <button
+                #cancelSelectingButton
                 class="presets__link"
                 type="button"
                 (click)="stopSelecting()"
@@ -21,7 +22,8 @@
             <button
                 class="presets__btn presets__btn--small presets__btn--accent"
                 type="button"
-                [disabled]="!canExportSelected()"
+                [disabled]="!canExportSelected() && !isExporting()"
+                [attr.aria-disabled]="isExporting()"
                 (click)="exportSelected()"
             >
                 Export
@@ -49,11 +51,12 @@
                 hidden
                 (change)="importFile($event)"
             />
+            <!-- aria-disabled, not disabled: it keeps the focus while the import runs. -->
             <button
                 class="presets__btn presets__btn--small"
                 type="button"
-                [disabled]="isImporting()"
-                (click)="importInput.click()"
+                [attr.aria-disabled]="isImporting()"
+                (click)="openImport(importInput)"
             >
                 <app-svg-icon
                     icon="download"
@@ -62,6 +65,7 @@
                 Import
             </button>
             <button
+                #startSelectingButton
                 class="presets__btn presets__btn--small"
                 type="button"
                 [disabled]="editor() !== null || scopedPresets().length === 0"
@@ -85,6 +89,7 @@
         />
         @if (!isSelecting()) {
             <button
+                #newPresetButton
                 class="presets__btn presets__btn--accent"
                 type="button"
                 [disabled]="isSaving()"
@@ -134,6 +139,8 @@
                             type="button"
                             [disabled]="card.state === null && !isSelecting()"
                             [attr.tabindex]="isSelecting() ? -1 : null"
+                            appTooltipOnOverflow=".preset-card__name"
+                            [matTooltip]="card.preset.name"
                             (click)="activateCard(card)"
                         >
                             <span class="preset-card__head">
@@ -151,7 +158,8 @@
                                     @for (chip of card.chips; track chip.key) {
                                         <span
                                             class="preset-chip"
-                                            [title]="chip.label + ' ' + chip.value"
+                                            appTooltipOnOverflow=".preset-chip__value"
+                                            [matTooltip]="chip.label + ' ' + chip.value"
                                         >
                                             <span class="preset-chip__label">{{ chip.label }}</span>
                                             <span class="preset-chip__value">{{ chip.value }}</span>
@@ -173,6 +181,8 @@
                                 aria-haspopup="menu"
                                 [attr.aria-expanded]="openMenuId() === card.preset.id"
                                 [attr.aria-label]="'More actions for ' + card.preset.name"
+                                [matTooltip]="'More actions for ' + card.preset.name"
+                                [attr.data-preset-id]="card.preset.id"
                                 (click)="toggleMenu(card.preset.id)"
                             >
                                 <app-svg-icon
@@ -186,13 +196,14 @@
                                 [cdkConnectedOverlayOpen]="openMenuId() === card.preset.id"
                                 [cdkConnectedOverlayPositions]="menuPositions"
                                 [cdkConnectedOverlayFlexibleDimensions]="true"
-                                (overlayOutsideClick)="closeMenu(card.preset.id)"
+                                (overlayOutsideClick)="closeMenu(card.preset.id, false)"
                                 (attach)="focusFirstMenuItem()"
                                 (detach)="closeMenu(card.preset.id)"
                             >
                                 <div
                                     class="preset-menu"
                                     role="menu"
+                                    cdkTrapFocus
                                 >
                                     @if (card.state !== null && card.preset.is_owner) {
                                         <button
@@ -361,18 +372,21 @@
                 ></textarea>
             } @else if (editorChips().length > 0) {
                 <div class="preset-card__chips">
-                    @for (chip of editorChips(); track chip.key) {
+                    @for (chip of editorChips(); track chip.key; let chipIndex = $index) {
                         <span
                             class="preset-chip"
-                            [title]="chip.label + ' ' + chip.value"
+                            appTooltipOnOverflow=".preset-chip__value"
+                            [matTooltip]="chip.label + ' ' + chip.value"
                         >
                             <span class="preset-chip__label">{{ chip.label }}</span>
                             <span class="preset-chip__value">{{ chip.value }}</span>
                             <button
+                                #editorChipRemove
                                 class="preset-chip__remove"
                                 type="button"
                                 [attr.aria-label]="'Remove ' + chip.label + ' filter'"
-                                (click)="removeEditorFilter(chip.key)"
+                                [matTooltip]="'Remove ' + chip.label + ' filter'"
+                                (click)="removeEditorFilter(chip.key, chipIndex)"
                             >
                                 ✕
                             </button>
@@ -406,7 +420,8 @@
                 <button
                     class="presets__btn presets__btn--primary"
                     type="button"
-                    [disabled]="!canSave()"
+                    [disabled]="!canSave() && !editorState.isSaving"
+                    [attr.aria-disabled]="editorState.isSaving"
                     (click)="save()"
                 >
                     Save Changes

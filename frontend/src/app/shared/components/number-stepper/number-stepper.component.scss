@@ -1,3 +1,5 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
 .number-stepper {
     width: 100%;
 
@@ -60,13 +62,20 @@
         cursor: pointer;
         transition: background-color 0.2s ease;
 
-        &:hover:not(:disabled) {
+        &:hover:not(:disabled, [aria-disabled='true']) {
             background: var(--accent-color, #685fff);
         }
 
-        &:disabled {
+        // At the bound the button stays focusable (aria-disabled), so stepping up to the max keeps the focus.
+        &:disabled,
+        &[aria-disabled='true'] {
             opacity: 0.4;
             cursor: not-allowed;
+        }
+
+        // The control clips (overflow: hidden): the ring is drawn inside.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         // Size variants for buttons
@@ -146,3 +155,7 @@
         color: var(--crimson-500);
     }
 }
+
+// Version diff: the value of a changed field. Read-only, the control has no box of its own, so it gets one; keep after
+// its read-only look, which this overrides.
+@include diff-value-mark.marked('.number-stepper__control', $draws-box: true);

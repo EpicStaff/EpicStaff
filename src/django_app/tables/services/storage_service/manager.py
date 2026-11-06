@@ -26,6 +26,8 @@ from tables.services.storage_service.dataclasses import (
 )
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.path_utils import (
+    check_new_name,
+    check_path_length,
     storage_key,
     trash_batch_prefix,
     trash_storage_key,
@@ -170,6 +172,40 @@ class StorageManager:
     def _strip_org_prefix(self, org_id: int, full_key: str) -> str:
         """Convert a full storage key back to a relative path by removing the org prefix."""
         return full_key.removeprefix(self.organization_prefix(org_id))
+
+    @staticmethod
+    def _validate_new_entry_path(org_id: int, path: str, *, is_folder: bool) -> None:
+        """Reject a path no new file or folder may be created at."""
+        check_new_name(path)
+        check_path_length(org_id, path, is_folder=is_folder)
+
+    @staticmethod
+    def _source_is_folder(org_id: int, source_path: str) -> bool:
+        return StorageFile.objects.filter(
+            org_id=org_id, path=source_path.rstrip("/") + "/", item_type="folder"
+        ).exists()
+
+    @staticmethod
+    def _transferred_entry_path(source_path: str, destination_path: str) -> str:
+        """Path the moved or copied entry itself takes inside the destination folder."""
+        source_name = source_path.rstrip("/").rsplit("/", 1)[-1]
+        destination_folder = destination_path.strip("/")
+        return f"{destination_folder}/{source_name}" if destination_folder else source_name
+
+    def _validate_transfer(
+        self, src_org_id: int, source_path: str, dst_org_id: int, destination_path: str
+    ) -> None:
+        """Reject a move or copy whose destination neither storage nor the index can hold."""
+        if destination_path.strip("/"):
+            self._validate_new_entry_path(dst_org_id, destination_path, is_folder=True)
+
+        transferred_entry_path = self._transferred_entry_path(source_path, destination_path)
+        check_new_name(transferred_entry_path)
+        check_path_length(
+            dst_org_id,
+            transferred_entry_path,
+            is_folder=self._source_is_folder(src_org_id, source_path),
+        )
 
     # --- Single-org operations ---
 
@@ -351,6 +387,7 @@ class StorageManager:
             )
 
     def mkdir(self, org_id: int, path: str, *, user: object | None = None) -> None:
+        self._validate_new_entry_path(org_id, path, is_folder=True)
         self._backend.mkdir(self._build_storage_key(org_id, path))
         StorageFileSync.on_mkdir(org_id, path, user=user)
 
@@ -362,6 +399,8 @@ class StorageManager:
         *,
         user: object | None = None,
     ) -> None:
+        """Move a file or folder into the destination folder, under a deduplicated name."""
+        self._validate_transfer(org_id, source_path, org_id, destination_path)
         actual_key = self._backend.move(
             self._build_storage_key(org_id, source_path),
             self._build_storage_key(org_id, destination_path),
@@ -377,6 +416,11 @@ class StorageManager:
         *,
         user: object | None = None,
     ) -> None:
+        """Move a file or folder to the exact destination path."""
+        # Drifts the same way delete already tolerates: a missing source row reads as a file.
+        source_is_folder = self._source_is_folder(org_id, source_path)
+        self._validate_new_entry_path(org_id, destination_path, is_folder=source_is_folder)
+
         destination_clean = destination_path.rstrip("/")
         destination_exists = StorageFile.objects.filter(
             org_id=org_id, path__in=[destination_clean, destination_clean + "/"]
@@ -436,7 +480,12 @@ class StorageManager:
         each source row's path within the copied entry ("" for the entry itself, see
         `_path_within`) to the author its copy gets, and a copy it does not name gets no
         author. Ancestor folders the copy creates are still authored by `user`.
+
+        Known limitation: only the copied entry's own path is length-checked at the
+        destination; a deep descendant's composed path can still overflow StorageFile.path.
         """
+        self._validate_transfer(src_org_id, source_path, dst_org_id, destination_path)
+
         # Early reject only: rows of files that predate size tracking count as 0 here.
         ensure_fits_quota(
             dst_org_id, self._recorded_size(src_org_id, source_path), bin_purge=bin_purge

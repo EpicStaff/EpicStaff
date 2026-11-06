@@ -51,7 +51,12 @@ class EmbeddingModel(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    """Credentials and task type for invoking an `EmbeddingModel`."""
+    """Task type for invoking an `EmbeddingModel`.
+
+    Maps only the columns the knowledge role may read: KNOWLEDGE_EMBEDDING_CONFIG_COLUMNS in
+    src/django_app/tables/service_db_grants.py. Credentials such as extra_headers are
+    deliberately absent; they arrive resolved in each request.
+    """
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     custom_name = Column(Text, unique=True, nullable=False)

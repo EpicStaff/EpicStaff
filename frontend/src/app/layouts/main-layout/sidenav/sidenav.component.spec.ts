@@ -3,14 +3,18 @@ import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { Component, signal, WritableSignal } from '@angular/core';
+import { Component, getDebugNode, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { GetMeResponse, ResourceCode } from '@shared/models';
+import type { Mock } from 'vitest';
 
-import { ProfileTourProgressStore, TOUR_PROGRESS_STORE } from '../../../core/guided-tour';
+import { GuidedTourService, tourAnchorSelector, type TourDefinition } from '../../../core/guided-tour';
+import { AppNavigationDrawerService } from '../../../core/services/app-navigation-drawer.service';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../features/create-agent-tour/create-agent-tour-anchors';
 import { AvailablePlugin } from '../../../features/plugins/models/available-plugin.model';
 import { AppReturnUrlService } from '../../../features/plugins/services/app-return-url.service';
 import { AvailablePluginsStorageService } from '../../../features/plugins/services/available-plugins-storage.service';
@@ -18,12 +22,18 @@ import {
     buildAvailablePlugin,
     buildAvailablePluginNavigationItem,
 } from '../../../features/plugins/testing/plugin-fixtures';
+import { QUICK_START_TOUR_ANCHORS } from '../../../features/quick-start-tour/quick-start-tour-anchors';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { LeftSidebarComponent } from './sidenav.component';
-import { TooltipComponent } from './tooltip/tooltip.component';
+
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
 
 const COLLAPSED_WIDTH = 60;
 const EXPANDED_WIDTH = 240;
@@ -67,6 +77,13 @@ const ATLAS = buildAvailablePlugin({
 /** The fixed top items this setup shows, in order (Audit is off). */
 const STATIC_TOP_LABELS = ['Agents', 'Tools', 'Virtual Environments', 'Storage', 'Flows', 'Chats', 'Conversations'];
 
+function tour(key: string, label: string, icon: string): TourDefinition {
+    return { key, label, icon, autoStart: 'manual', isAvailable: () => true, steps: [] };
+}
+
+const QUICK_START_TOUR = tour('quick-start', 'Quick Start Tour', 'help');
+const CREATE_AGENT_TOUR = tour('create-agent', 'Create Your First Agent', 'agents');
+
 /** Everything counts as on screen: jsdom lays nothing out, so the focus trap would find nothing to focus. */
 class LaidOutInteractivityChecker extends InteractivityChecker {
     override isVisible(): boolean {
@@ -83,12 +100,19 @@ describe('LeftSidebarComponent', () => {
     /** The organization the held list belongs to (`null` before one landed). */
     let loadedOrgId: WritableSignal<number | null>;
     let isSuperadmin: boolean;
+    /** The tours the user can take now: none unless a test gives some. */
+    let tours: WritableSignal<readonly TourDefinition[]>;
+    let startTour: Mock<(key: string) => Promise<void>>;
 
     beforeEach(() => {
+        // jsdom has no ResizeObserver; the overflow tooltips on the account labels need one.
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         activeOrgId = signal<number | null>(1);
         availablePlugins = signal<AvailablePlugin[]>([]);
         loadedOrgId = signal<number | null>(null);
         isSuperadmin = false;
+        tours = signal<readonly TourDefinition[]>([]);
+        startTour = vi.fn<(key: string) => Promise<void>>().mockResolvedValue(undefined);
         TestBed.configureTestingModule({
             providers: [
                 provideHttpClient(),
@@ -114,8 +138,8 @@ describe('LeftSidebarComponent', () => {
                         },
                     },
                 },
-                // The account menu lists the tours, as in the app; none is registered here.
-                { provide: TOUR_PROGRESS_STORE, useExisting: ProfileTourProgressStore },
+                // The Help row lists the tours and starts the one picked.
+                { provide: GuidedTourService, useValue: { replayableTours: tours, start: startTour } },
                 {
                     provide: ConfigService,
                     useValue: {
@@ -158,21 +182,21 @@ describe('LeftSidebarComponent', () => {
         return Array.from(element.querySelectorAll('.sidenav-row-label')).map((label) => label.textContent!.trim());
     }
 
-    function hoverItem(label: string): void {
-        navLink(label)!.closest('li')!.dispatchEvent(new MouseEvent('mouseenter'));
-        fixture.detectChanges();
-    }
-
-    function visibleTooltipTexts(): string[] {
+    /** The tooltips the rows show on hover or focus: the enabled ones. */
+    function tooltipTexts(): string[] {
         return fixture.debugElement
-            .queryAll(By.directive(TooltipComponent))
-            .map((tooltip) => tooltip.componentInstance as TooltipComponent)
-            .filter((tooltip) => tooltip.visible)
-            .map((tooltip) => tooltip.text);
+            .queryAll(By.directive(MatTooltip))
+            .map((host) => host.injector.get(MatTooltip))
+            .filter((tooltip) => !tooltip.disabled)
+            .map((tooltip) => tooltip.message);
     }
 
     function accountRow(): HTMLElement {
         return element.querySelector<HTMLElement>('.user-avatar-btn')!;
+    }
+
+    function tooltipOf(label: Element): MatTooltip {
+        return getDebugNode(label)!.injector.get(MatTooltip);
     }
 
     function logoName(): HTMLElement | null {
@@ -212,7 +236,7 @@ describe('LeftSidebarComponent', () => {
     }
 
     function popover(): HTMLElement | null {
-        return TestBed.inject(OverlayContainer).getContainerElement().querySelector<HTMLElement>('.apps-popover');
+        return TestBed.inject(OverlayContainer).getContainerElement().querySelector<HTMLElement>('.sidenav-popover');
     }
 
     function appLinks(container: ParentNode): HTMLAnchorElement[] {
@@ -237,8 +261,8 @@ describe('LeftSidebarComponent', () => {
 
     /** The rows between the logo and the bottom block, by their visible labels (expanded). */
     function mainLabels(): string[] {
-        return Array.from(element.querySelectorAll('.main-nav > li > .tooltip-wrapper .sidenav-row-label')).map(
-            (label) => label.textContent!.trim()
+        return Array.from(element.querySelectorAll('.main-nav > .sidenav-nav-item .sidenav-row-label')).map((label) =>
+            label.textContent!.trim()
         );
     }
 
@@ -275,10 +299,8 @@ describe('LeftSidebarComponent', () => {
             expect(navLink('Recycle Bin')!.getAttribute('aria-label')).toBe('Recycle Bin');
         });
 
-        it('shows the label as a tooltip on hover', () => {
-            hoverItem('Flows');
-
-            expect(visibleTooltipTexts()).toContain('Flows');
+        it('shows each label as a tooltip, and "Account" on the account row', () => {
+            expect(tooltipTexts()).toEqual(expect.arrayContaining(['Flows', 'Recycle Bin', 'Settings', 'Account']));
         });
     });
 
@@ -302,19 +324,17 @@ describe('LeftSidebarComponent', () => {
             expect(navLink('Recycle Bin')!.hasAttribute('aria-label')).toBe(false);
         });
 
-        it('suppresses the hover tooltips', () => {
-            hoverItem('Flows');
-            hoverItem('Recycle Bin');
-
-            expect(visibleTooltipTexts()).not.toContain('Flows');
-            expect(visibleTooltipTexts()).not.toContain('Recycle Bin');
+        it('suppresses the row tooltips, which would repeat the labels', () => {
+            expect(tooltipTexts()).not.toContain('Flows');
+            expect(tooltipTexts()).not.toContain('Recycle Bin');
+            expect(tooltipTexts()).not.toContain('Account');
         });
 
-        it('shows the active organization and the role in it on the account row, the full name as a title', () => {
+        it('shows the active organization and the role in it on the account row, the full name in a tooltip', () => {
             const orgLabel = accountRow().querySelector('.sidenav-row-label')!;
 
             expect(orgLabel.textContent!.trim()).toBe(ORG_NAME);
-            expect(orgLabel.getAttribute('title')).toBe(ORG_NAME);
+            expect(tooltipOf(orgLabel).message).toBe(ORG_NAME);
             expect(accountRow().querySelector('.account-role')!.textContent!.trim()).toBe('Admin');
         });
 
@@ -324,7 +344,7 @@ describe('LeftSidebarComponent', () => {
 
             const userLabel = accountRow().querySelector('.sidenav-row-label')!;
             expect(userLabel.textContent!.trim()).toBe(DISPLAY_NAME);
-            expect(userLabel.getAttribute('title')).toBe(DISPLAY_NAME);
+            expect(tooltipOf(userLabel).message).toBe(DISPLAY_NAME);
         });
 
         it.each([
@@ -357,12 +377,15 @@ describe('LeftSidebarComponent', () => {
             expect(accountRow().classList.contains('active')).toBe(highlighted);
         });
 
-        it('is highlighted while its menu is open', () => {
+        it('is highlighted while its menu is open, its tooltip hidden', () => {
+            expect(tooltipTexts()).toContain('Account');
+
             accountRow().click();
             fixture.detectChanges();
 
             expect(accountRow().classList).toContain('opened');
             expect(element.querySelector('app-user-menu')).not.toBeNull();
+            expect(tooltipTexts()).not.toContain('Account');
         });
     });
 
@@ -412,6 +435,20 @@ describe('LeftSidebarComponent', () => {
 
             expect(labelTexts()).toContain('Recycle Bin');
             expect(navLink('Recycle Bin')!.classList).toContain('active');
+        });
+    });
+
+    describe('guided tour targets', () => {
+        beforeEach(() => render(COLLAPSED_WIDTH));
+
+        it.each([
+            ['Agents', CREATE_AGENT_TOUR_ANCHORS.sidenavAgents],
+            ['Settings', QUICK_START_TOUR_ANCHORS.sidenavSettings],
+        ])('marks the %s item, and only it, for its tour', (label, anchor) => {
+            const marked = element.querySelectorAll(tourAnchorSelector(anchor));
+
+            expect(marked).toHaveLength(1);
+            expect(marked[0]).toBe(navLink(label)!.closest('li'));
         });
     });
 
@@ -603,12 +640,240 @@ describe('LeftSidebarComponent', () => {
             showPlugins([WEATHER]);
             const row = listRow('Apps')!;
             expect(row.getAttribute('aria-label')).toBe('Apps');
-
-            hoverItem('Apps');
-            expect(visibleTooltipTexts()).toContain('Apps');
+            expect(tooltipTexts()).toContain('Apps');
 
             await open(row);
-            expect(visibleTooltipTexts()).not.toContain('Apps');
+            expect(tooltipTexts()).not.toContain('Apps');
+        });
+    });
+
+    describe('Help row', () => {
+        beforeEach(() => tours.set([QUICK_START_TOUR, CREATE_AGENT_TOUR]));
+
+        function guides(container: ParentNode): HTMLButtonElement[] {
+            return Array.from(container.querySelectorAll<HTMLButtonElement>('button.help-menu__item'));
+        }
+
+        function guideLabels(container: ParentNode): string[] {
+            return guides(container).map((guide) => guide.textContent!.trim());
+        }
+
+        /** Renders, and lets what the render schedules (the tour's start) run. */
+        async function settle(): Promise<void> {
+            fixture.detectChanges();
+            await fixture.whenStable();
+            fixture.detectChanges();
+        }
+
+        async function pick(guide: HTMLButtonElement): Promise<void> {
+            guide.click();
+            await settle();
+        }
+
+        it('is absent when the user has no tour to take', () => {
+            tours.set([]);
+            render(EXPANDED_WIDTH);
+
+            expect(listRow('Help')).toBeUndefined();
+        });
+
+        it('sits after Settings, above the account', () => {
+            render(EXPANDED_WIDTH);
+
+            const helpItem = listRow('Help')!.closest('li')!;
+            expect(helpItem.previousElementSibling).toBe(navLink('Settings')!.closest('li'));
+            expect(helpItem.nextElementSibling!.getAttribute('role')).toBe('separator');
+            expect(helpItem.nextElementSibling!.nextElementSibling).toBe(accountRow().closest('li'));
+        });
+
+        it('is absent in an app, like Settings', async () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([WEATHER]);
+
+            await navigate('/plugins/weather');
+
+            expect(listRow('Help')).toBeUndefined();
+        });
+
+        it('is an icon named "Help" with a tooltip when collapsed, and shows the label when expanded', () => {
+            render(COLLAPSED_WIDTH);
+            expect(listRow('Help')!.getAttribute('aria-label')).toBe('Help');
+            expect(tooltipTexts()).toContain('Help');
+
+            render(EXPANDED_WIDTH);
+            const row = listRow('Help')!;
+            expect(row.hasAttribute('aria-label')).toBe(false);
+            expect(row.querySelector('.sidenav-row-label')!.textContent!.trim()).toBe('Help');
+            expect(tooltipTexts()).not.toContain('Help');
+        });
+
+        it('opens a popover headed "Guides" that lists the tours, focused on the first one', async () => {
+            render(EXPANDED_WIDTH);
+            const row = listRow('Help')!;
+            expect(row.getAttribute('aria-expanded')).toBe('false');
+            expect(row.getAttribute('aria-haspopup')).toBe('dialog');
+
+            await open(row);
+
+            expect(row.getAttribute('aria-expanded')).toBe('true');
+            expect(popover()!.getAttribute('role')).toBe('dialog');
+            expect(popover()!.getAttribute('aria-label')).toBe('Guides');
+            expect(popover()!.querySelector('.help-menu__heading')!.textContent!.trim()).toBe('Guides');
+            expect(guideLabels(popover()!)).toEqual(['Quick Start Tour', 'Create Your First Agent']);
+            expect(document.activeElement).toBe(guides(popover()!)[0]);
+        });
+
+        it('closes on Escape, giving the focus back to its row, and when the row is pressed again', async () => {
+            render(EXPANDED_WIDTH);
+            const row = listRow('Help')!;
+            await open(row);
+
+            popover()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            fixture.detectChanges();
+
+            expect(popover()).toBeNull();
+            expect(row.getAttribute('aria-expanded')).toBe('false');
+            expect(document.activeElement).toBe(row);
+
+            await open(row);
+            await open(row);
+            expect(popover()).toBeNull();
+        });
+
+        it('starts the tour picked once its popover has closed, with the focus on Help for the tour to give back', async () => {
+            render(EXPANDED_WIDTH);
+            const row = listRow('Help')!;
+            await open(row);
+            const atStart: { isPopoverShown: boolean; isFocusOnHelp: boolean }[] = [];
+            startTour.mockImplementation(() => {
+                atStart.push({ isPopoverShown: popover() !== null, isFocusOnHelp: document.activeElement === row });
+                return Promise.resolve();
+            });
+
+            await pick(guides(popover()!)[1]);
+
+            expect(startTour.mock.calls).toEqual([['create-agent']]);
+            expect(atStart).toEqual([{ isPopoverShown: false, isFocusOnHelp: true }]);
+        });
+
+        describe('in the drawer', () => {
+            let drawer: AppNavigationDrawerService;
+            /** The page's control that opened the drawer: the drawer gives the focus back to it when it closes. */
+            let drawerOpener: HTMLButtonElement;
+            /** For each tour started: whether the drawer was still open, and whether the focus was back on its opener. */
+            let atStart: { isDrawerOpen: boolean; isFocusOnDrawerOpener: boolean }[];
+
+            beforeEach(() => {
+                fixture.componentRef.setInput('inDrawer', true);
+                drawer = TestBed.inject(AppNavigationDrawerService);
+                drawerOpener = document.body.appendChild(document.createElement('button'));
+                drawer.open(drawerOpener);
+                atStart = [];
+                startTour.mockImplementation(() => {
+                    atStart.push({
+                        isDrawerOpen: drawer.isOpen(),
+                        isFocusOnDrawerOpener: document.activeElement === drawerOpener,
+                    });
+                    return Promise.resolve();
+                });
+            });
+
+            afterEach(() => drawerOpener.remove());
+
+            it('lists the tours inline under the row, and starts the one picked once the drawer has closed and given the focus back', async () => {
+                render(EXPANDED_WIDTH);
+                const row = listRow('Help')!;
+                expect(row.hasAttribute('aria-haspopup')).toBe(false);
+
+                await open(row);
+
+                expect(popover()).toBeNull();
+                const inline = element.querySelector<HTMLElement>('#sidenav-help-list')!;
+                expect(row.getAttribute('aria-controls')).toBe('sidenav-help-list');
+                expect(inline.previousElementSibling).toBe(row.closest('li'));
+                expect(inline.querySelector('.help-menu__heading')).toBeNull();
+                expect(guideLabels(inline)).toEqual(['Quick Start Tour', 'Create Your First Agent']);
+
+                await pick(guides(inline)[0]);
+
+                expect(startTour.mock.calls).toEqual([['quick-start']]);
+                expect(atStart).toEqual([{ isDrawerOpen: false, isFocusOnDrawerOpener: true }]);
+                expect(element.querySelector('#sidenav-help-list')).toBeNull();
+            });
+
+            it('waits, like the drawer, for a navigation in progress before starting the tour', async () => {
+                const router = TestBed.inject(Router);
+                /** The guard of the navigation in progress, waiting for its answer. */
+                const waitingGuards: ((allowed: boolean) => void)[] = [];
+                router.resetConfig([
+                    {
+                        path: 'slow',
+                        canActivate: [() => new Promise<boolean>((resolve) => waitingGuards.push(resolve))],
+                        children: [],
+                    },
+                    { path: '**', children: [] },
+                ]);
+                render(EXPANDED_WIDTH);
+                await open(listRow('Help')!);
+                const navigation = router.navigateByUrl('/slow');
+                await vi.waitFor(() => expect(waitingGuards).toHaveLength(1));
+
+                // Rendered, but not settled: settling would wait for the navigation.
+                guides(element.querySelector('#sidenav-help-list')!)[1].click();
+                fixture.detectChanges();
+                expect(startTour).not.toHaveBeenCalled();
+
+                waitingGuards[0](true);
+                await navigation;
+                await settle();
+
+                expect(startTour.mock.calls).toEqual([['create-agent']]);
+                expect(atStart).toEqual([{ isDrawerOpen: false, isFocusOnDrawerOpener: true }]);
+            });
+        });
+
+        it('leaves the "new" mark of the Apps row alone', async () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([WEATHER]);
+            TestBed.tick();
+            showPlugins([ATLAS, WEATHER]);
+
+            await open(listRow('Help')!);
+
+            expect(listRow('Apps')!.querySelector('.sidenav-new-dot')).not.toBeNull();
+        });
+
+        it.each([
+            { from: 'Apps', to: 'Help', popoverLabel: 'Guides' },
+            { from: 'Help', to: 'Apps', popoverLabel: 'Apps' },
+        ])('opens $to straight from the open $from popover, closing that one', async ({ from, to, popoverLabel }) => {
+            render(EXPANDED_WIDTH);
+            showPlugins([WEATHER]);
+            await open(listRow(from)!);
+
+            await open(listRow(to)!);
+
+            const popovers = TestBed.inject(OverlayContainer)
+                .getContainerElement()
+                .querySelectorAll('.sidenav-popover');
+            expect(Array.from(popovers).map((shown) => shown.getAttribute('aria-label'))).toEqual([popoverLabel]);
+            expect(listRow(from)!.getAttribute('aria-expanded')).toBe('false');
+            expect(listRow(to)!.getAttribute('aria-expanded')).toBe('true');
+        });
+
+        it('goes away with its popover when the user has no tour left (an org switch), and comes back closed', async () => {
+            render(EXPANDED_WIDTH);
+            await open(listRow('Help')!);
+
+            tours.set([]);
+            fixture.detectChanges();
+            expect(listRow('Help')).toBeUndefined();
+            expect(popover()).toBeNull();
+
+            tours.set([CREATE_AGENT_TOUR]);
+            fixture.detectChanges();
+            expect(listRow('Help')!.getAttribute('aria-expanded')).toBe('false');
+            expect(popover()).toBeNull();
         });
     });
 
@@ -731,15 +996,12 @@ describe('LeftSidebarComponent', () => {
                 'Reports',
             ]);
 
-            hoverItem('Projects');
-            expect(visibleTooltipTexts()).toContain('Projects');
-
-            listRow('Atlas, switch app')!.closest('li')!.dispatchEvent(new MouseEvent('mouseenter'));
-            fixture.detectChanges();
-            expect(visibleTooltipTexts()).toContain('Atlas, switch app');
+            expect(tooltipTexts()).toEqual(
+                expect.arrayContaining(['Back to EpicStaff', 'Atlas, switch app', 'Overview', 'Projects', 'Reports'])
+            );
 
             await open(listRow('Atlas, switch app')!);
-            expect(visibleTooltipTexts()).not.toContain('Atlas, switch app');
+            expect(tooltipTexts()).not.toContain('Atlas, switch app');
         });
     });
 });
@@ -756,14 +1018,17 @@ describe('LeftSidebarComponent page shortcuts', () => {
     let settingsAllowed: boolean;
     let config: { isSessionAuditEnabled: boolean; isUserAuditEnabled: boolean };
     let availablePlugins: WritableSignal<AvailablePlugin[]>;
+    let tours: WritableSignal<readonly TourDefinition[]>;
 
     beforeEach(() => {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         hiddenResources = new Set();
         leaveFlowAllowed = true;
         workspaceAllowed = true;
         settingsAllowed = true;
         config = { isSessionAuditEnabled: false, isUserAuditEnabled: false };
         availablePlugins = signal<AvailablePlugin[]>([]);
+        tours = signal<readonly TourDefinition[]>([]);
         TestBed.configureTestingModule({
             providers: [
                 {
@@ -799,8 +1064,8 @@ describe('LeftSidebarComponent page shortcuts', () => {
                         isSuperadmin: false,
                     },
                 },
-                // The account menu lists the tours, as in the app; none is registered here.
-                { provide: TOUR_PROGRESS_STORE, useExisting: ProfileTourProgressStore },
+                // The Help row lists the tours: none unless a test gives some.
+                { provide: GuidedTourService, useValue: { replayableTours: tours, start: vi.fn() } },
                 { provide: ConfigService, useValue: config },
             ],
         });
@@ -814,6 +1079,10 @@ describe('LeftSidebarComponent page shortcuts', () => {
     afterEach(() => {
         TestBed.inject(Dialog).closeAll();
         document.body.querySelectorAll('[data-test-editable]').forEach((element) => element.remove());
+        // The real sidebar records the apps it has seen in localStorage; left behind, that entry leaks into
+        // later spec files sharing the worker.
+        localStorage.clear();
+        sessionStorage.clear();
     });
 
     async function startAt(url: string): Promise<void> {
@@ -895,6 +1164,15 @@ describe('LeftSidebarComponent page shortcuts', () => {
         await press('ArrowDown');
 
         expect(router.url).toBe('/recycle-bin');
+    });
+
+    it('steps from Settings to Profile past the Help row, which leads to no page', async () => {
+        tours.set([QUICK_START_TOUR]);
+        await startAt('/settings');
+
+        await press('ArrowDown');
+
+        expect(router.url).toBe('/profile');
     });
 
     it.each(['ArrowDown', 'ArrowUp'] as const)('leaves Alt+%s to the page in an app', async (code) => {

@@ -4,8 +4,8 @@ import { Observable } from 'rxjs';
 import { ImportFlowRequestOptions, ImportResult } from '../../../core/models/import-result.model';
 import { ImportExportService } from '../../../core/services/import-export.service';
 import { GraphDto, PartialImportResponse } from '../models/graph.model';
-import { FlowUsePermissionRefusalService } from './flow-use-permission-refusal.service';
 import { FlowsStorageService } from './flows-storage.service';
+import { UsePermissionRefusalService } from './use-permission-refusal.service';
 
 /**
  * Copies and imports flows. The backend refuses these for a user without Flows:Use when the flow has trigger
@@ -18,7 +18,7 @@ import { FlowsStorageService } from './flows-storage.service';
 export class FlowCopyImportFacadeService {
     private readonly flowsStorage = inject(FlowsStorageService);
     private readonly importExport = inject(ImportExportService);
-    private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
+    private readonly usePermissionRefusal = inject(UsePermissionRefusalService);
 
     copyFlow(sourceId: number, newName: string): Observable<GraphDto> {
         return this.flowsStorage.copyFlow(sourceId, newName).pipe(this.usePermissionRefusal.catchRefusal('copy'));
