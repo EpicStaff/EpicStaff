@@ -8,6 +8,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 from loguru import logger
 from pydantic import ValidationError
+from services.graph.exceptions import InvalidStatePathError
 from services.run_python_code_service import RunPythonCodeService
 from src.crew.models.graph_models import (
     GraphMessage,
@@ -26,6 +27,9 @@ from src.shared.models.storage_scope import StorageCredentials
 from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SYSTEM_ONE_QUESTIONS_ADAPTER
 from src.shared.system_one.adapter import SystemOneError, evaluate
 from src.shared.system_one.json_llm import run_json_llm
+from utils.set_output_variables import set_output_variables
+from utils.state_path import split_state_path
+from utils.template_render import render_template
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -205,6 +209,10 @@ class ClassificationDecisionTableNodeSubgraph:
         if python_code is None or not python_code.code.strip():
             return
 
+        # Rejected before the sandbox call, which would otherwise run for nothing.
+        if output_variable_path:
+            split_state_path(output_variable_path)
+
         inputs = self._resolve_input_map(input_map, state)
 
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
@@ -220,8 +228,6 @@ class ClassificationDecisionTableNodeSubgraph:
             )
 
         if output_variable_path:
-            from utils.set_output_variables import set_output_variables
-
             output = json.loads(result["result_data"])
             set_output_variables(
                 state=state,
@@ -408,12 +414,17 @@ def main(**kwargs) -> dict:
         state["variables"].update(variables)
 
     def _render_prompt(self, prompt_text: str, variables: dict) -> str:
-        """Render prompt template with variable interpolation using {var_name} syntax."""
-        try:
-            return prompt_text.format(**variables)
-        except (KeyError, IndexError):
-            # If template vars don't match, return as-is
+        """Render `{var_name}` placeholders; a prompt naming a missing variable is sent as written."""
+        rendered = render_template(prompt_text, variables)
+        if rendered.unrendered_reason:
+            logger.warning(
+                "Classification node '{}' prompt sent as written, no placeholder filled: {}",
+                self.node_name,
+                rendered.unrendered_reason,
+            )
+        if rendered.missing:
             return prompt_text
+        return rendered.text
 
     def _store_prompt_result(
         self, prompt_config: PromptConfigData, result: Any, state: State
@@ -502,7 +513,8 @@ def main(**kwargs) -> dict:
             )
 
         # Render prompt with current variables
-        variables_dict = state["variables"].model_dump()
+        # Plain data: the prompt is the flow author's text and must not reach live DotDict objects.
+        variables_dict = state["variables"].deep_dump()
         rendered_prompt = self._render_prompt(prompt_config.prompt_text, variables_dict)
 
         logger.debug(
@@ -607,7 +619,7 @@ def main(**kwargs) -> dict:
             # Execute pre-computation
             try:
                 await self._execute_pre_computation(state)
-            except ClassificationDecisionTableNodeError as e:
+            except (ClassificationDecisionTableNodeError, InvalidStatePathError) as e:
                 logger.error(f"Pre-computation error: {e}")
                 state["system_variables"]["nodes"][self.node_name]["result_node"] = (
                     self.node_data.next_error_node or END
@@ -814,7 +826,7 @@ def main(**kwargs) -> dict:
             # Execute post-computation (sandboxed via RunPythonCodeService)
             try:
                 await self._execute_post_computation(state)
-            except ClassificationDecisionTableNodeError as e:
+            except (ClassificationDecisionTableNodeError, InvalidStatePathError) as e:
                 logger.error(f"Post-computation error: {e}")
                 return await route_to_error_node(state, writer, public_details=str(e))
 

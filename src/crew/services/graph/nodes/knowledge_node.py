@@ -10,6 +10,7 @@ from services.graph.exceptions import KnowledgeSearchError
 from services.graph.nodes.base_node import BaseNode
 from services.knowledge_search_service import KnowledgeSearchService
 from src.shared.models import RagSearchConfig
+from utils.template_render import render_template
 
 
 class KnowledgeNode(BaseNode):
@@ -63,24 +64,20 @@ class KnowledgeNode(BaseNode):
         if not isinstance(input_, dict):
             return self.query_template
 
-        missing: set[str] = set()
-
-        class _Fillable(dict):
-            def __missing__(self, key):
-                missing.add(key)
-                return "{" + key + "}"
-
-        try:
-            result = self.query_template.format_map(_Fillable(input_))
-        except (ValueError, IndexError) as e:
-            logger.warning(f"Knowledge node '{self.node_name}' query template not formattable: {e}")
-            return self.query_template
-        if missing:
+        rendered = render_template(self.query_template, input_)
+        if rendered.unrendered_reason:
             logger.warning(
-                f"Knowledge node '{self.node_name}' query references unmapped "
-                f"variables: {sorted(missing)}"
+                "Knowledge node '{}' query template not formattable: {}",
+                self.node_name,
+                rendered.unrendered_reason,
             )
-        return result
+        if rendered.missing:
+            logger.warning(
+                "Knowledge node '{}' query references unmapped variables: {}",
+                self.node_name,
+                sorted(set(rendered.missing)),
+            )
+        return rendered.text
 
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any

@@ -579,7 +579,7 @@ services:
       context: .
       dockerfile: ./webhook/Dockerfile
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env]
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
 

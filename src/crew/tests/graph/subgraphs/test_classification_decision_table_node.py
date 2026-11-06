@@ -21,6 +21,7 @@ import pytest
 from dotdict import DotDict
 from langgraph.graph import END, StateGraph
 from litellm.types.utils import ModelResponse, Usage
+from loguru import logger
 
 from models.state import State
 from services.graph.events import StopEvent
@@ -1267,3 +1268,156 @@ async def test_llm_entries_are_unchanged(sandbox):
     assert message["provider"] is None
     assert message["model_version"] is None
     assert message["prompt_text"] == "Classify hello"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "node_data_overrides",
+    [
+        pytest.param(
+            {"pre_python_code": _FAILING_CODE, "pre_output_variable_path": "variables.__class__.status"},
+            id="pre-computation",
+        ),
+        pytest.param(
+            {"post_python_code": _FAILING_CODE, "post_output_variable_path": "variables.__class__.status"},
+            id="post-computation",
+        ),
+    ],
+)
+async def test_underscore_computation_output_path_routes_to_error_without_a_sandbox_call(
+    monkeypatch, node_data_overrides
+):
+    calls = record_run_code(monkeypatch)
+    node_data = make_node_data(next_error_node="error_node").model_copy(update=node_data_overrides)
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert calls == []
+    error_details = [
+        message["details"]
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    ]
+    assert error_details == [
+        "Variable path 'variables.__class__.status' is not allowed: path segments cannot start with '_'."
+    ]
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+
+
+async def run_prompt_and_capture(monkeypatch, prompt_text: str, variables: dict):
+    """Run one prompt row; return the prompt sent to the LLM and the published messages."""
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+    prompt_config = PromptConfigData(
+        prompt_text=prompt_text, llm_data=make_llm_data(), result_variable="classification_result"
+    )
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="prompt_row",
+            expression="True",
+            prompt_id="classify",
+            next_node="after_prompt",
+            order=0,
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, prompts={"classify": prompt_config})
+    )
+    mock_response = MagicMock()
+    mock_response.usage.total_tokens = 1
+    mock_response.usage.prompt_tokens = 1
+    mock_response.usage.completion_tokens = 0
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = '{"label": "positive"}'
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+        mock_completion.return_value = mock_response
+        await subgraph.ainvoke(make_state(variables))
+
+    (llm_message,) = mock_completion.call_args.kwargs["messages"]
+    return llm_message["content"], published_messages(redis_service)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt_text", "expected_prompt"),
+    [
+        ("Classify {text}", "Classify hello"),
+        ("Classify {user}", "Classify {'name': 'Ann'}"),
+        ("Classify {text} as {label}", "Classify {text} as {label}"),
+        ('Classify {text}. Reply {{"label": "x"}}', 'Classify hello. Reply {"label": "x"}'),
+        ('Classify {text}. Reply {"label": "x"}', 'Classify {text}. Reply {"label": "x"}'),
+        ("Classify {user.name}", "Classify {user.name}"),
+        ("Classify {text[0]}", "Classify {text[0]}"),
+        ("Classify { brace {text}", "Classify { brace {text}"),
+    ],
+    ids=[
+        "plain",
+        "nested-value",
+        "missing-variable-sends-prompt-as-written",
+        "escaped-braces",
+        "json-example-sends-prompt-as-written",
+        "attribute-placeholder-not-followed",
+        "index-placeholder-not-followed",
+        "lone-brace-sends-prompt-as-written",
+    ],
+)
+async def test_prompt_is_rendered_from_flow_variables(monkeypatch, prompt_text, expected_prompt):
+    sent_prompt, messages = await run_prompt_and_capture(
+        monkeypatch, prompt_text, {"text": "hello", "user": {"name": "Ann"}}
+    )
+
+    assert sent_prompt == expected_prompt
+    (prompt_message,) = [
+        message for message in messages if message["message_type"] == "classification_prompt"
+    ]
+    assert prompt_message["prompt_text"] == expected_prompt
+
+
+@pytest.mark.asyncio
+async def test_prompt_placeholder_cannot_read_the_crew_environment(monkeypatch):
+    canary_value = "canary-from-the-crew-environment"
+    monkeypatch.setenv("CDT_PROMPT_TEST_CANARY", canary_value)
+    prompt_text = (
+        "Classify {obj.update.__globals__[ast].sys.modules[os].environ[CDT_PROMPT_TEST_CANARY]}"
+    )
+
+    sent_prompt, messages = await run_prompt_and_capture(
+        monkeypatch, prompt_text, {"obj": {"k": "v"}}
+    )
+
+    assert sent_prompt == prompt_text
+    assert canary_value not in json.dumps(messages)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt_text", "expected_warnings"),
+    [
+        ("Classify {text}", []),
+        (
+            "Classify {user.name}",
+            [
+                "Classification node 'cdt_node' prompt sent as written, no placeholder filled: "
+                "placeholder 'user.name' is not a plain variable name"
+            ],
+        ),
+        (
+            "Classify {text!r}",
+            [
+                "Classification node 'cdt_node' prompt sent as written, no placeholder filled: "
+                "placeholder 'text' uses a conversion or format spec"
+            ],
+        ),
+    ],
+    ids=["rendered-no-warning", "dotted-placeholder", "conversion"],
+)
+async def test_prompt_sent_unrendered_leaves_a_warning(monkeypatch, prompt_text, expected_warnings):
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="WARNING", format="{message}")
+    try:
+        await run_prompt_and_capture(monkeypatch, prompt_text, {"text": "hello", "user": {"name": "Ann"}})
+    finally:
+        logger.remove(sink_id)
+
+    assert [line.strip() for line in lines if "prompt sent as written" in line] == expected_warnings
