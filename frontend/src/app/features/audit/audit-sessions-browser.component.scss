@@ -1,4 +1,10 @@
+@use '../../../styles/header-layout' as header;
+
 .audit-browser {
+    --audit-toolbar-height: 56px;
+    --audit-head-height: 32px;
+    --audit-footer-height: 56px;
+
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -11,8 +17,11 @@
 .audit-browser__header {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
     gap: 8px;
-    padding: 16px 20px 12px;
+    height: header.$page-header-height;
+    padding: 1.75rem 20px 1rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
 }
 
 .audit-browser__title {
@@ -25,7 +34,6 @@
     display: flex;
     flex: 1;
     min-height: 0;
-    border-top: 1px solid var(--color-divider-regular);
 }
 
 .audit-browser__main {
@@ -61,8 +69,10 @@
 .audit-browser__toolbar {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
     gap: 8px;
-    padding: 12px 20px;
+    height: var(--audit-toolbar-height);
+    padding: 0 20px;
 }
 
 .audit-browser__search {
@@ -179,6 +189,8 @@
         position: sticky;
         top: 0;
         z-index: 1;
+        height: var(--audit-head-height);
+        vertical-align: middle;
         background-color: var(--color-sidenav-background);
         color: var(--color-text-primary);
         font-weight: 500;
@@ -390,8 +402,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;
     gap: 16px;
-    padding: 10px 20px;
+    box-sizing: border-box;
+    height: var(--audit-footer-height);
+    padding: 0 20px;
     border-top: 1px solid var(--color-divider-regular);
 }
 

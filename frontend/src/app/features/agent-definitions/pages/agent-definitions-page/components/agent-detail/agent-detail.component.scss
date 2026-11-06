@@ -22,6 +22,10 @@
     padding: 1rem 3.125rem 1.25rem 1.875rem;
     box-shadow: inset 0 1px 0 var(--color-divider-subtle);
 
+    &:first-of-type {
+        box-shadow: none;
+    }
+
     &:last-of-type {
         box-shadow:
             inset 0 1px 0 var(--color-divider-subtle),
