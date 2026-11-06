@@ -77,6 +77,11 @@ export class VenvsListPageComponent {
     readonly deletePending = signal(false);
 
     readonly sortOrder = signal<VenvSortOrder>('default');
+    // The custom libraries tab narrows and orders its own list; the controls live here because
+    // the header belongs to the page, not to the tab under it.
+    readonly librarySearchTerm = signal('');
+    readonly librarySortOrder = signal<VenvSortOrder>('default');
+    readonly librarySortMenuOpen = signal(false);
     readonly favoritesOnly = signal(false);
     readonly filterMenuOpen = signal(false);
     readonly sortMenuOpen = signal(false);
@@ -92,6 +97,12 @@ export class VenvsListPageComponent {
     readonly activeFilterCount = computed(() => (this.favoritesOnly() ? 1 : 0));
     readonly sortTriggerLabel = computed(() => {
         const order = this.sortOrder();
+        if (order === 'default') return 'Sort';
+        return VENVS_SORT_MENU_ITEMS.find((item) => item.value === order)?.label ?? 'Sort';
+    });
+
+    readonly librarySortTriggerLabel = computed(() => {
+        const order = this.librarySortOrder();
         if (order === 'default') return 'Sort';
         return VENVS_SORT_MENU_ITEMS.find((item) => item.value === order)?.label ?? 'Sort';
     });
@@ -161,6 +172,19 @@ export class VenvsListPageComponent {
 
     closeFilterMenu(): void {
         this.filterMenuOpen.set(false);
+    }
+
+    toggleLibrarySortMenu(): void {
+        this.librarySortMenuOpen.update((open) => !open);
+    }
+
+    closeLibrarySortMenu(): void {
+        this.librarySortMenuOpen.set(false);
+    }
+
+    onLibrarySortSelected(sortOrder: VenvSortOrder): void {
+        this.librarySortOrder.set(sortOrder);
+        this.closeLibrarySortMenu();
     }
 
     toggleSortMenu(): void {

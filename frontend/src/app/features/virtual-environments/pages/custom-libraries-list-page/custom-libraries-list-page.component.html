@@ -7,15 +7,19 @@
             </div>
         }
     </div>
-} @else if (libraries().length === 0) {
+} @else if (visibleLibraries().length === 0) {
     <div class="custom-libraries__list">
         <div class="custom-libraries__empty text-body">
-            <p>No custom libraries yet. Create one to install your own packages in a venv.</p>
+            @if (searchTerm().trim()) {
+                <p>No custom libraries match "{{ searchTerm() }}".</p>
+            } @else {
+                <p>No custom libraries yet. Create one to install your own packages in a venv.</p>
+            }
         </div>
     </div>
 } @else {
     <div class="custom-libraries__list">
-        @for (library of libraries(); track library.id) {
+        @for (library of visibleLibraries(); track library.id) {
             <app-custom-library-card
                 [library]="library"
                 [canDelete]="canDelete()"

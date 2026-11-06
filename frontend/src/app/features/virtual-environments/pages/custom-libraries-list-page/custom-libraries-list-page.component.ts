@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -16,6 +16,7 @@ import {
     CustomLibraryDialogResult,
 } from '../../components/custom-library-dialog/custom-library-dialog.component';
 import { CustomLibrary } from '../../models/custom-library.model';
+import { VenvSortOrder } from '../../models/venv.model';
 import { CustomLibrariesApiService } from '../../services/custom-libraries-api.service';
 
 @Component({
@@ -25,6 +26,11 @@ import { CustomLibrariesApiService } from '../../services/custom-libraries-api.s
     styleUrls: ['./custom-libraries-list-page.component.scss'],
 })
 export class CustomLibrariesListPageComponent {
+    /** Both come from the page header, which owns the tab this list sits in. The gateway takes
+     *  neither, so the whole page is loaded once and narrowed and ordered here. */
+    readonly searchTerm = input<string>('');
+    readonly sortOrder = input<VenvSortOrder>('default');
+
     readonly isLoading = signal(true);
     readonly libraries = signal<CustomLibrary[]>([]);
     // A delete is on its way (confirmation, delete): a second request for any library is ignored
@@ -32,6 +38,16 @@ export class CustomLibrariesListPageComponent {
     readonly deletePending = signal(false);
 
     readonly canDelete = computed(() => this.permissions.can(ResourceCode.CustomLibraries, ActionCode.Delete));
+
+    /** The libraries as the page shows them: narrowed by the search, then ordered. A library a
+     *  build has not named yet matches nothing and sorts last, having no name to sort by. */
+    readonly visibleLibraries = computed(() => {
+        const term = this.searchTerm().trim().toLowerCase();
+        const matching = term
+            ? this.libraries().filter((library) => (library.name ?? '').toLowerCase().includes(term))
+            : this.libraries();
+        return this.ordered(matching);
+    });
 
     private readonly customLibrariesApi = inject(CustomLibrariesApiService);
     private readonly permissions = inject(PermissionsService);
@@ -98,6 +114,17 @@ export class CustomLibrariesListPageComponent {
                 },
                 error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
             });
+    }
+
+    private ordered(libraries: CustomLibrary[]): CustomLibrary[] {
+        const order = this.sortOrder();
+        if (order === 'default') return libraries;
+        const direction = order === 'name_asc' ? 1 : -1;
+        return [...libraries].sort((left, right) => {
+            if (left.name === null) return 1;
+            if (right.name === null) return -1;
+            return left.name.localeCompare(right.name) * direction;
+        });
     }
 
     private loadLibraries(): void {

@@ -6,6 +6,7 @@ import { ResourceCode } from '@shared/models';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
+import { CustomLibrary } from '../../models/custom-library.model';
 import { Venv, VenvStatus } from '../../models/venv.model';
 import { VenvsListPageComponent } from './venvs-list-page.component';
 
@@ -214,7 +215,21 @@ describe('VenvsListPageComponent custom libraries tab', () => {
     let host: HTMLElement;
     let http: HttpTestingController;
 
-    function render(canReadCustomLibraries: boolean): void {
+    function library(id: number, name: string): CustomLibrary {
+        return {
+            id,
+            name,
+            owner: null,
+            created_at: '2026-01-02T03:04:05Z',
+            updated_at: '2026-01-02T03:04:05Z',
+        };
+    }
+
+    function renderedLibraryNames(): string[] {
+        return Array.from(host.querySelectorAll('.custom-library-card__name')).map((node) => node.textContent!.trim());
+    }
+
+    function render(canReadCustomLibraries: boolean, libraries: CustomLibrary[] = []): void {
         TestBed.configureTestingModule({
             imports: [VenvsListPageComponent],
             providers: [
@@ -244,7 +259,14 @@ describe('VenvsListPageComponent custom libraries tab', () => {
 
         // The libraries list is fetched with the page, not with its tab.
         for (const request of http.match((candidate) => candidate.url === `${API_URL}custom-libraries/`)) {
-            request.flush({ count: 0, limit: 1000, offset: 0, next: null, previous: null, result: [] });
+            request.flush({
+                count: libraries.length,
+                limit: 1000,
+                offset: 0,
+                next: null,
+                previous: null,
+                result: libraries,
+            });
         }
         fixture.detectChanges();
     }
@@ -279,7 +301,7 @@ describe('VenvsListPageComponent custom libraries tab', () => {
 
     it('swaps the list, the create button and the venv toolbar when the tab is opened', () => {
         render(true);
-        expect(host.querySelector('.search')).not.toBeNull();
+        expect(host.querySelector('.filter-trigger')).not.toBeNull();
 
         tab('Custom Libraries')!.querySelector('button')!.click();
         fixture.detectChanges();
@@ -287,7 +309,36 @@ describe('VenvsListPageComponent custom libraries tab', () => {
         // Nothing is fetched on the way in: the list was loaded with the page.
         expect(http.match((request) => request.url === `${API_URL}custom-libraries/`)).toHaveLength(0);
         expect(host.querySelector('.custom-libraries__empty')).not.toBeNull();
-        expect(host.querySelector('.search')).toBeNull();
+        // The libraries tab has a search and an order of its own; the venv filter is not part of it.
+        expect(host.querySelector('.filter-trigger')).toBeNull();
+        expect(host.querySelector('.search')).not.toBeNull();
         expect(host.querySelector('.header-actions')!.textContent).toContain('Create custom library');
+    });
+
+    it('narrows and orders the libraries without asking the backend again', () => {
+        render(true, [library(1, 'zeta-utils'), library(2, 'alpha-utils'), library(3, 'beta-utils')]);
+        tab('Custom Libraries')!.querySelector('button')!.click();
+        fixture.detectChanges();
+
+        const search = host.querySelector<HTMLInputElement>('.search__input')!;
+        search.value = 'alpha';
+        search.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(renderedLibraryNames()).toEqual(['alpha-utils']);
+        expect(http.match(() => true)).toHaveLength(0);
+
+        search.value = '';
+        search.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        host.querySelector<HTMLElement>('.tabs-right .menu-trigger')!.click();
+        fixture.detectChanges();
+        Array.from(document.querySelectorAll<HTMLElement>('.sort-menu .menu-item'))
+            .find((item) => item.textContent!.includes('A to Z'))!
+            .click();
+        fixture.detectChanges();
+
+        expect(renderedLibraryNames()).toEqual(['alpha-utils', 'beta-utils', 'zeta-utils']);
+        expect(http.match(() => true)).toHaveLength(0);
     });
 });

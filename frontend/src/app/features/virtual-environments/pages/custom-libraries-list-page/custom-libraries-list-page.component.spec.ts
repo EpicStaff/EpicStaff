@@ -19,7 +19,7 @@ class ResizeObserverStub {
     disconnect(): void {}
 }
 
-function library(id: number, name: string): CustomLibrary {
+function library(id: number, name: string | null): CustomLibrary {
     return {
         id,
         name,
@@ -138,6 +138,44 @@ describe('CustomLibrariesListPageComponent', () => {
         expect(deletes[0].request.url).toBe(`${API_URL}custom-libraries/1/`);
         deletes[0].flush(null, { status: 204, statusText: 'No Content' });
         answerList([library(2, 'acme-ml')]);
+    });
+
+    it('shows only the libraries whose name holds the search term', () => {
+        answerList([library(1, 'acme-utils'), library(2, 'print-hello-world'), library(3, null)]);
+
+        fixture.componentRef.setInput('searchTerm', 'HELLO');
+        fixture.detectChanges();
+
+        // Case is not part of a name, and a library no build has named yet matches nothing.
+        expect(renderedNames()).toEqual(['print-hello-world']);
+    });
+
+    it('says the search matched nothing rather than offering to create the first library', () => {
+        answerList([library(1, 'acme-utils')]);
+
+        fixture.componentRef.setInput('searchTerm', 'zeta');
+        fixture.detectChanges();
+
+        expect(host.querySelector('.custom-libraries__empty')!.textContent).toContain('match "zeta"');
+    });
+
+    it.each([
+        ['name_asc', ['acme-utils', 'print-hello-world', 'Naming pending…']],
+        ['name_desc', ['print-hello-world', 'acme-utils', 'Naming pending…']],
+    ])('orders the list by %s', (order, expected) => {
+        answerList([library(2, 'print-hello-world'), library(3, null), library(1, 'acme-utils')]);
+
+        fixture.componentRef.setInput('sortOrder', order);
+        fixture.detectChanges();
+
+        // A library with no name sorts last either way: there is nothing to order it by.
+        expect(renderedNames()).toEqual(expected);
+    });
+
+    it('leaves the backend order alone by default', () => {
+        answerList([library(2, 'print-hello-world'), library(1, 'acme-utils')]);
+
+        expect(renderedNames()).toEqual(['print-hello-world', 'acme-utils']);
     });
 
     it('reloads the list when the dialog reports a change', () => {

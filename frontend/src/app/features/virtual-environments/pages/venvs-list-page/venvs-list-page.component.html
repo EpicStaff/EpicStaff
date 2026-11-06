@@ -153,6 +153,52 @@
                         [(searchTerm)]="searchTerm"
                     />
                 </div>
+            } @else {
+                <div class="tabs-right">
+                    <button
+                        #librarySortTrigger="cdkOverlayOrigin"
+                        cdkOverlayOrigin
+                        type="button"
+                        class="menu-trigger"
+                        [class.active]="librarySortMenuOpen() || librarySortOrder() !== 'default'"
+                        (click)="toggleLibrarySortMenu()"
+                    >
+                        <app-svg-icon
+                            icon="arrow-up-down"
+                            size="0.875rem"
+                        />
+                        <span>{{ librarySortTriggerLabel() }}</span>
+                        <app-svg-icon
+                            icon="chevron-down"
+                            size="0.875rem"
+                            class="menu-chevron"
+                            [class.open]="librarySortMenuOpen()"
+                        />
+                    </button>
+                    <ng-template
+                        cdkConnectedOverlay
+                        [cdkConnectedOverlayOrigin]="librarySortTrigger"
+                        [cdkConnectedOverlayOpen]="librarySortMenuOpen()"
+                        [cdkConnectedOverlayHasBackdrop]="true"
+                        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                        [cdkConnectedOverlayOffsetY]="6"
+                        [cdkConnectedOverlayPositions]="menuPositions"
+                        (backdropClick)="closeLibrarySortMenu()"
+                        (detach)="closeLibrarySortMenu()"
+                    >
+                        <app-venvs-sort-menu
+                            [activeSort]="librarySortOrder()"
+                            (sortSelected)="onLibrarySortSelected($event)"
+                        />
+                    </ng-template>
+
+                    <app-search
+                        class="search"
+                        mod="small"
+                        placeholder="Search by name..."
+                        [(searchTerm)]="librarySearchTerm"
+                    />
+                </div>
             }
         </nav>
     </div>
@@ -161,7 +207,11 @@
         <!-- Mounted with the page, not with its tab: the list is then loaded by the time the tab is
              opened, the way the venv list already is. -->
         @if (canReadCustomLibraries()) {
-            <app-custom-libraries-list-page [class.venvs-page__tab--hidden]="activeTab() !== 'custom-libraries'" />
+            <app-custom-libraries-list-page
+                [class.venvs-page__tab--hidden]="activeTab() !== 'custom-libraries'"
+                [searchTerm]="librarySearchTerm()"
+                [sortOrder]="librarySortOrder()"
+            />
         }
         @if (activeTab() === 'custom-libraries') {
             <!-- The venv list belongs to the other tab. -->
