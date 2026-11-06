@@ -36,6 +36,40 @@ class ExportJobCreatedSerializer(serializers.Serializer):
     job_id = serializers.UUIDField()
 
 
+class _ImportJobQuerySerializer(serializers.Serializer):
+    """Query parameters of an import-job upload; a parameter it does not declare is refused.
+
+    Validate a plain dict (`request.query_params.dict()`), not the QueryDict: DRF reads
+    an absent boolean of a QueryDict as false instead of applying its default.
+    """
+
+    def validate(self, attrs):
+        unknown = sorted(set(self.initial_data) - set(self.fields))
+        if unknown:
+            raise serializers.ValidationError(dict.fromkeys(unknown, "Unknown query parameter."))
+        return attrs
+
+
+class FlowImportJobQuerySerializer(_ImportJobQuerySerializer):
+    """Query of `POST /api/graphs/import-jobs/`: the import settings, as the `import/` form has them."""
+
+    preserve_uuids = serializers.BooleanField(default=False)
+    replace_existing = serializers.BooleanField(default=False)
+    import_labels = serializers.BooleanField(default=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs["replace_existing"] and not attrs["preserve_uuids"]:
+            raise serializers.ValidationError(
+                {"replace_existing": "replace_existing=True requires preserve_uuids=True."}
+            )
+        return attrs
+
+
+class CollectionImportJobQuerySerializer(_ImportJobQuerySerializer):
+    """Query of `POST /api/source-collections/import-jobs/`: it takes no parameters."""
+
+
 class TransferJobSerializer(serializers.ModelSerializer):
     class Meta:
         model = TransferJob

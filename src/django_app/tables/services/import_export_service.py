@@ -19,6 +19,7 @@ from tables.import_export.services.import_service import ImportService, ImportSe
 from tables.import_export.services.inspect_service import InspectService
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
+from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 
 _ZIP_HEAD_SIZE = 4
 _COPY_CHUNK_SIZE = 1024 * 1024
@@ -152,10 +153,7 @@ class ViewSetImportExportService:
                 not `main_entity`, or it is older than archives.
         """
         with ImportArchive.open(path) as archive:
-            envelope = archive.envelope()
-            if isinstance(envelope, dict):
-                ensure_job_import_version(envelope)
-            data = self._validate_envelope(envelope, main_entity)
+            data = _read_job_envelope(archive, main_entity)
             effective_permissions = PermissionResolver().resolve(user=user, org_id=org_id)
             id_mapper, registry = self.import_service.import_data(
                 data,
@@ -197,6 +195,35 @@ class ViewSetImportExportService:
             ImportArchive.open(path) as archive,
         ):
             return archive.envelope()
+
+
+def check_job_archive(path: str, *, main_entity, user, org_id: int) -> None:
+    """Refuse an archive an import job would refuse up front, before the job is created.
+
+    Applies every archive cap, the version and main-entity checks, and the flows:USE
+    check for trigger nodes, so a caller learns of these at once instead of from a
+    failed job. The import job runs them all again on the stored archive.
+
+    Raises:
+        InvalidArchiveError: The archive is unsafe or unreadable.
+        ValidationError: Its main entity is not `main_entity`, or it is older than
+            archives (`use_sync_import`).
+        FlowWithTriggerNodesRequiresUsePermissionError: It holds a trigger node and
+            `user` lacks USE on flows in `org_id`.
+    """
+    with ImportArchive.open(path) as archive:
+        data = _read_job_envelope(archive, main_entity)
+    # The same check ImportService.import_data runs before it writes anything.
+    if TriggerNodeInspector.has_any_in_export(data):
+        trigger_node_access.assert_user_may_recreate(user, org_id)
+
+
+def _read_job_envelope(archive: ImportArchive, main_entity) -> dict:
+    """Return the archive's envelope at the current version, checked for `main_entity`."""
+    envelope = archive.envelope()
+    if isinstance(envelope, dict):
+        ensure_job_import_version(envelope)
+    return ViewSetImportExportService._validate_envelope(envelope, main_entity)
 
 
 def _copy_at_most(source: BinaryIO, target: BinaryIO, max_size: int) -> None:

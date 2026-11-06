@@ -1084,3 +1084,28 @@ class TransferJobNotReadyError(CustomAPIExeption):
     status_code = 409
     default_code = "job_not_ready"
     default_detail = "The job has no archive to download yet."
+
+
+class ImportArchiveTooLargeError(CustomAPIExeption):
+    """An import upload is larger than `MAX_KNOWLEDGE_ARCHIVE_SIZE`."""
+
+    status_code = 413
+    default_code = "archive_too_large"
+    default_detail = "The archive is larger than the import size limit."
+
+
+class ImportArchiveRejectedError(CustomAPIExeption):
+    """An uploaded archive an import job would refuse; refused before the job is created.
+
+    Carries the code the import itself reports for the same archive (`invalid_archive`,
+    `use_sync_import`, ...), so a client sees one code whether the archive is refused
+    at upload or by the job.
+    """
+
+    status_code = 400
+    default_code = "invalid_file"
+
+    def __init__(self, code: str, message: str):
+        super().__init__(detail=message)
+        # The error envelope reads the code from default_code.
+        self.default_code = code

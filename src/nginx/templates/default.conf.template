@@ -162,6 +162,57 @@ server {
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
+    # Import jobs: the raw body is a .zip export archive, streamed to Django, which writes it to
+    # a temporary file as it arrives. Both cap it at DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE, in bytes
+    # here (19-derive-knowledge-archive-size.envsh); a larger body gets the JSON 413 Django would
+    # send. Timeouts as for the upload stream above.
+    location = /api/graphs/import-jobs/ {
+        error_page 413 = @knowledge_archive_too_large;
+        proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        client_max_body_size ${KNOWLEDGE_ARCHIVE_MAX_BYTES};
+        proxy_read_timeout 6h;
+        proxy_send_timeout 6h;
+        client_body_timeout 150s;
+
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    }
+
+    location = /api/source-collections/import-jobs/ {
+        error_page 413 = @knowledge_archive_too_large;
+        proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        client_max_body_size ${KNOWLEDGE_ARCHIVE_MAX_BYTES};
+        proxy_read_timeout 6h;
+        proxy_send_timeout 6h;
+        client_body_timeout 150s;
+
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    }
+
+    location @knowledge_archive_too_large {
+        default_type application/json;
+        return 413 '{"status_code":413,"code":"archive_too_large","message":"The archive is larger than the import size limit."}';
+    }
+
     location ~ ^/(api|admin|ht|swagger)(/|$) {
         proxy_pass http://backend_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;

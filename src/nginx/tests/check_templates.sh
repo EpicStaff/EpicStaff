@@ -9,7 +9,8 @@
 #     each lab's nginx must set; and that the hooks refuse what they must: TLS on without a
 #     certificate, an NGINX_HSTS_ENABLED that is not a boolean, and an NGINX_TRUSTED_PROXIES that
 #     is not none or a list of IPv4 addresses and CIDRs, or that holds an empty entry, a /0 range
-#     or a CIDR with host bits set;
+#     or a CIDR with host bits set, and a DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE that is not a byte size
+#     greater than 0, which the import-job routes' body cap is rendered from in bytes;
 #   - that every X-Forwarded-Proto a template sets is $forwarded_proto, never the client's header,
 #     and never $scheme but on the plugin listeners, which no proxy is in front of; that every
 #     location that proxies and passes the client's headers on sends one, so none passes the
@@ -144,7 +145,7 @@ stack_environment=(
   PLUGINS_ENABLED=false PLUGINS_DEV_MODE=false PLUGINS_BASE_DOMAIN=plugins.epicstaff.test
   PLUGINS_MAX_PACKAGE_MB=300 PLUGINS_MAX_REQUEST_BODY_MB=20 PLUGINS_GATEWAY_SECRET="$gateway_secret"
   DJANGO_FRONTEND_BASE_URL=https://epicstaff.test PLUGINS_NETWORK_SUBNET=10.235.0.0/24
-  STORAGE_HOST=storage STORAGE_PORT=9000 STORAGE_BUCKET=epicstaff
+  STORAGE_HOST=storage STORAGE_PORT=9000 STORAGE_BUCKET=epicstaff DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb
   AVATAR_URL_SIGNING_SECRET="$avatar_signing_secret"
 )
 
@@ -1027,6 +1028,32 @@ expect_refused "NGINX_HSTS_ENABLED=maybe is refused" "NGINX_HSTS_ENABLED='maybe'
   NGINX_HSTS_ENABLED=maybe
 expect_refused "an unset NGINX_HSTS_ENABLED is refused" "environment variable NGINX_HSTS_ENABLED is not set" \
   unset:NGINX_HSTS_ENABLED
+
+# The import-job routes cap their body at DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE, which Django reads as a
+# byte size (src/shared/humanize.py); 19-derive-knowledge-archive-size.envsh renders it in bytes
+# and refuses what Django would refuse, and none and 0 (no cap, to nginx).
+if expect_valid "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb is accepted"; then
+  expect_directives "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb caps both import-job routes at 157286400 bytes" \
+    "location = /api/graphs/import-jobs/" "location = /api/source-collections/import-jobs/" \
+    "client_max_body_size 157286400;" "error_page 413 = @knowledge_archive_too_large;"
+fi
+if expect_valid "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=' 1.5 GB ' is accepted" \
+  "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE= 1.5 GB "; then
+  expect_directives "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=' 1.5 GB ' is read as 1610612736 bytes" \
+    "client_max_body_size 1610612736;"
+fi
+if expect_valid "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=1048576 is accepted" \
+  DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=1048576; then
+  expect_directives "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=1048576 is read as bytes" \
+    "client_max_body_size 1048576;"
+fi
+for value in none 0 150mib 150m mb -5mb; do
+  expect_refused "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=$value is refused" \
+    "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE='$value' is not a byte size" \
+    "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=$value"
+done
+expect_refused "an unset DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE is refused" \
+  "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE='' is not a byte size" unset:DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE
 
 # Every X-Forwarded-Proto nginx sets is $forwarded_proto (default.conf.template): $scheme tells
 # Django http behind a load balancer that ends TLS, and the client's own header would let anyone
@@ -2375,6 +2402,7 @@ for plugins_enabled in false true; do
     "/webhooks/x 8009 -" "/voice/x 8050 -" "/voice/stream 8050 -" "/realtime/x 8050 -" \
     "/auditor/api/x 8010 -" "/api/x/ 8000 django" "/admin/ 8000 django" "/ws/x 8000 django" \
     "/api/storage/upload/stream 8000 django" "/api/run-session/subscribe/1/ 8000 django" \
+    "/api/graphs/import-jobs/ 8000 django" "/api/source-collections/import-jobs/ 8000 django" \
     "/static/x 8000 django" "/media/x 8000 django"; do
     read -r path port upstream <<< "$target"
     live sh -c 'curl -s -D /tmp/headers -o /tmp/body -H "Host: epicstaff.test" \
@@ -2409,7 +2437,8 @@ for plugins_enabled in false true; do
     "/ 404" "/api/x/ 404" "/admin/ 404" "/ht/ 404" "/swagger/ 404" \
     "/media/x 404" "/media/avatars/x 404" "/static/x 404" "/ws/x 404" "/realtime/x 404" \
     "/auditor/api/x 404" "/chat 404" "/chat/api/x 404" "/plugins/weather 404" \
-    "/api/storage/upload/stream 404" "/api/run-session/subscribe/1/ 404"; do
+    "/api/storage/upload/stream 404" "/api/run-session/subscribe/1/ 404" \
+    "/api/graphs/import-jobs/ 404" "/api/source-collections/import-jobs/ 404"; do
     read -r path port location <<< "$target"
     status=$(live sh -c 'curl -s -D /tmp/headers -o /tmp/body -w "%{http_code}" -H "Host: epicstaff.test" \
       -H "Cookie: __Host-auth.refresh=live-refresh" "http://127.0.0.1:$2$1"' request "$path" "$tunnel_port" || true)
@@ -2477,6 +2506,7 @@ forwarded_proto_targets=("epicstaff.test /" "epicstaff.test /chat" "epicstaff.te
   "epicstaff.test /webhooks/x" "epicstaff.test /voice/x" "epicstaff.test /voice/stream"
   "epicstaff.test /realtime/x" "epicstaff.test /auditor/api/x" "epicstaff.test /api/x/"
   "epicstaff.test /admin/" "epicstaff.test /ws/x" "epicstaff.test /api/storage/upload/stream"
+  "epicstaff.test /api/graphs/import-jobs/" "epicstaff.test /api/source-collections/import-jobs/"
   "epicstaff.test /api/run-session/subscribe/1/" "epicstaff.test /static/x" "epicstaff.test /media/x"
   "alpha.plugins.epicstaff.test /.well-known/epicstaff/config.json")
 # $1 = description, $2 = the scheme to ask nginx in, $3 = the X-Forwarded-Proto the client sends

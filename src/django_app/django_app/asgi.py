@@ -22,26 +22,40 @@ from plugins.ownership.request_scope import PluginRequestScopeASGI
 from rbac.models.enums import ResourceType
 from tables.graph_collab.ws_auth import TicketAuthMiddleware
 from tables.views.storage_upload_stream_view import UPLOAD_STREAM_PATH, upload_stream_app
+from tables.views.transfer_import_upload_view import IMPORT_JOB_ROUTES, import_upload_app
 
 from django_app.forwarding_headers import DropUnderscoreForwardingHeadersMiddleware
 from django_app.routing import websocket_urlpatterns
 
-# The upload stream bypasses Django's middleware, so a plugin service account's upload gets
-# its request scope (ownership of the files, the activity event) here instead.
+# The streamed uploads bypass Django's middleware, so a plugin service account's request
+# gets its request scope (ownership of what it creates, the activity event) here instead.
 upload_stream = PluginRequestScopeASGI(
     upload_stream_app, resource_type=ResourceType.FILES.value, route=UPLOAD_STREAM_PATH.lstrip("/")
 )
+# Raw ASGI apps by exact path: each reads its request body itself, as it arrives.
+raw_http_apps = {
+    UPLOAD_STREAM_PATH: upload_stream,
+    **{
+        route.path: PluginRequestScopeASGI(
+            import_upload_app(route),
+            resource_type=route.resource_type.value,
+            route=route.path.lstrip("/"),
+        )
+        for route in IMPORT_JOB_ROUTES
+    },
+}
 
 
 async def http_dispatcher(scope, receive, send):
+    raw_app = raw_http_apps.get(scope.get("path"))
     # OPTIONS stays with Django so corsheaders answers the preflight.
-    if scope.get("path") == UPLOAD_STREAM_PATH and scope.get("method") != "OPTIONS":
-        await upload_stream(scope, receive, send)
+    if raw_app is not None and scope.get("method") != "OPTIONS":
+        await raw_app(scope, receive, send)
         return
     await django_asgi_app(scope, receive, send)
 
 
-# Outermost, so no branch (Django, the upload stream app, websockets) sees a
+# Outermost, so no branch (Django, the raw upload apps, websockets) sees a
 # forged underscore spelling of a forwarding header.
 application = DropUnderscoreForwardingHeadersMiddleware(
     ProtocolTypeRouter(

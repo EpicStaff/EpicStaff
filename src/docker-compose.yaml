@@ -648,6 +648,8 @@ services:
       # .localhost names and docker-compose.plugins-dev.yaml is in the command: that file publishes
       # 80 and 443 on 127.0.0.1 only, publishes 8082, and alone sets PLUGINS_DEV_LOOPBACK_ONLY.
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
+      # The body cap of the import-job upload routes, as Django applies it.
+      DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE: ${DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
       # Entrypoint hooks use the long syntax so a missing file stops `up` with an
@@ -681,6 +683,12 @@ services:
       - type: bind
         source: ./nginx/docker-entrypoint.d/18-check-trusted-proxies.envsh
         target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/19-derive-knowledge-archive-size.envsh
+        target: /docker-entrypoint.d/19-derive-knowledge-archive-size.envsh
         read_only: true
         bind:
           create_host_path: false

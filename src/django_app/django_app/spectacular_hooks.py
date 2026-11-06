@@ -1,4 +1,8 @@
 from tables.views.storage_upload_stream_view import UPLOAD_STREAM_PATH
+from tables.views.transfer_import_upload_view import (
+    COLLECTION_IMPORT_JOBS_ROUTE,
+    FLOW_IMPORT_JOBS_ROUTE,
+)
 
 TAG_MAP = [
     # Authentication
@@ -346,6 +350,114 @@ def add_stream_upload_postprocessing_hook(result, generator, request, public, **
                     )
                 },
             },
+        }
+    }
+    return result
+
+
+_ZIP_BODY = {
+    "required": True,
+    "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
+}
+
+_IMPORT_JOB_CREATED = {
+    "type": "object",
+    "required": ["job_id"],
+    "properties": {
+        "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Poll GET /api/transfer-jobs/{job_id}/ for the outcome.",
+        }
+    },
+}
+
+_IMPORT_JOB_DESCRIPTION = (
+    "Queue a background import of a .zip export archive, streamed as the raw request body "
+    "(not multipart). At most DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE (413 archive_too_large, "
+    "checked against Content-Length first, then against the bytes received). The archive's "
+    "caps, version and main entity are checked before the job is created; a plain .json "
+    "export goes to the synchronous import/ endpoint instead. Started by a user or a personal "
+    "API key; throttled with the export jobs (transfer_job_create), and at most 3 unfinished "
+    "jobs per user and 10 per organization. Poll GET /api/transfer-jobs/{job_id}/."
+)
+
+
+def _import_job_responses(permission: str) -> dict:
+    return {
+        "202": {
+            "description": "Job queued.",
+            "content": {"application/json": {"schema": _IMPORT_JOB_CREATED}},
+        },
+        "400": {
+            "description": (
+                "Invalid or unknown query parameter; or the archive is refused: "
+                "invalid_archive (not a zip, unsafe, over a cap), use_sync_import "
+                "(older than archives), invalid_file (wrong main entity)."
+            )
+        },
+        "401": {"description": "Not authenticated."},
+        "403": {
+            "description": (
+                f"Missing {permission} in the active organization; "
+                "transfer_job_requires_user for a caller with no user (system API key, "
+                "plugin service account); or the archive holds trigger nodes and the "
+                "caller lacks FLOWS:USE."
+            )
+        },
+        "413": {"description": "archive_too_large."},
+        "429": {
+            "description": "Throttled, or too_many_jobs: the caller or the organization "
+            "is at its unfinished-job limit."
+        },
+    }
+
+
+def add_import_job_upload_postprocessing_hook(result, generator, request, public, **kwargs):
+    """Add the import-job uploads to the schema; they are raw ASGI, which the generator misses."""
+    paths = result.setdefault("paths", {})
+    paths[FLOW_IMPORT_JOBS_ROUTE.path] = {
+        "post": {
+            "operationId": "graphs_import_jobs_create",
+            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "description": _IMPORT_JOB_DESCRIPTION,
+            "parameters": [
+                {
+                    "in": "query",
+                    "name": "preserve_uuids",
+                    "required": False,
+                    "schema": {"type": "boolean", "default": False},
+                    "description": "Keep the flows' UUIDs from the archive.",
+                },
+                {
+                    "in": "query",
+                    "name": "replace_existing",
+                    "required": False,
+                    "schema": {"type": "boolean", "default": False},
+                    "description": (
+                        "Overwrite flows with the same UUID; requires preserve_uuids "
+                        "and FLOWS:UPDATE."
+                    ),
+                },
+                {
+                    "in": "query",
+                    "name": "import_labels",
+                    "required": False,
+                    "schema": {"type": "boolean", "default": True},
+                    "description": "Import the flows' labels.",
+                },
+            ],
+            "requestBody": _ZIP_BODY,
+            "responses": _import_job_responses("FLOWS:CREATE"),
+        }
+    }
+    paths[COLLECTION_IMPORT_JOBS_ROUTE.path] = {
+        "post": {
+            "operationId": "source_collections_import_jobs_create",
+            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "description": _IMPORT_JOB_DESCRIPTION + " Takes no query parameters.",
+            "requestBody": _ZIP_BODY,
+            "responses": _import_job_responses("KNOWLEDGE_SOURCES:CREATE"),
         }
     }
     return result

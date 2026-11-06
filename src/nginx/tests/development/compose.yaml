@@ -56,6 +56,7 @@ x-nginx-environment: &nginx-environment
   STORAGE_HOST: storage
   STORAGE_PORT: "9000"
   STORAGE_BUCKET: epicstaff
+  DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE: 150mb
   AVATAR_URL_SIGNING_SECRET: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
 
 x-nginx: &nginx
@@ -93,6 +94,12 @@ x-nginx: &nginx
     - type: bind
       source: ../../docker-entrypoint.d/18-check-trusted-proxies.envsh
       target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ../../docker-entrypoint.d/19-derive-knowledge-archive-size.envsh
+      target: /docker-entrypoint.d/19-derive-knowledge-archive-size.envsh
       read_only: true
       bind:
         create_host_path: false
