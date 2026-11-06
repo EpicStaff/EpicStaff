@@ -191,14 +191,13 @@ describe('SystemOneConfigFormComponent', () => {
     it('tells the user to add an LLM config first when there are none to pick', () => {
         const { fixture } = render(null, []);
 
-        expect(host(fixture).textContent).toContain('No LLM configs yet.');
         expect(openPicker(fixture)).toContain('No LLM configs yet.');
     });
 
     it('does not show that hint while LLM configs exist', () => {
         const { fixture } = render();
 
-        expect(host(fixture).textContent).not.toContain('No LLM configs yet.');
+        expect(openPicker(fixture)).not.toContain('No LLM configs yet.');
     });
 
     it('creates a TypeSafe config with the picked Jev version and the chosen secret', () => {

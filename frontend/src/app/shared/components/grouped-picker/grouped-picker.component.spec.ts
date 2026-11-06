@@ -122,6 +122,10 @@ describe('GroupedPickerComponent', () => {
         const trigger = (fixture.nativeElement as HTMLElement).querySelector('button[aria-expanded]')!;
         expect(trigger.textContent).toContain('Nuts:');
         expect(trigger.textContent).toContain('pecan');
+
+        open(fixture);
+        expect(itemButton('pecan')!.getAttribute('aria-pressed')).toBe('true');
+        expect(itemButton('apple')!.getAttribute('aria-pressed')).toBe('false');
     });
 
     it('does not let a disabled item be picked', () => {

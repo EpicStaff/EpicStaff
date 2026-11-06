@@ -24,9 +24,6 @@
                 (picked)="pick($event)"
                 (closed)="form.controls.model.markAsTouched()"
             />
-            @if (!hasLlmConfigs() && !usesKey()) {
-                <app-hint-message>No LLM configs yet. Add one in the <strong>LLM tab</strong> first.</app-hint-message>
-            }
             @if (selectedProvider() === 'llm') {
                 <app-hint-message>Its probabilities are the LLM's own estimate, not calibrated.</app-hint-message>
             }

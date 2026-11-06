@@ -152,6 +152,19 @@ describe('LlmModelSelectorComponent', () => {
         });
     });
 
+    it('marks the form control touched when the list closes without a pick', () => {
+        const { fixture } = render();
+        const onTouched = vi.fn();
+        fixture.componentInstance.registerOnTouched(onTouched);
+
+        openOverlay(fixture);
+        document.querySelector<HTMLElement>('.cdk-overlay-backdrop')!.click();
+        fixture.detectChanges();
+
+        expect(onTouched).toHaveBeenCalledOnce();
+        expect(overlayButton('gpt-a')).toBeUndefined();
+    });
+
     it('stops the trigger while the form disables it', () => {
         const { fixture } = render();
 

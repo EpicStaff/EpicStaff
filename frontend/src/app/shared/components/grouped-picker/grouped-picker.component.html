@@ -116,6 +116,7 @@
                                             type="button"
                                             class="grouped-picker__item-select"
                                             [disabled]="item.disabled"
+                                            [attr.aria-pressed]="isSelected(group, item)"
                                             appTooltipOnOverflow=".grouped-picker__item-name"
                                             [matTooltip]="item.name"
                                             (click)="pick(item)"

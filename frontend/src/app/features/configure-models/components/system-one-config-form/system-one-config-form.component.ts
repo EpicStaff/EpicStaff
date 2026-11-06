@@ -92,7 +92,6 @@ export class SystemOneConfigFormComponent implements OnInit {
     protected readonly usesKey = computed(
         () => this.selectedProvider() === 'typesafe' || this.selectedProvider() === 'openai'
     );
-    protected readonly hasLlmConfigs = computed(() => this.llmConfigStorage.configs().length > 0);
     /** An edited config offers only its own provider's models. */
     protected readonly groups = computed(() => {
         const llmItems = this.llmConfigStorage.configs().map(
@@ -151,7 +150,7 @@ export class SystemOneConfigFormComponent implements OnInit {
             .getSecrets()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({ error: () => {} });
-        if ((config?.provider ?? 'llm') === 'llm') {
+        if (!config || config.provider === 'llm') {
             this.llmConfigStorage
                 .getAllConfigs()
                 .pipe(takeUntilDestroyed(this.destroyRef))
