@@ -1,8 +1,10 @@
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
+import { map, switchMap } from 'rxjs/operators';
 
 import { ImportFlowRequestOptions, ImportResult } from '../../../core/models/import-result.model';
 import { ImportExportService } from '../../../core/services/import-export.service';
+import { TransferJobsService } from '../../../core/services/transfer-jobs.service';
 import { GraphDto, PartialImportResponse } from '../models/graph.model';
 import { FlowUsePermissionRefusalService } from './flow-use-permission-refusal.service';
 import { FlowsStorageService } from './flows-storage.service';
@@ -18,6 +20,7 @@ import { FlowsStorageService } from './flows-storage.service';
 export class FlowCopyImportFacadeService {
     private readonly flowsStorage = inject(FlowsStorageService);
     private readonly importExport = inject(ImportExportService);
+    private readonly transferJobs = inject(TransferJobsService);
     private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
 
     copyFlow(sourceId: number, newName: string): Observable<GraphDto> {
@@ -26,6 +29,18 @@ export class FlowCopyImportFacadeService {
 
     importFlow(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult> {
         return this.importExport.importFlow(file, settings).pipe(this.usePermissionRefusal.catchRefusal('import'));
+    }
+
+    /**
+     * Imports a `.zip` export archive as a background job and emits the import summary once it has finished.
+     * Errors with the job's failure (TransferJobFailedError) when the import fails on the server.
+     */
+    importFlowArchive(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult> {
+        return this.transferJobs.startImport('flows', file, settings).pipe(
+            this.usePermissionRefusal.catchRefusal('import'),
+            switchMap(({ job_id }) => this.transferJobs.waitForJob(job_id)),
+            map((job) => (job.kind === 'import' && job.result ? job.result : {}))
+        );
     }
 
     partialImport(graphId: number, file: File): Observable<PartialImportResponse> {

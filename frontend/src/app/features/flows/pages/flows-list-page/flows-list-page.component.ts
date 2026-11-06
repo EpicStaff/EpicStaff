@@ -57,13 +57,14 @@ import {
 import {
     buildPreviewImportResult,
     enrichImportResult,
+    ExportFileFormat,
     extractHttpErrorMessage,
     ImportFileData,
     JsonObject,
     pluralize,
-    showExportExclusionWarning,
+    readExportEnvelope,
 } from '@shared/utils';
-import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
+import { defer, EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
 import {
     catchError,
     debounceTime,
@@ -84,16 +85,22 @@ import {
     toFileNodeId,
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
+import { describeTransferError, TRANSFER_JOB_MAX_WAIT_MS } from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { isUsableCondition } from '../../../audit/models/audit-filter.models';
 import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
+import {
+    ExportFlowOptionsPopoverComponent,
+    FlowExportOptions,
+} from '../../components/export-flow-options-popover/export-flow-options-popover.component';
 import { ImportFlowOptionsPopoverComponent } from '../../components/import-flow-options-popover/import-flow-options-popover.component';
 import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
 import { ImportReviewDialogComponent } from '../../components/import-review-dialog/import-review-dialog.component';
 import { EMPTY_FLOWS_FILTER, FlowsFilterState, FlowSortOrder } from '../../models/flow-filter.model';
 import { GraphDto } from '../../models/graph.model';
 import { FlowCopyImportFacadeService } from '../../services/flow-copy-import-facade.service';
+import { FlowExportService } from '../../services/flow-export.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
@@ -103,6 +110,7 @@ import { FlowsFilterSidebarComponent } from './components/flows-filter-sidebar/f
 import { FLOWS_SORT_MENU_ITEMS, FlowsSortMenuComponent } from './components/flows-sort-menu/flows-sort-menu.component';
 
 const FILTER_PANEL_WIDTH_KEY = 'flows-filter-panel';
+const IMPORT_PROGRESS_MESSAGE = 'Importing…';
 const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth: 640 } satisfies SidebarWidthOptions;
 
 @Component({
@@ -122,6 +130,7 @@ const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth:
         CollapseOnOverflowDirective,
         TooltipWhenCollapsedDirective,
         ImportFlowOptionsPopoverComponent,
+        ExportFlowOptionsPopoverComponent,
         OverlayModule,
         HasPermissionDirective,
         MatTooltipModule,
@@ -149,6 +158,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private cdr = inject(ChangeDetectorRef);
     private importExportService = inject(ImportExportService);
     private flowCopyImport = inject(FlowCopyImportFacadeService);
+    private flowExport = inject(FlowExportService);
     private toastService = inject(ToastService);
     private labelsStorage = inject(LabelsStorageService);
     private importFlowSettings = inject(ImportFlowSettingsService);
@@ -169,6 +179,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     };
 
     public importOptionsOpen = signal(false);
+    public exportOptionsOpen = signal(false);
 
     public selectMode = this.flowStorageService.selectMode;
     public selectedFlowIds = this.flowStorageService.selectedFlowIds;
@@ -442,18 +453,19 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.json';
+        input.accept = '.json,.zip';
         input.onchange = (event: Event) => {
             const file = (event.target as HTMLInputElement).files?.[0];
             if (!file) return;
 
-            from(file.text())
+            from(readExportEnvelope(file))
                 .pipe(
-                    map((text) => this._parseFileData(text)),
-                    switchMap((fileData) => this._importFlowFile(file, fileData, settings)),
-                    catchError((error: HttpErrorResponse) => {
+                    switchMap(({ format, data }) =>
+                        this._importFlowFile(file, data, this._importFunction(format, file, settings))
+                    ),
+                    catchError((error: unknown) => {
                         this.toastService.error(
-                            extractHttpErrorMessage(
+                            describeTransferError(
                                 error,
                                 'Failed to read the flow file. Please check the file and try again.'
                             )
@@ -467,28 +479,34 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         input.click();
     }
 
-    private _parseFileData(text: string): ImportFileData {
-        try {
-            return JSON.parse(text) as ImportFileData;
-        } catch {
-            return {};
-        }
+    /**
+     * A `.zip` archive is imported as a background job; a plain `.json` export, of any version, by the
+     * synchronous import, which is the only one that takes JSON.
+     */
+    private _importFunction(
+        format: ExportFileFormat,
+        file: File,
+        settings: ImportFlowRequestOptions
+    ): () => Observable<ImportResult> {
+        return format === 'zip'
+            ? () => this.flowCopyImport.importFlowArchive(file, settings)
+            : () => this.flowCopyImport.importFlow(file, settings);
     }
 
     private _importFlowFile(
         file: File,
         fileData: ImportFileData,
-        settings: ImportFlowRequestOptions
+        importFn: () => Observable<ImportResult>
     ): Observable<{ result: ImportResult; fileData: ImportFileData }> {
         return this.importExportService.inspectFlow(file).pipe(
             switchMap((inspection) => {
                 if (!hasReviewableItems(inspection.review_items)) {
                     // A refusal over trigger nodes is explained by the facade and emits nothing: no toast here.
-                    return this.flowCopyImport.importFlow(file, settings).pipe(
+                    return this._withImportProgress(importFn()).pipe(
                         map((result) => ({ result, fileData })),
-                        catchError((error: HttpErrorResponse) => {
+                        catchError((error: unknown) => {
                             this.toastService.error(
-                                extractHttpErrorMessage(
+                                describeTransferError(
                                     error,
                                     'Failed to import flow. Please check the file and try again.'
                                 )
@@ -508,7 +526,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                         reviewItems: inspection.review_items,
                         allFlowNodes: this._extractFlowNodesFromFile(fileData),
                         // On a refusal over trigger nodes nothing is emitted, so the review dialog stays open.
-                        importFn: () => this.flowCopyImport.importFlow(file, settings),
+                        // The dialog's Import button reads "Importing…" while this runs.
+                        importFn,
                     },
                 });
 
@@ -527,6 +546,13 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 return EMPTY;
             })
         );
+    }
+
+    private _withImportProgress<T>(source: Observable<T>): Observable<T> {
+        return defer(() => {
+            const progressToastId = this.toastService.show(IMPORT_PROGRESS_MESSAGE, 'info', TRANSFER_JOB_MAX_WAIT_MS);
+            return source.pipe(finalize(() => this.toastService.remove(progressToastId)));
+        });
     }
 
     private _finishFlowImport(result: ImportResult, fileData: ImportFileData): void {
@@ -581,32 +607,28 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     }
 
     public cancelSelection(): void {
+        this.closeExportOptions();
         this.flowStorageService.setSelectMode(false);
     }
 
-    public confirmExport(): void {
+    public toggleExportOptions(): void {
+        this.exportOptionsOpen.update((open) => !open);
+    }
+
+    public closeExportOptions(): void {
+        this.exportOptionsOpen.set(false);
+    }
+
+    public confirmExport(options: FlowExportOptions): void {
+        this.closeExportOptions();
         const ids = this.selectedFlowIds();
         if (ids.length === 0) {
             return;
         }
 
-        this.importExportService.bulkExportFlow(ids).subscribe({
-            next: ({ blob, excluded }) => {
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `flows_export_${Date.now()}.json`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-
-                this.flowStorageService.setSelectMode(false);
-
-                showExportExclusionWarning(this.toastService, excluded);
-            },
-            error: (error) => {
-                console.error('Bulk export failed:', error);
-            },
-        });
+        this.flowStorageService.setSelectMode(false);
+        // Not tied to this page: an export the user started still downloads after they leave it.
+        this.flowExport.exportFlows(ids, options.includeKnowledge).subscribe();
     }
 
     public deleteSelectedFlows(): void {

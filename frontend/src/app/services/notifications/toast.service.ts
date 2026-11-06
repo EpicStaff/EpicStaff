@@ -39,7 +39,8 @@ export class ToastService {
         duration: number = 3000,
         position?: ToastPosition,
         options: ToastOptions = {}
-    ): void {
+    ): number {
+        // The id lets `remove` take the toast down before its duration ends, e.g. a progress message.
         const id = this.counter++;
 
         // Store the position for this toast
@@ -61,6 +62,8 @@ export class ToastService {
         setTimeout(() => {
             this.remove(id);
         }, duration);
+
+        return id;
     }
 
     remove(id: number): void {

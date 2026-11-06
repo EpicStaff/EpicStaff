@@ -83,14 +83,23 @@
                 }
 
                 @if (selectMode()) {
-                    <app-button
-                        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
-                        type="primary"
-                        [disabled]="selectedFlowIds().length === 0"
-                        (click)="confirmExport()"
-                    >
-                        {{ exportSelectedLabel() }}
-                    </app-button>
+                    <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Export]">
+                        <app-button
+                            #exportOriginEl="cdkOverlayOrigin"
+                            cdkOverlayOrigin
+                            type="primary"
+                            [disabled]="selectedFlowIds().length === 0"
+                            (click)="toggleExportOptions()"
+                        >
+                            {{ exportSelectedLabel() }}
+                        </app-button>
+                        <app-export-flow-options-popover
+                            [origin]="exportOriginEl"
+                            [open]="exportOptionsOpen()"
+                            (closed)="closeExportOptions()"
+                            (exportRequested)="confirmExport($event)"
+                        />
+                    </ng-container>
                 } @else {
                     <div
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"

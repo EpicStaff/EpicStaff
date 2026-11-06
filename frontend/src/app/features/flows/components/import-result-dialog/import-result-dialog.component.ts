@@ -67,6 +67,7 @@ export class ImportResultDialogComponent implements AfterViewInit {
         'PythonCodeTool',
         'LLMModel',
         'LLMConfig',
+        'SourceCollection',
         'RealtimeModel',
         'RealtimeConfig',
     ];
@@ -142,6 +143,7 @@ export class ImportResultDialogComponent implements AfterViewInit {
             RealtimeModel: 'Realtime Model',
             RealtimeTranscriptionConfig: 'Realtime Transcription Config',
             RealtimeTranscriptionModel: 'Realtime Transcription Model',
+            SourceCollection: 'Knowledge collections',
         };
 
         return labelMap[entityType] || entityType;

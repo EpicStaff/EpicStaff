@@ -63,4 +63,12 @@
             }
         </div>
     }
+    @if (exportTarget(); as target) {
+        <app-export-flow-options-popover
+            [origin]="target.origin"
+            [open]="true"
+            (closed)="closeExportOptions()"
+            (exportRequested)="exportFlow(target.flow, $event)"
+        />
+    }
 </div>

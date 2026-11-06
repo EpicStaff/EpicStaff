@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Thu, 29 Oct 2026 13:21:16 GMT -->
-<!-- commit: 2dd4777b72ddf5d8dcd431514899a065930e6db8 -->
-<!-- package-lock.json sha256: c545f5ca8f1743fc -->
+<!-- generated: Fri, 06 Nov 2026 13:48:47 GMT -->
+<!-- commit: f0ac338c0a8bce28762b60f364a9bf9e47c55c7a -->
+<!-- package-lock.json sha256: fb46eb57145890c5 -->
 
 ## Frontend license summary
 
@@ -26,12 +26,13 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | Apache-2.0 | 2 |
 | ISC | 2 |
 | OFL-1.1 | 1 |
+| BSD-3-Clause | 1 |
 | (MPL-2.0 OR Apache-2.0) | 1 |
 | BSD-2-Clause | 1 |
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **57** |
+| **Total** | **58** |
 
 ## Package index
 
@@ -55,6 +56,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `@standard-schema/spec` | 1.1.0 | MIT |
 | `@types/trusted-types` | 2.0.7 | MIT |
 | `@xmldom/xmldom` | 0.9.12 | MIT |
+| `@zip.js/zip.js` | 2.24.0 | BSD-3-Clause |
 | `ag-charts-types` | 14.1.0 | MIT |
 | `ag-grid-angular` | 36.1.0 | MIT |
 | `ag-grid-community` | 36.1.0 | MIT |
@@ -1172,6 +1174,47 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+</details>
+
+### @zip.js/zip.js@2.24.0
+
+- **License:** BSD-3-Clause
+- **Publisher:** Gildas Lormeau
+- **Repository:** https://github.com/gildas-lormeau/zip.js
+
+<details><summary>License text</summary>
+
+```
+BSD 3-Clause License
+
+Copyright (c) 2023, Gildas Lormeau
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
 </details>

@@ -1,5 +1,5 @@
 import { HttpClient, HttpResponse } from '@angular/common/http';
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { ExcludedExportEntity, ExportResult } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
@@ -41,10 +41,8 @@ interface ExportAllBody {
     providedIn: 'root',
 })
 export class ImportExportService {
-    constructor(
-        private http: HttpClient,
-        private configService: ConfigService
-    ) {}
+    private readonly http = inject(HttpClient);
+    private readonly configService = inject(ConfigService);
 
     private get apiUrl(): string {
         return this.configService.apiUrl + 'graphs/';
@@ -94,28 +92,6 @@ export class ImportExportService {
         formData.append('file', file);
 
         return this.http.post<InspectResult>(`${this.apiUrl}import/inspect/`, formData);
-    }
-
-    exportFlow(graphId: string): Observable<ExportResult> {
-        return this.http
-            .get(`${this.apiUrl}${graphId}/export/`, {
-                observe: 'response',
-                responseType: 'blob',
-            })
-            .pipe(map((response) => this.toExportResult(response)));
-    }
-
-    bulkExportFlow(ids: number[]): Observable<ExportResult> {
-        return this.http
-            .post(
-                `${this.apiUrl}bulk-export/`,
-                { ids },
-                {
-                    observe: 'response',
-                    responseType: 'blob',
-                }
-            )
-            .pipe(map((response) => this.toExportResult(response)));
     }
 
     // exportSession(id: number, format: ExportFormat): Observable<Blob> {

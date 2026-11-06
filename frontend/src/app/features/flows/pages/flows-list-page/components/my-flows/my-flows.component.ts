@@ -23,12 +23,14 @@ import {
 } from '@shared/components';
 import { DragScrollDirective } from '@shared/directives';
 import { BulkDeleteService, LABELS_STORE } from '@shared/services';
-import { showExportExclusionWarning } from '@shared/utils';
 import { filter, switchMap } from 'rxjs/operators';
 
-import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
+import {
+    ExportFlowOptionsPopoverComponent,
+    FlowExportOptions,
+} from '../../../../components/export-flow-options-popover/export-flow-options-popover.component';
 import {
     FlowCardAction,
     FlowCardComponent,
@@ -38,6 +40,7 @@ import { FlowRenameDialogComponent } from '../../../../components/flow-rename-di
 import { FlowSessionsListComponent } from '../../../../components/flow-sessions-dialog/flow-sessions-list.component';
 import { GetGraphLightRequest, GraphDto } from '../../../../models/graph.model';
 import { FlowCopyImportFacadeService } from '../../../../services/flow-copy-import-facade.service';
+import { FlowExportService } from '../../../../services/flow-export.service';
 import { FlowsApiService } from '../../../../services/flows-api.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
@@ -56,6 +59,7 @@ import { flowsBulkDeleteGroup } from '../../../../utils/flows-bulk-delete.util';
         RouterLink,
         DragScrollDirective,
         FetchErrorStateComponent,
+        ExportFlowOptionsPopoverComponent,
     ],
 })
 export class MyFlowsComponent implements AfterViewChecked {
@@ -67,7 +71,7 @@ export class MyFlowsComponent implements AfterViewChecked {
     private readonly toastService = inject(ToastService);
     private readonly bulkDeleteService = inject(BulkDeleteService);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
-    private readonly importExportService = inject(ImportExportService);
+    private readonly flowExport = inject(FlowExportService);
     private readonly labelsStorage = inject(LabelsStorageService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly destroyRef = inject(DestroyRef);
@@ -88,6 +92,8 @@ export class MyFlowsComponent implements AfterViewChecked {
     public readonly isDeleting = this.flowsService.isDeleting;
     public readonly isMeasuring = signal(true);
     public readonly visibleCount = signal<number>(Infinity);
+    /** The flow whose export options are open, and the menu button they open next to. */
+    protected readonly exportTarget = signal<{ flow: GetGraphLightRequest; origin: HTMLElement } | null>(null);
 
     private readonly allRecentFlows = computed(() => {
         return this.filteredFlows()
@@ -230,7 +236,7 @@ export class MyFlowsComponent implements AfterViewChecked {
                 break;
 
             case 'export':
-                this.exportFlow(flow);
+                this.openExportOptions(flow, event.trigger);
                 break;
 
             case 'viewDetails':
@@ -240,6 +246,16 @@ export class MyFlowsComponent implements AfterViewChecked {
             default:
                 console.warn(`Action '${action}' not implemented for flow:`, flow.id);
         }
+    }
+
+    public closeExportOptions(): void {
+        this.exportTarget.set(null);
+    }
+
+    public exportFlow(flow: GetGraphLightRequest, options: FlowExportOptions): void {
+        this.exportTarget.set(null);
+        // Not tied to this view: an export the user started still downloads after they leave the list.
+        this.flowExport.exportFlows([flow.id], options.includeKnowledge).subscribe();
     }
 
     public onLabelDrop(event: FlowLabelDropEvent): void {
@@ -376,24 +392,10 @@ export class MyFlowsComponent implements AfterViewChecked {
         };
     }
 
-    private exportFlow(flow: GetGraphLightRequest): void {
-        this.importExportService.exportFlow(flow.id.toString()).subscribe({
-            next: ({ blob, excluded }) => {
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${flow.name}_export_${Date.now()}.json`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-
-                this.toastService.success(`Flow "${flow.name}" exported successfully`);
-
-                showExportExclusionWarning(this.toastService, excluded);
-            },
-            error: (error) => {
-                console.error('Export failed:', error);
-                this.toastService.error(`Failed to export flow "${flow.name}"`);
-            },
-        });
+    // Export is a menu item, and every menu selection names its ⋮ button, so `trigger` is always set here.
+    private openExportOptions(flow: GetGraphLightRequest, trigger: HTMLElement | undefined): void {
+        if (trigger) {
+            this.exportTarget.set({ flow, origin: trigger });
+        }
     }
 }
