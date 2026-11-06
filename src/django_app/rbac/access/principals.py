@@ -92,16 +92,6 @@ def user_api_key_org_id(request) -> int | None:
     return None
 
 
-def limit_org_ids_to_api_key(request, org_ids: list[int] | None) -> list[int] | None:
-    """Return `[key org]` for a USER API key request, else `org_ids` unchanged.
-
-    A USER key (a superadmin's too) reads cross-org surfaces only in its own org,
-    so whatever the query asked for, or nothing at all, becomes the key's org.
-    """
-    key_org_id = user_api_key_org_id(request)
-    return org_ids if key_org_id is None else [key_org_id]
-
-
 def acting_person(user: object) -> "User | None":
     """Return the human a call is made by or for.
 

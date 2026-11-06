@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from rbac.access.principals import is_pinned_org_principal
 from rbac.governance.organization_retention import effective_retention_days_for_org
@@ -35,6 +36,7 @@ from tables.models.graph_models import (
     AgentNode,
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     ConditionGroup,
     DecisionTableNode,
     GraphSessionMessage,
@@ -298,6 +300,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         `callback_url` / `callback_secret`: delivered on the terminal status by the
         callback sender; validated by the caller.
 
+        Once crew has received the session, nothing raises: the run is live, and a caller
+        retrying the error (the fanout tool retries a 5xx) would start it a second time.
+
         Raises:
             RunAdmissionRefusedError: The run is refused. Before the session is created,
                 nothing is written; refused again just before the publish, the session
@@ -375,22 +380,6 @@ class SessionManagerService(metaclass=SingletonMeta):
                 org_id=graph.org_id,
                 storage_credentials=storage_credentials,
             )
-            logger.log(
-                BENCH_LEVEL,
-                "bench {checkpoint}",
-                checkpoint="published",
-                session_id=session.pk,
-                received_n=received_n,
-            )
-            if received_n == 0:
-                logger.error(
-                    "Session {} was published, but no crew instance is listening.", session.pk
-                )
-                self._mark_session_error(
-                    session=session, reason="No crew instance received the session."
-                )
-            logger.info("Session data published in Redis for session ID: {}.", session.pk)
-
         except RunAdmissionRefusedError as refusal:
             self._stop_refused_session(session=session, refusal=refusal)
             raise
@@ -399,6 +388,20 @@ class SessionManagerService(metaclass=SingletonMeta):
             logger.exception(msg)
             self._mark_session_error(session=session, reason=msg)
             raise
+
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="published",
+            session_id=session.pk,
+            received_n=received_n,
+        )
+        if received_n == 0:
+            logger.error("Session {} was published, but no crew instance is listening.", session.pk)
+            self._mark_session_error(
+                session=session, reason="No crew instance received the session."
+            )
+        logger.info("Session data published in Redis for session ID: {}.", session.pk)
 
         if session.status == Session.SessionStatus.ERROR:
             # Publish was not received; the status handler will never see this session end.
@@ -409,11 +412,25 @@ class SessionManagerService(metaclass=SingletonMeta):
             except Exception as exc:  # a callback failure must never mask the session error
                 logger.error("Session {} callback enqueue failed: {}", session.pk, exc)
 
-        surface_knowledge_warnings = self.surface_knowledge_warning_service.build_warnings(graph)
-        all_warnings = run_vars.warnings + surface_knowledge_warnings
-        if all_warnings:
-            SessionWarningMessage.objects.create(session_id=session.pk, messages=all_warnings)
+        self._save_warnings(session=session, graph=graph, run_warnings=run_vars.warnings)
         return session.pk
+
+    def _save_warnings(self, *, session: Session, graph: Graph, run_warnings: list) -> None:
+        # Best effort: the session is already published, so a failure here must not reach
+        # the caller. The savepoint keeps a failed query from aborting a transaction
+        # run_session runs inside (the schedule trigger's), which would roll back the live
+        # session's row.
+        try:
+            with transaction.atomic():
+                warnings = run_warnings + self.surface_knowledge_warning_service.build_warnings(
+                    graph
+                )
+                if warnings:
+                    SessionWarningMessage.objects.create(session_id=session.pk, messages=warnings)
+        except Exception as error:
+            logger.error(
+                "Session {} started, but its warnings were not saved: {}", session.pk, error
+            )
 
     # message_type values handled generically by the branch below: this is a
     # plain GraphSessionMessage row + redis republish. "user" is the original
@@ -518,9 +535,20 @@ class SessionManagerService(metaclass=SingletonMeta):
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = (
             ClassificationDecisionTableNode.objects.filter(graph=graph.pk)
-            .select_related("pre_python_code__venv", "post_python_code__venv")
+            .select_related(
+                "pre_python_code__venv",
+                "post_python_code__venv",
+                "default_llm_config__model__llm_provider",
+            )
             .prefetch_related(
                 "condition_groups",
+                Prefetch(
+                    "prompt_configs",
+                    queryset=ClassificationDecisionTablePrompt.objects.select_related(
+                        "llm_config__model__llm_provider",
+                        "system_one_config__llm_config__model__llm_provider",
+                    ),
+                ),
                 secret_names_prefetch("pre_python_code__secrets"),
                 secret_names_prefetch("post_python_code__secrets"),
             )

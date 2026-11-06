@@ -53,10 +53,12 @@ export interface ConnectionDiff {
  * Identity keys of a node item the bulk save creates. `node_number_hint` is wire-only and sent
  * for numbered node types alone. It is an ordering key: the server sorts this save's new nodes by
  * it and numbers them consecutively from the graph's counter, so the number the canvas shows may
- * differ from the hint.
+ * differ from the hint. `uuid` is the node's stable identity, sent on create only (the backend keeps it
+ * immutable).
  */
 export interface CreatedNodeItemKeys {
     id: null;
     temp_id: string;
+    uuid?: string;
     node_number_hint?: number;
 }

@@ -1,3 +1,9 @@
+# Couchbase FTS Vector Search Tool
+#
+# `connection_string`, `username` and `password` are NOT function parameters:
+# args_schema.json declares them with "input_type": "user_input", so they are
+# set in the tool configuration and the sandbox injects them as module-level
+# globals -- the agent never sees them.
 import json
 from typing import List
 
@@ -12,6 +18,8 @@ except ImportError as e:
         "couchbase package is required. Install it with: pip install couchbase"
     ) from e
 
+from epicstaff_common import require_setting, safe_error_message
+
 
 def embed(text: str) -> List[float]:
     """
@@ -23,9 +31,6 @@ def embed(text: str) -> List[float]:
 
 def main(
     query: str,
-    connection_string: str,
-    username: str,
-    password: str,
     bucket_name: str,
     scope_name: str,
     collection_name: str,
@@ -33,26 +38,30 @@ def main(
     embedding_key: str = "embedding",
     limit: int = 3,
     scoped_index: bool = True,
+    **kwargs,
 ) -> str:
-    authenticator = PasswordAuthenticator(username, password)
-    cluster = Cluster(connection_string, authenticator)
+    try:
+        authenticator = PasswordAuthenticator(
+            require_setting(globals(), "username"),
+            require_setting(globals(), "password"),
+        )
+        cluster = Cluster(require_setting(globals(), "connection_string"), authenticator)
 
-    bucket = cluster.bucket(bucket_name)
-    scope = bucket.scope(scope_name)
+        bucket = cluster.bucket(bucket_name)
+        scope = bucket.scope(scope_name)
 
-    query_embedding = embed(query)
+        query_embedding = embed(query)
 
-    search_request = search.SearchRequest.create(
-        VectorSearch.from_vector_query(
-            VectorQuery(
-                embedding_key,
-                query_embedding,
-                limit,
+        search_request = search.SearchRequest.create(
+            VectorSearch.from_vector_query(
+                VectorQuery(
+                    embedding_key,
+                    query_embedding,
+                    limit,
+                )
             )
         )
-    )
 
-    try:
         if scoped_index:
             result = scope.search(
                 index_name,
@@ -72,5 +81,5 @@ def main(
 
         return json.dumps(rows, indent=2)
 
-    except Exception as e:
-        return f"Search failed with error: {e}"
+    except Exception as error:
+        return f"Search failed with error: {safe_error_message(error)}"

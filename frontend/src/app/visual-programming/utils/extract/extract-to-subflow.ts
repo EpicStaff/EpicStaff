@@ -1,4 +1,4 @@
-import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import { generatePortsForNode, parsePortId } from '../../core/helpers/helpers';
@@ -139,6 +139,7 @@ function cloneNodesWithFreshIds(nodes: NodeModel[], oldIdToNewId: Map<string, st
             ...node,
             id: newId,
             backendId: null,
+            nodeUuid: generateUuid(),
             data: clonedData,
             input_map: clonedInputMap,
             ports: newPorts,
@@ -262,13 +263,12 @@ function createSubflowStartNode(selectedNodes: NodeModel[], entryPointNodeIds: S
     return {
         id: generateUuid(),
         backendId: null,
+        nodeUuid: generateUuid(),
         type: NodeType.START,
         node_name: '__start__',
         data: { initialState: {} },
         position: { x: leftmostX - START_NODE_HORIZONTAL_OFFSET, y: averageY },
         ports: null,
-        color: NODE_COLORS[NodeType.START],
-        icon: NODE_ICONS[NodeType.START],
         input_map: {},
         output_variable_path: null,
         size: getDefaultNodeSize(NodeType.START),
@@ -593,6 +593,7 @@ function createSubGraphNode(
     return {
         id: nodeId,
         backendId: null,
+        nodeUuid: generateUuid(),
         type: NodeType.SUBGRAPH,
         node_name: '',
         nodeNumber,
@@ -604,8 +605,6 @@ function createSubGraphNode(
         },
         position: { x: centroidX, y: centroidY },
         ports,
-        color: NODE_COLORS[NodeType.SUBGRAPH],
-        icon: NODE_ICONS[NodeType.SUBGRAPH],
         input_map: inputMap,
         output_variable_path: 'variables',
         size: getDefaultNodeSize(NodeType.SUBGRAPH),

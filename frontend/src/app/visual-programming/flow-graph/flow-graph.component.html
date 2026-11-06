@@ -10,11 +10,13 @@
         (contextmenu)="onContextMenu($event)"
         (click)="onFlowClick($event)"
         (pointerdown)="onFlowPointerDown($event)"
+        (pointermove)="onFlowPointerMove($event)"
         (mousedown)="onFlowMouseDown($event)"
         (pointerup)="onFlowPointerUp($event)"
+        [class.note-draw-mode]="noteDrawState()?.active"
         fDraggable
         [fMultiSelectTrigger]="selectionManager.multiSelectTrigger"
-        [fCanvasMoveTrigger]="selectionManager.canvasMoveTrigger"
+        [fCanvasMoveTrigger]="canvasMoveTrigger"
         [fNodeMoveTrigger]="editGestureTrigger"
         [fNodeResizeTrigger]="editGestureTrigger"
         [fNodeRotateTrigger]="editGestureTrigger"
@@ -136,6 +138,8 @@
                     (fNodePositionChange)="onNodePositionChanged($event, node)"
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
+                    (noteDoubleClicked)="onNoteDoubleClick($event)"
+                    (reselectAreaClicked)="onReselectNoteArea($event)"
                     (deleteClicked)="onDeleteNode($event)"
                     (unpackClicked)="onUnpackSubflow(node)"
                 >
@@ -146,6 +150,8 @@
                 connection of sortedConnections();
                 track connection.id + '-' + (routingOrchestrator.connectionRenderVersions()[connection.id] ?? 0)
             ) {
+                <!-- Native title on purpose (exception to the one-tooltip rule): a matTooltip would anchor to the edge's
+                     whole bounding box, and the title is the non-colour cue for an added or removed connection. -->
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
                     [fType]="flowSettings.edgeStyle()"
@@ -163,7 +169,11 @@
                     [class.is-backward]="routingOrchestrator.backwardConnectionIds().has(connection.id)"
                     [class.is-reassign-follower]="reassignHandler.followerIds().has(connection.id)"
                     [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.connectionIds.has(connection.id)"
-                    [style.z-index]="routingOrchestrator.backwardConnectionIds().has(connection.id) ? 0 : 1"
+                    [class.on-hover-path]="hoverContext()?.connectionIds.has(connection.id) ?? false"
+                    [class.diff-added]="flowDiffState.connectionStatus(connection.id) === 'added'"
+                    [class.diff-deleted]="flowDiffState.connectionStatus(connection.id) === 'deleted'"
+                    [class.diff-unchanged]="flowDiffState.connectionStatus(connection.id) === 'unchanged'"
+                    [attr.title]="connectionDiffTitle(connection.id)"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()
                             ? nodeColorMap().get(connection.sourceNodeId) || '#555'
@@ -265,6 +275,25 @@
                 [style.z-index]="node.id === hoveredNodeId() ? 1 : 0"
                 [class.is-active]="node.id === hoveredNodeId()"
             ></app-flow-node-variables-overlay>
+        }
+
+        <!-- Note linked-region highlight (hover or selected) -->
+        @if (activeNoteLinkedRegion(); as region) {
+            <app-note-region-highlight
+                [region]="region"
+                [resizable]="isNoteRegionResizable()"
+                (resizeStart)="onRegionResizeStart($event.event, $event.direction)"
+            />
+        }
+
+        <!-- Live draw rectangle (area-selection in progress) -->
+        @if (noteDrawRect(); as rect) {
+            <div
+                class="note-draw-overlay"
+                [style.transform]="'translate(' + rect.x + 'px,' + rect.y + 'px)'"
+                [style.width.px]="rect.width"
+                [style.height.px]="rect.height"
+            ></div>
         }
     </div>
 

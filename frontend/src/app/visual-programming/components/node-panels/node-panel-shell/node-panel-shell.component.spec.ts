@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, Validators } from '@angular/forms';
 import { AuthorshipDetailsDialogService, AuthorshipDetailsSource } from '@shared/components';
-import { NodeType, ResourceCode } from '@shared/models';
+import { NODE_COLORS, NODE_ICONS, NodeType, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
 
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
@@ -19,12 +19,20 @@ import {
 } from '../../../core/models/node.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { FlowService } from '../../../services/flow.service';
+import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { TRIGGER_NODES_NEED_USE_MESSAGE } from '../../../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { VersionPreviewNodeAuthorshipStore } from '../../../services/version-preview-node-authorship.store';
+import { MissingReference, NodeDiffStatus } from '../../../utils/diff';
 import { liveEnd, liveGraph, livePython, liveSubgraph } from '../../../utils/testing/live-graph.fixture';
+import { normalizedCssColor, WRONG_APPEARANCE } from '../../../utils/testing/node-appearance.fixture';
 import { FLOW_ACTIONS_WITHOUT_USE, grantPermissions } from '../../../utils/testing/permissions.fixture';
+import {
+    missingReference,
+    renderOnlyMissingReferenceNotes,
+    shownMissingReferenceNotes,
+} from '../../missing-reference-note/missing-reference-note.testing';
 import { EndNodePanelComponent } from '../end-node-panel/end-node-panel.component';
 import { PythonNodePanelComponent } from '../python-node-panel/python-node-panel.component';
 import { ScheduleTriggerNodePanelComponent } from '../schedule-trigger-node-panel/schedule-trigger-node-panel.component';
@@ -36,13 +44,12 @@ import { NodePanelShellComponent } from './node-panel-shell.component';
 const endNode: EndNodeModel = {
     id: 'end-1',
     backendId: null,
+    nodeUuid: 'node-uuid-end-1',
     type: NodeType.END,
     node_name: '__end_node__',
     data: { output_map: { answer: 'variables.answer' } },
     position: { x: 0, y: 0 },
     ports: null,
-    color: '',
-    icon: '',
     size: { width: 200, height: 100 },
     input_map: {},
     output_variable_path: null,
@@ -401,6 +408,7 @@ describe('NodePanelShellComponent', () => {
         const scheduleNode: ScheduleTriggerNodeModel = {
             id: 'schedule-1',
             backendId: null,
+            nodeUuid: 'node-uuid-schedule-1',
             type: NodeType.SCHEDULE_TRIGGER,
             node_name: 'Schedule #1',
             data: {
@@ -418,8 +426,6 @@ describe('NodePanelShellComponent', () => {
             },
             position: { x: 0, y: 0 },
             ports: null,
-            color: '',
-            icon: '',
             size: { width: 200, height: 100 },
             input_map: {},
             output_variable_path: null,
@@ -521,6 +527,137 @@ describe('NodePanelShellComponent', () => {
         });
     });
 
+    describe('Changes tab of a version preview', () => {
+        const subgraphNode = {
+            ...endNode,
+            id: 'subgraph-1',
+            type: NodeType.SUBGRAPH,
+            node_name: 'Billing',
+            data: { id: null, name: '' },
+        } as unknown as SubGraphNodeModel;
+
+        type NodeDiff = { status: NodeDiffStatus; missingReferences?: MissingReference[] };
+
+        /**
+         * Opens the node on a canvas that shows `diff` (`null`: the Preview tab or the live editor). `otherNodes`
+         * are on the same diff canvas, for a switch to another node.
+         */
+        async function openOn(
+            node: NodeModel,
+            diff: NodeDiff | null,
+            isPreview = true,
+            otherNodes: { node: NodeModel; diff: NodeDiff }[] = []
+        ): Promise<ComponentFixture<NodePanelShellComponent>> {
+            TestBed.configureTestingModule({
+                providers: [
+                    provideLoadedExecutionTimeoutLimits(),
+                    { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
+                    { provide: PermissionsService, useValue: { can: () => true } },
+                    { provide: FlowsApiService, useValue: { getGraphsLight: () => of([]) } },
+                    NodeAuthorshipStore,
+                ],
+                errorOnUnknownProperties: false,
+            });
+            TestBed.overrideComponent(EndNodePanelComponent, { set: { template: '', imports: [] } });
+            renderOnlyMissingReferenceNotes(SubGraphNodePanelComponent);
+            TestBed.inject(FlowDiffStateService).setState(
+                diff && {
+                    nodes: new Map(
+                        [{ node, diff }, ...otherNodes].map((entry) => [
+                            entry.node.id,
+                            {
+                                status: entry.diff.status,
+                                fields: [],
+                                missingReferences: entry.diff.missingReferences ?? [],
+                            },
+                        ])
+                    ),
+                    connections: new Map(),
+                    versionOnlyPortIds: new Set(),
+                    currentOnlyRoutePortIds: new Set(),
+                    nodeIdByKey: new Map(),
+                }
+            );
+            TestBed.inject(FlowService).setFlow({
+                nodes: [node, ...otherNodes.map((other) => other.node)],
+                connections: [],
+            });
+            TestBed.inject(SidePanelService).setSelectedNodeId(node.id);
+
+            const fixture = TestBed.createComponent(NodePanelShellComponent);
+            fixture.componentRef.setInput('node', node);
+            await settle(fixture);
+            return fixture;
+        }
+
+        /** The shell picks up the panel instance in a setTimeout(0) after the outlet renders. */
+        async function settle(fixture: ComponentFixture<NodePanelShellComponent>): Promise<void> {
+            fixture.detectChanges();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            fixture.detectChanges();
+        }
+
+        const noteTexts = (fixture: ComponentFixture<NodePanelShellComponent>): string[] =>
+            shownMissingReferenceNotes(fixture.nativeElement).map(({ text }) => text);
+
+        const banner = (fixture: ComponentFixture<NodePanelShellComponent>): HTMLElement | null =>
+            fixture.nativeElement.querySelector('[role="status"].diff-banner');
+
+        it.each([
+            { status: 'added' as const, text: 'Restore adds this node.' },
+            { status: 'deleted' as const, text: 'Restore removes this node.' },
+        ])('says under the header what a restore does to an $status node', async ({ status, text }) => {
+            const fixture = await openOn(endNode, { status });
+
+            expect(banner(fixture)?.textContent?.trim()).toBe(text);
+        });
+
+        it.each(['changed', 'unchanged'] as const)('has no banner for a %s node', async (status) => {
+            expect(banner(await openOn(endNode, { status }))).toBeNull();
+        });
+
+        it('has no banner on the Preview tab, nor in the live editor', async () => {
+            expect(banner(await openOn(endNode, null))).toBeNull();
+            TestBed.resetTestingModule();
+            expect(banner(await openOn(endNode, null, false))).toBeNull();
+        });
+
+        it("hands the open node's diff to the panel, so a note under its field names what is missing", async () => {
+            const fixture = await openOn(subgraphNode, {
+                status: 'unchanged',
+                missingReferences: [missingReference('subgraph', 17)],
+            });
+
+            expect(noteTexts(fixture)).toEqual(['This version uses flow #17; it no longer exists.']);
+        });
+
+        it("follows the open node: a switch to another node shows that node's missing references", async () => {
+            const otherSubgraphNode = { ...subgraphNode, id: 'subgraph-2', node_name: 'Payroll' };
+            const fixture = await openOn(
+                subgraphNode,
+                { status: 'unchanged', missingReferences: [missingReference('subgraph', 17)] },
+                true,
+                [
+                    {
+                        node: otherSubgraphNode,
+                        diff: { status: 'changed', missingReferences: [missingReference('subgraph', 23)] },
+                    },
+                ]
+            );
+
+            fixture.componentRef.setInput('node', otherSubgraphNode);
+            await settle(fixture);
+
+            expect(noteTexts(fixture)).toEqual(['This version uses flow #23; it no longer exists.']);
+        });
+
+        it('hands the panel no diff on the Preview tab, so no note shows', async () => {
+            const fixture = await openOn(subgraphNode, null);
+
+            expect(noteTexts(fixture)).toEqual([]);
+        });
+    });
+
     describe('expand button', () => {
         // Only the expand-button rule is under test: services are stubbed and the template emptied.
         const shellFor = (type: NodeType): NodePanelShellComponent => {
@@ -574,8 +711,6 @@ describe('NodePanelShellComponent', () => {
             test_input: {},
             position: { x: 0, y: 0 },
             ports: null,
-            color: '',
-            icon: '',
             size: { width: 200, height: 100 },
             input_map: {},
             output_variable_path: null,
@@ -730,6 +865,19 @@ describe('NodePanelShellComponent', () => {
             detailsButton(fixture)!.click();
 
             expect(open).toHaveBeenCalledWith('Node Details', UNKNOWN, detailsButton(fixture));
+        });
+    });
+
+    describe('header', () => {
+        it("shows the type icon and colour, not the node's own", async () => {
+            const fixture = await mount(false);
+            fixture.componentRef.setInput('node', { ...endNode, ...WRONG_APPEARANCE } as unknown as NodeModel);
+            fixture.detectChanges();
+
+            const icon: HTMLElement = fixture.nativeElement.querySelector('.icon-and-title i');
+
+            expect(icon.className).toBe(NODE_ICONS[NodeType.END]);
+            expect(icon.style.color).toBe(normalizedCssColor(NODE_COLORS[NodeType.END]));
         });
     });
 });

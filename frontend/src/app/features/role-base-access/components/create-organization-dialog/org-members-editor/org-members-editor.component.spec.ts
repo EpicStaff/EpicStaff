@@ -5,6 +5,13 @@ import { AppTableComponent, TableRow } from '@shared/components';
 import { AdminCreateUserResponse, GetRoleResponse, UserRole } from '@shared/models';
 import { of } from 'rxjs';
 
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../../services/auth/profile.service';
 import { ToastService } from '../../../../../services/notifications';
@@ -170,16 +177,6 @@ function render(users: AdminCreateUserResponse[], mode: { isEditMode: boolean; o
 const CREATE_MODE = { isEditMode: false, organizationId: null };
 const EDIT_MODE = { isEditMode: true, organizationId: ORG_ID };
 
-/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
-class ResizeObserverStub {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-}
-
-beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
-afterEach(() => vi.unstubAllGlobals());
-
 describe('OrgMembersEditorComponent "Role for selected" bulk dropdown', () => {
     it('renders next to the search with the assignable roles and no default', () => {
         const { fixture, component } = render([user(SELF_ID), user(2)], CREATE_MODE);
@@ -251,7 +248,7 @@ describe('OrgMembersEditorComponent "Role for selected" bulk dropdown', () => {
         expect(selectedRole(4)).toBe(UserRole.MEMBER);
     });
 
-    it('re-applies a re-picked bulk role to all currently selected rows', () => {
+    it('preserves a manual per-row override when the bulk role is re-picked', () => {
         const { toggle, pickBulkRole, pickRowRole, selectedRole } = render(
             [user(SELF_ID), user(2), user(3)],
             CREATE_MODE
@@ -263,7 +260,7 @@ describe('OrgMembersEditorComponent "Role for selected" bulk dropdown', () => {
         pickRowRole(2, UserRole.VIEWER);
         pickBulkRole(UserRole.MEMBER);
 
-        expect(selectedRole(2)).toBe(UserRole.MEMBER);
+        expect(selectedRole(2)).toBe(UserRole.VIEWER);
         expect(selectedRole(3)).toBe(UserRole.MEMBER);
     });
 
@@ -289,7 +286,7 @@ describe('OrgMembersEditorComponent "Role for selected" bulk dropdown', () => {
 
         expect(selectedRole(SELF_ID)).toBe(UserRole.ORG_ADMIN);
         expect(row(SELF_ID)['role']).toBe(UserRole.ORG_ADMIN);
-        expect(selectedRole(2)).toBe(UserRole.MEMBER);
+        expect(selectedRole(2)).toBe(UserRole.VIEWER);
     });
 
     it('keeps the original role of an existing member that was not selected at bulk time', () => {
@@ -302,7 +299,7 @@ describe('OrgMembersEditorComponent "Role for selected" bulk dropdown', () => {
         toggle(2);
         pickBulkRole(UserRole.MEMBER);
         expect(row(2)['role']).toBe(UserRole.VIEWER);
-        expect(selectedRole(3)).toBe(UserRole.MEMBER);
+        expect(selectedRole(3)).toBe(UserRole.ORG_ADMIN);
 
         toggle(2);
         expect(selectedRole(2)).toBe(UserRole.VIEWER);
@@ -310,7 +307,7 @@ describe('OrgMembersEditorComponent "Role for selected" bulk dropdown', () => {
 });
 
 describe('OrgMembersEditorComponent commit after a bulk role', () => {
-    it('updates only changed existing members, creates only new rows and never touches the own membership', () => {
+    it('creates only new role-less rows and removes deselected members without touching existing roles', () => {
         const { memberships, toggle, pickBulkRole, commit } = render(
             [
                 member(SELF_ID, UserRole.ORG_ADMIN),
@@ -328,7 +325,7 @@ describe('OrgMembersEditorComponent commit after a bulk role', () => {
 
         commit();
 
-        expect(memberships.updateRole.mock.calls).toEqual([[membershipIdOf(2), { role_id: UserRole.MEMBER }]]);
+        expect(memberships.updateRole).not.toHaveBeenCalled();
         expect(memberships.create.mock.calls).toEqual([[{ org_id: ORG_ID, user_id: 5, role_id: UserRole.MEMBER }]]);
         expect(memberships.remove.mock.calls).toEqual([[membershipIdOf(4)]]);
     });
@@ -346,7 +343,7 @@ describe('OrgMembersEditorComponent commit after a bulk role', () => {
 
         commit();
 
-        expect(memberships.updateRole.mock.calls).toEqual([[membershipIdOf(2), { role_id: UserRole.VIEWER }]]);
+        expect(memberships.updateRole).not.toHaveBeenCalled();
         expect(memberships.create.mock.calls).toEqual([[{ org_id: ORG_ID, user_id: 3, role_id: UserRole.VIEWER }]]);
         expect(memberships.remove).not.toHaveBeenCalled();
     });
@@ -460,7 +457,7 @@ describe('OrgMembersEditorComponent search', () => {
         expect(selectedIds()).toEqual([SELF_ID, 2, 3]);
 
         pickBulkRole(UserRole.VIEWER);
-        expect(row(2)['role']).toBe(UserRole.VIEWER);
+        expect(row(2)['role']).toBe(UserRole.MEMBER);
         expect(row(SELF_ID)['role']).toBe(UserRole.ORG_ADMIN);
 
         toggleAll();

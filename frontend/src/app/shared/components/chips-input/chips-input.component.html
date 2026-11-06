@@ -46,7 +46,7 @@
     }
 
     @if (readOnly() && value().length === 0) {
-        <span class="chips-empty">No libraries</span>
+        <span class="chips-empty">{{ readOnlyEmptyText() }}</span>
     }
 
     <div class="chips">

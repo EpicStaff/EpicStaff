@@ -1,4 +1,5 @@
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime
 
 from django.contrib.auth import get_user_model
@@ -21,6 +22,7 @@ from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
     _DEPENDENCY_MODELS,
     _EXCLUDED_GRAPH_SCALARS,
+    _ORG_CHECKED_DEPENDENCY_TYPES,
     _VENV_CODE_FIELDS_BY_NODE_TYPE,
 )
 from tables.graph_versioning.handlers import HANDLER_REGISTRY, _MissingSets
@@ -50,6 +52,25 @@ from tables.services.persistent_variables_service import (
 )
 from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
+
+_TELEGRAM_BOT_KEY_FIELD = "telegram_bot_api_key_secret"
+
+# Shared by restore and preview, so both report a secret that no longer resolves in the
+# same words.
+_SECRET_GONE_REASON = "it no longer exists in this organization."
+_TELEGRAM_SECRET_GONE_REASON = (
+    "it no longer exists in this organization, so the bot token is left empty."
+)
+
+
+@dataclass(frozen=True)
+class _PreviewDeclaration:
+    """One declared field of a snapshot node: the names it declares and how to word a loss."""
+
+    node: dict
+    field: str
+    names: list[str]
+    reason_suffix: str
 
 
 class GraphVersioningManager:
@@ -98,20 +119,22 @@ class GraphVersioningManager:
     ) -> list[dict]:
         """Re-link the declarations a snapshot recorded, warning about the rest.
 
-        No secrets:USE check here for a person — intentional, not a gap. Restoring a
-        version (or creating a flow from one) only reproduces a secret binding that
-        already existed in this org at some point; it never grants a person access to
-        anything new. This is the third of three paths our secrets-permission guard
-        deliberately leaves reachable without secrets:USE, per spec sec5 — see
-        TestUngatedPathsStayUngated in
-        tests/services_tests/test_secret_reference_coverage.py for the other two
-        (copy_python_code, bulk-save node deletion) and the same rationale. Do not
-        add a secrets:USE check here without revisiting that design decision first.
+        Restoring a version, or creating a flow from one, hands the restoring user
+        code that reads the secrets it declares, in a flow they can then edit and run.
+        So the caller needs secrets:USE to restore a version whose code declares any
+        secret, even one purged or binned since: it can come back later, and the code
+        reads it again. The restore and create-graph endpoints refuse one without it
+        before anything is written (`GraphVersionViewSet._check_secret_code_may_be_recreated`,
+        through `SecretCodeAccess`), so a person reaching here may re-link every declaration; a declaration whose
+        secret is gone links nothing and is warned about. A Telegram trigger's bot token is
+        not gated: it is only ever sent to Telegram's fixed host, and editing the node
+        keeps it without the permission.
 
-        A plugin's service account is different: `create_graph_from_version` would make
-        it the owner of a new node bound by name to a secret it never created, which it
-        may then read by running the flow. So a secret a pinned principal (`user`) may
-        not reference is dropped and warned about, never re-linked.
+        A plugin's service account needs secrets:USE like anyone, and is limited further:
+        `create_graph_from_version` would make it the owner of a new node bound by name
+        to a secret it never created, which it may then read by running the flow. So a
+        secret a pinned principal (`user`) may not reference is dropped and warned
+        about, never re-linked.
         """
         if not declarations:
             return []
@@ -159,15 +182,20 @@ class GraphVersioningManager:
     def _restore_node_declarations(
         self, *, graph: Graph, recorded: dict, node_mapper: IDMapper, principal=None
     ) -> list[dict]:
+        # Warnings carry the snapshot node id: change_old_warnings_ids maps it to the
+        # restored id afterwards, or drops it when the node was not restored.
         warnings: list[dict] = []
         for old_node_id, by_code_field in recorded.items():
-            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
+            snapshot_node_id = int(old_node_id)
+            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, snapshot_node_id)
             for code_field, names in by_code_field.items():
                 if new_node_id is None:
                     warnings.extend(
                         self._dropped(
                             names=names,
                             node_name=f"node #{old_node_id}",
+                            node_id=snapshot_node_id,
+                            field=code_field,
                             reason_suffix=(
                                 "its node was not restored, so the declaration "
                                 "had nowhere to attach."
@@ -181,6 +209,8 @@ class GraphVersioningManager:
                         self._dropped(
                             names=names,
                             node_name=f"node #{new_node_id}",
+                            node_id=snapshot_node_id,
+                            field=code_field,
                             reason_suffix=(
                                 f"no restored node carries a '{code_field}' to "
                                 "attach the declaration to."
@@ -194,6 +224,8 @@ class GraphVersioningManager:
                         names=names,
                         org_id=graph.org_id,
                         node_name=getattr(row, "node_name", None) or f"node #{new_node_id}",
+                        node_id=snapshot_node_id,
+                        field=code_field,
                         principal=principal,
                     )
                 )
@@ -219,7 +251,8 @@ class GraphVersioningManager:
     ) -> list[dict]:
         warnings: list[dict] = []
         for old_node_id, name in recorded.items():
-            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
+            snapshot_node_id = int(old_node_id)
+            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, snapshot_node_id)
             node = (
                 None
                 if new_node_id is None
@@ -230,6 +263,8 @@ class GraphVersioningManager:
                     self._dropped(
                         names=[name],
                         node_name=f"node #{old_node_id}",
+                        node_id=snapshot_node_id,
+                        field=_TELEGRAM_BOT_KEY_FIELD,
                         reason_suffix="its node was not restored.",
                     )
                 )
@@ -241,20 +276,33 @@ class GraphVersioningManager:
                     self._dropped(
                         names=missing,
                         node_name=node.node_name,
-                        reason_suffix=(
-                            "it no longer exists in this organization, so the "
-                            "bot token was not restored."
-                        ),
+                        node_id=snapshot_node_id,
+                        field=_TELEGRAM_BOT_KEY_FIELD,
+                        reason_suffix=_TELEGRAM_SECRET_GONE_REASON,
                     )
                 )
                 continue
             allowed, denied = self._referenceable(principal, resolved, graph=graph)
             if denied:
-                warnings.extend(self._not_referenceable(secrets=denied, node_name=node.node_name))
+                warnings.extend(
+                    self._not_referenceable(
+                        secrets=denied,
+                        node_name=node.node_name,
+                        node_id=snapshot_node_id,
+                        field=_TELEGRAM_BOT_KEY_FIELD,
+                    )
+                )
                 continue
             node.telegram_bot_api_key_secret = allowed[0]
-            node.save(update_fields=["telegram_bot_api_key_secret"])
-            warnings.extend(self._binned(secrets=allowed, node_name=node.node_name))
+            node.save(update_fields=[_TELEGRAM_BOT_KEY_FIELD])
+            warnings.extend(
+                self._binned(
+                    secrets=allowed,
+                    node_name=node.node_name,
+                    node_id=snapshot_node_id,
+                    field=_TELEGRAM_BOT_KEY_FIELD,
+                )
+            )
         return warnings
 
     def _link(
@@ -264,6 +312,8 @@ class GraphVersioningManager:
         names: list[str],
         org_id: int,
         node_name: str,
+        node_id: int,
+        field: str,
         principal=None,
     ) -> list[dict]:
         """Attach every name that still resolves and the caller may reference; warn about the rest."""
@@ -271,14 +321,11 @@ class GraphVersioningManager:
         allowed, denied = self._referenceable(principal, resolved, org_id=org_id)
         # Through all_objects: a binned link the version doesn't have must go too.
         python_code.secrets(manager="all_objects").set(allowed)
+        anchor = {"node_name": node_name, "node_id": node_id, "field": field}
         return (
-            self._binned(secrets=allowed, node_name=node_name)
-            + self._not_referenceable(secrets=denied, node_name=node_name)
-            + self._dropped(
-                names=missing,
-                node_name=node_name,
-                reason_suffix="it no longer exists in this organization.",
-            )
+            self._binned(secrets=allowed, **anchor)
+            + self._not_referenceable(secrets=denied, **anchor)
+            + self._dropped(names=missing, reason_suffix=_SECRET_GONE_REASON, **anchor)
         )
 
     @staticmethod
@@ -305,12 +352,21 @@ class GraphVersioningManager:
         return allowed, denied
 
     @staticmethod
-    def _not_referenceable(*, secrets: list[Secret], node_name: str) -> list[dict]:
-        """One warning per secret a restoring plugin may not reference, so it is not re-linked."""
+    def _not_referenceable(
+        *, secrets: list[Secret], node_name: str, node_id: int, field: str
+    ) -> list[dict]:
+        """One warning per secret a restoring plugin may not reference, so it is not re-linked.
+
+        Anchored like ``_dropped``'s warnings, with the same type, so ``missing_name``
+        names the secret whose declaration was not restored.
+        """
         return [
             {
                 "type": "secret_declaration_dropped",
                 "node_name": node_name,
+                "node_id": node_id,
+                "field": field,
+                "missing_name": secret.name,
                 "reason": (
                     f'Secret "{secret.name}" was declared when this version was saved, but '
                     "the credential restoring it may not use that secret. The declaration "
@@ -321,12 +377,19 @@ class GraphVersioningManager:
         ]
 
     @staticmethod
-    def _binned(*, secrets: list[Secret], node_name: str) -> list[dict]:
-        """One warning per restored link to a secret in the recycle bin: linked, but unreadable."""
+    def _binned(*, secrets: list[Secret], node_name: str, node_id: int, field: str) -> list[dict]:
+        """One warning per link to a secret in the recycle bin: linked, but unreadable.
+
+        Shared by restore and preview. Anchored like ``_dropped``'s warnings: ``node_id``
+        is the snapshot node id and ``field`` the code field (or the Telegram bot key
+        field) that declared the secret.
+        """
         return [
             {
                 "type": "secret_in_recycle_bin",
                 "node_name": node_name,
+                "node_id": node_id,
+                "field": field,
                 "reason": (
                     f'Secret "{secret.name}" is in the recycle bin. It was linked again; '
                     "restore it from the Recycle Bin for the code to read it."
@@ -337,23 +400,121 @@ class GraphVersioningManager:
         ]
 
     @staticmethod
-    def _dropped(*, names: list[str], node_name: str, reason_suffix: str) -> list[dict]:
+    def _dropped(
+        *, names: list[str], node_name: str, node_id: int, field: str, reason_suffix: str
+    ) -> list[dict]:
         """One warning per lost declaration, shaped like the dependency warnings.
 
-        Same keys the restore response already carries, so the caller renders these
-        with no change on its side.
+        Anchored like the other node warnings: ``node_id`` is the snapshot node id,
+        ``field`` the code field (or the Telegram bot key field) that declared the name,
+        and ``missing_name`` the secret name that was lost.
         """
         return [
             {
                 "type": "secret_declaration_dropped",
                 "node_name": node_name,
+                "node_id": node_id,
+                "field": field,
+                "missing_name": name,
                 "reason": (
                     f'Secret "{name}" was declared when this version was saved, '
-                    f"but {reason_suffix} The declaration was not restored."
+                    f"but {reason_suffix} The declaration is dropped."
                 ),
             }
             for name in names
         ]
+
+    def resolve_secret_declarations(
+        self, *, declarations: dict | None, snapshot_nodes: list[dict], org_id: int
+    ) -> tuple[dict[str, int], list[dict]]:
+        """Resolve a snapshot's declared secret names the way a restore would, writing nothing.
+
+        Uses the restore's org-scoped name lookup (``_resolve_names``), one query for every
+        name declared by a node in ``snapshot_nodes``, with no permission check, like a
+        restore. Declarations of nodes not in ``snapshot_nodes`` (filtered out of the
+        preview) are skipped: there is no node to anchor them to. Never returns secret
+        values, and only names the declarations already hold.
+
+        Returns:
+            The declared names that resolve in ``org_id``, mapped to their secret ids, and
+            the warnings a restore would give: one ``secret_declaration_dropped`` (see
+            ``_dropped``) per declared name that does not resolve, and one
+            ``secret_in_recycle_bin`` (see ``_binned``) per declared name that resolves to
+            a secret in the recycle bin. A binned name is still in the map: a restore
+            links it again.
+        """
+        if not declarations:
+            return {}, []
+
+        preview_declarations = self._preview_declarations(
+            declarations=declarations, snapshot_nodes=snapshot_nodes
+        )
+        declared_names = sorted(
+            {name for declaration in preview_declarations for name in declaration.names}
+        )
+        if not declared_names:
+            return {}, []
+
+        resolved, _ = self._resolve_names(names=declared_names, org_id=org_id)
+        resolved_by_name = {secret.name: secret for secret in resolved}
+
+        warnings: list[dict] = []
+        for declaration in preview_declarations:
+            node_id = declaration.node["id"]
+            node_name = declaration.node.get("node_name") or f"node #{node_id}"
+            warnings.extend(
+                self._binned(
+                    secrets=[
+                        resolved_by_name[name]
+                        for name in declaration.names
+                        if name in resolved_by_name
+                    ],
+                    node_name=node_name,
+                    node_id=node_id,
+                    field=declaration.field,
+                )
+            )
+            warnings.extend(
+                self._dropped(
+                    names=[name for name in declaration.names if name not in resolved_by_name],
+                    node_name=node_name,
+                    node_id=node_id,
+                    field=declaration.field,
+                    reason_suffix=declaration.reason_suffix,
+                )
+            )
+        resolved_ids = {name: secret.id for name, secret in resolved_by_name.items()}
+        return resolved_ids, warnings
+
+    @staticmethod
+    def _preview_declarations(
+        *, declarations: dict, snapshot_nodes: list[dict]
+    ) -> list[_PreviewDeclaration]:
+        nodes_by_id = {node["id"]: node for node in snapshot_nodes}
+        preview_declarations: list[_PreviewDeclaration] = []
+        for node_id, by_code_field in (declarations.get("nodes") or {}).items():
+            node = nodes_by_id.get(int(node_id))
+            if node is None:
+                continue
+            preview_declarations.extend(
+                _PreviewDeclaration(
+                    node=node, field=code_field, names=names, reason_suffix=_SECRET_GONE_REASON
+                )
+                for code_field, names in by_code_field.items()
+            )
+        for node_id, name in (declarations.get("telegram") or {}).items():
+            node = nodes_by_id.get(int(node_id))
+            if node is None:
+                continue
+            preview_declarations.append(
+                _PreviewDeclaration(
+                    node=node,
+                    field=_TELEGRAM_BOT_KEY_FIELD,
+                    names=[name],
+                    reason_suffix=_TELEGRAM_SECRET_GONE_REASON,
+                )
+            )
+        return preview_declarations
 
     @staticmethod
     def _collect_telegram_secrets(graph: Graph) -> dict[str, str]:
@@ -572,8 +733,8 @@ class GraphVersioningManager:
 
         Args:
             dependencies: Recorded dependency ids, keyed by ``EntityType.value``.
-            org_id: Organization the restore happens in — a venv binding outside it
-                reads as missing.
+            org_id: Organization the restore happens in — a venv binding or System One
+                config outside it reads as missing.
         """
         available_deps: dict[str, list[int]] = {}
         missing_deps: dict[str, list[int]] = {}
@@ -590,7 +751,7 @@ class GraphVersioningManager:
 
             candidates = model.objects.filter(id__in=ids)
 
-            if entity_type_value == EntityType.VENV.value:
+            if entity_type_value in _ORG_CHECKED_DEPENDENCY_TYPES:
                 candidates = candidates.filter(org_visible_q(model, org_id))
 
             existing_ids = set(candidates.values_list("id", flat=True))
@@ -780,7 +941,40 @@ class GraphVersioningManager:
                         "type": "venv_ref_cleared",
                         "node_name": node.get("node_name") or node.get("node_type"),
                         "node_id": node.get("id"),
+                        # The code slot and the venv it lost, so the preview can show which
+                        # code of a node loses which venv.
+                        "field": code_field,
+                        "missing_id": venv_id,
                         "reason": "venv not found or not in org",
+                    }
+                )
+
+        return warnings
+
+    def _clean_system_one_config_refs(
+        self, snapshot_nodes: list[dict], allowed_config_ids: set
+    ) -> list[dict]:
+        """Null any CDT prompt's System One config that isn't in ``allowed_config_ids``
+        (deleted or of another organization). The entry keeps its kind and questions; like
+        an entry whose config was deleted, a run fails on it until a config is chosen."""
+        warnings: list[dict] = []
+
+        for node in snapshot_nodes:
+            if node.get("node_type") != NodeType.CLASSIFICATION_DECISION_TABLE_NODE:
+                continue
+            for prompt in node.get("prompt_configs") or []:
+                config_id = prompt.get("system_one_config")
+                if config_id is None or config_id in allowed_config_ids:
+                    continue
+                prompt["system_one_config"] = None
+                warnings.append(
+                    {
+                        "type": "system_one_config_ref_cleared",
+                        "node_name": node.get("node_name") or node.get("node_type"),
+                        "node_id": node.get("id"),
+                        "prompt_key": prompt.get("prompt_key"),
+                        "missing_id": config_id,
+                        "reason": "System One config not found or not in org",
                     }
                 )
 
@@ -982,9 +1176,10 @@ class GraphVersioningManager:
             missing: Recorded dependency ids that no longer resolve, keyed by
                 ``EntityType.value``.
             available: Recorded dependency ids that still resolve for this
-                organization, keyed the same way. Venv references are checked against
-                this rather than against ``missing``: a snapshot can name a venv that
-                its recorded dependencies never listed.
+                organization, keyed the same way. Venv and System One config references
+                are checked against this rather than against ``missing``: a snapshot can
+                name one that its recorded dependencies never listed, and it is cleared
+                unless ``resolve_venv_availability`` (venvs only) added it here.
         """
         filtered_snapshot = deepcopy(snapshot)
         warnings: list[dict] = []
@@ -1007,6 +1202,13 @@ class GraphVersioningManager:
             self._clean_venv_refs(
                 filtered_snapshot["nodes"],
                 set(available.get(EntityType.VENV.value, [])),
+            )
+        )
+
+        warnings.extend(
+            self._clean_system_one_config_refs(
+                filtered_snapshot["nodes"],
+                set(available.get(EntityType.SYSTEM_ONE_CONFIG.value, [])),
             )
         )
 
@@ -1035,6 +1237,8 @@ class GraphVersioningManager:
             filtered_snapshot,
             id_mapper,
             user=user,
+            # The restored nodes are the version's nodes, so a diff can match them.
+            keep_node_uuids=True,
             preserve_node_numbers=True,
         )
 
@@ -1133,6 +1337,8 @@ class GraphVersioningManager:
             },
             id_mapper,
             user=user,
+            # A new flow: its nodes are new, not the version's.
+            keep_node_uuids=False,
         )
         record_last_edit(graph, user)
 
