@@ -7,16 +7,17 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from http import HTTPStatus
 
 import anyio
 from fastmcp import Client
 from loguru import logger
-from mcp import McpError
+from mcp import MCPError
+from mcp.types import INTERNAL_ERROR, REQUEST_TIMEOUT
+from mcp.types.version import HANDSHAKE_PROTOCOL_VERSIONS
 
 from app.exceptions import McpToolError
 from app.logging_utils import format_exception_for_log
-from app.tools.mcp.client_factory import FastMCPClientFactory
+from app.tools.mcp.client_factory import FastMCPClientFactory, http_error_status
 from app.tools.mcp.schema_sanitizer import (
     MAX_TEXT_CHARS,
     UnsafeSchemaError,
@@ -25,7 +26,7 @@ from app.tools.mcp.schema_sanitizer import (
 )
 from shared.models.tools import McpToolData
 
-_CANCEL_SEND_TIMEOUT_SECONDS = 5
+_CANCEL_CONFIRM_TIMEOUT_SECONDS = 5
 _MAX_CACHED_DESCRIPTIONS = 256
 
 
@@ -107,7 +108,8 @@ class McpToolGateway:
 
         except Exception as error:
             raise McpToolError(
-                f"MCP server unreachable for tool_name={data.tool_name}: {error}"
+                f"MCP server unreachable for tool_name={data.tool_name}: "
+                f"{self._failure_reason(client, error)}"
             ) from error
 
         tool = next((t for t in tools if t.name == data.tool_name), None)
@@ -124,7 +126,9 @@ class McpToolGateway:
         description = f"[external MCP tool description] {cleaned or data.tool_name}"
 
         try:
-            input_schema = sanitize_input_schema(dict(tool.inputSchema)) if tool.inputSchema else {}
+            input_schema = (
+                sanitize_input_schema(dict(tool.input_schema)) if tool.input_schema else {}
+            )
         except UnsafeSchemaError as error:
             # No transport here: the URL can carry credentials, and this message
             # reaches the client through the run's error event.
@@ -142,7 +146,7 @@ class McpToolGateway:
 
         btype = getattr(block, "type", None) or type(block).__name__
         data = getattr(block, "data", None)
-        mime = getattr(block, "mimeType", None)
+        mime = getattr(block, "mime_type", None)
 
         if isinstance(data, str) and data:
             kb = max(1, (len(data) * 3 // 4) // 1024)  # base64 -> ~bytes -> KB
@@ -158,11 +162,14 @@ class McpToolGateway:
         """Invoke the MCP tool and return its output as a string.
 
         When the call is abandoned while the server may still be running it (the
-        session read timeout fires, or this coroutine is cancelled), a best-effort
-        notifications/cancelled is sent before the session closes: servers on
-        mcp < 1.27 keep running in-flight tools after the session ends. Sending it
-        can delay the caller's own timeout (tool_timeout / max_execution_time via
-        wait_for) by up to _CANCEL_SEND_TIMEOUT_SECONDS.
+        session read timeout fires, or this coroutine is cancelled), the mcp SDK
+        cancels it on the server. On a handshake-era connection that cancel is a
+        separate notifications/cancelled, so a ping then confirms it was delivered
+        before the session closes, because servers on mcp < 1.27 keep running
+        in-flight tools after the session ends. Abandoning can delay the caller's
+        own timeout (tool_timeout / max_execution_time via wait_for) by about 10 s
+        at worst: the SDK bounds its shielded write of the cancel at 5 s, then the
+        ping is bounded by _CANCEL_CONFIRM_TIMEOUT_SECONDS.
 
         Raises McpToolError on tool-reported errors, connection failures or timeouts.
         """
@@ -170,27 +177,20 @@ class McpToolGateway:
 
         try:
             async with client:
-                # Private attribute: no public API exposes an in-flight request id
-                # (fastmcp 3.4.7, mcp 1.30). The value read right before the call
-                # is the id the tools/call request is sent with.
-                request_id = client.session._request_id
                 try:
                     result = await client.call_tool(data.tool_name, arguments=args)
-                except McpError as error:
-                    if error.error.code == HTTPStatus.REQUEST_TIMEOUT:
-                        await self._cancel_in_flight(
-                            client, request_id, data.tool_name, "client read timeout"
-                        )
+                except MCPError as error:
+                    if error.code == REQUEST_TIMEOUT:
+                        await self._confirm_cancel_delivered(client, data.tool_name)
                     raise
                 except asyncio.CancelledError:
-                    await self._cancel_in_flight(
-                        client, request_id, data.tool_name, "client cancelled the call"
-                    )
+                    await self._confirm_cancel_delivered(client, data.tool_name)
                     raise
 
         except Exception as error:
             raise McpToolError(
-                f"MCP call failed for tool_name={data.tool_name}: {error}"
+                f"MCP call failed for tool_name={data.tool_name}: "
+                f"{self._failure_reason(client, error)}"
             ) from error
 
         if result.is_error:
@@ -205,28 +205,38 @@ class McpToolGateway:
         return str(result.data)
 
     @staticmethod
-    async def _cancel_in_flight(
-        client: Client, request_id: int, tool_name: str, reason: str
-    ) -> None:
+    def _failure_reason(client: Client, error: Exception) -> str:
+        # On the stateless protocol a read timeout surfaces as httpx2.ReadTimeout,
+        # whose message is empty; the class name is then the only reason.
+        reason = str(error) or type(error).__name__
+        # mcp 2 turns a 4xx/5xx without a JSON-RPC error into a generic
+        # INTERNAL_ERROR, so the recorded status is what names the cause.
+        status = http_error_status(client)
+        if status and isinstance(error, MCPError) and error.code == INTERNAL_ERROR:
+            return f"{reason} ({status})"
+        return reason
+
+    @staticmethod
+    async def _confirm_cancel_delivered(client: Client, tool_name: str) -> None:
+        # The stateless protocol has no session to outlive the call and no ping: the
+        # SDK cancels by closing the request's own response stream.
+        if client.protocol_version not in HANDSHAKE_PROTOCOL_VERSIONS:
+            return
+        # The SDK only queues its notifications/cancelled on the transport. The
+        # transports POST messages in order, so the ping response proves the cancel
+        # POST completed before the session's DELETE goes out on exit.
         # Shielded against anyio scope cancellation, which re-fires at every await;
         # a native asyncio cancel fires once and is already consumed here. Bounded
         # so an unresponsive server cannot stall the caller.
-        with anyio.move_on_after(_CANCEL_SEND_TIMEOUT_SECONDS, shield=True) as scope:
+        with anyio.move_on_after(_CANCEL_CONFIRM_TIMEOUT_SECONDS, shield=True) as scope:
             try:
-                await client.cancel(request_id, reason=reason)
-                # cancel() only queues the notification. The transports POST messages
-                # in order, so the ping response proves the cancel POST completed
-                # before the session's DELETE goes out on exit.
                 await client.ping()
             except Exception as error:
                 logger.warning(
-                    "Failed to cancel MCP tool_name={} request_id={}: {}",
+                    "Failed to confirm MCP cancel for tool_name={}: {}",
                     tool_name,
-                    request_id,
                     format_exception_for_log(error),
                 )
 
         if scope.cancelled_caught:
-            logger.warning(
-                "Timed out cancelling MCP tool_name={} request_id={}", tool_name, request_id
-            )
+            logger.warning("Timed out confirming MCP cancel for tool_name={}", tool_name)
