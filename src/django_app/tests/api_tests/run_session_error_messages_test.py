@@ -325,10 +325,12 @@ def test_unexpected_failure_returns_a_generic_message_without_internals(
 
     # Left to the global handler, so callers can retry a 5xx under load.
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR, response.content
+    # The 500 cites the reference the session's reason cites.
     assert response.json() == {
         "status_code": 500,
-        "code": "ConnectionError",
-        "message": "Unpredictable error",
+        "code": "internal_error",
+        "message": FLOW_START_FAILED_MESSAGE,
+        "reference": REFERENCE,
     }
     assert b"redis-internal" not in response.content
     session = Session.objects.get(graph=graph)
@@ -412,7 +414,7 @@ def test_unexpected_failure_logs_its_traceback_once(
     assert traceback_record["message"].startswith(f"(reference: {REFERENCE}) ")
     # The request's status line is still logged, once, without the traceback.
     assert [record.getMessage() for record in caplog.records if record.name == "django.request"] == [
-        "Internal Server Error: /api/run-session/"
+        f"(reference: {REFERENCE}) Internal Server Error: /api/run-session/"
     ]
 
 

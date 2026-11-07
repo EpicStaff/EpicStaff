@@ -12,6 +12,12 @@ from foundation.transport.http.errors import (
     ClientRateLimitError,
     ClientValidationError,
 )
+from foundation.utils.error_reference import (
+    INTERNAL_ERROR_CODE,
+    INTERNAL_ERROR_MESSAGE,
+    SERVER_FAILURE_TEXT,
+    new_reference,
+)
 from psycopg_pool import PoolTimeout
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, Throttled, ValidationError
@@ -26,9 +32,8 @@ from utils.logger import logger
 # Keys DRF generates itself; naming them back at the client adds no information.
 _UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
 
-UPSTREAM_FAILURE_MESSAGE = (
-    "Something went wrong on the server. Try again or contact your administrator."
-)
+# No reference: an upstream failure's detail is logged as a warning, not under one.
+UPSTREAM_FAILURE_MESSAGE = f"{SERVER_FAILURE_TEXT}."
 UPSTREAM_NOT_FOUND_MESSAGE = "The requested item wasn't found. It may have been deleted."
 UPSTREAM_RATE_LIMITED_MESSAGE = "Too many requests right now. Wait a moment and try again."
 
@@ -171,22 +176,29 @@ def _is_database_pool_exhausted(exc: Exception) -> bool:
     )
 
 
-# Set on an exception whose traceback its own code has already logged.
-_TRACEBACK_LOGGED_ATTRIBUTE = "_traceback_logged"
+# Set on an exception whose traceback its own code has already logged; holds the
+# reference that log line cites.
+_LOGGED_TRACEBACK_REFERENCE_ATTRIBUTE = "_logged_traceback_reference"
 
 
-def mark_traceback_logged(error: BaseException) -> None:
+def mark_traceback_logged(error: BaseException, reference: str) -> None:
     """Record that `error`'s traceback is already in the log, for code that re-raises it.
 
     Code that logs an unexpected error itself (under a reference it shows the user) and
     re-raises it calls this, so the 500 this handler answers with logs only its status
-    line instead of the same traceback a second time. Re-raise the same object: wrapping
-    it (`raise OtherError(...) from error`) drops the mark.
+    line instead of the same traceback a second time, and cites the same reference.
+    Re-raise the same object: wrapping it (`raise OtherError(...) from error`) drops
+    the mark.
+
+    Args:
+        reference: The reference the traceback was logged under.
     """
-    setattr(error, _TRACEBACK_LOGGED_ATTRIBUTE, True)
+    setattr(error, _LOGGED_TRACEBACK_REFERENCE_ATTRIBUTE, reference)
 
 
-def _log_unhandled_exception(exc: Exception, request, response) -> None:
+def _log_unhandled_exception(
+    exc: Exception, request, response, *, reference: str, traceback_logged: bool
+) -> None:
     """Log the traceback of an exception answered with the generic 500.
 
     Returning a response stops DRF from re-raising, so Django would log only
@@ -194,17 +206,18 @@ def _log_unhandled_exception(exc: Exception, request, response) -> None:
     traceback, and marks the response as logged so that line is not repeated.
     It goes through stdlib `log_response` rather than loguru on purpose: only
     that call marks the response as logged, so a loguru call would leave
-    Django to repeat the line. An exception marked by `mark_traceback_logged`
-    gets the status line only.
+    Django to repeat the line. An exception whose traceback is already logged
+    gets the status line only. The reference opens the line because the
+    Django log sink keeps only the first 200 characters.
     """
     path = request.path if request is not None else "unknown path"
-    already_logged = getattr(exc, _TRACEBACK_LOGGED_ATTRIBUTE, False)
     log_response(
-        "Internal Server Error: %s",
+        "(reference: %s) Internal Server Error: %s",
+        reference,
         path,
         response=response,
         request=request,
-        exception=None if already_logged else exc,
+        exception=None if traceback_logged else exc,
     )
 
 
@@ -262,17 +275,27 @@ def custom_exception_handler(exc, context):
         return response
 
     if not DEBUG:
-        # The client gets a generic message: the exception text can carry
-        # internals such as database driver errors.
+        # The client gets a generic message and code: the exception text and class
+        # name can carry internals such as database driver errors. The reference
+        # finds the traceback in the log.
+        logged_reference = getattr(exc, _LOGGED_TRACEBACK_REFERENCE_ATTRIBUTE, None)
+        reference = logged_reference if logged_reference is not None else new_reference()
         response = JsonResponse(
             {
                 "status_code": 500,
-                "code": exc.__class__.__name__,
-                "message": "Unpredictable error",
+                "code": INTERNAL_ERROR_CODE,
+                "message": INTERNAL_ERROR_MESSAGE.format(reference=reference),
+                "reference": reference,
             },
             status=500,
         )
-        _log_unhandled_exception(exc, context.get("request"), response)
+        _log_unhandled_exception(
+            exc,
+            context.get("request"),
+            response,
+            reference=reference,
+            traceback_logged=logged_reference is not None,
+        )
         return response
 
     return response

@@ -385,7 +385,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 reference=failure_reference,
                 exception=error,
             )
-            mark_traceback_logged(error)
+            mark_traceback_logged(error, failure_reference)
             raise
 
     def _start_session(

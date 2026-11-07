@@ -612,8 +612,9 @@ def test_graph_patch_query_count_does_not_grow_with_nodes(
 
 @pytest.mark.django_db
 def test_failed_decision_table_write_rolls_back_last_edit(
-    colleague_client, regular_user, decision_table
+    colleague_client, regular_user, decision_table, monkeypatch
 ):
+    monkeypatch.setattr("utils.exception_handler.DEBUG", False)
     duplicate_groups = _group_payload("a > 1") + _group_payload("a > 2")
 
     response = colleague_client.patch(
@@ -623,7 +624,7 @@ def test_failed_decision_table_write_rolls_back_last_edit(
     )
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.json()["code"] == "IntegrityError"
+    assert response.json()["code"] == "internal_error"
 
     assert DecisionTableNode.objects.get(pk=decision_table.pk).node_name == "decide"
     last_edit = _last_edit_of(decision_table)

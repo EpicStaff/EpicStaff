@@ -15,7 +15,10 @@ from foundation.utils.error_reference import log_with_reference
 from loguru import logger
 from services.agent_run_errors import llm_error_text
 from services.graph.exceptions import PublicNodeError
-from services.graph.nodes.code_result_errors import log_missing_failure
+from services.graph.nodes.code_result_errors import (
+    log_missing_failure,
+    server_failure_reference,
+)
 from src.shared.llm_error_kind import classify_llm_error
 from src.shared.models import (
     CodeFailure,
@@ -192,9 +195,10 @@ def check_code_ran(result: CodeResultData, subject: str) -> None:
     """Raise if the sandbox couldn't run the code, or its result didn't reach crew in time.
 
     Both are failures of the server, not of the user's code. The sandbox's own failure was
-    logged under the result's reference, which the message cites. A failed result that
-    doesn't say why is logged here, under a reference of its own. Once this returns, the
-    code ran, and `result.failure` is set exactly when it failed.
+    logged under the result's reference, which the message cites when it is well-formed
+    (see `server_failure_reference`). A failed result that doesn't say why is logged here,
+    under a reference of its own. Once this returns, the code ran, and `result.failure`
+    is set exactly when it failed.
 
     Args:
         result: What `RunPythonCodeService.run_code` returned.
@@ -214,9 +218,10 @@ def check_code_ran(result: CodeResultData, subject: str) -> None:
         )
     server_failure_text = _SERVER_FAILURE_TEXTS.get(failure.code)
     if server_failure_text is not None:
+        reference = server_failure_reference(result)
         raise DecisionTableError(
-            server_failure_text.format(subject=subject, reference=result.reference),
-            reference=result.reference,
+            server_failure_text.format(subject=subject, reference=reference),
+            reference=reference,
         )
     if failure.code is CodeFailureCode.RESULT_TIMEOUT:
         raise DecisionTableError(_RESULT_TIMEOUT_TEXT.format(subject=subject))

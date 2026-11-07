@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import lzma
+import re
 import tarfile
 from datetime import timedelta
 from unittest.mock import AsyncMock
@@ -12,6 +13,7 @@ from asgiref.sync import sync_to_async
 from django.core import signals
 from django.test import override_settings
 from django.utils import timezone
+from foundation.utils.error_reference import REFERENCE_PATTERN
 from rest_framework_simplejwt.tokens import AccessToken
 
 from rbac.models import OrganizationUser, Role, RolePermission
@@ -410,11 +412,11 @@ async def test_an_unexpected_error_is_a_500_in_the_error_envelope(org_user, monk
         response = await _post(client, "filename=a.txt", token=token, org_id=org_user.org_id)
 
     assert response.status_code == 500
-    assert response.json() == {
-        "status_code": 500,
-        "code": "RuntimeError",
-        "message": "Unpredictable error",
-    }
+    body = response.json()
+    assert body["code"] == "internal_error"
+    assert re.fullmatch(REFERENCE_PATTERN, body["reference"])
+    assert f"(reference: {body['reference']})" in body["message"]
+    assert "RuntimeError" not in response.text
 
 
 async def test_request_lifecycle_signals_fire_like_a_django_view(org_user, stubbed_upload):

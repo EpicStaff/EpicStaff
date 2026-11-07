@@ -1,11 +1,7 @@
+from foundation.utils.error_reference import INTERNAL_ERROR_MESSAGE
 from rest_framework.exceptions import APIException
 from utils.exception_handler import flatten_error_detail
 
-# Cites the reference the failure's traceback is logged under.
-FLOW_START_FAILED_MESSAGE = (
-    "Something went wrong on the server. "
-    "Try again or contact your administrator (reference: {reference})."
-)
 # Shown when no crew instance listens for the run.
 FLOW_SERVICE_NOT_RUNNING_MESSAGE = (
     "The flow couldn't start: the flow service isn't running. "
@@ -36,4 +32,4 @@ def run_start_failure_reason(error: Exception, reference: str) -> str:
     """
     if isinstance(error, APIException):
         return user_facing_run_error(error)
-    return FLOW_START_FAILED_MESSAGE.format(reference=reference)
+    return INTERNAL_ERROR_MESSAGE.format(reference=reference)

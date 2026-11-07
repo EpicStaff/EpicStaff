@@ -12,7 +12,10 @@ from tables.serializers.serializers import (
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.serializers.utils.bulk_ids import BULK_DELETE_MAX_IDS
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import (
+    INTERNAL_SERVER_ERROR_500_BODY,
+    UNAUTHORIZED_401_RESPONSE,
+)
 
 RUN_SESSION_POST = {
     "summary": "Start a new session",
@@ -104,11 +107,7 @@ RUN_SESSION_POST = {
                 ),
                 OpenApiExample(
                     "Unexpected failure",
-                    value={
-                        "status_code": 500,
-                        "code": "ConnectionError",
-                        "message": "Unpredictable error",
-                    },
+                    value=INTERNAL_SERVER_ERROR_500_BODY,
                     response_only=True,
                     status_codes=["500"],
                 ),

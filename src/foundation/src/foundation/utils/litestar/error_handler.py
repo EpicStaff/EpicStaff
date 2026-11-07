@@ -18,7 +18,11 @@ from litestar import Request, Response, status_codes
 from litestar.exceptions import HTTPException, ValidationException
 
 from foundation.schemas import ErrorDetailSchema, ErrorResponseSchema
-from foundation.utils.error_reference import log_with_reference
+from foundation.utils.error_reference import (
+    INTERNAL_ERROR_CODE,
+    INTERNAL_ERROR_MESSAGE,
+    log_with_reference,
+)
 
 __all__ = [
     "create_response",
@@ -145,11 +149,8 @@ def foundation_handle_server_error(request: Request, error: Exception) -> Respon
         status_code=status_codes.HTTP_500_INTERNAL_SERVER_ERROR,
         errors=[
             ErrorDetailSchema(
-                code="internal_error",
-                detail=(
-                    "Something went wrong on the server. Try again or contact your "
-                    f"administrator (reference: {reference})."
-                ),
+                code=INTERNAL_ERROR_CODE,
+                detail=INTERNAL_ERROR_MESSAGE.format(reference=reference),
             )
         ],
         reference=reference,

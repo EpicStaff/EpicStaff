@@ -214,6 +214,38 @@ async def test_sandbox_failure_names_the_node_and_carries_the_sandbox_reference(
     )
 
 
+@pytest.mark.parametrize("sandbox_reference", ["<b>x</b>", "9F8E7D6C5B4A", None])
+async def test_sandbox_failure_without_a_usable_reference_cites_a_new_one(
+    run_python_code_service,
+    sandbox,
+    make_python_code_data,
+    fixed_reference,
+    captured_error_logs,
+    sandbox_reference,
+):
+    sandbox_detail = "The code couldn't run because of a server error."
+    error, messages = await run_python_node_answered_with(
+        run_python_code_service,
+        sandbox,
+        make_python_code_data,
+        returncode=1,
+        stderr=sandbox_detail,
+        failure=CodeFailure(code=CodeFailureCode.SANDBOX_ERROR, detail=sandbox_detail),
+        reference=sandbox_reference,
+    )
+
+    expected_message = (
+        'Python node "Clean data #2" couldn\'t run its code. '
+        f"Try again or contact your administrator (reference: {REFERENCE})."
+    )
+    assert error_cards(messages) == [expected_message]
+    assert error.reference == REFERENCE
+    [logged] = [record for record in captured_error_logs if f"(reference: {REFERENCE})" in record]
+    assert "without a usable reference" in logged
+    if sandbox_reference is not None:
+        assert sandbox_reference not in "".join(captured_error_logs)
+
+
 async def test_failed_result_without_a_failure_is_logged_as_a_broken_contract(
     run_python_code_service, sandbox, make_python_code_data, fixed_reference, captured_error_logs
 ):

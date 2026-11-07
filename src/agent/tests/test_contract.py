@@ -278,15 +278,16 @@ async def test_agent_result_payload_key_set_includes_tasks():
                     error_kind="quota_exceeded",
                 ),
             ),
-            {"error", "warnings", "stop_reason", "error_kind", "failed_llm"},
+            {"error", "warnings", "reference", "stop_reason", "error_kind", "failed_llm"},
         ),
-        (DataLoadError("blob missing"), {"error", "warnings"}),
+        (DataLoadError("blob missing"), {"error", "warnings", "reference"}),
     ],
     ids=["failed-loop", "failure-outside-the-loop"],
 )
 async def test_agent_error_payload_key_set(error, expected_keys):
     """Pin the keys crew reads on 'agent.error': a failed loop leaves through it, so it
-    carries the loop's stop_reason, error_kind and failed_llm; other failures have none."""
+    carries the loop's stop_reason, error_kind and failed_llm; other failures have none.
+    Every failure carries the reference its log line is under."""
     published: list[dict] = []
     fake_client = MagicMock()
 

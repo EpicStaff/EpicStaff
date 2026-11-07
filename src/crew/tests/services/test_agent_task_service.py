@@ -385,6 +385,98 @@ async def test_agent_failure_outside_the_llm_call_gets_the_generic_message(
     assert reply[1]["error"] not in "".join(warning_logs)
 
 
+AGENT_REFERENCE = "fedcba987654"
+
+UNEXPLAINED_FAILURES = pytest.mark.parametrize(
+    ("reply", "expected_text"),
+    [
+        pytest.param(
+            ("agent.error", {"stop_reason": "llm_error", "error_kind": "unknown", "error": RAW_PROVIDER_TEXT}),
+            'The LLM request for model "gpt-4o" failed. '
+            "Try again or contact your administrator (reference: {reference}).",
+            id="unknown-llm-error",
+        ),
+        pytest.param(
+            ("agent.result", {"stop_reason": "internal_error", "error": "Redis connection lost"}),
+            "Node execution failed (reference: {reference})",
+            id="internal-error-result",
+        ),
+        pytest.param(
+            ("agent.error", {"error": "output did not satisfy schema after 2 retries"}),
+            "Node execution failed (reference: {reference})",
+            id="no-stop-reason",
+        ),
+    ],
+)
+
+
+@UNEXPLAINED_FAILURES
+async def test_unexplained_failure_cites_the_reference_the_agent_service_logged_it_under(
+    service, client, warning_logs, reply, expected_text
+):
+    envelope_type, payload = reply
+
+    result, _ = await _run(
+        service, client, replies=[(envelope_type, {**payload, "reference": AGENT_REFERENCE})]
+    )
+
+    assert str(result) == expected_text.format(reference=AGENT_REFERENCE)
+    assert result.reference == AGENT_REFERENCE
+    [logged] = [record for record in warning_logs if "Agent run failed" in record]
+    assert f"(reference: {AGENT_REFERENCE}) Agent run failed" in logged
+
+
+@UNEXPLAINED_FAILURES
+@pytest.mark.parametrize(
+    "agent_reference",
+    ["<b>x</b>", "FEDCBA987654", "fedcba9876543", 123456789012],
+    ids=["markup", "uppercase", "too-long", "not-a-string"],
+)
+async def test_unexplained_failure_mints_its_own_reference_when_the_agents_is_malformed(
+    service, client, fixed_reference, warning_logs, reply, expected_text, agent_reference
+):
+    envelope_type, payload = reply
+
+    result, _ = await _run(
+        service, client, replies=[(envelope_type, {**payload, "reference": agent_reference})]
+    )
+
+    assert str(result) == expected_text.format(reference=REFERENCE)
+    assert result.reference == REFERENCE
+    assert str(agent_reference) not in str(result)
+    assert str(agent_reference) not in "".join(warning_logs)
+
+
+@UNEXPLAINED_FAILURES
+@pytest.mark.parametrize("sends_the_key", [True, False], ids=["null", "absent"])
+async def test_unexplained_failure_mints_its_own_reference_when_the_agent_sends_none(
+    service, client, fixed_reference, reply, expected_text, sends_the_key
+):
+    envelope_type, payload = reply
+    if sends_the_key:
+        payload = {**payload, "reference": None}
+
+    result, _ = await _run(service, client, replies=[(envelope_type, payload)])
+
+    assert str(result) == expected_text.format(reference=REFERENCE)
+    assert result.reference == REFERENCE
+
+
+async def test_explained_failure_logs_the_agents_reference_but_does_not_show_it(
+    service, client, warning_logs
+):
+    envelope_type, payload = _llm_failure("agent.error", "authentication")
+
+    result, _ = await _run(
+        service, client, replies=[(envelope_type, {**payload, "reference": AGENT_REFERENCE})]
+    )
+
+    assert result.reference is None
+    assert AGENT_REFERENCE not in str(result)
+    [logged] = [record for record in warning_logs if "Agent run failed" in record]
+    assert f"agent_reference={AGENT_REFERENCE}" in logged
+
+
 @ENVELOPE_TYPES
 @pytest.mark.parametrize(
     ("max_execution_time", "expected_limit"),

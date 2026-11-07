@@ -6,7 +6,11 @@ Lives in foundation, which has no test suite of its own; sandbox_new is one of i
 import re
 
 import pytest
-from foundation.utils.error_reference import REFERENCE_PATTERN, log_with_reference
+from foundation.utils.error_reference import (
+    REFERENCE_PATTERN,
+    log_with_reference,
+    trusted_reference,
+)
 from loguru import logger
 
 
@@ -75,3 +79,34 @@ def test_the_log_record_names_the_caller(error_records):
 
     ((record, _),) = error_records
     assert record["function"] == "test_the_log_record_names_the_caller"
+
+
+def test_an_expected_failure_is_logged_at_the_level_given():
+    records: list[dict] = []
+    sink_id = logger.add(lambda message: records.append(message.record), level="DEBUG")
+    try:
+        reference = log_with_reference("Agent hit its time limit", level="WARNING")
+    finally:
+        logger.remove(sink_id)
+
+    (record,) = records
+    assert record["level"].name == "WARNING"
+    assert record["message"] == f"(reference: {reference}) Agent hit its time limit"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("0123456789ab", "0123456789ab"),
+        ("<b>x</b>", None),
+        ("0123456789AB", None),
+        ("0123456789abc", None),
+        ("0123456789a", None),
+        ("0123456789ab\n", None),
+        (123456789012, None),
+        (None, None),
+    ],
+    ids=["well-formed", "markup", "uppercase", "too-long", "too-short", "trailing-newline", "not-a-string", "none"],
+)
+def test_only_a_well_formed_reference_is_trusted(value, expected):
+    assert trusted_reference(value) == expected

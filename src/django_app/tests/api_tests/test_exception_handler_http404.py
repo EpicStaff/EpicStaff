@@ -1,8 +1,11 @@
+import json
 import logging
+import re
 
 import pytest
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404
+from foundation.utils.error_reference import REFERENCE_PATTERN
 
 from utils.exception_handler import custom_exception_handler, mark_traceback_logged
 
@@ -40,14 +43,21 @@ def test_django_permission_denied_renders_as_403(any_debug):
     assert response.data["message"] == "Nope."
 
 
-def test_unknown_exception_still_renders_as_500(monkeypatch):
+def test_unknown_exception_renders_as_500_citing_a_reference(monkeypatch):
     monkeypatch.setattr("utils.exception_handler.DEBUG", False)
 
     response = custom_exception_handler(RuntimeError("boom"), {})
 
     assert response.status_code == 500
-    assert b'"code": "RuntimeError"' in response.content
-    assert b'"message": "Unpredictable error"' in response.content
+    assert b"RuntimeError" not in response.content
+    body = json.loads(response.content)
+    assert body["status_code"] == 500
+    assert body["code"] == "internal_error"
+    assert re.fullmatch(REFERENCE_PATTERN, body["reference"])
+    assert body["message"] == (
+        "Something went wrong on the server. Try again or contact your administrator "
+        f"(reference: {body['reference']})."
+    )
 
 
 def test_unknown_exception_text_is_logged_not_returned(monkeypatch, caplog):
@@ -59,11 +69,12 @@ def test_unknown_exception_text_is_logged_not_returned(monkeypatch, caplog):
 
     assert response.status_code == 500
     assert b"tables_secret" not in response.content
+    reference = json.loads(response.content)["reference"]
     assert [
         (record.getMessage(), record.exc_info[1])
         for record in caplog.records
         if record.name == "django.request"
-    ] == [("Internal Server Error: unknown path", error)]
+    ] == [(f"(reference: {reference}) Internal Server Error: unknown path", error)]
 
 
 def test_exception_whose_traceback_is_already_logged_gets_only_its_status_line(
@@ -71,15 +82,15 @@ def test_exception_whose_traceback_is_already_logged_gets_only_its_status_line(
 ):
     monkeypatch.setattr("utils.exception_handler.DEBUG", False)
     error = RuntimeError("redis is down")
-    mark_traceback_logged(error)
+    mark_traceback_logged(error, "0123456789ab")
 
     with caplog.at_level(logging.ERROR, logger="django.request"):
         response = custom_exception_handler(error, {})
 
     assert response.status_code == 500
-    assert b'"code": "RuntimeError"' in response.content
+    assert json.loads(response.content)["reference"] == "0123456789ab"
     assert [
         (record.getMessage(), record.exc_info)
         for record in caplog.records
         if record.name == "django.request"
-    ] == [("Internal Server Error: unknown path", None)]
+    ] == [("(reference: 0123456789ab) Internal Server Error: unknown path", None)]

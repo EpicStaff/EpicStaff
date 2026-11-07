@@ -1,6 +1,6 @@
 """The error a code node shows when its code ran and failed, or couldn't run at all."""
 
-from foundation.utils.error_reference import log_with_reference
+from foundation.utils.error_reference import log_with_reference, trusted_reference
 from services.graph.exceptions import (
     CodeExecutionUnavailableError,
     PublicNodeError,
@@ -39,8 +39,9 @@ def code_failure_error(
     """Return the error a code node fails with for this `run_code` result, or None if it ran.
 
     A failure only a server log explains names the node and cites the result's
-    reference. An input the entrypoint has no parameter for is told in words, when the
-    node has an input map. Every other failure shows its `detail`.
+    reference, or a new one when it isn't well-formed. An input the entrypoint has no
+    parameter for is told in words, when the node has an input map. Every other failure
+    shows its `detail`.
 
     Args:
         kind_name: Names the node's kind in the message, e.g. "Python".
@@ -60,17 +61,35 @@ def code_failure_error(
         )
     server_failure_text = _SERVER_FAILURE_TEXTS.get(failure.code)
     if server_failure_text is not None:
+        reference = server_failure_reference(result)
         return CodeExecutionUnavailableError(
             server_failure_text.format(
-                kind_name=kind_name, node_label=node_label, reference=result.reference
+                kind_name=kind_name, node_label=node_label, reference=reference
             ),
-            reference=result.reference,
+            reference=reference,
         )
     if failure.code is CodeFailureCode.UNEXPECTED_ARGUMENT and entrypoint is not None:
         return ReturnCodeError(
             _UNEXPECTED_ARGUMENT_TEXT.format(argument=failure.attr, entrypoint=entrypoint)
         )
     return ReturnCodeError(failure.detail)
+
+
+def server_failure_reference(result: CodeResultData) -> str:
+    """Return the reference a failure of the sandbox or of dispatch cites to the user.
+
+    That is the result's own reference, under which the failure was logged, when it is
+    well-formed. It ends up in the text the user sees, so a missing or malformed one is
+    never shown: the failure is logged here instead, by its execution id only, under a
+    new reference.
+    """
+    reference = trusted_reference(result.reference)
+    if reference is not None:
+        return reference
+    return log_with_reference(
+        "Code execution {execution_id} failed on the server without a usable reference",
+        execution_id=result.execution_id,
+    )
 
 
 def log_missing_failure(result: CodeResultData) -> str:

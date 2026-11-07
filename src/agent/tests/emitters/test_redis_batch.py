@@ -1,8 +1,9 @@
 """
 Tests for RedisStreamBatchEmitter.
 
-Verifies warning buffering/deduplication and that both on_final and on_error
-publish a payload containing a 'warnings' key.
+Verifies warning buffering/deduplication, that both on_final and on_error
+publish a payload containing a 'warnings' key, and that a failed run's payload
+carries the reference its log line is under.
 """
 
 from __future__ import annotations
@@ -10,9 +11,15 @@ from __future__ import annotations
 import pytest
 
 import json
+import re
+from contextlib import contextmanager
 from unittest.mock import MagicMock
 
+from foundation.utils.error_reference import REFERENCE_PATTERN
+from loguru import logger
+
 from app.emitters.redis_batch import RedisStreamBatchEmitter
+from app.exceptions import AgentLoopFailedError
 from shared.models.agent_service import LoopResult, TaskRunSummary, TokenUsage
 from tests.log_capture import log_line_starting_with, capture_logs_at
 
@@ -366,10 +373,121 @@ async def test_on_error_masks_error_text_in_logs_but_not_published_payload():
     with capture_logs_at("ERROR") as logs:
         await emitter.on_error(RuntimeError(f"call failed: {error_marker}"))
 
-    error_line = log_line_starting_with(logs, "published agent.error ")
+    payload = _decode_payload(published[0])
+    error_line = log_line_starting_with(
+        logs, f"(reference: {payload['reference']}) published agent.error "
+    )
     assert error_marker not in error_line
     assert "correlation_id=test-corr" in error_line, "correlation_id must stay readable"
     assert "RuntimeError" in error_line
     assert "<redacted" in error_line
 
-    assert _decode_payload(published[0])["error"] == f"call failed: {error_marker}"
+    assert payload["error"] == f"call failed: {error_marker}"
+
+
+# ---------------------------------------------------------------------------
+# A failed run sends the reference its log line is under, at the loop's own level
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _capture_records():
+    """Capture (level name, message) of every record logged at DEBUG or above."""
+    records: list[tuple[str, str]] = []
+    sink_id = logger.add(
+        lambda message: records.append(
+            (message.record["level"].name, message.record["message"])
+        ),
+        level="DEBUG",
+    )
+    try:
+        yield records
+    finally:
+        logger.remove(sink_id)
+
+
+def _record_starting_with(records: list[tuple[str, str]], prefix: str) -> tuple[str, str]:
+    matches = [record for record in records if record[1].startswith(prefix)]
+    assert len(matches) == 1, f"expected exactly one {prefix!r} record, got {matches}"
+    return matches[0]
+
+
+def _failed_loop(stop_reason: str) -> AgentLoopFailedError:
+    return AgentLoopFailedError(
+        "loop failed",
+        result=LoopResult(
+            final_text=None,
+            tool_invocations=0,
+            iterations=1,
+            stop_reason=stop_reason,
+            error="loop failed",
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_level"),
+    [
+        (RuntimeError("boom"), "ERROR"),
+        (_failed_loop("llm_error"), "ERROR"),
+        (_failed_loop("internal_error"), "ERROR"),
+        (_failed_loop("timeout"), "WARNING"),
+    ],
+    ids=["crash", "llm-error", "internal-error", "timeout"],
+)
+async def test_on_error_sends_the_reference_it_logs_the_error_under(error, expected_level):
+    emitter, published = _make_emitter()
+
+    with _capture_records() as records:
+        await emitter.on_error(error)
+
+    reference = _decode_payload(published[0])["reference"]
+    assert re.fullmatch(REFERENCE_PATTERN, reference)
+    level, _ = _record_starting_with(records, f"(reference: {reference}) published agent.error ")
+    assert level == expected_level
+
+
+def _loop_result_stopped_by(stop_reason: str) -> LoopResult:
+    return LoopResult(
+        final_text=None,
+        error="ERROR_ECHOING_USER_PROMPT_828" if stop_reason != "completed" else None,
+        tool_invocations=0,
+        iterations=1,
+        stop_reason=stop_reason,
+        token_usage=TokenUsage(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("stop_reason", "expected_level"),
+    [("llm_error", "ERROR"), ("internal_error", "ERROR"), ("timeout", "WARNING")],
+)
+async def test_failed_on_final_sends_the_reference_it_logs_the_failure_under(
+    stop_reason, expected_level
+):
+    emitter, published = _make_emitter()
+
+    with _capture_records() as records:
+        await emitter.on_final(_loop_result_stopped_by(stop_reason))
+
+    reference = _decode_payload(published[0])["reference"]
+    assert re.fullmatch(REFERENCE_PATTERN, reference)
+    level, failure_line = _record_starting_with(
+        records, f"(reference: {reference}) published agent.result "
+    )
+    assert level == expected_level
+    assert f"stop_reason={stop_reason}" in failure_line
+    assert all("ERROR_ECHOING_USER_PROMPT_828" not in message for _, message in records)
+    _, payload_line = _record_starting_with(records, "agent.result ")
+    assert reference in payload_line, "the masked payload line must keep the reference readable"
+
+
+@pytest.mark.parametrize("stop_reason", ["completed", "schema_satisfied"])
+async def test_successful_on_final_sends_no_reference_and_logs_no_error(stop_reason):
+    emitter, published = _make_emitter()
+
+    with capture_logs_at("ERROR") as logs:
+        await emitter.on_final(_loop_result_stopped_by(stop_reason))
+
+    assert "reference" not in _decode_payload(published[0])
+    assert logs == []

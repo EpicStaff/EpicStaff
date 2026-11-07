@@ -1,9 +1,12 @@
 """POST /api/run-session/ answers infrastructure failures as server errors, never as the 400
 reserved for a fault in the flow, and never with the failure's own text."""
 
+import re
+
 import pytest
 from django.db import connection
 from django.urls import reverse
+from foundation.utils.error_reference import REFERENCE_PATTERN
 from psycopg_pool import PoolTimeout
 from rest_framework import status
 
@@ -56,7 +59,7 @@ def test_a_server_error_raised_on_the_start_path_is_left_to_the_global_handler_a
 
 
 @pytest.mark.django_db
-def test_unexpected_error_while_starting_the_session_answers_the_generic_500(
+def test_unexpected_error_while_starting_the_session_answers_the_generic_500_citing_the_sessions_reference(
     auth_client, session_data, redis_client_mock, mocker, monkeypatch
 ):
     # With DEBUG on the handler leaves the exception to Django instead of rendering the 500.
@@ -68,16 +71,17 @@ def test_unexpected_error_while_starting_the_session_answers_the_generic_500(
     response = auth_client.post(reverse("run-session"), session_data, format="json")
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR, response.content
-    assert response.json() == {
-        "status_code": 500,
-        "code": "RuntimeError",
-        "message": "Unpredictable error",
-    }
+    body = response.json()
+    assert body["code"] == "internal_error"
     assert INTERNAL_TEXT.encode() not in response.content
-    assert (
-        Session.objects.get(graph_id=session_data["graph_id"]).status
-        == Session.SessionStatus.ERROR
-    )
+    assert b"RuntimeError" not in response.content
+    session = Session.objects.get(graph_id=session_data["graph_id"])
+    assert session.status == Session.SessionStatus.ERROR
+    session_reference = re.search(
+        rf"\(reference: ({REFERENCE_PATTERN})\)", session.status_data["reason"]
+    ).group(1)
+    assert body["reference"] == session_reference
+    assert f"(reference: {session_reference})" in body["message"]
 
 
 @pytest.mark.django_db

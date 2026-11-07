@@ -354,6 +354,39 @@ async def test_sandbox_unavailable_cites_the_sandbox_reference(monkeypatch, fail
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("sandbox_reference", ["<b>x</b>", None], ids=["malformed", "missing"])
+async def test_sandbox_unavailable_without_a_usable_reference_cites_a_new_one(
+    monkeypatch, sandbox_reference
+):
+    unavailable = failed(
+        CodeFailure(code=CodeFailureCode.SANDBOX_ERROR, detail="Node execution failed"),
+        reference=sandbox_reference,
+    )
+    use_sandbox(monkeypatch, answer_with(_is_pre, unavailable))
+    logged: list[str] = []
+    sink_id = logger.add(logged.append, level="ERROR")
+    try:
+        _, errors = await run(_data_running_every_part())
+    finally:
+        logger.remove(sink_id)
+
+    [details] = errors
+    match = re.fullmatch(
+        re.escape("Pre-computation code: the code couldn't run because of a server error. ")
+        + rf"Try again or contact your administrator \(reference: ({_REFERENCE})\)\.",
+        details,
+    )
+    assert match is not None, details
+    assert any(
+        f"(reference: {match.group(1)}) Code execution" in line
+        and "without a usable reference" in line
+        for line in logged
+    )
+    if sandbox_reference is not None:
+        assert sandbox_reference not in "".join(logged)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(("fail_when", "subject"), _FAILING_PARTS)
 async def test_result_that_never_arrived(monkeypatch, fail_when, subject):
     use_sandbox(monkeypatch, answer_with(fail_when, _RESULT_TIMED_OUT))

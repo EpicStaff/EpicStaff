@@ -4,11 +4,16 @@ The agent service reports why a run failed as a ``stop_reason`` and an ``error_k
 ``error`` field is the provider's raw text, which can quote part of an API key or the
 provider's response, so it is never shown and never logged as it is: the log gets only
 the error class and the text's length.
+
+A failed run's payload also carries the ``reference`` the agent service logged the failure
+under. A failure that cites a reference to the user reuses that one, so the message, crew's
+log line and the agent service's log line share one id; crew mints its own only when the
+payload has none or it isn't a well-formed reference.
 """
 
 import re
 
-from foundation.utils.error_reference import log_with_reference
+from foundation.utils.error_reference import log_with_reference, trusted_reference
 from loguru import logger
 from services.graph.exceptions import PublicNodeError
 from src.shared.models import AgentDefinitionData, LLMData
@@ -99,11 +104,13 @@ def agent_run_error(
 
     Logs the failure under ``run_correlation_id``, the id the agent service logged the run
     under. A failure the user can't fix from the message alone also gets a reference,
-    logged with it, that the message cites and the failed session repeats.
+    logged with it, that the message cites and the failed session repeats: the agent
+    service's own ``reference`` when the payload carries a valid one, else a new one.
 
     Args:
-        payload: The envelope payload. ``stop_reason``, ``error_kind`` and ``failed_llm``
-            are optional, so an agent service that doesn't send them still fails readably.
+        payload: The envelope payload. ``stop_reason``, ``error_kind``, ``failed_llm`` and
+            ``reference`` are optional, so an agent service that doesn't send them still
+            fails readably.
         agent_definition: The node's agent; its fallback LLM is named when ``failed_llm``
             says the fallback failed.
         llm: The agent's LLM, already checked to be set by the node.
@@ -112,24 +119,25 @@ def agent_run_error(
     raw_error = payload.get("error")
     stop_reason = payload.get("stop_reason")
     error_kind = payload.get("error_kind")
+    agent_reference = trusted_reference(payload.get("reference"))
 
     if stop_reason == StopReason.TIMEOUT:
         limit_s = agent_definition.max_execution_time
         if limit_s is None:
             # Only crew's own wait limits an agent without a time limit, so the agent
             # service reporting a timeout is something the user can't act on.
-            reference = _log_unexplained_failure(raw_error, run_correlation_id)
+            reference = _log_unexplained_failure(raw_error, run_correlation_id, agent_reference)
             return AgentTaskError(
                 build_public_error_message(PublicErrorMessage.NODE_EXECUTION_FAILED, reference),
                 reference=reference,
             )
-        _log_explained_failure(StopReason.TIMEOUT.value, run_correlation_id)
+        _log_explained_failure(StopReason.TIMEOUT.value, run_correlation_id, agent_reference)
         return _agent_time_limit_error(agent_definition.name, limit_s)
 
     if stop_reason != StopReason.LLM_ERROR and error_kind is None:
         # Not an LLM failure (internal_error, a broken output schema, an unknown tool
         # reference, a crash), so nothing more specific than the generic message can be said.
-        reference = _log_unexplained_failure(raw_error, run_correlation_id)
+        reference = _log_unexplained_failure(raw_error, run_correlation_id, agent_reference)
         return AgentTaskError(
             build_public_error_message(PublicErrorMessage.NODE_EXECUTION_FAILED, reference),
             reference=reference,
@@ -139,10 +147,10 @@ def agent_run_error(
     kind = _known_kind(error_kind)
     llm_that_failed = _llm_that_failed(payload.get("failed_llm"), agent_definition, llm)
     if kind is LLMErrorKind.UNKNOWN:
-        reference = _log_unexplained_failure(raw_error, run_correlation_id)
+        reference = _log_unexplained_failure(raw_error, run_correlation_id, agent_reference)
         return AgentTaskError(llm_error_text(kind, llm_that_failed, reference), reference=reference)
 
-    _log_explained_failure(kind.value, run_correlation_id)
+    _log_explained_failure(kind.value, run_correlation_id, agent_reference)
     return AgentTaskError(llm_error_text(kind, llm_that_failed))
 
 
@@ -189,20 +197,28 @@ def _known_kind(error_kind: object) -> LLMErrorKind:
         return LLMErrorKind.UNKNOWN
 
 
-def _log_explained_failure(reason: str, run_correlation_id: str) -> None:
+def _log_explained_failure(
+    reason: str, run_correlation_id: str, agent_reference: str | None
+) -> None:
     # The message already says what happened, so the raw text adds nothing worth logging.
+    # The agent's reference is never shown to the user here; it only leads to its log line.
     logger.warning(
-        "Agent run failed: {reason} (agent_correlation_id={agent_correlation_id})",
+        "Agent run failed: {reason} (agent_correlation_id={agent_correlation_id}, "
+        "agent_reference={agent_reference})",
         reason=reason,
         agent_correlation_id=run_correlation_id,
+        agent_reference=agent_reference or "<none>",
     )
 
 
-def _log_unexplained_failure(raw_error: object, run_correlation_id: str) -> str:
+def _log_unexplained_failure(
+    raw_error: object, run_correlation_id: str, agent_reference: str | None
+) -> str:
     return log_with_reference(
         "Agent run failed: {error} (agent_correlation_id={agent_correlation_id})",
         error=_describe_for_log(raw_error),
         agent_correlation_id=run_correlation_id,
+        reference=agent_reference,
     )
 
 
