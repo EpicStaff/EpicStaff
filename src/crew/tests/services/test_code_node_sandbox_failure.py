@@ -19,7 +19,13 @@ from services.graph.exceptions import NodeExecutionError
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.graph.nodes.python_node import PythonNode
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
-from src.shared.models import CodeFailure, CodeFailureCode, CodeResultData, UserCodeError
+from src.shared.models import (
+    SERVER_FAILURE_CODES,
+    CodeFailure,
+    CodeFailureCode,
+    CodeResultData,
+    UserCodeError,
+)
 from tests.services.conftest import CREW_RESULT_CHANNEL
 
 pytestmark = pytest.mark.asyncio
@@ -39,6 +45,14 @@ def fixed_reference(monkeypatch):
 def captured_error_logs():
     records: list[str] = []
     sink_id = logger.add(records.append, level="ERROR")
+    yield records
+    logger.remove(sink_id)
+
+
+@pytest.fixture
+def captured_warning_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING")
     yield records
     logger.remove(sink_id)
 
@@ -194,7 +208,13 @@ async def test_failure_of_the_users_code_shows_only_the_failures_detail(
     ],
 )
 async def test_sandbox_failure_names_the_node_and_carries_the_sandbox_reference(
-    run_python_code_service, sandbox, make_python_code_data, code, sandbox_detail, expected_message
+    run_python_code_service,
+    sandbox,
+    make_python_code_data,
+    captured_warning_logs,
+    code,
+    sandbox_detail,
+    expected_message,
 ):
     error, messages = await run_python_node_answered_with(
         run_python_code_service,
@@ -212,6 +232,15 @@ async def test_sandbox_failure_names_the_node_and_carries_the_sandbox_reference(
         "The flow failed. Try again or contact your administrator "
         f"(reference: {SANDBOX_REFERENCE})."
     )
+    # The sandbox logged the cause at ERROR; crew adds which run it was, at WARNING, so
+    # the reference the user quotes leads to the session and node without a second alert.
+    [logged] = [
+        record
+        for record in captured_warning_logs
+        if f"(reference: {SANDBOX_REFERENCE}) Python node" in record
+    ]
+    assert "| WARNING" in logged
+    assert 'Python node "Clean data #2" of session 5' in logged
 
 
 @pytest.mark.parametrize("sandbox_reference", ["<b>x</b>", "9F8E7D6C5B4A", None])
@@ -246,23 +275,86 @@ async def test_sandbox_failure_without_a_usable_reference_cites_a_new_one(
         assert sandbox_reference not in "".join(captured_error_logs)
 
 
-async def test_failed_result_without_a_failure_is_logged_as_a_broken_contract(
-    run_python_code_service, sandbox, make_python_code_data, fixed_reference, captured_error_logs
+@pytest.mark.parametrize(
+    ("stderr", "expected_message"),
+    [
+        pytest.param(
+            "loading rows\nValueError on line 3: bad row\n",
+            "ValueError on line 3: bad row",
+            id="last-line",
+        ),
+        pytest.param("", "The code failed with exit code 3.", id="no-output"),
+    ],
+)
+async def test_failed_result_from_an_older_sandbox_shows_the_end_of_its_stderr(
+    run_python_code_service,
+    sandbox,
+    make_python_code_data,
+    captured_warning_logs,
+    stderr,
+    expected_message,
 ):
+    # An older sandbox sends no failure; its stderr ends with the failure line, which is
+    # what the user saw before the failure field existed.
     error, messages = await run_python_node_answered_with(
         run_python_code_service,
         sandbox,
         make_python_code_data,
         returncode=3,
-        stderr="raw output of the code",
+        stderr=stderr,
     )
 
-    expected_message = (
-        'Python node "Clean data #2" couldn\'t run its code. '
-        f"Try again or contact your administrator (reference: {REFERENCE})."
-    )
     assert error_cards(messages) == [expected_message]
-    assert error.reference == REFERENCE
-    [logged] = [record for record in captured_error_logs if f"(reference: {REFERENCE})" in record]
-    assert "failed with return code 3 but reported no failure" in logged
-    assert "raw output of the code" not in logged
+    assert error.reference is None
+    [logged] = [record for record in captured_warning_logs if "reported no failure" in record]
+    assert "| WARNING" in logged
+    assert "bad row" not in logged
+
+
+async def test_failure_of_a_code_this_version_doesnt_know_shows_its_detail(
+    run_python_code_service, sandbox, make_python_code_data, captured_error_logs
+):
+    detail = "The code ran out of memory. Use less data."
+    error, messages = await run_python_node_answered_with(
+        run_python_code_service,
+        sandbox,
+        make_python_code_data,
+        returncode=1,
+        stderr=detail,
+        failure=CodeFailure.model_validate({"code": "memory_exceeded", "detail": detail}),
+    )
+
+    assert error_cards(messages) == [detail]
+    assert error.reference is None
+    assert captured_error_logs == []
+
+
+# How crew's code nodes read each failure code. Adding a code to CodeFailureCode fails
+# this test until someone decides which it is.
+SHOWN_AS_ITS_DETAIL = {
+    CodeFailureCode.USER_CODE_ERROR,
+    CodeFailureCode.MISSING_ENTRYPOINT,
+    CodeFailureCode.MISSING_ARGUMENT,
+    CodeFailureCode.BAD_RETURN_VALUE,
+    CodeFailureCode.NETWORK_DENIED,
+    CodeFailureCode.CODE_EXITED,
+    CodeFailureCode.EXECUTION_TIMEOUT,
+    CodeFailureCode.RESULT_TOO_LARGE,
+    CodeFailureCode.OVERLOADED,
+    CodeFailureCode.PACKAGE_NOT_FOUND,
+    CodeFailureCode.PACKAGE_VERSION_NOT_FOUND,
+    CodeFailureCode.PACKAGE_DEPENDENCY_CONFLICT,
+    CodeFailureCode.PACKAGE_INSTALL_FAILED,
+    CodeFailureCode.HOLD_TIMEOUT,
+    CodeFailureCode.RESULT_TIMEOUT,
+    CodeFailureCode.UNKNOWN,
+}
+# Told in words of the node's input map.
+SHOWN_IN_WORDS = {CodeFailureCode.UNEXPECTED_ARGUMENT}
+
+
+def test_every_failure_code_has_a_decided_reading():
+    decided = SHOWN_AS_ITS_DETAIL | SHOWN_IN_WORDS | SERVER_FAILURE_CODES
+
+    assert decided == set(CodeFailureCode)
+    assert not SHOWN_AS_ITS_DETAIL & SERVER_FAILURE_CODES

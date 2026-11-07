@@ -116,6 +116,7 @@ class PythonNode(BaseNode):
                 kind_name=self.KIND_NAME,
                 node_label=self.node_label,
                 entrypoint=self.python_code_data.entrypoint,
+                session_id=self.session_id,
             ),
             shown_result=result.model_dump(),
             output=lambda: json.loads(result.result_data),

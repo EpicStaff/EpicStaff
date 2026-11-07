@@ -11,6 +11,7 @@ from enum import StrEnum
 from pydantic import BaseModel, model_validator
 
 __all__ = [
+    "SERVER_FAILURE_CODES",
     "USER_CODE_LOCATION_TEMPLATE",
     "WRAPPER_FAILURE_CODES",
     "CodeFailure",
@@ -21,7 +22,12 @@ __all__ = [
 
 
 class CodeFailureCode(StrEnum):
-    """What went wrong; the comment on each names the part of the system that reports it."""
+    """What went wrong; the comment on each names the part of the system that reports it.
+
+    Read leniently: a code this version doesn't know is read as ``UNKNOWN`` rather than
+    rejected, because a newer producer can send one during a deploy. A consumer shows
+    the failure's ``detail`` for it, which is always safe to show.
+    """
 
     # The sandbox's code wrapper, from inside the process that ran the user's code.
     USER_CODE_ERROR = "user_code_error"
@@ -47,6 +53,13 @@ class CodeFailureCode(StrEnum):
     DISPATCH_FAILED = "dispatch_failed"
     # Crew, when it stopped waiting for the result.
     RESULT_TIMEOUT = "result_timeout"
+    # Never sent: what a consumer reads a code it doesn't know as.
+    UNKNOWN = "unknown"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "CodeFailureCode | None":
+        # Only a value a newer producer could send; anything but a string is malformed.
+        return cls.UNKNOWN if isinstance(value, str) else None
 
 
 # The codes the process running the user's code may report about itself. That process
@@ -60,6 +73,17 @@ WRAPPER_FAILURE_CODES = frozenset(
         CodeFailureCode.MISSING_ARGUMENT,
         CodeFailureCode.BAD_RETURN_VALUE,
         CodeFailureCode.NETWORK_DENIED,
+    }
+)
+
+# The failures only a server log line explains: the failure cites the reference that line
+# is logged under, and a consumer names its own context around it rather than showing the
+# detail alone.
+SERVER_FAILURE_CODES = frozenset(
+    {
+        CodeFailureCode.SANDBOX_ERROR,
+        CodeFailureCode.DISPATCH_FAILED,
+        CodeFailureCode.UNSAFE_TO_RUN,
     }
 )
 
@@ -112,9 +136,16 @@ class CodeFailure(BaseModel):
     user_error: UserCodeError | None = None
 
     @model_validator(mode="after")
-    def _parts_match_the_code(self) -> "CodeFailure":
-        if (self.attr is not None) != (self.code in _ARGUMENT_CODES):
-            raise ValueError("attr is set exactly for the argument codes")
-        if (self.user_error is not None) != (self.code is CodeFailureCode.USER_CODE_ERROR):
-            raise ValueError("user_error is set exactly for user_code_error")
+    def _keep_only_the_parts_of_the_code(self) -> "CodeFailure":
+        # The parts a consumer reads for the code are required. A part on another code is
+        # dropped rather than rejected, so a newer producer's failure is still read, and
+        # every consumer can trust a part to mean its code.
+        if self.code in _ARGUMENT_CODES and self.attr is None:
+            raise ValueError("an argument code needs attr")
+        if self.code is CodeFailureCode.USER_CODE_ERROR and self.user_error is None:
+            raise ValueError("user_code_error needs user_error")
+        if self.code not in _ARGUMENT_CODES:
+            self.attr = None
+        if self.code is not CodeFailureCode.USER_CODE_ERROR:
+            self.user_error = None
         return self

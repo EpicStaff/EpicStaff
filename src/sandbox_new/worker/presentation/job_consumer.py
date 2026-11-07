@@ -70,6 +70,7 @@ class JobConsumer:
             reference = log_sandbox_failure(
                 "The job could not be decoded; it was not run.",
                 execution_id=error.execution_id,
+                session_id=error.session_id,
             )
             await self._orchestrator.fail(
                 error.execution_id,
@@ -120,6 +121,7 @@ class JobConsumer:
                 reference = log_sandbox_failure(
                     f"The worker failed to run the job: {type(error).__name__}",
                     execution_id=job.execution_id,
+                    session_id=job.session_id,
                 )
                 await self._orchestrator.fail(
                     job.execution_id,

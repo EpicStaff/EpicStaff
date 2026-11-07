@@ -65,6 +65,7 @@ class WebhookTriggerNode(BaseNode):
             kind_name=self.KIND_NAME,
             node_label=self.node_label,
             entrypoint=None,
+            session_id=self.session_id,
         )
         if error is not None:
             raise error

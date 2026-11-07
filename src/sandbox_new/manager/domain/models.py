@@ -30,16 +30,6 @@ WHEEL_SUFFIX = ".whl"
 SOURCE_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".zip")
 DISTRIBUTION_NAME_PATTERN = r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$"
 
-# Build failures whose stored text names only what the user declared, so it may be
-# shown to them.
-_USER_FACING_BUILD_ERROR_KINDS = frozenset(
-    {
-        VenvBuildErrorKind.PACKAGE_NOT_FOUND,
-        VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND,
-        VenvBuildErrorKind.PACKAGE_DEPENDENCY_CONFLICT,
-    }
-)
-
 VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_\.][a-z0-9]+)*)?$"
 
 
@@ -204,12 +194,12 @@ class Venv(Entity):
     def build_error_detail(self) -> str | None:
         """The stored error when its kind says it names what the user declared, else None.
 
-        None for the generic kind, and for a failure stored before kinds were, whose
-        text can still hold raw tool output.
+        Every kind but the generic one does. None for the generic kind, and for a
+        failure stored before kinds were, whose text can still hold raw tool output.
         """
-        if self.error_kind in _USER_FACING_BUILD_ERROR_KINDS:
-            return self.error
-        return None
+        if self.error_kind in (None, VenvBuildErrorKind.PACKAGE_INSTALL_FAILED):
+            return None
+        return self.error
 
     def _clear_error(self):
         self.error = None

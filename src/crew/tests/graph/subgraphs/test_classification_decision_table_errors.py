@@ -378,7 +378,7 @@ async def test_sandbox_unavailable_without_a_usable_reference_cites_a_new_one(
     )
     assert match is not None, details
     assert any(
-        f"(reference: {match.group(1)}) Code execution" in line
+        f"(reference: {match.group(1)}) Pre-computation code of node" in line
         and "without a usable reference" in line
         for line in logged
     )

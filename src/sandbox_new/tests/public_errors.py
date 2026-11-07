@@ -21,8 +21,8 @@ def reference_in(pattern: re.Pattern, text: str) -> str:
     return match["reference"]
 
 
-def logged_with(reference: str, error_logs: list[str]) -> str:
-    """Return the one error log line citing ``reference``."""
-    lines = [line for line in error_logs if f"(reference: {reference})" in line]
+def logged_with(reference: str, logs: list[str]) -> str:
+    """Return the one log line in ``logs`` citing ``reference``."""
+    lines = [line for line in logs if f"(reference: {reference})" in line]
     assert len(lines) == 1, f"expected one log line citing {reference}, got {lines}"
     return lines[0]

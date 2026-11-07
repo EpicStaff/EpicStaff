@@ -14,6 +14,7 @@ ports and this module.
 
 import traceback
 from pathlib import Path
+from typing import Literal
 
 from common.public_errors import log_sandbox_failure, sandbox_failure
 from pydantic import BaseModel, ConfigDict
@@ -90,6 +91,7 @@ def fail_on_sandbox_error(
     detail: Exception | str,
     *,
     code: CodeFailureCode = CodeFailureCode.SANDBOX_ERROR,
+    level: Literal["ERROR", "WARNING"] = "ERROR",
 ) -> None:
     """Fail the run on the sandbox's own error, not the user's code.
 
@@ -102,9 +104,16 @@ def fail_on_sandbox_error(
     Args:
         code: ``sandbox_error``, or ``unsafe_to_run`` when the server can't isolate the
             code safely.
+        level: ERROR by default; WARNING for a failure the user's code can cause on
+            purpose.
     """
     if isinstance(detail, BaseException):
         detail = "".join(traceback.format_exception(detail)).rstrip("\n")
     logged_detail = scrub(text=detail, secrets=context.job.secrets or {})
-    reference = log_sandbox_failure(logged_detail, execution_id=context.job.execution_id)
+    reference = log_sandbox_failure(
+        logged_detail,
+        execution_id=context.job.execution_id,
+        session_id=context.job.session_id,
+        level=level,
+    )
     context.fail(sandbox_failure(code, reference), reference=reference)

@@ -6,6 +6,8 @@ reference; the user sees a fixed text that cites the reference, so an administra
 find the log line without the user ever seeing its content.
 """
 
+from typing import Literal
+
 from foundation.utils.error_reference import log_with_reference
 from src.shared.models.code_failure import CodeFailure, CodeFailureCode
 
@@ -36,17 +38,29 @@ def sandbox_failure(code: CodeFailureCode, reference: str) -> CodeFailure:
     return CodeFailure(code=code, detail=_PUBLIC_TEXTS[code].format(reference=reference))
 
 
-def log_sandbox_failure(detail: str, *, execution_id: str | None) -> str:
-    """Log ``detail`` at ERROR under a fresh reference and return the reference.
+def log_sandbox_failure(
+    detail: str,
+    *,
+    execution_id: str | None,
+    session_id: int | None,
+    level: Literal["ERROR", "WARNING"] = "ERROR",
+) -> str:
+    """Log ``detail`` under a fresh reference and return the reference.
 
     Args:
         detail: Logged as it is. Mask the job's secrets in it first; where the secrets
             aren't at hand, pass only an exception's type name when its text may quote
             them.
         execution_id: Names the execution in the log line; None when it is unknown.
+        session_id: The flow session the job ran for, so a reference the user quotes
+            leads to the run; None for a job sent outside a session.
+        level: ERROR by default; WARNING for a failure the user's code can cause on
+            purpose, which mustn't raise an alert.
     """
     return log_with_reference(
-        "Execution {execution_id} failed in the sandbox: {detail}",
+        "Execution {execution_id} of session {session_id} failed in the sandbox: {detail}",
         execution_id=execution_id,
+        session_id=session_id,
         detail=detail,
+        level=level,
     )

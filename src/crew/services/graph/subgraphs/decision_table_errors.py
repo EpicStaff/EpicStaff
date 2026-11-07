@@ -16,11 +16,12 @@ from loguru import logger
 from services.agent_run_errors import llm_error_text
 from services.graph.exceptions import PublicNodeError
 from services.graph.nodes.code_result_errors import (
-    log_missing_failure,
+    failure_text_without_failure,
     server_failure_reference,
 )
 from src.shared.llm_error_kind import classify_llm_error
 from src.shared.models import (
+    SERVER_FAILURE_CODES,
     CodeFailure,
     CodeFailureCode,
     CodeResultData,
@@ -43,12 +44,6 @@ _UNSAFE_TO_RUN_TEXT = (
 _RESULT_TIMEOUT_TEXT = (
     "{subject}: the code's result didn't arrive in time. Try again or contact your administrator."
 )
-# The failures of the server rather than of the user's code, by the text they show.
-_SERVER_FAILURE_TEXTS = {
-    CodeFailureCode.SANDBOX_ERROR: _SERVER_ERROR_TEXT,
-    CodeFailureCode.DISPATCH_FAILED: _SERVER_ERROR_TEXT,
-    CodeFailureCode.UNSAFE_TO_RUN: _UNSAFE_TO_RUN_TEXT,
-}
 
 # Where the agent's text tells the user to change the task or the agent, a prompt's says
 # what to change about the prompt. Every other kind keeps the agent's text after the
@@ -178,37 +173,44 @@ def condition_error(condition_name: str, failure: ConditionFailure) -> DecisionT
     return DecisionTableError(f"{condition_subject(condition_name)}: {failure.message}")
 
 
-def check_code_ran(result: CodeResultData, subject: str) -> None:
+def check_code_ran(
+    result: CodeResultData, subject: str, *, session_id: int, node_name: str
+) -> None:
     """Raise if the sandbox couldn't run the code, or its result didn't reach crew in time.
 
     Both are failures of the server, not of the user's code. The sandbox's own failure was
     logged under the result's reference, which the message cites when it is well-formed
-    (see `server_failure_reference`). A failed result that doesn't say why is logged here,
-    under a reference of its own. Once this returns, the code ran, and `result.failure`
+    (see `server_failure_reference`). A failed result that doesn't say why comes from an
+    older sandbox, and fails with the end of its stderr (see
+    `failure_text_without_failure`). Once this returns, the code ran, and `result.failure`
     is set exactly when it failed.
 
     Args:
         result: What `RunPythonCodeService.run_code` returned.
         subject: Names the code in the message, e.g. 'Condition "High score"'.
+        session_id: Logged with a server failure's reference.
+        node_name: Logged with it too, so the reference leads to the node.
 
     Raises:
-        DecisionTableError: The code didn't run, or its result didn't arrive.
+        DecisionTableError: The code didn't run, or its result didn't arrive, or an older
+            sandbox reported a failed result without a failure.
     """
     failure = result.failure
     if failure is None:
         if result.returncode == 0:
             return
-        reference = log_missing_failure(result)
-        raise DecisionTableError(
-            _SERVER_ERROR_TEXT.format(subject=subject, reference=reference),
-            reference=reference,
+        raise DecisionTableError(f"{subject}: {failure_text_without_failure(result)}")
+    if failure.code in SERVER_FAILURE_CODES:
+        reference = server_failure_reference(
+            result, subject=f"{subject} of node {node_name}", session_id=session_id
         )
-    server_failure_text = _SERVER_FAILURE_TEXTS.get(failure.code)
-    if server_failure_text is not None:
-        reference = server_failure_reference(result)
+        text = (
+            _UNSAFE_TO_RUN_TEXT
+            if failure.code is CodeFailureCode.UNSAFE_TO_RUN
+            else _SERVER_ERROR_TEXT
+        )
         raise DecisionTableError(
-            server_failure_text.format(subject=subject, reference=reference),
-            reference=reference,
+            text.format(subject=subject, reference=reference), reference=reference
         )
     if failure.code is CodeFailureCode.RESULT_TIMEOUT:
         raise DecisionTableError(_RESULT_TIMEOUT_TEXT.format(subject=subject))

@@ -310,6 +310,8 @@ async def test_a_dispatch_failure_is_reported_as_a_failed_run(
     assert failure.reference == reference
     log_line = logged_with(reference, error_logs)
     assert "exec-1" in log_line
+    # The session leads support from the reference the user quotes to the run.
+    assert "session 7" in log_line
     assert "RuntimeError" in log_line
     # The type only: a dispatch error's text can quote the job's secrets.
     assert "queue is gone" not in log_line

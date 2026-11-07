@@ -214,11 +214,15 @@ def _log_explained_failure(
 def _log_unexplained_failure(
     raw_error: object, run_correlation_id: str, agent_reference: str | None
 ) -> str:
+    # The agent logged the failure at ERROR under its reference, so crew's line under the
+    # same reference is context, at WARNING: one failure, one alert. Without the agent's
+    # reference, crew's line is the only one, so it is the ERROR.
     return log_with_reference(
         "Agent run failed: {error} (agent_correlation_id={agent_correlation_id})",
         error=_describe_for_log(raw_error),
         agent_correlation_id=run_correlation_id,
         reference=agent_reference,
+        level="WARNING" if agent_reference is not None else "ERROR",
     )
 
 

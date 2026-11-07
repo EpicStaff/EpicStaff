@@ -242,7 +242,7 @@ class ClassificationDecisionTableNodeSubgraph:
             storage_credentials=self.storage_credentials,
         )
 
-        check_code_ran(result, subject)
+        check_code_ran(result, subject, session_id=self.session_id, node_name=self.node_name)
         if result.failure is not None:
             raise user_code_error(subject, result.failure)
 
@@ -371,7 +371,7 @@ class ClassificationDecisionTableNodeSubgraph:
             storage_credentials=self.storage_credentials,
         )
 
-        check_code_ran(result, subject)
+        check_code_ran(result, subject, session_id=self.session_id, node_name=self.node_name)
         if result.failure is not None:
             # The evaluation reports the rows' own errors in its result, so this is the
             # sandbox stopping the code, e.g. at its time limit.
@@ -478,7 +478,12 @@ def main(**kwargs) -> dict:
             storage_credentials=self.storage_credentials,
         )
 
-        check_code_ran(result, condition_subject(condition_name))
+        check_code_ran(
+            result,
+            condition_subject(condition_name),
+            session_id=self.session_id,
+            node_name=self.node_name,
+        )
         if result.failure is not None:
             raise manipulation_error(condition_name, result.failure, parts)
 

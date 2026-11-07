@@ -5,6 +5,12 @@ in-process queue, later a network transport). They are presentation-layer only:
 the manager builds an ``ExecutionJobMessage`` when it dispatches and the worker
 emits an ``ExecutionResultMessage`` when it is done. Neither type may appear in
 any domain or application module -- those layers work with their own models.
+
+The one exception is ``CodeFailure`` (``src.shared.models.code_failure``): a shared
+kernel, the failure vocabulary the sandbox publishes and crew reads, used by the
+worker's domain and the manager's ports as it is rather than mapped. It stays pure
+pydantic and standard library, which a test in ``src/shared/models/tests`` checks, so
+it drags nothing into the layers that use it.
 """
 
 from typing import Any

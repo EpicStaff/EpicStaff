@@ -424,6 +424,9 @@ async def test_unexplained_failure_cites_the_reference_the_agent_service_logged_
     assert result.reference == AGENT_REFERENCE
     [logged] = [record for record in warning_logs if "Agent run failed" in record]
     assert f"(reference: {AGENT_REFERENCE}) Agent run failed" in logged
+    # The agent service logged the failure at ERROR; crew's line is context, so one
+    # failure raises one alert.
+    assert "| WARNING" in logged
 
 
 @UNEXPLAINED_FAILURES
@@ -445,6 +448,9 @@ async def test_unexplained_failure_mints_its_own_reference_when_the_agents_is_ma
     assert result.reference == REFERENCE
     assert str(agent_reference) not in str(result)
     assert str(agent_reference) not in "".join(warning_logs)
+    # No reference of the agent's own to lead to its line, so crew's line is the ERROR.
+    [logged] = [record for record in warning_logs if f"(reference: {REFERENCE})" in record]
+    assert "| ERROR" in logged
 
 
 @UNEXPLAINED_FAILURES

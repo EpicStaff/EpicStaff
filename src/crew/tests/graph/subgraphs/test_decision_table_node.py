@@ -378,27 +378,24 @@ async def test_sandbox_failure_is_shown_against_the_condition(part, failed_resul
 
 
 @pytest.mark.asyncio
-async def test_failed_result_without_a_failure_cites_a_new_reference():
+async def test_failed_result_from_an_older_sandbox_shows_the_end_of_its_stderr():
+    # An older sandbox sends no failure; its stderr ends with the failure line.
     broken = CodeResultData(
-        execution_id="test", returncode=3, stdout="", stderr="raw output", result_data=None
+        execution_id="test",
+        returncode=3,
+        stdout="",
+        stderr="loading\nNameError: name 'score' is not defined\n",
+        result_data=None,
     )
     subgraph, redis_service = build_subgraph(
         table(complex_group("True")), CannedRunCodeService(broken)
     )
-    logged, sink_id = capture_logs()
-    try:
-        await subgraph.ainvoke(make_state())
-    finally:
-        logger.remove(sink_id)
 
-    [details] = error_details(redis_service)
-    match = re.fullmatch(
-        'Condition "High score": the code couldn\'t run because of a server error. '
-        rf"Try again or contact your administrator \(reference: ({_REFERENCE_PATTERN})\)\.",
-        details,
-    )
-    assert match is not None, details
-    assert any("reported no failure" in line and match.group(1) in line for line in logged)
+    await subgraph.ainvoke(make_state())
+
+    assert error_details(redis_service) == [
+        "Condition \"High score\": NameError: name 'score' is not defined"
+    ]
 
 
 @pytest.mark.asyncio

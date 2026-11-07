@@ -31,12 +31,7 @@ from manager.application.ports import (
     AbstractUnitOfWork,
     AbstractUVProvider,
 )
-from manager.application.ports.errors import (
-    DependencyConflictError,
-    EnvironmentBuildError,
-    PackageNotFoundError,
-    PackageVersionNotFoundError,
-)
+from manager.application.ports.errors import EnvironmentBuildError
 from manager.application.registry import ExecutionRegistry
 from manager.domain.enums import (
     ExecutionStatus,
@@ -161,13 +156,10 @@ class VenvCRUDOrchestrator:
         logger.info("Removed venv {}", id)
 
 
-# Build errors whose text names only what the user declared, so it is stored as is. The
-# custom library refusals come before the build starts; a library that isn't stored is a
-# package that doesn't exist, and one with nothing built has no version to install.
-_DECLARED_PACKAGE_ERROR_KINDS: dict[type[BaseError], VenvBuildErrorKind] = {
-    PackageNotFoundError: VenvBuildErrorKind.PACKAGE_NOT_FOUND,
-    PackageVersionNotFoundError: VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND,
-    DependencyConflictError: VenvBuildErrorKind.PACKAGE_DEPENDENCY_CONFLICT,
+# The custom library refusals that come before the build starts: a library that isn't
+# stored is a package that doesn't exist, and one with nothing built has no version to
+# install. Their text names only the library the user declared.
+_CUSTOM_LIBRARY_REFUSAL_KINDS: dict[type[BaseError], VenvBuildErrorKind] = {
     CustomLibraryNameNotFoundError: VenvBuildErrorKind.PACKAGE_NOT_FOUND,
     CustomLibraryNotPublishedError: VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND,
 }
@@ -176,12 +168,19 @@ _DECLARED_PACKAGE_ERROR_KINDS: dict[type[BaseError], VenvBuildErrorKind] = {
 def _build_failure(error: Exception) -> tuple[VenvBuildErrorKind, str]:
     """The kind and the text to store for a build that raised `error`.
 
-    Any exception but a declared-package error can carry paths or tool output in its
-    text, so it is stored as the generic hint; its detail is left to the build's log line.
+    A build port error says its kind with its code, and the text of every kind but the
+    generic one names only what the user declared. Any other exception, and the generic
+    kind, can carry paths or tool output in its text, so it is stored as the generic
+    hint; its detail is left to the build's log line.
     """
-    kind = _DECLARED_PACKAGE_ERROR_KINDS.get(type(error))
-    if kind is None:
-        return VenvBuildErrorKind.PACKAGE_INSTALL_FAILED, EnvironmentBuildError.default_message
+    if isinstance(error, EnvironmentBuildError):
+        kind = VenvBuildErrorKind(error.code)
+    else:
+        kind = _CUSTOM_LIBRARY_REFUSAL_KINDS.get(
+            type(error), VenvBuildErrorKind.PACKAGE_INSTALL_FAILED
+        )
+    if kind is VenvBuildErrorKind.PACKAGE_INSTALL_FAILED:
+        return kind, EnvironmentBuildError.default_message
     return kind, str(error)
 
 
@@ -534,6 +533,7 @@ class JobOrchestrator:
             reference = log_sandbox_failure(
                 f"Failed to dispatch the job: {type(error).__name__}",
                 execution_id=job.execution_id,
+                session_id=job.session_id,
             )
             failure = sandbox_failure(CodeFailureCode.DISPATCH_FAILED, reference)
             await self._fail(job, failure, reference=reference)

@@ -27,10 +27,9 @@ class VenvBuildErrorKind(StrEnum):
     isn't stored as `package_not_found`, one with nothing built as
     `package_version_not_found`. A failed job reports the kind as its failure's code.
 
-    NOTE: The user-facing kinds are listed twice: in `_DECLARED_PACKAGE_ERROR_KINDS`
-    (`manager.application.orchestrators`), which maps errors to kinds and decides whose
-    text is stored, and in `_USER_FACING_BUILD_ERROR_KINDS` (`manager.domain.models`),
-    which decides whose text is shown. A new kind must be added to both.
+    The text stored with every kind but ``PACKAGE_INSTALL_FAILED`` names only what the
+    user declared, so it is shown to them; a new kind must keep to that, or the build
+    port error that has it must use ``PACKAGE_INSTALL_FAILED``.
     """
 
     PACKAGE_NOT_FOUND = "package_not_found"

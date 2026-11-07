@@ -7,10 +7,12 @@ whatever the run did, secrets are scrubbed on the way out, and a result is alway
 import pytest
 from src.shared.models.code_failure import CodeFailure, CodeFailureCode, UserCodeError
 
+from worker.application import orchestrator as orchestrator_module
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
 from worker.domain.models import StorageMutations
 from tests.builders import make_worker_job
+from worker.infrastructure.execution import code_wrapper
 from tests.public_errors import SERVER_ERROR, logged_with, reference_in
 
 
@@ -354,3 +356,13 @@ async def test_the_result_carries_the_jobs_session_id(result_sink):
     await orchestrator.execute(make_worker_job(session_id=4))
 
     assert result_sink.sent[0][0].session_id == 4
+
+
+def test_the_worker_shows_less_than_the_wrapper_reports():
+    # The wrapper cuts a failure's texts before the worker masks the job's secrets, so a
+    # secret straddling its cut leaves a prefix the mask no longer matches. The worker's
+    # own cut, made after masking, falls well inside the wrapper's, so that prefix is
+    # shown only when masking shortened the text by more than the difference. This
+    # keeps that margin; the mask is a safety net, not a boundary.
+    assert orchestrator_module._MAX_SHOWN_TEXT_LENGTH < code_wrapper._MAX_RAW_MESSAGE_LENGTH
+    assert orchestrator_module._MAX_SHOWN_NAME_LENGTH < code_wrapper._MAX_RAW_NAME_LENGTH

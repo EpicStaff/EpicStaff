@@ -266,9 +266,12 @@ RAW_OUTPUT = "secret output of the user's code"
 @pytest.mark.parametrize(
     "failure",
     [
-        pytest.param({"code": "not_a_code", "detail": RAW_OUTPUT}, id="unknown-code"),
+        # A code crew doesn't know is read as unknown, not rejected: see test_code_failure.
         pytest.param(
             {"code": "user_code_error", "detail": RAW_OUTPUT}, id="user-error-without-its-parts"
+        ),
+        pytest.param(
+            {"code": "unexpected_argument", "detail": RAW_OUTPUT}, id="argument-code-without-attr"
         ),
     ],
 )

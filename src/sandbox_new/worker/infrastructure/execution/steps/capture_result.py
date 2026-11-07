@@ -200,7 +200,11 @@ def _fail_on_unwritten_result_file(context: ExecutionContext, marker: str) -> No
     context.stderr = context.stderr[:marker_index].rstrip("\n")
     write_error = write_error[:_MAX_LOGGED_WRITE_ERROR_LENGTH]
     # A real write error is one line. repr keeps anything else on one log line, so text
-    # written past the marker can't pass itself off as separate log entries.
+    # written past the marker can't pass itself off as separate log entries. WARNING:
+    # code that read the marker out of its own process can fake this on purpose, and must
+    # not raise an alert; a real write failure shows in the disk's own monitoring too.
     fail_on_sandbox_error(
-        context, f"The wrapped code couldn't write the result file: {write_error!r}"
+        context,
+        f"The wrapped code couldn't write the result file: {write_error!r}",
+        level="WARNING",
     )

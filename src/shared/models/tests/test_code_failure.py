@@ -1,7 +1,11 @@
-"""The code failure contract: which parts go with which code, and the user-code error line."""
+"""The code failure contract: the parts each code needs, lenient reading, and the user-code error line."""
+
+import ast
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from shared.models import code_failure as code_failure_module
 from shared.models.code_failure import (
     CodeFailure,
     CodeFailureCode,
@@ -59,27 +63,47 @@ def test_a_result_from_a_sender_that_knows_no_failure_still_reads():
     "fields",
     [
         {"code": "user_code_error", "detail": "ValueError: bad"},
-        {
-            "code": "sandbox_error",
-            "detail": "ValueError: bad",
-            "user_error": {"exception_type": "ValueError", "line": None, "message": "bad"},
-        },
         {"code": "unexpected_argument", "detail": "TypeError: unexpected"},
-        {"code": "user_code_error", "detail": "x", "attr": "city",
-         "user_error": {"exception_type": "ValueError", "line": None, "message": "x"}},
-        {"code": "not_a_code", "detail": "x"},
+        {"code": None, "detail": "x"},
+        {"code": 42, "detail": "x"},
     ],
     ids=[
         "user-code-error-without-its-parts",
-        "parts-on-another-code",
         "argument-code-without-the-argument",
-        "argument-on-another-code",
-        "unknown-code",
+        "no-code",
+        "code-that-isnt-a-string",
     ],
 )
-def test_a_failure_whose_parts_dont_match_its_code_is_rejected(fields):
+def test_a_failure_without_the_parts_its_code_needs_is_rejected(fields):
     with pytest.raises(ValidationError):
         CodeFailure.model_validate(fields)
+
+
+def test_a_code_this_version_doesnt_know_is_read_as_unknown():
+    # A newer sandbox can send a code an older consumer doesn't know yet; the result
+    # still reads, with the detail the consumer shows for it.
+    result = CodeResultData.model_validate_json(
+        '{"execution_id": "exec-1", "stdout": "", "stderr": "", "returncode": 1, '
+        '"failure": {"code": "memory_exceeded", "detail": "The code ran out of memory.", '
+        '"attr": "limit"}}'
+    )
+
+    assert result.failure.code is CodeFailureCode.UNKNOWN
+    assert result.failure.detail == "The code ran out of memory."
+
+
+@pytest.mark.parametrize("code", ["missing_entrypoint", "memory_exceeded"])
+def test_a_part_on_a_code_that_doesnt_use_it_is_dropped_not_rejected(code):
+    failure = CodeFailure.model_validate(
+        {
+            "code": code,
+            "detail": "x",
+            "attr": "city",
+            "user_error": {"exception_type": "ValueError", "line": None, "message": "x"},
+        }
+    )
+
+    assert (failure.attr, failure.user_error) == (None, None)
 
 
 @pytest.mark.parametrize(
@@ -94,3 +118,21 @@ def test_a_failure_whose_parts_dont_match_its_code_is_rejected(fields):
 )
 def test_a_user_code_error_reads_as_type_line_and_message(exception_type, line, message, expected):
     assert describe_user_code_error(exception_type, line, message) == expected
+
+
+def test_the_contract_imports_nothing_but_pydantic_and_the_standard_library():
+    # The sandbox's domain and crew both use this module as it is; an import of a
+    # service's own package here would drag that package into them.
+    tree = ast.parse(Path(code_failure_module.__file__).read_text(encoding="utf-8"))
+    imported = {
+        name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for name in (
+            [alias.name for alias in node.names]
+            if isinstance(node, ast.Import)
+            else [node.module or ""]
+        )
+    }
+
+    assert imported <= {"enum", "typing", "pydantic", "__future__"}

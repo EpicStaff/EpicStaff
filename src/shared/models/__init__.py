@@ -34,6 +34,7 @@ from .audit.session_audit import (
 )
 from .base import ValueObject
 from .code_failure import (
+    SERVER_FAILURE_CODES,
     WRAPPER_FAILURE_CODES,
     CodeFailure,
     CodeFailureCode,
@@ -168,6 +169,7 @@ from .variables import (
 )
 
 __all__ = [
+    "SERVER_FAILURE_CODES",
     "WRAPPER_FAILURE_CODES",
     # agents
     "AgentData",

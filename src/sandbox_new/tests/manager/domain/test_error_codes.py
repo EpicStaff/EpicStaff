@@ -9,8 +9,9 @@ once its module is loaded.
 import re
 
 import pytest
-from src.shared.models.code_failure import CodeFailureCode
+from src.shared.models.code_failure import SERVER_FAILURE_CODES, CodeFailureCode
 
+from common import public_errors
 from manager.application import errors as application_errors
 from manager.application.ports import errors as port_errors
 from manager.domain.enums import VenvBuildErrorKind
@@ -85,3 +86,7 @@ def test_every_error_has_its_code_pinned():
 def test_every_venv_build_error_kind_is_a_code_failure_code(kind):
     # A job whose venv failed to build reports the kind as its failure's code.
     assert CodeFailureCode(kind.value) == kind.value
+
+
+def test_the_sandbox_has_a_text_for_every_failure_only_its_log_explains():
+    assert set(public_errors._PUBLIC_TEXTS) == SERVER_FAILURE_CODES

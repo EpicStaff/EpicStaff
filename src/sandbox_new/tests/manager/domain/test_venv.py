@@ -408,3 +408,24 @@ def test_a_venv_with_no_libraries_uses_and_pins_nothing():
 
     assert venv.uses_custom_library("acme-core") is False
     assert venv.pins_custom_library("acme-core", "1.4.2") is False
+
+
+# The kinds whose stored text a user is shown: it names only the packages they declared.
+# Adding a kind to VenvBuildErrorKind fails this test until someone decides whether its
+# text is safe to show.
+SHOWN_BUILD_ERROR_KINDS = {
+    VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+    VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND,
+    VenvBuildErrorKind.PACKAGE_DEPENDENCY_CONFLICT,
+}
+HIDDEN_BUILD_ERROR_KINDS = {VenvBuildErrorKind.PACKAGE_INSTALL_FAILED}
+
+
+@pytest.mark.parametrize("kind", list(VenvBuildErrorKind), ids=str)
+def test_every_build_error_kind_has_a_decided_visibility(kind):
+    venv = make_venv(name="data")
+    venv.mark_as_failed(kind, "stored text")
+
+    assert kind in SHOWN_BUILD_ERROR_KINDS | HIDDEN_BUILD_ERROR_KINDS
+    expected = "stored text" if kind in SHOWN_BUILD_ERROR_KINDS else None
+    assert venv.build_error_detail == expected

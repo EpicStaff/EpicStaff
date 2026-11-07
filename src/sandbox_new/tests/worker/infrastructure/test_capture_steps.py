@@ -295,7 +295,7 @@ async def test_a_result_file_replaced_by_a_symlink_fails_the_run_without_reading
 
 
 async def test_a_result_file_the_code_could_not_write_fails_as_a_server_error(
-    tmp_path, error_logs
+    tmp_path, warning_logs
 ):
     write_error = "PermissionError: [Errno 13] Permission denied: '/srv/executions/exec-1/output.txt'"
     context = make_context(
@@ -313,11 +313,11 @@ async def test_a_result_file_the_code_could_not_write_fails_as_a_server_error(
     user_output, public_text = context.stderr.split("\n")
     assert user_output == "printed by the user"
     reference = reference_in(SERVER_ERROR, public_text)
-    assert write_error in logged_with(reference, error_logs)
+    assert write_error in logged_with(reference, warning_logs)
 
 
 async def test_a_result_file_write_error_alone_on_stderr_leaves_no_user_output(
-    tmp_path, error_logs
+    tmp_path, warning_logs
 ):
     context = make_context(
         returncode=RESULT_WRITE_FAILED_EXIT_CODE,
@@ -329,10 +329,10 @@ async def test_a_result_file_write_error_alone_on_stderr_leaves_no_user_output(
     await CaptureResultStep(max_bytes=MAX_BYTES)(context)
 
     reference = reference_in(SERVER_ERROR, context.stderr)
-    assert "No space left on device" in logged_with(reference, error_logs)
+    assert "No space left on device" in logged_with(reference, warning_logs)
 
 
-async def test_user_output_left_unfinished_stays_with_the_user(tmp_path, error_logs):
+async def test_user_output_left_unfinished_stays_with_the_user(tmp_path, warning_logs):
     write_error = "FileNotFoundError: [Errno 2] No such file or directory: '/srv/exec-1/output.txt'"
     context = make_context(
         returncode=RESULT_WRITE_FAILED_EXIT_CODE,
@@ -346,11 +346,11 @@ async def test_user_output_left_unfinished_stays_with_the_user(tmp_path, error_l
     user_output, public_text = context.stderr.split("\n")
     assert user_output == "partial"
     reference = reference_in(SERVER_ERROR, public_text)
-    assert write_error in logged_with(reference, error_logs)
+    assert write_error in logged_with(reference, warning_logs)
 
 
 async def test_a_multi_line_write_error_is_logged_whole_on_one_line_and_none_reaches_the_user(
-    tmp_path, error_logs
+    tmp_path, warning_logs
 ):
     write_error = (
         "OSError: could not write '/srv/executions/exec-1/output.txt'\n"
@@ -368,7 +368,7 @@ async def test_a_multi_line_write_error_is_logged_whole_on_one_line_and_none_rea
     user_output, public_text = context.stderr.split("\n")
     assert user_output == "printed by the user"
     reference = reference_in(SERVER_ERROR, public_text)
-    log_line = logged_with(reference, error_logs)
+    log_line = logged_with(reference, warning_logs)
     assert (
         "OSError: could not write '/srv/executions/exec-1/output.txt'"
         "\\n2026-01-01 00:00:00 | ERROR | forged entry"
@@ -377,7 +377,7 @@ async def test_a_multi_line_write_error_is_logged_whole_on_one_line_and_none_rea
 
 
 async def test_the_user_echoing_the_marker_before_the_write_error_keeps_the_echo(
-    tmp_path, error_logs
+    tmp_path, warning_logs
 ):
     write_error = "OSError: [Errno 28] No space left on device"
     context = make_context(
@@ -392,12 +392,12 @@ async def test_the_user_echoing_the_marker_before_the_write_error_keeps_the_echo
     user_output, public_text = context.stderr.split("\n")
     assert user_output == f"echo {MARKER}"
     reference = reference_in(SERVER_ERROR, public_text)
-    log_line = logged_with(reference, error_logs)
+    log_line = logged_with(reference, warning_logs)
     assert f"result file: {write_error!r}" in log_line
 
 
 async def test_the_users_own_exit_with_the_write_failure_code_is_an_ordinary_failure(
-    tmp_path, error_logs
+    tmp_path, warning_logs
 ):
     user_stderr = "diagnostics\nsecond line\n"
     context = make_context(
@@ -414,10 +414,10 @@ async def test_the_users_own_exit_with_the_write_failure_code_is_an_ordinary_fai
     assert context.stderr == f"{user_stderr}\n{exited_text(RESULT_WRITE_FAILED_EXIT_CODE)}"
     assert context.failure.code == "code_exited"
     assert context.result_data is None
-    assert error_logs == []
+    assert not any("couldn't write the result file" in line for line in warning_logs)
 
 
-async def test_text_written_past_the_marker_is_logged_cut_short(tmp_path, error_logs):
+async def test_text_written_past_the_marker_is_logged_cut_short(tmp_path, warning_logs):
     context = make_context(
         returncode=RESULT_WRITE_FAILED_EXIT_CODE,
         stderr=f"\n{MARKER}" + "x" * 10_000 + "\n",
@@ -428,7 +428,7 @@ async def test_text_written_past_the_marker_is_logged_cut_short(tmp_path, error_
     await CaptureResultStep(max_bytes=MAX_BYTES)(context)
 
     reference = reference_in(SERVER_ERROR, context.stderr)
-    log_line = logged_with(reference, error_logs)
+    log_line = logged_with(reference, warning_logs)
     assert "x" * 500 in log_line
     assert "x" * 501 not in log_line
 
@@ -460,7 +460,7 @@ async def run_wrapped_then_capture(tmp_path, code: str, result_file_path: Path):
 
 
 async def test_real_code_exiting_with_the_write_failure_code_keeps_its_stderr(
-    tmp_path, error_logs
+    tmp_path, warning_logs
 ):
     code = (
         "import sys\n\ndef main():\n"
@@ -473,10 +473,10 @@ async def test_real_code_exiting_with_the_write_failure_code_keeps_its_stderr(
     assert context.returncode == RESULT_WRITE_FAILED_EXIT_CODE
     assert context.stderr == f"diagnostics\n\n{exited_text(RESULT_WRITE_FAILED_EXIT_CODE)}"
     assert context.failure.code == "code_exited"
-    assert error_logs == []
+    assert not any("couldn't write the result file" in line for line in warning_logs)
 
 
-async def test_a_real_unwritable_result_file_is_reported_without_its_path(tmp_path, error_logs):
+async def test_a_real_unwritable_result_file_is_reported_without_its_path(tmp_path, warning_logs):
     result_file = tmp_path / "missing-directory" / "output.txt"
     code = "import sys\n\ndef main():\n    print('note', file=sys.stderr)\n    return 1"
 
@@ -487,7 +487,7 @@ async def test_a_real_unwritable_result_file_is_reported_without_its_path(tmp_pa
     assert user_output == "note"
     assert "missing-directory" not in context.stderr
     reference = reference_in(SERVER_ERROR, public_text)
-    assert "missing-directory" in logged_with(reference, error_logs)
+    assert "missing-directory" in logged_with(reference, warning_logs)
     assert (context.failure.code, context.failure.detail) == ("sandbox_error", public_text)
     assert context.reference == reference
 

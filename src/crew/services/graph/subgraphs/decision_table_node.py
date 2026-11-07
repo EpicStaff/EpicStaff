@@ -170,7 +170,12 @@ class DecisionTableNodeSubgraph:
             python_code_execution_data.execution_id,
             python_code_execution_data.returncode,
         )
-        check_code_ran(python_code_execution_data, condition_subject(condition_name))
+        check_code_ran(
+            python_code_execution_data,
+            condition_subject(condition_name),
+            session_id=self.session_id,
+            node_name=self.node_name,
+        )
         if python_code_execution_data.failure is not None:
             raise manipulation_error(
                 condition_name, python_code_execution_data.failure, [manipulation_part]
@@ -202,7 +207,12 @@ class DecisionTableNodeSubgraph:
             stop_event=self.stop_event,
             storage_credentials=self.storage_credentials,
         )
-        check_code_ran(python_code_execution_data, subject)
+        check_code_ran(
+            python_code_execution_data,
+            subject,
+            session_id=self.session_id,
+            node_name=self.node_name,
+        )
         if python_code_execution_data.failure is not None:
             # The evaluation reports the expression's own errors in its result, so this is
             # the sandbox stopping the code, e.g. at its time limit.
