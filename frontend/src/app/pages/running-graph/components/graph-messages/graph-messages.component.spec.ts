@@ -606,7 +606,7 @@ describe('GraphMessagesComponent', () => {
             fixture.detectChanges();
 
             const [shown] = await firstValueFrom(TestBed.inject(ToastService).toasts$);
-            expect(shown).toMatchObject({ message: toast, type: 'error' });
+            expect(shown).toMatchObject({ message: toast, type: 'error', fullText: true });
         });
     });
 });

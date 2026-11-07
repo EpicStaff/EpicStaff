@@ -23,7 +23,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
-import { httpErrorReason, runtimeNodeNameToLabel } from '@shared/utils';
+import { runtimeNodeNameToLabel, showHttpErrorToast } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { exhaustMap, map, takeUntil } from 'rxjs/operators';
 
@@ -558,7 +558,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     this.loadMoreMessages();
                 },
                 error: (error: HttpErrorResponse) => {
-                    this.toast.error(`Couldn't load the session. ${httpErrorReason(error)}`);
+                    showHttpErrorToast(this.toast, "Couldn't load the session.", error);
                     void this.router.navigate(['/sessions']);
                 },
             });

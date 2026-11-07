@@ -35,12 +35,36 @@ describe('httpErrorReason', () => {
             reason: 'Something went wrong on the server. Try again or contact your administrator.',
         },
         {
-            case: "the backend's generic answer to an error it didn't expect",
+            case: "the backend's answer to an error it didn't expect, with the reference for support",
             error: new HttpErrorResponse({
                 status: 500,
-                error: { status_code: 500, code: 'RuntimeError', message: 'Unpredictable error' },
+                error: {
+                    status_code: 500,
+                    code: 'internal_error',
+                    message:
+                        'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',
+                    reference: '3f9a2c1b7d4e',
+                },
             }),
-            reason: 'Something went wrong on the server. Try again or contact your administrator.',
+            reason: 'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',
+        },
+        {
+            case: "a gateway service's error envelope, with the reference for support",
+            error: new HttpErrorResponse({
+                status: 500,
+                error: {
+                    type: 'server_error',
+                    errors: [
+                        {
+                            code: 'internal_error',
+                            detail: 'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',
+                            attr: null,
+                        },
+                    ],
+                    reference: '3f9a2c1b7d4e',
+                },
+            }),
+            reason: 'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',
         },
         {
             case: 'a refused request with no message in its body',

@@ -20,7 +20,7 @@ import { Router } from '@angular/router';
 import { StopButtonComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
-import { httpErrorReason } from '@shared/utils';
+import { showHttpErrorToast } from '@shared/utils';
 import { Subject, takeUntil } from 'rxjs';
 
 import { GraphSessionLight, GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
@@ -136,7 +136,7 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
                     this.cdr.markForCheck();
                 },
                 error: (error: HttpErrorResponse) => {
-                    this.toast.error(`Couldn't stop the session. ${httpErrorReason(error)}`);
+                    showHttpErrorToast(this.toast, "Couldn't stop the session.", error);
                 },
             });
     }

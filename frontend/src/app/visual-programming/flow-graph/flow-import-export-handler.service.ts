@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NodeType } from '@shared/models';
-import { downloadBlob, extractHttpErrorMessage, httpErrorReason, showExportExclusionWarning } from '@shared/utils';
+import { downloadBlob, showExportExclusionWarning, showHttpErrorToast } from '@shared/utils';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { GraphContentDto } from '../../features/flows/models/graph.model';
@@ -11,9 +11,6 @@ import { ToastService } from '../../services/notifications';
 import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
 import { FlowService } from '../services/flow.service';
 import { FlowSelectionManagerService } from './flow-selection-manager.service';
-
-// The server's reason can name what in the file it refused, so it is shown in full and for longer than most toasts.
-const IMPORT_ERROR_TOAST_DURATION_MS = 10_000;
 
 /** Adds a partial import's `content` to the canvas; returns false when it could not (the editor was busy). */
 export type ImportedContentHandler = (content: GraphContentDto) => boolean;
@@ -148,7 +145,7 @@ export class FlowImportExportService {
                     showExportExclusionWarning(this.toastService, excluded, 'bottom-right');
                 },
                 error: (error: HttpErrorResponse) =>
-                    this.toastService.error(extractHttpErrorMessage(error, 'Export failed'), 3000, 'bottom-right'),
+                    showHttpErrorToast(this.toastService, "Couldn't export the nodes.", error, 'bottom-right'),
             });
     }
 
@@ -255,12 +252,7 @@ export class FlowImportExportService {
                     }
                 },
                 error: (err: HttpErrorResponse) => {
-                    this.toastService.error(
-                        `Couldn't import the nodes. ${httpErrorReason(err)}`,
-                        IMPORT_ERROR_TOAST_DURATION_MS,
-                        'bottom-right',
-                        { fullText: true }
-                    );
+                    showHttpErrorToast(this.toastService, "Couldn't import the nodes.", err, 'bottom-right');
                 },
             });
     }

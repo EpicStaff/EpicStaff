@@ -432,8 +432,9 @@ plus `reference` when `stop_reason` is a failure) or `on_error`
 `AgentLoopFailedError`). A failed loop is always sent as `agent.error`.
 
 `error` is raw text for logs only; crew never shows it. The emitter logs the
-error under the `reference` right after publishing, at WARNING for a timeout
-and at ERROR otherwise. Crew checks the reference with foundation's
+error under the `reference` right after publishing: at WARNING for a timeout or
+an LLM failure of a known `error_kind`, which crew explains to the user, and at
+ERROR otherwise. Crew checks the reference with foundation's
 `trusted_reference` and logs its own line about the failure under it, so the
 reference the user sees finds both services' lines. A missing or malformed one
 is never shown: crew logs under a new reference instead.

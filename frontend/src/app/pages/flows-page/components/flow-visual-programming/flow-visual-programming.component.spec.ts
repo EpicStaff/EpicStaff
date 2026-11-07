@@ -409,6 +409,13 @@ describe('FlowVisualProgrammingComponent', () => {
         fixture.detectChanges();
     });
 
+    /** One error toast with `message`, shown in full rather than clamped, so a support reference at its end stays readable. */
+    function expectFullErrorToast(message: string): void {
+        expect(toast['error']).toHaveBeenCalledExactlyOnceWith(message, expect.any(Number), undefined, {
+            fullText: true,
+        });
+    }
+
     function liveCanvas(): FlowGraphStubComponent | undefined {
         const element = fixture.nativeElement.querySelector('app-flow-graph');
         return element ? FlowGraphStubComponent.instances.at(-1) : undefined;
@@ -1610,13 +1617,21 @@ describe('FlowVisualProgrammingComponent', () => {
         it.each([
             [404, TEST_RUN_NODE_GONE_MESSAGE],
             [403, "You don't have permission to run tests on this flow."],
-            [500, "Couldn't start the test run. Boom"],
         ])('reports a %i as a toast', (httpStatus, message) => {
             rejectWith(httpStatus, { message: 'Boom' });
 
             testRun.request('webhook-trigger', webhookNode.id, {});
 
             expect(toast['error']).toHaveBeenCalledWith(message);
+            expect(testRun.serverErrors().size).toBe(0);
+        });
+
+        it("reports a 500 as a toast that shows the server's reason in full", () => {
+            rejectWith(500, { message: 'Boom' });
+
+            testRun.request('webhook-trigger', webhookNode.id, {});
+
+            expectFullErrorToast("Couldn't start the test run. Boom");
             expect(testRun.serverErrors().size).toBe(0);
         });
 
@@ -1952,7 +1967,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             component.onGraphSave(flowService.getFlowState());
 
-            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(message);
+            expectFullErrorToast(message);
         });
 
         it('shows a plain sentence when a node cannot be saved because the server is unreachable', () => {
@@ -1962,7 +1977,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             TestBed.inject(SidePanelService).requestSaveNode(note);
 
-            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(`Couldn't save the node. ${UNREACHABLE}`);
+            expectFullErrorToast(`Couldn't save the node. ${UNREACHABLE}`);
         });
 
         it.each([
@@ -1982,7 +1997,7 @@ describe('FlowVisualProgrammingComponent', () => {
             paramMap$.next(convertToParamMap({ id: '400' }));
             fixture.detectChanges();
 
-            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(message);
+            expectFullErrorToast(message);
         });
     });
 
@@ -3437,7 +3452,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 component.onExtractToSubflow(new Set([table(21).id]));
                 subflowSave.error(new HttpErrorResponse({ status: 0 }));
 
-                expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
+                expectFullErrorToast(
                     "Couldn't extract the selection into a subflow. The server couldn't be reached. Check your connection and try again."
                 );
             });
@@ -3528,7 +3543,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
                 component.onUnpackSubflow(subgraphNodeOnCanvas()!.id);
 
-                expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
+                expectFullErrorToast(
                     "Couldn't check where the subflow is used. The server couldn't be reached. Check your connection and try again."
                 );
                 expect(subgraphNodeOnCanvas()).toBeDefined();
@@ -3541,9 +3556,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
                 component.onUnpackSubflow(subgraphNodeOnCanvas()!.id);
 
-                expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
-                    "Couldn't unpack the subflow. Database unavailable."
-                );
+                expectFullErrorToast("Couldn't unpack the subflow. Database unavailable.");
             });
 
             it('numbers the inlined nodes after the parent graph counter and keeps their names', () => {

@@ -16,8 +16,9 @@ from foundation.transport.http.errors import (
 from foundation.utils.error_reference import (
     INTERNAL_ERROR_CODE,
     INTERNAL_ERROR_MESSAGE,
-    SERVER_FAILURE_TEXT,
+    log_with_reference,
     new_reference,
+    trusted_reference,
 )
 from psycopg_pool import PoolTimeout
 from rest_framework import status
@@ -33,8 +34,7 @@ from utils.logger import logger
 # Keys DRF generates itself; naming them back at the client adds no information.
 _UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
 
-# No reference: an upstream failure's detail is logged as a warning, not under one.
-UPSTREAM_FAILURE_MESSAGE = f"{SERVER_FAILURE_TEXT}."
+UPSTREAM_REFUSED_MESSAGE = "The request was refused. Check what you entered and try again."
 UPSTREAM_NOT_FOUND_MESSAGE = "The requested item wasn't found. It may have been deleted."
 UPSTREAM_RATE_LIMITED_MESSAGE = "Too many requests right now. Wait a moment and try again."
 
@@ -75,23 +75,30 @@ _PYDANTIC_VALUE_ERROR_PREFIX = "Value error, "
 _GATEWAY_CREDENTIAL_STATUSES = frozenset({status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN})
 
 
-def _upstream_public_message(upstream_body: str | None) -> str | None:
-    """Return what a proxied service's refusal says, in words for the user, or None.
-
-    The services answer with foundation's error envelope,
-    `{"type": ..., "errors": [{"detail": ..., "attr": ...}]}`, whose `detail` is always
-    safe to show. Each `detail` becomes one sentence, prefixed
-    with its `attr` as `attr: detail`, the way `flatten_error_detail` labels a field. A
-    body of any other shape is not written for a user, so the caller shows its own text.
-    """
+def _upstream_envelope(upstream_body: str | None) -> dict | None:
+    """Return the upstream body as a JSON object, or None when it isn't one."""
     try:
         body = json.loads(upstream_body or "")
     except ValueError:
-        body = None
-    errors = body.get("errors") if isinstance(body, dict) else None
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _upstream_public_message(body: dict | None) -> str | None:
+    """Return what a proxied service's refusal says, in words for the user, or None.
+
+    The services answer with foundation's error envelope,
+    `{"type": ..., "errors": [{"detail": ..., "attr": ...}], "reference": ...}`, whose
+    `detail` is always safe to show. Each `detail` becomes one sentence, prefixed with its
+    `attr` as `attr: detail`, the way `flatten_error_detail` labels a field. A body of any
+    other shape is not written for a user, so the caller shows its own text.
+    """
+    errors = body.get("errors") if body is not None else None
+    if not isinstance(errors, list):
+        return None
     sentences = [
         _rejected_field_sentence(error)
-        for error in errors or []
+        for error in errors
         if isinstance(error, dict)
         and isinstance(error.get("detail"), str)
         and error["detail"].strip()
@@ -120,44 +127,67 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
 
     A refusal shows the upstream `detail` texts, which say what is wrong with the
     caller's own request. When the body isn't the error envelope, a missing resource and
-    rate limiting get a fixed message of their own, and every other status a generic
-    one. The upstream body itself goes to the log only.
+    rate limiting get a fixed message of their own, and every other refusal a generic
+    one. A failure of the dependency cites a reference: the one the upstream logged its
+    failure under, when it sent a well-formed one, else a new one. This gateway logs the
+    upstream body under it, so the reference the user quotes finds both log lines.
     """
     detail = _upstream_detail(exc)
+    body = _upstream_envelope(detail)
+    status_code = getattr(getattr(exc, "response", None), "status_code", None)
+
+    if isinstance(exc, ClientConnectionError):
+        return _upstream_server_failure(
+            exc,
+            detail,
+            body,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "upstream_service_unreachable",
+        )
+    if status_code is None or not status.is_client_error(status_code):
+        return _upstream_server_failure(
+            exc, detail, body, status.HTTP_502_BAD_GATEWAY, "upstream_service_error"
+        )
+    if status_code in _GATEWAY_CREDENTIAL_STATUSES:
+        return _upstream_server_failure(
+            exc, detail, body, status.HTTP_502_BAD_GATEWAY, "upstream_service_error"
+        )
+
     logger.warning(
-        "Proxied service call failed: {error_type}: {detail}",
+        "Proxied service refused a request: {error_type}: {detail}",
         error_type=type(exc).__name__,
         detail=detail,
     )
-    public_message = _upstream_public_message(detail)
-
+    public_message = _upstream_public_message(body)
     if isinstance(exc, ClientValidationError):
-        return ValidationError(public_message or UPSTREAM_FAILURE_MESSAGE)
+        return ValidationError(public_message or UPSTREAM_REFUSED_MESSAGE)
     if isinstance(exc, ClientNotFoundError):
         return NotFound(public_message or UPSTREAM_NOT_FOUND_MESSAGE)
     if isinstance(exc, ClientRateLimitError):
         return Throttled(detail=UPSTREAM_RATE_LIMITED_MESSAGE)
-    if isinstance(exc, ClientConnectionError):
-        unreachable_error = APIException(UPSTREAM_FAILURE_MESSAGE)
-        unreachable_error.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        unreachable_error.default_code = "upstream_service_unreachable"
-        return unreachable_error
+    client_error = APIException(public_message or UPSTREAM_REFUSED_MESSAGE)
+    client_error.status_code = status_code
+    client_error.default_code = _status_code_name(status_code)
+    return client_error
 
-    status_code = getattr(getattr(exc, "response", None), "status_code", None)
-    if (
-        status_code is not None
-        and status.is_client_error(status_code)
-        and status_code not in _GATEWAY_CREDENTIAL_STATUSES
-    ):
-        client_error = APIException(public_message or UPSTREAM_FAILURE_MESSAGE)
-        client_error.status_code = status_code
-        client_error.default_code = _status_code_name(status_code)
-        return client_error
 
-    upstream_error = APIException(UPSTREAM_FAILURE_MESSAGE)
-    upstream_error.status_code = status.HTTP_502_BAD_GATEWAY
-    upstream_error.default_code = "upstream_service_error"
-    return upstream_error
+def _upstream_server_failure(
+    exc: ClientError, detail: str | None, body: dict | None, status_code: int, code: str
+) -> APIException:
+    """Log a failure of the dependency and return the error that cites its reference."""
+    upstream_reference = trusted_reference(body.get("reference")) if body is not None else None
+    reference = log_with_reference(
+        "Proxied service call failed: {error_type}: {detail}",
+        error_type=type(exc).__name__,
+        detail=detail,
+        reference=upstream_reference,
+        level="WARNING",
+    )
+    error = APIException(INTERNAL_ERROR_MESSAGE.format(reference=reference))
+    error.status_code = status_code
+    error.default_code = code
+    error.extra_response_data = {"reference": reference}
+    return error
 
 
 def _status_code_name(status_code: int) -> str:

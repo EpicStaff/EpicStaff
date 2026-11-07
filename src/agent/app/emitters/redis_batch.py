@@ -21,7 +21,7 @@ from app.exceptions import AgentLoopFailedError
 from app.llm.client import LLMChunk
 from app.logging_utils import format_exception_for_log, redact_payload, redact_value
 from shared.bench_log import BENCH_LEVEL
-from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
+from shared.models.agent_service import AgentRequest, LLMErrorKind, LoopResult, ToolResult
 from shared.redis_streams import RedisStreamClient, StreamEnvelope, agent_result_stream
 
 _RESULT_PASSTHROUGH_KEYS = {
@@ -45,10 +45,18 @@ _TASK_PASSTHROUGH_KEYS = {
 }
 
 
-def _failure_log_level(stop_reason: str | None) -> str:
-    # Matches the loop's own log: an agent hitting its configured time limit is that
-    # limit doing its job, so it is a warning that mustn't raise an ERROR alert.
-    return "WARNING" if stop_reason == StopReason.TIMEOUT else "ERROR"
+def _failure_log_level(stop_reason: str | None, error_kind: str | None) -> str:
+    """WARNING for a failure crew explains to the user, ERROR for one it can't.
+
+    An agent hitting its configured time limit is that limit doing its job, and an LLM
+    failure of a known kind (a rate limit, a context too long, a refusal) is the user's
+    to fix; neither may raise an ERROR alert. An unknown kind needs someone to look.
+    """
+    if stop_reason == StopReason.TIMEOUT:
+        return "WARNING"
+    if error_kind is not None and error_kind != LLMErrorKind.UNKNOWN:
+        return "WARNING"
+    return "ERROR"
 
 
 def _mask_payload_for_logging(payload: dict) -> dict:
@@ -186,7 +194,7 @@ class RedisStreamBatchEmitter(Emitter):
                 result.stop_reason,
                 redact_value(result.error),
                 reference=reference,
-                level=_failure_log_level(result.stop_reason),
+                level=_failure_log_level(result.stop_reason, result.error_kind),
             )
 
     async def on_error(self, error: Exception) -> None:
@@ -222,5 +230,5 @@ class RedisStreamBatchEmitter(Emitter):
             self._correlation_id,
             format_exception_for_log(error),
             reference=reference,
-            level=_failure_log_level(payload.get("stop_reason")),
+            level=_failure_log_level(payload.get("stop_reason"), payload.get("error_kind")),
         )

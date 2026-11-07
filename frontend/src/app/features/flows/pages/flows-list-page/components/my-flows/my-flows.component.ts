@@ -23,7 +23,7 @@ import {
 } from '@shared/components';
 import { DragScrollDirective } from '@shared/directives';
 import { BulkDeleteService, LABELS_STORE } from '@shared/services';
-import { extractHttpErrorMessage, showExportExclusionWarning } from '@shared/utils';
+import { extractHttpErrorMessage, showExportExclusionWarning, showHttpErrorToast } from '@shared/utils';
 import { filter, switchMap } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
@@ -43,7 +43,6 @@ import { FlowsStorageService } from '../../../../services/flows-storage.service'
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
 import { RunGraphService } from '../../../../services/run-graph-session.service';
 import { flowsBulkDeleteGroup } from '../../../../utils/flows-bulk-delete.util';
-import { showRunFlowError } from '../../../../utils/run-flow-error.util';
 
 @Component({
     selector: 'app-my-flows',
@@ -327,7 +326,7 @@ export class MyFlowsComponent implements AfterViewChecked {
             },
             error: (err: HttpErrorResponse) => {
                 console.error(`Error running flow ${flow.id}`, err);
-                showRunFlowError(this.toastService, `Couldn't run "${flow.name}".`, err);
+                showHttpErrorToast(this.toastService, `Couldn't run "${flow.name}".`, err);
             },
         });
     }

@@ -20,7 +20,7 @@ from loguru import logger
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.exceptions import AgentLoopFailedError
-from shared.models.agent_service import LoopResult, TaskRunSummary, TokenUsage
+from shared.models.agent_service import LLMErrorKind, LoopResult, TaskRunSummary, TokenUsage
 from tests.log_capture import log_line_starting_with, capture_logs_at
 
 # ---------------------------------------------------------------------------
@@ -412,7 +412,7 @@ def _record_starting_with(records: list[tuple[str, str]], prefix: str) -> tuple[
     return matches[0]
 
 
-def _failed_loop(stop_reason: str) -> AgentLoopFailedError:
+def _failed_loop(stop_reason: str, error_kind: LLMErrorKind | None = None) -> AgentLoopFailedError:
     return AgentLoopFailedError(
         "loop failed",
         result=LoopResult(
@@ -421,6 +421,7 @@ def _failed_loop(stop_reason: str) -> AgentLoopFailedError:
             iterations=1,
             stop_reason=stop_reason,
             error="loop failed",
+            error_kind=error_kind,
         ),
     )
 
@@ -430,10 +431,22 @@ def _failed_loop(stop_reason: str) -> AgentLoopFailedError:
     [
         (RuntimeError("boom"), "ERROR"),
         (_failed_loop("llm_error"), "ERROR"),
+        (_failed_loop("llm_error", LLMErrorKind.UNKNOWN), "ERROR"),
+        # Crew explains these to the user, who can fix them; no alert.
+        (_failed_loop("llm_error", LLMErrorKind.RATE_LIMIT), "WARNING"),
+        (_failed_loop("llm_error", LLMErrorKind.CONTEXT_TOO_LONG), "WARNING"),
         (_failed_loop("internal_error"), "ERROR"),
         (_failed_loop("timeout"), "WARNING"),
     ],
-    ids=["crash", "llm-error", "internal-error", "timeout"],
+    ids=[
+        "crash",
+        "llm-error-without-kind",
+        "llm-error-unknown",
+        "llm-error-rate-limit",
+        "llm-error-context-too-long",
+        "internal-error",
+        "timeout",
+    ],
 )
 async def test_on_error_sends_the_reference_it_logs_the_error_under(error, expected_level):
     emitter, published = _make_emitter()
@@ -447,10 +460,13 @@ async def test_on_error_sends_the_reference_it_logs_the_error_under(error, expec
     assert level == expected_level
 
 
-def _loop_result_stopped_by(stop_reason: str) -> LoopResult:
+def _loop_result_stopped_by(
+    stop_reason: str, error_kind: LLMErrorKind | None = None
+) -> LoopResult:
     return LoopResult(
         final_text=None,
         error="ERROR_ECHOING_USER_PROMPT_828" if stop_reason != "completed" else None,
+        error_kind=error_kind,
         tool_invocations=0,
         iterations=1,
         stop_reason=stop_reason,
@@ -459,16 +475,22 @@ def _loop_result_stopped_by(stop_reason: str) -> LoopResult:
 
 
 @pytest.mark.parametrize(
-    ("stop_reason", "expected_level"),
-    [("llm_error", "ERROR"), ("internal_error", "ERROR"), ("timeout", "WARNING")],
+    ("stop_reason", "error_kind", "expected_level"),
+    [
+        ("llm_error", None, "ERROR"),
+        ("llm_error", LLMErrorKind.UNKNOWN, "ERROR"),
+        ("llm_error", LLMErrorKind.RATE_LIMIT, "WARNING"),
+        ("internal_error", None, "ERROR"),
+        ("timeout", None, "WARNING"),
+    ],
 )
 async def test_failed_on_final_sends_the_reference_it_logs_the_failure_under(
-    stop_reason, expected_level
+    stop_reason, error_kind, expected_level
 ):
     emitter, published = _make_emitter()
 
     with _capture_records() as records:
-        await emitter.on_final(_loop_result_stopped_by(stop_reason))
+        await emitter.on_final(_loop_result_stopped_by(stop_reason, error_kind))
 
     reference = _decode_payload(published[0])["reference"]
     assert re.fullmatch(REFERENCE_PATTERN, reference)

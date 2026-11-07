@@ -182,6 +182,52 @@ describe('FlowImportExportService partial export', () => {
     });
 });
 
+describe('FlowImportExportService export failure', () => {
+    function exportAllRejectedWith(error: HttpErrorResponse): ToastService {
+        TestBed.configureTestingModule({
+            providers: [
+                FlowImportExportService,
+                { provide: FlowService, useValue: { nodes: () => [savedAgentNode], connections: () => [] } },
+                { provide: FlowSelectionManagerService, useValue: { selectedNodeIds: () => [] } },
+                { provide: ImportExportService, useValue: { partialExport: () => throwError(() => error) } },
+                { provide: FlowCopyImportFacadeService, useValue: {} },
+                { provide: CdtExportImportService, useValue: {} },
+            ],
+        });
+
+        TestBed.inject(FlowImportExportService).onExportAllAsJson(FLOW_ID, false);
+        return TestBed.inject(ToastService);
+    }
+
+    it.each([
+        {
+            case: 'a plain sentence instead of the raw HTTP text when the server is unreachable',
+            error: new HttpErrorResponse({ status: 0, url: 'http://localhost/api/graphs/7/export-nodes/' }),
+            message: "Couldn't export the nodes. The server couldn't be reached. Check your connection and try again.",
+        },
+        {
+            case: 'the server failure message with its support reference',
+            error: new HttpErrorResponse({
+                status: 500,
+                error: {
+                    status_code: 500,
+                    code: 'internal_error',
+                    message:
+                        'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',
+                    reference: '3f9a2c1b7d4e',
+                },
+            }),
+            message:
+                "Couldn't export the nodes. Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).",
+        },
+    ])('shows $case, in full and for long enough to read', async ({ error, message }) => {
+        const toastService = exportAllRejectedWith(error);
+
+        const [toast] = await firstValueFrom(toastService.toasts$);
+        expect(toast).toMatchObject({ message, type: 'error', duration: 10_000, fullText: true });
+    });
+});
+
 describe('FlowImportExportService partial import', () => {
     function importFileRejectedWith(error: HttpErrorResponse): ToastService {
         TestBed.configureTestingModule({

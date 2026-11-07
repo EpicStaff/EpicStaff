@@ -1,10 +1,10 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
-import { ToastService } from '../../../services/notifications';
-import { showRunFlowError } from './run-flow-error.util';
+import { ToastService } from '../../services/notifications';
+import { showHttpErrorToast } from './http-error-toast.util';
 
-describe('showRunFlowError', () => {
+describe('showHttpErrorToast', () => {
     it.each([
         {
             case: "the backend's message after the heading",
@@ -14,6 +14,21 @@ describe('showRunFlowError', () => {
             }),
             message:
                 'Couldn\'t run the flow. Knowledge Retriever node "Search docs #1" needs a collection, a RAG and a query.',
+        },
+        {
+            case: 'the server failure message with its support reference',
+            error: new HttpErrorResponse({
+                status: 500,
+                error: {
+                    status_code: 500,
+                    code: 'internal_error',
+                    message:
+                        'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',
+                    reference: '3f9a2c1b7d4e',
+                },
+            }),
+            message:
+                "Couldn't run the flow. Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).",
         },
         {
             case: 'a plain sentence instead of the raw HTTP text when the server is unreachable',
@@ -29,9 +44,24 @@ describe('showRunFlowError', () => {
     ])('shows $case, in full and for longer than a default toast', async ({ error, message }) => {
         const toastService = new ToastService();
 
-        showRunFlowError(toastService, "Couldn't run the flow.", error);
+        showHttpErrorToast(toastService, "Couldn't run the flow.", error);
 
         const [toast] = await firstValueFrom(toastService.toasts$);
         expect(toast).toMatchObject({ message, type: 'error', duration: 10_000, fullText: true });
+    });
+
+    it('shows the toast where the caller asks', async () => {
+        const toastService = new ToastService();
+        toastService.setDefaultPosition('top-right');
+
+        showHttpErrorToast(
+            toastService,
+            "Couldn't import the nodes.",
+            new HttpErrorResponse({ status: 0 }),
+            'bottom-right'
+        );
+
+        const [toast] = await firstValueFrom(toastService.toasts$);
+        expect(toastService.getPositionForToast(toast.id)).toBe('bottom-right');
     });
 });

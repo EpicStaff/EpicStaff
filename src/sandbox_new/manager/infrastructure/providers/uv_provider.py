@@ -231,7 +231,9 @@ class UVProvider(AbstractUVProvider):
         # distributions would leave this ambiguous, so take only an unambiguous result.
         wheels = list(output_dir.glob("*.whl"))
         if len(wheels) != 1:
-            raise EnvironmentBuildError(f"The build produced {len(wheels)} wheels, expected exactly one.")
+            raise EnvironmentBuildError(
+                f"The build produced {len(wheels)} wheels, expected exactly one."
+            )
         return wheels[0]
 
     @staticmethod
