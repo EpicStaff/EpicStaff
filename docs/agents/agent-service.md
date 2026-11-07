@@ -144,7 +144,7 @@ Per-agent configuration with resource references.
 | `S3FileSpec` | `id: int`, `path: str`, `metadata: dict`. |
 | `ToolResult` | `tool_call_id: str`, `content: str`, `is_error: bool = False`. |
 | `TokenUsage` | `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_prompt_tokens` (subset of `prompt_tokens`, informational only), `total_cost_usd` (display-only, best-effort). |
-| `LoopResult` | `final_text: str \| None`, `tool_invocations: int`, `iterations: int`, `stop_reason: str`, `token_usage: TokenUsage`, `error: str \| None` (raw text, for logs only), `error_kind: LLMErrorKind \| None` (set only for `llm_error`), `tasks: list[TaskRunSummary] \| None` (populated only for `LIST_OF_TASKS`). |
+| `LoopResult` | `final_text: str \| None`, `tool_invocations: int`, `iterations: int`, `stop_reason: str`, `token_usage: TokenUsage`, `error: str \| None` (raw text, for logs only), `error_kind: LLMErrorKind \| None` (set only for `llm_error`), `failed_llm: FailedLLM \| None`, `tasks: list[TaskRunSummary] \| None` (populated only for `LIST_OF_TASKS`). |
 | `TaskRunSummary` | `name`, `order`, `final_text: str \| None`, `token_usage`, `iterations`, `tool_invocations`, `stop_reason: str \| None`. |
 | `ContextAttachment` | `role: Literal["system", "user"]`, `content: str`, `source: str` — a message injected before the first LLM call. |
 
@@ -425,10 +425,18 @@ and refresh its TTL (`AGENT_RESULT_STREAM_TTL`) on every publish.
 `RedisStreamBatchEmitter` buffers every event internally and publishes
 **exactly one** envelope on `on_final` (`type="agent.result"`, payload:
 `final_text`, `tool_invocations`, `iterations`, `stop_reason`, `token_usage`,
-`error`, `error_kind`, `events` (buffered), `warnings`, `tasks`) or `on_error`
-(`type="agent.error"`, payload: `error`, `warnings`, plus `stop_reason` and
-`error_kind` when the error is an `AgentLoopFailedError`). A failed loop is
-always sent as `agent.error`.
+`error`, `error_kind`, `failed_llm`, `events` (buffered), `warnings`, `tasks`,
+plus `reference` when `stop_reason` is a failure) or `on_error`
+(`type="agent.error"`, payload: `error`, `warnings`, `reference`, plus
+`stop_reason`, `error_kind` and `failed_llm` when the error is an
+`AgentLoopFailedError`). A failed loop is always sent as `agent.error`.
+
+`error` is raw text for logs only; crew never shows it. The emitter logs the
+error under the `reference` right after publishing, at WARNING for a timeout
+and at ERROR otherwise. Crew checks the reference with foundation's
+`trusted_reference` and logs its own line about the failure under it, so the
+reference the user sees finds both services' lines. A missing or malformed one
+is never shown: crew logs under a new reference instead.
 
 `redis_tool_events.py` ([`src/agent/app/emitters/redis_tool_events.py`](../../src/agent/app/emitters/redis_tool_events.py)):
 `RedisStreamToolEventEmitter` extends the batch emitter (used by **both**

@@ -113,6 +113,27 @@ sequenceDiagram
     Note over P: node fails: "The sandbox lost the execution"
 ```
 
+## How a failed result says why
+
+A result is `CodeResultData` (`src/shared/models/tools.py`). `returncode == 0` exactly when `failure` is None. A failed result carries:
+
+- **`failure`**: a `CodeFailure` (`src/shared/models/code_failure.py`). Consumers branch on `failure.code`, never on text.
+  - `code` is a `CodeFailureCode`. The enum's comments say which part of the system reports each one.
+  - `detail` is the sentence the user sees. It's always safe to show, and it's masked for the job's secrets.
+  - `attr` names the argument at fault, only for `unexpected_argument` and `missing_argument`.
+  - `user_error` holds the exception in parts (`exception_type`, `line` in the user's own code, `message`), only for `user_code_error`. Crew uses it to turn a line of the code it generated into a line the user wrote.
+- **`reference`**: set only when a server log line explains the failure, and `detail` then cites it. For any other failure the user's own code is the cause, so there's nothing to look up.
+- **`stderr`**: the user's own output, never shortened. It still ends with the failure line, so a consumer that reads only `stderr` shows the same reason. Don't parse it: the line's wording isn't a contract, `failure` is.
+
+Where the failure comes from:
+
+- **The code wrapper** writes it to the `failure.json` control file, from inside the process that ran the user's code. That process also runs the user's code, so the worker accepts only the codes in `WRAPPER_FAILURE_CODES` from it. The user's code could write that file too, but it can only claim a failure of its own code, never one of the sandbox.
+- **The worker** reports what happened around the process: a non-zero exit, a timeout, a result too big to save, its own failure.
+- **The manager** reports a job that never reached the worker: a venv that couldn't be built (the `package_*` codes match `VenvBuildErrorKind`), a hold timeout, a failed dispatch.
+- **Crew** adds `result_timeout` when it stops waiting for the result.
+
+When you add a code, add it to `CodeFailureCode`, decide whether the wrapper may report it, and check every consumer that branches on codes (`grep -rn CodeFailureCode src/crew`).
+
 ## Settings
 
 All are set in `src/env.yaml`, which generates `src/.env.example`.

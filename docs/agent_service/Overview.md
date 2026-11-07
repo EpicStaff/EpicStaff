@@ -57,8 +57,9 @@ both services):
   `output_schema: dict|None`, `context: [str]` (names of earlier tasks whose
   output is injected).
 - **`LoopResult`** — `final_text: str|None`, `tool_invocations`, `iterations`,
-  `stop_reason: str`, `token_usage: TokenUsage`, `error: str|None`,
-  `error_kind: LLMErrorKind|None` (set only for `llm_error`).
+  `stop_reason: str`, `token_usage: TokenUsage`, `error: str|None` (raw text,
+  for logs only), `error_kind: LLMErrorKind|None` (set only for `llm_error`),
+  `failed_llm: FailedLLM|None`.
 - **`RunType`** — `SINGLE_TASK`, `LIST_OF_TASKS` (`CHAT`, `TEAM` reserved, not
   implemented).
 - **`StopReason`** — `completed`, `max_iter_reached`, `schema_satisfied`,
@@ -205,7 +206,7 @@ multi-task runs.
 
 | `EmitterMode` | class | behavior |
 |---|---|---|
-| `BATCH` | `RedisStreamBatchEmitter` | buffers everything, publishes one `agent.result` / `agent.error`. |
+| `BATCH` | `RedisStreamBatchEmitter` | buffers everything, publishes one `agent.result` / `agent.error`. A failed run's payload carries a `reference`, the key to the agent's log line that crew cites to the user. |
 | `TOOL_EVENTS` | `RedisStreamToolEventEmitter` | batch **plus** live `agent.tool_call` / `agent.tool_result` envelopes (with token-usage deltas and, for multi-task runs, a `task` label). Used by both current runners. |
 | `STREAM` | — | reserved; the factory raises `NotImplementedError`. |
 
