@@ -265,7 +265,18 @@ def test_upstream_reference_that_is_not_well_formed_is_never_shown(upstream_refe
 
     response = custom_exception_handler(exc, {})
 
+    # `_cited_reference` checks that a well-formed reference of Django's own is cited.
     assert _cited_reference(response) != upstream_reference
+
+
+@pytest.mark.parametrize("body", ["[1]", '"text"', "null", "42"], ids=str)
+def test_upstream_failure_with_a_json_body_that_isnt_an_object_cites_a_new_reference(body):
+    exc = _status_error(errors.ClientServerError, 500, body)
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.status_code == 502
+    _cited_reference(response)
 
 
 def test_unreachable_dependency_renders_as_503_citing_a_reference(captured_logs):

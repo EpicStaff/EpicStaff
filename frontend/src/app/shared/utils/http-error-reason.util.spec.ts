@@ -49,7 +49,7 @@ describe('httpErrorReason', () => {
             reason: 'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',
         },
         {
-            case: "a gateway service's error envelope, with the reference for support",
+            case: "a service's foundation error envelope, with the reference for support",
             error: new HttpErrorResponse({
                 status: 500,
                 error: {
@@ -62,6 +62,20 @@ describe('httpErrorReason', () => {
                         },
                     ],
                     reference: '3f9a2c1b7d4e',
+                },
+            }),
+            reason: 'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',
+        },
+        {
+            case: "the gateway's answer to a failed service, with the reference for support",
+            error: new HttpErrorResponse({
+                status: 502,
+                error: {
+                    reference: '3f9a2c1b7d4e',
+                    status_code: 502,
+                    code: 'upstream_service_error',
+                    message:
+                        'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',
                 },
             }),
             reason: 'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',

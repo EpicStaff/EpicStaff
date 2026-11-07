@@ -847,6 +847,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 if (err instanceof HttpErrorResponse) {
                     showHttpErrorToast(this.toastService, "Couldn't load the flow.", err);
                 } else {
+                    // Thrown on the way, e.g. by a graph that can't be applied: a developer's
+                    // message, so it goes to the console, not the UI.
+                    console.error(err);
                     this.toastService.error("Couldn't load the flow.");
                 }
                 void this.router.navigate(['/flows/my']);

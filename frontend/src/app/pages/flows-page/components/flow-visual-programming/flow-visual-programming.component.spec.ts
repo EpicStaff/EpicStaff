@@ -1999,6 +1999,19 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expectFullErrorToast(message);
         });
+
+        it('logs an error thrown on the way and leaves the flow with a plain message', () => {
+            const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+            const thrown = new Error('graph could not be applied');
+            flowsApi['getGraphById'].mockReturnValue(throwError(() => thrown));
+
+            paramMap$.next(convertToParamMap({ id: '400' }));
+            fixture.detectChanges();
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith("Couldn't load the flow.");
+            expect(consoleError).toHaveBeenCalledWith(thrown);
+            expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/flows/my']);
+        });
     });
 
     describe('graph node counter', () => {

@@ -144,8 +144,9 @@ class RedisStreamBatchEmitter(Emitter):
         """Publish a single ``agent.result`` envelope containing the loop summary.
 
         A result whose ``stop_reason`` is a failure also carries a ``reference``, and
-        the run is logged under it after publishing: at WARNING for a timeout, at ERROR
-        otherwise. A successful result has no ``reference`` and is logged at INFO.
+        the run is logged under it after publishing: at WARNING for a timeout or an LLM
+        failure of a known ``error_kind``, at ERROR otherwise. A successful result has no
+        ``reference`` and is logged at INFO.
         """
         payload = {
             "final_text": result.final_text,
@@ -203,8 +204,8 @@ class RedisStreamBatchEmitter(Emitter):
         A failed agent loop also sends its ``stop_reason``, ``error_kind`` and
         ``failed_llm``, so crew can explain the failure without showing the raw ``error`` text.
         Every envelope carries a ``reference``, minted before publishing; the error is
-        logged under it after publishing, at WARNING for a loop that timed out and at
-        ERROR otherwise.
+        logged under it after publishing, at WARNING for a loop that timed out or failed
+        on an LLM error of a known ``error_kind``, and at ERROR otherwise.
         """
         reference = new_reference()
         payload = {"error": str(error), "warnings": self._warnings, "reference": reference}
