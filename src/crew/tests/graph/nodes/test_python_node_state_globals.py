@@ -5,6 +5,7 @@ from services.graph.events import StopEvent
 from services.graph.nodes.python_node import PythonNode
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
 from src.shared.models import PythonCodeData
+from tests.graph.code_results import succeeded
 
 READS_STATE = "def main(**kw):\n    return state['variables']['a']"
 IGNORES_STATE = "def main(**kw):\n    return 'x'"
@@ -17,7 +18,7 @@ class CapturingExecutor:
 
     async def run_code(self, python_code_data, inputs, additional_global_kwargs=None, stop_event=None, storage_credentials=None):
         self.additional_global_kwargs = additional_global_kwargs
-        return {"returncode": 0, "stderr": "", "result_data": '"next"'}
+        return succeeded("next")
 
 
 def _state() -> dict:

@@ -151,8 +151,22 @@ describe('ExtractedChunksMessageComponent', () => {
         const element = render({ rag_type: 'graph', answer: '' });
 
         expect(element.querySelector('.chunk-empty')).not.toBeNull();
+        expect(element.querySelector('.search-error')).toBeNull();
         expect(element.querySelector('.chunk-text')).toBeNull();
         expect(element.querySelector('app-copy-button')).toBeNull();
+    });
+
+    it('shows why a failed search failed, instead of an answer', () => {
+        const element = render({
+            rag_type: 'graph',
+            answer: null,
+            error: 'Knowledge search failed. The agent was told and may try another way.',
+        });
+
+        expect(texts(element, '.search-error')).toEqual([
+            'Knowledge search failed. The agent was told and may try another way.',
+        ]);
+        expect(element.querySelector('.chunk-card')).toBeNull();
     });
 
     it('shows chunks with only the retrieved stat and no type label when the type is unknown', () => {

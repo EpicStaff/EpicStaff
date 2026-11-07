@@ -12,7 +12,10 @@ from tables.serializers.serializers import (
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.serializers.utils.bulk_ids import BULK_DELETE_MAX_IDS
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import (
+    INTERNAL_SERVER_ERROR_500_BODY,
+    UNAUTHORIZED_401_RESPONSE,
+)
 
 RUN_SESSION_POST = {
     "summary": "Start a new session",
@@ -53,8 +56,10 @@ RUN_SESSION_POST = {
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
             description=(
-                "Total file size exceeds the limit, validation failed, or the "
-                "session failed to start."
+                "Total file size exceeds the limit, validation failed, or a run check "
+                "refused the run (for example, the flow is not ready to run). A run check "
+                'returns `{"error": "<text>"}`, with text written for the user that '
+                "names what to fix."
             ),
             examples=[
                 OpenApiExample(
@@ -70,10 +75,60 @@ RUN_SESSION_POST = {
                     status_codes=["400"],
                 ),
                 OpenApiExample(
-                    "Internal error",
-                    value={"error": "Connection refused"},
+                    "Flow not ready",
+                    value={"error": "Connect a node to Start."},
                     response_only=True,
                     status_codes=["400"],
+                ),
+            ],
+        ),
+        500: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description=(
+                "File storage access for the run couldn't be prepared, or the session "
+                "failed to start for an unexpected reason. A storage failure returns its own "
+                "code and message. An unexpected failure returns the exception class as "
+                "`code` and a generic message; its details are logged on the server, and the "
+                "session's stored reason cites the reference they are logged under."
+            ),
+            examples=[
+                OpenApiExample(
+                    "Storage unavailable",
+                    value={
+                        "status_code": 500,
+                        "code": "temporary_credential_issue_error",
+                        "message": (
+                            "We couldn't grant access to file storage for this run. "
+                            "Please try again shortly."
+                        ),
+                    },
+                    response_only=True,
+                    status_codes=["500"],
+                ),
+                OpenApiExample(
+                    "Unexpected failure",
+                    value=INTERNAL_SERVER_ERROR_500_BODY,
+                    response_only=True,
+                    status_codes=["500"],
+                ),
+            ],
+        ),
+        503: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description=(
+                "No database connection freed up in time under load. Retry after the "
+                "number of seconds in the `Retry-After` header."
+            ),
+            examples=[
+                OpenApiExample(
+                    "Server busy",
+                    value={
+                        "status_code": 503,
+                        "code": "database_pool_exhausted",
+                        "message": "The server is busy. Please retry shortly.",
+                    },
+                    response_only=True,
+                    status_codes=["503"],
                 ),
             ],
         ),

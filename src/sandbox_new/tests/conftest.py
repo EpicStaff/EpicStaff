@@ -74,6 +74,28 @@ def checkpoints():
 
 
 @pytest.fixture
+def error_logs():
+    """The ERROR-and-above log lines written during the test, as rendered text."""
+    lines: list[str] = []
+    sink_id = logger.add(lambda message: lines.append(str(message)), level="ERROR")
+    yield lines
+    logger.remove(sink_id)
+
+
+@pytest.fixture
+def warning_logs():
+    """The WARNING log lines written during the test, as rendered text."""
+    lines: list[str] = []
+    sink_id = logger.add(
+        lambda message: lines.append(str(message)),
+        level="WARNING",
+        filter=lambda record: record["level"].name == "WARNING",
+    )
+    yield lines
+    logger.remove(sink_id)
+
+
+@pytest.fixture
 def venv_repository() -> FakeVenvRepository:
     return FakeVenvRepository()
 

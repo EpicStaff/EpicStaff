@@ -34,7 +34,7 @@ SECRET_NAME = "query-count-key"
 # before anything is written and again just before the publish: one query each
 # while no plugin grant of the organization is inactive. It also includes the
 # savepoint (SAVEPOINT, RELEASE) the warnings are saved in after the publish.
-RUN_SESSION_QUERY_COUNT = 67
+RUN_SESSION_QUERY_COUNT = 65
 
 
 def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -> PythonNode:
@@ -52,7 +52,11 @@ def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -
 
 def _webhook_trigger_node(graph: Graph, node_name: str) -> WebhookTriggerNode:
     python_code = PythonCode.objects.create(code="def main(**kwargs):\n    return 1\n", entrypoint="main")
-    return WebhookTriggerNode.objects.create(graph=graph, python_code=python_code, node_name=node_name)
+    node = WebhookTriggerNode.objects.create(graph=graph, python_code=python_code, node_name=node_name)
+    # Only the nodes a run reaches are sent, so an edge leads to it.
+    previous = PythonNode.objects.get(graph=graph, node_name="second_python")
+    Edge.objects.create(graph=graph, start_node_id=previous.pk, end_node_id=node.pk)
+    return node
 
 
 @pytest.fixture

@@ -9,14 +9,17 @@ route between them.
 
 import pytest
 
+from agents.models import AgentDefinition
 from tables.models import Edge, EndNode, StartNode
 from tables.models.graph_models import (
     AgentNode,
+    AgentNodeTask,
     ConditionGroup,
     DecisionTableNode,
     Graph,
     PythonNode,
 )
+from src.shared.runtime_node_name import parse_runtime_node_label
 from tables.models.python_models import PythonCode
 from tables.services.session_manager_service import SessionManagerService
 from utils.graph_utils import (
@@ -33,6 +36,20 @@ def _python_node(graph: Graph, node_name: str, node_number: int) -> PythonNode:
         node_number=node_number,
         python_code=PythonCode.objects.create(code="def main(): return 1"),
     )
+
+
+def _runnable_agent_node(graph: Graph, llm_config, node_name: str, node_number: int) -> AgentNode:
+    agent_definition = AgentDefinition.objects.create(
+        org=graph.org, name="Copywriter", llm_config=llm_config
+    )
+    agent_node = AgentNode.objects.create(
+        graph=graph,
+        node_name=node_name,
+        node_number=node_number,
+        agent_definition=agent_definition,
+    )
+    AgentNodeTask.objects.create(agent_node=agent_node, name="Draft", order=0)
+    return agent_node
 
 
 @pytest.mark.parametrize(
@@ -63,6 +80,20 @@ def test_runtime_node_name(node_name, node_number, node_id, expected):
     )
 
 
+@pytest.mark.parametrize(
+    ("node_name", "node_number", "node_id"),
+    [
+        ("Python", 3, 12345),
+        ("Python", None, 12345),
+        ("Name with #hash", 12, 99),
+    ],
+)
+def test_crew_reads_back_the_label_django_put_into_a_runtime_name(node_name, node_number, node_id):
+    name = runtime_node_name(node_name=node_name, node_number=node_number, node_id=node_id)
+
+    assert parse_runtime_node_label(name) == node_label(node_name=node_name, node_number=node_number)
+
+
 @pytest.mark.django_db
 def test_unscoped_resolver_includes_the_node_number(graph):
     node = _python_node(graph, "Py", node_number=3)
@@ -71,10 +102,10 @@ def test_unscoped_resolver_includes_the_node_number(graph):
 
 
 @pytest.mark.django_db
-def test_session_graph_data_uses_numbered_runtime_names_in_lockstep(graph):
+def test_session_graph_data_uses_numbered_runtime_names_in_lockstep(graph, llm_config):
     start_node = StartNode.objects.create(graph=graph, variables={})
     python_node = _python_node(graph, "Py", node_number=3)
-    agent_node = AgentNode.objects.create(graph=graph, node_name="Writer", node_number=5)
+    agent_node = _runnable_agent_node(graph, llm_config, "Writer", node_number=5)
     target_node = _python_node(graph, "Target", node_number=8)
     end_node = EndNode.objects.create(graph=graph, output_map={"context": "variables"})
     decision_table = DecisionTableNode.objects.create(

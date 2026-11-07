@@ -3,6 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .ai_providers import EmbedderData, LLMData
+from .code_failure import CodeFailure
 from .storage_scope import StorageCredentials, StorageScopedData
 
 
@@ -148,11 +149,28 @@ class BaseToolData(BaseModel):
 
 
 class CodeResultData(BaseModel):
+    """The outcome of one code execution, as the sandbox publishes it and crew reads it.
+
+    On a result from the sandbox or crew, `returncode == 0` exactly when `failure` is
+    None. A failed result's stderr ends with the whole failure line, so a consumer that
+    reads only stderr still shows the reason. `failure.detail` is that line, except that
+    the sandbox shortens the texts the user's code put in it (an exception's message, an
+    argument name) to what a message can show; stderr is never shortened.
+
+    Attributes:
+        failure: Why the execution failed; None when it succeeded. Its texts are masked
+            for the job's secrets, like stderr.
+        reference: Set only when a server log line, logged under this reference, explains
+            the failure; `failure.detail` cites it.
+    """
+
     execution_id: str
     result_data: str | None = None
     stderr: str
     stdout: str
     returncode: int = 0
+    failure: CodeFailure | None = None
+    reference: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

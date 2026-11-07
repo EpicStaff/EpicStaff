@@ -114,7 +114,10 @@ def test_unexpected_error_is_logged_and_not_returned(
         response = endpoint.call(auth_client, request.getfixturevalue)
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.json()["message"] == "Unpredictable error"
+    body = response.json()
+    assert body["code"] == "internal_error"
+    assert body["message"].startswith("Something went wrong on the server.")
+    assert "OperationalError" not in response.content.decode()
     assert "crewdb" not in response.content.decode()
     assert "password authentication" not in response.content.decode()
 

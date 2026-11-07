@@ -64,6 +64,14 @@
     line-height: var(--text-body-small-line-height);
 }
 
+.search-error {
+    margin: 0;
+    color: var(--color-ks-status-failed);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+}
+
 .query {
     color: var(--gray-50);
     font-weight: 500;

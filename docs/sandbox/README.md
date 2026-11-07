@@ -91,7 +91,7 @@ sequenceDiagram
     alt started before its queue deadline
         S->>B: result
     else waited past the queue deadline
-        S->>B: "Sandbox overloaded: ... not run"
+        S->>B: "The server was too busy to run the code in time. ..."
     end
     B-->>P: result or overloaded answer
 ```
@@ -112,6 +112,31 @@ sequenceDiagram
     S-->>P: 404
     Note over P: node fails: "The sandbox lost the execution"
 ```
+
+## How a failed result says why
+
+A result is `CodeResultData` (`src/shared/models/tools.py`). `returncode == 0` exactly when `failure` is None. A failed result carries:
+
+- **`failure`**: a `CodeFailure` (`src/shared/models/code_failure.py`). Consumers branch on `failure.code`, never on text.
+  - `code` is a `CodeFailureCode`. The enum's comments say which part of the system reports each one. A consumer reads a code it doesn't know as `unknown` rather than rejecting the result, since a newer sandbox can send one during a deploy, and shows the `detail` for it.
+  - `detail` is the sentence the user sees. It's always safe to show, and it's masked for the job's secrets.
+  - `attr` names the argument at fault. `unexpected_argument` and `missing_argument` must have it.
+  - `user_error` holds the exception in parts (`exception_type`, `line` in the user's own code, `message`). `user_code_error` must have it. Crew uses it to turn a line of the code it generated into a line the user wrote.
+- **`reference`**: set only when a server log line explains the failure (the codes in `SERVER_FAILURE_CODES`), and `detail` then cites it. For any other failure the user's own code is the cause, so there's nothing to look up.
+- **`stderr`**: the user's own output, never shortened. It still ends with the failure line, so a consumer that reads only `stderr` shows the same reason. Don't parse it: the line's wording isn't a contract, `failure` is.
+
+Where the failure comes from:
+
+- **The code wrapper** writes it to the `failure.json` control file, from inside the process that ran the user's code. That process also runs the user's code, so the worker accepts only the codes in `WRAPPER_FAILURE_CODES` from it. The user's code could write that file too, but it can only claim a failure of its own code, never one of the sandbox.
+- **The worker** reports what happened around the process: a non-zero exit, a timeout, a result too big to save, its own failure.
+- **The manager** reports a job that never reached the worker: a venv that couldn't be built (the `package_*` codes match `VenvBuildErrorKind`), a hold timeout, a failed dispatch.
+- **Crew** adds `result_timeout` when it stops waiting for the result.
+
+Following a reference: the service where the failure happened logs the cause at ERROR under the reference, with the execution and session ids. That is the sandbox, or crew when it couldn't send the job or read the result; a result-write failure the user's code could have faked is logged at WARNING. Crew logs which node and session it was under the same reference, at WARNING, so the one reference the user quotes leads through both services and raises one alert.
+
+`code_failure.py` is a shared kernel: the sandbox's worker domain and manager ports use it as it is, so it imports only pydantic and the standard library, which a test checks.
+
+When you add a code, add it to `CodeFailureCode`, decide whether the wrapper may report it and whether it belongs in `SERVER_FAILURE_CODES`, and say how crew reads it in `test_every_failure_code_has_a_decided_reading` (`src/crew/tests/services/test_code_node_sandbox_failure.py`), which fails until you do.
 
 ## Settings
 

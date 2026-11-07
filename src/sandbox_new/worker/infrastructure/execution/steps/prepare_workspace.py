@@ -3,19 +3,17 @@
 Each execution gets its own ``exec_dir`` (with ``home``, ``tmp`` and ``work`` under
 it) so runs never share writable state; the orchestrator deletes it after the run.
 ``work`` is the child's cwd: a subdir, so a relative write such as ``output.txt``
-cannot replace the control files (code.py, output.txt, storage_mutations.json) kept
-in ``exec_dir``. When the worker runs as root these dirs are chowned to
-``sandboxuser`` so the dropped child can write into them. Storage environment
-variables are added later, by the storage step.
+cannot replace the control files (code.py, output.txt, failure.json,
+storage_mutations.json) kept in ``exec_dir``. When the worker runs as root these dirs
+are chowned to ``sandboxuser`` so the dropped child can write into them. Storage
+environment variables are added later, by the storage step.
 """
 
 import json
 import os
 from pathlib import Path
 
-from loguru import logger
-
-from worker.application.context import ExecutionContext
+from worker.application.context import ExecutionContext, fail_on_sandbox_error
 from worker.infrastructure.execution.environment import build_base_env
 from worker.infrastructure.execution.privileges import (
     SANDBOX_GID,
@@ -48,8 +46,9 @@ class PrepareWorkspaceStep:
                 for directory in (exec_dir, home_dir, tmp_dir, work_dir):
                     os.chown(directory, SANDBOX_UID, SANDBOX_GID)
             except OSError as error:
-                logger.error("Failed to chown execution dirs (EPERM?): {}", error)
-                context.fail(f"Security setup failed: could not chown execution dirs: {error}")
+                fail_on_sandbox_error(
+                    context, f"Security setup failed: could not chown execution dirs: {error}"
+                )
                 return
 
         context.home_dir = home_dir
@@ -57,6 +56,7 @@ class PrepareWorkspaceStep:
         context.work_dir = work_dir
         context.code_path = exec_dir / "code.py"
         context.result_file_path = exec_dir / "output.txt"
+        context.failure_file_path = exec_dir / "failure.json"
 
         env = build_base_env(context.python_executable)
         env["HOME"] = str(home_dir)

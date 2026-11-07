@@ -52,12 +52,12 @@ async def test_tool_failure_reaches_provider_and_browser_without_the_exception_t
     for call in client.send_server.await_args_list + client.send_client.await_args_list:
         assert SECRET_SENTINEL not in str(call.args[0])
     # The browser shows the same reference, and support finds the detail under it in the logs.
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(result).group(1)
+    reference = PUBLIC_ERROR_REFERENCE.search(result).group(1)
     (browser_output,) = [
         call.args[0]["item"]["output"]
         for call in client.send_client.await_args_list
         if call.args[0].get("type") == "conversation.item.created"
     ]
-    assert correlation_id in browser_output
-    (log,) = [message for message in captured_log_messages if correlation_id in message]
+    assert reference in browser_output
+    (log,) = [message for message in captured_log_messages if reference in message]
     assert SECRET_SENTINEL in log

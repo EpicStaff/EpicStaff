@@ -80,11 +80,13 @@ def graph(db, org):
 
 
 @pytest.fixture
-def agent(db, org):
+def agent(db, org, llm_config):
+    # With an LLM: a run refuses a Task node whose agent has none.
     return AgentDefinition.objects.create(
         org=org,
         name="task-node-payload-agent",
         instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
+        llm_config=llm_config,
     )
 
 
@@ -143,8 +145,11 @@ def mcp_tool(db, org):
 
 
 @pytest.fixture
-def task_node(graph):
-    return TaskNode.objects.create(graph=graph, node_name="task-node-payload")
+def task_node(graph, agent):
+    # With an agent: a run refuses a Task node without one.
+    return TaskNode.objects.create(
+        graph=graph, node_name="task-node-payload", agent_definition=agent
+    )
 
 
 def graph_data_for_run(graph) -> GraphData:

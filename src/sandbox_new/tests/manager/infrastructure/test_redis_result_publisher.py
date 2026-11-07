@@ -1,10 +1,11 @@
 """Behavior of the Redis result publisher, against fakeredis.
 
-The result payload shape is a contract with consumers that already exist (crew reads
-``result_data``), so the assertions name every key. A result flagged for crew goes to
-crew's own channel and nowhere else, which is what keeps crew from sifting through every
-other service's results. Mutations go to their own channel and only when there is
-something to report, whichever result channel carried the result.
+The result payload is the shared ``CodeResultData``, a contract with consumers that
+already exist (crew reads ``result_data``), so the assertions name every key. A result
+flagged for crew goes to crew's own channel and nowhere else, which is what keeps crew
+from sifting through every other service's results. Mutations go to their own channel
+and only when there is something to report, whichever result channel carried the
+result.
 """
 
 import json
@@ -13,6 +14,9 @@ import fakeredis.aioredis
 import pytest
 
 from common.contracts import ExecutionResultMessage, StorageMutationsMessage
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode, UserCodeError
+from src.shared.models.tools import CodeResultData
+
 from manager.infrastructure.transport.redis_result_publisher import RedisResultPublisher
 
 RESULT_CHANNEL = "code:results"
@@ -72,21 +76,50 @@ async def test_the_result_payload_uses_the_keys_consumers_already_read(redis, pu
         "stdout": "out",
         "stderr": "err",
         "returncode": 0,
+        "failure": None,
+        "reference": None,
     }
 
 
+async def test_a_failed_result_carries_its_failure_and_reference_to_the_consumer(
+    redis, publisher
+):
+    failure = CodeFailure(
+        code=CodeFailureCode.USER_CODE_ERROR,
+        detail="KeyError on line 4: key 'email' doesn't exist",
+        user_error=UserCodeError(
+            exception_type="KeyError", line=4, message="key 'email' doesn't exist"
+        ),
+    )
+    pubsub = await subscribe(redis, RESULT_CHANNEL)
+
+    await publisher.publish(
+        ExecutionResultMessage(
+            execution_id="exec-1",
+            stderr=failure.detail,
+            returncode=1,
+            failure=failure,
+            reference="0a1b2c3d4e5f",
+        )
+    )
+
+    published = CodeResultData.model_validate(await next_payload(pubsub))
+    assert (published.failure, published.reference) == (failure, "0a1b2c3d4e5f")
+
+
 @pytest.mark.parametrize(
-    ("returncode", "not_run_reason", "outcome"),
+    ("returncode", "failure_code", "outcome"),
     [
         (0, None, "ok"),
-        (3, None, "failed"),
-        (1, "venv_failed", "venv_failed"),
-        (1, "dispatch_failed", "dispatch_failed"),
-        (1, "hold_timeout", "hold_timeout"),
+        (3, CodeFailureCode.CODE_EXITED, "code_exited"),
+        (1, CodeFailureCode.PACKAGE_NOT_FOUND, "package_not_found"),
+        (1, CodeFailureCode.DISPATCH_FAILED, "dispatch_failed"),
+        (1, CodeFailureCode.HOLD_TIMEOUT, "hold_timeout"),
+        (1, CodeFailureCode.OVERLOADED, "overloaded"),
     ],
 )
 async def test_exec_published_reports_the_outcome_and_keeps_it_off_the_payload(
-    redis, publisher, checkpoints, returncode, not_run_reason, outcome
+    redis, publisher, checkpoints, returncode, failure_code, outcome
 ):
     pubsub = await subscribe(redis, RESULT_CHANNEL)
 
@@ -95,12 +128,22 @@ async def test_exec_published_reports_the_outcome_and_keeps_it_off_the_payload(
             execution_id="exec-1",
             returncode=returncode,
             session_id=7,
-            not_run_reason=not_run_reason,
+            failure=(
+                None if failure_code is None else CodeFailure(code=failure_code, detail="failed")
+            ),
         )
     )
 
     payload = await next_payload(pubsub)
-    assert set(payload) == {"execution_id", "result_data", "stdout", "stderr", "returncode"}
+    assert set(payload) == {
+        "execution_id",
+        "result_data",
+        "stdout",
+        "stderr",
+        "returncode",
+        "failure",
+        "reference",
+    }
     assert checkpoints == [
         {
             "checkpoint": "exec_published",

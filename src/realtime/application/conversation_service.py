@@ -10,14 +10,11 @@ from domain.ports.i_transcription_client_factory import ITranscriptionClientFact
 from domain.services.chat_buffer import ChatSummarizedBuffer, split_into_words
 from domain.services.summarize_buffer import ChatSummarizedBufferClient
 from fastapi import WebSocket, WebSocketDisconnect
+from foundation.utils.error_reference import log_with_reference
 from infrastructure.providers.factory import RealtimeAgentClientFactory
 from loguru import logger
 from src.shared.models import RealtimeAgentChatData
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
+from src.shared.public_error import PublicErrorMessage, build_public_error_message
 from utils.shorten import shorten_dict
 from utils.tokenizer import Tokenizer
 
@@ -210,15 +207,14 @@ class ConversationService(IChatModeController):
                     raise
 
                 except Exception as e:
-                    correlation_id = new_error_correlation_id()
-                    logger.exception(
-                        f"Error processing message [correlation_id={correlation_id}]: {e}"
+                    reference = log_with_reference(
+                        "Error processing message: {error}", error=str(e), exception=e
                     )
                     await self.client_websocket.send_json(
                         {
                             "type": "error",
                             "message": build_public_error_message(
-                                PublicErrorMessage.MESSAGE_PROCESSING_FAILED, correlation_id
+                                PublicErrorMessage.MESSAGE_PROCESSING_FAILED, reference
                             ),
                         }
                     )

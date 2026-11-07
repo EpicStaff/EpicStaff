@@ -161,14 +161,14 @@ async def test_process_message_failure_sends_fixed_error_without_exception_text(
 
 
 @pytest.mark.asyncio
-async def test_process_message_failure_logs_detail_under_the_sent_correlation_id(
+async def test_process_message_failure_logs_detail_under_the_sent_reference(
     service, captured_log_messages
 ):
     await _run_until_disconnect(service)
 
     message = _error_payloads(service)[0]["message"]
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(message).group(1)
-    matching_logs = [log for log in captured_log_messages if correlation_id in log]
+    reference = PUBLIC_ERROR_REFERENCE.search(message).group(1)
+    matching_logs = [log for log in captured_log_messages if reference in log]
     assert len(matching_logs) == 1
     assert SECRET_SENTINEL in matching_logs[0]
 

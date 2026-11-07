@@ -270,7 +270,7 @@ def test_the_status_of_an_unknown_execution_is_not_found(client):
     response = client.get("/executions/exec-404")
 
     assert response.status_code == status_codes.HTTP_404_NOT_FOUND
-    assert [error["code"] for error in response.json()["errors"]] == ["not_found"]
+    assert [error["code"] for error in response.json()["errors"]] == ["execution_not_found"]
 
 
 def test_a_full_sandbox_answers_503_with_retry_after(
@@ -283,7 +283,7 @@ def test_a_full_sandbox_answers_503_with_retry_after(
 
     assert response.status_code == status_codes.HTTP_503_SERVICE_UNAVAILABLE
     assert response.headers["Retry-After"] == "5"
-    assert [error["code"] for error in response.json()["errors"]] == ["overloaded"]
+    assert [error["code"] for error in response.json()["errors"]] == ["sandbox_overloaded"]
     assert dispatcher.dispatched == []
     assert registry.status("exec-1") is None
 
@@ -311,7 +311,7 @@ def test_a_submission_that_would_be_held_answers_503_at_the_held_cap(
 
     assert response.status_code == status_codes.HTTP_503_SERVICE_UNAVAILABLE
     assert response.headers["Retry-After"] == "30"
-    assert [error["code"] for error in response.json()["errors"]] == ["overloaded"]
+    assert [error["code"] for error in response.json()["errors"]] == ["sandbox_overloaded"]
     assert holding.pending_venv_ids() == []
     assert registry.status("exec-1") is None
 

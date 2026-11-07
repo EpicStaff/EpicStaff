@@ -1,6 +1,6 @@
 import json
 
-from manager.domain.enums import VenvStatus, WheelStatus
+from manager.domain.enums import VenvBuildErrorKind, VenvStatus, WheelStatus
 from manager.domain.models import CustomLibrary, Library, Venv, Wheel
 from manager.infrastructure.database.venvs.tables import (
     CustomLibraryTable,
@@ -20,6 +20,7 @@ class VenvMapper:
             hash=row.hash,
             status=VenvStatus(row.status),
             error=row.error,
+            error_kind=VenvBuildErrorKind(row.error_kind) if row.error_kind is not None else None,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )

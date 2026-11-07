@@ -59,6 +59,20 @@ log_level = "WARNING"
 [tool.importlinter]
 root_packages = ["manager", "worker", "common"]
 
+# The domain is the innermost layer: it imports no other manager layer. An error is
+# declared with the contract it belongs to, so the venv build errors, failures of a
+# port operation, sit with their application port, not here.
+[[tool.importlinter.contracts]]
+name = "manager domain depends on no other manager layer"
+type = "forbidden"
+source_modules = ["manager.domain"]
+forbidden_modules = [
+    "manager.application",
+    "manager.infrastructure",
+    "manager.presentation",
+    "manager.bootstrap",
+]
+
 # The ports are the one part of the application layer an adapter implements.
 # The exemptions are rules rather than recorded imports, so a pattern no current
 # import matches is not an error. `pkg.**` does not match `pkg` itself, hence the

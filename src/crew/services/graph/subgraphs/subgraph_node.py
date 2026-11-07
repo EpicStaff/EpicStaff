@@ -1,7 +1,9 @@
 from copy import deepcopy
+from typing import Literal, NoReturn
 from uuid import uuid4
 
 from dotdict import DotDict
+from foundation.utils.error_reference import log_with_reference
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -12,8 +14,14 @@ from models.graph_models import (
     dataclass_to_shallow_dict,
 )
 from services.graph.custom_message_writer import CustomSessionMessageWriter
+from services.graph.exceptions import (
+    InvalidStatePathError,
+    NodeExecutionError,
+    SubflowPathError,
+)
 from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
 from src.shared.models.storage_scope import StorageCredentials
+from src.shared.runtime_node_name import parse_runtime_node_label
 from utils import map_variables_to_input
 from utils.set_output_variables import set_output_variables
 from utils.state_path import split_state_path
@@ -109,31 +117,43 @@ class SubGraphNode:
         return self._graph_builder.compile()
 
     async def run(self, state, writer: StreamWriter):
-        """Execute the subgraph and handle input/output mapping."""
+        """Execute the subgraph and handle input/output mapping.
+
+        A failure of the subflow node itself, before or after its flow runs, shows the
+        node's error message and fails the session repeating it. A node inside the flow
+        that fails has shown its own message already, so its error passes through.
+
+        Raises:
+            NodeExecutionError: The subflow node or a node inside its flow failed.
+            StopSession: The session was stopped while the flow ran.
+        """
         subgraph_execution_id = str(uuid4())
 
-        subgraph_input = self._prepare_subgraph_input(state)
-        # Rejected before the child flow runs, which would otherwise do its work for nothing.
-        if self.output_variable_path:
-            split_state_path(self.output_variable_path)
-
         sysvars = state.get("system_variables") or {}
-        state["system_variables"] = sysvars  # ensure attached before deep-copy
-
         start_order = sysvars.get("execution_order", 0)
-        sysvars["execution_order"] = start_order + 1
-        self._send_start_message(
-            state,
-            subgraph_input,
-            writer,
-            subgraph_execution_id,
-            execution_order=start_order,
-        )
+        try:
+            subgraph_input = self._prepare_subgraph_input(state)
+            # Rejected before the child flow runs, which would otherwise do its work for nothing.
+            if self.output_variable_path:
+                split_state_path(self.output_variable_path)
 
-        subgraph_state = self._create_subgraph_state(state, subgraph_input)
-        # Compiled lazily, not in __init__: a subflow that contains itself would recurse forever.
-        if self._compiled_subgraph is None:
-            self._compiled_subgraph = self.build(initial_state=subgraph_input)
+            state["system_variables"] = sysvars  # ensure attached before deep-copy
+            sysvars["execution_order"] = start_order + 1
+            self._send_start_message(
+                state,
+                subgraph_input,
+                writer,
+                subgraph_execution_id,
+                execution_order=start_order,
+            )
+
+            subgraph_state = self._create_subgraph_state(state, subgraph_input)
+            # Compiled lazily, not in __init__: a subflow that contains itself would recurse
+            # forever.
+            if self._compiled_subgraph is None:
+                self._compiled_subgraph = self.build(initial_state=subgraph_input)
+        except Exception as error:
+            self._raise_failure(writer, error, execution_order=start_order, phase="start")
 
         result = await self._execute_subgraph(
             self._compiled_subgraph, subgraph_state, writer, subgraph_execution_id
@@ -145,9 +165,12 @@ class SubGraphNode:
         )
         sysvars["execution_order"] = max(sysvars["execution_order"], child_order)
 
-        updated_state = self._process_subgraph_result(state, subgraph_input, result)
-
         finish_order = sysvars["execution_order"]
+        try:
+            updated_state = self._process_subgraph_result(state, subgraph_input, result)
+        except Exception as error:
+            self._raise_failure(writer, error, execution_order=finish_order, phase="finish")
+
         sysvars["execution_order"] = finish_order + 1
         self._send_finish_message(
             updated_state,
@@ -163,9 +186,71 @@ class SubGraphNode:
             "system_variables": sysvars,
         }
 
+    @property
+    def node_label(self) -> str:
+        """The node's label as the user sees it on the canvas, e.g. "Run B #1"."""
+        return parse_runtime_node_label(self.node_name)
+
+    def _raise_failure(
+        self,
+        writer: StreamWriter,
+        error: Exception,
+        execution_order: int,
+        phase: Literal["start", "finish"],
+    ) -> NoReturn:
+        """Stream the subflow node's error message for `error`, then raise what the session reports.
+
+        An input or output path the node can't use is told as it is. Any other failure may
+        carry internal text, so it is logged and the message cites a reference to the log line.
+        """
+        if isinstance(error, (SubflowPathError, InvalidStatePathError)):
+            public_message = str(error)
+            reference = None
+        else:
+            reference = log_with_reference(
+                "Subflow node failed: {error} (session_id={session_id}, node_name={node_name})",
+                error=str(error),
+                session_id=self.session_id,
+                node_name=self.node_name,
+                exception=error,
+            )
+            public_message = (
+                f'Subflow node "{self.node_label}" couldn\'t {phase} {self._flow_description()}. '
+                f"Try again or contact your administrator (reference: {reference})."
+            )
+        self.custom_session_message_writer.add_error_message(
+            session_id=self.session_id,
+            node_name=self.node_name,
+            writer=writer,
+            execution_order=execution_order,
+            node_type=self.TYPE,
+            public_details=public_message,
+        )
+        raise NodeExecutionError(public_message, reference=reference) from error
+
+    def _flow_description(self) -> str:
+        # The flow is missing from the session data when it was deleted or never sent.
+        if self.subgraph_data is None:
+            return "its flow"
+        return f'flow "{self.subgraph_data.data.name}"'
+
     def _prepare_subgraph_input(self, state) -> dict:
-        """Map variables from parent state to subgraph input."""
-        return map_variables_to_input(state["variables"], self.input_map)
+        """Map variables from parent state to subgraph input.
+
+        Raises:
+            SubflowPathError: An input's path doesn't start with `variables`.
+        """
+        subgraph_input = {}
+        # One input at a time, so a path that isn't a flow variable names its input.
+        for input_name, path in self.input_map.items():
+            try:
+                subgraph_input |= map_variables_to_input(state["variables"], {input_name: path})
+            except ValueError as error:
+                raise SubflowPathError(
+                    f'Input "{input_name}" of Subflow node "{self.node_label}" must be a flow '
+                    f"variable, like variables.{input_name}."
+                ) from error
+        return subgraph_input
 
     def _send_start_message(
         self,
@@ -255,7 +340,13 @@ class SubGraphNode:
             else:
                 full_path = f"variables.{self.output_variable_path}"
 
-            set_output_variables(temp_state, full_path, subgraph_output)
+            try:
+                set_output_variables(temp_state, full_path, subgraph_output)
+            except (IndexError, KeyError, TypeError, AttributeError, ValueError) as error:
+                raise SubflowPathError(
+                    f'Output path "{full_path}" of Subflow node "{self.node_label}" '
+                    "doesn't exist. Check the output variable path."
+                ) from error
 
         state_history_item = self._create_state_history_item(subgraph_input, subgraph_output)
 

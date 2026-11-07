@@ -672,8 +672,8 @@ async def test_tool_failure_reaches_gemini_without_the_exception_text(live, capt
     result = response.response["result"]
     assert result.startswith("Tool execution failed") and SECRET_SENTINEL not in result
     assert live.sessions[0].turns == []
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(result).group(1)
-    (log,) = [message for message in captured_log_messages if correlation_id in message]
+    reference = PUBLIC_ERROR_REFERENCE.search(result).group(1)
+    (log,) = [message for message in captured_log_messages if reference in message]
     assert SECRET_SENTINEL in log
 
 

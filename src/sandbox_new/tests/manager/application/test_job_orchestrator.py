@@ -12,26 +12,29 @@ in-flight cap is full.
 import asyncio
 
 import pytest
+from src.shared.models.code_failure import CodeFailure
 
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
 from manager.application.registry import ExecutionRegistry
-from manager.domain.enums import ExecutionStatus, VenvStatus
-from manager.domain.errors import SandboxOverloadedError, VenvNotFoundError
+from manager.application.errors import SandboxOverloadedError, VenvNotFoundError
+from manager.domain.enums import ExecutionStatus, VenvBuildErrorKind, VenvStatus
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
 from manager.presentation.result_consumer import ResultConsumer
 from tests.builders import make_venv
 from tests.fakes import FakeClock, FakeResultPublisher, FakeUnitOfWork, FakeVenvRepository
+from tests.public_errors import SERVER_ERROR, logged_with, reference_in
 
 QUEUE_TIMEOUT = 120.0
 HOLD_TIMEOUT = 1800.0
 MAX_ACCEPTED = 2
 MAX_HELD = 2
-HOLD_TIMED_OUT_MESSAGE = (
-    "The execution environment did not finish building in time; the job was not run."
+HOLD_TIMED_OUT_MESSAGE = "The libraries are still being installed. Try again in a minute."
+GENERIC_VENV_FAILED_MESSAGE = (
+    "Couldn't install the libraries. Check the library names and versions."
 )
 
 SUBMISSION = {
@@ -182,10 +185,33 @@ async def test_submit_against_a_building_venv_holds_it(
     assert [job.execution_id for job in holding.release(venv.id)] == ["exec-1"]
 
 
-async def test_submit_against_a_failed_venv_reports_a_failure(
-    uow, orchestrator, dispatcher, holding, failure_sink
+@pytest.mark.parametrize(
+    ("kind", "stored_error", "expected_code"),
+    [
+        (
+            VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+            "Package 'requests2' does not exist.",
+            "package_not_found",
+        ),
+        (
+            VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND,
+            "Package 'requests' has no version matching '==99'.",
+            "package_version_not_found",
+        ),
+        (
+            VenvBuildErrorKind.PACKAGE_DEPENDENCY_CONFLICT,
+            "Package 'a' requires versions of its dependencies that conflict with the other "
+            "requested packages.",
+            "package_dependency_conflict",
+        ),
+    ],
+)
+async def test_submit_against_a_failed_venv_reports_its_build_error(
+    uow, orchestrator, dispatcher, holding, failure_sink, kind, stored_error, expected_code
 ):
-    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.FAILED, error="uv blew up"))[0]
+    venv = uow.venv_repo.seed(
+        make_venv(status=VenvStatus.FAILED, error=stored_error, error_kind=kind)
+    )[0]
 
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
 
@@ -193,8 +219,49 @@ async def test_submit_against_a_failed_venv_reports_a_failure(
     assert holding.pending_venv_ids() == []
     [failure] = failure_sink.failures
     assert failure.execution_id == "exec-1"
-    assert "failed to build" in failure.message
-    assert (failure.session_id, failure.not_run_reason) == (7, "venv_failed")
+    assert failure.failure == CodeFailure(
+        code=expected_code, detail=f"Couldn't install the libraries: {stored_error}"
+    )
+    assert (failure.reference, failure.session_id) == (None, 7)
+
+
+@pytest.mark.parametrize(
+    ("kind", "stored_error"),
+    [
+        (VenvBuildErrorKind.PACKAGE_INSTALL_FAILED, GENERIC_VENV_FAILED_MESSAGE),
+        (
+            VenvBuildErrorKind.PACKAGE_INSTALL_FAILED,
+            "uv pip compile failed: /var/lib/sandbox/venvs/venv-3 is not writable",
+        ),
+        (
+            None,
+            "Could not build the environment. Check the library names and version specifications.",
+        ),
+        (None, "uv pip compile failed: /var/lib/sandbox/venvs/venv-3 is not writable"),
+        (None, "Package 'requests2' does not exist."),
+        (None, None),
+    ],
+    ids=[
+        "generic-build-error",
+        "raw-text-with-the-generic-kind",
+        "generic-build-error-stored-before-kinds",
+        "raw-text-stored-before-kinds",
+        "package-text-stored-before-kinds",
+        "no-error",
+    ],
+)
+async def test_a_failed_venv_without_a_showable_error_reports_a_generic_hint(
+    uow, orchestrator, failure_sink, kind, stored_error
+):
+    venv = uow.venv_repo.seed(
+        make_venv(status=VenvStatus.FAILED, error=stored_error, error_kind=kind)
+    )[0]
+
+    await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
+
+    assert [failure.failure for failure in failure_sink.failures] == [
+        CodeFailure(code="package_install_failed", detail=GENERIC_VENV_FAILED_MESSAGE)
+    ]
 
 
 async def test_submit_without_a_venv_id_uses_the_default_venv(uow, orchestrator, dispatcher):
@@ -227,7 +294,7 @@ async def test_a_dispatch_failure_does_not_reach_the_caller(uow, orchestrator, d
 
 
 async def test_a_dispatch_failure_is_reported_as_a_failed_run(
-    uow, orchestrator, dispatcher, failure_sink
+    uow, orchestrator, dispatcher, failure_sink, error_logs
 ):
     """The caller was answered 202, so a result is the only way it learns the job
     never ran -- silence would leave it waiting and its credentials unrevoked."""
@@ -238,8 +305,17 @@ async def test_a_dispatch_failure_is_reported_as_a_failed_run(
 
     [failure] = failure_sink.failures
     assert failure.execution_id == "exec-1"
-    assert failure.message == "The job could not be handed to the worker and was not run."
-    assert (failure.session_id, failure.not_run_reason) == (7, "dispatch_failed")
+    assert failure.failure.code == "dispatch_failed"
+    reference = reference_in(SERVER_ERROR, failure.failure.detail)
+    assert failure.reference == reference
+    log_line = logged_with(reference, error_logs)
+    assert "exec-1" in log_line
+    # The session leads support from the reference the user quotes to the run.
+    assert "session 7" in log_line
+    assert "RuntimeError" in log_line
+    # The type only: a dispatch error's text can quote the job's secrets.
+    assert "queue is gone" not in log_line
+    assert failure.session_id == 7
 
 
 async def test_flush_pending_dispatches_jobs_whose_venv_finished_building(
@@ -302,7 +378,11 @@ async def test_flush_pending_fails_jobs_whose_venv_failed_to_build(
     venv = uow.venv_repo.seed(make_venv(status=VenvStatus.PROCESSING))[0]
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
     failed = (await uow.venv_repo.retrieve(venv.id)).model_copy(
-        update={"status": VenvStatus.FAILED, "error": "uv blew up"}
+        update={
+            "status": VenvStatus.FAILED,
+            "error": "Package 'requests2' does not exist.",
+            "error_kind": VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+        }
     )
     await uow.venv_repo.update(failed)
 
@@ -311,7 +391,10 @@ async def test_flush_pending_fails_jobs_whose_venv_failed_to_build(
     assert dispatcher.dispatched == []
     assert holding.pending_venv_ids() == []
     assert failure_sink.failures[0].execution_id == "exec-1"
-    assert failure_sink.failures[0].not_run_reason == "venv_failed"
+    assert failure_sink.failures[0].failure == CodeFailure(
+        code="package_not_found",
+        detail="Couldn't install the libraries: Package 'requests2' does not exist.",
+    )
 
 
 async def test_a_held_job_logs_exec_held_then_exec_queued_when_released(
@@ -353,6 +436,9 @@ async def test_flush_pending_fails_jobs_whose_venv_disappeared(
     assert dispatcher.dispatched == []
     assert holding.pending_venv_ids() == []
     assert failure_sink.failures[0].execution_id == "exec-1"
+    assert failure_sink.failures[0].failure == CodeFailure(
+        code="package_install_failed", detail=GENERIC_VENV_FAILED_MESSAGE
+    )
 
 
 async def test_a_resubmitted_id_is_not_dispatched_again(uow, orchestrator, dispatcher):
@@ -467,7 +553,7 @@ async def test_a_job_held_until_its_hold_deadline_is_failed_and_finished(
 
     assert published.execution_id == "exec-1"
     assert published.stderr == HOLD_TIMED_OUT_MESSAGE
-    assert published.not_run_reason == "hold_timeout"
+    assert published.failure == CodeFailure(code="hold_timeout", detail=HOLD_TIMED_OUT_MESSAGE)
     assert published.ran is False
     assert dispatcher.dispatched == []
     assert holding.pending_venv_ids() == []
@@ -492,7 +578,9 @@ async def test_only_the_jobs_past_their_hold_deadline_are_failed(
     clock.advance(1)
     await orchestrator.flush_pending()
 
-    assert failure_sink.failures == [("exec-1", HOLD_TIMED_OUT_MESSAGE, 7, "hold_timeout", False)]
+    assert failure_sink.failures == [
+        ("exec-1", CodeFailure(code="hold_timeout", detail=HOLD_TIMED_OUT_MESSAGE), None, 7, False)
+    ]
     assert registry.status("exec-2") is ExecutionStatus.HELD
     assert [job.execution_id for job in holding.release(venv.id)] == ["exec-2"]
 
@@ -509,7 +597,9 @@ async def test_a_job_past_its_hold_deadline_is_failed_even_if_its_venv_just_fini
     await orchestrator.flush_pending()
 
     assert dispatcher.dispatched == []
-    assert [failure.message for failure in failure_sink.failures] == [HOLD_TIMED_OUT_MESSAGE]
+    assert [failure.failure.detail for failure in failure_sink.failures] == [
+        HOLD_TIMED_OUT_MESSAGE
+    ]
 
 
 async def test_a_failed_venv_is_reported_even_at_the_cap(

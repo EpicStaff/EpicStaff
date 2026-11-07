@@ -382,6 +382,20 @@
         <div class="empty-list">No messages to show</div>
     }
 
+    @if (sessionEndReason; as reason) {
+        <div
+            class="session-end-reason"
+            role="status"
+        >
+            <app-svg-icon
+                icon="alert-circle"
+                size="16px"
+                class="session-end-reason__icon"
+            />
+            <p class="session-end-reason__text">{{ reason }}</p>
+        </div>
+    }
+
     @if (isLoadingMore && (messages.length > 0 || !isProcessing)) {
         <div class="loading-more-indicator">
             <app-loading-dots></app-loading-dots>

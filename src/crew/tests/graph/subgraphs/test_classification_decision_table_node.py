@@ -13,6 +13,7 @@ class with its own singleton.
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -35,7 +36,7 @@ from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
-from src.shared.models import PythonCodeData
+from src.shared.models import CodeFailure, CodeFailureCode, PythonCodeData
 from src.shared.models.ai_providers import LLMConfigData, LLMData
 from src.shared.models.sessions import TokenUsage
 from src.shared.models.system_one import (
@@ -47,6 +48,7 @@ from src.shared.system_one.adapter import SYSTEM_ONE_ADAPTERS, SystemOneError
 from src.shared.system_one.llm_adapter import LlmSystemOneAdapter
 from src.shared.system_one.openai_adapter import OpenAIDecisionsAdapter
 from src.shared.system_one.typesafe_adapter import TypeSafeAdapter
+from tests.graph.code_results import failed, succeeded
 from utils.singleton_meta import SingletonMeta
 
 
@@ -147,12 +149,7 @@ async def fake_run_code(
     exec(_SANDBOX_MODULE_PRELUDE + python_code_data.code, ns)  # noqa: S102
     # wrap_code calls the entrypoint with DotDict-wrapped kwargs.
     ret = ns[python_code_data.entrypoint](**DotDict(inputs))
-    return {
-        "returncode": 0,
-        "result_data": json.dumps(ret),
-        "stderr": "",
-        "execution_id": "test",
-    }
+    return succeeded(ret)
 
 
 async def fake_run_code_error(
@@ -163,12 +160,7 @@ async def fake_run_code_error(
     additional_global_kwargs=None,
     storage_credentials=None,
 ):
-    return {
-        "returncode": 1,
-        "result_data": "null",
-        "stderr": "boom",
-        "execution_id": "test",
-    }
+    return failed(CodeFailure(code=CodeFailureCode.CODE_EXITED, detail="boom"))
 
 
 # ---------------------------------------------------------------------------
@@ -455,14 +447,12 @@ _FAILING_CODE = PythonCodeData(
         (fake_run_code_raises, "True", {}, "error_node"),
         (fake_run_code_error, None, {"pre_python_code": _FAILING_CODE}, "error_node"),
         (fake_run_code_error, None, {"post_python_code": _FAILING_CODE}, "error_node"),
-        (fake_run_code_error, "True", {"next_error_node": None}, END),
     ],
     ids=[
         "condition-error",
         "condition-unexpected-error",
         "pre-computation",
         "post-computation",
-        "no-error-node-ends",
     ],
 )
 async def test_error_route_emits_finish_after_error(
@@ -650,11 +640,9 @@ async def test_broken_expression_before_match_routes_to_error_after_earlier_rows
     ]
     assert messages[1]["group_name"] == "miss"
     assert messages[1]["result"] is False
-    error_details = messages[2]["details"]
-    assert error_details.startswith(
-        "Error in condition 'broken': Expression execution failed:"
+    assert messages[2]["details"] == (
+        "Condition \"broken\": name 'undefined_name' is not defined"
     )
-    assert "NameError" in error_details
 
 
 @pytest.mark.asyncio
@@ -679,7 +667,7 @@ async def test_non_boolean_expression_routes_to_error(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert "Expression must return a boolean value" in error_message["details"]
+    assert error_message["details"] == 'Condition "not_bool" must give true or false.'
 
 
 @pytest.mark.asyncio
@@ -808,9 +796,7 @@ async def test_exit_in_expression_is_reported_against_its_row(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert error_message["details"].startswith(
-        "Error in condition 'exits': Expression execution failed: SystemExit"
-    )
+    assert error_message["details"] == 'Condition "exits" stopped the code with exit().'
 
 
 # ---------------------------------------------------------------------------
@@ -887,10 +873,7 @@ async def test_batch_run_failure_names_the_row_range(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert error_message["details"] == (
-        "Error evaluating conditions from 'first' to 'last': "
-        "Expression execution failed: boom"
-    )
+    assert error_message["details"] == 'Conditions "first" to "last": boom'
 
 
 # ---------------------------------------------------------------------------
@@ -911,8 +894,9 @@ def first_error_message(redis_service: MagicMock) -> dict:
 
 @pytest.mark.asyncio
 async def test_llm_failure_reports_the_prompt_without_provider_exception_text(monkeypatch):
-    """A provider failure names the prompt; the provider's own message, which can
-    quote the API key and endpoint, stays in the logs."""
+    """A failure that isn't a provider error names the prompt and cites the log line;
+    the exception's own message, which can quote the API key and endpoint, stays in
+    the logs."""
     monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
     prompt_config = PromptConfigData(
         prompt_text="Classify {text}",
@@ -941,8 +925,43 @@ async def test_llm_failure_reports_the_prompt_without_provider_exception_text(mo
         result = await subgraph.ainvoke(make_state({"text": "hello"}))
 
     assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
-    assert first_error_message(redis_service)["details"] == (
-        "Error in condition 'prompt_row': LLM call failed for prompt 'classify'"
+    details = first_error_message(redis_service)["details"]
+    assert re.fullmatch(
+        'Prompt "classify": The LLM request for model "gpt-4o-mini" failed. '
+        r"Try again or contact your administrator \(reference: [0-9a-f]{12}\)\.",
+        details,
+    ), details
+    assert _SENSITIVE_EXCEPTION_TEXT not in details
+
+
+@pytest.mark.asyncio
+async def test_unexpected_error_streams_a_reference_and_logs_the_exception_text(monkeypatch):
+    """An unexpected exception can quote internal details, so the user sees only the
+    generic node error citing the log line that carries the exception text."""
+
+    async def run_code_raising_sensitive_text(self, python_code_data, inputs, *args, **kwargs):
+        raise RuntimeError(_SENSITIVE_EXCEPTION_TEXT)
+
+    monkeypatch.setattr(
+        RunPythonCodeService, "run_code", run_code_raising_sensitive_text, raising=True
+    )
+    groups = [row(0, "True", "node_A")]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, next_error_node="error_node")
+    )
+    logged: list[str] = []
+    sink_id = logger.add(logged.append, level="ERROR")
+    try:
+        result = await subgraph.ainvoke(make_state())
+    finally:
+        logger.remove(sink_id)
+
+    details = first_error_message(redis_service)["details"]
+    match = re.fullmatch(r"Node execution failed \(reference: ([0-9a-f]{12})\)", details)
+    assert match is not None, details
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    assert any(
+        _SENSITIVE_EXCEPTION_TEXT in line and match.group(1) in line for line in logged
     )
 
 
@@ -1160,44 +1179,44 @@ async def test_the_message_carries_provider_model_version_state_and_raw_result(
         pytest.param(
             {"config": None},
             None,
-            "Error in condition 'row0': System One entry 'company_check' has no config.",
+            "System One entry 'company_check' has no config.",
             id="no-config",
         ),
         pytest.param(
             {"questions": {}},
             None,
-            "Error in condition 'row0': System One entry 'company_check' has no valid questions.",
+            "System One entry 'company_check' has no valid questions.",
             id="no-questions",
         ),
         pytest.param(
             {"questions": {"1bad": {"type": "noul", "instructions": "x"}}},
             None,
-            "Error in condition 'row0': System One entry 'company_check' has no valid questions.",
+            "System One entry 'company_check' has no valid questions.",
             id="invalid-question-name",
         ),
         pytest.param(
             {"input_map": {}},
             None,
-            "Error in condition 'row0': System One entry 'company_check' has no input values.",
+            "System One entry 'company_check' has no input values.",
             id="empty-input-map",
         ),
         pytest.param(
             {"input_map": {"company": "variables.missing"}},
             None,
-            "Error in condition 'row0': System One entry 'company_check' has no input values.",
+            "System One entry 'company_check' has no input values.",
             id="every-input-value-is-none",
         ),
         pytest.param(
             {},
             SystemOneError("TypeSafe rate limit reached."),
-            "Error in condition 'row0': System One call failed for prompt 'company_check': "
+            "System One call failed for prompt 'company_check': "
             "TypeSafe rate limit reached.",
             id="adapter-reports-a-system-one-error",
         ),
         pytest.param(
             {},
             RuntimeError("401 key=ts-secret"),
-            "Error in condition 'row0': System One call failed for prompt 'company_check': "
+            "System One call failed for prompt 'company_check': "
             "System One provider 'fake' failed.",
             id="adapter-crashes-with-provider-text",
         ),

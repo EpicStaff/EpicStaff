@@ -1,12 +1,18 @@
 from services.graph.events import StopEvent
-from services.graph.nodes.python_node import PythonNode
+from services.graph.nodes.node_file_failure import (
+    NODE_FILE_FAILURE_SOURCE,
+    FileReadingNode,
+    NodeFileFailureKind,
+    node_file_main_source,
+)
 from services.run_python_code_service import RunPythonCodeService
 from src.shared.models import PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 
 
-class FileContentExtractorNode(PythonNode):
+class FileContentExtractorNode(FileReadingNode):
     TYPE = "FILE_EXTRACTOR"
+    KIND_NAME = "File Extractor"
 
     def __init__(
         self,
@@ -60,12 +66,12 @@ from docx import Document
 
 
 def extract_text_from_txt(file_data_path: str) -> str:
-    file_bytes = storage.read_bytes(file_data_path)
+    file_bytes = read_storage_file(file_data_path)
     return file_bytes.decode("utf-8")
 
 
 def extract_text_from_pdf(file_data_path: str) -> str:
-    file_bytes = storage.read_bytes(file_data_path)
+    file_bytes = read_storage_file(file_data_path)
     text = []
 
     with pdfplumber.open(BytesIO(file_bytes)) as pdf:
@@ -77,7 +83,7 @@ def extract_text_from_pdf(file_data_path: str) -> str:
 
 
 def extract_text_from_csv(file_data_path: str) -> str:
-    file_bytes = storage.read_bytes(file_data_path)
+    file_bytes = read_storage_file(file_data_path)
 
     file_stream = BytesIO(file_bytes)
     wrapper = TextIOWrapper(file_stream, encoding="utf-8")
@@ -100,7 +106,7 @@ def extract_text_from_csv(file_data_path: str) -> str:
 
 
 def extract_text_from_json(file_data_path: str) -> str:
-    file_bytes = storage.read_bytes(file_data_path)
+    file_bytes = read_storage_file(file_data_path)
     file_stream = BytesIO(file_bytes)
 
     data = json.load(file_stream)
@@ -111,7 +117,7 @@ def extract_text_from_json(file_data_path: str) -> str:
 
 
 def extract_text_from_docx(file_data_path: str) -> str:
-    file_bytes = storage.read_bytes(file_data_path)
+    file_bytes = read_storage_file(file_data_path)
     file_stream = BytesIO(file_bytes)
 
     document = Document(file_stream)
@@ -127,21 +133,27 @@ def extract_content(file_data_path: str) -> str:
     )
 
     if file_ext in ["txt", "text", "log"]:
-        return extract_text_from_txt(file_data_path)
+        return extract_listed_type(extract_text_from_txt, file_data_path)
 
     elif file_ext == "pdf":
-        return extract_text_from_pdf(file_data_path)
+        return extract_listed_type(extract_text_from_pdf, file_data_path)
 
     elif file_ext == "csv":
-        return extract_text_from_csv(file_data_path)
+        return extract_listed_type(extract_text_from_csv, file_data_path)
 
     elif file_ext == "json":
-        return extract_text_from_json(file_data_path)
+        return extract_listed_type(extract_text_from_json, file_data_path)
 
     elif file_ext in ["docx", "doc"]:
-        return extract_text_from_docx(file_data_path)
+        # python-docx can't read the legacy .doc format at all.
+        failure_kind = (
+            "{NodeFileFailureKind.LEGACY_WORD}"
+            if file_ext == "doc"
+            else "{NodeFileFailureKind.DAMAGED}"
+        )
+        return extract_listed_type(extract_text_from_docx, file_data_path, failure_kind)
 
-    return extract_text_from_txt(file_data_path)
+    return extract_unlisted_type(file_data_path)
 
 
 def get_files_content(**files):
@@ -151,7 +163,22 @@ def get_files_content(**files):
     return content
 
 
-def main({", ".join(arg_names)}):
-    content = get_files_content({", ".join(f"{a}={a}" for a in arg_names)})
-    return content
+{node_file_main_source(arg_names, "get_files_content")}
+{NODE_FILE_FAILURE_SOURCE}
+
+def extract_listed_type(extract, file_data_path, failure_kind="{NodeFileFailureKind.DAMAGED}"):
+    # A file that isn't UTF-8 text keeps the error it has always shown.
+    try:
+        return extract(file_data_path)
+    except (NodeFileFailure, UnicodeDecodeError):
+        raise
+    except Exception as error:
+        fail_on_file(failure_kind, file_data_path, error)
+
+
+def extract_unlisted_type(file_data_path):
+    try:
+        return extract_text_from_txt(file_data_path)
+    except UnicodeDecodeError as error:
+        fail_on_file("{NodeFileFailureKind.UNSUPPORTED}", file_data_path, error)
 """

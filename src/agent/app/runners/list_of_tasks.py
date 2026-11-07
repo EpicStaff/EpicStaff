@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from loguru import logger
 
-from app.constants import FAILURE_STOP_REASONS
 from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
 from app.exceptions import AgentServiceError
@@ -129,11 +128,6 @@ class ListOfTasksRunner(Runner):
                     max_iter_fn=_default_max_iter,
                     schema_max_retries_fn=_schema_max_retries,
                 )
-
-                if result.stop_reason in FAILURE_STOP_REASONS:
-                    raise AgentServiceError(
-                        f"task '{task.name}' failed: {result.error or result.stop_reason}"
-                    )
 
                 logger.debug(
                     "list_of_tasks task done correlation_id={} name={} stop_reason={}",

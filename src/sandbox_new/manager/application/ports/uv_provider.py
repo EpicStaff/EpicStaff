@@ -5,27 +5,50 @@ from manager.domain.types import LibraryString
 
 
 class AbstractUVProvider(abc.ABC):
+    """Builds a venv's environment.
+
+    A build step that fails raises an `EnvironmentBuildError` from
+    `manager.application.ports.errors`, or one of its subclasses when the cause names a
+    declared package.
+    """
+
     @classmethod
     @abc.abstractmethod
     async def init_venv(cls, venv_path: Path):
-        pass
+        """Create an empty venv at `venv_path`.
+
+        Raises:
+            EnvironmentBuildError: The venv could not be created.
+        """
 
     @classmethod
     @abc.abstractmethod
     async def apply(cls, venv_path: Path, *libs: LibraryString, wheelhouse: Path | None = None):
-        """Resolve `libs` into a lock file and install them into the venv.
+        """Resolve `libs`, write the lock file, and install exactly what it pins.
 
         Args:
             venv_path: The venv to install into.
             libs: One requirement per entry, written as a package index would read it.
             wheelhouse: A directory of wheels to resolve against as well as the package
                 index, for libraries this installation stores itself and no index has.
+
+        Raises:
+            PackageNotFoundError: A declared package does not exist.
+            PackageVersionNotFoundError: A declared package has no version matching
+                its specification.
+            DependencyConflictError: A declared package needs dependency versions that
+                conflict with the other declared packages.
+            EnvironmentBuildError: Any other failure.
         """
 
     @classmethod
     @abc.abstractmethod
     async def install_local(cls, venv_path: Path, *packages: Path):
-        """Install local source packages (by directory path) into the venv."""
+        """Install local source packages (by directory path) into the venv.
+
+        Raises:
+            EnvironmentBuildError: The packages could not be installed.
+        """
 
     @classmethod
     @abc.abstractmethod
@@ -49,7 +72,7 @@ class AbstractUVProvider(abc.ABC):
             Path of the wheel that was built.
 
         Raises:
-            UVBuildError: The source could not be built, or produced no wheel.
+            EnvironmentBuildError: The source could not be built, or produced no wheel.
         """
 
     @staticmethod

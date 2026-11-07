@@ -23,6 +23,7 @@ export class RunSessionSSEService {
     // Signals
     private messagesSignal = signal<GraphMessage[]>([]);
     private statusSignal = signal<GraphSessionStatus>(GraphSessionStatus.RUNNING);
+    private statusReasonSignal = signal<string | null>(null);
     private memoriesSignal = signal<Memory[]>([]);
     private streamOpen = signal(false);
     private connectionStatusSignal = signal<
@@ -33,6 +34,8 @@ export class RunSessionSSEService {
     public readonly isStreaming = this.streamOpen.asReadonly();
     public readonly messages = this.messagesSignal.asReadonly();
     public readonly status = this.statusSignal.asReadonly();
+    /** Why the session ended, as a sentence for the user (`status_data.error`); null when it gave none. */
+    public readonly statusReason = this.statusReasonSignal.asReadonly();
     public readonly memories = this.memoriesSignal.asReadonly();
     public readonly connectionStatus = this.connectionStatusSignal.asReadonly();
 
@@ -53,6 +56,18 @@ export class RunSessionSSEService {
             return;
         }
         this.statusSignal.set(status);
+    }
+
+    /**
+     * Takes the reason from a session's `status_data` (the status event's, or the session's own). A payload
+     * without one keeps the reason already known: a late event must not erase why the session ended.
+     */
+    public setStatusData(statusData: unknown): void {
+        if (statusData === null || typeof statusData !== 'object') return;
+        const error = (statusData as Record<string, unknown>)['error'];
+        if (typeof error === 'string' && error.trim()) {
+            this.statusReasonSignal.set(error.trim());
+        }
     }
 
     // Reconnection configuration
@@ -187,6 +202,7 @@ export class RunSessionSSEService {
             if (streamSessionId !== this.currentSessionId) return;
             const statusData = JSON.parse(event.data);
             this.setStatus(statusData.status as GraphSessionStatus);
+            this.setStatusData(statusData.status_data);
         });
 
         this.eventSource.addEventListener('memory', (event: MessageEvent) => {
@@ -325,6 +341,8 @@ export class RunSessionSSEService {
 
         this.messagesSignal.set([]);
         this.memoriesSignal.set([]);
+        // Cleared even when the status is kept: a session that gives no reason would otherwise show the previous one's.
+        this.statusReasonSignal.set(null);
         if (resetStatus) {
             this.statusSignal.set(GraphSessionStatus.RUNNING);
         }

@@ -1,5 +1,6 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+from foundation.utils.error_reference import INTERNAL_ERROR_CODE, INTERNAL_ERROR_MESSAGE
 
 from tables.exceptions import (
     CodeWithSecretsRequiresSecretsUsePermissionError,
@@ -24,19 +25,28 @@ UNAUTHORIZED_401_RESPONSE = OpenApiResponse(
     ],
 )
 
+_SAMPLE_ERROR_REFERENCE = "0a1b2c3d4e5f"
+
 # What `custom_exception_handler` renders for an exception it does not
-# recognise. The exception's text is never part of it -- it is logged instead.
+# recognise. The exception's text and class are never part of it -- they are
+# logged instead, under the reference the body cites.
+INTERNAL_SERVER_ERROR_500_BODY = {
+    "status_code": 500,
+    "code": INTERNAL_ERROR_CODE,
+    "message": INTERNAL_ERROR_MESSAGE.format(reference=_SAMPLE_ERROR_REFERENCE),
+    "reference": _SAMPLE_ERROR_REFERENCE,
+}
+
 INTERNAL_SERVER_ERROR_500_RESPONSE = OpenApiResponse(
     response=OpenApiTypes.OBJECT,
-    description="Unexpected server error. The cause is logged server-side, never returned.",
+    description=(
+        "Unexpected server error. The cause is logged server-side under the "
+        "returned `reference`, never returned."
+    ),
     examples=[
         OpenApiExample(
             "Server error",
-            value={
-                "status_code": 500,
-                "code": "OperationalError",
-                "message": "Unpredictable error",
-            },
+            value=INTERNAL_SERVER_ERROR_500_BODY,
             response_only=True,
             status_codes=["500"],
         ),

@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 
 import { ConfigService } from '../../services/config';
-import { PollEvent, PythonCodeResult, PythonCodeRunService } from './python-code-run.service';
+import { PollEvent, PythonCodeResult, PythonCodeRunService, PythonRunError } from './python-code-run.service';
 
 const SECOND_MS = 1000;
 const GRACE_MS = 60_000;
@@ -50,6 +50,8 @@ describe('PythonCodeRunService result polling deadline', () => {
         expect(events.length).toBeGreaterThan(0);
 
         vi.advanceTimersByTime(1);
+        // Its own kind of error, so the test-run panel shows this message to the user as is.
+        expect(error).toBeInstanceOf(PythonRunError);
         expect(error?.message).toContain('No result within the execution timeout of 90 s');
     });
 

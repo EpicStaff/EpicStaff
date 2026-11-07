@@ -103,6 +103,7 @@ from tables.services.run_admission import (
     assert_run_admitted,
 )
 from tables.services.run_python_code_service import RunPythonCodeService
+from tables.services.run_start_errors import user_facing_run_error
 from tables.services.secrets import SecretResolver
 from tables.services.secrets.pinned_principal_rules import (
     assert_may_resolve_markers,
@@ -540,15 +541,16 @@ class RunSession(APIView):
             # A refusal is the caller's answer (409), not a failure to start.
             raise
         except APIException as error:
-            # The run path raises its domain errors as APIExceptions. Any 4xx one (such as a
-            # flow without an entry point, an undeclared secret or a deleted LLM provider)
-            # keeps the existing 400 with its message in `error`. A 5xx one, like any other
+            # The run path raises its domain errors as APIExceptions. A 4xx one (a run check,
+            # an undeclared secret, a deleted LLM provider) answers 400 with text written for
+            # the user; run_session has already logged it. A 5xx one, like any other
             # exception, goes to the global handler, which answers without the internal text
-            # (503 for an exhausted database pool).
+            # (503 for an exhausted database pool, so callers retry under load).
             if status.is_server_error(error.status_code):
                 raise
-            logger.warning("Session for graph_id {} not started: {}", graph_id, error)
-            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(error)})
+            return Response(
+                status=status.HTTP_400_BAD_REQUEST, data={"error": user_facing_run_error(error)}
+            )
 
         return Response(
             data={"session_id": session_id},

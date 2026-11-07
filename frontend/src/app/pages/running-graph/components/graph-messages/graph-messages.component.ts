@@ -1,4 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -22,7 +23,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
-import { runtimeNodeNameToLabel } from '@shared/utils';
+import { runtimeNodeNameToLabel, showHttpErrorToast } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { exhaustMap, map, takeUntil } from 'rxjs/operators';
 
@@ -35,6 +36,7 @@ import {
 import { ToastService } from '../../../../services/notifications';
 import {
     AgentNodeStreamMessageData,
+    ErrorMessageData,
     GraphMessage,
     MessageData,
     MessageType,
@@ -148,6 +150,17 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
     GraphSessionStatus.EXPIRED,
 ]);
 
+// The statuses of a session that ended early, the ones whose reason the panel shows.
+const UNFINISHED_END_STATUSES = new Set<GraphSessionStatus>([
+    GraphSessionStatus.ERROR,
+    GraphSessionStatus.STOP,
+    GraphSessionStatus.EXPIRED,
+]);
+
+// The live stream's states in which it can still deliver messages. After a session's final status the server
+// keeps the stream open a few seconds for the messages stored after it, then ends it.
+const OPEN_STREAM_STATUSES: ReadonlySet<string> = new Set(['connecting', 'connected', 'reconnecting']);
+
 @Component({
     selector: 'app-graph-messages',
     imports: [
@@ -210,6 +223,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private readonly PAGE_SIZE = 20;
     private seenKeys = new Set<string>();
     private hasReconciledTerminal = false;
+    private isReconcilingMessages = false;
     private currentOffset = 0;
     public isLoadingMore = false;
     public hasMore = true;
@@ -296,6 +310,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             // from the server so any messages the realtime SSE stream missed are backfilled (once).
             if (TERMINAL_STATUSES.has(status) && !this.hasReconciledTerminal) {
                 this.hasReconciledTerminal = true;
+                this.isReconcilingMessages = true;
                 this.reconcileMessagesFromServer();
             }
             this.cdr.markForCheck();
@@ -326,6 +341,19 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         }
 
         return this.isLoading || this.sseService.isStreaming();
+    }
+
+    /**
+     * Why the session ended early, shown after its last message; null for a session that ended normally or
+     * gave no reason (a manual stop). A failed node's error card already says it: the session repeats that node's
+     * text, so it is not shown twice. Waits until no more messages can arrive, so it is never shown before the
+     * error card that says it, nor between two pages of messages.
+     */
+    get sessionEndReason(): string | null {
+        if (!UNFINISHED_END_STATUSES.has(this.sseService.status()) || this.canMoreMessagesArrive()) return null;
+        const reason = this.sseService.statusReason();
+        if (!reason || this.hasErrorCardSaying(reason)) return null;
+        return reason;
     }
 
     public ngOnInit(): void {
@@ -484,6 +512,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.visibleMessageEntries = [];
             this.seenKeys = new Set<string>();
             this.hasReconciledTerminal = false;
+            this.isReconcilingMessages = false;
             this.currentOffset = 0;
             this.isLoadingMore = false;
             this.hasMore = true;
@@ -524,11 +553,12 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                         this.sseService.startStream(this.sessionId!);
                     } else {
                         this.sseService.setStatus(session.status);
+                        this.sseService.setStatusData(session.status_data);
                     }
                     this.loadMoreMessages();
                 },
-                error: (err) => {
-                    this.toast.error(err.error?.detail || 'Failed to fetch session');
+                error: (error: HttpErrorResponse) => {
+                    showHttpErrorToast(this.toast, "Couldn't load the session.", error);
                     void this.router.navigate(['/sessions']);
                 },
             });
@@ -1028,10 +1058,16 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     this.mergeMessages(response.results);
                     this.rebuildMessageState(this.messages);
                     this.messagesChanged.emit(this.messages);
-                    this.cdr.markForCheck();
                     if (response.next !== null) {
                         this.reconcileMessagesFromServer(offset + this.PAGE_SIZE);
+                    } else {
+                        this.isReconcilingMessages = false;
                     }
+                    this.cdr.markForCheck();
+                },
+                error: () => {
+                    this.isReconcilingMessages = false;
+                    this.cdr.markForCheck();
                 },
             });
     }
@@ -1067,6 +1103,19 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             const isGenericFinish = isMessageType(message, MessageType.FINISH);
             const messageType = message.message_data?.message_type;
             const isCdtStepType = !!messageType && CDT_STEP_MESSAGE_TYPES.has(messageType);
+
+            // A node that opened a group and then failed sends an error instead of its finish. An error from
+            // outside a group closes it (and any still open inside it), so it shows where it was raised: left in
+            // the group, it and every card after it would be hidden there.
+            if (isMessageType(message, MessageType.ERROR)) {
+                const errorChain = this.getSubgraphRunChain(message);
+                while (stack.length > 0 && !this.isErrorInsideGroup(stack[stack.length - 1], errorChain)) {
+                    stack.pop();
+                }
+                if (pendingGroup?.pushed && !stack.includes(pendingGroup.key)) {
+                    pendingGroup = null;
+                }
+            }
 
             if (pendingGroup && !pendingGroup.pushed && isCdtStepType) {
                 pendingGroup.context.isGroupStart = true;
@@ -1119,6 +1168,53 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             } else if (pendingGroup && !pendingGroup.pushed && isGenericFinish && message.name === pendingGroup.name) {
                 pendingGroup = null;
             }
+        });
+    }
+
+    /**
+     * Whether an error with this run chain was raised inside the group opened by `groupKey`. A subflow group holds
+     * what ran in its run, so the chain names that run. A decision table runs no flow of its own: an error in the
+     * same run as the table's start card is the table's own, and closes it.
+     */
+    private isErrorInsideGroup(groupKey: string, errorChain: readonly string[]): boolean {
+        const groupStart = this.messageByKey.get(groupKey);
+        if (!groupStart) return false;
+        if (isMessageType(groupStart, MessageType.SUBGRAPH_START)) {
+            const runId = (groupStart.message_data as StartSubflowMessageData).subgraph_execution_id;
+            return !!runId && errorChain.includes(runId);
+        }
+        const startChain = this.getSubgraphRunChain(groupStart);
+        return !(
+            startChain.length === errorChain.length && startChain.every((runId, index) => runId === errorChain[index])
+        );
+    }
+
+    /**
+     * The subflow runs a message was sent from inside, innermost first (`subgraph_execution_ids`, which crew adds
+     * to every message as it leaves each run); empty for a message of the top-level flow.
+     */
+    private getSubgraphRunChain(message: GraphMessage): readonly string[] {
+        const chain = (message.message_data as unknown as Record<string, unknown>)['subgraph_execution_ids'];
+        return Array.isArray(chain) ? chain.filter((runId): runId is string => typeof runId === 'string') : [];
+    }
+
+    /**
+     * Whether messages not shown yet can still come: a page not read yet, the reread at the session's end, or the
+     * live stream, whose last messages can arrive after the final status (the server sends a message only once it
+     * has stored it, while crew sends the status itself).
+     */
+    private canMoreMessagesArrive(): boolean {
+        return (
+            this.hasMore || this.isReconcilingMessages || OPEN_STREAM_STATUSES.has(this.sseService.connectionStatus())
+        );
+    }
+
+    /** Whether an error card, at any level, shows exactly `text` as its details. */
+    private hasErrorCardSaying(text: string): boolean {
+        return this.messages.some((message) => {
+            if (!isMessageType(message, MessageType.ERROR)) return false;
+            const { details } = message.message_data as ErrorMessageData;
+            return typeof details === 'string' && details.trim() === text;
         });
     }
 

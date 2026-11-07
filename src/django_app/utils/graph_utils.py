@@ -3,6 +3,7 @@ from collections.abc import Iterable
 
 from django.db import connection
 from loguru import logger
+from src.shared.runtime_node_name import format_runtime_node_name
 from tables.models.base_models import BaseGlobalNode
 
 """
@@ -24,6 +25,35 @@ def node_label(*, node_name: str, node_number: int | None) -> str:
     return f"{node_name} #{node_number}"
 
 
+def join_with_and(items: list[str]) -> str:
+    """Join words for a message: "A", "A and B", "A, B and C". `items` must not be empty."""
+    if len(items) == 1:
+        return items[0]
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def flow_location(flow_name: str | None) -> str:
+    """Return ' in flow "<name>"' for a node inside a subflow, or "" for one in the flow that was run.
+
+    A message about a node in a subflow names that flow, since the node isn't on the
+    canvas the user ran.
+    """
+    if flow_name is None:
+        return ""
+    return f' in flow "{flow_name}"'
+
+
+def node_list_phrase(type_label: str, labels: list[str], flow_name: str | None) -> str:
+    """Name nodes of one kind for a message: 'Agent node "A #1"', 'Agent nodes "A #1" and "B #2"'.
+
+    Followed by the subflow's location when `flow_name` is set. The caller picks the verb
+    ("has" / "have") from `len(labels)`. `labels` must not be empty.
+    """
+    noun = "node" if len(labels) == 1 else "nodes"
+    quoted_labels = join_with_and([f'"{label}"' for label in labels])
+    return f"{type_label} {noun} {quoted_labels}{flow_location(flow_name)}"
+
+
 def runtime_node_name(*, node_name: str, node_number: int | None, node_id: int) -> str:
     """Return the name a node runs under: its label followed by " #<global id>".
 
@@ -31,7 +61,8 @@ def runtime_node_name(*, node_name: str, node_number: int | None, node_id: int) 
     node, edge ends, decision-table routes, session entrypoint, session message
     name), so every builder must go through this function.
     """
-    return f"{node_label(node_name=node_name, node_number=node_number)} #{node_id}"
+    label = node_label(node_name=node_name, node_number=node_number)
+    return format_runtime_node_name(label, node_id)
 
 
 def generate_node_name(

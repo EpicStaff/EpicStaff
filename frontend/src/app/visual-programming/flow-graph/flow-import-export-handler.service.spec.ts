@@ -1,8 +1,9 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { EXPORT_WARNING_DURATION_MS } from '@shared/constants';
 import { ExportResult, NodeType } from '@shared/models';
-import { NEVER, of } from 'rxjs';
+import { firstValueFrom, NEVER, of, throwError } from 'rxjs';
 
 import { ImportExportService } from '../../core/services/import-export.service';
 import { FlowCopyImportFacadeService } from '../../features/flows/services/flow-copy-import-facade.service';
@@ -178,5 +179,94 @@ describe('FlowImportExportService partial export', () => {
 
         expect(toast.success).toHaveBeenCalledTimes(1);
         expect(toast.warning).not.toHaveBeenCalled();
+    });
+});
+
+describe('FlowImportExportService export failure', () => {
+    function exportAllRejectedWith(error: HttpErrorResponse): ToastService {
+        TestBed.configureTestingModule({
+            providers: [
+                FlowImportExportService,
+                { provide: FlowService, useValue: { nodes: () => [savedAgentNode], connections: () => [] } },
+                { provide: FlowSelectionManagerService, useValue: { selectedNodeIds: () => [] } },
+                { provide: ImportExportService, useValue: { partialExport: () => throwError(() => error) } },
+                { provide: FlowCopyImportFacadeService, useValue: {} },
+                { provide: CdtExportImportService, useValue: {} },
+            ],
+        });
+
+        TestBed.inject(FlowImportExportService).onExportAllAsJson(FLOW_ID, false);
+        return TestBed.inject(ToastService);
+    }
+
+    it.each([
+        {
+            case: 'a plain sentence instead of the raw HTTP text when the server is unreachable',
+            error: new HttpErrorResponse({ status: 0, url: 'http://localhost/api/graphs/7/export-nodes/' }),
+            message: "Couldn't export the nodes. The server couldn't be reached. Check your connection and try again.",
+        },
+        {
+            case: 'the server failure message with its support reference',
+            error: new HttpErrorResponse({
+                status: 500,
+                error: {
+                    status_code: 500,
+                    code: 'internal_error',
+                    message:
+                        'Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).',
+                    reference: '3f9a2c1b7d4e',
+                },
+            }),
+            message:
+                "Couldn't export the nodes. Something went wrong on the server. Try again or contact your administrator (reference: 3f9a2c1b7d4e).",
+        },
+    ])('shows $case, in full and for long enough to read', async ({ error, message }) => {
+        const toastService = exportAllRejectedWith(error);
+
+        const [toast] = await firstValueFrom(toastService.toasts$);
+        expect(toast).toMatchObject({ message, type: 'error', duration: 10_000, fullText: true });
+    });
+});
+
+describe('FlowImportExportService partial import', () => {
+    function importFileRejectedWith(error: HttpErrorResponse): ToastService {
+        TestBed.configureTestingModule({
+            providers: [
+                FlowImportExportService,
+                FlowService,
+                { provide: FlowSelectionManagerService, useValue: { selectedNodeIds: () => [] } },
+                { provide: ImportExportService, useValue: {} },
+                { provide: FlowCopyImportFacadeService, useValue: { partialImport: () => throwError(() => error) } },
+                { provide: CdtExportImportService, useValue: {} },
+            ],
+        });
+        const picker = document.createElement('input');
+        vi.spyOn(picker, 'click').mockImplementation(() => undefined);
+        vi.spyOn(document, 'createElement').mockReturnValueOnce(picker);
+
+        TestBed.inject(FlowImportExportService).onImportNodes(FLOW_ID, () => true);
+        const file = new File(['{}'], 'nodes.json', { type: 'application/json' });
+        picker.onchange!({ target: { files: [file] } } as unknown as Event);
+        return TestBed.inject(ToastService);
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it.each([
+        {
+            case: 'a plain sentence when the server is unreachable',
+            error: new HttpErrorResponse({ status: 0, url: 'http://localhost/api/graphs/7/import-nodes/' }),
+            message: "Couldn't import the nodes. The server couldn't be reached. Check your connection and try again.",
+        },
+        {
+            case: "the server's reason",
+            error: new HttpErrorResponse({ status: 400, error: { message: 'The file is not a node bundle.' } }),
+            message: "Couldn't import the nodes. The file is not a node bundle.",
+        },
+    ])('shows $case, in full and for long enough to read', async ({ error, message }) => {
+        const toastService = importFileRejectedWith(error);
+
+        const [toast] = await firstValueFrom(toastService.toasts$);
+        expect(toast).toMatchObject({ message, type: 'error', duration: 10_000, fullText: true });
     });
 });

@@ -69,6 +69,8 @@ def test_session_graph_data_does_not_expose_foreign_node_names(graph, local_node
     decision_table = DecisionTableNode.objects.create(
         graph=graph, node_name="router", default_next_node_id=foreign_node.id
     )
+    # Reached, so the run sends it.
+    Edge.objects.create(graph=graph, start_node_id=local_node.id, end_node_id=decision_table.id)
     ConditionGroup.objects.create(
         decision_table_node=decision_table,
         group_name="group",

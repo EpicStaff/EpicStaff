@@ -1,10 +1,16 @@
-from services.graph.nodes.python_node import PythonNode
+from services.graph.nodes.node_file_failure import (
+    NODE_FILE_FAILURE_SOURCE,
+    FileReadingNode,
+    NodeFileFailureKind,
+    node_file_main_source,
+)
 from src.shared.models import PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 
 
-class AudioTranscriptionNode(PythonNode):
+class AudioTranscriptionNode(FileReadingNode):
     TYPE = "AUDIO_TRANSCRIPTION"
+    KIND_NAME = "Audio to text"
 
     def __init__(
         self,
@@ -60,7 +66,7 @@ from pydub import AudioSegment
 
 def transcribe_audio(file_data_path: str):
     from faster_whisper import WhisperModel
-    audio_bytes = storage.read_bytes(file_data_path)
+    audio_bytes = read_storage_file(file_data_path)
 
     with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
         tmp_file.write(audio_bytes)
@@ -71,7 +77,7 @@ def transcribe_audio(file_data_path: str):
         wav_path = tempfile.mktemp(suffix=".wav")
         audio.export(wav_path, format="wav")
     except Exception as e:
-        raise ValueError(f"Failed to process audio/video file: {{e}}")
+        fail_on_file("{NodeFileFailureKind.UNPROCESSABLE}", file_data_path, e)
     finally:
         os.remove(input_path)
 
@@ -141,7 +147,5 @@ def get_transcription(**files):
     return content
 
 
-def main({", ".join(arg_names)}):
-    content = get_transcription({", ".join(f"{a}={a}" for a in arg_names)})
-    return content
-"""
+{node_file_main_source(arg_names, "get_transcription")}
+{NODE_FILE_FAILURE_SOURCE}"""

@@ -68,8 +68,8 @@ async def test_tool_failure_reaches_openai_without_the_exception_text(client, ca
     assert output.startswith("Tool execution failed")
     assert SECRET_SENTINEL not in str(item_create)
     # Support can still find the detail in the logs under the reference the model saw.
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(output).group(1)
-    (log,) = [message for message in captured_log_messages if correlation_id in message]
+    reference = PUBLIC_ERROR_REFERENCE.search(output).group(1)
+    (log,) = [message for message in captured_log_messages if reference in message]
     assert SECRET_SENTINEL in log
 
 

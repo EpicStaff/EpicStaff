@@ -6,16 +6,20 @@ nodes execute in-process through FakePythonCodeExecutorService.
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 
 import pytest
 from dotdict import DotDict
 from langgraph.graph import StateGraph
 
+from models.graph_models import GraphMessage
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.exceptions import InvalidStatePathError
+from services.graph.exceptions import InvalidStatePathError, NodeExecutionError
 from services.graph.graph_builder import SessionGraphBuilder
+from services.graph.graph_session_manager_service import GraphSessionManagerService
+from services.graph.subgraphs import subgraph_node as subgraph_node_module
 from services.graph.subgraphs.subgraph_node import SubGraphNode
 from src.shared.models import (
     EdgeData,
@@ -252,13 +256,209 @@ async def test_child_nodes_use_the_parents_services():
     assert updated["variables"].result.out == "stored k"
 
 
+# --- The Subflow node's own failures ---------------------------------------------------
+
+def _labelled_subgraph_node(
+    unique_subgraph_list: list[SubGraphData],
+    input_map: dict | None = None,
+    output_variable_path: str | None = "variables.result",
+) -> SubGraphNode:
+    parent_builder = SimpleNamespace(
+        redis_service=None,
+        python_code_executor_service=FakePythonCodeExecutorService(),
+        knowledge_search_service=None,
+        agent_task_service=None,
+        key_value_client=None,
+    )
+    return SubGraphNode(
+        session_id=1,
+        subgraph_node_data=SubGraphNodeData(
+            node_name="Run B #1 #90",
+            subgraph_id=7,
+            input_map=input_map or {},
+            output_variable_path=output_variable_path,
+        ),
+        unique_subgraph_list=unique_subgraph_list,
+        graph_builder=StateGraph(State),
+        org_id=1,
+        audit_retention_days=0,
+        session_graph_builder=parent_builder,
+        stop_event=StopEvent(),
+    )
+
+
+def _invoice_parser(code: str = "def main(): return {'total': 3}") -> SubGraphData:
+    child = _python_child(code)
+    return SubGraphData(id=7, data=child.model_copy(update={"name": "Invoice parser"}))
+
+
+async def _run_failing(
+    node: SubGraphNode, messages: list[GraphMessage] | None = None
+) -> tuple[NodeExecutionError, list[GraphMessage]]:
+    """Run `node`, expecting it to fail; return the error and the error cards.
+
+    `messages`, when given, collects every message the run sent.
+    """
+    messages = [] if messages is None else messages
+    with pytest.raises(NodeExecutionError) as raised:
+        await node.run(_parent_state(), writer=messages.append)
+    errors = [message for message in messages if _error_details(message) is not None]
+    return raised.value, errors
+
+
+def _top_level_kinds(messages: list[GraphMessage]) -> list[str]:
+    """The kinds of the subflow node's own messages, in the order the run sent them."""
+    return [
+        getattr(message.message_data, "message_type", None)
+        for message in messages
+        if message.name == "Run B #1 #90"
+    ]
+
+
+def _error_details(message: GraphMessage) -> str | None:
+    # A message from inside the flow carries its data as a dict, tagged with the run.
+    data = message.message_data
+    if isinstance(data, dict):
+        return data["details"] if data.get("message_type") == "error" else None
+    return data.details if getattr(data, "message_type", None) == "error" else None
+
+
+def _session_error(error: NodeExecutionError) -> str:
+    return GraphSessionManagerService._public_session_error(1, error)
+
+
+@pytest.mark.parametrize(
+    ("unique_subgraph_list", "flow"),
+    [
+        pytest.param([], "its flow", id="flow-missing"),
+        pytest.param(
+            # An edge to a node the flow doesn't have: the flow can't be compiled.
+            [
+                SubGraphData(
+                    id=7,
+                    data=_python_child("def main(): return {}").model_copy(
+                        update={
+                            "name": "Invoice parser",
+                            "edge_list": [EdgeData(start_key="produce", end_key="ghost")],
+                        }
+                    ),
+                )
+            ],
+            'flow "Invoice parser"',
+            id="flow-doesnt-compile",
+        ),
+    ],
+)
+async def test_subflow_that_cant_start_shows_one_card_and_the_session_cites_its_reference(
+    unique_subgraph_list, flow
+):
+    messages: list[GraphMessage] = []
+    error, errors = await _run_failing(_labelled_subgraph_node(unique_subgraph_list), messages)
+
+    (card,) = errors
+    reference = re.search(r"\(reference: ([0-9a-f]{12})\)\.$", _error_details(card)).group(1)
+    assert card.name == "Run B #1 #90"
+    assert card.node_type == "SUBGRAPH"
+    assert _error_details(card) == (
+        f'Subflow node "Run B #1" couldn\'t start {flow}. '
+        f"Try again or contact your administrator (reference: {reference})."
+    )
+    assert _session_error(error) == f"The flow failed. Try again or contact your administrator (reference: {reference})."
+    # The start message is still sent, so the run stores the subflow's failed run as before.
+    assert _top_level_kinds(messages) == ["subgraph_start", "error"]
+
+
+async def test_subflow_that_fails_after_its_flow_ran_cites_a_reference(monkeypatch):
+    def failing_store(state, output_variable_path, output):
+        raise RuntimeError("disk full at /var/lib/crew/internal")
+
+    monkeypatch.setattr(subgraph_node_module, "set_output_variables", failing_store)
+    messages: list[GraphMessage] = []
+
+    error, errors = await _run_failing(_labelled_subgraph_node([_invoice_parser()]), messages)
+
+    (card,) = errors
+    reference = re.search(r"\(reference: ([0-9a-f]{12})\)\.$", _error_details(card)).group(1)
+    assert _error_details(card) == (
+        'Subflow node "Run B #1" couldn\'t finish flow "Invoice parser". '
+        f"Try again or contact your administrator (reference: {reference})."
+    )
+    assert _session_error(error) == f"The flow failed. Try again or contact your administrator (reference: {reference})."
+    assert "/var/lib/crew/internal" not in _error_details(card)
+
+
+async def test_subflow_failure_after_its_flow_ran_sends_no_finish_message():
+    # A finish message would store the subflow's run as finished with its output.
+    node = _labelled_subgraph_node([_invoice_parser()], output_variable_path="scalar.total")
+    messages: list[GraphMessage] = []
+
+    await _run_failing(node, messages)
+
+    start, error_card = [message for message in messages if message.name == "Run B #1 #90"]
+    assert _top_level_kinds(messages) == ["subgraph_start", "error"]
+    # Like the finish message it replaces, after every message of the flow.
+    assert error_card.execution_order > max(
+        message.execution_order for message in messages if message is not error_card
+    )
+
+
+async def test_subflow_input_that_isnt_a_flow_variable_is_named():
+    node = _labelled_subgraph_node(
+        [_invoice_parser()], input_map={"scalar": "variables.scalar", "customer": "context.customer"}
+    )
+
+    error, errors = await _run_failing(node)
+
+    expected = (
+        'Input "customer" of Subflow node "Run B #1" must be a flow variable, '
+        "like variables.customer."
+    )
+    assert [_error_details(card) for card in errors] == [expected]
+    assert _session_error(error) == expected
+
+
+@pytest.mark.parametrize(
+    ("output_variable_path", "full_path"),
+    [
+        pytest.param("scalar.total", "variables.scalar.total", id="through-a-number"),
+        pytest.param("variables.records[5].name", "variables.records[5].name", id="missing-item"),
+    ],
+)
+async def test_subflow_output_path_that_doesnt_exist_is_named(output_variable_path, full_path):
+    node = _labelled_subgraph_node([_invoice_parser()], output_variable_path=output_variable_path)
+
+    error, errors = await _run_failing(node)
+
+    expected = (
+        f'Output path "{full_path}" of Subflow node "Run B #1" doesn\'t exist. '
+        "Check the output variable path."
+    )
+    assert [_error_details(card) for card in errors] == [expected]
+    assert _session_error(error) == expected
+
+
+async def test_failing_node_inside_the_subflow_keeps_its_own_single_card():
+    node = _labelled_subgraph_node([_invoice_parser("def main(): raise ValueError('bad total')")])
+
+    error, errors = await _run_failing(node)
+
+    assert [(card.name, _error_details(card)) for card in errors] == [
+        ("produce", "ValueError: bad total")
+    ]
+    assert error.public_message == "ValueError: bad total"
+
+
 async def test_underscore_output_path_fails_before_the_child_flow_runs():
     node = _subgraph_node(_python_child("def main(): return {'done': True}"), "variables.__class__.status")
     state = _parent_state()
     messages = []
 
-    with pytest.raises(InvalidStatePathError, match=r"'variables\.__class__\.status'"):
+    with pytest.raises(NodeExecutionError) as raised:
         await node.run(state, writer=messages.append)
 
-    assert messages == []
+    assert isinstance(raised.value.__cause__, InvalidStatePathError)
+    # The node's own error card, and nothing from the child flow, which never started.
+    assert [_error_details(message) for message in messages] == [
+        "Variable path 'variables.__class__.status' is not allowed: path segments cannot start with '_'."
+    ]
     assert state["variables"].deep_dump() == PARENT

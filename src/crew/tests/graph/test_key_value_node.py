@@ -4,9 +4,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from dotdict import DotDict
+from loguru import logger
 
-from clients.errors import ClientValidationError
-from services.graph.exceptions import KeyValueNodeError
+from clients.errors import (
+    ClientBadGatewayError,
+    ClientNotAvailableError,
+    ClientRefusedError,
+    ClientTimeoutError,
+    ClientValidationError,
+)
+from services.graph.exceptions import KeyValueNodeError, NodeExecutionError
 from services.graph.nodes import key_value_node
 from services.graph.nodes.key_value_node import KeyValueNode
 
@@ -47,7 +54,7 @@ def make_node(
 ) -> KeyValueNode:
     return KeyValueNode(
         session_id=7,
-        node_name="persist_1",
+        node_name="Save lead #3 #4512",
         stop_event=MagicMock(),
         key_value_table_id=table_id,
         mode=mode,
@@ -192,7 +199,7 @@ async def test_key_placeholder_value_with_braces_is_rejected():
         await run(node, {"name": "a{b}"})
 
     assert str(error.value) == (
-        "Key-Value node 'persist_1': key 'profile_{variables.name}' resolved to "
+        "Key-Value node 'Save lead #3': key 'profile_{variables.name}' resolved to "
         f"'profile_a{{b}}', which is not a valid key: {key_value_node.KEY_RULE}."
     )
     client.read.assert_not_awaited()
@@ -335,7 +342,7 @@ async def test_render_key_rejects_too_long_key():
     with pytest.raises(KeyValueNodeError) as error:
         await run(node, {"long": "x" * 513})
     assert str(error.value) == (
-        "Key-Value node 'persist_1': key '{variables.long}' resolved to "
+        "Key-Value node 'Save lead #3': key '{variables.long}' resolved to "
         f"'{'x' * 100}…', which is not a valid key: use only letters, digits and _, "
         "don't start with a digit, and keep it to at most 512 characters."
     )
@@ -387,7 +394,7 @@ async def test_invalid_resolved_key_is_rejected_before_calling_the_table(mode, r
 
     shown = resolved if len(resolved) <= 100 else f"{resolved[:100]}…"
     assert str(error.value) == (
-        f"Key-Value node 'persist_1': key '{{variables.key}}' resolved to {shown!r}, "
+        f"Key-Value node 'Save lead #3': key '{{variables.key}}' resolved to {shown!r}, "
         f"which is not a valid key: {key_value_node.KEY_RULE}."
     )
     getattr(client, mode).assert_not_awaited()
@@ -422,7 +429,7 @@ async def test_read_emits_message_with_found_and_missing_entries():
         "message_type": "key_value",
     }]
     message = writer.call_args_list[-1].args[0]
-    assert (message.session_id, message.name) == (7, "persist_1")
+    assert (message.session_id, message.name) == (7, "Save lead #3 #4512")
 
 
 @pytest.mark.asyncio
@@ -615,10 +622,77 @@ async def test_client_error_is_reported_with_node_context_and_no_key_value_messa
     node = make_node(mode, [{"key": "k", "value": "variables.a"}] if mode != "delete" else [{"key": "k"}], client)
     writer = MagicMock()
 
-    with pytest.raises(KeyValueNodeError, match=f"persist_1.*{mode} failed: Key-value table 3 not found"):
+    with pytest.raises(KeyValueNodeError) as error:
         await node.execute(state=make_state({"a": 1}), writer=writer, execution_order=0, input_={})
 
+    assert str(error.value) == f"Key-Value node 'Save lead #3' {mode} failed: Key-value table 3 not found."
+    assert error.value.reference is None
     assert key_value_messages(writer) == []
+
+
+@pytest.fixture
+def captured_error_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="ERROR")
+    yield records
+    logger.remove(sink_id)
+
+
+DJANGO_DEBUG_PAGE = "<html>OperationalError at /api/internal/ host=crewdb password=s3cret</html>"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+@pytest.mark.parametrize(
+    "client_error",
+    [
+        ClientBadGatewayError(DJANGO_DEBUG_PAGE),
+        ClientTimeoutError("Django did not respond in time."),
+        ClientNotAvailableError("DJANGO_API_KEY is not configured; Key-Value nodes can't reach Django."),
+        ClientRefusedError("401: Invalid API key."),
+        ClientRefusedError("403: You do not have permission to perform this action."),
+        ClientRefusedError("429: Request was throttled."),
+    ],
+    ids=["django-error-page", "timeout", "unreachable", "401", "403", "429"],
+)
+async def test_service_failure_shows_a_reference_and_logs_the_raw_detail_under_it(
+    mode, client_error, captured_error_logs
+):
+    client = make_client()
+    getattr(client, mode).side_effect = client_error
+    node = make_node(mode, [{"key": "k", "value": "variables.a"}] if mode != "delete" else [{"key": "k"}], client)
+
+    with pytest.raises(KeyValueNodeError) as error:
+        await node.execute(state=make_state({"a": 1}), writer=MagicMock(), execution_order=0, input_={})
+
+    reference = error.value.reference
+    assert str(error.value) == (
+        f"Key-Value node 'Save lead #3' {mode} failed. "
+        f"Try again or contact your administrator (reference: {reference})."
+    )
+    assert re.fullmatch(r"[0-9a-f]{12}", reference)
+    reference_logs = [record for record in captured_error_logs if reference in record]
+    assert len(reference_logs) == 1
+    assert client_error.detail in reference_logs[0]
+
+
+@pytest.mark.asyncio
+async def test_key_value_error_reaches_the_user_as_it_is():
+    node = make_node("read", [{"key": "k", "value": "variables.out"}], table_id=None)
+    messages = []
+
+    with pytest.raises(NodeExecutionError) as error:
+        await node.run(make_state({}), messages.append)
+
+    expected = "Key-Value node 'Save lead #3' has no table selected."
+    error_cards = [
+        message.message_data.details
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+    assert error_cards == [expected]
+    assert error.value.public_message == expected
+    assert error.value.reference is None
 
 
 @pytest.mark.asyncio
@@ -644,7 +718,7 @@ async def test_read_rejects_target_that_does_not_fit_the_state(target, variables
     node = make_node("read", [{"key": "k", "value": target}], client)
     state = make_state(variables)
     writer = MagicMock()
-    with pytest.raises(KeyValueNodeError, match=f"persist_1.*{re.escape(message)}"):
+    with pytest.raises(KeyValueNodeError, match=f"Save lead #3.*{re.escape(message)}"):
         await node.execute(state=state, writer=writer, execution_order=0, input_={})
     assert state["variables"].deep_dump() == variables
     assert key_value_messages(writer) == []
@@ -795,7 +869,7 @@ async def test_invalid_entry_is_rejected_before_touching_the_table(mode, entries
     writer = MagicMock()
 
     pattern = message.pattern if isinstance(message, re.Pattern) else re.escape(message)
-    with pytest.raises(KeyValueNodeError, match=f"persist_1.*{pattern}"):
+    with pytest.raises(NodeExecutionError, match=f"Save lead #3.*{pattern}"):
         await node.run(state, writer)
 
     for operation in (client.read, client.write, client.delete):
@@ -810,3 +884,16 @@ async def test_node_without_table_is_rejected():
 
     with pytest.raises(KeyValueNodeError, match="no table"):
         await run(node, {})
+
+
+@pytest.mark.asyncio
+async def test_unresolvable_path_names_the_path_but_not_the_resolver_error():
+    node = make_node("read", [{"key": "{variables.tags[5]}", "value": "variables.out"}], make_client())
+
+    with pytest.raises(NodeExecutionError) as error:
+        await node.run(make_state({"tags": ["x"]}), MagicMock())
+
+    assert error.value.public_message == (
+        "Key-Value node 'Save lead #3': cannot resolve 'variables.tags[5]'. "
+        "Use a flow state path such as 'variables.user.id' (in a key: 'profile_{variables.user.id}')."
+    )

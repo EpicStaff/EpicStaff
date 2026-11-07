@@ -448,7 +448,10 @@ def test_nodes_and_graph_are_recorded_in_one_statement(auth_client, saved_flow, 
 
 
 @pytest.mark.django_db
-def test_failed_save_rolls_back_and_records_nothing(auth_client, saved_flow, previous_editor):
+def test_failed_save_rolls_back_and_records_nothing(
+    auth_client, saved_flow, previous_editor, monkeypatch
+):
+    monkeypatch.setattr("utils.exception_handler.DEBUG", False)
     duplicate_edge = {
         "graph": saved_flow.graph.id,
         "start_node_id": saved_flow.decision_table.id,
@@ -467,7 +470,7 @@ def test_failed_save_rolls_back_and_records_nothing(auth_client, saved_flow, pre
     response = auth_client.post(_save_url(saved_flow.graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.json()["code"] == "IntegrityError"
+    assert response.json()["code"] == "internal_error"
 
     assert GraphNote.objects.get(pk=saved_flow.note.pk).content == "note"
     _assert_previous_edit(saved_flow.note, previous_editor)

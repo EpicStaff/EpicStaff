@@ -1,7 +1,6 @@
 from typing import Any
 
 from langgraph.types import StreamWriter
-from loguru import logger
 from models.graph_models import (
     ClassificationPromptMessageData,
     ConditionGroupMessageData,
@@ -12,11 +11,6 @@ from models.graph_models import (
     StartMessageData,
 )
 from models.state import State
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
 
 
 class CustomSessionMessageWriter:
@@ -122,49 +116,23 @@ class CustomSessionMessageWriter:
         execution_order: int,
         node_type: str = "",
         *,
-        error: Exception | str | None = None,
-        public_details: str | None = None,
+        public_details: str,
     ):
         """
         Add an error message to the graph.
 
-        When no `public_details` is supplied, the raw error text is logged, not
-        streamed, since it can carry sensitive data. `public_details`, when supplied, is
-        streamed verbatim instead, and nothing extra is logged here: it is the
-        caller's responsibility to only pass text that is already safe to show.
-        Most such callers log the raw error themselves before calling this
-        method; where one doesn't, the raw text still reaches the logs once
-        the exception reaches a handler further up that does - just under a
-        different correlation id than the one this call would have minted.
+        `public_details` is streamed as it is, so the caller passes only text that is safe
+        to show, and logs the raw error itself where it differs (see
+        `BaseNode._raise_failure`).
 
         Args:
             writer (StreamWriter): A stream writer to write the message to.
             execution_order (int): The order of execution of the node.
             node_type (str): The emitting node's BaseNode.TYPE, audit-only.
-            error (Exception | str | None): The exception or error text that
-                was raised. Required when `public_details` is omitted (it is
-                what gets logged and sanitized); ignored otherwise.
-            public_details (str | None): Already-safe text to stream instead of
-                the generic message. Callers pass this for domain errors whose
-                wording is meant for the user. Not sanitized by this method.
+            public_details (str): The text the user sees.
         """
-        if public_details is None:
-            correlation_id = new_error_correlation_id()
-            logger.opt(exception=error if isinstance(error, Exception) else None).error(
-                "Node execution failed: {error} (correlation_id={correlation_id}, "
-                "session_id={session_id}, node_name={node_name})",
-                error=str(error),
-                correlation_id=correlation_id,
-                session_id=session_id,
-                node_name=node_name,
-            )
-            details = build_public_error_message(
-                PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id
-            )
-        else:
-            details = public_details
         error_message_data = ErrorMessageData(
-            details=details,
+            details=public_details,
         )
         graph_message = GraphMessage(
             session_id=session_id,

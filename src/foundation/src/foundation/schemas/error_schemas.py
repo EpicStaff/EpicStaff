@@ -25,8 +25,18 @@ class ErrorType(StrEnum):
 class ErrorDetailSchema(Schema):
     """One thing that went wrong."""
 
-    code: str = Field(description="Machine-readable name for what went wrong.")
-    detail: str = Field(description="What went wrong, in words.")
+    code: str = Field(
+        description=(
+            "snake_case name of the specific failure, stable across releases; not the "
+            "HTTP status group."
+        )
+    )
+    detail: str = Field(
+        description=(
+            "Always safe to show the user. Raw exception text, provider responses and "
+            "server paths never go here; they are logged under the response's `reference`."
+        )
+    )
     attr: str | None = Field(
         default=None,
         description=(
@@ -46,9 +56,23 @@ class ErrorResponseSchema(Schema):
 
     type: ErrorType
     errors: list[ErrorDetailSchema]
+    reference: str | None = Field(
+        default=None,
+        description=(
+            "Ties the answer to the server log line that explains it; the user quotes it "
+            "to support. Set only when the server logged a failure under it; null "
+            "otherwise, as on every 4xx and on a 503 for an overloaded sandbox."
+        ),
+    )
 
     @classmethod
-    def for_status(cls, status_code: int, errors: list[ErrorDetailSchema]) -> Self:
+    def for_status(
+        cls,
+        status_code: int,
+        errors: list[ErrorDetailSchema],
+        *,
+        reference: str | None = None,
+    ) -> Self:
         """Build the envelope an answer with ``status_code`` carries.
 
         ``type`` is derived rather than passed in so it cannot drift from the status
@@ -57,4 +81,5 @@ class ErrorResponseSchema(Schema):
         return cls(
             type=ErrorType.CLIENT_ERROR if status_code < 500 else ErrorType.SERVER_ERROR,
             errors=errors,
+            reference=reference,
         )

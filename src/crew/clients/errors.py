@@ -15,8 +15,16 @@ class ClientTimeoutError(ClientError):
 
 
 class ClientBadGatewayError(ClientError):
-    """Target service responded with a 5xx status."""
+    """Target service responded with a 5xx status, or with an error its API does not send."""
 
 
 class ClientValidationError(ClientError):
     """Target service rejected the request with a 4xx status."""
+
+
+class ClientRefusedError(ClientError):
+    """Target service refused the caller rather than the request's content (e.g. 401, 403, 429).
+
+    Its message is about crew's credentials, permissions or rate limit, which the user of a
+    flow can't act on, so it is not shown to them.
+    """

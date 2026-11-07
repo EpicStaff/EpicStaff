@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from manager.domain.enums import VenvStatus
+from manager.domain.enums import VenvBuildErrorKind, VenvStatus
 from manager.domain.models import Library, Venv
 from tests.builders import make_library, make_venv
 
@@ -76,18 +76,57 @@ def test_venv_mark_as_processing_keeps_a_previous_error():
     assert venv.error == "uv blew up"
 
 
-def test_venv_mark_as_completed_clears_the_error():
-    venv = make_venv(status=VenvStatus.PROCESSING, error="stale")
-    venv.mark_as_completed()
-    assert venv.status is VenvStatus.COMPLETED
-    assert venv.error is None
+GENERIC_BUILD_ERROR = "Couldn't install the libraries. Check the library names and versions."
+PACKAGE_NOT_FOUND = "Package 'requests2' does not exist."
+VERSION_NOT_FOUND = "Package 'requests' has no version matching '==99'."
+DEPENDENCY_CONFLICT = (
+    "Package 'pandas' requires versions of its dependencies "
+    "that conflict with the other requested packages."
+)
 
 
-def test_venv_mark_as_failed_records_the_exception_text():
-    venv = make_venv(status=VenvStatus.PROCESSING)
-    venv.mark_as_failed(RuntimeError("uv pip sync failed"))
-    assert venv.status is VenvStatus.FAILED
-    assert venv.error == "uv pip sync failed"
+@pytest.mark.parametrize(
+    ("kind", "stored_error", "expected"),
+    [
+        (VenvBuildErrorKind.PACKAGE_NOT_FOUND, PACKAGE_NOT_FOUND, PACKAGE_NOT_FOUND),
+        (VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND, VERSION_NOT_FOUND, VERSION_NOT_FOUND),
+        (VenvBuildErrorKind.PACKAGE_DEPENDENCY_CONFLICT, DEPENDENCY_CONFLICT, DEPENDENCY_CONFLICT),
+        (VenvBuildErrorKind.PACKAGE_INSTALL_FAILED, GENERIC_BUILD_ERROR, None),
+        (None, PACKAGE_NOT_FOUND, None),
+        (None, "uv pip compile failed: /var/lib/sandbox/venvs/venv-3 is not writable", None),
+        (None, None, None),
+    ],
+    ids=[
+        "package-not-found",
+        "version-not-found",
+        "conflict",
+        "generic-kind",
+        "package-text-stored-before-kinds",
+        "raw-text-stored-before-kinds",
+        "no-error",
+    ],
+)
+def test_venv_build_error_detail_is_only_an_error_whose_kind_names_a_declared_package(
+    kind, stored_error, expected
+):
+    venv = make_venv(status=VenvStatus.FAILED, error=stored_error, error_kind=kind)
+
+    assert venv.build_error_detail == expected
+
+
+@pytest.mark.parametrize(
+    "mark", [Venv.mark_as_declared, Venv.mark_as_completed], ids=["declared", "completed"]
+)
+def test_leaving_the_failed_state_clears_the_error_and_its_kind(mark):
+    venv = make_venv(
+        status=VenvStatus.FAILED,
+        error=PACKAGE_NOT_FOUND,
+        error_kind=VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+    )
+
+    mark(venv)
+
+    assert (venv.error, venv.error_kind, venv.build_error_detail) == (None, None, None)
 
 
 def test_venv_id_cannot_be_reassigned():
@@ -307,12 +346,13 @@ def test_waiting_is_not_a_failure_and_drops_the_reason_for_an_earlier_one():
     """`declared` says nothing has happened yet; `waiting` says this service is still
     producing something the venv needs, and the user has nothing to fix."""
     venv = make_venv(name="data")
-    venv.mark_as_failed(RuntimeError("the last attempt blew up"))
+    venv.mark_as_failed(VenvBuildErrorKind.PACKAGE_INSTALL_FAILED, "the last attempt blew up")
 
     venv.mark_as_waiting()
 
     assert venv.status is VenvStatus.WAITING
     assert venv.error is None
+    assert venv.error_kind is None
 
 
 def test_a_venv_uses_only_the_libraries_it_marked_as_custom():
@@ -368,3 +408,24 @@ def test_a_venv_with_no_libraries_uses_and_pins_nothing():
 
     assert venv.uses_custom_library("acme-core") is False
     assert venv.pins_custom_library("acme-core", "1.4.2") is False
+
+
+# The kinds whose stored text a user is shown: it names only the packages they declared.
+# Adding a kind to VenvBuildErrorKind fails this test until someone decides whether its
+# text is safe to show.
+SHOWN_BUILD_ERROR_KINDS = {
+    VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+    VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND,
+    VenvBuildErrorKind.PACKAGE_DEPENDENCY_CONFLICT,
+}
+HIDDEN_BUILD_ERROR_KINDS = {VenvBuildErrorKind.PACKAGE_INSTALL_FAILED}
+
+
+@pytest.mark.parametrize("kind", list(VenvBuildErrorKind), ids=str)
+def test_every_build_error_kind_has_a_decided_visibility(kind):
+    venv = make_venv(name="data")
+    venv.mark_as_failed(kind, "stored text")
+
+    assert kind in SHOWN_BUILD_ERROR_KINDS | HIDDEN_BUILD_ERROR_KINDS
+    expected = "stored text" if kind in SHOWN_BUILD_ERROR_KINDS else None
+    assert venv.build_error_detail == expected

@@ -5,6 +5,7 @@ from dotdict import DotDict
 from clients.key_value import KeyValueClient
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
+from services.graph.exceptions import NodeExecutionError
 from services.graph.graph_session_manager_service import (
     SessionGraphBuilder,
     RedisService,
@@ -12,6 +13,7 @@ from services.graph.graph_session_manager_service import (
 )
 from src.shared.models import (
     AgentDefinitionData,
+    CodeResultData,
     AgentNodeData,
     AgentNodeTaskData,
     ConditionData,
@@ -30,9 +32,9 @@ from src.shared.models import (
     SubGraphNodeData,
 )
 from src.shared.models.storage_scope import StorageCredentials
+from tests.graph.code_results import failed, succeeded, user_code_failure
 import asyncio
 import json
-import uuid
 
 
 class FakePythonCodeExecutorService:
@@ -40,7 +42,7 @@ class FakePythonCodeExecutorService:
 
     Mirrors the sandbox contract (`ExecuteCodeHandler.wrap_code`): kwargs are
     exposed as a DotDict, globals come from `global_kwargs`, the return value is
-    JSON-encoded, and any exception becomes returncode 1 with stderr set. Lets
+    JSON-encoded, and any exception becomes the sandbox's failed result. Lets
     the graph tests exercise real routing without a live redis + sandbox stack.
     """
 
@@ -51,27 +53,16 @@ class FakePythonCodeExecutorService:
         additional_global_kwargs: dict | None = None,
         stop_event=None,
         storage_credentials=None,
-    ) -> dict:
+    ) -> CodeResultData:
         namespace: dict = {"DotDict": DotDict}
         namespace.update(python_code_data.global_kwargs or {})
         namespace.update(additional_global_kwargs or {})
-        execution_id = str(uuid.uuid4())
         try:
             exec(python_code_data.code, namespace)
             result = namespace[python_code_data.entrypoint](**DotDict(inputs or {}))
-            return {
-                "execution_id": execution_id,
-                "returncode": 0,
-                "stderr": "",
-                "result_data": json.dumps(result),
-            }
         except Exception as e:
-            return {
-                "execution_id": execution_id,
-                "returncode": 1,
-                "stderr": str(e),
-                "result_data": "null",
-            }
+            return failed(user_code_failure(type(e).__name__, None, str(e)))
+        return succeeded(result)
 
 
 @pytest.fixture
@@ -280,6 +271,34 @@ def test_compiled_graph_runs_the_flow_and_routes_through_the_decision_table(
         for awaited in mock_services["redis_service"].aadd_graph_message.await_args_list
     ]
     assert published_message_types == expected_message_types
+
+
+def test_failing_decision_table_without_error_route_fails_the_flow_with_its_error(
+    mock_services, mock_session_data
+):
+    """Without an error route the table's error ends the run as a failure, which the
+    session reports with the same text, instead of routing to the end as a success."""
+    mock_session_data.graph.decision_table_node_list = [
+        DecisionTableNodeData(
+            node_name="decision_table_node_1",
+            conditional_group_list=[
+                ConditionGroupData(
+                    group_name="High score",
+                    group_type="complex",
+                    expression="scroe > 1",
+                    next_node="end_node",
+                ),
+            ],
+            default_next_node="end_node",
+            next_error_node=None,
+        )
+    ]
+    compiled_graph = _builder(mock_services).compile_from_schema(mock_session_data)
+
+    with pytest.raises(NodeExecutionError) as raised:
+        _final_variables(compiled_graph, {})
+
+    assert raised.value.public_message == "Condition \"High score\": name 'scroe' is not defined"
 
 
 def _task_node_session_data(mock_llm_data) -> SessionData:
@@ -587,8 +606,10 @@ def test_storage_node_inside_subgraph_without_session_credentials_gets_none(
 
     compiled_graph = builder.compile_from_schema(_storage_subgraph_session_data(None))
 
-    with pytest.raises(Exception, match="storage credentials missing or invalid"):
+    with pytest.raises(NodeExecutionError) as raised:
         _run_compiled_graph(compiled_graph, mock_services["redis_service"])
+
+    assert str(raised.value.__cause__) == "PermissionError: storage credentials missing or invalid"
 
     assert executor.received_storage_credentials == [None]
 
@@ -622,10 +643,10 @@ def test_storage_node_two_levels_deep_receives_session_credentials(mock_services
 
 
 class FakeAgentService:
-    async def run_task(self, node_data, stop_event, on_event=None, storage_credentials=None):
+    async def run_task(self, node_data, stop_event, *, agent_definition, llm, on_event=None, storage_credentials=None):
         return {"final_text": f"answer to: {node_data.instructions}"}
 
-    async def run_agent_node(self, node_data, stop_event, on_event=None, storage_credentials=None):
+    async def run_agent_node(self, node_data, stop_event, *, agent_definition, llm, on_event=None, storage_credentials=None):
         return {"final_text": f"answer to: {node_data.tasks[0].instructions}"}
 
 

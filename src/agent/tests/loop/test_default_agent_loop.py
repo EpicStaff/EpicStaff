@@ -12,11 +12,13 @@ import asyncio
 import inspect
 import json
 from collections.abc import AsyncIterator, Callable
+from unittest.mock import MagicMock
 
 import httpx
 import litellm
 import pytest
 from app.emitters.base import Emitter
+from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
 from app.exceptions import RunCancelled
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
 from app.logging_utils import redact_value
@@ -24,10 +26,15 @@ from app.loop.agent_loop import _UNTRUSTED_CONTENT_NOTE, DefaultAgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.tools.registry import ToolRegistry, ToolSpec
-from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
+from shared.models.agent_service import AgentSpec, FailedLLM, LLMErrorKind, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
 from tests.log_capture import assert_masked_exception, log_line_starting_with, capture_logs_at
+from tests.provider_errors import (
+    OPENAI_QUOTA_BODY,
+    OPENAI_RATE_LIMIT_BODY,
+    litellm_error_from_openai_response,
+)
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -735,7 +742,10 @@ async def test_llm_raises_returns_llm_error_no_on_error():
     tools = StubToolRegistry({})
     stop = MaxIterAndNoToolCalls(max_iter=5)
 
-    llm = FakeLLMClient([], chat_raises=RuntimeError("LLM down"))
+    llm = FakeLLMClient(
+        [],
+        chat_raises=litellm.APIConnectionError(message="LLM down", llm_provider="openai", model="gpt-4o"),
+    )
     loop = DefaultAgentLoop(llm)
 
     result = await loop.run(context, tools, emitter, stop)
@@ -743,31 +753,122 @@ async def test_llm_raises_returns_llm_error_no_on_error():
     assert result.stop_reason == "llm_error"
     assert result.iterations == 0
     assert result.tool_invocations == 0
-    assert result.error == "LLM down"
+    assert "LLM down" in result.error
 
     error_events = [payload for name, payload in emitter.events if name == "on_error"]
     assert len(error_events) == 0
 
 
-async def test_llm_error_logs_the_exception_class_without_its_message():
-    """The llm_error log line carries no raw exception text; LoopResult.error still does."""
+def _litellm_error(error_class: type[Exception], message: str = "provider said no") -> Exception:
+    response = httpx.Response(403, request=httpx.Request("POST", "https://api.openai.com/v1"))
+    if error_class is litellm.PermissionDeniedError:
+        return error_class(message=message, llm_provider="openai", model="gpt-4o", response=response)
+    return error_class(message=message, llm_provider="openai", model="gpt-4o")
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_kind"),
+    [
+        (_litellm_error(litellm.AuthenticationError), LLMErrorKind.AUTHENTICATION),
+        (_litellm_error(litellm.PermissionDeniedError), LLMErrorKind.AUTHENTICATION),
+        (_litellm_error(litellm.RateLimitError), LLMErrorKind.RATE_LIMIT),
+        (
+            _litellm_error(litellm.RateLimitError, "{'code': 'insufficient_quota'}"),
+            LLMErrorKind.QUOTA_EXCEEDED,
+        ),
+        (_litellm_error(litellm.ContextWindowExceededError), LLMErrorKind.CONTEXT_TOO_LONG),
+        (_litellm_error(litellm.NotFoundError), LLMErrorKind.MODEL_NOT_FOUND),
+        (_litellm_error(litellm.ServiceUnavailableError), LLMErrorKind.PROVIDER_UNAVAILABLE),
+        (_litellm_error(litellm.InternalServerError), LLMErrorKind.PROVIDER_UNAVAILABLE),
+        (_litellm_error(litellm.APIConnectionError), LLMErrorKind.PROVIDER_UNAVAILABLE),
+        (_litellm_error(litellm.BadGatewayError), LLMErrorKind.PROVIDER_UNAVAILABLE),
+        (_litellm_error(litellm.ContentPolicyViolationError), LLMErrorKind.CONTENT_REFUSED),
+        (_litellm_error(litellm.Timeout), LLMErrorKind.PROVIDER_TIMEOUT),
+        (_litellm_error(litellm.BadRequestError), LLMErrorKind.UNKNOWN),
+    ],
+    ids=[
+        "authentication", "permission-denied", "rate-limit", "insufficient-quota-code",
+        "context-window", "not-found",
+        "service-unavailable", "internal-server-error", "connection", "bad-gateway",
+        "content-policy", "provider-timeout", "bad-request",
+    ],
+)
+async def test_llm_error_carries_its_kind(error, expected_kind):
+    llm = FakeLLMClient([], chat_raises=error)
+
+    result = await DefaultAgentLoop(llm).run(
+        make_context(), StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    assert result.stop_reason == "llm_error"
+    assert result.error_kind == expected_kind
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_kind"),
+    [
+        (OPENAI_RATE_LIMIT_BODY, LLMErrorKind.RATE_LIMIT),
+        (OPENAI_QUOTA_BODY, LLMErrorKind.QUOTA_EXCEEDED),
+    ],
+    ids=["openai-rate-limit", "openai-quota"],
+)
+async def test_an_openai_429_carries_the_kind_its_body_names(body, expected_kind):
+    error = await litellm_error_from_openai_response(429, body)
+    llm = FakeLLMClient([], chat_raises=error)
+
+    result = await DefaultAgentLoop(llm).run(
+        make_context(), StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    assert result.stop_reason == "llm_error"
+    assert result.error_kind == expected_kind
+
+
+async def test_a_failure_that_is_not_a_litellm_error_is_an_internal_error_without_a_kind():
+    llm = FakeLLMClient([], chat_raises=ConnectionError("Redis connection lost"))
+
+    result = await DefaultAgentLoop(llm).run(
+        make_context(), StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    assert result.stop_reason == "internal_error"
+    assert result.error_kind is None
+    assert result.error == "Redis connection lost"
+
+
+@pytest.mark.parametrize(
+    ("make_error", "expected_line_start", "expected_class"),
+    [
+        (
+            lambda text: litellm.AuthenticationError(message=text, llm_provider="openai", model="gpt-4o"),
+            "loop llm_error",
+            "AuthenticationError",
+        ),
+        (RuntimeError, "loop internal_error", "RuntimeError"),
+    ],
+    ids=["llm-error", "internal-error"],
+)
+async def test_loop_failure_logs_the_exception_class_without_its_message(
+    make_error, expected_line_start, expected_class
+):
+    """The failure's log line carries no raw exception text; LoopResult.error still does."""
     secret_marker = "LLM_CRASH_SECRET_13579"
     raw_error_text = f"provider rejected sk-live-{secret_marker}"
     emitter = RecordingEmitter()
     context = make_context()
     tools = StubToolRegistry({})
     stop = MaxIterAndNoToolCalls(max_iter=5)
-    llm = FakeLLMClient([], chat_raises=RuntimeError(raw_error_text))
+    llm = FakeLLMClient([], chat_raises=make_error(raw_error_text))
 
     with capture_logs_at("DEBUG") as messages:
         result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
 
-    error_line = log_line_starting_with(messages, "loop llm_error")
+    error_line = log_line_starting_with(messages, expected_line_start)
     assert "correlation_id=test-corr" in error_line
-    assert "RuntimeError" in error_line
+    assert expected_class in error_line
     assert "<redacted" in error_line
     assert secret_marker not in "\n".join(messages)
-    assert result.error == raw_error_text
+    assert raw_error_text in result.error
 
 
 async def test_timeout_fires_mid_execution():
@@ -801,6 +902,7 @@ async def test_timeout_fires_mid_execution():
     assert result.stop_reason == "timeout"
     assert result.error is not None
     assert "exceeded" in result.error
+    assert result.error_kind is None
 
     error_events = [payload for name, payload in emitter.events if name == "on_error"]
     assert len(error_events) == 0
@@ -1482,6 +1584,61 @@ async def test_fallback_failure_names_both_configs_and_error_classes(fallback, e
     assert _called_models(llm) == [_PRIMARY_MODEL, _FALLBACK_MODEL]
 
 
+@pytest.mark.parametrize(
+    ("fallback", "responses", "expected_stop_reason", "expected_failed_llm"),
+    [
+        pytest.param(
+            None,
+            lambda: [_provider_error(litellm.RateLimitError)],
+            "llm_error",
+            FailedLLM.PRIMARY,
+            id="primary-without-fallback",
+        ),
+        pytest.param(
+            _FALLBACK_LLM,
+            lambda: [_provider_error(litellm.BadRequestError)],
+            "llm_error",
+            FailedLLM.PRIMARY,
+            id="primary-error-that-does-not-switch",
+        ),
+        pytest.param(
+            _FALLBACK_LLM,
+            lambda: [_provider_error(litellm.RateLimitError), _provider_error(litellm.AuthenticationError)],
+            "llm_error",
+            FailedLLM.FALLBACK,
+            id="fallback-failed-right-after-the-switch",
+        ),
+        pytest.param(
+            _FALLBACK_LLM,
+            lambda: [
+                _provider_error(litellm.RateLimitError),
+                tool_chunks("c1", "ping", "{}"),
+                _provider_error(litellm.BadRequestError),
+            ],
+            "llm_error",
+            FailedLLM.FALLBACK,
+            id="fallback-failed-on-a-later-call",
+        ),
+        pytest.param(
+            _FALLBACK_LLM,
+            lambda: [RuntimeError("not an LLM error")],
+            "internal_error",
+            None,
+            id="not-an-llm-failure",
+        ),
+    ],
+)
+async def test_failed_result_says_which_llm_failed(fallback, responses, expected_stop_reason, expected_failed_llm):
+    llm = FakeLLMClient(responses())
+
+    result = await _run(
+        llm, _context_with_fallback(fallback=fallback), RecordingEmitter(), tools={"ping": lambda args: "pong"}
+    )
+
+    assert result.stop_reason == expected_stop_reason
+    assert result.failed_llm == expected_failed_llm
+
+
 async def test_cancelled_run_does_not_call_the_fallback():
     checks = iter([False, True])
 
@@ -1607,3 +1764,209 @@ async def test_no_payload_log_lines_are_emitted_below_debug_level():
         for message in messages
         if message.startswith(("loop iter=", "tool call ", "tool result "))
     ]
+
+
+# ---------------------------------------------------------------------------
+# Tool failures: the run panel gets a generic notice, the LLM the raw text
+# ---------------------------------------------------------------------------
+
+
+_INTERNAL_URL = "http://mcp.internal:9000/mcp"
+_RAW_MCP_ERROR = (
+    f"MCP call failed for tool_name=search: Client error '401 Unauthorized' for url '{_INTERNAL_URL}'"
+)
+
+
+def _make_live_emitter() -> tuple[RedisStreamToolEventEmitter, list[dict]]:
+    published: list[dict] = []
+    client = MagicMock()
+
+    async def capture_publish(stream: str, fields: dict, **options) -> None:
+        published.append(fields)
+
+    client.publish = capture_publish
+    emitter = RedisStreamToolEventEmitter(
+        client=client,
+        result_stream_prefix="agent.results",
+        correlation_id="test-corr",
+        result_stream_ttl_s=3600,
+    )
+    return emitter, published
+
+
+def _search_registry_returning_error() -> ToolRegistry:
+    async def failing_executor(args: dict) -> ToolResult:
+        return ToolResult(tool_call_id="", content=_RAW_MCP_ERROR, is_error=True)
+
+    registry = ToolRegistry()
+    registry.register(ToolSpec(name="search", description="search"), failing_executor)
+    return registry
+
+
+def _search_registry_raising() -> ToolRegistry:
+    def raising_tool(args):
+        raise RuntimeError(f"connect failed for url '{_INTERNAL_URL}'")
+
+    return StubToolRegistry({"search": raising_tool})
+
+
+def _tool_result_payloads(published: list[dict]) -> list[dict]:
+    return [
+        json.loads(fields["payload"])
+        for fields in published
+        if fields["type"] == "agent.tool_result"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("make_tools", "call_name", "call_args", "expected_llm_content", "expected_event_content"),
+    [
+        pytest.param(
+            _search_registry_returning_error,
+            "search",
+            "{}",
+            _RAW_MCP_ERROR,
+            'Tool "search" failed. The agent was told and may try another way.',
+            id="executor-error-result",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "search",
+            "{}",
+            f"Tool 'search' raised: connect failed for url '{_INTERNAL_URL}'",
+            'Tool "search" failed. The agent was told and may try another way.',
+            id="executor-raises",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "search",
+            "{bad json",
+            "Invalid JSON arguments: Expecting property name enclosed in double quotes: "
+            "line 1 column 2 (char 1)",
+            'Tool "search" failed. The agent was told and may try another way.',
+            id="invalid-json-arguments",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "nonexistent",
+            "{}",
+            "Unknown tool: nonexistent",
+            'Tool "nonexistent" failed. The agent was told and may try another way.',
+            id="unknown-tool",
+        ),
+    ],
+)
+async def test_failed_tool_shows_a_generic_notice_while_the_llm_keeps_the_raw_error(
+    make_tools, call_name, call_args, expected_llm_content, expected_event_content
+):
+    emitter, published = _make_live_emitter()
+    context = make_context()
+    llm = FakeLLMClient([tool_chunks("c1", call_name, call_args), text_chunks("done")])
+
+    await DefaultAgentLoop(llm).run(
+        context, make_tools(), emitter, MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    tool_message = next(m for m in context.messages if m["role"] == "tool")
+    assert json.loads(tool_message["content"])["content"] == expected_llm_content
+
+    (event,) = _tool_result_payloads(published)
+    assert event["content"] == expected_event_content
+    assert event["is_error"] is True
+    assert _INTERNAL_URL not in json.dumps(published)
+
+
+async def test_budget_rejection_shows_its_own_text_in_the_run_panel():
+    emitter, published = _make_live_emitter()
+    context = make_context(max_tool_calls=0)
+    llm = FakeLLMClient([tool_chunks("c1", "search", "{}"), text_chunks("summary")])
+
+    await DefaultAgentLoop(llm).run(
+        context, _search_registry_raising(), emitter, MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    budget_text = (
+        "Tool call budget exhausted: at most 0 tool call(s) may be executed for this "
+        "task; this call was not executed."
+    )
+    (event,) = _tool_result_payloads(published)
+    assert event["content"] == budget_text
+    tool_message = next(m for m in context.messages if m["role"] == "tool")
+    assert json.loads(tool_message["content"])["content"] == budget_text
+
+
+def _slow_search_registry() -> ToolRegistry:
+    async def slow_executor(args: dict) -> ToolResult:
+        await asyncio.sleep(2)
+        return ToolResult(tool_call_id="", content="never", is_error=False)
+
+    registry = ToolRegistry()
+    registry.register(ToolSpec(name="search", description="search"), slow_executor)
+    return registry
+
+
+@pytest.mark.parametrize(
+    ("make_tools", "call_name", "call_args", "tool_timeout", "expected_line_start"),
+    [
+        pytest.param(
+            _search_registry_returning_error,
+            "search",
+            "{}",
+            None,
+            "tool failed correlation_id=test-corr id=c1 name=search kind=tool_error "
+            f"detail={redact_value(_RAW_MCP_ERROR)}",
+            id="tool-returned-an-error",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "search",
+            "{}",
+            None,
+            "tool failed correlation_id=test-corr id=c1 name=search kind=raised "
+            "detail=RuntimeError: <redacted len=",
+            id="tool-raised",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "search",
+            "{bad json",
+            None,
+            "tool failed correlation_id=test-corr id=c1 name=search kind=invalid_arguments "
+            "detail=JSONDecodeError: <redacted len=",
+            id="invalid-json-arguments",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "nonexistent",
+            "{}",
+            None,
+            "tool failed correlation_id=test-corr id=c1 name=nonexistent kind=unknown_tool "
+            "detail=KeyError: <redacted len=",
+            id="unknown-tool",
+        ),
+        pytest.param(
+            _slow_search_registry,
+            "search",
+            "{}",
+            1,
+            "tool failed correlation_id=test-corr id=c1 name=search kind=timeout detail=1s",
+            id="timeout",
+        ),
+    ],
+)
+async def test_failed_tool_is_logged_with_the_kind_of_failure_and_no_raw_text(
+    make_tools, call_name, call_args, tool_timeout, expected_line_start
+):
+    context = make_context(tool_timeout=tool_timeout)
+    llm = FakeLLMClient([tool_chunks("c1", call_name, call_args), text_chunks("done")])
+
+    with capture_logs_at("WARNING") as messages:
+        await DefaultAgentLoop(llm).run(
+            context, make_tools(), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5)
+        )
+
+    warning_line = log_line_starting_with(messages, "tool failed ")
+    assert warning_line.startswith(expected_line_start)
+    log_text = "\n".join(messages)
+    assert _INTERNAL_URL not in log_text
+    assert "Expecting property name" not in log_text

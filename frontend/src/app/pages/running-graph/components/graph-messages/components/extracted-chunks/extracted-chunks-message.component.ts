@@ -52,6 +52,12 @@ export class ExtractedChunksMessageComponent {
         return kind ? RAG_TYPE_LABELS[kind] : null;
     }
 
+    /** Why the search failed; null when it ran. */
+    get searchError(): string | null {
+        const error = this.data?.error;
+        return typeof error === 'string' && error.trim() ? error.trim() : null;
+    }
+
     get chunks(): ExtractedChunk[] {
         const data = this.data;
         if (!data || this.ragKind === 'graph') return [];

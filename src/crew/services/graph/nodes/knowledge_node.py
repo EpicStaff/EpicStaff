@@ -1,12 +1,14 @@
 import asyncio
 from typing import Any
 
+from clients.errors import ClientError
+from foundation.utils.error_reference import log_with_reference
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.state import State
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
-from services.graph.exceptions import KnowledgeSearchError
+from services.graph.exceptions import EmptyKnowledgeQueryError, KnowledgeSearchError
 from services.graph.nodes.base_node import BaseNode
 from services.knowledge_search_service import KnowledgeSearchService
 from src.shared.models import RagSearchConfig
@@ -85,9 +87,9 @@ class KnowledgeNode(BaseNode):
         query = self._build_query(input_)
 
         if not query.strip():
-            raise ValueError(
-                f"Knowledge node '{self.node_name}' received an empty search query: "
-                "set a query or map an input that resolves to non-empty text."
+            raise EmptyKnowledgeQueryError(
+                f'Knowledge Retriever node "{self.node_label}" got an empty query. '
+                "Set a query, or map an input that has text."
             )
 
         rag_search_config = self.rag_search_config.model_dump() if self.rag_search_config else {}
@@ -109,9 +111,21 @@ class KnowledgeNode(BaseNode):
                 node_name=self.node_name,
                 execution_order=execution_order,
             )
-        except (RuntimeError, TimeoutError, ValueError) as e:
+        except (RuntimeError, TimeoutError, ValueError, ClientError) as e:
+            # The raw error can name internal hosts or carry the knowledge service's or the
+            # embedding provider's response, so only the log gets it.
+            reference = log_with_reference(
+                "Knowledge search failed: {error} (session_id={session_id}, node_name={node_name})",
+                error=str(e),
+                session_id=self.session_id,
+                node_name=self.node_name,
+                exception=e,
+            )
             raise KnowledgeSearchError(
-                f"Knowledge node '{self.node_name}' search failed: {e}"
+                f'Knowledge Retriever node "{self.node_label}" '
+                "couldn't search its collection. "
+                f"Try again or contact your administrator (reference: {reference}).",
+                reference=reference,
             ) from e
 
         if not results:

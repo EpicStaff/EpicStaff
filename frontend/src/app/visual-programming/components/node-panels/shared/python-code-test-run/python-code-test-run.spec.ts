@@ -6,6 +6,7 @@ import {
     PollEvent,
     PythonCodeResult,
     PythonCodeRunService,
+    PythonRunError,
     RunPythonCodeRequest,
 } from '../../../../services/python-code-run.service';
 import { parseTestInputValues, PythonCodeTestRun } from './python-code-test-run';
@@ -110,13 +111,23 @@ describe('PythonCodeTestRun', () => {
         expect(codeRun.status()).toBe('error');
     });
 
-    it('logs an HTTP error of the run request', () => {
+    it.each([
+        {
+            case: 'a plain sentence when the server is unreachable',
+            status: 0,
+            message: "The server couldn't be reached. Check your connection and try again.",
+        },
+        {
+            case: 'the status when the server sent no message',
+            status: 400,
+            message: 'The server rejected the request.',
+        },
+    ])('logs $case instead of the HTTP status line', ({ status, message }) => {
         codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
-        const httpError = new HttpErrorResponse({ status: 400, url: '/run-python-code/' });
-        start$.error(httpError);
+        start$.error(new HttpErrorResponse({ status, url: 'http://localhost/api/run-python-code/' }));
 
-        expect(messages().at(-1)).toBe(`error: Error: ${httpError.message}`);
-        expect(codeRun.error()).toBe(httpError.message);
+        expect(messages().at(-1)).toBe(`error: Error: ${message}`);
+        expect(codeRun.error()).toBe(message);
         expect(codeRun.status()).toBe('error');
         expect(codeRun.isRunning()).toBe(false);
     });
@@ -141,6 +152,29 @@ describe('PythonCodeTestRun', () => {
         expect(messages().at(-1)).toBe(`error: Error: ${message}`);
         expect(codeRun.error()).toBe(message);
         expect(codeRun.status()).toBe('error');
+    });
+
+    it('logs the reason the wait for the result gave, such as running out of time', () => {
+        const message =
+            'No result within the execution timeout of 90 s and a grace period. The code may still be running on the server.';
+        startAndPoll();
+        poll$.error(new PythonRunError(message));
+
+        expect(messages().at(-1)).toBe(`error: Error: ${message}`);
+        expect(codeRun.error()).toBe(message);
+        expect(codeRun.status()).toBe('error');
+    });
+
+    it('logs a plain sentence, not the raw message, for an error nobody expected', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        startAndPoll();
+        poll$.error(new TypeError('Cannot read properties of undefined'));
+
+        expect(messages().at(-1)).toBe('error: Error: Something went wrong. Try again.');
+        expect(codeRun.error()).toBe('Something went wrong. Try again.');
+        expect(codeRun.status()).toBe('error');
+
+        consoleError.mockRestore();
     });
 
     it('ignores a run while one is in flight', () => {
@@ -180,7 +214,7 @@ describe('PythonCodeTestRun', () => {
 
     it('reset clears the result and error of a finished run', () => {
         codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
-        start$.error(new Error('boom'));
+        start$.error(new HttpErrorResponse({ status: 500 }));
         expect(codeRun.status()).toBe('error');
 
         codeRun.reset();

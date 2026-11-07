@@ -12,6 +12,12 @@ import litellm
 import pytest
 from app.llm.retry import RetryPolicy, _resolve_present_exception_classes
 
+from tests.provider_errors import (
+    OPENAI_QUOTA_BODY,
+    OPENAI_RATE_LIMIT_BODY,
+    litellm_error_from_openai_response,
+)
+
 
 def _litellm_error(exception_type: type[Exception]) -> Exception:
     try:
@@ -117,6 +123,27 @@ async def test_retry_after_header_overrides_backoff(slept, retry_after, expected
 
     assert await policy.aretry(call) == "ok"
     assert slept == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_calls"),
+    [(OPENAI_QUOTA_BODY, 1), (OPENAI_RATE_LIMIT_BODY, 4)],
+    ids=["quota-exhausted-not-retried", "rate-limited-retried"],
+)
+async def test_an_account_out_of_credit_is_not_retried(slept, body, expected_calls):
+    calls = [0]
+    error = await litellm_error_from_openai_response(429, body)
+
+    async def call():
+        calls[0] += 1
+        raise error
+
+    policy = RetryPolicy(max_retries=3, base_delay=1.0, max_delay=30.0, jitter=0.0)
+
+    with pytest.raises(litellm.RateLimitError):
+        await policy.aretry(call)
+
+    assert calls[0] == expected_calls
 
 
 def test_missing_fallback_trigger_class_is_skipped_not_widened_to_api_error(monkeypatch):

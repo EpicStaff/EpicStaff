@@ -35,6 +35,16 @@ def _add_leaf_node(graph, start_node):
     Edge.objects.create(graph=graph, start_node_id=start_node.pk, end_node_id=python_node.pk)
 
 
+def _connected_subflow_node(graph, subgraph, node_name):
+    """A subflow node the run reaches: an edge leads to it from the graph's Start node."""
+    start_node = StartNode.objects.get(graph=graph)
+    subflow_node = SubGraphNode.objects.create(
+        graph=graph, subgraph=subgraph, node_number=1, node_name=node_name
+    )
+    Edge.objects.create(graph=graph, start_node_id=start_node.pk, end_node_id=subflow_node.pk)
+    return subflow_node
+
+
 @pytest.mark.django_db
 def test_detects_cycle_not_containing_root(default_org, service):
     """Cycle between B and C, root A not in cycle: A → B ⇄ C.
@@ -53,9 +63,9 @@ def test_detects_cycle_not_containing_root(default_org, service):
     StartNode.objects.create(graph=graph_c, variables={})
 
     # Create edges: A references B, B references C, C references B (cycle)
-    SubGraphNode.objects.create(graph=graph_a, subgraph=graph_b, node_number=1, node_name="subgraph_b")
-    SubGraphNode.objects.create(graph=graph_b, subgraph=graph_c, node_number=1, node_name="subgraph_c")
-    SubGraphNode.objects.create(graph=graph_c, subgraph=graph_b, node_number=1, node_name="subgraph_b_again")
+    _connected_subflow_node(graph_a, graph_b, "subgraph_b")
+    _connected_subflow_node(graph_b, graph_c, "subgraph_c")
+    _connected_subflow_node(graph_c, graph_b, "subgraph_b_again")
 
     # Create session on root flow
     session = Session.objects.create(
@@ -84,8 +94,8 @@ def test_detects_cycle_through_root(default_org, service):
     StartNode.objects.create(graph=graph_b, variables={})
 
     # Create cycle: A → B → A
-    SubGraphNode.objects.create(graph=graph_a, subgraph=graph_b, node_number=1, node_name="subgraph_b")
-    SubGraphNode.objects.create(graph=graph_b, subgraph=graph_a, node_number=1, node_name="subgraph_a")
+    _connected_subflow_node(graph_a, graph_b, "subgraph_b")
+    _connected_subflow_node(graph_b, graph_a, "subgraph_a")
 
     session = Session.objects.create(
         graph=graph_a, status=Session.SessionStatus.PENDING, variables={}
@@ -105,7 +115,7 @@ def test_detects_self_loop(default_org, service):
     start_a = StartNode.objects.create(graph=graph_a, variables={})
 
     # Create self-reference
-    SubGraphNode.objects.create(graph=graph_a, subgraph=graph_a, node_number=1, node_name="self_ref")
+    _connected_subflow_node(graph_a, graph_a, "self_ref")
 
     session = Session.objects.create(
         graph=graph_a, status=Session.SessionStatus.PENDING, variables={}
@@ -135,7 +145,9 @@ def test_acyclic_diamond_passes(default_org, service):
     node_ref_b = SubGraphNode.objects.create(
         graph=graph_a, subgraph=graph_b, node_number=1, node_name="ref_b"
     )
-    SubGraphNode.objects.create(graph=graph_a, subgraph=graph_c, node_number=2, node_name="ref_c")
+    node_ref_c = SubGraphNode.objects.create(
+        graph=graph_a, subgraph=graph_c, node_number=2, node_name="ref_c"
+    )
     node_ref_d = SubGraphNode.objects.create(
         graph=graph_b, subgraph=graph_d, node_number=1, node_name="ref_d"
     )
@@ -146,6 +158,7 @@ def test_acyclic_diamond_passes(default_org, service):
     # Each graph needs a valid entry point: the root flow run on, and every
     # subgraph, since _build_graph_data recurses into each of them independently.
     Edge.objects.create(graph=graph_a, start_node_id=start_a.pk, end_node_id=node_ref_b.pk)
+    Edge.objects.create(graph=graph_a, start_node_id=node_ref_b.pk, end_node_id=node_ref_c.pk)
     Edge.objects.create(graph=graph_b, start_node_id=start_b.pk, end_node_id=node_ref_d.pk)
     Edge.objects.create(graph=graph_c, start_node_id=start_c.pk, end_node_id=node_ref_d2.pk)
     _add_leaf_node(graph_d, start_d)
@@ -213,10 +226,10 @@ def test_deep_chain_with_cycle_at_the_end(default_org, service):
     StartNode.objects.create(graph=graph_d, variables={})
 
     # Chain with cycle: A → B → C → D → B
-    SubGraphNode.objects.create(graph=graph_a, subgraph=graph_b, node_number=1, node_name="ref_b")
-    SubGraphNode.objects.create(graph=graph_b, subgraph=graph_c, node_number=1, node_name="ref_c")
-    SubGraphNode.objects.create(graph=graph_c, subgraph=graph_d, node_number=1, node_name="ref_d")
-    SubGraphNode.objects.create(graph=graph_d, subgraph=graph_b, node_number=1, node_name="back_to_b")
+    _connected_subflow_node(graph_a, graph_b, "ref_b")
+    _connected_subflow_node(graph_b, graph_c, "ref_c")
+    _connected_subflow_node(graph_c, graph_d, "ref_d")
+    _connected_subflow_node(graph_d, graph_b, "back_to_b")
 
     session = Session.objects.create(
         graph=graph_a, status=Session.SessionStatus.PENDING, variables={}

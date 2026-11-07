@@ -8,12 +8,11 @@ from loguru import logger
 from packaging.utils import canonicalize_name
 
 from manager.application.ports import AbstractUVProvider
-from manager.domain.errors import (
-    BaseError,
-    UVBuildError,
-    UVDependencyResolutionError,
-    UVPackageNotFoundError,
-    UVVersionNotFoundError,
+from manager.application.ports.errors import (
+    DependencyConflictError,
+    EnvironmentBuildError,
+    PackageNotFoundError,
+    PackageVersionNotFoundError,
 )
 from manager.domain.types import LibraryString
 
@@ -65,8 +64,8 @@ def _normalize(stderr: str) -> str:
     return " ".join(stderr.split())
 
 
-def _parse_stderr(args: Sequence[str], stderr: str) -> BaseError:
-    """Turn the stderr of a failed uv command into a domain error.
+def _parse_stderr(args: Sequence[str], stderr: str) -> EnvironmentBuildError:
+    """Turn the stderr of a failed uv command into the build port's error.
 
     Only dependency resolution (`uv pip compile` and `uv pip sync`) and `uv build`
     report failures a user can act on; every other command and every unrecognised
@@ -79,34 +78,34 @@ def _parse_stderr(args: Sequence[str], stderr: str) -> BaseError:
         parts = [match.group(0).strip() for match in BUILD_EXCEPTION_PATTERN.finditer(stderr)][-1:]
         parts += [cause.strip() for cause in BUILD_CAUSE_PATTERN.findall(stderr)]
         if not parts:
-            return UVBuildError("Could not build a wheel from this source.")
+            return EnvironmentBuildError("Could not build a wheel from this source.")
         detail = "; ".join(parts)[:MAX_BUILD_FAILURE_LENGTH]
-        return UVBuildError(f"Could not build a wheel from this source: {detail}")
+        return EnvironmentBuildError(f"Could not build a wheel from this source: {detail}")
 
     if tuple(args[:2]) not in PARSED_COMMANDS:
-        return UVBuildError()
+        return EnvironmentBuildError()
 
     cause = _normalize(stderr)
     if RESOLUTION_FAILURE not in cause:
-        return UVBuildError()
+        return EnvironmentBuildError()
 
     not_found = PACKAGE_NOT_FOUND_PATTERN.search(cause)
     if not_found is not None:
-        return UVPackageNotFoundError(package=canonicalize_name(not_found["name"]))
+        return PackageNotFoundError(package=canonicalize_name(not_found["name"]))
 
     for pattern in (MISSING_VERSION_PATTERN, UNSATISFIED_RANGE_PATTERN):
         no_version = pattern.search(cause)
         if no_version is not None:
-            return UVVersionNotFoundError(
+            return PackageVersionNotFoundError(
                 package=canonicalize_name(no_version["name"]),
                 specification=no_version["specification"].rstrip(",."),
             )
 
     conflict = CONFLICT_PATTERN.search(cause)
     if conflict is not None:
-        return UVDependencyResolutionError(package=canonicalize_name(conflict["name"]))
+        return DependencyConflictError(package=canonicalize_name(conflict["name"]))
 
-    return UVBuildError()
+    return EnvironmentBuildError()
 
 
 class UVProvider(AbstractUVProvider):
@@ -232,7 +231,9 @@ class UVProvider(AbstractUVProvider):
         # distributions would leave this ambiguous, so take only an unambiguous result.
         wheels = list(output_dir.glob("*.whl"))
         if len(wheels) != 1:
-            raise UVBuildError(f"The build produced {len(wheels)} wheels, expected exactly one.")
+            raise EnvironmentBuildError(
+                f"The build produced {len(wheels)} wheels, expected exactly one."
+            )
         return wheels[0]
 
     @staticmethod

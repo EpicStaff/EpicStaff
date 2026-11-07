@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 
 [[package]]
@@ -269,7 +269,7 @@ requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "idna", marker = "extra == 'transitive-pins'", specifier = "==3.18" },
     { name = "litestar", marker = "extra == 'litestar'", specifier = "==2.24.0" },
-    { name = "loguru", specifier = "==0.7.3" },
+    { name = "loguru", specifier = ">=0.7.2,<0.8" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "urllib3", marker = "extra == 'transitive-pins'", specifier = "==2.7.0" },
 ]

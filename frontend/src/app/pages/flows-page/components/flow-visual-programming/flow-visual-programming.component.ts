@@ -37,7 +37,7 @@ import {
     SystemOnePromptKind,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, LABELS_STORE, LlmConfigStorageService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, formatNodeLabel, generateUuid } from '@shared/utils';
+import { escapeHtml, formatNodeLabel, generateUuid, httpErrorReason, showHttpErrorToast } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -597,7 +597,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.queueFullSave(() => this.extractAndSave(graphId, selectedNodeIds, newGraphDto))
                 ),
                 catchError((err: HttpErrorResponse) => {
-                    this.toastService.error(`Extract to subflow failed: ${extractHttpErrorMessage(err)}`);
+                    showHttpErrorToast(this.toastService, "Couldn't extract the selection into a subflow.", err);
                     return EMPTY;
                 })
             )
@@ -642,7 +642,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 switchMap((subflowFlowModel) =>
                     this.flowApiService.getSubflowUsage(subgraphId).pipe(
                         catchError((err: HttpErrorResponse) => {
-                            this.toastService.error(`Could not check subflow usage: ${extractHttpErrorMessage(err)}`);
+                            showHttpErrorToast(this.toastService, "Couldn't check where the subflow is used.", err);
                             return EMPTY;
                         }),
                         // Step 4: If used elsewhere, show a confirmation dialog; otherwise skip it.
@@ -708,7 +708,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     return of(false);
                 }),
                 catchError((err: HttpErrorResponse) => {
-                    this.toastService.error(`Unpack subflow failed: ${extractHttpErrorMessage(err)}`);
+                    showHttpErrorToast(this.toastService, "Couldn't unpack the subflow.", err);
                     return EMPTY;
                 })
             )
@@ -842,9 +842,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 this.wsService.connect(graph.id);
             }),
             map(() => void 0),
-            catchError((e) => {
+            catchError((err: unknown) => {
                 if (!isStillRouted()) return EMPTY;
-                this.toastService.error(e.error?.detail || 'Failed to load graph');
+                if (err instanceof HttpErrorResponse) {
+                    showHttpErrorToast(this.toastService, "Couldn't load the flow.", err);
+                } else {
+                    // Thrown on the way, e.g. by a graph that can't be applied: a developer's
+                    // message, so it goes to the console, not the UI.
+                    console.error(err);
+                    this.toastService.error("Couldn't load the flow.");
+                }
                 void this.router.navigate(['/flows/my']);
                 return EMPTY;
             }),
@@ -885,11 +892,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             ];
         } catch (error) {
             console.error('Node validation crashed before save — blocking the save defensively', error);
-            return ['a node failed validation — check the console and try again'];
+            // The checks run over every node at once, so which node broke them is not known here.
+            const message = "Couldn't save the flow: a node has invalid settings.";
+            this.toastService.error(message);
+            return [message];
         }
 
         if (issues.length > 0) {
-            this.toastService.error(`Cannot save flow — fix the following node(s) first: ${issues.join('; ')}.`);
+            this.toastService.error(`Couldn't save the flow: fix these nodes first: ${issues.join('; ')}.`);
         }
         return issues;
     }
@@ -1203,7 +1213,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                         'This graph was modified by another user. Please refresh to see the latest changes.'
                     );
                 } else {
-                    this.toastService.error(`Failed to save graph: ${extractHttpErrorMessage(err)}`);
+                    showHttpErrorToast(this.toastService, "Couldn't save the flow.", err);
                 }
                 return EMPTY;
             })
@@ -1396,7 +1406,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                         'This graph was modified by another user. Please refresh to see the latest changes.'
                     );
                 } else {
-                    this.toastService.error(`Failed to save node: ${extractHttpErrorMessage(err)}`);
+                    showHttpErrorToast(this.toastService, "Couldn't save the node.", err);
                 }
                 return EMPTY;
             })
@@ -1506,7 +1516,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public handleRunFlow(): void {
         this.runAfterSave(
             () => this.runGraphService.runGraph(this.graph.id, this.graph.start_node_list[0].variables),
-            (error) => this.toastService.error(`Failed to run graph: ${extractHttpErrorMessage(error)}`)
+            (error) => showHttpErrorToast(this.toastService, "Couldn't run the flow.", error)
         );
     }
 
@@ -1545,10 +1555,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             const payloadErrors: unknown = error.error?.errors;
             const isMessageList =
                 Array.isArray(payloadErrors) && payloadErrors.every((message) => typeof message === 'string');
-            this.flowTestRunService.setServerErrors(
-                nodeId,
-                isMessageList ? payloadErrors : [extractHttpErrorMessage(error)]
-            );
+            this.flowTestRunService.setServerErrors(nodeId, isMessageList ? payloadErrors : [httpErrorReason(error)]);
             // The errors show under that node's test payload editor; say so when it is not on screen.
             if (this.sidePanelService.selectedNodeId() !== nodeId) {
                 this.toastService.error(TEST_RUN_PAYLOAD_REJECTED_MESSAGE);
@@ -1563,7 +1570,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.toastService.error("You don't have permission to run tests on this flow.");
             return;
         }
-        this.toastService.error(`Failed to start test run: ${extractHttpErrorMessage(error)}`);
+        showHttpErrorToast(this.toastService, "Couldn't start the test run.", error);
     }
 
     /**

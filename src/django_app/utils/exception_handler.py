@@ -13,6 +13,13 @@ from foundation.transport.http.errors import (
     ClientRateLimitError,
     ClientValidationError,
 )
+from foundation.utils.error_reference import (
+    INTERNAL_ERROR_CODE,
+    INTERNAL_ERROR_MESSAGE,
+    log_with_reference,
+    new_reference,
+    trusted_reference,
+)
 from psycopg_pool import PoolTimeout
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, Throttled, ValidationError
@@ -27,63 +34,84 @@ from utils.logger import logger
 # Keys DRF generates itself; naming them back at the client adds no information.
 _UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
 
+UPSTREAM_REFUSED_MESSAGE = "The request was refused. Check what you entered and try again."
+UPSTREAM_NOT_FOUND_MESSAGE = "The requested item wasn't found. It may have been deleted."
+UPSTREAM_RATE_LIMITED_MESSAGE = "Too many requests right now. Wait a moment and try again."
 
-def _flatten_detail(detail) -> str:
+
+def flatten_error_detail(detail) -> str:
     """Render DRF's nested error detail as plain text, one message per error."""
     if isinstance(detail, dict):
         return "; ".join(
-            _flatten_detail(value)
+            flatten_error_detail(value)
             if key in _UNLABELLED_KEYS
-            else f"{key}: {_flatten_detail(value)}"
+            else f"{key}: {flatten_error_detail(value)}"
             for key, value in detail.items()
         )
 
     if isinstance(detail, (list, tuple)):
-        return "; ".join(_flatten_detail(item) for item in detail)
+        return "; ".join(flatten_error_detail(item) for item in detail)
 
     return str(detail)
 
 
 def _upstream_detail(exc: ClientError) -> str | None:
-    """Return what the upstream said, or the exception text when there is no body.
+    """Return the upstream response body, or the exception text when there is no body.
 
     `ClientTimeoutError` is raised without a response, and a response body can be empty,
-    so neither is assumed to be there. `None` lets DRF fall back to its default detail
-    rather than render an empty message.
+    so neither is assumed to be there.
     """
     response = getattr(exc, "response", None)
     if response is not None and response.text:
-        return _upstream_message(response.text)
+        return response.text
     return str(exc) or None
 
 
-def _upstream_message(text: str) -> str:
-    """The upstream failure in words, taken out of the envelope it arrived in.
+# Pydantic starts the message of a failed validator with this; it means nothing to a user.
+_PYDANTIC_VALUE_ERROR_PREFIX = "Value error, "
 
-    Services answer with the shared `{"type", "errors": [{"code", "detail", "attr"}]}`
-    shape; handed on as it stands, that JSON is what the user reads on their screen.
-    A body in any other shape is passed through, there being nothing to unwrap.
-    """
+# An upstream 401 or 403 refuses this gateway's own credentials, not the caller's. Passed
+# through, it would sign the user out or tell them they lack a permission they have.
+_GATEWAY_CREDENTIAL_STATUSES = frozenset({status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN})
+
+
+def _upstream_envelope(upstream_body: str | None) -> dict | None:
+    """Return the upstream body as a JSON object, or None when it isn't one."""
     try:
-        body = json.loads(text)
+        body = json.loads(upstream_body or "")
     except ValueError:
-        return text
+        return None
+    return body if isinstance(body, dict) else None
 
-    if not isinstance(body, dict):
-        return text
 
-    errors = body.get("errors")
-    if isinstance(errors, list):
-        details = [
-            error["detail"]
-            for error in errors
-            if isinstance(error, dict) and isinstance(error.get("detail"), str)
-        ]
-        if details:
-            return "; ".join(details)
+def _upstream_public_message(body: dict | None) -> str | None:
+    """Return what a proxied service's refusal says, in words for the user, or None.
 
-    detail = body.get("detail")
-    return detail if isinstance(detail, str) and detail else text
+    The services answer with foundation's error envelope,
+    `{"type": ..., "errors": [{"detail": ..., "attr": ...}], "reference": ...}`, whose
+    `detail` is always safe to show. Each `detail` becomes one sentence, prefixed with its
+    `attr` as `attr: detail`, the way `flatten_error_detail` labels a field. A body of any
+    other shape is not written for a user, so the caller shows its own text.
+    """
+    errors = body.get("errors") if body is not None else None
+    if not isinstance(errors, list):
+        return None
+    sentences = [
+        _rejected_field_sentence(error)
+        for error in errors
+        if isinstance(error, dict)
+        and isinstance(error.get("detail"), str)
+        and error["detail"].strip()
+    ]
+    return " ".join(sentences) if sentences else None
+
+
+def _rejected_field_sentence(error: dict) -> str:
+    detail = error["detail"].strip().removeprefix(_PYDANTIC_VALUE_ERROR_PREFIX)
+    if not detail.endswith((".", "!", "?")):
+        detail = f"{detail}."
+    attr = error.get("attr")
+    return f"{attr}: {detail}" if isinstance(attr, str) and attr else detail
 
 
 def _client_error_as_api_exception(exc: ClientError) -> APIException:
@@ -91,36 +119,75 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
 
     An upstream 4xx is the caller's own request coming back refused, so it keeps its
     status: a conflict stays a conflict rather than becoming a gateway failure the
-    caller can do nothing about. A dependency that could not be reached at all is
-    service unavailable, which tells the caller the request is worth retrying. What is
-    left - a timeout, an upstream 5xx, a response with no status at all - is this
-    gateway's dependency failing, and is reported as a bad gateway.
+    caller can do nothing about. A 401 or 403 is the exception: it refuses this
+    gateway's credentials, so it is a failure of the dependency. A dependency that
+    could not be reached at all is service unavailable, which tells the caller the
+    request is worth retrying. What is left - a timeout, an upstream 5xx, a 401 or 403,
+    a response with no status at all - is reported as a bad gateway.
+
+    A refusal shows the upstream `detail` texts, which say what is wrong with the
+    caller's own request. When the body isn't the error envelope, a missing resource and
+    rate limiting get a fixed message of their own, and every other refusal a generic
+    one. A failure of the dependency cites a reference: the one the upstream logged its
+    failure under, when it sent a well-formed one, else a new one. This gateway logs the
+    upstream body under it, so the reference the user quotes finds both log lines.
     """
     detail = _upstream_detail(exc)
-
-    if isinstance(exc, ClientNotFoundError):
-        return NotFound(detail)
-    if isinstance(exc, ClientValidationError):
-        return ValidationError(detail)
-    if isinstance(exc, ClientRateLimitError):
-        return Throttled(detail=detail)
-    if isinstance(exc, ClientConnectionError):
-        unreachable_error = APIException(detail)
-        unreachable_error.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        unreachable_error.default_code = "upstream_service_unreachable"
-        return unreachable_error
-
+    body = _upstream_envelope(detail)
     status_code = getattr(getattr(exc, "response", None), "status_code", None)
-    if status_code is not None and status.is_client_error(status_code):
-        client_error = APIException(detail)
-        client_error.status_code = status_code
-        client_error.default_code = _status_code_name(status_code)
-        return client_error
 
-    upstream_error = APIException(detail)
-    upstream_error.status_code = status.HTTP_502_BAD_GATEWAY
-    upstream_error.default_code = "upstream_service_error"
-    return upstream_error
+    if isinstance(exc, ClientConnectionError):
+        return _upstream_server_failure(
+            exc,
+            detail,
+            body,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "upstream_service_unreachable",
+        )
+    if status_code is None or not status.is_client_error(status_code):
+        return _upstream_server_failure(
+            exc, detail, body, status.HTTP_502_BAD_GATEWAY, "upstream_service_error"
+        )
+    if status_code in _GATEWAY_CREDENTIAL_STATUSES:
+        return _upstream_server_failure(
+            exc, detail, body, status.HTTP_502_BAD_GATEWAY, "upstream_service_error"
+        )
+
+    logger.warning(
+        "Proxied service refused a request: {error_type}: {detail}",
+        error_type=type(exc).__name__,
+        detail=detail,
+    )
+    public_message = _upstream_public_message(body)
+    if isinstance(exc, ClientValidationError):
+        return ValidationError(public_message or UPSTREAM_REFUSED_MESSAGE)
+    if isinstance(exc, ClientNotFoundError):
+        return NotFound(public_message or UPSTREAM_NOT_FOUND_MESSAGE)
+    if isinstance(exc, ClientRateLimitError):
+        return Throttled(detail=UPSTREAM_RATE_LIMITED_MESSAGE)
+    client_error = APIException(public_message or UPSTREAM_REFUSED_MESSAGE)
+    client_error.status_code = status_code
+    client_error.default_code = _status_code_name(status_code)
+    return client_error
+
+
+def _upstream_server_failure(
+    exc: ClientError, detail: str | None, body: dict | None, status_code: int, code: str
+) -> APIException:
+    """Log a failure of the dependency and return the error that cites its reference."""
+    upstream_reference = trusted_reference(body.get("reference")) if body is not None else None
+    reference = log_with_reference(
+        "Proxied service call failed: {error_type}: {detail}",
+        error_type=type(exc).__name__,
+        detail=detail,
+        reference=upstream_reference,
+        level="WARNING",
+    )
+    error = APIException(INTERNAL_ERROR_MESSAGE.format(reference=reference))
+    error.status_code = status_code
+    error.default_code = code
+    error.extra_response_data = {"reference": reference}
+    return error
 
 
 def _status_code_name(status_code: int) -> str:
@@ -161,7 +228,29 @@ def _is_database_pool_exhausted(exc: Exception) -> bool:
     )
 
 
-def _log_unhandled_exception(exc: Exception, request, response) -> None:
+# Set on an exception whose traceback its own code has already logged; holds the
+# reference that log line cites.
+_LOGGED_TRACEBACK_REFERENCE_ATTRIBUTE = "_logged_traceback_reference"
+
+
+def mark_traceback_logged(error: BaseException, reference: str) -> None:
+    """Record that `error`'s traceback is already in the log, for code that re-raises it.
+
+    Code that logs an unexpected error itself (under a reference it shows the user) and
+    re-raises it calls this, so the 500 this handler answers with logs only its status
+    line instead of the same traceback a second time, and cites the same reference.
+    Re-raise the same object: wrapping it (`raise OtherError(...) from error`) drops
+    the mark.
+
+    Args:
+        reference: The reference the traceback was logged under.
+    """
+    setattr(error, _LOGGED_TRACEBACK_REFERENCE_ATTRIBUTE, reference)
+
+
+def _log_unhandled_exception(
+    exc: Exception, request, response, *, reference: str, traceback_logged: bool
+) -> None:
     """Log the traceback of an exception answered with the generic 500.
 
     Returning a response stops DRF from re-raising, so Django would log only
@@ -169,15 +258,18 @@ def _log_unhandled_exception(exc: Exception, request, response) -> None:
     traceback, and marks the response as logged so that line is not repeated.
     It goes through stdlib `log_response` rather than loguru on purpose: only
     that call marks the response as logged, so a loguru call would leave
-    Django to repeat the line.
+    Django to repeat the line. An exception whose traceback is already logged
+    gets the status line only. The reference opens the line because the
+    Django log sink keeps only the first 200 characters.
     """
     path = request.path if request is not None else "unknown path"
     log_response(
-        "Internal Server Error: %s",
+        "(reference: %s) Internal Server Error: %s",
+        reference,
         path,
         response=response,
         request=request,
-        exception=exc,
+        exception=None if traceback_logged else exc,
     )
 
 
@@ -221,7 +313,7 @@ def custom_exception_handler(exc, context):
         response.data = {
             "status_code": exc.status_code,
             "code": exc.default_code,
-            "message": _flatten_detail(detail),
+            "message": flatten_error_detail(detail),
         }
         errors = getattr(exc, "errors", None)
         if isinstance(errors, list):
@@ -235,17 +327,27 @@ def custom_exception_handler(exc, context):
         return response
 
     if not DEBUG:
-        # The client gets a generic message: the exception text can carry
-        # internals such as database driver errors.
+        # The client gets a generic message and code: the exception text and class
+        # name can carry internals such as database driver errors. The reference
+        # finds the traceback in the log.
+        logged_reference = getattr(exc, _LOGGED_TRACEBACK_REFERENCE_ATTRIBUTE, None)
+        reference = logged_reference if logged_reference is not None else new_reference()
         response = JsonResponse(
             {
                 "status_code": 500,
-                "code": exc.__class__.__name__,
-                "message": "Unpredictable error",
+                "code": INTERNAL_ERROR_CODE,
+                "message": INTERNAL_ERROR_MESSAGE.format(reference=reference),
+                "reference": reference,
             },
             status=500,
         )
-        _log_unhandled_exception(exc, context.get("request"), response)
+        _log_unhandled_exception(
+            exc,
+            context.get("request"),
+            response,
+            reference=reference,
+            traceback_logged=logged_reference is not None,
+        )
         return response
 
     return response

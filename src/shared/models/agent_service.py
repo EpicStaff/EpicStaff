@@ -15,6 +15,7 @@ Hierarchy
     ``S3FileSpec``          — pool entry for an S3-hosted file.
 ``RunType``             — execution-mode enum; kept here so no agent→shared dep exists.
 ``LoopResult``          — summary returned by ``AgentLoop.run``.
+``LLMErrorKind``        — why an LLM call failed; carried on failed results and errors.
 ``ToolResult``          — outcome of a single tool execution.
 ``ContextAttachment``   — message injected before the first LLM call.
 """
@@ -65,13 +66,51 @@ class StopReason(StrEnum):
     COMPLETED = "completed"  # agent returned a final answer, stopped calling tools
     MAX_ITER_REACHED = "max_iter_reached"
     SCHEMA_SATISFIED = "schema_satisfied"
-    LLM_ERROR = "llm_error"
+    LLM_ERROR = "llm_error"  # the LLM call failed; error_kind says how
+    # The loop failed outside the LLM call: an emitter or Redis failure, a bug.
+    INTERNAL_ERROR = "internal_error"
     TIMEOUT = "timeout"
     MAX_CONSECUTIVE_FAILURES = "max_consecutive_failures"  # tool loop stopped after N consecutive tool failures; graceful summary produced
     MAX_TOOL_CALLS_REACHED = "max_tool_calls_reached"  # tool-call budget for the run exhausted; graceful summary produced
 
 
-FAILURE_STOP_REASONS = frozenset({StopReason.LLM_ERROR, StopReason.TIMEOUT})
+FAILURE_STOP_REASONS = frozenset(
+    {StopReason.LLM_ERROR, StopReason.INTERNAL_ERROR, StopReason.TIMEOUT}
+)
+
+
+class LLMErrorKind(StrEnum):
+    """Why an LLM call failed, as far as the agent service can tell from the provider's error.
+
+    Travels as ``error_kind`` on the ``agent.result`` and ``agent.error`` payloads so crew
+    can tell the user what went wrong without the provider's raw error text, which can
+    quote parts of an API key or the provider's response. Optional on the wire: an
+    ``llm_error`` without it comes from an agent service older than this field and is
+    treated as ``UNKNOWN``.
+    """
+
+    AUTHENTICATION = "authentication"
+    RATE_LIMIT = "rate_limit"
+    QUOTA_EXCEEDED = "quota_exceeded"
+    CONTEXT_TOO_LONG = "context_too_long"
+    MODEL_NOT_FOUND = "model_not_found"
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    CONTENT_REFUSED = "content_refused"
+    PROVIDER_TIMEOUT = "provider_timeout"
+    UNKNOWN = "unknown"
+
+
+class FailedLLM(StrEnum):
+    """Which of the agent's LLMs a failed LLM call went to.
+
+    Travels as ``failed_llm`` on the ``agent.result`` and ``agent.error`` payloads of an
+    ``llm_error``, so crew names the model that actually failed. Optional on the wire: a
+    payload without it comes from an agent service older than this field and is read as
+    ``PRIMARY``.
+    """
+
+    PRIMARY = "primary"
+    FALLBACK = "fallback"
 
 
 class SearchConfigEntry(BaseModel):
@@ -202,6 +241,11 @@ class ToolResult(BaseModel):
 
     ``is_error=True`` signals the loop to treat the content as an error
     message rather than a valid tool response.
+
+    ``content`` is what the LLM receives. An error's ``content`` can quote the
+    raw failure (exception text, server URLs), so the run panel never shows
+    it: live events show ``display_content`` when it is set, and a generic
+    failure notice otherwise.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -209,6 +253,7 @@ class ToolResult(BaseModel):
     tool_call_id: str
     content: str
     is_error: bool = False
+    display_content: str | None = None
 
 
 class ContextAttachment(BaseModel):
@@ -281,7 +326,15 @@ class LoopResult(BaseModel):
     stop_reason: str
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
     error: str | None = None
-    """Failure detail when stop_reason indicates a failure (llm_error/timeout); None on success."""
+    """Failure detail when stop_reason indicates a failure (llm_error/internal_error/timeout);
+    None on success.
+
+    Raw exception text, for logs only: it must never be shown to the user.
+    """
+    error_kind: LLMErrorKind | None = None
+    """Set only when stop_reason is llm_error."""
+    failed_llm: FailedLLM | None = None
+    """Set only when stop_reason is llm_error."""
     tasks: list[TaskRunSummary] | None = None
     """Per-task summaries for ``LIST_OF_TASKS`` runs; ``None`` for ``SINGLE_TASK`` runs."""
     structured_output: Any = None

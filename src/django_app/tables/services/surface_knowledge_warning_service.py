@@ -4,6 +4,7 @@ from agents.services.node_surface_service import NodeSurfaceService
 from src.shared.models import CombinedSurfaceData, CombinedSurfaceKnowledgeData
 from tables.models.graph_models import AgentNode, BaseNode, Graph, TaskNode
 from tables.models.knowledge_models.collection_models import SourceCollection
+from utils.graph_utils import runtime_node_name
 
 _SURFACE_PREFETCH_FIELDS = (
     "surface_list__python_tools",
@@ -34,13 +35,22 @@ class SurfaceKnowledgeWarningService:
     warning instead.
     """
 
-    def build_warnings(self, graph: Graph) -> list[dict]:
+    def build_warnings(self, graph: Graph, *, node_names: set[str] | None = None) -> list[dict]:
+        """Warn about each Agent or Task node surface whose knowledge has no search config.
+
+        Args:
+            node_names: Warn only about the nodes with these runtime names, such as the
+                nodes a run sends to crew; None warns about every node of the flow.
+        """
         task_node_list = TaskNode.objects.filter(graph=graph).prefetch_related(
             *_SURFACE_PREFETCH_FIELDS
         )
         agent_node_list = AgentNode.objects.filter(graph=graph).prefetch_related(
             *_SURFACE_PREFETCH_FIELDS
         )
+        if node_names is not None:
+            task_node_list = self._named(task_node_list, node_names)
+            agent_node_list = self._named(agent_node_list, node_names)
 
         unconfigured_entries = self._collect_unconfigured_entries(
             task_node_list
@@ -51,6 +61,17 @@ class SurfaceKnowledgeWarningService:
         return [
             self._build_warning(node, knowledge, collection_names)
             for node, knowledge in unconfigured_entries
+        ]
+
+    @staticmethod
+    def _named(node_list, node_names: set[str]) -> list:
+        return [
+            node
+            for node in node_list
+            if runtime_node_name(
+                node_name=node.node_name, node_number=node.node_number, node_id=node.id
+            )
+            in node_names
         ]
 
     def _collect_unconfigured_entries(

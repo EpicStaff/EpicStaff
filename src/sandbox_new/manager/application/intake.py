@@ -26,9 +26,9 @@ from typing import Literal
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
 
+from manager.application.errors import SandboxOverloadedError
 from manager.application.ports import FreeSlotProbe
 from manager.application.registry import ExecutionRegistry
-from manager.domain.errors import SandboxOverloadedError
 
 __all__ = [
     "DEFAULT_RETRY_AFTER_SECONDS",

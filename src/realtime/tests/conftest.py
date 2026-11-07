@@ -1,6 +1,7 @@
 import re
 
 import pytest
+from foundation.utils.error_reference import REFERENCE_PATTERN
 from loguru import logger
 
 # Shared fixtures (sample chat data, tool manager) available to every test module.
@@ -11,7 +12,7 @@ TOKEN = "mock_token"
 CONNECTION_URL = f"/realtime/?connection_key={CONNECTION_KEY}&token={TOKEN}"
 
 SECRET_SENTINEL = "sk-live-SENTINEL-do-not-leak-4316"
-PUBLIC_ERROR_REFERENCE = re.compile(r"\(reference: ([0-9a-f]{12})\)")
+PUBLIC_ERROR_REFERENCE = re.compile(rf"\(reference: ({REFERENCE_PATTERN})\)")
 
 
 @pytest.fixture

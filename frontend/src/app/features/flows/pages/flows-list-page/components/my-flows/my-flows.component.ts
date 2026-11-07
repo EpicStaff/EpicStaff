@@ -23,7 +23,7 @@ import {
 } from '@shared/components';
 import { DragScrollDirective } from '@shared/directives';
 import { BulkDeleteService, LABELS_STORE } from '@shared/services';
-import { extractHttpErrorMessage, showExportExclusionWarning } from '@shared/utils';
+import { extractHttpErrorMessage, showExportExclusionWarning, showHttpErrorToast } from '@shared/utils';
 import { filter, switchMap } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
@@ -324,20 +324,9 @@ export class MyFlowsComponent implements AfterViewChecked {
                     console.error('Invalid response from run graph API:', response);
                 }
             },
-            error: (err) => {
+            error: (err: HttpErrorResponse) => {
                 console.error(`Error running flow ${flow.id}`, err);
-
-                // Extract error message from backend response
-                let errorMessage = 'Failed to run flow';
-                if (err.error && err.error.message) {
-                    errorMessage = err.error.message;
-                } else if (err.error && typeof err.error === 'string') {
-                    errorMessage = err.error;
-                } else if (err.message) {
-                    errorMessage = err.message;
-                }
-
-                this.toastService.error(`Error running flow "${flow.name}": ${errorMessage}`);
+                showHttpErrorToast(this.toastService, `Couldn't run "${flow.name}".`, err);
             },
         });
     }

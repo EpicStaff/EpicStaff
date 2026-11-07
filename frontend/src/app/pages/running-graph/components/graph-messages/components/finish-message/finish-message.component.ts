@@ -251,7 +251,10 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                         background-color: rgba(48, 164, 108, 0.15);
                     }
 
-                    &.stop-reason-badge--max_iter_reached {
+                    /* The agent hit one of its limits and stopped early with a partial result. */
+                    &.stop-reason-badge--max_iter_reached,
+                    &.stop-reason-badge--max_tool_calls_reached,
+                    &.stop-reason-badge--max_consecutive_failures {
                         color: #fbbf24;
                         background-color: rgba(251, 191, 36, 0.15);
                     }
@@ -388,6 +391,10 @@ export class FinishMessageComponent implements OnInit {
                 return 'Output matches schema';
             case 'max_iter_reached':
                 return 'Max iterations reached';
+            case 'max_tool_calls_reached':
+                return 'Stopped: too many tool calls.';
+            case 'max_consecutive_failures':
+                return 'Stopped: too many tool errors in a row.';
             case 'completed':
             default:
                 return 'Completed';

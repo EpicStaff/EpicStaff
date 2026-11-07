@@ -33,6 +33,14 @@ from .audit.session_audit import (
     SessionAuditEvent,
 )
 from .base import ValueObject
+from .code_failure import (
+    SERVER_FAILURE_CODES,
+    WRAPPER_FAILURE_CODES,
+    CodeFailure,
+    CodeFailureCode,
+    UserCodeError,
+    describe_user_code_error,
+)
 from .graph_nodes import (
     AgentDefinitionData,
     AgentNodeData,
@@ -161,6 +169,8 @@ from .variables import (
 )
 
 __all__ = [
+    "SERVER_FAILURE_CODES",
+    "WRAPPER_FAILURE_CODES",
     # agents
     "AgentData",
     "AgentDefinitionData",
@@ -187,6 +197,8 @@ __all__ = [
     "ChunkDocumentMessageResponse",
     "ClassificationConditionGroupData",
     "ClassificationDecisionTableNodeData",
+    "CodeFailure",
+    "CodeFailureCode",
     "CodeResultData",
     "CodeTaskData",
     "CollectionSpec",
@@ -287,6 +299,7 @@ __all__ = [
     "TokenUsage",
     "ToolModeLiteral",
     "ToolResult",
+    "UserCodeError",
     # knowledge_rag (cross-service pub/sub contract)
     "ValueObject",
     "Variable",
@@ -300,6 +313,7 @@ __all__ = [
     "_normalize_type",
     # variable_conversion
     "args_schema_to_variables",
+    "describe_user_code_error",
     "json_schema_node_to_nested_variable",
     "nested_variable_to_json_schema_node",
     "variable_adapter",

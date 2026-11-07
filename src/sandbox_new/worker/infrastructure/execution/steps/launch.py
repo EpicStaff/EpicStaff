@@ -4,8 +4,8 @@ Spawns the child under the launcher (which applies the Landlock/seccomp plan),
 dropped to ``sandboxuser`` and in its own session so a timeout can kill the whole
 process group. Records raw ``stdout``/``stderr``/``returncode`` on the context; the
 capture step reads the result file and scrubs secrets afterwards. A timeout is
-reported as return code 124. Nothing here raises: a failure to launch surfaces as a
-failed context.
+reported as return code 124 with an ``execution_timeout`` failure. Nothing here raises:
+a failure to launch surfaces as a failed context.
 
 The timeout a run gets is decided here by ``effective_timeout``, not by the caller: the
 per-job value is a request, bounded by the deployment's configured minimum and maximum.
@@ -20,6 +20,7 @@ from pathlib import Path
 
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode
 
 from worker.application.context import ExecutionContext
 from worker.domain.enums import NetworkPolicy
@@ -36,6 +37,8 @@ LAUNCHER_PATH = Path(__file__).parents[2] / "isolation" / "launcher.py"
 # that escaped the process group could still hold a pipe's write end open, which
 # would keep communicate() from ever seeing EOF; without this bound that hangs.
 _TIMEOUT_DRAIN_GRACE_SECONDS = 5
+
+_TIMEOUT_MESSAGE = "The code ran longer than {timeout} {unit} and was stopped."
 
 
 def effective_timeout(
@@ -202,13 +205,19 @@ class LaunchStep:
         stdout = stdout_bytes.decode("utf-8", errors="replace")
         stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-        timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
         if not killed:
-            timeout_message += " Process could not be terminated and may still be running."
-        stderr = f"{stderr}\n{timeout_message}" if stderr else timeout_message
+            logger.warning(
+                "Timed-out execution {} could not be terminated and may still be running.",
+                execution_id,
+            )
+        unit = "second" if timeout == 1 else "seconds"
+        timeout_message = _TIMEOUT_MESSAGE.format(timeout=f"{timeout:g}", unit=unit)
 
         context.stdout = stdout
         context.stderr = stderr
+        context.record_failure(
+            CodeFailure(code=CodeFailureCode.EXECUTION_TIMEOUT, detail=timeout_message)
+        )
         context.returncode = 124
 
 

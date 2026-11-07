@@ -15,7 +15,7 @@ from dotdict import DotDict
 from loguru import logger
 
 from services.graph.events import StopEvent
-from services.graph.exceptions import InvalidStatePathError
+from services.graph.exceptions import InvalidStatePathError, NodeExecutionError
 from services.graph.nodes.agent_node import AgentNode
 from services.graph.nodes.task_node import TaskNode
 from services.graph.remembered_outputs import RememberedOutputsStore
@@ -51,8 +51,11 @@ class FakeAgentService:
         self.dispatched = None
         self.storage_credentials = None
 
-    async def _run(self, node_data, stop_event, on_event=None, storage_credentials=None):
+    async def _run(
+        self, node_data, stop_event, *, agent_definition, llm, on_event=None, storage_credentials=None
+    ):
         self.dispatched = node_data
+        self.dispatched_agent = (agent_definition, llm)
         self.storage_credentials = storage_credentials
         for envelope_type, payload in self.events:
             on_event(StreamEnvelope(type=envelope_type, correlation_id="corr-1", payload=payload))
@@ -234,8 +237,11 @@ async def test_misconfigured_node_fails_without_calling_the_agent(
     service = FakeAgentService()
     node = build_node(service, remembered_outputs, agent_definition=agent_definition)
 
-    with pytest.raises(ValueError, match=error):
+    with pytest.raises(NodeExecutionError) as raised:
         await _run(node)
+
+    assert isinstance(raised.value.__cause__, ValueError)
+    assert error in str(raised.value.__cause__)
 
     assert service.dispatched is None
 
@@ -244,8 +250,11 @@ async def test_misconfigured_node_fails_without_calling_the_agent(
 async def test_agent_failure_propagates(build_node, stream_type, remembered_outputs):
     node = build_node(FakeAgentService(error=RuntimeError("agent unreachable")), remembered_outputs)
 
-    with pytest.raises(RuntimeError, match="agent unreachable"):
+    with pytest.raises(NodeExecutionError) as raised:
         await _run(node)
+
+    assert isinstance(raised.value.__cause__, RuntimeError)
+    assert str(raised.value.__cause__) == "agent unreachable"
 
 
 @NODE_KINDS
@@ -314,6 +323,15 @@ async def test_task_instructions_are_rendered_from_the_input(
     await _run(node, variables)
 
     assert service.dispatched.instructions == expected
+
+
+@NODE_KINDS
+async def test_node_dispatches_its_checked_agent_and_llm(build_node, stream_type, remembered_outputs):
+    service = FakeAgentService()
+
+    await _run(build_node(service, remembered_outputs))
+
+    assert service.dispatched_agent == (AGENT, AGENT.llm)
 
 
 @pytest.fixture
@@ -385,8 +403,11 @@ async def test_input_mapped_to_a_method_fails_before_the_agent_is_called(
         input_map={"fn": "variables.update"},
     )
 
-    with pytest.raises(InvalidStatePathError, match="'variables.update'"):
+    with pytest.raises(NodeExecutionError) as raised:
         await _run(node)
+
+    assert isinstance(raised.value.__cause__, InvalidStatePathError)
+    assert "'variables.update'" in raised.value.public_message
 
     assert service.dispatched is None
 
@@ -508,7 +529,10 @@ async def test_agent_node_renders_every_tasks_instructions(remembered_outputs):
 async def test_agent_node_without_tasks_fails_without_calling_the_agent(remembered_outputs):
     service = FakeAgentService()
 
-    with pytest.raises(ValueError, match="no tasks"):
+    with pytest.raises(NodeExecutionError) as raised:
         await _run(_agent_node(service, remembered_outputs, tasks=[]))
+
+    assert isinstance(raised.value.__cause__, ValueError)
+    assert "no tasks" in str(raised.value.__cause__)
 
     assert service.dispatched is None

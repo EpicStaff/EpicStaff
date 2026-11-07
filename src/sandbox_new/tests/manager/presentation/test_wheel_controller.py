@@ -107,7 +107,7 @@ def test_upload_answers_400_for_a_wheel_built_for_another_distribution(client, p
     )
 
     assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
-    assert response.json()["errors"][0]["code"] == "bad_request"
+    assert response.json()["errors"][0]["code"] == "wheel_name_mismatch"
 
 
 def test_upload_answers_404_for_a_library_that_is_not_there(client):
@@ -195,7 +195,7 @@ def test_download_answers_409_for_a_version_that_has_no_wheel_yet(client, path):
     response = client.get(f"{path}/{created['id']}/file")
 
     assert response.status_code == status_codes.HTTP_409_CONFLICT
-    assert response.json()["errors"][0]["code"] == "conflict"
+    assert response.json()["errors"][0]["code"] == "wheel_not_built"
 
 
 def test_remove_answers_204_and_the_version_stops_answering(client, path):
@@ -236,4 +236,4 @@ def test_remove_answers_409_for_a_version_a_venv_installed(client, uow, path, li
     response = client.delete(f"{path}/{created['id']}")
 
     assert response.status_code == status_codes.HTTP_409_CONFLICT
-    assert response.json()["errors"][0]["code"] == "conflict"
+    assert response.json()["errors"][0]["code"] == "wheel_in_use"

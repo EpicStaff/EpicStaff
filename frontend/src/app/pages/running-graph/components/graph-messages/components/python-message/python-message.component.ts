@@ -160,30 +160,33 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                         </div>
                     }
 
-                    <!-- Error Section -->
-                    @if (hasError()) {
-                        <div class="error-container">
+                    <!-- Stderr Section: "Error" for a failed run, "Log" for what a successful run wrote there -->
+                    @if (hasStderr()) {
+                        <div class="stderr-container">
                             <button
                                 type="button"
                                 class="section-heading"
-                                [attr.aria-expanded]="isErrorExpanded"
-                                (click)="toggleSection('error')"
+                                [attr.aria-expanded]="isStderrExpanded"
+                                (click)="toggleSection('stderr')"
                             >
                                 <app-svg-icon
-                                    [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    [icon]="isStderrExpanded ? 'caret-down-filled' : 'caret-right-filled'"
                                     size="1.1rem"
                                 />
-                                Error
+                                {{ stderrTitle() }}
                             </button>
                             <div
                                 class="collapsible-content grid-collapsible"
-                                [class.expanded]="isErrorExpanded"
-                                [inert]="!isErrorExpanded"
+                                [class.expanded]="isStderrExpanded"
+                                [inert]="!isStderrExpanded"
                             >
                                 <div class="collapsible-inner">
-                                    <div class="error-wrapper">
-                                        <div class="result-content error-content">
-                                            <pre>{{ getError() }}</pre>
+                                    <div class="stderr-wrapper">
+                                        <div
+                                            class="result-content"
+                                            [class.error-content]="isFailedRun()"
+                                        >
+                                            <pre>{{ getStderr() }}</pre>
                                         </div>
                                     </div>
                                 </div>
@@ -347,7 +350,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             .code-wrapper,
             .input-wrapper,
             .output-wrapper,
-            .error-wrapper,
+            .stderr-wrapper,
             .raw-data-wrapper {
                 margin-left: 23px;
             }
@@ -423,7 +426,7 @@ export class PythonMessageComponent implements OnInit {
     isCodeExpanded = true;
     isInputExpanded = true;
     isOutputExpanded = true;
-    isErrorExpanded = true;
+    isStderrExpanded = true;
     isRawDataExpanded = false; // Collapsed by default since it's less important
     isCollapsed = true;
     parsedInput: unknown = null;
@@ -441,15 +444,15 @@ export class PythonMessageComponent implements OnInit {
         }
     }
 
-    toggleSection(section: 'code' | 'input' | 'output' | 'error' | 'rawData'): void {
+    toggleSection(section: 'code' | 'input' | 'output' | 'stderr' | 'rawData'): void {
         if (section === 'code') {
             this.isCodeExpanded = !this.isCodeExpanded;
         } else if (section === 'input') {
             this.isInputExpanded = !this.isInputExpanded;
         } else if (section === 'output') {
             this.isOutputExpanded = !this.isOutputExpanded;
-        } else if (section === 'error') {
-            this.isErrorExpanded = !this.isErrorExpanded;
+        } else if (section === 'stderr') {
+            this.isStderrExpanded = !this.isStderrExpanded;
         } else if (section === 'rawData') {
             this.isRawDataExpanded = !this.isRawDataExpanded;
         }
@@ -522,24 +525,33 @@ export class PythonMessageComponent implements OnInit {
         }
     }
 
+    // The output is what the code returned: `result_data`, the JSON text of that value.
     hasOutput(): boolean {
-        const data = this.getExecutionData();
-        return !!data['output'];
+        return this.getOutput() !== '';
     }
 
     getOutput(): string {
-        const data = this.getExecutionData();
-        return typeof data['output'] === 'string' ? data['output'] : '';
+        const resultData = this.getExecutionData()['result_data'];
+        return typeof resultData === 'string' && resultData.trim() ? this.formatJson(resultData) : '';
     }
 
-    hasError(): boolean {
-        const data = this.getExecutionData();
-        return !!data['error'];
+    // Stderr holds the traceback of a failed run, but a successful run may write its logs and warnings there too.
+    hasStderr(): boolean {
+        return this.getStderr() !== '';
     }
 
-    getError(): string {
-        const data = this.getExecutionData();
-        return typeof data['error'] === 'string' ? data['error'] : '';
+    getStderr(): string {
+        const stderr = this.getExecutionData()['stderr'];
+        return typeof stderr === 'string' ? stderr.trim() : '';
+    }
+
+    // Only a zero return code means success; a missing one is not proof of it.
+    isFailedRun(): boolean {
+        return this.getExecutionData()['returncode'] !== 0;
+    }
+
+    stderrTitle(): 'Error' | 'Log' {
+        return this.isFailedRun() ? 'Error' : 'Log';
     }
 
     toggleCollapse(): void {
@@ -557,7 +569,7 @@ export class PythonMessageComponent implements OnInit {
         const parts: string[] = [];
         if (this.hasCode()) parts.push(`Code:\n${this.getCode()}`);
         if (this.hasOutput()) parts.push(`Output:\n${this.getOutput()}`);
-        if (this.hasError()) parts.push(`Error:\n${this.getError()}`);
+        if (this.hasStderr()) parts.push(`${this.stderrTitle()}:\n${this.getStderr()}`);
         return parts.length > 0 ? parts.join('\n\n') : JSON.stringify(this.getExecutionData(), null, 2);
     }
 }

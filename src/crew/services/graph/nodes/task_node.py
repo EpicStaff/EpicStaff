@@ -46,7 +46,8 @@ class TaskNode(BaseNode):
         agent_definition = self.task_node_data.agent_definition
         if agent_definition is None:
             raise ValueError(f"TaskNode '{self.node_name}' requires an agent_definition")
-        if agent_definition.llm is None:
+        llm = agent_definition.llm
+        if llm is None:
             raise ValueError(f"TaskNode '{self.node_name}' requires agent_definition.llm")
 
         rendered_instructions = render_instructions(self.task_node_data.instructions, input_)
@@ -71,6 +72,8 @@ class TaskNode(BaseNode):
         result = await self.agent_task_service.run_task(
             task_node_data,
             self.stop_event,
+            agent_definition=agent_definition,
+            llm=llm,
             on_event=on_agent_event,
             storage_credentials=self.storage_credentials,
         )

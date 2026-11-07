@@ -47,6 +47,11 @@ export interface PythonCodeResult {
 
 export type PollEvent = { type: 'polling'; attempt: number } | { type: 'result'; data: PythonCodeResult };
 
+/** A failure this service explains itself, in a message written for the user (unlike an unexpected error's). */
+export class PythonRunError extends Error {
+    override readonly name = 'PythonRunError';
+}
+
 @Injectable({ providedIn: 'root' })
 export class PythonCodeRunService {
     private headers = new HttpHeaders({ 'Content-Type': 'application/json' });
@@ -99,7 +104,7 @@ export class PythonCodeRunService {
                             }
                             return throwError(
                                 () =>
-                                    new Error(
+                                    new PythonRunError(
                                         'Execution result not found in the active organization. It may belong to a different organization or have been removed.'
                                     )
                             );
@@ -107,7 +112,7 @@ export class PythonCodeRunService {
                         if (error.status === 403) {
                             return throwError(
                                 () =>
-                                    new Error(
+                                    new PythonRunError(
                                         'Access denied. You may lack permission to view this result, or no active organization is selected.'
                                     )
                             );
@@ -124,7 +129,7 @@ export class PythonCodeRunService {
             switchMap(() =>
                 throwError(
                     () =>
-                        new Error(
+                        new PythonRunError(
                             `No result within the execution timeout of ${executionTimeoutSeconds} s and a grace period. The code may still be running on the server.`
                         )
                 )

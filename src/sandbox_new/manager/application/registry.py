@@ -12,8 +12,8 @@ import time
 from collections import deque
 from collections.abc import Callable
 
+from manager.application.errors import ExecutionNotFoundError
 from manager.domain.enums import ExecutionStatus
-from manager.domain.errors import ExecutionNotFoundError
 
 __all__ = [
     "DRAIN_SAMPLE_SIZE",

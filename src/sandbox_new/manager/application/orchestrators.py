@@ -14,11 +14,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 import settings
+from common.public_errors import log_sandbox_failure, sandbox_failure
 from litestar.datastructures import UploadFile
 from loguru import logger
 from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from src.shared.bench_log import BENCH_LEVEL
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode
 
+from manager.application.errors import VenvNotFoundError
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.ports import (
@@ -28,8 +31,16 @@ from manager.application.ports import (
     AbstractUnitOfWork,
     AbstractUVProvider,
 )
+from manager.application.ports.errors import EnvironmentBuildError
 from manager.application.registry import ExecutionRegistry
-from manager.domain.enums import ExecutionStatus, VenvOrder, VenvStatus, WheelOffer, WheelStatus
+from manager.domain.enums import (
+    ExecutionStatus,
+    VenvBuildErrorKind,
+    VenvOrder,
+    VenvStatus,
+    WheelOffer,
+    WheelStatus,
+)
 from manager.domain.errors import (
     BaseError,
     CustomLibraryInUseError,
@@ -39,8 +50,6 @@ from manager.domain.errors import (
     CustomLibraryNotPublishedError,
     CustomLibraryStillBuildingError,
     UnsupportedUploadError,
-    UVBuildError,
-    VenvNotFoundError,
     WheelInUseError,
     WheelNameMismatchError,
     WheelNotBuiltError,
@@ -59,16 +68,11 @@ from manager.domain.models import (
     Wheel,
 )
 from manager.domain.services import offer_wheels, order_by_version
-from manager.domain.types import NotRunReason
 
-_VENV_BUILD_FAILED_MESSAGE = "Execution environment failed to build; the job was not run."
-_DISPATCH_FAILED_MESSAGE = "The job could not be handed to the worker and was not run."
+_VENV_BUILD_FAILED_MESSAGE = "Couldn't install the libraries: {error}"
+_HOLD_TIMED_OUT_MESSAGE = "The libraries are still being installed. Try again in a minute."
 # Read in pieces so that an upload is never held in memory whole.
 _UPLOAD_CHUNK_SIZE = 1024 * 1024
-
-_HOLD_TIMED_OUT_MESSAGE = (
-    "The execution environment did not finish building in time; the job was not run."
-)
 
 __all__ = [
     "CustomLibraryCRUDOrchestrator",
@@ -152,6 +156,34 @@ class VenvCRUDOrchestrator:
         logger.info("Removed venv {}", id)
 
 
+# The custom library refusals that come before the build starts: a library that isn't
+# stored is a package that doesn't exist, and one with nothing built has no version to
+# install. Their text names only the library the user declared.
+_CUSTOM_LIBRARY_REFUSAL_KINDS: dict[type[BaseError], VenvBuildErrorKind] = {
+    CustomLibraryNameNotFoundError: VenvBuildErrorKind.PACKAGE_NOT_FOUND,
+    CustomLibraryNotPublishedError: VenvBuildErrorKind.PACKAGE_VERSION_NOT_FOUND,
+}
+
+
+def _build_failure(error: Exception) -> tuple[VenvBuildErrorKind, str]:
+    """The kind and the text to store for a build that raised `error`.
+
+    A build port error says its kind with its code, and the text of every kind but the
+    generic one names only what the user declared. Any other exception, and the generic
+    kind, can carry paths or tool output in its text, so it is stored as the generic
+    hint; its detail is left to the build's log line.
+    """
+    if isinstance(error, EnvironmentBuildError):
+        kind = VenvBuildErrorKind(error.code)
+    else:
+        kind = _CUSTOM_LIBRARY_REFUSAL_KINDS.get(
+            type(error), VenvBuildErrorKind.PACKAGE_INSTALL_FAILED
+        )
+    if kind is VenvBuildErrorKind.PACKAGE_INSTALL_FAILED:
+        return kind, EnvironmentBuildError.default_message
+    return kind, str(error)
+
+
 class VenvBuildOrchestrator:
     def __init__(
         self,
@@ -179,7 +211,7 @@ class VenvBuildOrchestrator:
             logger.info("Venv {} waits: {}", venv.id, waiting)
             return
         except BaseError as error:
-            venv.mark_as_failed(error)
+            venv.mark_as_failed(*_build_failure(error))
             await self._update(venv)
             logger.warning("Venv {} cannot be built: {}", venv.id, error)
             return
@@ -191,7 +223,7 @@ class VenvBuildOrchestrator:
         try:
             await self._build(venv, custom_wheels)
         except Exception as e:
-            venv.mark_as_failed(e)
+            venv.mark_as_failed(*_build_failure(e))
             logger.exception("Venv {} failed to build", venv.id)
         else:
             venv.mark_as_completed()
@@ -431,7 +463,7 @@ class JobOrchestrator:
 
         if venv.status is VenvStatus.FAILED:
             logger.warning("Execution {} rejected: venv {} failed to build", execution_id, venv.id)
-            await self._fail(job, _VENV_BUILD_FAILED_MESSAGE, not_run_reason="venv_failed")
+            await self._fail(job, _venv_build_failure(venv))
         elif venv.status is VenvStatus.COMPLETED:
             await self._dispatch(job)
         else:
@@ -462,15 +494,18 @@ class JobOrchestrator:
         """
         for job in self.holding.release_overdue(self.clock()):
             logger.warning("Execution {} held past its hold deadline; not run", job.execution_id)
-            await self._fail(job, _HOLD_TIMED_OUT_MESSAGE, not_run_reason="hold_timeout")
+            await self._fail(
+                job, CodeFailure(code=CodeFailureCode.HOLD_TIMEOUT, detail=_HOLD_TIMED_OUT_MESSAGE)
+            )
 
         for venv_id in self.holding.pending_venv_ids():
             async with self.uow:
                 venv = await self.uow.venv_repo.retrieve(venv_id)
 
             if venv is None or venv.status is VenvStatus.FAILED:
+                failure = _venv_build_failure(venv)
                 for job in self.holding.release(venv_id):
-                    await self._fail(job, _VENV_BUILD_FAILED_MESSAGE, not_run_reason="venv_failed")
+                    await self._fail(job, failure)
                 continue
 
             if venv.status is VenvStatus.COMPLETED:
@@ -495,15 +530,20 @@ class JobOrchestrator:
             await self.dispatcher.dispatch(job)
         except Exception as error:
             # Type only: a validation error's text would quote the job's secrets.
-            logger.error("Failed to dispatch job {}: {}", job.execution_id, type(error).__name__)
-            await self._fail(job, _DISPATCH_FAILED_MESSAGE, not_run_reason="dispatch_failed")
+            reference = log_sandbox_failure(
+                f"Failed to dispatch the job: {type(error).__name__}",
+                execution_id=job.execution_id,
+                session_id=job.session_id,
+            )
+            failure = sandbox_failure(CodeFailureCode.DISPATCH_FAILED, reference)
+            await self._fail(job, failure, reference=reference)
 
-    async def _fail(self, job: Job, message: str, *, not_run_reason: NotRunReason) -> None:
+    async def _fail(self, job: Job, failure: CodeFailure, reference: str | None = None) -> None:
         await self.failure_sink.fail(
             job.execution_id,
-            message,
+            failure,
+            reference=reference,
             session_id=job.session_id,
-            not_run_reason=not_run_reason,
             reply_to_crew_channel=job.reply_to_crew_channel,
         )
 
@@ -516,6 +556,25 @@ class JobOrchestrator:
         if venv is None:
             raise VenvNotFoundError(venv_id=venv_id)
         return venv
+
+
+def _venv_build_failure(venv: Venv | None) -> CodeFailure:
+    """The failure a job gets when its venv failed to build, or vanished while it was held.
+
+    The code is the build error's kind. Only an error whose kind says it names what the
+    user declared is quoted; any other failure, and one stored before kinds were, gets the
+    generic hint, and a failure with no kind, or a vanished venv, the generic code.
+    """
+    kind = venv.error_kind if venv is not None else None
+    code = (
+        CodeFailureCode(kind.value) if kind is not None else CodeFailureCode.PACKAGE_INSTALL_FAILED
+    )
+    error = venv.build_error_detail if venv is not None else None
+    if error is not None:
+        detail = _VENV_BUILD_FAILED_MESSAGE.format(error=error)
+    else:
+        detail = EnvironmentBuildError.default_message
+    return CodeFailure(code=code, detail=detail)
 
 
 class CustomLibraryCRUDOrchestrator:
@@ -939,12 +998,12 @@ class WheelBuildOrchestrator:
         can still take it.
 
         Raises:
-            UVBuildError: There is no source archive, or the build produced nothing.
+            EnvironmentBuildError: There is no source archive, or the build produced nothing.
             WheelNameMismatchError: The source builds a different distribution.
             WheelVersionTakenError: This library already holds that version.
         """
         if wheel.source_key is None or wheel.source_filename is None:
-            raise UVBuildError("This wheel has no source archive to build.")
+            raise EnvironmentBuildError("This wheel has no source archive to build.")
 
         archive = await self.file_storage.get(wheel.source_key)
         with tempfile.TemporaryDirectory() as workspace:

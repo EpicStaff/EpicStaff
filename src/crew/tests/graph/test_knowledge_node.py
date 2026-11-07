@@ -1,10 +1,14 @@
 import asyncio
+import re
 from unittest.mock import MagicMock
 
 import pytest
 from dotdict import DotDict
+from loguru import logger
 
+from clients.errors import ClientBadGatewayError, ClientNotAvailableError, ClientTimeoutError
 from services.graph.events import StopEvent
+from services.graph.exceptions import NodeExecutionError
 from services.graph.nodes.knowledge_node import KnowledgeNode
 from services.knowledge_search_service import KnowledgeSearchService
 from src.shared.models import (
@@ -228,6 +232,137 @@ def test_search_usage_with_unknown_llm_cost_counts_it_as_zero():
 
 def test_empty_search_usage_has_no_token_usage():
     assert SearchUsage().to_token_usage() == {}
+
+
+# How Django names a node it sends to crew: "<name> #<number> #<node id>".
+SEARCH_DOCS_RUNTIME_NAME = "Search docs #1 #4512"
+RAW_KNOWLEDGE_ERROR = "<html>500 at http://knowledge_new:8100/rags/naive/2/search/ sk-embed-secret</html>"
+
+
+@pytest.fixture
+def captured_error_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="ERROR")
+    yield records
+    logger.remove(sink_id)
+
+
+def make_search_docs_node(
+    service: KnowledgeSearchService,
+    query: str = "hello world",
+    input_map: dict | None = None,
+    rag_type_id: str = "naive:2",
+) -> KnowledgeNode:
+    return KnowledgeNode(
+        session_id=1,
+        node_name=SEARCH_DOCS_RUNTIME_NAME,
+        stop_event=StopEvent(),
+        input_map=input_map or {},
+        output_variable_path=None,
+        collection_id=5,
+        rag_type_id=rag_type_id,
+        query=query,
+        rag_search_config=NaiveRagSearchConfig(),
+        knowledge_search_service=service,
+    )
+
+
+async def run_failing(node: KnowledgeNode, variables: dict) -> tuple[NodeExecutionError, list[str]]:
+    """Run `node` the way the graph does; return the raised error and the streamed error texts."""
+    messages = []
+    state = {"variables": DotDict(variables), "state_history": [], "system_variables": {}}
+    with pytest.raises(NodeExecutionError) as raised:
+        await node.run(state, writer=messages.append)
+    details = [
+        message.message_data.details
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+    return raised.value, details
+
+
+class CountingKnowledgeClient(FakeKnowledgeClient):
+    searches = 0
+
+    def search_with_usage(self, **kwargs):
+        type(self).searches += 1
+        return super().search_with_usage(**kwargs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("query", "input_map", "variables"),
+    [
+        ("", {}, {}),
+        ("{topic}", {"topic": "variables.topic"}, {"topic": "   "}),
+    ],
+    ids=["no-query", "mapped-input-is-blank"],
+)
+async def test_empty_query_tells_the_user_how_to_fix_it_without_searching(
+    monkeypatch, query, input_map, variables
+):
+    monkeypatch.setattr(CountingKnowledgeClient, "searches", 0)
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", CountingKnowledgeClient
+    )
+    node = make_search_docs_node(
+        KnowledgeSearchService(redis_service=MagicMock()), query=query, input_map=input_map
+    )
+
+    error, details = await run_failing(node, variables)
+
+    expected = (
+        'Knowledge Retriever node "Search docs #1" got an empty query. '
+        "Set a query, or map an input that has text."
+    )
+    assert details == [expected]
+    assert error.public_message == expected
+    assert error.reference is None
+    assert CountingKnowledgeClient.searches == 0
+
+
+def _client_failing_with(error: Exception):
+    class FailingKnowledgeClient(FakeKnowledgeClient):
+        def search_with_usage(self, **kwargs):
+            raise error
+
+    return FailingKnowledgeClient
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("client_error", "rag_type_id", "logged_error"),
+    [
+        (ClientTimeoutError("slow"), "naive:2", "Knowledge search timeout for naive:2"),
+        (ClientBadGatewayError(RAW_KNOWLEDGE_ERROR), "naive:2", RAW_KNOWLEDGE_ERROR),
+        (ClientNotAvailableError(RAW_KNOWLEDGE_ERROR), "naive:2", RAW_KNOWLEDGE_ERROR),
+        (None, "naive:sk-embed-secret", "Invalid rag_type_id format: 'naive:sk-embed-secret'"),
+    ],
+    ids=["timeout", "service-error", "unreachable", "bad-collection-reference"],
+)
+async def test_failed_search_shows_a_reference_and_logs_the_raw_error_under_it(
+    monkeypatch, captured_error_logs, client_error, rag_type_id, logged_error
+):
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", _client_failing_with(client_error)
+    )
+    node = make_search_docs_node(
+        KnowledgeSearchService(redis_service=MagicMock()), rag_type_id=rag_type_id
+    )
+
+    error, details = await run_failing(node, {})
+
+    reference = re.search(r"reference: ([0-9a-f]{12})", details[0]).group(1)
+    expected = (
+        "Knowledge Retriever node \"Search docs #1\" couldn't search its collection. "
+        f"Try again or contact your administrator (reference: {reference})."
+    )
+    assert details == [expected]
+    assert error.public_message == expected
+    assert error.reference == reference
+    reference_logs = [record for record in captured_error_logs if reference in record]
+    assert len(reference_logs) == 1
+    assert logged_error in reference_logs[0]
 
 
 def search_query(monkeypatch, query_template: str, input_: dict) -> str:

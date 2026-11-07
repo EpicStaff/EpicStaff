@@ -1,58 +1,75 @@
 from loguru import logger
+from utils.graph_utils import flow_location, join_with_and
 
+from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.exceptions import EndNodeValidationError
 from tables.models import EndNode
 
 
 class EndNodeValidator:
-    def validate(self, graph_id: int) -> EndNode | None:
-        end_node = self._check_exists(graph_id)
+    def find(self, graph_id: int, *, node_ids: set[int] | None = None) -> EndNode | None:
+        """Return the flow's End node, or None when it has none.
 
-        if end_node is not None:
-            self._validate_output_map(end_node, graph_id)
-
-        return end_node
-
-    def _check_exists(self, graph_id: int) -> EndNode:
+        Args:
+            node_ids: Return it only if it is one of these, such as the nodes a run
+                reaches; no query is made when the set is empty. None looks at every node.
+        """
+        if node_ids is not None and not node_ids:
+            return None
+        end_nodes = EndNode.objects.filter(graph=graph_id)
+        if node_ids is not None:
+            end_nodes = end_nodes.filter(pk__in=node_ids)
         try:
-            return EndNode.objects.get(graph=graph_id)
+            return end_nodes.get()
         except EndNode.DoesNotExist:
-            # TODO: revert back validation
-            logger.warning(f"end_node is missing for flow id={graph_id}")
-            # raise EndNodeValidationError(f"end_node is missing for flow id={graph_id}")
+            # Allowed: a flow doesn't need an End node to run.
+            logger.warning("No End node to run in flow id={}", graph_id)
+            return None
 
-    def _validate_output_map(self, end_node: EndNode, graph_id: int) -> None:
-        non_string_errors = []
-        variables_path_errors = []
+    def validate(self, end_node: EndNode, *, flow_name: str | None = None) -> None:
+        """Refuse the run when an output of the End node doesn't point to a flow variable.
 
+        Args:
+            flow_name: The subflow's name, named in the message; None for the flow that was run.
+
+        Raises:
+            EndNodeValidationError: An output doesn't point to a flow variable.
+        """
+        location = flow_location(flow_name)
         if not isinstance(end_node.output_map, dict):
-            raise EndNodeValidationError(
-                f"End Node output_map param for graph {graph_id} must be dict"
+            problem = (
+                f"The End node{location} has a broken Output Map."
+                if location
+                else "The End node's Output Map is broken."
             )
+            raise EndNodeValidationError(f"{problem} Set it again.")
 
-        for key, value in end_node.output_map.items():
-            if not isinstance(value, str):
-                non_string_errors.append(key)
-            elif not value.startswith("variables"):
-                variables_path_errors.append(key)
+        # Sorted: a JSONB map doesn't keep the order the user entered the outputs in.
+        invalid_outputs = sorted(
+            output_name
+            for output_name, variable_path in end_node.output_map.items()
+            if not self._is_flow_variable_path(variable_path)
+        )
+        if not invalid_outputs:
+            return
 
-        error_messages = []
-
-        if non_string_errors:
-            if len(non_string_errors) == 1:
-                msg = f'Value for "{non_string_errors[0]}" must be a string'
-            else:
-                msg = f'Values for "{", ".join(non_string_errors)}" must be strings'
-            error_messages.append(msg)
-
-        if variables_path_errors:
-            if len(variables_path_errors) == 1:
-                msg = f'Value for "{variables_path_errors[0]}" must start with "variables"'
-            else:
-                msg = f'Values for "{", ".join(variables_path_errors)}" must start with "variables"'
-            error_messages.append(msg)
-
-        if error_messages:
-            raise EndNodeValidationError(
-                f"End node errors graph[{graph_id}]: {'; '.join(error_messages)}"
+        quoted_names = join_with_and([f'"{name}"' for name in invalid_outputs])
+        example = f"{DOMAIN_VARIABLES_KEY}.{invalid_outputs[0]}"
+        if len(invalid_outputs) == 1:
+            message = (
+                f"Output {quoted_names} of the End node{location} must be a flow variable, "
+                f"like {example}."
             )
+        else:
+            message = (
+                f"Outputs {quoted_names} of the End node{location} must be flow variables, "
+                f"like {example}."
+            )
+        raise EndNodeValidationError(message)
+
+    @staticmethod
+    def _is_flow_variable_path(variable_path) -> bool:
+        return isinstance(variable_path, str) and (
+            variable_path == DOMAIN_VARIABLES_KEY
+            or variable_path.startswith(f"{DOMAIN_VARIABLES_KEY}.")
+        )

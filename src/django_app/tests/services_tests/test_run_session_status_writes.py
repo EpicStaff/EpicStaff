@@ -8,6 +8,15 @@ from tables.services.trigger_spec import TriggerSpec
 from utils.logger import logger
 
 GRAPH_NAME = "status-writes-schema"
+REFERENCE = "0a1b2c3d4e5f"
+FLOW_START_FAILED_TEXT = (
+    "Something went wrong on the server. "
+    f"Try again or contact your administrator (reference: {REFERENCE})."
+)
+FLOW_SERVICE_NOT_RUNNING_TEXT = (
+    "The flow couldn't start: the flow service isn't running. "
+    "Try again or contact your administrator."
+)
 
 
 @pytest.fixture
@@ -93,15 +102,29 @@ def test_failure_before_publish_marks_session_error(graph, session_manager, monk
         raise RuntimeError("redis is down")
 
     monkeypatch.setattr(session_manager.redis_service, "publish_session_data", fail)
-
-    with pytest.raises(RuntimeError):
-        _run(session_manager, graph)
+    monkeypatch.setattr(
+        "tables.services.session_manager_service.new_reference", lambda: REFERENCE
+    )
+    records: list[dict] = []
+    sink_id = logger.add(lambda message: records.append(message.record), level="TRACE")
+    try:
+        with pytest.raises(RuntimeError):
+            _run(session_manager, graph)
+    finally:
+        logger.remove(sink_id)
 
     session = _latest_session(graph)
     assert session.status == Session.SessionStatus.ERROR
-    assert "redis is down" in session.status_data["reason"]
+    # The stored reason is readable by anyone who can see the session: no internals.
+    assert session.status_data == {
+        "reason": FLOW_START_FAILED_TEXT,
+        "error": FLOW_START_FAILED_TEXT,
+    }
     assert session.finished_at is not None
     assert session.status_updated_at >= session.created_at
+    # A caller other than the view (a trigger, the scheduler) relies on this log line.
+    [traceback_record] = [record for record in records if record["exception"] is not None]
+    assert traceback_record["message"].startswith(f"(reference: {REFERENCE}) ")
 
 
 @pytest.mark.django_db
@@ -112,7 +135,10 @@ def test_session_no_crew_received_is_marked_error(graph, session_manager, monkey
 
     session = Session.objects.get(pk=session_id)
     assert session.status == Session.SessionStatus.ERROR
-    assert "crew" in session.status_data["reason"]
+    assert session.status_data == {
+        "reason": FLOW_SERVICE_NOT_RUNNING_TEXT,
+        "error": FLOW_SERVICE_NOT_RUNNING_TEXT,
+    }
     assert session.finished_at is not None
 
 

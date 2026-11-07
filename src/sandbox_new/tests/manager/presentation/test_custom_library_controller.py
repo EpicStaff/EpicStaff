@@ -148,7 +148,7 @@ def test_create_answers_409_for_a_name_already_taken(client, uow):
     )
 
     assert response.status_code == status_codes.HTTP_409_CONFLICT
-    assert response.json()["errors"][0]["code"] == "conflict"
+    assert response.json()["errors"][0]["code"] == "custom_library_name_taken"
     # Refused before the second wheel is stored, and the first library and its file
     # are untouched.
     assert len(uow.custom_library_repo.rows) == 1
@@ -167,7 +167,7 @@ def test_retrieve_answers_404_for_a_library_that_is_not_there(client):
     response = client.get("/custom-libraries/404")
 
     assert response.status_code == status_codes.HTTP_404_NOT_FOUND
-    assert response.json()["errors"][0]["code"] == "not_found"
+    assert response.json()["errors"][0]["code"] == "custom_library_not_found"
 
 
 def test_remove_answers_204_and_the_library_stops_answering(client, uow):
@@ -198,4 +198,4 @@ def test_remove_answers_409_for_a_library_a_venv_uses(client, uow):
     response = client.delete(f"/custom-libraries/{stored.id}")
 
     assert response.status_code == status_codes.HTTP_409_CONFLICT
-    assert response.json()["errors"][0]["code"] == "conflict"
+    assert response.json()["errors"][0]["code"] == "custom_library_in_use"

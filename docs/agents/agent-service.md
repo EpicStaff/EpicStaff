@@ -136,15 +136,15 @@ Per-agent configuration with resource references.
 | Type | Values / Fields |
 |---|---|
 | `RunType` (`str, Enum`) | `SINGLE_TASK`, `LIST_OF_TASKS`. (`CHAT`/`TEAM` are documented as reserved for future runners but are **not yet enum members**.) |
-| `StopReason` (`str, Enum`) | `completed`, `max_iter_reached`, `schema_satisfied`, `llm_error`, `timeout`, `max_consecutive_failures`. |
-| `FAILURE_STOP_REASONS` | `frozenset({StopReason.LLM_ERROR, StopReason.TIMEOUT})` — checked to decide whether a run counts as a hard failure. |
+| `StopReason` (`str, Enum`) | `completed`, `max_iter_reached`, `schema_satisfied`, `llm_error`, `timeout`, `internal_error`, `max_consecutive_failures`. |
+| `FAILURE_STOP_REASONS` | `frozenset({StopReason.LLM_ERROR, StopReason.TIMEOUT, StopReason.INTERNAL_ERROR})` — checked to decide whether a run counts as a hard failure. |
 | `AgentTaskSpec` | `name: str`, `instructions: str`, `output_schema: dict \| None`, `context: list[str]` (names of prior tasks whose output to inject). |
 | `CollectionSpec` | `unique_name`, `collection_id`, `name`, `description: str \| None`, `search_configs: list[SearchConfigEntry]` (min length 1). |
 | `SearchConfigEntry` | `rag_id: int`, `rag_type: Literal["naive", "graph"]`, `search_config: RagSearchConfig`, `embedder: EmbedderData` (forward-compat only). |
 | `S3FileSpec` | `id: int`, `path: str`, `metadata: dict`. |
 | `ToolResult` | `tool_call_id: str`, `content: str`, `is_error: bool = False`. |
 | `TokenUsage` | `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_prompt_tokens` (subset of `prompt_tokens`, informational only), `total_cost_usd` (display-only, best-effort). |
-| `LoopResult` | `final_text: str \| None`, `tool_invocations: int`, `iterations: int`, `stop_reason: str`, `token_usage: TokenUsage`, `error: str \| None`, `tasks: list[TaskRunSummary] \| None` (populated only for `LIST_OF_TASKS`). |
+| `LoopResult` | `final_text: str \| None`, `tool_invocations: int`, `iterations: int`, `stop_reason: str`, `token_usage: TokenUsage`, `error: str \| None` (raw text, for logs only), `error_kind: LLMErrorKind \| None` (set only for `llm_error`), `failed_llm: FailedLLM \| None`, `tasks: list[TaskRunSummary] \| None` (populated only for `LIST_OF_TASKS`). |
 | `TaskRunSummary` | `name`, `order`, `final_text: str \| None`, `token_usage`, `iterations`, `tool_invocations`, `stop_reason: str \| None`. |
 | `ContextAttachment` | `role: Literal["system", "user"]`, `content: str`, `source: str` — a message injected before the first LLM call. |
 
@@ -179,9 +179,9 @@ per task. `AgentTaskSpec.context` names earlier tasks whose outputs are
 injected as an instructions preamble via `format_context_preamble`, delimited
 by `"===== PREVIOUS TASKS OUTPUTS ====="` / `"===== END PREVIOUS TASKS OUTPUTS ====="`;
 referencing a task that has not yet produced output (unknown name, or a task
-later in the sequence) raises `AgentServiceError`. If any task's
-`result.stop_reason` is in `FAILURE_STOP_REASONS`, the runner raises
-`AgentServiceError` for the whole request. Per-task outcomes accumulate into
+later in the sequence) raises `AgentServiceError`. A task whose loop fails
+(`run_task_through_loop` raises `AgentLoopFailedError`) fails the whole
+request. Per-task outcomes accumulate into
 `TaskRunSummary` objects, and `emitter.on_task_start` / `on_task_finish` are
 called around each task.
 
@@ -196,9 +196,10 @@ Shared helper `run_task_through_loop`
   entirely and go straight to `StructuredOutputEnforcer.enforce`, returning a
   `LoopResult` with `stop_reason = StopReason.SCHEMA_SATISFIED.value`.
 - Otherwise: run the plain loop (`MaxIterAndNoToolCalls(max_iter)` stop
-  policy via `deps.loop.run`) first. If `output_schema` was requested and the
-  plain loop's `stop_reason` is in `FAILURE_STOP_REASONS`, raise
-  `AgentServiceError` without ever invoking the enforcer. If the plain loop
+  policy via `deps.loop.run`) first. If the plain loop's `stop_reason` is in
+  `FAILURE_STOP_REASONS`, raise `AgentLoopFailedError` (with or without an
+  `output_schema`, and without ever invoking the enforcer), so a failed loop
+  always leaves as `agent.error`, never as `agent.result`. If the plain loop
   succeeded and `output_schema` was requested, run the enforcer and fold its
   usage into the plain loop's `TokenUsage`; the merged `stop_reason` becomes
   `SCHEMA_SATISFIED` unless the plain loop already stopped with
@@ -215,7 +216,9 @@ deliberately ignorant of `RunType`.
 (`iterations`, `tool_invocations`, `final_text`, `usage`, `context_warned`,
 `consecutive_failures`) is created **outside** `_run_inner` so a timeout or
 unexpected exception still returns a partial `LoopResult` built from whatever
-progress was made (`stop_reason=TIMEOUT` or `LLM_ERROR` respectively).
+progress was made: `stop_reason=TIMEOUT` for a timeout; for an exception,
+`LLM_ERROR` with an `error_kind` when it is a litellm error, otherwise
+`INTERNAL_ERROR`.
 
 `_run_inner` is the ReAct loop body:
 
@@ -422,8 +425,19 @@ and refresh its TTL (`AGENT_RESULT_STREAM_TTL`) on every publish.
 `RedisStreamBatchEmitter` buffers every event internally and publishes
 **exactly one** envelope on `on_final` (`type="agent.result"`, payload:
 `final_text`, `tool_invocations`, `iterations`, `stop_reason`, `token_usage`,
-`error`, `events` (buffered), `warnings`, `tasks`) or `on_error`
-(`type="agent.error"`, payload: `error`, `warnings`).
+`error`, `error_kind`, `failed_llm`, `events` (buffered), `warnings`, `tasks`,
+plus `reference` when `stop_reason` is a failure) or `on_error`
+(`type="agent.error"`, payload: `error`, `warnings`, `reference`, plus
+`stop_reason`, `error_kind` and `failed_llm` when the error is an
+`AgentLoopFailedError`). A failed loop is always sent as `agent.error`.
+
+`error` is raw text for logs only; crew never shows it. The emitter logs the
+error under the `reference` right after publishing: at WARNING for a timeout or
+an LLM failure of a known `error_kind`, which crew explains to the user, and at
+ERROR otherwise. Crew checks the reference with foundation's
+`trusted_reference` and logs its own line about the failure under it, so the
+reference the user sees finds both services' lines. A missing or malformed one
+is never shown: crew logs under a new reference instead.
 
 `redis_tool_events.py` ([`src/agent/app/emitters/redis_tool_events.py`](../../src/agent/app/emitters/redis_tool_events.py)):
 `RedisStreamToolEventEmitter` extends the batch emitter (used by **both**

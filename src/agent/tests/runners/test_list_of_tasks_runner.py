@@ -11,7 +11,7 @@ import json
 
 import pytest
 from app.emitters.base import Emitter
-from app.exceptions import AgentServiceError, InvalidOutputSchemaError
+from app.exceptions import AgentLoopFailedError, AgentServiceError, InvalidOutputSchemaError
 from app.llm.client import LLMChunk
 from app.loop.agent_loop import AgentLoop
 from app.loop.context import AgentContext
@@ -312,8 +312,8 @@ async def test_mid_sequence_failure_stops_run_and_never_runs_next_task():
     await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.errors) == 1
-    assert isinstance(emitter.errors[0], AgentServiceError)
-    assert "task_a" in str(emitter.errors[0])
+    assert isinstance(emitter.errors[0], AgentLoopFailedError)
+    assert emitter.errors[0].stop_reason == "llm_error"
     assert emitter.finals == []
     assert loop.call_count == 1
 
@@ -561,11 +561,11 @@ async def test_task_failure_logs_the_exception_class_without_its_message():
 
     failed_line = log_line_starting_with(logs, "list_of_tasks failed")
     assert "correlation_id=test-corr" in failed_line
-    assert "AgentServiceError" in failed_line
+    assert "AgentLoopFailedError" in failed_line
     assert "<redacted" in failed_line
     assert secret_marker not in "".join(logs)
 
     task_names_line = log_line_starting_with(logs, "list_of_tasks correlation_id=")
     assert "task_a" in task_names_line
 
-    assert str(emitter.errors[0]) == f"task 'task_a' failed: provider said {secret_marker}"
+    assert str(emitter.errors[0]) == f"provider said {secret_marker}"

@@ -7,9 +7,9 @@ forgotten; only completions that really ran feed the drain rate.
 
 import pytest
 
+from manager.application.errors import ExecutionNotFoundError
 from manager.application.registry import ExecutionRegistry
 from manager.domain.enums import ExecutionStatus
-from manager.domain.errors import ExecutionNotFoundError
 
 
 @pytest.fixture

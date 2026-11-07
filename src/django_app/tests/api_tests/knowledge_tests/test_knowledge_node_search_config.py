@@ -446,24 +446,40 @@ class TestKnowledgeNodeRunValidation:
 
     def test_missing_collection_blocks_even_with_query(self, validator, graph):
         node = KnowledgeNode.objects.create(
-            graph=graph, rag_type="naive", rag_id=1, query="find me"
+            graph=graph,
+            node_name="Search docs",
+            node_number=3,
+            rag_type="naive",
+            rag_id=1,
+            query="find me",
         )
         with pytest.raises(self._error()) as exc:
             validator.validate_runnable([node])
-        assert "source_collection" in str(exc.value.detail)
+        assert str(exc.value.detail) == (
+            'Knowledge Retriever node "Search docs #3" needs a collection.'
+        )
 
     def test_incomplete_rag_blocks(self, validator, graph, collection):
         node = KnowledgeNode.objects.create(
-            graph=graph, source_collection=collection, rag_type="naive", query="q"
+            graph=graph,
+            node_name="Search docs",
+            node_number=3,
+            source_collection=collection,
+            rag_type="naive",
+            query="q",
         )  # rag_id missing
         with pytest.raises(self._error()) as exc:
             validator.validate_runnable([node])
-        assert "rag_type/rag_id" in str(exc.value.detail)
+        assert str(exc.value.detail) == (
+            'Knowledge Retriever node "Search docs #3" needs a RAG.'
+        )
 
     def test_empty_query_blocks(self, validator, graph, collection, naive_rag_type):
         impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
         node = KnowledgeNode.objects.create(
             graph=graph,
+            node_name="Search docs",
+            node_number=3,
             source_collection=collection,
             rag_type="naive",
             rag_id=impl.naive_rag_id,
@@ -472,21 +488,34 @@ class TestKnowledgeNodeRunValidation:
         )
         with pytest.raises(self._error()) as exc:
             validator.validate_runnable([node])
-        assert "query" in str(exc.value.detail)
+        assert str(exc.value.detail) == (
+            'Knowledge Retriever node "Search docs #3" needs a query.'
+        )
 
-    def test_all_offending_nodes_reported_together(self, validator, graph):
-        n1 = KnowledgeNode.objects.create(graph=graph, query="q")  # no collection/rag
-        n2 = KnowledgeNode.objects.create(graph=graph)  # empty everything
+    def test_node_inside_a_subflow_names_that_subflow(self, validator, graph):
+        node = KnowledgeNode.objects.create(
+            graph=graph, node_name="Search docs", node_number=3, query="q"
+        )
         with pytest.raises(self._error()) as exc:
-            validator.validate_runnable([n1, n2])
-        detail = str(exc.value.detail)
-        assert f"#{n1.id}" in detail and f"#{n2.id}" in detail
+            validator.validate_runnable([node], flow_name="Invoice parser")
+        assert str(exc.value.detail) == (
+            'Knowledge Retriever node "Search docs #3" in flow "Invoice parser" needs a '
+            "collection and a RAG."
+        )
 
-    def test_offending_node_is_named_by_its_runtime_name(self, validator, graph):
-        node = KnowledgeNode.objects.create(graph=graph, node_name="Search", node_number=3)
+    def test_all_offending_nodes_reported_together_with_only_their_missing_steps(
+        self, validator, graph
+    ):
+        first = KnowledgeNode.objects.create(
+            graph=graph, node_name="Search docs", node_number=1, query="q"
+        )
+        second = KnowledgeNode.objects.create(graph=graph, node_name="Find FAQ", node_number=2)
         with pytest.raises(self._error()) as exc:
-            validator.validate_runnable([node])
-        assert f"Search #3 #{node.id} (" in str(exc.value.detail)
+            validator.validate_runnable([first, second])
+        assert str(exc.value.detail) == (
+            'Knowledge Retriever node "Search docs #1" needs a collection and a RAG. '
+            'Knowledge Retriever node "Find FAQ #2" needs a collection, a RAG and a query.'
+        )
 
 
 @pytest.mark.django_db

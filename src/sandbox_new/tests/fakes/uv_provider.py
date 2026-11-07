@@ -15,7 +15,7 @@ holding neither ``pyproject.toml`` nor ``setup.py`` "does not appear to be a Pyt
 from pathlib import Path
 
 from manager.application.ports import AbstractUVProvider
-from manager.domain.errors import UVBuildError
+from manager.application.ports.errors import EnvironmentBuildError
 from manager.domain.types import LibraryString
 
 __all__ = ["FakeUVProvider"]
@@ -70,7 +70,7 @@ class FakeUVProvider(AbstractUVProvider):
         if self.fail_build_wheel is not None:
             raise self.fail_build_wheel
         if not (source_dir / "pyproject.toml").is_file() and not (source_dir / "setup.py").is_file():
-            raise UVBuildError(
+            raise EnvironmentBuildError(
                 f"`{source_dir}` does not appear to be a Python project, as neither "
                 "`pyproject.toml` nor `setup.py` are present in the directory"
             )

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 from collections.abc import Awaitable
 from functools import partial
@@ -7,14 +8,22 @@ from typing import Any
 import settings
 from clients.sandbox import SandboxClient
 from foundation.transport.http import ClientError
+from foundation.utils.error_reference import log_with_reference
 from loguru import logger
 from models.state import State
 from pydantic import ValidationError
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.bench_log import BENCH_LEVEL
-from src.shared.models import CodeResultData, ExecutionRequest, PythonCodeData
+from src.shared.models import (
+    CodeFailure,
+    CodeFailureCode,
+    CodeResultData,
+    ExecutionRequest,
+    PythonCodeData,
+)
 from src.shared.models.storage_scope import StorageCredentials
+from src.shared.public_error import PublicErrorMessage, build_public_error_message
 from src.shared.redis_keys import crew_code_result_channel
 from src.shared.sandbox_errors import (
     SandboxError,
@@ -23,12 +32,12 @@ from src.shared.sandbox_errors import (
 )
 from utils.singleton_meta import SingletonMeta
 
-# Matches the sandbox's own timeout exit code, so callers need no new branch.
-TIMEOUT_RETURNCODE = 124
-TIMEOUT_STDERR_MESSAGE = "Timed out waiting for the result"
 # The session's StopEvent is a threading.Event and cannot be awaited, so the submit
 # and the result wait wake up this often to check it.
 STOP_CHECK_INTERVAL_S = 0.5
+RESULT_TIMEOUT_TEXT = (
+    "The code's result didn't arrive in time. Try again or contact your administrator."
+)
 
 
 def build_state_globals(state: State) -> dict[str, Any]:
@@ -49,7 +58,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         self.redis_service = redis_service
         self.sandbox_client = sandbox_client
         self._result_channel = crew_code_result_channel(settings.CODE_RESULT_CHUNNEL)
-        self._pending_results: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._pending_results: dict[str, asyncio.Future[CodeResultData]] = {}
 
     async def subscribe_to_results(self) -> None:
         """Subscribe to crew's code-result channel; call once at startup, after Redis connects.
@@ -69,18 +78,21 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         additional_global_kwargs: dict[str, Any] | None = None,
         stop_event: StopEvent | None = None,
         storage_credentials: StorageCredentials | None = None,
-    ) -> dict[str, Any]:
+    ) -> CodeResultData:
         """Submit the code to the sandbox and wait for its result on crew's result channel.
 
         The submission goes over HTTP; the sandbox publishes the result to
         `crew_code_result_channel`, which only crew reads, and the one subscription made
         by `subscribe_to_results` hands each result to the execution waiting for it.
         Every way the execution can fail without a result -- the sandbox stayed full,
-        refused it, lost it, or became unreachable -- returns a synthesized
-        CodeResultData with returncode 1 and the reason as stderr. No result within
+        refused it, lost it, or became unreachable -- logs the raw reason under a new
+        reference and returns a result crew makes up, failed with `sandbox_error`, whose
+        detail cites the reference and whose `reference` is set. The reason never reaches
+        the result: it can be the sandbox's raw error body. No result within
         settings.CODE_RESULT_TIMEOUT (None waits as long as the sandbox still has the
-        execution) returns returncode TIMEOUT_RETURNCODE. Callers branch on returncode
-        like they already do for every other non-zero outcome.
+        execution) returns a result failed with `result_timeout`. Either way the result
+        holds the invariant every sandbox result holds: it failed exactly when `failure`
+        is set, and its stderr is `failure.detail`.
 
         Raises:
             StopSession: `stop_event` was set while submitting or waiting for the result;
@@ -118,7 +130,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         )
 
         # Registered before submitting, so a result that arrives at once is not missed.
-        result_future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        result_future: asyncio.Future[CodeResultData] = asyncio.get_running_loop().create_future()
         self._pending_results[execution_id] = result_future
         try:
             # A full sandbox is retried for up to its queue timeout; a stop must not wait that out.
@@ -146,7 +158,10 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 execution_id,
                 settings.CODE_RESULT_TIMEOUT,
             )
-            return _failed_result(execution_id, TIMEOUT_RETURNCODE, TIMEOUT_STDERR_MESSAGE)
+            return _failed_result(
+                execution_id,
+                CodeFailure(code=CodeFailureCode.RESULT_TIMEOUT, detail=RESULT_TIMEOUT_TEXT),
+            )
         except (SandboxError, ClientError) as error:
             if isinstance(error, SandboxExecutionLostError):
                 logger.log(
@@ -156,23 +171,52 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                     session_id=python_code_data.session_id,
                     execution_id=execution_id,
                 )
-            # The class name only: the message is for the user, who gets it as stderr.
-            logger.error("Code execution {} failed ({})", execution_id, type(error).__name__)
-            return _failed_result(execution_id, 1, str(error))
+            reference = log_with_reference(
+                "Code execution {execution_id} failed: {error_type}: {error} "
+                "(session_id={session_id})",
+                execution_id=execution_id,
+                error_type=type(error).__name__,
+                error=str(error),
+                session_id=python_code_data.session_id,
+            )
+            return _sandbox_error_result(execution_id, reference)
         finally:
             self._pending_results.pop(execution_id, None)
 
     async def _on_result_message(self, message: dict[str, Any]) -> None:
+        """Hand a result to the execution waiting for it.
+
+        A result that doesn't validate fails its execution at once with `sandbox_error`,
+        rather than leaving it to wait for the backstop, when its execution id can still
+        be read. The payload is never logged: it carries the user code's output.
+        """
         try:
             code_result_data = CodeResultData.model_validate_json(message["data"])
-        except ValidationError:
-            # Never log the payload: it carries the user code's output.
-            logger.error("Dropped an unparseable message on {}", self._result_channel)
+        except ValidationError as error:
+            self._fail_on_invalid_result(message["data"], error)
             return
         result_future = self._pending_results.get(code_result_data.execution_id)
         if result_future is None or result_future.done():
             return
-        result_future.set_result(code_result_data.model_dump())
+        result_future.set_result(code_result_data)
+
+    def _fail_on_invalid_result(self, data: str, error: ValidationError) -> None:
+        execution_id = _raw_execution_id(data)
+        result_future = self._pending_results.get(execution_id) if execution_id else None
+        if result_future is None or result_future.done():
+            logger.error("Dropped an unparseable message on {}", self._result_channel)
+            return
+        # Field paths and error kinds only: the input of a validation error is the payload.
+        reference = log_with_reference(
+            "Code result for execution {execution_id} failed validation: {error_type} {problems}",
+            execution_id=execution_id,
+            error_type=type(error).__name__,
+            problems=[
+                (".".join(str(part) for part in problem["loc"]), problem["type"])
+                for problem in error.errors()
+            ],
+        )
+        result_future.set_result(_sandbox_error_result(execution_id, reference))
 
 
 async def _until_stopped[T](awaitable: Awaitable[T], stop_event: StopEvent | None) -> T:
@@ -206,12 +250,38 @@ def _log_rejected(
     )
 
 
-def _failed_result(execution_id: str, returncode: int, stderr: str) -> dict[str, Any]:
+def _raw_execution_id(data: str) -> str | None:
+    """Return the execution id of a result payload that didn't validate, if it has one."""
+    try:
+        payload = json.loads(data)
+    except ValueError:
+        return None
+    execution_id = payload.get("execution_id") if isinstance(payload, dict) else None
+    return execution_id if isinstance(execution_id, str) else None
+
+
+def _sandbox_error_result(execution_id: str, reference: str) -> CodeResultData:
+    """A result failed with `sandbox_error`, whose reason is logged under `reference`."""
+    return _failed_result(
+        execution_id,
+        CodeFailure(
+            code=CodeFailureCode.SANDBOX_ERROR,
+            detail=build_public_error_message(PublicErrorMessage.NODE_EXECUTION_FAILED, reference),
+        ),
+        reference=reference,
+    )
+
+
+def _failed_result(
+    execution_id: str, failure: CodeFailure, reference: str | None = None
+) -> CodeResultData:
     """A result for an execution the sandbox never produced one for."""
     return CodeResultData(
         execution_id=execution_id,
-        returncode=returncode,
+        returncode=1,
         stdout="",
-        stderr=stderr,
+        stderr=failure.detail,
         result_data=None,
-    ).model_dump()
+        failure=failure,
+        reference=reference,
+    )

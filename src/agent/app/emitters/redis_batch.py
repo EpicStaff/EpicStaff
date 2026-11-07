@@ -3,27 +3,36 @@ RedisStreamBatchEmitter: publishes a single ``agent.result`` (or
 ``agent.error``) envelope to the run's own result
 stream (``<prefix>:<correlation_id>``) only on ``on_final`` / ``on_error``.
 
+A failed run's envelope carries a ``reference``: the id this service logs the failure
+under, which crew cites to the user so support can find this log line.
+
 This is the only ``Emitter`` implementation built in this plan; it is used
 by all runners that declare ``emitter_mode = EmitterMode.BATCH``.
 """
 
 from __future__ import annotations
 
+from foundation.utils.error_reference import log_with_reference, new_reference
 from loguru import logger
 
+from app.constants import FAILURE_STOP_REASONS, StopReason
 from app.emitters.base import Emitter
+from app.exceptions import AgentLoopFailedError
 from app.llm.client import LLMChunk
 from app.logging_utils import format_exception_for_log, redact_payload, redact_value
 from shared.bench_log import BENCH_LEVEL
-from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
+from shared.models.agent_service import AgentRequest, LLMErrorKind, LoopResult, ToolResult
 from shared.redis_streams import RedisStreamClient, StreamEnvelope, agent_result_stream
 
 _RESULT_PASSTHROUGH_KEYS = {
     "tool_invocations",
     "iterations",
     "stop_reason",
+    "error_kind",
+    "failed_llm",
     "token_usage",
     "warnings",  # service-authored advisory templates; never tenant free text
+    "reference",  # minted by this service; the key to its own log line
 }
 
 _TASK_PASSTHROUGH_KEYS = {
@@ -36,9 +45,23 @@ _TASK_PASSTHROUGH_KEYS = {
 }
 
 
+def _failure_log_level(stop_reason: str | None, error_kind: str | None) -> str:
+    """WARNING for a failure crew explains to the user, ERROR for one it can't.
+
+    An agent hitting its configured time limit is that limit doing its job, and an LLM
+    failure of a known kind (a rate limit, a context too long, a refusal) is the user's
+    to fix; neither may raise an ERROR alert. An unknown kind needs someone to look.
+    """
+    if stop_reason == StopReason.TIMEOUT:
+        return "WARNING"
+    if error_kind is not None and error_kind != LLMErrorKind.UNKNOWN:
+        return "WARNING"
+    return "ERROR"
+
+
 def _mask_payload_for_logging(payload: dict) -> dict:
-    """Mask a result payload for logging: only counters, stop reasons, task names, and
-    service-authored warnings pass through.
+    """Mask a result payload for logging: only counters, stop reasons, task names,
+    service-authored warnings and the failure ``reference`` pass through.
 
     Everything else — ``final_text``, ``structured_output``, ``error`` (which can echo
     prompt content through ``str(exception)``), and any field added to the envelope
@@ -118,25 +141,36 @@ class RedisStreamBatchEmitter(Emitter):
         )
 
     async def on_final(self, result: LoopResult) -> None:
-        """Publish a single ``agent.result`` envelope containing the loop summary."""
+        """Publish a single ``agent.result`` envelope containing the loop summary.
+
+        A result whose ``stop_reason`` is a failure also carries a ``reference``, and
+        the run is logged under it after publishing: at WARNING for a timeout or an LLM
+        failure of a known ``error_kind``, at ERROR otherwise. A successful result has no
+        ``reference`` and is logged at INFO.
+        """
+        payload = {
+            "final_text": result.final_text,
+            "structured_output": result.structured_output,
+            "tool_invocations": result.tool_invocations,
+            "iterations": result.iterations,
+            "stop_reason": result.stop_reason,
+            "token_usage": result.token_usage.model_dump(),
+            "error": result.error,
+            "error_kind": result.error_kind,
+            "failed_llm": result.failed_llm,
+            "warnings": self._warnings,
+            "tasks": (
+                [task.model_dump() for task in result.tasks] if result.tasks is not None else None
+            ),
+        }
+        # Minted before publishing because the payload has to carry it.
+        reference = new_reference() if result.stop_reason in FAILURE_STOP_REASONS else None
+        if reference is not None:
+            payload["reference"] = reference
         envelope = StreamEnvelope(
             type="agent.result",
             correlation_id=self._correlation_id,
-            payload={
-                "final_text": result.final_text,
-                "structured_output": result.structured_output,
-                "tool_invocations": result.tool_invocations,
-                "iterations": result.iterations,
-                "stop_reason": result.stop_reason,
-                "token_usage": result.token_usage.model_dump(),
-                "error": result.error,
-                "warnings": self._warnings,
-                "tasks": (
-                    [task.model_dump() for task in result.tasks]
-                    if result.tasks is not None
-                    else None
-                ),
-            },
+            payload=payload,
         )
         _corr_id = self._correlation_id
         logger.opt(lazy=True).debug(
@@ -152,14 +186,37 @@ class RedisStreamBatchEmitter(Emitter):
             correlation_id=self._correlation_id,
             ok=True,
         )
-        logger.info("published agent.result correlation_id={}", self._correlation_id)
+        if reference is None:
+            logger.info("published agent.result correlation_id={}", self._correlation_id)
+        else:
+            log_with_reference(
+                "published agent.result correlation_id={} stop_reason={} error={}",
+                self._correlation_id,
+                result.stop_reason,
+                redact_value(result.error),
+                reference=reference,
+                level=_failure_log_level(result.stop_reason, result.error_kind),
+            )
 
     async def on_error(self, error: Exception) -> None:
-        """Publish a single ``agent.error`` envelope carrying the error message."""
+        """Publish a single ``agent.error`` envelope carrying the error message.
+
+        A failed agent loop also sends its ``stop_reason``, ``error_kind`` and
+        ``failed_llm``, so crew can explain the failure without showing the raw ``error`` text.
+        Every envelope carries a ``reference``, minted before publishing; the error is
+        logged under it after publishing, at WARNING for a loop that timed out or failed
+        on an LLM error of a known ``error_kind``, and at ERROR otherwise.
+        """
+        reference = new_reference()
+        payload = {"error": str(error), "warnings": self._warnings, "reference": reference}
+        if isinstance(error, AgentLoopFailedError):
+            payload["stop_reason"] = error.stop_reason
+            payload["error_kind"] = error.error_kind
+            payload["failed_llm"] = error.failed_llm
         envelope = StreamEnvelope(
             type="agent.error",
             correlation_id=self._correlation_id,
-            payload={"error": str(error), "warnings": self._warnings},
+            payload=payload,
         )
         await self._publish(envelope)
         logger.log(
@@ -169,8 +226,10 @@ class RedisStreamBatchEmitter(Emitter):
             correlation_id=self._correlation_id,
             ok=False,
         )
-        logger.error(
+        log_with_reference(
             "published agent.error correlation_id={} error={}",
             self._correlation_id,
             format_exception_for_log(error),
+            reference=reference,
+            level=_failure_log_level(payload.get("stop_reason"), payload.get("error_kind")),
         )

@@ -9,7 +9,9 @@ string depending on its configuration, so both shapes are covered.
 
 from datetime import UTC, datetime
 
-from manager.domain.enums import VenvStatus
+import pytest
+
+from manager.domain.enums import VenvBuildErrorKind, VenvStatus
 from manager.infrastructure.database.venvs.mappers import VenvMapper
 from manager.infrastructure.database.venvs.tables import VenvTable
 from tests.builders import make_library
@@ -23,6 +25,7 @@ def make_row(**overrides):
         "hash": "1abc",
         "status": "completed",
         "error": None,
+        "error_kind": None,
         "created_at": datetime(2026, 10, 14, 11, 17, 37, tzinfo=UTC),
         "updated_at": datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
     }
@@ -53,6 +56,21 @@ def test_to_domain_treats_a_null_libraries_column_as_empty():
 
 def test_to_domain_carries_the_error_text():
     assert VenvMapper.to_domain(make_row(status="failed", error="uv blew up")).error == "uv blew up"
+
+
+@pytest.mark.parametrize(
+    ("stored_kind", "expected"),
+    [
+        ("package_not_found", VenvBuildErrorKind.PACKAGE_NOT_FOUND),
+        ("package_install_failed", VenvBuildErrorKind.PACKAGE_INSTALL_FAILED),
+        (None, None),
+    ],
+    ids=["user-facing-kind", "generic-kind", "stored-before-kinds"],
+)
+def test_to_domain_reads_the_error_kind(stored_kind, expected):
+    venv = VenvMapper.to_domain(make_row(status="failed", error="x", error_kind=stored_kind))
+
+    assert venv.error_kind is expected
 
 
 def test_dump_libs_round_trips_through_to_domain():

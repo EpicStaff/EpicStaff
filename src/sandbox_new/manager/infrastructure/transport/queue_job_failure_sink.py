@@ -8,9 +8,9 @@ consumer never has to know the job never reached the worker.
 import asyncio
 
 from common.contracts import ExecutionResultMessage
+from src.shared.models.code_failure import CodeFailure
 
 from manager.application.ports import AbstractJobFailureSink
-from manager.domain.types import NotRunReason
 
 __all__ = ["QueueJobFailureSink"]
 
@@ -22,19 +22,21 @@ class QueueJobFailureSink(AbstractJobFailureSink):
     async def fail(
         self,
         execution_id: str,
-        message: str,
+        failure: CodeFailure,
         *,
+        reference: str | None,
         session_id: int | None,
-        not_run_reason: NotRunReason,
         reply_to_crew_channel: bool,
     ) -> None:
         await self._queue.put(
             ExecutionResultMessage(
                 execution_id=execution_id,
-                stderr=message,
+                stderr=failure.detail,
                 returncode=1,
                 reply_to_crew_channel=reply_to_crew_channel,
+                ran=False,
                 session_id=session_id,
-                not_run_reason=not_run_reason,
+                failure=failure,
+                reference=reference,
             )
         )

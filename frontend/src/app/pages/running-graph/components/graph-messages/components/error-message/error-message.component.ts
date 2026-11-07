@@ -3,10 +3,11 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
 
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
+import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe';
 
 @Component({
     selector: 'app-error-message',
-    imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent, RuntimeNodeLabelPipe],
     template: `
         <div class="session-message error-container">
             <div
@@ -31,7 +32,11 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                         class="message-toggle"
                         [attr.aria-expanded]="isMessageExpanded"
                     >
-                        Error
+                        @if (message.name) {
+                            <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> failed
+                        } @else {
+                            Error
+                        }
                     </button>
                 </h3>
             </div>
@@ -178,6 +183,14 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
                 margin: 0;
+                /* A node name with no spaces would otherwise run past the card's edge. */
+                min-width: 0;
+                overflow-wrap: anywhere;
+            }
+
+            .node-name {
+                color: var(--red-400);
+                font-weight: var(--text-body-weight);
             }
 
             /* Collapsible content container */

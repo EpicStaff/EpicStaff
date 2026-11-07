@@ -17,7 +17,10 @@ import types
 
 import pytest
 
-from services.agent_task_service import AgentTaskError, AgentTaskService, AgentTaskTimeoutError
+from loguru import logger
+
+from services.agent_run_errors import AgentTaskError, AgentTaskTimeoutError
+from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
 from src.shared.models import (
@@ -100,9 +103,23 @@ def _task_node(name="task_node_1", **agent_fields) -> TaskNodeData:
     return TaskNodeData(
         node_name=name,
         agent_definition=AgentDefinitionData(
-            id=1, name="researcher", instructions="Research the topic.", llm=LLM, **agent_fields
+            id=1, name="researcher", instructions="Research the topic.", **{"llm": LLM, **agent_fields}
         ),
         instructions=f"instructions for {name}",
+    )
+
+
+def _start_task(service, node: TaskNodeData, stop_event: StopEvent, **kwargs):
+    """Start a run the way TaskNode does, passing the agent and LLM it has checked."""
+    return service.run_task(
+        node, stop_event, agent_definition=node.agent_definition, llm=node.agent_definition.llm, **kwargs
+    )
+
+
+def _start_agent_node(service, node: AgentNodeData, stop_event: StopEvent, **kwargs):
+    """Start a run the way AgentNode does, passing the agent and LLM it has checked."""
+    return service.run_agent_node(
+        node, stop_event, agent_definition=node.agent_definition, llm=node.agent_definition.llm, **kwargs
     )
 
 
@@ -137,7 +154,7 @@ async def _run(service, client, run=None, replies=(COMPLETED,), **kwargs):
     agent = FakeAgent(client, service, replies)
     responder = asyncio.create_task(agent())
     try:
-        result = await (run or (lambda: service.run_task(_task_node(), StopEvent(), **kwargs)))()
+        result = await (run or (lambda: _start_task(service, _task_node(), StopEvent(), **kwargs)))()
     except Exception as error:
         result = error
     finally:
@@ -160,19 +177,349 @@ def _leftover_run_keys(client, service) -> list[str]:
             ("agent.result", {"stop_reason": "max_consecutive_failures", "final_text": "summary"}),
             {"stop_reason": "max_consecutive_failures", "final_text": "summary"},
         ),
-        (("agent.result", {"stop_reason": "llm_error", "error": "LLM call failed"}), AgentTaskError("LLM call failed")),
-        (("agent.error", {"error": "boom"}), AgentTaskError("boom")),
     ],
-    ids=["completed", "max-consecutive-failures", "failure-stop-reason", "agent-error"],
+    ids=["completed", "max-consecutive-failures"],
 )
 async def test_run_ends_with_the_agents_answer_and_leaves_no_keys(service, client, reply, expected):
     result, _ = await _run(service, client, replies=[reply])
 
-    if isinstance(expected, Exception):
-        assert isinstance(result, type(expected)) and str(result) == str(expected)
-    else:
-        assert result == expected
+    assert result == expected
     assert _leftover_run_keys(client, service) == []
+
+
+REFERENCE = "0a1b2c3d4e5f"
+PROVIDER_SECRET = "sk-proj-abc1****wxyz"
+RAW_PROVIDER_TEXT = (
+    "litellm.AuthenticationError: AuthenticationError: OpenAIException - "
+    f"Incorrect API key provided: {PROVIDER_SECRET}"
+)
+LLM_FAILURE_TEXTS = {
+    "authentication": (
+        'The provider rejected the API key for model "gpt-4o". Check the key in the LLM settings.'
+    ),
+    "rate_limit": (
+        "The provider's rate limit for model \"gpt-4o\" was reached. Wait a minute and run the "
+        "flow again, or lower the agent's requests per minute."
+    ),
+    "quota_exceeded": (
+        'The provider account for model "gpt-4o" has run out of credit. Top it up, or choose '
+        "another LLM."
+    ),
+    "context_too_long": (
+        'The prompt is too long for model "gpt-4o". Shorten the task or its inputs, or choose a '
+        "model with a bigger context window."
+    ),
+    "model_not_found": (
+        'The provider has no model "gpt-4o". Check the model name in the LLM settings.'
+    ),
+    "provider_unavailable": (
+        "The provider of model \"gpt-4o\" isn't responding. Try again in a few minutes."
+    ),
+    "content_refused": (
+        'The provider of model "gpt-4o" refused the request because of its content policy. '
+        "Change the task or its inputs."
+    ),
+    "provider_timeout": 'The provider of model "gpt-4o" took too long to answer. Try again.',
+}
+UNKNOWN_LLM_FAILURE_TEXT = (
+    'The LLM request for model "gpt-4o" failed. '
+    f"Try again or contact your administrator (reference: {REFERENCE})."
+)
+AGENT_SERVICE_NO_ANSWER_TEXT = (
+    "The agent service didn't answer in time. "
+    f"Try again or contact your administrator (reference: {REFERENCE})."
+)
+
+
+@pytest.fixture
+def fixed_reference(monkeypatch):
+    monkeypatch.setattr("foundation.utils.error_reference.new_reference", lambda: REFERENCE)
+
+
+@pytest.fixture
+def warning_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING")
+    yield records
+    logger.remove(sink_id)
+
+
+def _llm_failure(envelope_type: str, error_kind: str | None) -> tuple[str, dict]:
+    payload = {"stop_reason": "llm_error", "error": RAW_PROVIDER_TEXT}
+    if error_kind is not None:
+        payload["error_kind"] = error_kind
+    return envelope_type, payload
+
+
+ENVELOPE_TYPES = pytest.mark.parametrize("envelope_type", ["agent.result", "agent.error"])
+
+
+@ENVELOPE_TYPES
+@pytest.mark.parametrize(("error_kind", "expected_text"), LLM_FAILURE_TEXTS.items())
+async def test_llm_failure_shows_what_the_user_can_do_and_logs_only_its_kind(
+    service, client, warning_logs, envelope_type, error_kind, expected_text
+):
+    result, _ = await _run(service, client, replies=[_llm_failure(envelope_type, error_kind)])
+
+    assert isinstance(result, AgentTaskError)
+    assert str(result) == expected_text
+    assert result.reference is None
+    assert _leftover_run_keys(client, service) == []
+    [logged] = [record for record in warning_logs if "Agent run failed" in record]
+    assert f"Agent run failed: {error_kind} (agent_correlation_id=" in logged
+    assert PROVIDER_SECRET not in "".join(warning_logs)
+
+
+async def test_missing_model_at_a_custom_base_url_points_at_the_url_too(service, client):
+    llm = LLMData(provider="openai", config=LLMConfigData(model="gpt-4o", base_url="https://llm.example.com/v1"))
+
+    result, _ = await _run(
+        service, client, replies=[_llm_failure("agent.result", "model_not_found")],
+        run=lambda: _start_task(service, _task_node(llm=llm), StopEvent()),
+    )
+
+    assert str(result) == (
+        'The provider has no model "gpt-4o". Check the model name and base URL in the LLM settings.'
+    )
+
+
+CUSTOM_URL = "https://llm.example.com/v1"
+
+
+@ENVELOPE_TYPES
+@pytest.mark.parametrize(
+    ("primary_base_url", "fallback_base_url", "failed_llm", "expected_text"),
+    [
+        pytest.param(
+            None, CUSTOM_URL, "fallback",
+            'The provider has no model "claude-sonnet". Check the model name and base URL in the LLM settings.',
+            id="fallback-at-a-custom-url",
+        ),
+        pytest.param(
+            CUSTOM_URL, None, "fallback",
+            'The provider has no model "claude-sonnet". Check the model name in the LLM settings.',
+            id="fallback-while-only-the-primary-has-a-custom-url",
+        ),
+        pytest.param(
+            None, CUSTOM_URL, "primary",
+            'The provider has no model "gpt-4o". Check the model name in the LLM settings.',
+            id="primary",
+        ),
+        pytest.param(
+            None, CUSTOM_URL, None,
+            'The provider has no model "gpt-4o". Check the model name in the LLM settings.',
+            id="older-agent-service-without-the-field",
+        ),
+    ],
+)
+async def test_llm_failure_names_the_llm_that_failed(
+    service, client, envelope_type, primary_base_url, fallback_base_url, failed_llm, expected_text
+):
+    node = _task_node(
+        llm=LLMData(provider="openai", config=LLMConfigData(model="gpt-4o", base_url=primary_base_url)),
+        fallback_llm=LLMData(
+            provider="anthropic", config=LLMConfigData(model="claude-sonnet", base_url=fallback_base_url)
+        ),
+    )
+    envelope_type, payload = _llm_failure(envelope_type, "model_not_found")
+    if failed_llm is not None:
+        payload["failed_llm"] = failed_llm
+
+    result, _ = await _run(
+        service, client, replies=[(envelope_type, payload)], run=lambda: _start_task(service, node, StopEvent())
+    )
+
+    assert str(result) == expected_text
+
+
+async def test_unexplained_fallback_failure_names_the_fallback_model(service, client, fixed_reference):
+    node = _task_node(fallback_llm=LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet")))
+    envelope_type, payload = _llm_failure("agent.error", "unknown")
+    payload["failed_llm"] = "fallback"
+
+    result, _ = await _run(
+        service, client, replies=[(envelope_type, payload)], run=lambda: _start_task(service, node, StopEvent())
+    )
+
+    assert str(result) == (
+        'The LLM request for model "claude-sonnet" failed. '
+        f"Try again or contact your administrator (reference: {REFERENCE})."
+    )
+    assert result.reference == REFERENCE
+
+
+@ENVELOPE_TYPES
+@pytest.mark.parametrize(
+    "error_kind", ["unknown", None, "kind_from_a_newer_agent"], ids=["unknown", "missing", "unrecognized"]
+)
+async def test_unexplained_llm_failure_cites_a_reference_logged_with_the_error_class_only(
+    service, client, fixed_reference, warning_logs, envelope_type, error_kind
+):
+    result, _ = await _run(service, client, replies=[_llm_failure(envelope_type, error_kind)])
+
+    assert str(result) == UNKNOWN_LLM_FAILURE_TEXT
+    assert result.reference == REFERENCE
+    [logged] = [record for record in warning_logs if REFERENCE in record]
+    assert f"litellm.AuthenticationError: <redacted len={len(RAW_PROVIDER_TEXT)}>" in logged
+    assert PROVIDER_SECRET not in "".join(warning_logs)
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        ("agent.error", {"error": "output did not satisfy schema after 2 retries"}),
+        ("agent.result", {"stop_reason": "internal_error", "error": "Redis connection lost"}),
+        ("agent.error", {"stop_reason": "internal_error", "error": "Redis connection lost"}),
+    ],
+    ids=["no-stop-reason", "internal-error-result", "internal-error-error"],
+)
+async def test_agent_failure_outside_the_llm_call_gets_the_generic_message(
+    service, client, fixed_reference, warning_logs, reply
+):
+    result, _ = await _run(service, client, replies=[reply])
+
+    assert str(result) == f"Node execution failed (reference: {REFERENCE})"
+    assert result.reference == REFERENCE
+    [logged] = [record for record in warning_logs if REFERENCE in record]
+    assert f"<unknown class>: <redacted len={len(reply[1]['error'])}>" in logged
+    assert reply[1]["error"] not in "".join(warning_logs)
+
+
+AGENT_REFERENCE = "fedcba987654"
+
+UNEXPLAINED_FAILURES = pytest.mark.parametrize(
+    ("reply", "expected_text"),
+    [
+        pytest.param(
+            ("agent.error", {"stop_reason": "llm_error", "error_kind": "unknown", "error": RAW_PROVIDER_TEXT}),
+            'The LLM request for model "gpt-4o" failed. '
+            "Try again or contact your administrator (reference: {reference}).",
+            id="unknown-llm-error",
+        ),
+        pytest.param(
+            ("agent.result", {"stop_reason": "internal_error", "error": "Redis connection lost"}),
+            "Node execution failed (reference: {reference})",
+            id="internal-error-result",
+        ),
+        pytest.param(
+            ("agent.error", {"error": "output did not satisfy schema after 2 retries"}),
+            "Node execution failed (reference: {reference})",
+            id="no-stop-reason",
+        ),
+    ],
+)
+
+
+@UNEXPLAINED_FAILURES
+async def test_unexplained_failure_cites_the_reference_the_agent_service_logged_it_under(
+    service, client, warning_logs, reply, expected_text
+):
+    envelope_type, payload = reply
+
+    result, _ = await _run(
+        service, client, replies=[(envelope_type, {**payload, "reference": AGENT_REFERENCE})]
+    )
+
+    assert str(result) == expected_text.format(reference=AGENT_REFERENCE)
+    assert result.reference == AGENT_REFERENCE
+    [logged] = [record for record in warning_logs if "Agent run failed" in record]
+    assert f"(reference: {AGENT_REFERENCE}) Agent run failed" in logged
+    # The agent service logged the failure at ERROR; crew's line is context, so one
+    # failure raises one alert.
+    assert "| WARNING" in logged
+
+
+@UNEXPLAINED_FAILURES
+@pytest.mark.parametrize(
+    "agent_reference",
+    ["<b>x</b>", "FEDCBA987654", "fedcba9876543", 123456789012],
+    ids=["markup", "uppercase", "too-long", "not-a-string"],
+)
+async def test_unexplained_failure_mints_its_own_reference_when_the_agents_is_malformed(
+    service, client, fixed_reference, warning_logs, reply, expected_text, agent_reference
+):
+    envelope_type, payload = reply
+
+    result, _ = await _run(
+        service, client, replies=[(envelope_type, {**payload, "reference": agent_reference})]
+    )
+
+    assert str(result) == expected_text.format(reference=REFERENCE)
+    assert result.reference == REFERENCE
+    assert str(agent_reference) not in str(result)
+    assert str(agent_reference) not in "".join(warning_logs)
+    # No reference of the agent's own to lead to its line, so crew's line is the ERROR.
+    [logged] = [record for record in warning_logs if f"(reference: {REFERENCE})" in record]
+    assert "| ERROR" in logged
+
+
+@UNEXPLAINED_FAILURES
+@pytest.mark.parametrize("sends_the_key", [True, False], ids=["null", "absent"])
+async def test_unexplained_failure_mints_its_own_reference_when_the_agent_sends_none(
+    service, client, fixed_reference, reply, expected_text, sends_the_key
+):
+    envelope_type, payload = reply
+    if sends_the_key:
+        payload = {**payload, "reference": None}
+
+    result, _ = await _run(service, client, replies=[(envelope_type, payload)])
+
+    assert str(result) == expected_text.format(reference=REFERENCE)
+    assert result.reference == REFERENCE
+
+
+async def test_explained_failure_logs_the_agents_reference_but_does_not_show_it(
+    service, client, warning_logs
+):
+    envelope_type, payload = _llm_failure("agent.error", "authentication")
+
+    result, _ = await _run(
+        service, client, replies=[(envelope_type, {**payload, "reference": AGENT_REFERENCE})]
+    )
+
+    assert result.reference is None
+    assert AGENT_REFERENCE not in str(result)
+    [logged] = [record for record in warning_logs if "Agent run failed" in record]
+    assert f"agent_reference={AGENT_REFERENCE}" in logged
+
+
+@ENVELOPE_TYPES
+@pytest.mark.parametrize(
+    ("max_execution_time", "expected_limit"),
+    [(60, "60 seconds"), (1, "1 second"), (1_000_000, "1000000 seconds")],
+    ids=["seconds", "one-second", "large-limit"],
+)
+async def test_agent_time_limit_names_the_agent_and_its_limit(
+    service, client, envelope_type, max_execution_time, expected_limit
+):
+    timeout = (envelope_type, {"stop_reason": "timeout", "error": f"execution exceeded {max_execution_time}s"})
+
+    result, _ = await _run(
+        service, client, replies=[timeout],
+        run=lambda: _start_task(service, _task_node(max_execution_time=max_execution_time), StopEvent()),
+    )
+
+    assert isinstance(result, AgentTaskTimeoutError)
+    assert str(result) == (
+        f"Agent \"researcher\" didn't finish within {expected_limit}. "
+        "Raise its max execution time, or make the task simpler."
+    )
+    assert result.reference is None
+
+
+@ENVELOPE_TYPES
+async def test_agent_reported_timeout_without_a_limit_gets_the_generic_message(
+    service, client, fixed_reference, envelope_type
+):
+    timeout = (envelope_type, {"stop_reason": "timeout", "error": "execution exceeded Nones"})
+
+    result, _ = await _run(
+        service, client, replies=[timeout],
+        run=lambda: _start_task(service, _task_node(max_execution_time=None), StopEvent()),
+    )
+
+    assert str(result) == f"Node execution failed (reference: {REFERENCE})"
+    assert result.reference == REFERENCE
 
 
 async def test_live_events_reach_on_event_in_order_and_others_are_skipped(service, client):
@@ -229,7 +576,7 @@ async def test_run_never_reads_another_runs_result_stream(service, client):
         ])
 
     responder = asyncio.create_task(agent_that_also_answers_another_run())
-    result = await service.run_task(_task_node(), StopEvent(), on_event=collected.append)
+    result = await _start_task(service, _task_node(), StopEvent(), on_event=collected.append)
     await responder
 
     assert result["final_text"] == "correct"
@@ -255,8 +602,8 @@ async def test_concurrent_runs_each_receive_only_their_own_result(service, clien
 
     responder = asyncio.create_task(agent_echoing_instructions())
     first, second = await asyncio.gather(
-        service.run_task(_task_node("run_a"), StopEvent()),
-        service.run_task(_task_node("run_b"), StopEvent()),
+        _start_task(service, _task_node("run_a"), StopEvent()),
+        _start_task(service, _task_node("run_b"), StopEvent()),
     )
     await responder
 
@@ -264,7 +611,7 @@ async def test_concurrent_runs_each_receive_only_their_own_result(service, clien
     assert _leftover_run_keys(client, service) == []
 
 
-async def test_timeout_raises_after_forwarding_what_arrived_and_leaves_no_keys(client):
+async def test_timeout_raises_after_forwarding_what_arrived_and_leaves_no_keys(client, fixed_reference):
     service = AgentTaskService(
         redis_service=types.SimpleNamespace(aioredis_client=client), default_timeout=0.2, poll_block_ms=20
     )
@@ -276,8 +623,29 @@ async def test_timeout_raises_after_forwarding_what_arrived_and_leaves_no_keys(c
     )
 
     assert isinstance(result, AgentTaskTimeoutError)
+    assert str(result) == AGENT_SERVICE_NO_ANSWER_TEXT
+    assert result.reference == REFERENCE
     assert collected == ["agent.task_start"]
     assert _leftover_run_keys(client, service) == []
+
+
+async def test_crew_giving_up_says_the_agent_service_didnt_answer_not_the_agents_limit(
+    client, fixed_reference, warning_logs
+):
+    service = AgentTaskService(
+        redis_service=types.SimpleNamespace(aioredis_client=client), timeout_buffer_s=0.2, poll_block_ms=20
+    )
+
+    result, _ = await _run(
+        service, client, replies=[],
+        run=lambda: _start_task(service, _task_node(max_execution_time=1), StopEvent()),
+    )
+
+    assert isinstance(result, AgentTaskTimeoutError)
+    assert str(result) == AGENT_SERVICE_NO_ANSWER_TEXT
+    assert result.reference == REFERENCE
+    [logged] = [record for record in warning_logs if REFERENCE in record]
+    assert "didn't answer within 1.2s" in logged
 
 
 async def test_stop_mid_wait_raises_stop_session_and_leaves_no_keys(service, client):
@@ -288,7 +656,7 @@ async def test_stop_mid_wait_raises_stop_session_and_leaves_no_keys(service, cli
 
     result, _ = await _run(
         service, client,
-        run=lambda: service.run_task(_task_node(), stop_event, on_event=stop_on_first_event),
+        run=lambda: _start_task(service, _task_node(), stop_event, on_event=stop_on_first_event),
         replies=[("agent.task_start", {"task": {"name": "task_a", "order": 0}})],
     )
 
@@ -307,7 +675,7 @@ async def test_task_request_carries_the_agent_spec_and_task(service, client):
     )
 
     _, agent = await _run(
-        service, client, run=lambda: service.run_task(node, StopEvent(), storage_credentials=credentials)
+        service, client, run=lambda: _start_task(service, node, StopEvent(), storage_credentials=credentials)
     )
 
     request = AgentRequest(correlation_id="unused", **agent.request)
@@ -328,7 +696,7 @@ async def test_task_request_carries_the_agent_spec_and_task(service, client):
 async def test_request_spec_carries_the_agents_fallback_llm(service, client, fallback_llm):
     node = _task_node(fallback_llm=fallback_llm)
 
-    _, agent = await _run(service, client, run=lambda: service.run_task(node, StopEvent()))
+    _, agent = await _run(service, client, run=lambda: _start_task(service, node, StopEvent()))
 
     (spec,) = AgentRequest(correlation_id="unused", **agent.request).agents
     assert spec.fallback_llm == fallback_llm
@@ -364,7 +732,7 @@ async def test_agent_node_request_lists_every_task_with_its_context(service, cli
         ],
     )
 
-    _, agent = await _run(service, client, run=lambda: service.run_agent_node(node, StopEvent()))
+    _, agent = await _run(service, client, run=lambda: _start_agent_node(service, node, StopEvent()))
 
     assert agent.request["run_type"] == "LIST_OF_TASKS"
     assert agent.request["payload"]["tasks"] == [
@@ -401,9 +769,9 @@ async def test_wait_is_bounded_by_the_agents_execution_limit(client, max_executi
     )
     if task_count is None:
         node = _task_node(max_execution_time=max_execution_time)
-        run = lambda: service.run_task(node, StopEvent())  # noqa: E731
+        run = lambda: _start_task(service, node, StopEvent())  # noqa: E731
     else:
-        run = lambda: service.run_agent_node(_agent_node(task_count, max_execution_time), StopEvent())  # noqa: E731
+        run = lambda: _start_agent_node(service, _agent_node(task_count, max_execution_time), StopEvent())  # noqa: E731
 
     await _run(service, client, run=run)
 

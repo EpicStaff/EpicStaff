@@ -6,9 +6,9 @@ must leave the unit of work uncommitted.
 
 import pytest
 
+from manager.application.errors import VenvNotFoundError
 from manager.application.orchestrators import VenvCRUDOrchestrator
 from manager.domain.enums import VenvStatus
-from manager.domain.errors import VenvNotFoundError
 from tests.builders import make_library, make_venv
 
 

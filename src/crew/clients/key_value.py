@@ -7,6 +7,7 @@ from loguru import logger
 from clients.errors import (
     ClientBadGatewayError,
     ClientNotAvailableError,
+    ClientRefusedError,
     ClientTimeoutError,
     ClientValidationError,
 )
@@ -23,6 +24,9 @@ RETRY_BACKOFF_SECONDS = (0.2, 0.4, 0.8)
 # Django either never received the request or dropped it with the connection. Timeouts are not
 # here: after a ReadTimeout, Django may still be running the request.
 _RETRYABLE_ERRORS = (httpx.NetworkError, httpx.RemoteProtocolError)
+# The statuses whose message is about the request itself (its table, keys, values or session),
+# so it is raised as ClientValidationError. Every other 4xx is about crew, e.g. 401 or 429.
+_REQUEST_REJECTED_STATUSES = frozenset({400, 404, 409})
 
 
 class KeyValueClient:
@@ -103,7 +107,15 @@ class KeyValueClient:
         if response.status_code >= 500:
             raise ClientBadGatewayError(response.text)
         if response.status_code >= 400:
-            raise ClientValidationError(self._error_message(response))
+            message = self._error_message(response)
+            # A 4xx without Django's error envelope did not come from the API view: it is,
+            # e.g., Django's own error page for a request rejected before the view ran, which
+            # in DEBUG lists settings and a traceback.
+            if message is None:
+                raise ClientBadGatewayError(response.text)
+            if response.status_code not in _REQUEST_REJECTED_STATUSES:
+                raise ClientRefusedError(f"{response.status_code}: {message}")
+            raise ClientValidationError(message)
         return response.json()
 
     async def _send(self, url: str, payload: dict) -> httpx.Response:
@@ -131,8 +143,11 @@ class KeyValueClient:
         return await self._client.post(url, json=payload)
 
     @staticmethod
-    def _error_message(response: httpx.Response) -> str:
+    def _error_message(response: httpx.Response) -> str | None:
+        """Return the `message` of Django's `{status_code, code, message}` error envelope."""
         try:
-            return response.json().get("message", response.text)
+            body = response.json()
         except ValueError:
-            return response.text
+            return None
+        message = body.get("message") if isinstance(body, dict) else None
+        return message if isinstance(message, str) else None

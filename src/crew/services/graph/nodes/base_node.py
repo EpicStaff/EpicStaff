@@ -1,19 +1,32 @@
 from abc import ABC, abstractmethod
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
+from foundation.utils.error_reference import log_with_reference
 from langgraph.types import StreamWriter
 from loguru import logger
+from models.graph_models import GraphMessage
 from models.state import State
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
-from services.graph.exceptions import InvalidStatePathError, ReturnCodeError, StopSession
+from services.graph.exceptions import NodeExecutionError, PublicNodeError, StopSession
+from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.shared.bench_log import BENCH_LEVEL
+from src.shared.public_error import PublicErrorMessage, build_public_error_message
+from src.shared.runtime_node_name import parse_runtime_node_label
 from utils import map_variables_to_input, set_output_variables
 from utils.state_path import split_state_path
 
-# Errors whose text is written for the user and carries nothing internal, so it is streamed
-# as-is instead of the generic message with a correlation id.
-_PUBLIC_ERROR_TYPES = (ReturnCodeError, StopSession, InvalidStatePathError)
+
+def _write_to_audit_trail_only(graph_message: GraphMessage) -> None:
+    """Send a graph message to the audit trail without streaming it to the run panel.
+
+    The audit trail closes a node on its error message, so a stopped node still needs one.
+    """
+    try:
+        emit_session_audit_event(GraphMessage.encode_payload(graph_message.to_payload()))
+    except Exception as audit_exc:
+        # Audit must never break the session, as on the streamed path.
+        logger.warning("Audit dispatch failed, dropping: {}", audit_exc)
 
 
 class BaseNode(ABC):
@@ -110,40 +123,59 @@ class BaseNode(ABC):
             **kwargs,
         )
 
-    def add_error_message(
-        self,
-        writer: StreamWriter,
-        error: Exception | str,
-        execution_order: int,
-        *,
-        public_details: str | None = None,
-    ):
-        """
-        Add an error message to the graph.
+    @property
+    def node_label(self) -> str:
+        """The node's label as the user sees it on the canvas, e.g. "Search docs #1"."""
+        return parse_runtime_node_label(self.node_name)
 
-        The raw error text is logged, not streamed: the client receives a
-        generic message carrying a correlation id, unless the caller supplies
-        already-safe text in `public_details` or the error is one of
-        _PUBLIC_ERROR_TYPES, whose own text is streamed.
-
-        Args:
-            writer (StreamWriter): A stream writer to write the message to.
-            error (Exception | str): The exception or error text that was raised.
-            execution_order (int): The order of execution of the node.
-            public_details (str | None): Safe text to stream instead of the
-                generic message.
-        """
-        if public_details is None and isinstance(error, _PUBLIC_ERROR_TYPES):
-            public_details = str(error)
+    def add_error_message(self, writer: StreamWriter, public_details: str, execution_order: int):
+        """Stream an error message showing `public_details`, which must be safe to show."""
         self.custom_session_message_writer.add_error_message(
             session_id=self.session_id,
             node_name=self.node_name,
             writer=writer,
-            error=error,
             execution_order=execution_order,
             node_type=self.TYPE,
             public_details=public_details,
         )
+
+    def _raise_failure(
+        self, writer: StreamWriter, error: Exception, execution_order: int
+    ) -> NoReturn:
+        """Stream the error message for `error`, then raise what the session reports.
+
+        A `PublicNodeError` is shown as it is. Any other error may carry internal text, so it
+        is logged and the user sees a generic message with a reference to the log line.
+        `StopSession` is re-raised unchanged, and its error message goes to the audit trail
+        only: the node didn't fail, and the session ends a stop on its own path, where the
+        status says why it stopped. Everything else is raised as a `NodeExecutionError`
+        carrying what the user was shown.
+        """
+        if isinstance(error, StopSession):
+            self.add_error_message(
+                writer=_write_to_audit_trail_only,
+                public_details=str(error),
+                execution_order=execution_order,
+            )
+            raise error
+        if isinstance(error, PublicNodeError):
+            public_message = str(error)
+            reference = error.reference
+        else:
+            reference = log_with_reference(
+                "Node execution failed: {error} (session_id={session_id}, node_name={node_name})",
+                error=str(error),
+                session_id=self.session_id,
+                node_name=self.node_name,
+                exception=error,
+            )
+            public_message = build_public_error_message(
+                PublicErrorMessage.NODE_EXECUTION_FAILED, reference
+            )
+        self.add_error_message(
+            writer=writer, public_details=public_message, execution_order=execution_order
+        )
+        raise NodeExecutionError(public_message, reference=reference) from error
 
     @abstractmethod
     async def execute(
@@ -153,6 +185,14 @@ class BaseNode(ABC):
     def get_output_variable_value(self, output: Any) -> Any:
         """Value stored at output_variable_path. Default: whole output."""
         return output
+
+    def store_output(self, state: State, output: Any) -> None:
+        """Store the node's output in the flow state at `output_variable_path`."""
+        set_output_variables(
+            state=state,
+            output_variable_path=self.output_variable_path,
+            output=self.get_output_variable_value(output),
+        )
 
     async def run(self, state: State, writer: StreamWriter) -> State:
         """
@@ -170,7 +210,8 @@ class BaseNode(ABC):
             State: The updated state.
 
         Raises:
-            Exception: If there was an exception during the execution of the node.
+            NodeExecutionError: The node failed; its error message has been streamed.
+            StopSession: The session was stopped while the node ran.
         """
         execution_order = 0
         logger.log(
@@ -198,11 +239,7 @@ class BaseNode(ABC):
                 input_=input_,
             )
 
-            set_output_variables(
-                state=state,
-                output_variable_path=self.output_variable_path,
-                output=self.get_output_variable_value(output),
-            )
+            self.store_output(state=state, output=output)
 
             self.update_state_history(
                 state=state,
@@ -239,8 +276,7 @@ class BaseNode(ABC):
                 node_type=type(self).__name__,
                 ok=False,
             )
-            self.add_error_message(writer=writer, error=e, execution_order=execution_order)
-            raise
+            self._raise_failure(writer=writer, error=e, execution_order=execution_order)
 
     def get_input(self, state: State):
         """

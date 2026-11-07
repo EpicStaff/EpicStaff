@@ -8,7 +8,7 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from pydantic import Field, field_validator, model_validator
 
-from manager.domain.enums import JobStatus, VenvStatus, WheelStatus
+from manager.domain.enums import JobStatus, VenvBuildErrorKind, VenvStatus, WheelStatus
 from manager.domain.types import LibraryString
 
 __all__ = [
@@ -25,9 +25,11 @@ __all__ = [
 ]
 
 DEFAULT_VENV_NAME = "default"
+
 WHEEL_SUFFIX = ".whl"
 SOURCE_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".zip")
 DISTRIBUTION_NAME_PATTERN = r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$"
+
 VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_\.][a-z0-9]+)*)?$"
 
 
@@ -88,6 +90,8 @@ class Venv(Entity):
     hash: str | None = None
     status: VenvStatus = VenvStatus.DECLARED
     error: str | None = None
+    # None while the build has not failed, and for a failure stored before kinds were.
+    error_kind: VenvBuildErrorKind | None = None
     # Assigned by the database, never by the domain: unset until the venv is stored.
     created_at: datetime | None = Field(default=None, frozen=True)
     updated_at: datetime | None = Field(default=None, frozen=True)
@@ -121,7 +125,7 @@ class Venv(Entity):
     def apply_resolved_versions(self, versions: dict[str, str], /):
         """Record what the build installed, keyed by canonical name.
 
-        `versions` also carries the transitive packages uv resolved; only declared
+        `versions` also carries the transitive packages the build resolved; only declared
         libraries are stamped, and one the build did not resolve is left as declared.
         """
         self.libs = [
@@ -161,23 +165,45 @@ class Venv(Entity):
         )
 
     def mark_as_declared(self):
-        self.error = None
+        self._clear_error()
         self.status = VenvStatus.DECLARED
 
     def mark_as_waiting(self):
-        self.error = None
+        self._clear_error()
         self.status = VenvStatus.WAITING
 
     def mark_as_processing(self):
         self.status = VenvStatus.PROCESSING
 
     def mark_as_completed(self):
-        self.error = None
+        self._clear_error()
         self.status = VenvStatus.COMPLETED
 
-    def mark_as_failed(self, error: Exception):
-        self.error = str(error)
+    def mark_as_failed(self, kind: VenvBuildErrorKind, message: str):
+        """Mark the build failed, recording why.
+
+        Args:
+            message: Stored as given, so it must be safe to show: the caller passes a
+                generic hint for any failure whose text can carry paths or tool output.
+        """
+        self.error = message
+        self.error_kind = kind
         self.status = VenvStatus.FAILED
+
+    @property
+    def build_error_detail(self) -> str | None:
+        """The stored error when its kind says it names what the user declared, else None.
+
+        Every kind but the generic one does. None for the generic kind, and for a
+        failure stored before kinds were, whose text can still hold raw tool output.
+        """
+        if self.error_kind in (None, VenvBuildErrorKind.PACKAGE_INSTALL_FAILED):
+            return None
+        return self.error
+
+    def _clear_error(self):
+        self.error = None
+        self.error_kind = None
 
 
 class StorageCredentials(ValueObject):

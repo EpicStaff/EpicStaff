@@ -8,6 +8,7 @@ from clients import key_value as key_value_module
 from clients.errors import (
     ClientBadGatewayError,
     ClientNotAvailableError,
+    ClientRefusedError,
     ClientTimeoutError,
     ClientValidationError,
 )
@@ -75,8 +76,23 @@ def _respond_404(request):
     return httpx.Response(404, json={"status_code": 404, "code": "x", "message": "Key-value table 3 not found."})
 
 
+def _respond_with_envelope(status_code: int, message: str):
+    def respond(request):
+        return httpx.Response(status_code, json={"status_code": status_code, "code": "x", "message": message})
+
+    return respond
+
+
 def _respond_500(request):
     return httpx.Response(500, text="boom")
+
+
+def _respond_4xx_page(request):
+    return httpx.Response(400, text="<html>DisallowedHost at /api/ settings: SECRET_KEY</html>")
+
+
+def _respond_4xx_other_json(request):
+    return httpx.Response(413, json={"error": "body too large"})
 
 
 def _time_out(request):
@@ -88,11 +104,20 @@ def _time_out(request):
     ("respond", "error", "message"),
     [
         (_respond_404, ClientValidationError, "Key-value table 3 not found."),
+        (_respond_with_envelope(400, "Key 'k' is too long."), ClientValidationError, "Key 'k' is too long."),
+        (_respond_with_envelope(409, "Key 'k' was changed."), ClientValidationError, "Key 'k' was changed."),
+        # About crew's own key, permissions or rate, not the request: not for the flow's user.
+        (_respond_with_envelope(401, "Invalid API key."), ClientRefusedError, "401: Invalid API key."),
+        (_respond_with_envelope(403, "Not allowed."), ClientRefusedError, "403: Not allowed."),
+        (_respond_with_envelope(429, "Slow down."), ClientRefusedError, "429: Slow down."),
         (_respond_500, ClientBadGatewayError, None),
+        # Not Django's error envelope, so not a message the API meant for the caller.
+        (_respond_4xx_page, ClientBadGatewayError, None),
+        (_respond_4xx_other_json, ClientBadGatewayError, None),
         # After a read timeout Django may still be running the request, so it is not repeated.
         (_time_out, ClientTimeoutError, None),
     ],
-    ids=["4xx", "5xx", "timeout"],
+    ids=["404", "400", "409", "401", "403", "429", "5xx", "4xx-error-page", "4xx-without-envelope", "timeout"],
 )
 async def test_failure_is_reported_without_retrying(waits, respond, error, message):
     calls = []

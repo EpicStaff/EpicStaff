@@ -238,17 +238,29 @@ version = "0.1.0"
 source = { editable = "../foundation" }
 dependencies = [
     { name = "httpx" },
+    { name = "loguru" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", marker = "extra == 's3-storage'", specifier = "==1.43.111" },
+    { name = "boto3-stubs", marker = "extra == 's3-storage'", specifier = "==1.43.111" },
+    { name = "certifi", marker = "extra == 'transitive-pins'", specifier = "==2026.10.23" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "idna", marker = "extra == 'transitive-pins'", specifier = "==3.18" },
     { name = "litestar", marker = "extra == 'litestar'", specifier = "==2.24.0" },
+    { name = "loguru", specifier = ">=0.7.2,<0.8" },
     { name = "pydantic", specifier = "==2.13.4" },
+    { name = "urllib3", marker = "extra == 'transitive-pins'", specifier = "==2.7.0" },
 ]
-provides-extras = ["litestar", "transitive-pins"]
+provides-extras = ["litestar", "s3-storage", "transitive-pins"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
+]
 
 [[package]]
 name = "google-auth"

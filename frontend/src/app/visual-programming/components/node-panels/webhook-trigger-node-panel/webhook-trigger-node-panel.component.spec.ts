@@ -1230,14 +1230,13 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             expect(runPanel.codeTestRun.status()).toBe('error');
         });
 
-        it('logs an HTTP error', () => {
+        it('logs that the server refused the run, not the HTTP status line', () => {
             const runPanel = open();
-            const httpError = new HttpErrorResponse({ status: 403, url: '/run-python-code/' });
 
             runFromEditor();
-            start$.error(httpError);
+            start$.error(new HttpErrorResponse({ status: 403, url: '/run-python-code/' }));
 
-            expect(logMessages(runPanel).at(-1)).toBe(`error: Error: ${httpError.message}`);
+            expect(logMessages(runPanel).at(-1)).toBe('error: Error: The server rejected the request.');
             expect(runPanel.runCodeBlocker()).toBeNull();
         });
 

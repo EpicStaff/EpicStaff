@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from src.shared.models.code_failure import CodeFailure, CodeFailureCode
 
 from worker.domain.enums import NetworkPolicy
 from worker.infrastructure.execution.steps import launch as launch_module
@@ -110,7 +111,40 @@ async def test_a_hanging_child_is_terminated_and_reported_as_a_timeout(tmp_path)
     await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
 
     assert context.returncode == 124
-    assert "exceeded 0.2 seconds and was terminated" in context.stderr
+    assert context.stderr == "The code ran longer than 0.2 seconds and was stopped."
+    assert context.failure == CodeFailure(
+        code=CodeFailureCode.EXECUTION_TIMEOUT,
+        detail="The code ran longer than 0.2 seconds and was stopped.",
+    )
+    # The launch step only records why the run ended; the capture step finishes it.
+    assert context.completed is False
+
+
+async def test_the_timeout_line_follows_what_the_child_wrote_before_it_was_stopped(tmp_path):
+    source = "import sys, time\nprint('working', file=sys.stderr, flush=True)\ntime.sleep(30)\n"
+    context = launchable(tmp_path, source, timeout=0.5)
+
+    await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
+
+    assert context.stderr == "working\n\nThe code ran longer than 0.5 seconds and was stopped."
+    assert context.failure.detail == "The code ran longer than 0.5 seconds and was stopped."
+
+
+async def test_a_child_that_exits_on_its_own_gets_no_failure_from_the_launch(tmp_path):
+    context = launchable(tmp_path, "import sys\nsys.exit(3)\n")
+
+    await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
+
+    assert (context.returncode, context.failure) == (3, None)
+
+
+async def test_a_one_second_timeout_is_reported_in_the_singular(tmp_path):
+    context = launchable(tmp_path, "import time\ntime.sleep(30)\n", timeout=1)
+
+    await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
+
+    assert context.returncode == 124
+    assert context.stderr == "The code ran longer than 1 second and was stopped."
 
 
 async def test_the_per_job_timeout_overrides_the_configured_default(tmp_path):
@@ -127,11 +161,11 @@ async def test_the_configured_default_applies_when_the_job_sets_no_timeout(tmp_p
     await LaunchStep(default_timeout=0.2, min_timeout=0, max_timeout=None)(context)
 
     assert context.returncode == 124
-    assert "exceeded 0.2 seconds" in context.stderr
+    assert context.stderr == "The code ran longer than 0.2 seconds and was stopped."
 
 
-async def test_a_child_that_cannot_be_killed_is_reported_as_possibly_still_running(
-    tmp_path, monkeypatch
+async def test_a_child_that_cannot_be_killed_is_logged_as_possibly_still_running(
+    tmp_path, monkeypatch, warning_logs
 ):
     process = FakeProcess(hang=True, kill_error=PermissionError(1, "Operation not permitted"))
 
@@ -150,8 +184,10 @@ async def test_a_child_that_cannot_be_killed_is_reported_as_possibly_still_runni
     await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
 
     assert context.returncode == 124
-    assert "may still be running" in context.stderr
+    assert context.stderr == "The code ran longer than 0.1 seconds and was stopped."
     assert process.kill_calls == 1
+    [still_running_log] = [line for line in warning_logs if "may still be running" in line]
+    assert "exec-1" in still_running_log
 
 
 @pytest.mark.parametrize(
@@ -287,4 +323,4 @@ async def test_a_requested_timeout_above_the_maximum_is_the_one_actually_applied
     await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=0.2)(context)
 
     assert context.returncode == 124
-    assert "exceeded 0.2 seconds and was terminated" in context.stderr
+    assert context.stderr == "The code ran longer than 0.2 seconds and was stopped."
