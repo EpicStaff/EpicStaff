@@ -49,6 +49,7 @@ export * from './form-input/form-input.component';
 export * from './form-select/form-select.component';
 export * from './forms';
 export * from './go-to-button/go-to-button.component';
+export * from './grouped-picker/grouped-picker.component';
 export * from './header';
 export * from './help-tooltip';
 export * from './hint-message/hint-message.component';

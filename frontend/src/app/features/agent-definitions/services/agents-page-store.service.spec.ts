@@ -302,6 +302,106 @@ describe('AgentsPageStore deleteGroup', () => {
     );
 });
 
+describe('AgentsPageStore agent export', () => {
+    let downloads: string[];
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+
+    beforeEach(() => {
+        downloads = [];
+        URL.createObjectURL = () => 'blob:agents';
+        URL.revokeObjectURL = () => undefined;
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            downloads.push(this.download);
+        });
+    });
+
+    afterEach(() => {
+        URL.createObjectURL = originalCreateObjectURL;
+        URL.revokeObjectURL = originalRevokeObjectURL;
+        vi.restoreAllMocks();
+    });
+
+    /** The store over three agents, with the export endpoints and the toast spied on. */
+    function exportStore() {
+        const store = loadStore({ agents: [agent(1, 'Alpha', null), agent(2, 'Beta', null), agent(3, 'Gamma', null)] });
+        const exported = of({ blob: new Blob(['{}']), excluded: [] });
+        const api = Object.assign(TestBed.inject(AgentDefinitionsApiService), {
+            exportAgent: vi.fn(() => exported),
+            bulkExportAgents: vi.fn(() => exported),
+        });
+        const toast = Object.assign(TestBed.inject(ToastService), { info: vi.fn() });
+        return { store, api, toast };
+    }
+
+    it('starts every export with nothing ticked', () => {
+        const { store } = exportStore();
+        store.toggleAgentSelection(1);
+
+        store.startAgentExport();
+
+        expect(store.agentExportMode()).toBe(true);
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('sends only the ticked agents that still exist, downloads one file and leaves export mode', () => {
+        const { store, api } = exportStore();
+        store.startAgentExport();
+        store.toggleAgentSelection(1);
+        store.toggleAgentSelection(3);
+        store.toggleAgentSelection(99);
+
+        store.confirmAgentExport();
+
+        expect(api.bulkExportAgents).toHaveBeenCalledExactlyOnceWith([1, 3]);
+        expect(downloads).toHaveLength(1);
+        expect(downloads[0]).toMatch(/^agents_export_\d+\.json$/);
+        expect(store.agentExportMode()).toBe(false);
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('asks for a ticked agent instead of exporting nothing, and stays in export mode', () => {
+        const { store, api, toast } = exportStore();
+        store.startAgentExport();
+
+        store.confirmAgentExport();
+
+        expect(api.bulkExportAgents).not.toHaveBeenCalled();
+        expect(toast.info).toHaveBeenCalledExactlyOnceWith('Select at least one agent to export.');
+        expect(store.agentExportMode()).toBe(true);
+    });
+
+    it('ticks every agent on Select all, and clears them on the next one', () => {
+        const { store } = exportStore();
+        store.startAgentExport();
+
+        store.toggleSelectAllAgents();
+        expect(store.allAgentsSelected()).toBe(true);
+        expect([...store.selectedAgentIds()]).toEqual([1, 2, 3]);
+
+        store.toggleSelectAllAgents();
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('exports one agent into a file named after it', () => {
+        const { store, api } = exportStore();
+
+        store.exportAgent(2);
+
+        expect(api.exportAgent).toHaveBeenCalledExactlyOnceWith(2);
+        expect(downloads).toEqual(['agent_Beta.json']);
+    });
+
+    it('exports nothing for an agent that is no longer in the list', () => {
+        const { store, api } = exportStore();
+
+        store.exportAgent(99);
+
+        expect(api.exportAgent).not.toHaveBeenCalled();
+        expect(downloads).toEqual([]);
+    });
+});
+
 const AGENTS_URL = '/api/agent-definitions/';
 const SURFACES_URL = '/api/surfaces/';
 const GROUPS_URL = '/api/agent-labels/';

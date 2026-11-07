@@ -280,7 +280,7 @@ class TestCrewNodeImportIsSkipped:
         ]
 
         entity_registry.get_strategy(EntityType.GRAPH)._create_nodes(
-            nodes_data, graph, IDMapper(), id_mapper
+            nodes_data, graph, IDMapper(), id_mapper, keep_node_uuids=False
         )
 
         graph.refresh_from_db()

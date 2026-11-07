@@ -1,4 +1,5 @@
 import json
+from http import HTTPStatus
 
 from django.core.exceptions import PermissionDenied
 from django.db import OperationalError
@@ -58,8 +59,7 @@ def _upstream_detail(exc: ClientError) -> str | None:
     """Return the upstream response body, or the exception text when there is no body.
 
     `ClientTimeoutError` is raised without a response, and a response body can be empty,
-    so neither is assumed to be there. `None` lets DRF fall back to its default detail
-    rather than render an empty message.
+    so neither is assumed to be there.
     """
     response = getattr(exc, "response", None)
     if response is not None and response.text:
@@ -70,14 +70,19 @@ def _upstream_detail(exc: ClientError) -> str | None:
 # Pydantic starts the message of a failed validator with this; it means nothing to a user.
 _PYDANTIC_VALUE_ERROR_PREFIX = "Value error, "
 
+# An upstream 401 or 403 refuses this gateway's own credentials, not the caller's. Passed
+# through, it would sign the user out or tell them they lack a permission they have.
+_GATEWAY_CREDENTIAL_STATUSES = frozenset({status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN})
 
-def _rejected_payload_message(upstream_body: str | None) -> str:
-    """Return what a proxied service's 400 says is wrong, in words for the user.
 
-    The services answer with `{"type": ..., "errors": [{"detail": ..., "attr": ...}]}`.
-    Each `detail` becomes one sentence, prefixed with its `attr` as `attr: detail`, the
-    way `flatten_error_detail` labels a field. A body of any other shape is not written
-    for a user, so it is logged and the generic message is shown instead.
+def _upstream_public_message(upstream_body: str | None) -> str | None:
+    """Return what a proxied service's refusal says, in words for the user, or None.
+
+    The services answer with foundation's error envelope,
+    `{"type": ..., "errors": [{"detail": ..., "attr": ...}]}`, whose `detail` is always
+    safe to show. Each `detail` becomes one sentence, prefixed
+    with its `attr` as `attr: detail`, the way `flatten_error_detail` labels a field. A
+    body of any other shape is not written for a user, so the caller shows its own text.
     """
     try:
         body = json.loads(upstream_body or "")
@@ -91,10 +96,7 @@ def _rejected_payload_message(upstream_body: str | None) -> str:
         and isinstance(error.get("detail"), str)
         and error["detail"].strip()
     ]
-    if not sentences:
-        logger.warning("Proxied service rejected a payload: {detail}", detail=upstream_body)
-        return UPSTREAM_FAILURE_MESSAGE
-    return " ".join(sentences)
+    return " ".join(sentences) if sentences else None
 
 
 def _rejected_field_sentence(error: dict) -> str:
@@ -108,31 +110,31 @@ def _rejected_field_sentence(error: dict) -> str:
 def _client_error_as_api_exception(exc: ClientError) -> APIException:
     """Translate a transport error from a proxied microservice into a DRF exception.
 
-    Only a missing resource, a rejected payload and rate limiting describe the caller's
-    own request, so those statuses pass through. A dependency that could not be reached
-    at all is service unavailable, which tells the caller the request is worth retrying.
-    Every other upstream failure - timeout, upstream auth, conflict, 5xx - is a failure
-    of this gateway's dependency rather than anything the caller did, and is reported as
-    a bad gateway: passing an upstream 401 or 409 through would tell the caller something
-    false about their own request.
+    An upstream 4xx is the caller's own request coming back refused, so it keeps its
+    status: a conflict stays a conflict rather than becoming a gateway failure the
+    caller can do nothing about. A 401 or 403 is the exception: it refuses this
+    gateway's credentials, so it is a failure of the dependency. A dependency that
+    could not be reached at all is service unavailable, which tells the caller the
+    request is worth retrying. What is left - a timeout, an upstream 5xx, a 401 or 403,
+    a response with no status at all - is reported as a bad gateway.
 
-    A rejected payload shows the upstream `detail` texts, which say what is wrong with
-    the caller's own input. A missing resource and rate limiting get a fixed message of
-    their own; every other status gets a generic one. The upstream text is written for
-    this gateway, not for a user, so it goes to the log only.
+    A refusal shows the upstream `detail` texts, which say what is wrong with the
+    caller's own request. When the body isn't the error envelope, a missing resource and
+    rate limiting get a fixed message of their own, and every other status a generic
+    one. The upstream body itself goes to the log only.
     """
     detail = _upstream_detail(exc)
-
-    if isinstance(exc, ClientValidationError):
-        return ValidationError(_rejected_payload_message(detail))
-
     logger.warning(
         "Proxied service call failed: {error_type}: {detail}",
         error_type=type(exc).__name__,
         detail=detail,
     )
+    public_message = _upstream_public_message(detail)
+
+    if isinstance(exc, ClientValidationError):
+        return ValidationError(public_message or UPSTREAM_FAILURE_MESSAGE)
     if isinstance(exc, ClientNotFoundError):
-        return NotFound(UPSTREAM_NOT_FOUND_MESSAGE)
+        return NotFound(public_message or UPSTREAM_NOT_FOUND_MESSAGE)
     if isinstance(exc, ClientRateLimitError):
         return Throttled(detail=UPSTREAM_RATE_LIMITED_MESSAGE)
     if isinstance(exc, ClientConnectionError):
@@ -141,10 +143,30 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
         unreachable_error.default_code = "upstream_service_unreachable"
         return unreachable_error
 
+    status_code = getattr(getattr(exc, "response", None), "status_code", None)
+    if (
+        status_code is not None
+        and status.is_client_error(status_code)
+        and status_code not in _GATEWAY_CREDENTIAL_STATUSES
+    ):
+        client_error = APIException(public_message or UPSTREAM_FAILURE_MESSAGE)
+        client_error.status_code = status_code
+        client_error.default_code = _status_code_name(status_code)
+        return client_error
+
     upstream_error = APIException(UPSTREAM_FAILURE_MESSAGE)
     upstream_error.status_code = status.HTTP_502_BAD_GATEWAY
     upstream_error.default_code = "upstream_service_error"
     return upstream_error
+
+
+def _status_code_name(status_code: int) -> str:
+    """The status as a code name, the way every service in the project spells it."""
+    try:
+        return HTTPStatus(status_code).phrase.lower().replace(" ", "_")
+    except ValueError:
+        # A status outside the standard table: there is no phrase to name it with.
+        return "client_error"
 
 
 def _outbound_client_error_as_api_exception(exc: OutboundClientError) -> APIException:

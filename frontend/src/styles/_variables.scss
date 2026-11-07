@@ -125,7 +125,7 @@
     --gray-400: #b4b4b4;
     --gray-450: #aaaaaa;
     --gray-204: #cccccc; // node-panel-mixins secondary-button text
-    --gray-455: #acacac; // llm-model-selector secondary text
+    --gray-455: #acacac; // grouped-picker group names
     --gray-475: #b1b1b1; // agents-table action-icon
     --gray-490: #a0a0a0; // llm/tool selector popups secondary text
     --gray-500: #9b9b9b;
@@ -540,6 +540,7 @@
     --color-tour-backdrop: var(--black-alpha-70); // guided-tour spotlight dim
     --color-flow-card-bg: var(--graphite-750);
     --color-table-border: var(--graphite-750);
+    --color-table-row-stripe: var(--color-ks-transparent-black-28); // darker odd rows of the shared table
     --color-surface-card: var(--graphite-825);
     --color-drag-drop-active: var(--black-alpha-28);
 
@@ -698,6 +699,17 @@
     --color-error: #f54242;
     --color-findings: #f5a623;
     --color-key-value: #14b8a6; // Key-Value node + session message accent (matches NODE_COLORS)
+    // Version diff on the flow canvas: what a restore of the version adds, removes or changes
+    // (node borders and badges, edges), and the marker of a node whose version lost a reference.
+    --color-diff-added: var(--color-ks-status-new);
+    --color-diff-deleted: var(--color-ks-status-failed);
+    --color-diff-changed: var(--color-ks-status-warning);
+    --color-diff-missing-reference: var(--color-ks-status-processing);
+    // A hovered added / removed edge (or an edge of the hovered node): the diff colour, brighter.
+    --color-diff-added-highlight: color-mix(in srgb, var(--color-diff-added) 65%, var(--white));
+    --color-diff-deleted-highlight: color-mix(in srgb, var(--color-diff-deleted) 65%, var(--white));
+    // What a restore removes (node content, edges, decision table rows) is drawn faded. Same in both themes.
+    --diff-deleted-opacity: 0.4;
     // JSON value colours: app-json-viewer (styles/json-viewer.scss) + Key-Value message previews
     --color-json-key: #e83e8c;
     --color-json-value: #17a2b8;
@@ -784,10 +796,14 @@
     --color-scrollbar-thumb-hover: rgba(71, 85, 105, 0.3);
     --color-scrollbar-track: transparent;
     --color-drag-drop-active: rgba(15, 15, 15, 0.12);
+    --color-table-row-stripe: var(--black-alpha-5);
     --color-card-background: #ffffff;
     --color-key-value: #115e59; // darker teal: 5.99:1 on its 15% chip over white (#14b8a6 is 2.2:1)
 
     // LEGACY overrides — see :root block above
     --color-nodes-actionbar-bg: #f8fafc;
     --color-nodes-sidepanel-bg: #ffffff;
+    // A hovered diff edge must get stronger on the light canvas, so the highlight darkens instead of lightening.
+    --color-diff-added-highlight: color-mix(in srgb, var(--color-diff-added) 70%, var(--black));
+    --color-diff-deleted-highlight: color-mix(in srgb, var(--color-diff-deleted) 70%, var(--black));
 }

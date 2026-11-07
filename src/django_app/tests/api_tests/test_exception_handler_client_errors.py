@@ -106,20 +106,97 @@ def test_upstream_validation_error_of_an_unexpected_shape_shows_a_generic_messag
 
 
 @pytest.mark.parametrize(
+    "error_type,status_code,code",
+    [
+        (errors.ClientMethodNotAllowedError, 405, "method_not_allowed"),
+        (errors.ClientConflictError, 409, "conflict"),
+        (errors.ClientHTTPStatusError, 423, "locked"),
+    ],
+)
+def test_upstream_client_errors_keep_their_status_and_show_the_detail(
+    error_type, status_code, code
+):
+    exc = _status_error(error_type, status_code, _validation_body(("Sandbox said no.", None)))
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.status_code == status_code
+    assert response.data == {
+        "status_code": status_code,
+        "code": code,
+        "message": "Sandbox said no.",
+    }
+
+
+def test_an_upstream_status_outside_the_standard_table_is_still_the_callers():
+    exc = _status_error(errors.ClientHTTPStatusError, 499, "Sandbox said no.")
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.status_code == 499
+    assert response.data["code"] == "client_error"
+
+
+def test_upstream_error_envelope_is_unwrapped_into_its_message():
+    body = json.dumps(
+        {
+            "type": "client_error",
+            "errors": [
+                {
+                    "code": "custom_library_in_use",
+                    "detail": "CustomLibrary(id=3) is still used by a venv.",
+                    "attr": None,
+                }
+            ],
+        }
+    )
+    exc = _status_error(errors.ClientConflictError, 409, body)
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.data["message"] == "CustomLibrary(id=3) is still used by a venv."
+
+
+def test_upstream_not_found_shows_its_detail():
+    exc = _status_error(
+        errors.ClientNotFoundError, 404, _validation_body(("Venv(id=42) not found.", None))
+    )
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.status_code == 404
+    assert response.data["message"] == "Venv(id=42) not found."
+
+
+@pytest.mark.parametrize(
+    "error_type,status_code",
+    [(errors.ClientUnauthorizedError, 401), (errors.ClientForbiddenError, 403)],
+)
+def test_upstream_refusing_the_gateways_credentials_is_a_bad_gateway(error_type, status_code):
+    # Passed through, a 401 would sign the user out and a 403 would deny them a permission.
+    exc = _status_error(error_type, status_code, _validation_body(("Invalid token.", None)))
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.status_code == 502
+    assert response.data["message"] == UPSTREAM_FAILURE_TEXT
+
+
+@pytest.mark.parametrize(
     "error_type,status_code,expected_status,expected_code,expected_message",
     [
         (errors.ClientNotFoundError, 404, 404, "not_found", NOT_FOUND_TEXT),
         (errors.ClientRateLimitError, 429, 429, "throttled", RATE_LIMITED_TEXT),
         (errors.ClientUnauthorizedError, 401, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
         (errors.ClientForbiddenError, 403, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
-        (errors.ClientMethodNotAllowedError, 405, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
-        (errors.ClientConflictError, 409, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientMethodNotAllowedError, 405, 405, "method_not_allowed", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientConflictError, 409, 409, "conflict", UPSTREAM_FAILURE_TEXT),
         (errors.ClientServerError, 500, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
         (errors.ClientNotImplementedError, 501, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
         (errors.ClientBadGatewayError, 502, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
         (errors.ClientUnavailableError, 503, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
         (errors.ClientGatewayTimeoutError, 504, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
-        (errors.ClientHTTPStatusError, 418, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientHTTPStatusError, 423, 423, "locked", UPSTREAM_FAILURE_TEXT),
     ],
 )
 def test_upstream_failure_shows_a_fixed_message_and_logs_the_upstream_body(

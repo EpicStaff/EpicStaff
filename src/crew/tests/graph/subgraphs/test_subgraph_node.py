@@ -16,7 +16,7 @@ from langgraph.graph import StateGraph
 from models.graph_models import GraphMessage
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.exceptions import NodeExecutionError
+from services.graph.exceptions import InvalidStatePathError, NodeExecutionError
 from services.graph.graph_builder import SessionGraphBuilder
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.graph.subgraphs import subgraph_node as subgraph_node_module
@@ -446,3 +446,19 @@ async def test_failing_node_inside_the_subflow_keeps_its_own_single_card():
         ("produce", "ValueError: bad total")
     ]
     assert error.public_message == "ValueError: bad total"
+
+
+async def test_underscore_output_path_fails_before_the_child_flow_runs():
+    node = _subgraph_node(_python_child("def main(): return {'done': True}"), "variables.__class__.status")
+    state = _parent_state()
+    messages = []
+
+    with pytest.raises(NodeExecutionError) as raised:
+        await node.run(state, writer=messages.append)
+
+    assert isinstance(raised.value.__cause__, InvalidStatePathError)
+    # The node's own error card, and nothing from the child flow, which never started.
+    assert [_error_details(message) for message in messages] == [
+        "Variable path 'variables.__class__.status' is not allowed: path segments cannot start with '_'."
+    ]
+    assert state["variables"].deep_dump() == PARENT

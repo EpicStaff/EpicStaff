@@ -323,3 +323,88 @@ def test_venv_set_libs_rejects_a_repeated_library_too():
 
     with pytest.raises(ValidationError):
         venv.set_libs([make_library(name="pydantic"), make_library(name="pydantic")])
+
+
+def test_a_library_is_an_ordinary_one_unless_it_says_otherwise():
+    """Entries stored before this field existed read back as ordinary libraries."""
+    assert make_library(name="requests").is_custom is False
+
+
+def test_a_library_can_be_marked_as_one_this_installation_stores_itself():
+    assert make_library(name="acme-core", is_custom=True).is_custom is True
+
+
+def test_stamping_the_built_version_keeps_the_marking():
+    """The build rebuilds the entry to record what it installed. Dropping the marking
+    there would turn the library into a package index lookup on the next build."""
+    library = make_library(name="acme-core", specification=">=1", is_custom=True)
+
+    assert library.with_resolved_version("1.4.2").is_custom is True
+
+
+def test_waiting_is_not_a_failure_and_drops_the_reason_for_an_earlier_one():
+    """`declared` says nothing has happened yet; `waiting` says this service is still
+    producing something the venv needs, and the user has nothing to fix."""
+    venv = make_venv(name="data")
+    venv.mark_as_failed(VenvBuildErrorKind.PACKAGE_INSTALL_FAILED, "the last attempt blew up")
+
+    venv.mark_as_waiting()
+
+    assert venv.status is VenvStatus.WAITING
+    assert venv.error is None
+    assert venv.error_kind is None
+
+
+def test_a_venv_uses_only_the_libraries_it_marked_as_custom():
+    """An entry naming the same thing without the marking is a package index lookup,
+    and has nothing to do with the library stored here."""
+    venv = make_venv(
+        name="data",
+        libs=[
+            make_library(name="acme-core", specification=">=1", is_custom=True),
+            make_library(name="requests"),
+            make_library(name="shadow", specification=">=1"),
+        ],
+    )
+
+    assert venv.uses_custom_library("acme-core") is True
+    assert venv.uses_custom_library("requests") is False
+    assert venv.uses_custom_library("shadow") is False
+    assert venv.uses_custom_library("never-named") is False
+
+
+def test_a_venv_pins_a_version_only_once_a_build_has_resolved_one():
+    """Before the build there is a specification, which is a range, not a claim on one
+    version: the build could still settle on a different one."""
+    declared = make_venv(
+        name="data",
+        libs=[make_library(name="acme-core", specification=">=1", is_custom=True)],
+    )
+    built = make_venv(
+        name="data",
+        libs=[
+            make_library(name="acme-core", specification=">=1", version="1.4.2", is_custom=True)
+        ],
+    )
+
+    assert declared.pins_custom_library("acme-core", "1.4.2") is False
+    assert built.pins_custom_library("acme-core", "1.4.2") is True
+    assert built.pins_custom_library("acme-core", "2.0.0") is False
+
+
+def test_an_ordinary_entry_pins_nothing_of_the_stored_library():
+    """`requests==2.1.0` from the index says nothing about a stored library that
+    happens to carry the same name and version."""
+    venv = make_venv(
+        name="data",
+        libs=[make_library(name="acme-core", specification=">=1", version="1.4.2")],
+    )
+
+    assert venv.pins_custom_library("acme-core", "1.4.2") is False
+
+
+def test_a_venv_with_no_libraries_uses_and_pins_nothing():
+    venv = make_venv(name="data", libs=[])
+
+    assert venv.uses_custom_library("acme-core") is False
+    assert venv.pins_custom_library("acme-core", "1.4.2") is False

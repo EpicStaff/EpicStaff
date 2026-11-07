@@ -437,7 +437,7 @@ def test_changing_one_openai_field_names_only_that_field(
 @pytest.fixture
 def quickstart_openai_seeded_6b(openai_provider):
     """The provider/model rows QuickstartService.quickstart() looks up for provider='openai', matching PROVIDER_CONFIGS' names (mirrors `openai_seeded` in test_quickstart_secret_reuse.py)."""
-    LLMModel.objects.get_or_create(name="gpt-4o-mini", llm_provider=openai_provider)
+    LLMModel.objects.get_or_create(name="gpt-6-luna", llm_provider=openai_provider)
     EmbeddingModel.objects.get_or_create(
         name="text-embedding-3-small", embedding_provider=openai_provider
     )

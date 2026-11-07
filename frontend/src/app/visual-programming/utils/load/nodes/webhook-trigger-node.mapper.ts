@@ -10,6 +10,7 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
     return {
         id: generateUuid(),
         backendId: wn.id,
+        nodeUuid: wn.uuid,
         type: NodeType.WEBHOOK_TRIGGER,
         node_name: wn.node_name,
         nodeNumber: wn.node_number ?? undefined,

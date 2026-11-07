@@ -9,7 +9,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
-import { FetchErrorStateComponent } from '@shared/components';
+import { ButtonComponent, FetchErrorStateComponent } from '@shared/components';
 import { extractHttpErrorMessage } from '@shared/utils';
 
 import { BranchTreeNode, nodeKey } from '../../../../../models/tree-node.model';
@@ -24,7 +24,7 @@ import {
 
 @Component({
     selector: 'app-agents-section',
-    imports: [TreeNodeComponent, FetchErrorStateComponent, ExplorerGroupBlockComponent],
+    imports: [TreeNodeComponent, FetchErrorStateComponent, ExplorerGroupBlockComponent, ButtonComponent],
     templateUrl: './agents-section.component.html',
     styleUrls: ['./agents-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

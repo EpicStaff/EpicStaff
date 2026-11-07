@@ -10,11 +10,11 @@ import { normalizeRouteCode } from './cdt-route-continue.util';
 import { isCompleteQuestion } from './cdt-system-one-entry/question-name.util';
 
 /**
- * KNOWN BROKEN: libraries live only on the venv now, and nothing here carries a
- * venv. `libraries` below is kept so the file format still round-trips, but it is
- * always empty on export and ignored on import, so a CDT moved between
- * installations loses its environment. Fixing it means deciding how a venv
- * travels in an exported flow.
+ * Libraries live only on the venv now. The backend JSON export carries the venv
+ * (as `venv`, with the venv itself as its own entry), but the files built and read
+ * here do not: `libraries` below is kept so the file format still round-trips, but
+ * it is always empty on export and ignored on import, so a CDT moved through a CSV
+ * file loses its environment.
  */
 export interface CdtExportPythonCode {
     code: string;

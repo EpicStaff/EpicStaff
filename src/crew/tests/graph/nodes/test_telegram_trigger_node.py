@@ -2,7 +2,7 @@ import pytest
 from dotdict import DotDict
 
 from services.graph.events import StopEvent
-from services.graph.exceptions import NodeExecutionError
+from services.graph.exceptions import InvalidStatePathError, NodeExecutionError
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
 from src.shared.models import TelegramTriggerNodeFieldData
@@ -112,3 +112,29 @@ async def test_flow_variable_path_that_doesnt_exist_is_named(variable_path):
     )
     assert details == [expected]
     assert session_error == expected
+
+
+@pytest.mark.asyncio
+async def test_underscore_variable_path_fails_with_a_public_message():
+    node = TelegramTriggerNode(
+        session_id=1,
+        node_name="telegram",
+        stop_event=StopEvent(),
+        field_list=[
+            TelegramTriggerNodeFieldData(parent="message", field_name="text", variable_path="variables.__class__.text"),
+        ],
+    )
+    state = {"variables": DotDict({"telegram_payload": {"message": {"text": "hi"}}}), "state_history": [], "system_variables": {}}
+    messages = []
+
+    with pytest.raises(NodeExecutionError) as raised:
+        await node.run(state, writer=messages.append)
+
+    assert isinstance(raised.value.__cause__, InvalidStatePathError)
+
+    error_details = [
+        message.message_data.details for message in messages if message.message_data.message_type == "error"
+    ]
+    assert error_details == [
+        "Variable path 'variables.__class__.text' is not allowed: path segments cannot start with '_'."
+    ]

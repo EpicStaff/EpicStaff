@@ -1,6 +1,7 @@
-import { HttpClient, HttpResponse } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { ExcludedExportEntity, ExportResult } from '@shared/models';
+import { ExportResult } from '@shared/models';
+import { toExportResult } from '@shared/utils';
 import { map, Observable } from 'rxjs';
 
 import { PartialImportResponse } from '../../features/flows/models/graph.model';
@@ -64,7 +65,7 @@ export class ImportExportService {
                 observe: 'response',
                 responseType: 'blob',
             })
-            .pipe(map((response) => this.toExportResult(response)));
+            .pipe(map(toExportResult));
     }
 
     partialImport(graphId: number, file: File): Observable<PartialImportResponse> {
@@ -102,7 +103,7 @@ export class ImportExportService {
                 observe: 'response',
                 responseType: 'blob',
             })
-            .pipe(map((response) => this.toExportResult(response)));
+            .pipe(map(toExportResult));
     }
 
     bulkExportFlow(ids: number[]): Observable<ExportResult> {
@@ -115,7 +116,7 @@ export class ImportExportService {
                     responseType: 'blob',
                 }
             )
-            .pipe(map((response) => this.toExportResult(response)));
+            .pipe(map(toExportResult));
     }
 
     // exportSession(id: number, format: ExportFormat): Observable<Blob> {
@@ -152,40 +153,4 @@ export class ImportExportService {
             responseType: 'blob' as 'json',
         });
     }
-
-    private toExportResult(response: HttpResponse<Blob>): ExportResult {
-        return {
-            blob: response.body ?? new Blob(),
-            excluded: this.parseExcludedHeader(response.headers.get('X-Export-Excluded')),
-        };
-    }
-
-    private parseExcludedHeader(header: string | null): ExcludedExportEntity[] {
-        if (!header) {
-            return [];
-        }
-        let parsed: unknown;
-        try {
-            parsed = JSON.parse(header);
-        } catch {
-            return [];
-        }
-        if (!Array.isArray(parsed)) {
-            return [];
-        }
-        return parsed.every(isExcludedExportEntity) ? parsed : [];
-    }
-}
-
-function isExcludedExportEntity(value: unknown): value is ExcludedExportEntity {
-    if (typeof value !== 'object' || value === null) {
-        return false;
-    }
-    const { type, count, names } = value as Record<string, unknown>;
-    return (
-        typeof type === 'string' &&
-        typeof count === 'number' &&
-        Array.isArray(names) &&
-        names.every((name) => typeof name === 'string')
-    );
 }

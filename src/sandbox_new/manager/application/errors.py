@@ -1,11 +1,11 @@
 """Refusals of the application's own services, as opposed to failures of a port."""
 
-from manager.domain.errors import BaseError
+from manager.domain.errors import BaseError, NotFoundError
 
 __all__ = ["ExecutionNotFoundError", "SandboxOverloadedError", "VenvNotFoundError"]
 
 
-class VenvNotFoundError(BaseError):
+class VenvNotFoundError(NotFoundError):
     """No venv is stored under the id the caller asked for, or there is no default venv."""
 
     code = "venv_not_found"

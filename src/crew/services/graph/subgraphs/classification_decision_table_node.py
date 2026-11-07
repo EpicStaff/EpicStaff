@@ -9,7 +9,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 from loguru import logger
 from pydantic import ValidationError
-from services.graph.exceptions import NodeExecutionError, StopSession
+from services.graph.exceptions import InvalidStatePathError, NodeExecutionError, StopSession
 from services.graph.subgraphs.decision_table_errors import (
     CONDITION_FAILURE_SOURCE,
     POST_COMPUTATION_SUBJECT,
@@ -23,7 +23,6 @@ from services.graph.subgraphs.decision_table_errors import (
     conditions_subject,
     manipulation_error,
     prompt_llm_error,
-    stray_brace_error,
     unreadable_result_error,
     user_code_error,
 )
@@ -46,6 +45,9 @@ from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SYSTEM_ONE_QUES
 from src.shared.public_error import PublicErrorMessage, build_public_error_message
 from src.shared.system_one.adapter import SystemOneError, evaluate
 from src.shared.system_one.json_llm import run_json_llm
+from utils.set_output_variables import set_output_variables
+from utils.state_path import split_state_path
+from utils.template_render import render_template
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -227,6 +229,10 @@ class ClassificationDecisionTableNodeSubgraph:
         if python_code is None or not python_code.code.strip():
             return
 
+        # Rejected before the sandbox call, which would otherwise run for nothing.
+        if output_variable_path:
+            split_state_path(output_variable_path)
+
         inputs = self._resolve_input_map(input_map, state)
 
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
@@ -241,8 +247,6 @@ class ClassificationDecisionTableNodeSubgraph:
             raise user_code_error(subject, result.failure)
 
         if output_variable_path:
-            from utils.set_output_variables import set_output_variables
-
             try:
                 output = json.loads(result.result_data)
             except (TypeError, ValueError) as error:
@@ -486,22 +490,18 @@ def main(**kwargs) -> dict:
             ) from error
         state["variables"].update(variables)
 
-    def _render_prompt(self, prompt_id: str, prompt_text: str, variables: dict) -> str:
-        """Render prompt template with variable interpolation using {var_name} syntax.
-
-        Raises:
-            DecisionTableError: The prompt has a brace that opens or closes no placeholder.
-        """
-        try:
-            return prompt_text.format(**variables)
-        except (KeyError, IndexError):
-            # If template vars don't match, return as-is
+    def _render_prompt(self, prompt_text: str, variables: dict) -> str:
+        """Render `{var_name}` placeholders; a prompt naming a missing variable is sent as written."""
+        rendered = render_template(prompt_text, variables)
+        if rendered.unrendered_reason:
+            logger.warning(
+                "Classification node '{}' prompt sent as written, no placeholder filled: {}",
+                self.node_name,
+                rendered.unrendered_reason,
+            )
+        if rendered.missing:
             return prompt_text
-        except ValueError as error:
-            stray_brace = stray_brace_error(prompt_id, error)
-            if stray_brace is None:
-                raise
-            raise stray_brace from error
+        return rendered.text
 
     def _store_prompt_result(
         self, prompt_config: PromptConfigData, result: Any, state: State
@@ -590,8 +590,9 @@ def main(**kwargs) -> dict:
             )
 
         # Render prompt with current variables
-        variables_dict = state["variables"].model_dump()
-        rendered_prompt = self._render_prompt(prompt_id, prompt_config.prompt_text, variables_dict)
+        # Plain data: the prompt is the flow author's text and must not reach live DotDict objects.
+        variables_dict = state["variables"].deep_dump()
+        rendered_prompt = self._render_prompt(prompt_config.prompt_text, variables_dict)
 
         logger.debug(
             "Executing prompt '{}', result_variable='{}'",
@@ -744,7 +745,7 @@ def main(**kwargs) -> dict:
                 await self._execute_pre_computation(state)
             except StopSession:
                 raise
-            except DecisionTableError as error:
+            except (DecisionTableError, InvalidStatePathError) as error:
                 logger.warning("Pre-computation error in '{}': {}", self.node_name, error)
                 await self._show_error_and_route(state, writer, error, str(error), error.reference)
             except Exception as error:
@@ -932,7 +933,7 @@ def main(**kwargs) -> dict:
                 await self._execute_post_computation(state)
             except StopSession:
                 raise
-            except DecisionTableError as error:
+            except (DecisionTableError, InvalidStatePathError) as error:
                 logger.warning("Post-computation error in '{}': {}", self.node_name, error)
                 return await route_to_error_node(state, writer, error, str(error), error.reference)
             except Exception as error:

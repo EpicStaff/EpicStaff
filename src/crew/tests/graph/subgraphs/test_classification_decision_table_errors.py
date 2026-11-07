@@ -558,31 +558,22 @@ async def test_llm_error_of_an_unknown_kind_cites_a_reference_and_logs_only_its_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("prompt_text", "expected_error"),
+    "prompt_text",
     [
-        pytest.param(
-            "Classify { text",
-            'Prompt "classify" has a "{" without a matching "}". '
-            "To write a brace, double it: {{ or }}.",
-            id="stray-opening-brace",
-        ),
-        pytest.param(
-            "Classify {text} }",
-            'Prompt "classify" has a "}" without a matching "{". '
-            "To write a brace, double it: {{ or }}.",
-            id="stray-closing-brace",
-        ),
+        pytest.param("Classify { text", id="stray-opening-brace"),
+        pytest.param("Classify {text} }", id="stray-closing-brace"),
     ],
 )
-async def test_prompt_with_a_single_brace(monkeypatch, prompt_text, expected_error):
+async def test_prompt_with_a_single_brace_is_sent_as_written(monkeypatch, prompt_text):
     use_sandbox(monkeypatch)
 
     with patch("litellm.acompletion", new_callable=AsyncMock) as completion:
+        completion.return_value = llm_response('{"label": "positive"}')
         result, errors = await run(prompt_data(prompt_text), {"text": "hi"})
 
-    assert errors == [expected_error]
-    assert not completion.called
-    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    assert errors == []
+    assert completion.call_args.kwargs["messages"][-1]["content"] == prompt_text
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "node_A"
 
 
 @pytest.mark.asyncio

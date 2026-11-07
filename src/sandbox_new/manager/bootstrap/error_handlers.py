@@ -4,19 +4,35 @@ from foundation.schemas import ErrorDetailSchema, ErrorResponseSchema
 from foundation.utils.litestar import error_handler
 from litestar import Request, Response, status_codes
 
-from manager.application.errors import (
-    ExecutionNotFoundError,
-    SandboxOverloadedError,
-    VenvNotFoundError,
-)
+from manager.application.errors import ExecutionNotFoundError, SandboxOverloadedError
+from manager.domain.errors import BadRequestError, ConflictError, NotFoundError
 
 
-@error_handler.registry(VenvNotFoundError, ExecutionNotFoundError)
+# Registered on the base classes: Litestar resolves a handler by walking the raised
+# exception's MRO, so every error under them is covered. `ExecutionNotFoundError` is
+# named too -- it stands on its own rather than under `NotFoundError`.
+@error_handler.registry(NotFoundError, ExecutionNotFoundError)
 def handle_not_found_error(
-    request: Request, error: VenvNotFoundError | ExecutionNotFoundError
+    request: Request, error: NotFoundError | ExecutionNotFoundError
 ) -> Response:
     return error_handler.create_response(
         status_code=status_codes.HTTP_404_NOT_FOUND,
+        errors=[ErrorDetailSchema(code=error.code, detail=str(error))],
+    )
+
+
+@error_handler.registry(ConflictError)
+def handle_conflict_error(request: Request, error: ConflictError) -> Response:
+    return error_handler.create_response(
+        status_code=status_codes.HTTP_409_CONFLICT,
+        errors=[ErrorDetailSchema(code=error.code, detail=str(error))],
+    )
+
+
+@error_handler.registry(BadRequestError)
+def handle_bad_request_error(request: Request, error: BadRequestError) -> Response:
+    return error_handler.create_response(
+        status_code=status_codes.HTTP_400_BAD_REQUEST,
         errors=[ErrorDetailSchema(code=error.code, detail=str(error))],
     )
 

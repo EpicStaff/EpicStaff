@@ -7,6 +7,7 @@ from loguru import logger
 from services.graph.events import StopEvent
 from services.graph.exceptions import (
     EmptyKnowledgeQueryError,
+    InvalidStatePathError,
     KeyValueNodeError,
     KnowledgeSearchError,
     NodeExecutionError,
@@ -32,6 +33,18 @@ class RaisingNode(BaseNode):
 
     async def execute(self, state, writer, execution_order, input_):
         raise self.error
+
+
+class RecordingNode(BaseNode):
+    TYPE = "PYTHON"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.executed = False
+
+    async def execute(self, state, writer, execution_order, input_):
+        self.executed = True
+        return {"done": True}
 
 
 def build_state():
@@ -189,3 +202,43 @@ async def test_node_overriding_run_reports_failures_the_same_way(captured_logs):
 
     assert details == [error.public_message]
     assert re.fullmatch(GENERIC_DETAILS_PATTERN, error.public_message)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("input_map", "output_variable_path", "rejected_path"),
+    [
+        pytest.param(
+            {"x": "variables.__class__.__init__.__globals__"},
+            None,
+            "variables.__class__.__init__.__globals__",
+            id="input-map",
+        ),
+        pytest.param({}, "variables.__class__.status", "variables.__class__.status", id="output-path"),
+    ],
+)
+async def test_underscore_state_path_fails_before_execute_with_a_public_message(
+    captured_logs, input_map, output_variable_path, rejected_path
+):
+    node = RecordingNode(
+        session_id=7,
+        node_name="pathbad",
+        stop_event=StopEvent(),
+        input_map=input_map,
+        output_variable_path=output_variable_path,
+    )
+    messages = []
+
+    with pytest.raises(NodeExecutionError) as raised:
+        await node.run(build_state(), writer=messages.append)
+
+    assert isinstance(raised.value.__cause__, InvalidStatePathError)
+    assert node.executed is False
+    error_messages = [
+        message for message in messages if message.message_data.message_type == "error"
+    ]
+    assert len(error_messages) == 1
+    expected = f"Variable path '{rejected_path}' is not allowed: path segments cannot start with '_'."
+    assert error_messages[0].message_data.details == expected
+    assert raised.value.public_message == expected
+    assert captured_logs == []

@@ -1,6 +1,6 @@
-"""Venvs as this side of the boundary owns them: the environment in the sandbox
-service and the binding that says which organization may reach it, created,
-changed and removed as one pair.
+"""The sandbox's resources as this side of the boundary owns them: the venv or
+the custom library in the sandbox service and the binding that says which
+organization may reach it, created, changed and removed as one pair.
 
 Every caller that needs the pair goes through here -- the gateway viewset, the
 importer, and the data migration that moved `PythonCode.libraries` into the
@@ -16,6 +16,7 @@ from collections.abc import Iterable
 
 from django.db.models import Q, QuerySet
 from loguru import logger
+from packaging.utils import canonicalize_name
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     PythonNode,
@@ -23,14 +24,32 @@ from tables.models.graph_models import (
 )
 from tables.models.python_models import PythonCodeTool
 
-from proxies.sandbox.clients import SandboxVenvClient
-from proxies.sandbox.errors import VenvInUseError
-from proxies.sandbox.models import SandboxVenvBinding
+from proxies.models import AbstractBinding
+from proxies.sandbox.clients import SandboxCustomLibraryClient, SandboxVenvClient
+from proxies.sandbox.errors import UnknownCustomLibraryError, VenvInUseError
+from proxies.sandbox.models import SandboxCustomLibraryBinding, SandboxVenvBinding
 
-__all__ = ["VenvService"]
+__all__ = ["CustomLibraryService", "VenvService"]
 
 #: How many owners a refusal names before the rest become a count.
 MAX_NAMED_OWNERS = 5
+
+
+def pair_with_bindings(
+    page: dict, bindings_by_resource_id: dict[str, AbstractBinding]
+) -> list[tuple[dict, AbstractBinding]]:
+    """Take `result` off the page and pair each row with the binding that owns it.
+
+    A row the sandbox returned without a binding among these is dropped: it belongs
+    to another organization, or to no one. This is what keeps the answer inside the
+    organization, so both gateways go through it rather than each filtering its own.
+    """
+    pairs = []
+    for item in page.pop("result", None) or []:
+        binding = bindings_by_resource_id.get(str(item.get("id")))
+        if binding is not None:
+            pairs.append((item, binding))
+    return pairs
 
 
 class VenvService:
@@ -72,11 +91,7 @@ class VenvService:
                 offset=offset,
             )
 
-        pairs = []
-        for venv in page.pop("result", None) or []:
-            binding = bindings_by_resource_id.get(str(venv.get("id")))
-            if binding is not None:
-                pairs.append((venv, binding))
+        pairs = pair_with_bindings(page, bindings_by_resource_id)
         return page, pairs
 
     def retrieve(self, binding: SandboxVenvBinding) -> dict:
@@ -100,7 +115,12 @@ class VenvService:
 
         Returns:
             The new binding and the environment the sandbox stored.
+
+        Raises:
+            UnknownCustomLibraryError: Some declared stored library is not this
+                organization's. Rendered as 400.
         """
+        self._assert_custom_libraries_owned(data, org_id)
         with self.client_class() as client:
             venv = client.create(data)
 
@@ -117,7 +137,13 @@ class VenvService:
         return binding, venv
 
     def update(self, binding: SandboxVenvBinding, data: dict) -> dict:
-        """Apply a partial change to the environment this binding points at."""
+        """Apply a partial change to the environment this binding points at.
+
+        Raises:
+            UnknownCustomLibraryError: Some declared stored library is not this
+                organization's. Rendered as 400.
+        """
+        self._assert_custom_libraries_owned(data, binding.org_id)
         with self.client_class() as client:
             return client.update(binding.resource_id, data)
 
@@ -161,6 +187,47 @@ class VenvService:
                     logger.exception(
                         "Could not remove venv {} created by work that rolled back", venv_id
                     )
+
+    def _assert_custom_libraries_owned(self, data: dict, org_id: int | None) -> None:
+        """Refuse a venv that names a stored library the organization does not have.
+
+        A stored library is named, not pointed at by id, and the sandbox knows
+        nothing about organizations: left unchecked, a venv could name another
+        organization's private package and have the build install it.
+
+        Raises:
+            UnknownCustomLibraryError: Some name is not this organization's.
+        """
+        declared = self._declared_custom_library_names(data)
+        if not declared:
+            return
+        unknown = declared - self._owned_custom_library_names(org_id)
+        if unknown:
+            raise UnknownCustomLibraryError(
+                f"This organization has no custom library named {self._name_list(sorted(unknown))}."
+            )
+
+    @staticmethod
+    def _declared_custom_library_names(data: dict) -> set[str]:
+        """The stored libraries a payload names, under the spelling the sandbox stores.
+
+        An entry without the marking is a package index lookup and names no stored
+        library, whatever it is called.
+        """
+        return {
+            canonicalize_name(library["name"])
+            for library in data.get("libs") or []
+            if isinstance(library, dict) and library.get("is_custom") and library.get("name")
+        }
+
+    @staticmethod
+    def _owned_custom_library_names(org_id: int | None) -> set[str]:
+        """Every stored library this organization may name. Without an org, none."""
+        if org_id is None:
+            return set()
+        bindings = SandboxCustomLibraryBinding.objects.filter(org_id=org_id)
+        _page, pairs = CustomLibraryService().list_page(bindings)
+        return {canonicalize_name(library["name"]) for library, _ in pairs if library.get("name")}
 
     def _describe_owners(self, code_ids: list[int]) -> str:
         live, binned = self._owner_names(code_ids)
@@ -219,3 +286,107 @@ class VenvService:
         if len(names) > MAX_NAMED_OWNERS:
             shown = f"{shown} and {len(names) - MAX_NAMED_OWNERS} more"
         return shown
+
+
+class CustomLibraryService:
+    """The sandbox's custom libraries and their bindings, handled as one resource.
+
+    A library's wheels have no binding of their own, so every wheel call takes the
+    library's binding: that is what says the organization may reach them at all.
+    """
+
+    client_class = SandboxCustomLibraryClient
+
+    def list_page(
+        self,
+        bindings: QuerySet[SandboxCustomLibraryBinding],
+        *,
+        limit: str | None = None,
+        offset: str | None = None,
+    ) -> tuple[dict, list[tuple[dict, SandboxCustomLibraryBinding]]]:
+        """One page of the libraries `bindings` reaches, each paired with its binding.
+
+        Returns:
+            The page without its `result`, and the pairs that would have filled it.
+            What a library looks like in an answer differs per caller, so the page
+            comes back carrying only the counts and the links.
+        """
+        bindings_by_resource_id = {binding.resource_id: binding for binding in bindings}
+        with self.client_class() as client:
+            page = client.list(
+                ids=list(bindings_by_resource_id),
+                limit=limit,
+                offset=offset,
+            )
+
+        pairs = pair_with_bindings(page, bindings_by_resource_id)
+        return page, pairs
+
+    def retrieve(self, binding: SandboxCustomLibraryBinding) -> dict:
+        """The library this binding points at, as the sandbox reports it."""
+        with self.client_class() as client:
+            return client.retrieve(binding.resource_id)
+
+    def create(
+        self,
+        file,
+        *,
+        org_id: int | None,
+        created_by=None,
+    ) -> tuple[SandboxCustomLibraryBinding, dict]:
+        """Create the library upstream from a wheel, then the binding that owns it.
+
+        No name is ever passed: the sandbox reads it off the wheel's own filename, so
+        the registered name and the distribution it serves can never come apart.
+
+        Returns:
+            The new binding and the library the sandbox stored.
+        """
+        with self.client_class() as client:
+            library = client.create(file)
+
+        # TODO: bind the library and the binding in one transaction -- if this write
+        # fails the upstream library is orphaned (compensation/atomic deferred).
+        binding = SandboxCustomLibraryBinding.objects.create(
+            org_id=org_id,
+            created_by=created_by,
+            resource_id=str(library["id"]),
+        )
+        return binding, library
+
+    def delete(self, binding: SandboxCustomLibraryBinding) -> None:
+        """Delete a library no venv names any more, upstream and here.
+
+        Which venvs name it is the sandbox's to answer, not this database's: it
+        refuses with a 409 while one still does, and the binding is then left alone.
+        """
+        with self.client_class() as client:
+            client.remove(binding.resource_id)
+        binding.delete()
+
+    def list_wheels(self, binding: SandboxCustomLibraryBinding) -> list[dict]:
+        """Every version of this library, as the sandbox reports them."""
+        with self.client_class() as client:
+            return client.list_wheels(binding.resource_id)
+
+    def retrieve_wheel(self, binding: SandboxCustomLibraryBinding, wheel_id: str) -> dict:
+        """One version of this library."""
+        with self.client_class() as client:
+            return client.retrieve_wheel(binding.resource_id, wheel_id)
+
+    def download_wheel(
+        self, binding: SandboxCustomLibraryBinding, wheel_id: str
+    ) -> tuple[bytes, str | None]:
+        """The wheel's bytes and the `content-disposition` the sandbox named it with."""
+        with self.client_class() as client:
+            return client.download_wheel(binding.resource_id, wheel_id)
+
+    def upload_wheel(self, binding: SandboxCustomLibraryBinding, file) -> dict:
+        """Store an uploaded wheel or source archive as a new version of this library."""
+        with self.client_class() as client:
+            return client.upload_wheel(binding.resource_id, file)
+
+    def remove_wheel(self, binding: SandboxCustomLibraryBinding, wheel_id: str) -> None:
+        """Delete one version of this library."""
+        with self.client_class() as client:
+            client.remove_wheel(binding.resource_id, wheel_id)

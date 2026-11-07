@@ -169,7 +169,9 @@ async def test_submit_against_a_completed_venv_dispatches_it(
     assert status is ExecutionStatus.QUEUED
 
 
-@pytest.mark.parametrize("status", [VenvStatus.DECLARED, VenvStatus.PROCESSING])
+@pytest.mark.parametrize(
+    "status", [VenvStatus.DECLARED, VenvStatus.PROCESSING, VenvStatus.WAITING]
+)
 async def test_submit_against_a_building_venv_holds_it(
     uow, orchestrator, dispatcher, holding, failure_sink, status
 ):

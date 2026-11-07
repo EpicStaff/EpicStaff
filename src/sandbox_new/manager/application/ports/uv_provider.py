@@ -23,8 +23,14 @@ class AbstractUVProvider(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    async def apply(cls, venv_path: Path, *libs: LibraryString):
+    async def apply(cls, venv_path: Path, *libs: LibraryString, wheelhouse: Path | None = None):
         """Resolve `libs`, write the lock file, and install exactly what it pins.
+
+        Args:
+            venv_path: The venv to install into.
+            libs: One requirement per entry, written as a package index would read it.
+            wheelhouse: A directory of wheels to resolve against as well as the package
+                index, for libraries this installation stores itself and no index has.
 
         Raises:
             PackageNotFoundError: A declared package does not exist.
@@ -50,6 +56,23 @@ class AbstractUVProvider(abc.ABC):
         """Return the version resolved for every library, keyed by canonical name.
 
         A venv with no lock file resolves nothing.
+        """
+
+    @classmethod
+    @abc.abstractmethod
+    async def build_wheel(cls, source_dir: Path, output_dir: Path) -> Path:
+        """Build the source tree at `source_dir` into a wheel under `output_dir`.
+
+        Args:
+            source_dir: Directory holding the unpacked source distribution.
+            output_dir: Directory the wheel is written to. Expected to be empty, so
+                that the build's own output is the only wheel in it.
+
+        Returns:
+            Path of the wheel that was built.
+
+        Raises:
+            EnvironmentBuildError: The source could not be built, or produced no wheel.
         """
 
     @staticmethod

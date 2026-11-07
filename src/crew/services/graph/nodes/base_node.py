@@ -14,6 +14,7 @@ from src.shared.bench_log import BENCH_LEVEL
 from src.shared.public_error import PublicErrorMessage, build_public_error_message
 from src.shared.runtime_node_name import parse_runtime_node_label
 from utils import map_variables_to_input, set_output_variables
+from utils.state_path import split_state_path
 
 
 def _write_to_audit_trail_only(graph_message: GraphMessage) -> None:
@@ -227,6 +228,9 @@ class BaseNode(ABC):
             sysvars["execution_order"] = execution_order + 1
             state["system_variables"] = sysvars
             input_ = self.get_input(state=state)
+            # Rejected before execute() so a bad path costs no LLM or sandbox call.
+            if self.output_variable_path is not None:
+                split_state_path(self.output_variable_path)
             self.add_start_message(writer=writer, input_=input_, execution_order=execution_order)
             output = await self.execute(
                 state=state,

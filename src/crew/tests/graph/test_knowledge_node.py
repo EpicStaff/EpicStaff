@@ -363,3 +363,60 @@ async def test_failed_search_shows_a_reference_and_logs_the_raw_error_under_it(
     reference_logs = [record for record in captured_error_logs if reference in record]
     assert len(reference_logs) == 1
     assert logged_error in reference_logs[0]
+
+
+def search_query(monkeypatch, query_template: str, input_: dict) -> str:
+    """Run the node with `query_template` and return the query sent to the knowledge service."""
+    received = {}
+
+    class CapturingKnowledgeClient(FakeKnowledgeClient):
+        def search_with_usage(self, **kwargs):
+            received.update(kwargs)
+            return SearchOutcome(result=[])
+
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", CapturingKnowledgeClient
+    )
+    node = make_node(KnowledgeSearchService(redis_service=MagicMock()))
+    node.query_template = query_template
+
+    asyncio.run(node.execute(state={}, writer=MagicMock(), execution_order=1, input_=input_))
+
+    return received["query"]
+
+
+@pytest.mark.parametrize(
+    ("query_template", "expected_query"),
+    [
+        ("Docs about {topic}", "Docs about cats"),
+        ("Docs about {topic} and {missing}", "Docs about cats and {missing}"),
+        ("Docs {{literal}} about {topic}", "Docs {literal} about cats"),
+        ('Docs like {"a": 1} about {topic}', 'Docs like {"a": 1} about {topic}'),
+        ("Docs about {topic.upper}", "Docs about {topic.upper}"),
+        ("Docs about {user[name]}", "Docs about {user[name]}"),
+    ],
+    ids=[
+        "plain",
+        "missing-left-as-written",
+        "escaped-braces",
+        "json-example-verbatim",
+        "attribute-placeholder-verbatim",
+        "index-placeholder-verbatim",
+    ],
+)
+def test_query_is_rendered_from_the_input(monkeypatch, query_template, expected_query):
+    query = search_query(monkeypatch, query_template, {"topic": "cats", "user": {"name": "Ann"}})
+
+    assert query == expected_query
+
+
+def test_query_placeholder_cannot_read_the_crew_environment(monkeypatch):
+    canary_value = "canary-from-the-crew-environment"
+    monkeypatch.setenv("KNOWLEDGE_QUERY_TEST_CANARY", canary_value)
+    query_template = (
+        "Docs {user.update.__globals__[ast].sys.modules[os].environ[KNOWLEDGE_QUERY_TEST_CANARY]}"
+    )
+
+    query = search_query(monkeypatch, query_template, {"user": DotDict({"name": "Ann"})})
+
+    assert query == query_template

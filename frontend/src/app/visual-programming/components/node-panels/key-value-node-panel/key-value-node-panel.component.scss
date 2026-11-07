@@ -1,6 +1,7 @@
 @use '../../../styles/node-panel-controls.scss' as controls;
 @use '../../../styles/node-panel-mixins.scss' as mixins;
 @use '../shared/variable-highlight-textarea/variable-highlight' as highlight;
+@use '../../../../../styles/diff-value-mark' as diff-value-mark;
 
 .panel-container {
     display: flex;
@@ -141,6 +142,31 @@ $field-height: 40px;
     gap: 0.5rem;
 }
 
+// Version diff (Changes tab): a row a restore changes (the field mark draws its border and badge) or adds gets a
+// frame that takes no space, so every row keeps the full width. The inputs reach the row's edge, so the frame sits a
+// little outside it, inside the gap between rows and the panel's padding; the badge sticks out of its corner.
+.entry-row-mark {
+    --diff-row-frame-offset: 4px;
+    border-radius: 4px;
+}
+
+.entry-row-mark--added {
+    position: relative;
+    @include diff-value-mark.row-frame(var(--color-diff-added));
+}
+
+// A row only on the canvas shows its key and value as text in the box of an input. Its red, struck, faded look is
+// in .entry-row-mark--removed .entry-input, which is more specific than .entry-input, so it wins over that colour.
+.entry-input--removed {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .entry-field {
     flex: 1;
     min-width: 0;
@@ -233,6 +259,14 @@ $field-height: 40px;
     &::placeholder {
         color: var(--color-text-tertiary);
     }
+}
+
+// A row only on the canvas, as the removed rows of the Input List and the agent's tasks: red, struck, faded. Only the
+// cells fade, not the row, so the opacity is applied once.
+.entry-row-mark--removed .entry-input {
+    color: var(--color-diff-deleted);
+    text-decoration: line-through;
+    opacity: var(--diff-deleted-opacity);
 }
 
 // The key input is the task node's highlight field on one line: the key's text is drawn by a
@@ -330,3 +364,12 @@ $field-height: 40px;
         background: var(--color-action-btn-background);
     }
 }
+
+// Spaced off the field above it, like the recycle-bin note.
+.missing-reference-note {
+    margin-top: 0.5rem;
+}
+
+// Version diff (Changes tab): the table picked, a trigger this panel lays out itself, boxed like an input. Keep after
+// the trigger's own read-only look, which it overrides.
+@include diff-value-mark.marked-inside('.dropdown-trigger', $draws-box: true);

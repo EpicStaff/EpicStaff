@@ -14,12 +14,17 @@ from models.graph_models import (
     dataclass_to_shallow_dict,
 )
 from services.graph.custom_message_writer import CustomSessionMessageWriter
-from services.graph.exceptions import NodeExecutionError, SubflowPathError
+from services.graph.exceptions import (
+    InvalidStatePathError,
+    NodeExecutionError,
+    SubflowPathError,
+)
 from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
 from src.shared.models.storage_scope import StorageCredentials
 from src.shared.runtime_node_name import parse_runtime_node_label
 from utils import map_variables_to_input
 from utils.set_output_variables import set_output_variables
+from utils.state_path import split_state_path
 
 
 class SubGraphNode:
@@ -128,6 +133,9 @@ class SubGraphNode:
         start_order = sysvars.get("execution_order", 0)
         try:
             subgraph_input = self._prepare_subgraph_input(state)
+            # Rejected before the child flow runs, which would otherwise do its work for nothing.
+            if self.output_variable_path:
+                split_state_path(self.output_variable_path)
 
             state["system_variables"] = sysvars  # ensure attached before deep-copy
             sysvars["execution_order"] = start_order + 1
@@ -195,7 +203,7 @@ class SubGraphNode:
         An input or output path the node can't use is told as it is. Any other failure may
         carry internal text, so it is logged and the message cites a reference to the log line.
         """
-        if isinstance(error, SubflowPathError):
+        if isinstance(error, (SubflowPathError, InvalidStatePathError)):
             public_message = str(error)
             reference = None
         else:

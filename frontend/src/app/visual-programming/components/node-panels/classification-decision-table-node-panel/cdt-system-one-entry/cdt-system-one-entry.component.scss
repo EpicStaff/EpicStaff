@@ -1,3 +1,5 @@
+@use '../../../../../../styles/diff-value-mark' as diff-value-mark;
+
 :host {
     display: flex;
     flex-direction: column;
@@ -82,4 +84,35 @@
 
 .add-question {
     align-self: flex-start;
+}
+
+// Version diff (Changes tab of a version preview). A changed question is framed and badged by its mark; an added one
+// is framed green, and a canvas question a restore removes is listed struck and faded, as the removed rows of the
+// input map.
+.question--added {
+    position: relative;
+    @include diff-value-mark.row-frame(var(--color-diff-added));
+}
+
+.question--removed {
+    color: var(--color-diff-deleted);
+    text-decoration: line-through;
+    opacity: var(--diff-deleted-opacity);
+}
+
+.question__removed-title {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: space-between;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: var(--text-body-medium-line-height);
+}
+
+.question__removed-instructions {
+    margin: 0;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    white-space: pre-wrap;
 }

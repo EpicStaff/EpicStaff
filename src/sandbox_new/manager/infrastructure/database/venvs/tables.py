@@ -1,8 +1,17 @@
-from piccolo.columns import JSONB, Serial, Text, Timestamptz, Varchar
+from piccolo.columns import (
+    JSONB,
+    Boolean,
+    ForeignKey,
+    OnDelete,
+    Serial,
+    Text,
+    Timestamptz,
+    Varchar,
+)
 from piccolo.columns.defaults.timestamptz import TimestamptzNow
 from piccolo.table import Table
 
-from manager.domain.enums import VenvBuildErrorKind, VenvStatus
+from manager.domain.enums import VenvBuildErrorKind, VenvStatus, WheelStatus
 
 
 class VenvTable(Table, tablename="venv"):
@@ -15,3 +24,27 @@ class VenvTable(Table, tablename="venv"):
     error_kind = Varchar(length=40, null=True, default=None, choices=VenvBuildErrorKind)
     created_at = Timestamptz(default=TimestamptzNow())
     updated_at = Timestamptz(default=TimestamptzNow())
+
+
+class CustomLibraryTable(Table, tablename="custom_library"):
+    id: Serial
+    # Null until a wheel -- uploaded directly, or built from a source archive -- names
+    # the library; a partial unique index (see the migration) still keeps every named
+    # row distinct, since Postgres never treats two nulls as a clash.
+    name = Varchar(null=True, default=None)
+    is_deleted = Boolean(default=False)
+    created_at = Timestamptz(default=TimestamptzNow())
+    updated_at = Timestamptz(default=TimestamptzNow())
+
+
+class WheelTable(Table, tablename="wheel"):
+    id: Serial
+    library = ForeignKey(references=CustomLibraryTable, on_delete=OnDelete.cascade, null=False)
+    source_filename = Varchar(null=True, default=None)
+    wheel_filename = Varchar(null=True, default=None)
+    upload_sha256 = Varchar(length=64)
+    version = Varchar(null=True, default=None)
+    status = Varchar(length=20, choices=WheelStatus, default=WheelStatus.DECLARED)
+    error = Text(null=True, default=None)
+    is_deleted = Boolean(default=False)
+    created_at = Timestamptz(default=TimestamptzNow())

@@ -14,6 +14,7 @@ from src.shared.models.code_failure import CodeFailureCode
 from manager.application import errors as application_errors
 from manager.application.ports import errors as port_errors
 from manager.domain.enums import VenvBuildErrorKind
+from manager.domain import errors as domain_errors
 from manager.domain.errors import BaseError
 
 
@@ -50,6 +51,22 @@ PINNED_CODES = {
     port_errors.PackageNotFoundError: "package_not_found",
     port_errors.PackageVersionNotFoundError: "package_version_not_found",
     port_errors.DependencyConflictError: "package_dependency_conflict",
+    domain_errors.NotFoundError: "not_found",
+    domain_errors.ConflictError: "conflict",
+    domain_errors.BadRequestError: "bad_request",
+    domain_errors.CustomLibraryNotFoundError: "custom_library_not_found",
+    domain_errors.CustomLibraryNameNotFoundError: "custom_library_name_not_found",
+    domain_errors.CustomLibraryNotPublishedError: "custom_library_not_published",
+    domain_errors.CustomLibraryStillBuildingError: "custom_library_still_building",
+    domain_errors.WheelNotFoundError: "wheel_not_found",
+    domain_errors.CustomLibraryNameTakenError: "custom_library_name_taken",
+    domain_errors.WheelVersionTakenError: "wheel_version_taken",
+    domain_errors.WheelSourceAlreadyUploadedError: "wheel_source_already_uploaded",
+    domain_errors.CustomLibraryInUseError: "custom_library_in_use",
+    domain_errors.WheelInUseError: "wheel_in_use",
+    domain_errors.WheelNotBuiltError: "wheel_not_built",
+    domain_errors.UnsupportedUploadError: "unsupported_upload",
+    domain_errors.WheelNameMismatchError: "wheel_name_mismatch",
 }
 
 

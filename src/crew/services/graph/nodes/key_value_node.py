@@ -12,7 +12,7 @@ from loguru import logger
 from models.graph_models import KeyValueMessageData, KeyValueMessageEntry
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.exceptions import KeyValueNodeError
+from services.graph.exceptions import InvalidStatePathError, KeyValueNodeError
 from services.graph.nodes.base_node import BaseNode
 from utils import map_variables_to_input
 
@@ -428,12 +428,9 @@ class KeyValueNode(BaseNode):
                 "(in a key: 'profile_{variables.user.id}')."
             ) from e
         # `_segments` rejects DotDict method names; getattr still finds the methods of other
-        # values, e.g. `variables.name.upper` on a string.
-        if callable(value):
-            raise KeyValueNodeError(
-                f"Key-Value node '{self.node_label}': '{path}' resolves to a built-in method, "
-                "not a value in the flow state."
-            )
+        # values, e.g. `variables.name.upper` on a string, which the resolver rejects.
+        except InvalidStatePathError as e:
+            raise KeyValueNodeError(f"Key-Value node '{self.node_label}': {e}") from e
         return value
 
 

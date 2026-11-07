@@ -49,10 +49,6 @@ _SERVER_FAILURE_TEXTS = {
     CodeFailureCode.DISPATCH_FAILED: _SERVER_ERROR_TEXT,
     CodeFailureCode.UNSAFE_TO_RUN: _UNSAFE_TO_RUN_TEXT,
 }
-_STRAY_BRACE_TEXT = (
-    'Prompt "{prompt_id}" has a "{brace}" without a matching "{match}". '
-    "To write a brace, double it: {{{{ or }}}}."
-)
 
 # Where the agent's text tells the user to change the task or the agent, a prompt's says
 # what to change about the prompt. Every other kind keeps the agent's text after the
@@ -71,15 +67,6 @@ _PROMPT_LLM_ERROR_TEXTS: dict[LLMErrorKind, str] = {
         "content policy. Change the prompt or its inputs."
     ),
 }
-
-# str.format's messages for a brace that opens or closes no placeholder. Any other
-# ValueError of str.format is not about a stray brace and is left to the caller.
-_STRAY_OPENING_BRACE_MESSAGES = (
-    "Single '{' encountered in format string",
-    "expected '}' before end of string",
-    "unmatched '{' in format spec",
-)
-_STRAY_CLOSING_BRACE_MESSAGES = ("Single '}' encountered in format string",)
 
 # Runs in the sandbox inside the generated condition code: turns an exception raised by a
 # condition expression into the failure crew reads with `ConditionFailure.from_result`.
@@ -275,20 +262,6 @@ def manipulation_error(
                 return DecisionTableError(f"{subject}, {part.label}: {message}")
     message = describe_user_code_error(user_error.exception_type, None, user_error.message)
     return DecisionTableError(f"{subject}, manipulation code: {message}")
-
-
-def stray_brace_error(prompt_id: str, format_error: ValueError) -> DecisionTableError | None:
-    """Return the error for a prompt with a single brace, or None for another format error."""
-    message = str(format_error)
-    if message in _STRAY_OPENING_BRACE_MESSAGES:
-        brace, match = "{", "}"
-    elif message in _STRAY_CLOSING_BRACE_MESSAGES:
-        brace, match = "}", "{"
-    else:
-        return None
-    return DecisionTableError(
-        _STRAY_BRACE_TEXT.format(prompt_id=prompt_id, brace=brace, match=match)
-    )
 
 
 def prompt_llm_error(prompt_id: str, llm: LLMData, error: Exception) -> DecisionTableError:

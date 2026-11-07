@@ -1,10 +1,19 @@
 from enum import StrEnum
 
-__all__ = ["ExecutionStatus", "JobStatus", "VenvBuildErrorKind", "VenvOrder", "VenvStatus"]
+__all__ = [
+    "ExecutionStatus",
+    "JobStatus",
+    "VenvBuildErrorKind",
+    "VenvOrder",
+    "VenvStatus",
+    "WheelOffer",
+    "WheelStatus",
+]
 
 
 class VenvStatus(StrEnum):
     DECLARED = "declared"
+    WAITING = "waiting"
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -40,6 +49,21 @@ class JobStatus(StrEnum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class WheelStatus(StrEnum):
+    DECLARED = "declared"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class WheelOffer(StrEnum):
+    """What a custom library can give a venv build at this moment."""
+
+    READY = "ready"
+    WAIT = "wait"
+    NOTHING_BUILT = "nothing_built"
 
 
 class ExecutionStatus(StrEnum):

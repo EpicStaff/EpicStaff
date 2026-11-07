@@ -12,9 +12,10 @@ import types
 import fakeredis
 import pytest
 from dotdict import DotDict
+from loguru import logger
 
 from services.graph.events import StopEvent
-from services.graph.exceptions import NodeExecutionError
+from services.graph.exceptions import InvalidStatePathError, NodeExecutionError
 from services.graph.nodes.agent_node import AgentNode
 from services.graph.nodes.task_node import TaskNode
 from services.graph.remembered_outputs import RememberedOutputsStore
@@ -298,8 +299,18 @@ async def test_task_node_returns_the_agent_run_summary(remembered_outputs):
         ("Write about {topic}", {"topic": "cats"}, "Write about cats"),
         ("Write about {missing}", {}, "Write about {missing}"),
         ('Return JSON like {"a": 1}', {}, 'Return JSON like {"a": 1}'),
+        ("Write {{topic}} about {topic}", {"topic": "cats"}, "Write {topic} about cats"),
+        ("Write about {topic.upper}", {"topic": "cats"}, "Write about {topic.upper}"),
+        ("Write about {topic[0]}", {"topic": "cats"}, "Write about {topic[0]}"),
     ],
-    ids=["placeholder", "unknown-placeholder-kept", "json-example-verbatim"],
+    ids=[
+        "placeholder",
+        "unknown-placeholder-kept",
+        "json-example-verbatim",
+        "escaped-braces",
+        "attribute-placeholder-verbatim",
+        "index-placeholder-verbatim",
+    ],
 )
 async def test_task_instructions_are_rendered_from_the_input(
     remembered_outputs, instructions, variables, expected
@@ -321,6 +332,84 @@ async def test_node_dispatches_its_checked_agent_and_llm(build_node, stream_type
     await _run(build_node(service, remembered_outputs))
 
     assert service.dispatched_agent == (AGENT, AGENT.llm)
+
+
+@pytest.fixture
+def warnings_logged():
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="WARNING", format="{message}")
+    yield lines
+    logger.remove(sink_id)
+
+
+@pytest.mark.parametrize(
+    ("instructions", "expected_warnings"),
+    [
+        ("Write about {topic}", []),
+        (
+            "Greet {user.name} about {topic}",
+            [
+                "Instructions sent as written, no placeholder filled: "
+                "placeholder 'user.name' is not a plain variable name"
+            ],
+        ),
+        (
+            "Write {missing} about {topic}, then {other} and {missing}",
+            [
+                "Instructions: no input value for placeholder {missing}; left as-is",
+                "Instructions: no input value for placeholder {other}; left as-is",
+            ],
+        ),
+    ],
+    ids=["rendered-no-warning", "unrendered-template-explains-why", "each-missing-placeholder-once"],
+)
+async def test_task_instructions_not_fully_rendered_leave_a_warning(
+    remembered_outputs, warnings_logged, instructions, expected_warnings
+):
+    node = _task_node(
+        FakeAgentService(),
+        remembered_outputs,
+        instructions=instructions,
+        input_map={"topic": "variables.topic"},
+    )
+
+    await _run(node, {"topic": "cats"})
+
+    assert [line.strip() for line in warnings_logged if "Instructions" in line] == expected_warnings
+
+
+def _task_node_with_instructions(service, store, instructions, input_map):
+    return _task_node(service, store, instructions=instructions, input_map=input_map)
+
+
+def _agent_node_with_instructions(service, store, instructions, input_map):
+    tasks = [AgentNodeTaskData(name="task_a", order=0, instructions=instructions)]
+    return _agent_node(service, store, tasks=tasks, input_map=input_map)
+
+
+@pytest.mark.parametrize(
+    "build_node",
+    [_task_node_with_instructions, _agent_node_with_instructions],
+    ids=["task-node", "agent-node"],
+)
+async def test_input_mapped_to_a_method_fails_before_the_agent_is_called(
+    build_node, remembered_outputs
+):
+    service = FakeAgentService()
+    node = build_node(
+        service,
+        remembered_outputs,
+        instructions="{fn.__globals__[ast].sys.modules[os].environ[REDIS_PASSWORD]}",
+        input_map={"fn": "variables.update"},
+    )
+
+    with pytest.raises(NodeExecutionError) as raised:
+        await _run(node)
+
+    assert isinstance(raised.value.__cause__, InvalidStatePathError)
+    assert "'variables.update'" in raised.value.public_message
+
+    assert service.dispatched is None
 
 
 async def test_task_instructions_are_rendered_afresh_on_every_run(remembered_outputs):

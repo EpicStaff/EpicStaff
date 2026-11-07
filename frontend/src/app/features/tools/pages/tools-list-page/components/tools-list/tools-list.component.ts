@@ -29,21 +29,12 @@ import {
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
-import {
-    buildPreviewImportResult,
-    downloadBlob,
-    extractHttpErrorMessage,
-    ImportFileData,
-    isFocusLost,
-    movedToRecycleBinMessage,
-} from '@shared/utils';
-import { EMPTY, from, Observable, of } from 'rxjs';
-import { catchError, map, switchMap, tap } from 'rxjs/operators';
+import { downloadBlob, isFocusLost, movedToRecycleBinMessage } from '@shared/utils';
+import { map, tap } from 'rxjs/operators';
 
-import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
-import { ImportReviewDialogComponent } from '../../../../../flows/components/import-review-dialog/import-review-dialog.component';
+import { ImportWithReviewService } from '../../../../../flows/components/import-review-dialog/import-with-review.service';
 import { ToolUsageDialogComponent } from '../../../../components/tool-usage-dialog/tool-usage-dialog.component';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
@@ -101,6 +92,7 @@ export class ToolsListComponent implements OnInit {
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
     private readonly port = inject<ToolsListPort<Tool>>(TOOLS_LIST_PORT);
+    private readonly importWithReview = inject(ImportWithReviewService);
 
     public readonly viewState = inject(ToolsViewStorageService);
 
@@ -373,74 +365,15 @@ export class ToolsListComponent implements OnInit {
     }
 
     private handleImport(): void {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json,application/json';
-        input.onchange = (event: Event) => {
-            const file = (event.target as HTMLInputElement).files?.[0];
-            if (!file) return;
-
-            from(file.text())
-                .pipe(
-                    map((text) => this._parseFileData(text)),
-                    switchMap((fileData) => this._importToolFile(file, fileData)),
-                    catchError((err: HttpErrorResponse) => {
-                        this.toastService.error(
-                            extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
-                        );
-                        return EMPTY;
-                    }),
-                    takeUntilDestroyed(this.destroyRef)
-                )
-                .subscribe(() => this._finishToolImport());
-        };
-        input.click();
-    }
-
-    private _parseFileData(text: string): ImportFileData {
-        try {
-            return JSON.parse(text) as ImportFileData;
-        } catch {
-            return {};
-        }
-    }
-
-    private _importToolFile(file: File, fileData: ImportFileData): Observable<unknown> {
-        return this.port.inspectFile(file).pipe(
-            switchMap((inspection) => {
-                if (!hasReviewableItems(inspection.review_items)) {
-                    return this.port.importFile(file).pipe(
-                        catchError((err: HttpErrorResponse) => {
-                            this.toastService.error(
-                                extractHttpErrorMessage(err, `Failed to import ${this.port.entityLabelPlural}.`)
-                            );
-                            return EMPTY;
-                        })
-                    );
-                }
-
-                const dialogRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
-                    width: 'calc(100vw - 2rem)',
-                    height: 'calc(100vh - 2rem)',
-                    autoFocus: false,
-                    data: {
-                        importResult: buildPreviewImportResult(fileData),
-                        reviewItems: inspection.review_items,
-                        importFn: () => this.port.importFile(file),
-                    },
-                });
-
-                return dialogRef.closed.pipe(
-                    switchMap((closeResult) => (closeResult?.action === 'imported' ? of(closeResult.result) : EMPTY))
-                );
-            }),
-            catchError((err: HttpErrorResponse) => {
-                this.toastService.error(
-                    extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
-                );
-                return EMPTY;
+        this.importWithReview
+            .pickAndImport({
+                entityLabel: this.port.entityLabel,
+                entityLabelPlural: this.port.entityLabelPlural,
+                inspect: (file) => this.port.inspectFile(file),
+                importFile: (file) => this.port.importFile(file),
             })
-        );
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this._finishToolImport());
     }
 
     private _finishToolImport(): void {

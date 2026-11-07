@@ -49,6 +49,13 @@ class SubflowPathError(PublicNodeError):
     """A Subflow node's input path isn't a flow variable, or its output path doesn't exist."""
 
 
+class InvalidStatePathError(PublicNodeError):
+    """A flow state path the flow author wrote cannot be read or written.
+
+    The message names only the author's own path, so it is safe to show to the user.
+    """
+
+
 class NodeExecutionError(Exception):
     """A node failed and has already shown the user an error message.
 

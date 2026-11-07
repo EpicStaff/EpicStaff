@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NodeType } from '@shared/models';
-import { downloadBlob, httpErrorReason, showExportExclusionWarning } from '@shared/utils';
+import { downloadBlob, extractHttpErrorMessage, httpErrorReason, showExportExclusionWarning } from '@shared/utils';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { GraphContentDto } from '../../features/flows/models/graph.model';
@@ -147,7 +147,8 @@ export class FlowImportExportService {
 
                     showExportExclusionWarning(this.toastService, excluded, 'bottom-right');
                 },
-                error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
+                error: (error: HttpErrorResponse) =>
+                    this.toastService.error(extractHttpErrorMessage(error, 'Export failed'), 3000, 'bottom-right'),
             });
     }
 
