@@ -345,9 +345,10 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     /**
      * Why the session ended early, shown after its last message; null for a session that ended normally or
-     * gave no reason (a manual stop). A failed node's error card already says it: the session repeats that node's
-     * text, so it is not shown twice. Waits until no more messages can arrive, so it is never shown before the
-     * error card that says it, nor between two pages of messages.
+     * gave no reason (a manual stop). A failed top-level node's error card already says it: the session repeats
+     * that node's text, so it is not shown twice. A node that failed inside a subflow still gets it. Waits until
+     * no more messages can arrive, so it is never shown before the error card that says it, nor between two pages
+     * of messages.
      */
     get sessionEndReason(): string | null {
         if (!UNFINISHED_END_STATUSES.has(this.sseService.status()) || this.canMoreMessagesArrive()) return null;
@@ -1209,10 +1210,16 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         );
     }
 
-    /** Whether an error card, at any level, shows exactly `text` as its details. */
+    /**
+     * Whether an error card of the top-level flow shows exactly `text` as its details. A card sent from inside a
+     * subflow sits in that subflow's group, which may be closed, so it can't be the only place that says why the
+     * session ended.
+     */
     private hasErrorCardSaying(text: string): boolean {
         return this.messages.some((message) => {
-            if (!isMessageType(message, MessageType.ERROR)) return false;
+            const isTopLevelErrorCard =
+                isMessageType(message, MessageType.ERROR) && this.getSubgraphRunChain(message).length === 0;
+            if (!isTopLevelErrorCard) return false;
             const { details } = message.message_data as ErrorMessageData;
             return typeof details === 'string' && details.trim() === text;
         });

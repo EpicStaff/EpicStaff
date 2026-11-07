@@ -1515,7 +1515,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public handleRunFlow(): void {
         this.runAfterSave(
-            () => this.runGraphService.runGraph(this.graph.id, this.graph.start_node_list[0].variables),
+            // A flow saved without a Start node still reaches the server, whose Run check says what is missing.
+            () => this.runGraphService.runGraph(this.graph.id, this.graph.start_node_list[0]?.variables),
             (error) => showHttpErrorToast(this.toastService, "Couldn't run the flow.", error)
         );
     }

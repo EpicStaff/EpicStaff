@@ -84,6 +84,7 @@ class PythonNode(BaseNode):
         reading = self._read_result(python_code_execution_data)
         python_message_data = PythonMessageData(
             python_code_execution_data=reading.shown_result,
+            error=None if reading.error is None else str(reading.error),
         )
         graph_message = GraphMessage(
             session_id=self.session_id,

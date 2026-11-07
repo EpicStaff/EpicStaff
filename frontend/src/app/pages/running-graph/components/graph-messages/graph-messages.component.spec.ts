@@ -331,13 +331,26 @@ describe('GraphMessagesComponent', () => {
         });
 
         it.each([
-            { case: 'an error card that says the same arrives', details: TOKEN_BUDGET_REASON, shown: [] },
+            {
+                case: 'an error card that says the same arrives',
+                details: TOKEN_BUDGET_REASON,
+                runChain: [],
+                shown: [],
+            },
             {
                 case: 'only an error card that says something else arrives',
                 details: 'Writer #1 failed: the model refused.',
+                runChain: [],
                 shown: [TOKEN_BUDGET_REASON],
             },
-        ])('waits for the live stream to end when $case after the final status', ({ details, shown }) => {
+            {
+                // The card sits in the subflow's closed group, so only the reason says it at the top level.
+                case: 'only an error card from inside a subflow says the same',
+                details: TOKEN_BUDGET_REASON,
+                runChain: ['run-1'],
+                shown: [TOKEN_BUDGET_REASON],
+            },
+        ])('waits for the live stream to end when $case after the final status', ({ details, runChain, shown }) => {
             const { fixture, stream } = renderRunningSession();
             endSession(fixture, stream, {
                 session_id: SESSION_ID,
@@ -346,7 +359,11 @@ describe('GraphMessagesComponent', () => {
             });
             expect(fixture.nativeElement.querySelector('.session-end-reason')).toBeNull();
 
-            streamMessage(fixture, stream, message('Writer #1 #4', { message_type: MessageType.ERROR, details }));
+            streamMessage(
+                fixture,
+                stream,
+                message('Writer #1 #4', { message_type: MessageType.ERROR, details }, runChain)
+            );
             expect(fixture.nativeElement.querySelector('.session-end-reason')).toBeNull();
 
             closeStream(fixture, stream);
@@ -365,8 +382,14 @@ describe('GraphMessagesComponent', () => {
                 details: 'Writer #1 failed: the model refused.',
                 shown: [TOKEN_BUDGET_REASON],
             },
-        ])('$case', ({ details, shown }) => {
-            const failedNode = message('Writer #1 #4', { message_type: MessageType.ERROR, details });
+            {
+                case: 'shows it when only an error card from inside a subflow says the same',
+                details: TOKEN_BUDGET_REASON,
+                runChain: ['run-1'],
+                shown: [TOKEN_BUDGET_REASON],
+            },
+        ])('$case', ({ details, runChain = [], shown }) => {
+            const failedNode = message('Writer #1 #4', { message_type: MessageType.ERROR, details }, runChain);
 
             const element = render([startMessage('Writer #1 #4'), failedNode], rootGraph(), {
                 status: GraphSessionStatus.ERROR,

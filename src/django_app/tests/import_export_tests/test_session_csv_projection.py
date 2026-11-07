@@ -504,6 +504,54 @@ def test_other_node_message_rows():
     assert json.loads(key_value["details"])["entries"][0]["value"] == "en"
 
 
+def test_python_error_column_says_why_the_code_failed_and_details_keep_the_stderr():
+    stderr = "loading\nTypeError: main() got an unexpected keyword argument 'y'"
+    reason = 'Input "y" isn\'t a parameter of main(). Add it to main, or remove it from the input map.'
+    failed_run = _message(
+        80,
+        "2026-10-07T13:00:02.000000Z",
+        "python_1 #8",
+        3,
+        {
+            "message_type": "python",
+            "error": reason,
+            "python_code_execution_data": {
+                "execution_id": "exec-3",
+                "result_data": None,
+                "stderr": stderr,
+                "stdout": "",
+                "returncode": 1,
+            },
+        },
+        node_type="PYTHON",
+    )
+    successful_run = _message(
+        81,
+        "2026-10-07T13:00:03.000000Z",
+        "python_1 #8",
+        4,
+        {
+            "message_type": "python",
+            "error": None,
+            "python_code_execution_data": {
+                "execution_id": "exec-4",
+                "result_data": 1,
+                "stderr": "",
+                "stdout": "",
+                "returncode": 0,
+            },
+        },
+        node_type="PYTHON",
+    )
+
+    rows = _rows_by_message_id([failed_run, successful_run])
+
+    assert rows["80"]["error"] == reason
+    assert json.loads(rows["80"]["details"])["stderr"] == stderr
+    assert rows["81"]["error"] == ""
+    assert "error" not in json.loads(rows["81"]["details"])
+
+
 @pytest.mark.django_db
 def test_exported_session_csv_carries_flow_and_node_type(default_org):
     graph = Graph.objects.create(name="csv flow", org=default_org)

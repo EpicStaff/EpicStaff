@@ -118,8 +118,13 @@ def _finish_columns(rest: dict) -> tuple[dict, dict]:
 
 def _python_columns(rest: dict) -> tuple[dict, dict]:
     execution = dict(rest.pop("python_code_execution_data", None) or {})
+    # Why the code failed, as the node's error card says it. Crew can reword what ends
+    # stderr, so stderr itself then stays in the details; older messages have only stderr.
+    error = rest.pop("error", None)
     columns = {"output": execution.pop("result_data", None)}
-    if execution.get("returncode") not in (0, None):
+    if error:
+        columns["error"] = error
+    elif execution.get("returncode") not in (0, None):
         columns["error"] = execution.pop("stderr", None)
     return columns, {**rest, **execution}
 

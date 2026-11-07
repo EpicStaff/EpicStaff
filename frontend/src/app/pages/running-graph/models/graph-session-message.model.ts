@@ -85,6 +85,8 @@ export interface PythonCodeExecutionData {
 export interface PythonMessageData {
     python_code_execution_data: PythonCodeExecutionData;
     message_type: MessageType.PYTHON;
+    /** Why the code failed, as the node's error card says it; null when the code ran, absent on older messages. */
+    error?: string | null;
 }
 
 export interface LLMMessageData {

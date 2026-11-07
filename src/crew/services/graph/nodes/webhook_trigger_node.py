@@ -48,8 +48,17 @@ class WebhookTriggerNode(BaseNode):
             storage_credentials=self.storage_credentials,
         )
 
+        # Its inputs are the whole flow state, not an input map the user can fix.
+        error = code_failure_error(
+            python_code_execution_data,
+            kind_name=self.KIND_NAME,
+            node_label=self.node_label,
+            entrypoint=None,
+            session_id=self.session_id,
+        )
         python_message_data = PythonMessageData(
             python_code_execution_data=python_code_execution_data.model_dump(),
+            error=None if error is None else str(error),
         )
         graph_message = GraphMessage(
             session_id=self.session_id,
@@ -59,14 +68,6 @@ class WebhookTriggerNode(BaseNode):
         )
         writer(graph_message)
 
-        # Its inputs are the whole flow state, not an input map the user can fix.
-        error = code_failure_error(
-            python_code_execution_data,
-            kind_name=self.KIND_NAME,
-            node_label=self.node_label,
-            entrypoint=None,
-            session_id=self.session_id,
-        )
         if error is not None:
             raise error
 

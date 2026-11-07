@@ -139,6 +139,75 @@ async def test_error_shows_the_failure_while_the_python_message_keeps_the_whole_
     assert [shown["stderr"] for shown in shown_results] == ["loading rows\nKeyError on line 4: 'rows'"]
 
 
+def python_payloads(messages: list[GraphMessage]) -> list[dict]:
+    """The Python messages' data as crew sends it to Django and the session view."""
+    return [
+        message.to_payload()["message_data"]
+        for message in messages
+        if isinstance(message.message_data, PythonMessageData)
+    ]
+
+
+UNEXPECTED_Y = "TypeError: main() got an unexpected keyword argument 'y'"
+SANDBOX_REFERENCE = "0123456789ab"
+
+
+@pytest.mark.parametrize(
+    ("make_node", "result", "state", "expected"),
+    [
+        pytest.param(
+            lambda service: python_node(service, input_map={"x": "variables.x", "y": "variables.y"}),
+            failed(CodeFailure(code=CodeFailureCode.UNEXPECTED_ARGUMENT, detail=UNEXPECTED_Y, attr="y")),
+            build_state(x=1, y=2),
+            'Input "y" isn\'t a parameter of main(). Add it to main, or remove it from the input map.',
+            id="python-reworded-failure",
+        ),
+        pytest.param(
+            python_node,
+            failed(
+                CodeFailure(code=CodeFailureCode.SANDBOX_ERROR, detail="Node execution failed"),
+                reference=SANDBOX_REFERENCE,
+            ),
+            build_state(),
+            'Python node "Clean data #2" couldn\'t run its code. '
+            f"Try again or contact your administrator (reference: {SANDBOX_REFERENCE}).",
+            id="python-server-failure",
+        ),
+        pytest.param(
+            webhook_trigger_node,
+            TIMED_OUT,
+            build_state(),
+            TIMEOUT_TEXT,
+            id="webhook-trigger-failure",
+        ),
+    ],
+)
+async def test_python_message_says_why_the_code_failed_as_the_error_card_does(make_node, result, state, expected):
+    messages: list[GraphMessage] = []
+
+    with pytest.raises(NodeExecutionError):
+        await make_node(CannedRunCodeService(result)).run(state, writer=messages.append)
+
+    cards = [
+        message.message_data.details
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+    [payload] = python_payloads(messages)
+    assert payload["error"] == cards[0] == expected
+    # The sandbox's result is shown as it came, with everything the code wrote to stderr.
+    assert payload["python_code_execution_data"]["stderr"] == result.stderr
+
+
+async def test_python_message_of_code_that_ran_has_no_error():
+    messages: list[GraphMessage] = []
+
+    await python_node(CannedRunCodeService(succeeded(1))).run(build_state(), writer=messages.append)
+
+    [payload] = python_payloads(messages)
+    assert payload["error"] is None
+
+
 @pytest.mark.parametrize(
     "output_variable_path",
     ["variables.records[5]", "variables.records[5].name", "variables.count.value", "variables.count[0]"],

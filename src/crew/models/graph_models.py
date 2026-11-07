@@ -93,8 +93,20 @@ class ErrorMessageData:
 
 @dataclass
 class PythonMessageData:
+    """A code run, as the session shows it.
+
+    Attributes:
+        python_code_execution_data: The run's result as the sandbox sent it, so its
+            stderr keeps everything the user's code wrote.
+        error: Why the code failed, as the node's error card says it; None when the code
+            ran (the node can still fail afterwards, e.g. on its output path). Crew
+            rewords some failures, e.g. an input that isn't a parameter of the
+            entrypoint, so this, not the end of stderr, is the reason to show.
+    """
+
     python_code_execution_data: dict
     message_type: str = "python"
+    error: str | None = None
 
 
 @dataclass

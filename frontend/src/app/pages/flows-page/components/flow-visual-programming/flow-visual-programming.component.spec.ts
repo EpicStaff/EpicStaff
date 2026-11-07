@@ -1127,6 +1127,16 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(component.isPanelCollapsed()).toBe(false);
         });
 
+        it('runs a flow saved without a Start node, so the server says what is missing', () => {
+            flowsApi['getGraphById'].mockReturnValue(of(graphDto({ start_node_list: [] })));
+            component.refreshCurrentFlow();
+            fixture.detectChanges();
+
+            header().run.emit();
+
+            expect(runGraph['runGraph']).toHaveBeenCalledExactlyOnceWith(1, undefined);
+        });
+
         it('Ctrl+Enter and the Run button start the same run', () => {
             header().run.emit();
             press(CTRL_ENTER);

@@ -160,7 +160,38 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                         </div>
                     }
 
-                    <!-- Stderr Section: "Error" for a failed run, "Log" for what a successful run wrote there -->
+                    <!-- Error Section: the sentence the node failed with, the same as its error card -->
+                    @if (hasError()) {
+                        <div class="error-container">
+                            <button
+                                type="button"
+                                class="section-heading"
+                                [attr.aria-expanded]="isErrorExpanded"
+                                (click)="toggleSection('error')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Error
+                            </button>
+                            <div
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isErrorExpanded"
+                                [inert]="!isErrorExpanded"
+                            >
+                                <div class="collapsible-inner">
+                                    <div class="stderr-wrapper">
+                                        <div class="result-content error-content">
+                                            <pre>{{ getError() }}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Stderr Section: "Error" for a failed run that names no error of its own, otherwise "Log" -->
                     @if (hasStderr()) {
                         <div class="stderr-container">
                             <button
@@ -184,7 +215,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                     <div class="stderr-wrapper">
                                         <div
                                             class="result-content"
-                                            [class.error-content]="isFailedRun()"
+                                            [class.error-content]="stderrTitle() === 'Error'"
                                         >
                                             <pre>{{ getStderr() }}</pre>
                                         </div>
@@ -426,6 +457,7 @@ export class PythonMessageComponent implements OnInit {
     isCodeExpanded = true;
     isInputExpanded = true;
     isOutputExpanded = true;
+    isErrorExpanded = true;
     isStderrExpanded = true;
     isRawDataExpanded = false; // Collapsed by default since it's less important
     isCollapsed = true;
@@ -444,8 +476,10 @@ export class PythonMessageComponent implements OnInit {
         }
     }
 
-    toggleSection(section: 'code' | 'input' | 'output' | 'stderr' | 'rawData'): void {
-        if (section === 'code') {
+    toggleSection(section: 'code' | 'input' | 'output' | 'error' | 'stderr' | 'rawData'): void {
+        if (section === 'error') {
+            this.isErrorExpanded = !this.isErrorExpanded;
+        } else if (section === 'code') {
             this.isCodeExpanded = !this.isCodeExpanded;
         } else if (section === 'input') {
             this.isInputExpanded = !this.isInputExpanded;
@@ -535,9 +569,22 @@ export class PythonMessageComponent implements OnInit {
         return typeof resultData === 'string' && resultData.trim() ? this.formatJson(resultData) : '';
     }
 
+    // Crew sends the sentence the node failed with: it can reword the failure the sandbox put at the end of stderr.
+    hasError(): boolean {
+        return this.getError() !== '';
+    }
+
+    getError(): string {
+        if (this.message.message_data?.message_type !== MessageType.PYTHON) return '';
+        const error = (this.message.message_data as PythonMessageData).error;
+        return typeof error === 'string' ? error.trim() : '';
+    }
+
     // Stderr holds the traceback of a failed run, but a successful run may write its logs and warnings there too.
+    // When it says no more than the error sentence above it, it isn't shown twice.
     hasStderr(): boolean {
-        return this.getStderr() !== '';
+        const stderr = this.getStderr();
+        return stderr !== '' && stderr !== this.getError();
     }
 
     getStderr(): string {
@@ -550,8 +597,9 @@ export class PythonMessageComponent implements OnInit {
         return this.getExecutionData()['returncode'] !== 0;
     }
 
+    // A failed run's stderr is its error only when crew sent no sentence of its own; next to one it is the run's log.
     stderrTitle(): 'Error' | 'Log' {
-        return this.isFailedRun() ? 'Error' : 'Log';
+        return this.isFailedRun() && !this.hasError() ? 'Error' : 'Log';
     }
 
     toggleCollapse(): void {
@@ -569,6 +617,7 @@ export class PythonMessageComponent implements OnInit {
         const parts: string[] = [];
         if (this.hasCode()) parts.push(`Code:\n${this.getCode()}`);
         if (this.hasOutput()) parts.push(`Output:\n${this.getOutput()}`);
+        if (this.hasError()) parts.push(`Error:\n${this.getError()}`);
         if (this.hasStderr()) parts.push(`${this.stderrTitle()}:\n${this.getStderr()}`);
         return parts.length > 0 ? parts.join('\n\n') : JSON.stringify(this.getExecutionData(), null, 2);
     }
