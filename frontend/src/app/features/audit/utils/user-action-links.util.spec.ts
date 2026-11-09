@@ -77,10 +77,56 @@ describe('userActionTargetUrl', () => {
         expect(userActionTargetUrl({ ...baseAction, ...fields }, canOpenEverything)).toBe(expected);
     });
 
-    it.each(['deleted', 'moved_to_recycle_bin'])('links no target once it is %s', (action) => {
+    it('links no target once it is deleted', () => {
         expect(
-            userActionTargetUrl({ ...baseAction, action, target_type: 'flow', target_id: '4' }, canOpenEverything)
+            userActionTargetUrl(
+                { ...baseAction, action: 'deleted', target_type: 'flow', target_id: '4', target_name: 'Billing' },
+                canOpenEverything
+            )
         ).toBeNull();
+    });
+});
+
+describe('userActionTargetUrl of a target moved to the recycle bin', () => {
+    const binned = (target_type: string, target_name: string | null): AuditUserAction => ({
+        ...baseAction,
+        action: 'moved_to_recycle_bin',
+        target_type,
+        target_id: '9',
+        target_name,
+    });
+
+    it.each<[string, string | null, string]>([
+        ['flow', 'Q1 billing', '/recycle-bin/flows?search=Q1%20billing'],
+        ['agent', 'Researcher', '/recycle-bin/agents?search=Researcher'],
+        ['surface', 'Brief', '/recycle-bin/surfaces?search=Brief'],
+        ['python code tool', 'Parser', '/recycle-bin/tools?search=Parser&kind=python_tool'],
+        ['MCP tool', 'Search', '/recycle-bin/tools?search=Search&kind=mcp_tool'],
+        // the bin searches a stored item by its own name, not its path
+        ['storage file', 'reports/Q1 summary.pdf', '/recycle-bin/files?search=Q1%20summary.pdf'],
+        ['storage folder', 'reports/archive/', '/recycle-bin/files?search=archive'],
+        ['source collection', 'Manuals', '/recycle-bin/knowledge-sources?search=Manuals'],
+        ['key value table', 'Prices', '/recycle-bin/key-value-tables?search=Prices'],
+        ['secret', 'OPENAI_KEY', '/recycle-bin/secrets?search=OPENAI_KEY'],
+        ['realtime channel', 'Support line', '/recycle-bin/voice-channels?search=Support%20line'],
+        ['webhook trigger', 'orders-in', '/recycle-bin/webhook-triggers?search=orders-in'],
+        ['flow', null, '/recycle-bin/flows'],
+    ])('links a binned %s named %s to its tab', (type, name, expected) => {
+        expect(userActionTargetUrl(binned(type, name), canOpenEverything)).toBe(expected);
+    });
+
+    it.each(['python node', 'LLM config', 'flow version'])('links no binned %s: no tab lists it', (type) => {
+        expect(userActionTargetUrl(binned(type, 'Parse'), canOpenEverything)).toBeNull();
+    });
+
+    it.each<[string, ResourceCode]>([
+        ['flow', ResourceCode.Flows],
+        ['surface', ResourceCode.Surfaces],
+        ['MCP tool', ResourceCode.Tools],
+        ['storage file', ResourceCode.Files],
+        ['webhook trigger', ResourceCode.Webhooks],
+    ])('links no binned %s without read access to its tab', (type, deniedResource) => {
+        expect(userActionTargetUrl(binned(type, 'Item'), (resource) => resource !== deniedResource)).toBeNull();
     });
 });
 

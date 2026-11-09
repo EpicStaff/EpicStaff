@@ -12,12 +12,12 @@ from rbac.identity.authentication import JwtOrApiKeyAuthentication
 from rbac.models import OrganizationConfig, OrganizationUser
 from src.shared.models import UserAction
 from agents.models import AgentDefinition, Surface
-from tables.models import Graph, PythonCode, PythonNode, SourceCollection, WebhookTrigger
+from tables.models import Graph, McpTool, PythonCode, PythonNode, SourceCollection, WebhookTrigger
 from user_audit import recorder
 from user_audit.actor import Actor, actor_from_request
 from user_audit.context import user_action_context
 from user_audit.recorder import record_for_user_orgs, record_user_action
-from user_audit.targets import TargetDescription, describe
+from user_audit.targets import TargetDescription, describe, target_type
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -224,6 +224,11 @@ def test_record_for_user_orgs_writes_one_event_per_membership(
 @pytest.mark.django_db
 def test_describe_labels_graph_as_flow(flow):
     assert describe(flow) == TargetDescription(type="flow", id=str(flow.id), name="Billing flow")
+
+
+def test_mcp_tools_are_labelled_mcp_tool_not_their_verbose_name():
+    # McpTool's verbose_name is "MCP Tool Data", which no reader knows it by.
+    assert target_type(McpTool) == "MCP tool"
 
 
 @pytest.mark.django_db

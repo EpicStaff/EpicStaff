@@ -16,6 +16,7 @@ TARGET_TYPE_LABELS = {
     "agentdefinition": "agent",
     "llmconfig": "LLM config",
     "llmmodel": "LLM model",
+    "mcptool": "MCP tool",
     "openairealtimeconfig": "OpenAI realtime config",
     "elevenlabsrealtimeconfig": "ElevenLabs realtime config",
     "documentmetadata": "document",

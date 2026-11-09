@@ -1,6 +1,9 @@
 import { ResourceCode } from '@shared/models';
 import { flowUrl } from '@shared/utils';
 
+import { RECYCLE_BIN_TABS } from '../../recycle-bin/constants/recycle-bin-tabs.constants';
+import { RecycleBinSourceKey } from '../../recycle-bin/models/recycle-bin.model';
+import { hasKindSwitch } from '../../recycle-bin/utils/recycle-bin-query.util';
 import { AuditUserAction } from '../models/audit-user-action.models';
 
 // The flow nodes as the backend records them (each node model's verbose_name), limited to those the flow page
@@ -23,8 +26,21 @@ const FLOW_NODE_TYPES = new Set([
     'webhook trigger node',
 ]);
 
-// After these the target is gone (or in the recycle bin), so no page opens it.
-const TARGET_GONE_ACTIONS = new Set(['deleted', 'moved_to_recycle_bin']);
+// The recycle-bin source a binned target of each recorded type lands in.
+const RECYCLE_BIN_SOURCE_BY_TYPE = new Map<string, RecycleBinSourceKey>([
+    ['flow', 'flow'],
+    ['agent', 'agent'],
+    ['surface', 'surface'],
+    ['python code tool', 'python_tool'],
+    ['MCP tool', 'mcp_tool'],
+    ['storage file', 'storage'],
+    ['storage folder', 'storage'],
+    ['source collection', 'collection'],
+    ['key value table', 'key_value_table'],
+    ['secret', 'secret'],
+    ['realtime channel', 'realtime_channel'],
+    ['webhook trigger', 'webhook_trigger'],
+]);
 
 interface LinkedObject {
     type: string | null;
@@ -70,9 +86,17 @@ function objectUrl({ type, id, name, parentType, parentId }: LinkedObject, canOp
     return null;
 }
 
+export function isMovedToRecycleBin(event: AuditUserAction): boolean {
+    return event.action === 'moved_to_recycle_bin';
+}
+
+// A deleted target is gone; a binned one opens in its recycle-bin tab.
 export function userActionTargetUrl(event: AuditUserAction, canOpen: CanOpenPage): string | null {
-    if (TARGET_GONE_ACTIONS.has(event.action)) {
+    if (event.action === 'deleted') {
         return null;
+    }
+    if (isMovedToRecycleBin(event)) {
+        return recycleBinUrl(event, canOpen);
     }
     return objectUrl(
         {
@@ -84,6 +108,22 @@ export function userActionTargetUrl(event: AuditUserAction, canOpen: CanOpenPage
         },
         canOpen
     );
+}
+
+// The target's recycle-bin tab, searched to its name and switched to its bin on a tab with two (Tools).
+function recycleBinUrl({ target_type, target_name }: AuditUserAction, canOpen: CanOpenPage): string | null {
+    const source = RECYCLE_BIN_SOURCE_BY_TYPE.get(target_type ?? '');
+    const tab = RECYCLE_BIN_TABS.find((candidate) => source !== undefined && candidate.sources.includes(source));
+    if (source === undefined || tab === undefined || !canOpen(tab.resource)) {
+        return null;
+    }
+    // The bin searches a stored file or folder by its own name, not its path; a folder's path ends with `/`.
+    const searchText = source === 'storage' ? target_name?.split('/').filter(Boolean).at(-1) : target_name;
+    const query = [
+        searchText ? `search=${encodeURIComponent(searchText)}` : null,
+        hasKindSwitch(tab) ? `kind=${source}` : null,
+    ].filter((part) => part !== null);
+    return `/recycle-bin/${tab.key}${query.length > 0 ? `?${query.join('&')}` : ''}`;
 }
 
 // a record names no grandparent, so a parent that is itself a node or a session gets no link

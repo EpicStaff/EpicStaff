@@ -290,6 +290,18 @@ describe('AuditUserActionsBrowserComponent', () => {
         ]);
     });
 
+    it('opens a target moved to the recycle bin in its recycle-bin tab, searched to it', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, [{ ...renamedFlow, action: 'moved_to_recycle_bin', previous_name: null }]);
+        await render(fixture);
+
+        expect(rowLinks(root)).toEqual([
+            [
+                'Billing | Open flow Billing in the recycle bin (opens in a new tab) -> /recycle-bin/flows?search=Billing',
+            ],
+        ]);
+    });
+
     it('names a renamed target by its new name', async () => {
         const { fixture, http, root } = setup();
         flushSearch(http, [renamedFlow]);

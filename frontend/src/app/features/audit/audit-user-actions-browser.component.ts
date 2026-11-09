@@ -41,7 +41,12 @@ import {
     userActionTone,
     userActionTypeLabel,
 } from './utils/describe-user-action.util';
-import { CanOpenPage, userActionParentUrl, userActionTargetUrl } from './utils/user-action-links.util';
+import {
+    CanOpenPage,
+    isMovedToRecycleBin,
+    userActionParentUrl,
+    userActionTargetUrl,
+} from './utils/user-action-links.util';
 
 const DEFAULT_PAGE_SIZE = 20;
 const MIN_PAGE_SIZE = 10;
@@ -59,9 +64,11 @@ function memberLabel({ display_name, email }: AdminMembershipUser): string {
     return display_name ? `${display_name} (${email})` : email;
 }
 
-// `Open flow Billing (opens in a new tab)`; a record that kept no name leaves it out rather than show an id
-function openLinkLabel(type: string | null, name: string | null): string {
-    return `Open ${[type, name].filter(Boolean).join(' ')} (opens in a new tab)`;
+// `Open flow Billing (opens in a new tab)`, or `… in the recycle bin …`; a record that kept no name leaves it out
+// rather than show an id
+function openLinkLabel(type: string | null, name: string | null, inRecycleBin = false): string {
+    const place = inRecycleBin ? ' in the recycle bin' : '';
+    return `Open ${[type, name].filter(Boolean).join(' ')}${place} (opens in a new tab)`;
 }
 
 function byLabel(options: AuditEnumOption[]): AuditEnumOption[] {
@@ -150,7 +157,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
             targetUrl: userActionTargetUrl(event, this.canOpenPage),
             parentUrl: userActionParentUrl(event, this.canOpenPage),
             // a rename or move names the target by its new name
-            targetLinkLabel: openLinkLabel(event.target_type, event.target_name),
+            targetLinkLabel: openLinkLabel(event.target_type, event.target_name, isMovedToRecycleBin(event)),
             parentLinkLabel: openLinkLabel(event.parent_type, event.parent_name),
         }))
     );
