@@ -231,7 +231,7 @@ export class ConversationListComponent {
     }
 
     /**
-     * Shows a section and scrolls it to the top, e.g. `test_bot` when a test conversation starts: moves to its tab,
+     * Shows a section and scrolls it to the top, e.g. `test_open` when a test conversation starts: moves to its tab,
      * opens it, and drops the search or Mine when they would keep the new conversation out of the list. The tab and
      * Mine change for this column only: the remembered choices stay for the next visit. A tab the user cannot see
      * changes nothing, the search included.

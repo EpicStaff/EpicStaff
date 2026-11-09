@@ -39,7 +39,7 @@
     background-color: var(--color-background-body);
 }
 
-// A pinned section (Bot, Closed) has no box of its own, so its header is sticky within the whole list: at the bottom,
+// A pinned section (Bot or Tests, and Closed) has no box of its own, so its header is sticky within the whole list: at the bottom,
 // above the pinned headers under it (--pinned-below), while the section is below the view, so it is never lost under
 // many open sections; on top once scrolled to. There a later one covers it: the later, the higher.
 .conversation-list__section--pinned {

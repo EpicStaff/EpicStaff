@@ -456,7 +456,7 @@ describe('ChatPageComponent', () => {
         fixture.componentInstance.onTestConversationStarted(row({ id: 'c-9', is_test: true, last_message_at: null }));
         fixture.detectChanges();
         expect(pressedTab()).toBe('Bot Testing');
-        expect(openSections()).toEqual(['test_bot']);
+        expect(openSections()).toEqual(['test_open']);
         expect(rememberedSection()).toBe('waiting');
         expect(TestBed.inject(ConversationListPreferencesService).tab()).toBe('inbox');
     });
@@ -485,7 +485,7 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
 
         expect(chatApi.createTestConversation).toHaveBeenCalledWith('b-2');
-        expect(openSections()).toEqual(['test_bot']);
+        expect(openSections()).toEqual(['test_open']);
         expect(component.selectedId()).toBe('c-9');
         expect(text('.thread-header .test-chip')).toEqual(['Test']);
         expect(host.querySelector('app-tab-button button[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');

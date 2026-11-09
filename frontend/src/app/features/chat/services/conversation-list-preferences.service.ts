@@ -5,7 +5,7 @@ import { ConversationListTab, InboxSection, TestingSection } from '../utils/conv
 const STORAGE_KEY = 'chat:conversationList';
 const TABS: readonly ConversationListTab[] = ['inbox', 'testing'];
 const SECTIONS: readonly InboxSection[] = ['waiting', 'in_progress', 'closed', 'bot'];
-const TESTING_SECTIONS: readonly TestingSection[] = ['test_bot', 'test_closed'];
+const TESTING_SECTIONS: readonly TestingSection[] = ['test_open', 'test_closed'];
 
 /** What the conversations column remembers per browser, as one JSON object. The search is never remembered. */
 interface ConversationListPreferences {
@@ -20,7 +20,7 @@ interface ConversationListPreferences {
 const defaults = (): ConversationListPreferences => ({
     tab: 'inbox',
     expanded: 'waiting',
-    testingExpanded: 'test_bot',
+    testingExpanded: 'test_open',
     isMineOnly: false,
 });
 

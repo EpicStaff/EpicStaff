@@ -89,8 +89,8 @@ export interface ConversationSectionView {
 /**
  * Top to bottom. Inbox: the queue first (the one open by default), then what operators are on, what the bot is on,
  * and Closed last — there to look into, not to work through, and an endless history, so it goes below the live ones.
- * Bot Testing the same way: the tests still running, then the closed ones; both by the latest message, as the server
- * sorts them.
+ * Bot Testing the same way: Tests (the ones still open), then the closed ones; both by the latest message, as the
+ * server sorts them.
  */
 export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
     {
@@ -137,13 +137,13 @@ export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
         pinnedBelow: 0,
     },
     {
-        id: 'test_bot',
+        id: 'test_open',
         list: 'test',
         shows: (row) => !isClosed(row),
-        label: 'Bot',
-        icon: 'bot',
-        iconSize: '14px',
-        iconColor: 'var(--accent-color)',
+        label: 'Tests',
+        icon: 'flask',
+        iconSize: '12px',
+        iconColor: 'var(--color-status-info)',
         emptyTitle: 'No test conversations',
         emptyDescription: 'Start one with New Test Chat above.',
         allDesksEmptyDescription: 'Open a desk to start one with New Test Chat.',
@@ -244,8 +244,9 @@ export class ConversationListStore {
     /**
      * Each section the query shows, in column order, whether it is open, and its state: its list's, with only the rows
      * it shows. `pagesList`: a list's next page loads under the last section showing it, while that one is open. On
-     * Bot Testing that is Closed: paging follows the scroll through the closed tests, and Bot shows the open tests of
-     * the pages loaded so far, without paging of its own, so it never pages through the whole test history by itself.
+     * Bot Testing that is Closed: paging follows the scroll through the closed tests, and Tests shows the open tests
+     * of the pages loaded so far, without paging of its own, so it never pages through the whole test history by
+     * itself.
      */
     readonly view = computed(() => {
         const lists = this.lists();
@@ -395,7 +396,7 @@ export class ConversationListStore {
     /**
      * A stream or action row: newest state wins. It leaves the list it was in and is placed by its list's order, so a
      * fresh wait joins the end of the queue and a visitor writing again does not move a waiting row. A test that
-     * closes stays in the `test` list, and so moves from Bot Testing's Bot to its Closed.
+     * closes stays in the `test` list, and so moves from Bot Testing's Tests to its Closed.
      */
     private applyRow(row: ChatConversation): void {
         const query = this.query();

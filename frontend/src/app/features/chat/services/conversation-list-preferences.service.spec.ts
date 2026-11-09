@@ -19,7 +19,7 @@ describe('ConversationListPreferencesService', () => {
     it("opens Inbox at Waiting, Bot Testing at its open tests, and shows everyone's conversations by default", () => {
         expect(preferences().tab()).toBe('inbox');
         expect(preferences().expanded()).toBe('waiting');
-        expect(preferences().testingExpanded()).toBe('test_bot');
+        expect(preferences().testingExpanded()).toBe('test_open');
         expect(preferences().isMineOnly()).toBe(false);
     });
 
@@ -60,11 +60,11 @@ describe('ConversationListPreferencesService', () => {
     it('reads only known values, each falling back to its own default', () => {
         localStorage.setItem(
             STORAGE_KEY,
-            JSON.stringify({ tab: 'tests', expanded: 'test', testingExpanded: 'waiting', isMineOnly: 'yes' })
+            JSON.stringify({ tab: 'tests', expanded: 'test', testingExpanded: 'test_bot', isMineOnly: 'yes' })
         );
         expect(preferences().tab()).toBe('inbox');
         expect(preferences().expanded()).toBe('waiting');
-        expect(preferences().testingExpanded()).toBe('test_bot');
+        expect(preferences().testingExpanded()).toBe('test_open');
         expect(preferences().isMineOnly()).toBe(false);
     });
 

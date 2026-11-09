@@ -28,7 +28,7 @@
         @for (item of store.view(); track item.section.id) {
             @let section = item.section;
             @let state = item.state;
-            <!-- Bot and Closed are pinned: their headers stay at the bottom, stacked, while the sections are below. -->
+            <!-- The last two (Bot or Tests, and Closed) are pinned: their headers stay at the bottom, stacked, while the sections are below. -->
             <section
                 class="conversation-list__section"
                 [class.conversation-list__section--pinned]="section.pinnedBelow !== undefined"
@@ -63,7 +63,7 @@
                     @if (item.isExpanded) {
                         <!--
                             Only a first page has no cursor: while a later one loads, a section showing none of the
-                            list's rows (Bot Testing's Bot as Closed pages) says it is empty instead.
+                            list's rows (Bot Testing's Tests as Closed pages) says it is empty instead.
                         -->
                         @if (state.isLoading && !state.nextCursor && !state.rows.length) {
                             <app-spinner

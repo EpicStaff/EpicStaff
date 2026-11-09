@@ -1,19 +1,36 @@
 @use '../../../../../styles/breakpoints' as bp;
 @use '../../../../../styles/touch';
 
-// Fills the column at any width: the tab switch takes the first row, the field the next.
+// Fills the column at any width: the tab switch takes the first row, the field the next. A container, so the spacing
+// around the switch follows the same width the switch itself does (below).
 :host {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 12px 12px 8px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--color-divider-subtle);
+    container-type: inline-size;
 }
 
-// The switch (projected; it stretches itself) takes the row.
+// The switch (projected; it stretches itself) takes the row. A hairline under it, across the whole column (out through
+// the host's side padding), parts it from the search below: 8px above the switch, 12px under it to the line, then 8px
+// to the search and 8px under the search (the host's gap and padding).
 .conversation-list-toolbar__head {
     display: flex;
     align-items: center;
+    margin: 0 -12px;
+    padding: 0 12px 12px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+// Where the switch turns 28px tall (its own stylesheet; the same content width, as both span the host's content box),
+// 8px under it to the line as well.
+@media (min-width: #{bp.$breakpoint-phone + 0.02px}) {
+    @container (max-width: 401px) {
+        .conversation-list-toolbar__head {
+            padding-bottom: 8px;
+        }
+    }
 }
 
 // The field taking the rest, then Mine (Inbox) or New Test Chat (Bot Testing); all 28px tall (the small search), a

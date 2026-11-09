@@ -338,7 +338,7 @@ export class ChatPageComponent {
     // The created row seeds the header: its stream event may already have passed, before it was selected.
     onTestConversationStarted(conversation: ChatConversation): void {
         this.openConversation.open(conversation);
-        this.conversationList()?.reveal('test_bot');
+        this.conversationList()?.reveal('test_open');
     }
 
     /** The slide has ended: later moves are instant unless one made here asks again. */
