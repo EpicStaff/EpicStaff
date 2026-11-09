@@ -405,15 +405,16 @@ class ConverterService(metaclass=SingletonMeta):
                     if tool_data.python_code.storage_allowed_paths:
                         union_allowed_paths.update(tool_data.python_code.storage_allowed_paths)
 
-            if needs_storage:
-                if not union_allowed_paths:
-                    # Resolved before any mint attempt -- same class of
-                    # problem as RealtimeSurfaceService's fail-closed check,
-                    # same exception type and status code (400, not 500).
-                    raise CredentialScopeValidationError(
-                        "This agent's tools need file storage access, but no files are "
-                        "attached. Attach the required files or folders."
-                    )
+            if needs_storage and not union_allowed_paths:
+                # A realtime chat has no folder of its own, so nothing can be
+                # granted: start the chat without an account. The realtime
+                # service answers a storage tool call with a clear error.
+                logger.warning(
+                    "Realtime chat {} has storage tools but no attached files; "
+                    "starting without storage credentials",
+                    rt_agent_chat.id,
+                )
+            elif needs_storage:
                 rt_agent_chat_data.storage_credentials = (
                     session_credential_service.issue_for_realtime_chat(
                         realtime_agent_chat=rt_agent_chat,

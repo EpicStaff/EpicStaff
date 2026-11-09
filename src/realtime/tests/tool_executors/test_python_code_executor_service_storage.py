@@ -164,6 +164,63 @@ async def test_no_storage_credentials_means_none_on_the_submission(service, sand
 
 
 @pytest.mark.asyncio
+async def test_storage_tool_without_credentials_returns_no_files_error_without_submitting(
+    sandbox_intake,
+):
+    """A chat started with no attached files has no storage account: the model
+    gets a clear error and nothing reaches the sandbox."""
+    redis = MagicMock()
+    service = PythonCodeExecutorService(
+        redis_service=redis, sandbox_client=sandbox_intake.client()
+    )
+    python_code_data = make_python_code_data(
+        use_storage=True,
+        storage_org_prefix=None,
+        storage_allowed_paths=[],
+        org_id=1,
+    )
+
+    result = await asyncio.wait_for(
+        service.run_code(python_code_data=python_code_data, inputs={}), timeout=5
+    )
+
+    assert result["returncode"] == 1
+    assert result["stderr"] == "No files are attached to this agent, so this tool can't use storage."
+    assert result["stdout"] == ""
+    assert sandbox_intake.bodies == []
+    redis.async_subscribe.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_storage_tool_with_empty_own_scope_gets_no_files_error_even_with_chat_credentials(
+    sandbox_intake,
+):
+    """Mixed chat: another tool has files so the chat has credentials, but this
+    tool's own scope is empty."""
+    redis = MagicMock()
+    service = PythonCodeExecutorService(
+        redis_service=redis, sandbox_client=sandbox_intake.client()
+    )
+    python_code_data = make_python_code_data(
+        use_storage=True, storage_org_prefix=None, storage_allowed_paths=[], org_id=1
+    )
+
+    result = await asyncio.wait_for(
+        service.run_code(
+            python_code_data=python_code_data,
+            inputs={},
+            storage_credentials=StorageCredentials(access_key="AK123", secret_key="SK456"),
+        ),
+        timeout=5,
+    )
+
+    assert result["returncode"] == 1
+    assert result["stderr"] == "No files are attached to this agent, so this tool can't use storage."
+    assert sandbox_intake.bodies == []
+    redis.async_subscribe.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_invalid_storage_scope_returns_error_result(sandbox_intake):
     """When CodeTaskData creation fails (invalid storage scope),
     run_code() must return a structured error result instead of
@@ -174,16 +231,21 @@ async def test_invalid_storage_scope_returns_error_result(sandbox_intake):
     )
 
     # Create invalid python_code_data that will fail CodeTaskData validation
-    # (e.g., use_storage=True with storage_org_prefix=None)
+    # (use_storage=True with a scope that names files but no org_id)
     python_code_data = make_python_code_data(
         use_storage=True,
-        storage_org_prefix=None,  # Invalid: use_storage=True requires org_prefix
-        storage_allowed_paths=None,  # Invalid: use_storage=True requires allowed_paths
+        storage_org_prefix="org_1",
+        storage_allowed_paths=["flowA"],
         org_id=None,  # Invalid: use_storage=True requires org_id
     )
 
     result = await asyncio.wait_for(
-        service.run_code(python_code_data=python_code_data, inputs={}), timeout=5
+        service.run_code(
+            python_code_data=python_code_data,
+            inputs={},
+            storage_credentials=StorageCredentials(access_key="AK123", secret_key="SK456"),
+        ),
+        timeout=5,
     )
 
     assert isinstance(result, dict)

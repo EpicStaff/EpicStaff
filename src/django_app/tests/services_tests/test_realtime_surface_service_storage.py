@@ -19,7 +19,6 @@ from agents.models.surface_models import SurfacePythonTool, SurfaceStorageItem, 
 from tables.models.graph_models import StorageFile
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization
-from storage_credentials.exceptions import CredentialScopeValidationError
 from tables.services.converter_service import ConverterService
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 
@@ -80,13 +79,14 @@ def test_storage_tool_gets_only_the_files_the_surface_allows(agent_definition, s
         SurfaceStorageItem.objects.create(surface=surface, storage_file=storage_file, **flags)
     tool = _python_tool("realtime-surface-storage-py-tool", use_storage=True)
 
-    if expected_paths is None:
-        # Nothing usable granted: the agent must not start missing a capability its surface grants.
-        with pytest.raises(CredentialScopeValidationError, match=tool.name):
-            _resolve(agent_definition, surface, tool)
-        return
     (resolved,) = _resolve(agent_definition, surface, tool).tools
     python_code = resolved.data.python_code
+    if expected_paths is None:
+        # Nothing usable granted: the tool is still resolved (the chat starts), with no scope at all.
+        assert (python_code.use_storage, python_code.storage_allowed_paths, python_code.storage_org_prefix) == (
+            True, [], None,
+        )
+        return
     assert python_code.storage_allowed_paths == expected_paths
     # The prefix and org always come from the agent's own org.
     assert (python_code.storage_org_prefix, python_code.org_id) == (f"org_{org.pk}", org.pk)

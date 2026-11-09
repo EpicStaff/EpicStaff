@@ -72,6 +72,20 @@ def _allow_tools(surface, *uses_storage: bool) -> None:
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("tools", [(True,), (True, False)], ids=["storage-tool", "storage-and-plain-tool"])
+def test_storage_tool_without_attached_files_starts_chat_without_an_account(gateway, surface, chat, tools):
+    _allow_tools(surface, *tools)
+
+    chat_data = ConverterService().convert_rt_agent_definition_chat_to_pydantic(
+        chat, acting_identity=ActingIdentity.unattributed()
+    )
+
+    assert chat_data.storage_credentials is None
+    assert gateway.created == []
+    assert not TemporaryStorageAccount.objects.filter(realtime_agent_chat=chat).exists()
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("tools", "minted"),
     [((), False), ((False,), False), ((True,), True), ((True, True), True), ((True, False), True)],
