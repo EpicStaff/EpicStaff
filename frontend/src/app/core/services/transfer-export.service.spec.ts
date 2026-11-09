@@ -3,9 +3,10 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 
 import { ConfigService } from '../../services/config';
-import { ToastService } from '../../services/notifications';
+import { ToastMessage, ToastService } from '../../services/notifications';
 import { TransferJob } from '../models/transfer-job.model';
 import { TransferExportService } from './transfer-export.service';
+import { TransferJobsService } from './transfer-jobs.service';
 
 const EXPORT_JOBS_URL = '/api/source-collections/export-jobs/';
 const JOB_URL = '/api/transfer-jobs/job-1/';
@@ -16,6 +17,7 @@ function completedExport(): TransferJob {
         kind: 'export',
         main_entity: 'SourceCollection',
         status: 'completed',
+        display_name: 'Handbook',
         file_name: 'collections.zip',
         result: { excluded: [] },
         error: null,
@@ -38,7 +40,7 @@ describe('TransferExportService collection exports', () => {
                 { provide: ConfigService, useValue: { apiUrl: '/api/' } },
                 {
                     provide: ToastService,
-                    useValue: { show: () => 1, remove: vi.fn(), error: vi.fn(), warning: vi.fn() },
+                    useValue: { error: vi.fn(), warning: vi.fn() },
                 },
             ],
         });
@@ -86,5 +88,140 @@ describe('TransferExportService collection exports', () => {
 
         expect(httpMock.match(EXPORT_JOBS_URL).map((request) => request.request.body)).toEqual([{ ids: [4, 5] }]);
         expect([...service.exportingCollectionIds()]).toEqual([4, 5]);
+    });
+});
+
+describe('TransferExportService export of any start', () => {
+    let service: TransferExportService;
+    let transferJobs: TransferJobsService;
+    let httpMock: HttpTestingController;
+    let toastError: ReturnType<typeof vi.fn>;
+    let clicks: string[];
+
+    beforeEach(() => {
+        clicks = [];
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            clicks.push(this.href);
+        });
+        toastError = vi.fn();
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } },
+                {
+                    provide: ToastService,
+                    useValue: { error: toastError, warning: vi.fn() },
+                },
+            ],
+        });
+        service = TestBed.inject(TransferExportService);
+        transferJobs = TestBed.inject(TransferJobsService);
+        httpMock = TestBed.inject(HttpTestingController);
+    });
+
+    afterEach(() => {
+        httpMock.verify();
+        vi.restoreAllMocks();
+    });
+
+    it('downloads the archive of the job the start began once it is ready', async () => {
+        const finished: TransferJob[] = [];
+        service
+            .export(transferJobs.startExport('pythonCodeTools', { ids: [3] }))
+            .subscribe((job) => finished.push(job));
+
+        httpMock
+            .expectOne('/api/python-code-tool/export-jobs/')
+            .flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+        (await vi.waitFor(() => httpMock.expectOne(JOB_URL))).flush({
+            ...completedExport(),
+            main_entity: 'PythonCodeTool',
+            file_name: 'tools.zip',
+        });
+        httpMock
+            .expectOne('/api/transfer-jobs/job-1/download-ticket/')
+            .flush({ download_url: '/api/transfer-jobs/job-1/download/?ticket=t-1' });
+
+        expect(clicks).toEqual([expect.stringContaining('/api/transfer-jobs/job-1/download/?ticket=t-1')]);
+        expect(finished.map((job) => job.id)).toEqual(['job-1']);
+    });
+
+    it.each([
+        [
+            'too many unfinished jobs',
+            429,
+            { status_code: 429, code: 'too_many_jobs', message: 'You already have 3 unfinished exports.' },
+        ],
+        [
+            'items that are gone or in another organization',
+            404,
+            { status_code: 404, code: 'export_entities_not_found', message: 'Some entity IDs do not exist' },
+        ],
+    ])(
+        'shows the reason the server refused to start the export (%s), and completes without a value',
+        (_case, status, body) => {
+            let completed = false;
+            const finished: TransferJob[] = [];
+            service.export(transferJobs.startExport('mcpTools', { ids: [4] })).subscribe({
+                next: (job) => finished.push(job),
+                complete: () => (completed = true),
+            });
+
+            httpMock.expectOne('/api/mcp-tools/export-jobs/').flush(body, { status, statusText: 'Refused' });
+
+            expect(toastError.mock.calls.map(([message]) => message)).toEqual([body.message]);
+            expect(finished).toEqual([]);
+            expect(completed).toBe(true);
+        }
+    );
+});
+
+describe('TransferExportService download of a finished export', () => {
+    let service: TransferExportService;
+    let httpMock: HttpTestingController;
+    let toasts: ToastMessage[];
+
+    beforeEach(() => {
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } },
+            ],
+        });
+        service = TestBed.inject(TransferExportService);
+        httpMock = TestBed.inject(HttpTestingController);
+        TestBed.inject(ToastService).toasts$.subscribe((current) => (toasts = current));
+    });
+
+    afterEach(() => {
+        httpMock.verify();
+        vi.restoreAllMocks();
+    });
+
+    async function refuseDownload(status: number, statusText: string, body: object): Promise<boolean> {
+        let completed = false;
+        service.exportCollections([4]).subscribe({ complete: () => (completed = true) });
+        httpMock.expectOne(EXPORT_JOBS_URL).flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+        (await vi.waitFor(() => httpMock.expectOne(JOB_URL))).flush(completedExport());
+        httpMock.expectOne('/api/transfer-jobs/job-1/download-ticket/').flush(body, { status, statusText });
+        return completed;
+    }
+
+    it('says an export the user may no longer download is not available, without saying why', async () => {
+        const completed = await refuseDownload(404, 'Not Found', { detail: 'Not found.' });
+
+        expect(toasts.map((toast) => [toast.type, toast.message])).toEqual([
+            ['error', 'This export is no longer available to you.'],
+        ]);
+        expect(completed).toBe(true);
+    });
+
+    it("shows the server's reason when the archive was removed", async () => {
+        await refuseDownload(410, 'Gone', { detail: 'The archive was removed.' });
+
+        expect(toasts.map((toast) => [toast.type, toast.message])).toEqual([['error', 'The archive was removed.']]);
     });
 });

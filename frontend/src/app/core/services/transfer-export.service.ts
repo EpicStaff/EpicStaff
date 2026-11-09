@@ -1,24 +1,18 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { groupExcludedExportItems, showExportExclusionWarning, withProgressToast } from '@shared/utils';
+import { groupExcludedExportItems, showExportExclusionWarning } from '@shared/utils';
 import { defer, EMPTY, Observable } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../services/notifications';
 import { TransferJob } from '../models/transfer-job.model';
-import {
-    describeTransferError,
-    StartedTransferJob,
-    TRANSFER_JOB_MAX_WAIT_MS,
-    TransferJobsService,
-} from './transfer-jobs.service';
-
-export const EXPORT_PROGRESS_MESSAGE = 'Preparing export…';
+import { describeTransferError, StartedTransferJob, TransferJobsService } from './transfer-jobs.service';
 
 /**
- * Exports as a background job: shows the progress, downloads the archive once it is ready and warns
- * about what was left out. A failure is shown as a toast and the observable completes without emitting.
+ * Exports as a background job: downloads the archive once it is ready and warns about what was left out. A failure
+ * is shown as a toast and the observable completes without emitting.
  *
- * Not tied to the page that started it: an export the user started still downloads after they leave.
+ * Not tied to the page that started it: an export the user started still downloads after they leave. Every job
+ * started here also shows in the jobs panel (TransferJobsStoreService follows each start and announces it).
  */
 @Injectable({
     providedIn: 'root',
@@ -36,7 +30,7 @@ export class TransferExportService {
 
     /** Emits the finished job once its download has started. */
     exportFlows(ids: number[], includeKnowledge: boolean): Observable<TransferJob> {
-        return this.exportAndDownload(this.transferJobs.startFlowExport(ids, includeKnowledge));
+        return this.export(this.transferJobs.startExport('flows', { ids, include_knowledge: includeKnowledge }));
     }
 
     /**
@@ -50,13 +44,17 @@ export class TransferExportService {
                 return EMPTY;
             }
             this.countCollectionExports(ids, 1);
-            return this.exportAndDownload(this.transferJobs.startCollectionExport(ids)).pipe(
+            return this.export(this.transferJobs.startExport('collections', { ids })).pipe(
                 finalize(() => this.countCollectionExports(ids, -1))
             );
         });
     }
 
-    private exportAndDownload(start: Observable<StartedTransferJob>): Observable<TransferJob> {
+    /**
+     * Runs the export that `start` starts (a `TransferJobsService` start), and emits the finished job once its
+     * download has started. A failed start is shown like a failed job: subscribers see no error.
+     */
+    export(start: Observable<StartedTransferJob>): Observable<TransferJob> {
         return start.pipe(
             switchMap((started) =>
                 this.transferJobs
@@ -74,8 +72,7 @@ export class TransferExportService {
             catchError((error: unknown) => {
                 this.toastService.error(describeTransferError(error, 'Failed to export. Please try again.'));
                 return EMPTY;
-            }),
-            withProgressToast(this.toastService, EXPORT_PROGRESS_MESSAGE, TRANSFER_JOB_MAX_WAIT_MS)
+            })
         );
     }
 

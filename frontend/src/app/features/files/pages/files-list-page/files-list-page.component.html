@@ -11,6 +11,12 @@
                 </h1>
             </div>
             <div class="header-actions">
+                <!-- Loaded with the Knowledge Sources tab, as the page it imports into. -->
+                @defer (when isKnowledgeSourcesActive(); prefetch on idle) {
+                    @if (isKnowledgeSourcesActive()) {
+                        <app-collections-import />
+                    }
+                }
                 @if (activeTabBtn(); as btn) {
                     @if (btn.permitted) {
                         <app-button

@@ -1,5 +1,4 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { OverlayContainer } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
 import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
@@ -8,10 +7,14 @@ import { provideRouter } from '@angular/router';
 import { ConfirmationDialogService, LabelSidebarComponent, SearchComponent } from '@shared/components';
 import { EXPORT_WARNING_DURATION_MS } from '@shared/constants';
 import { AppStorageService } from '@shared/services';
-import { EMPTY, Observable } from 'rxjs';
+import { EMPTY, Observable, of, Subject } from 'rxjs';
 
 import { EntityTypeResult, FlowImportResultItem, ImportResult } from '../../../../core/models/import-result.model';
-import { ImportReviewDialogData, ReviewItem } from '../../../../core/models/review-item.model';
+import {
+    ImportReviewDialogCloseResult,
+    ImportReviewDialogData,
+    ReviewItem,
+} from '../../../../core/models/review-item.model';
 import { TransferJob } from '../../../../core/models/transfer-job.model';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
@@ -22,7 +25,9 @@ import { FlowsFilterMenuComponent } from '../../components/filter/flows-filter-m
 import { ImportFlowOptionsPopoverComponent } from '../../components/import-flow-options-popover/import-flow-options-popover.component';
 import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
 import { ImportReviewDialogComponent } from '../../components/import-review-dialog/import-review-dialog.component';
+import { FlowExportOptions } from '../../models/flow-export-options.model';
 import { EMPTY_FLOWS_FILTER } from '../../models/flow-filter.model';
+import { FlowExportOptionsDialogService } from '../../services/flow-export-options-dialog.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { FlowsListPageComponent } from './flows-list-page.component';
@@ -75,9 +80,9 @@ let dialogOpen: ReturnType<typeof vi.fn>;
 let confirm: ReturnType<typeof vi.fn>;
 let toastError: ReturnType<typeof vi.fn>;
 let toastWarning: ReturnType<typeof vi.fn>;
-let toastShow: ReturnType<typeof vi.fn>;
-let toastRemove: ReturnType<typeof vi.fn>;
 let httpMock: HttpTestingController;
+/** What the user answers in the export options dialog; it completes empty when they cancel. */
+let exportOptionsAnswer: Observable<FlowExportOptions>;
 let fixture: ComponentFixture<FlowsListPageComponent>;
 
 /** Renders the page header; in select mode, with these flows picked, when any are given. */
@@ -87,8 +92,9 @@ function renderPage(selectedFlowIds: number[] = []): void {
     confirm = vi.fn();
     toastError = vi.fn();
     toastWarning = vi.fn();
-    toastShow = vi.fn(() => 1);
-    toastRemove = vi.fn();
+    exportOptionsAnswer = of({ includeKnowledge: true });
+    const selectMode = signal(selectedFlowIds.length > 0);
+    const selected = signal(selectedFlowIds);
 
     TestBed.configureTestingModule({
         providers: [
@@ -99,14 +105,13 @@ function renderPage(selectedFlowIds: number[] = []): void {
             { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
             { provide: Dialog, useValue: { open: dialogOpen } },
             { provide: ConfirmationDialogService, useValue: { confirm } },
+            { provide: FlowExportOptionsDialogService, useValue: { ask: () => exportOptionsAnswer } },
             {
                 provide: ToastService,
                 useValue: {
                     error: toastError,
                     warning: toastWarning,
                     success: vi.fn(),
-                    show: toastShow,
-                    remove: toastRemove,
                 },
             },
             { provide: AppStorageService, useValue: { invalidate: vi.fn() } },
@@ -114,8 +119,8 @@ function renderPage(selectedFlowIds: number[] = []): void {
             {
                 provide: FlowsStorageService,
                 useValue: {
-                    selectMode: signal(selectedFlowIds.length > 0),
-                    selectedFlowIds: signal(selectedFlowIds),
+                    selectMode,
+                    selectedFlowIds: selected,
                     isDeleting: signal(false),
                     isAllFlowsSelected: () => false,
                     filter: signal(EMPTY_FLOWS_FILTER),
@@ -123,7 +128,13 @@ function renderPage(selectedFlowIds: number[] = []): void {
                     getFlows: () => EMPTY,
                     setFilter: vi.fn(),
                     resetFilter: vi.fn(),
-                    setSelectMode: vi.fn(),
+                    // As the real storage: leaving select mode drops the selection.
+                    setSelectMode: (enabled: boolean) => {
+                        selectMode.set(enabled);
+                        if (!enabled) {
+                            selected.set([]);
+                        }
+                    },
                 },
             },
             {
@@ -165,6 +176,7 @@ describe('FlowsListPageComponent flow import', () => {
     afterEach(() => {
         httpMock.verify();
         vi.unstubAllGlobals();
+        vi.restoreAllMocks();
     });
 
     /** Clicks Import and picks the file in the browser's file picker (a detached <input type="file">). */
@@ -234,13 +246,11 @@ describe('FlowsListPageComponent flow import', () => {
             const inspected = (inspect.request.body as FormData).get('file') as File;
             expect(inspected).not.toBe(file);
             expect(JSON.parse(await inspected.text())).toEqual(envelope);
-            expect(toastShow).toHaveBeenCalledExactlyOnceWith('Importing…', 'info', expect.any(Number));
             inspect.flush({ review_items: [] });
             httpMock.expectNone(IMPORT_URL);
             const upload = httpMock.expectOne((request) => request.url === IMPORT_JOBS_URL);
             expect(upload.request.body).toBe(file);
             upload.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
-            expect(toastRemove).not.toHaveBeenCalled();
 
             const poll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-1/'));
             poll.flush(transferJob({ kind: 'import', status: 'completed', result: SUMMARY }));
@@ -249,7 +259,6 @@ describe('FlowsListPageComponent flow import', () => {
                 ImportResultDialogComponent,
                 expect.objectContaining({ data: { importResult: ENRICHED_SUMMARY } })
             );
-            expect(toastRemove).toHaveBeenCalled();
             expect(toastError).not.toHaveBeenCalled();
         });
 
@@ -307,6 +316,127 @@ describe('FlowsListPageComponent flow import', () => {
         expect(toastError).toHaveBeenCalledExactlyOnceWith('Bad file');
         expect(confirm).not.toHaveBeenCalled();
         expect(dialogOpen).not.toHaveBeenCalled();
+    });
+
+    describe('Import button while an import is on its way', () => {
+        const FREE = { label: 'Import', ariaDisabled: null };
+        const BUSY = { label: 'Importing…', ariaDisabled: 'true' };
+
+        function importButton(): HTMLButtonElement {
+            fixture.detectChanges();
+            return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.import-group__main')!;
+        }
+
+        function importButtonState(): { label: string; ariaDisabled: string | null } {
+            const button = importButton();
+            return { label: button.textContent!.trim(), ariaDisabled: button.getAttribute('aria-disabled') };
+        }
+
+        it('is busy from the file pick, and a click meanwhile opens no second file picker', async () => {
+            const inspect = await chooseFileToImport();
+            expect(importButtonState()).toEqual(BUSY);
+
+            const openedPickers = vi.spyOn(HTMLInputElement.prototype, 'click');
+            importButton().click();
+            expect(openedPickers).not.toHaveBeenCalled();
+
+            inspect.flush({ review_items: [] });
+            httpMock.expectOne(IMPORT_URL).flush(SUMMARY);
+        });
+
+        it.each([
+            { outcome: 'has imported it', body: SUMMARY, init: {} },
+            { outcome: 'has failed', body: { message: 'Bad file' }, init: { status: 400, statusText: 'Bad Request' } },
+            {
+                outcome: 'refused it over trigger nodes',
+                body: REFUSAL_BODY,
+                init: { status: 403, statusText: 'Forbidden' },
+            },
+        ])(
+            'stays busy through a plain JSON import and is free again once the server $outcome',
+            async ({ body, init }) => {
+                (await chooseFileToImport()).flush({ review_items: [] });
+                expect(importButtonState()).toEqual(BUSY);
+
+                httpMock.expectOne(IMPORT_URL).flush(body, init);
+
+                expect(importButtonState()).toEqual(FREE);
+            }
+        );
+
+        it("is free again once the server has accepted an archive's import, while the job still runs", async () => {
+            file = storedZip('flows.zip', { 'export.json': JSON.stringify({ main_entity: 'Flow', version: 6 }) });
+
+            (await chooseFileToImport()).flush({ review_items: [] });
+            expect(importButtonState()).toEqual(BUSY);
+            httpMock
+                .expectOne((request) => request.url === IMPORT_JOBS_URL)
+                .flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+
+            const poll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-1/'));
+            expect(importButtonState()).toEqual(FREE);
+            poll.flush(transferJob({ kind: 'import', status: 'completed', result: SUMMARY }));
+        });
+
+        it('stays busy for a second import when the first archive job ends meanwhile', async () => {
+            const archive = (): File =>
+                storedZip('flows.zip', { 'export.json': JSON.stringify({ main_entity: 'Flow', version: 6 }) });
+            file = archive();
+            (await chooseFileToImport()).flush({ review_items: [] });
+            httpMock
+                .expectOne((request) => request.url === IMPORT_JOBS_URL)
+                .flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+            const firstPoll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-1/'));
+
+            file = archive();
+            const secondInspect = await chooseFileToImport();
+            firstPoll.flush(transferJob({ kind: 'import', status: 'completed', result: SUMMARY }));
+            expect(importButtonState()).toEqual(BUSY);
+
+            secondInspect.flush({ review_items: [] });
+            httpMock
+                .expectOne((request) => request.url === IMPORT_JOBS_URL)
+                .flush({ job_id: 'job-2' }, { status: 202, statusText: 'Accepted' });
+            const secondPoll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-2/'));
+            expect(importButtonState()).toEqual(FREE);
+            secondPoll.flush(transferJob({ id: 'job-2', kind: 'import', status: 'completed', result: SUMMARY }));
+        });
+
+        it('is free again, with the Use permission warning and no toast, when the server refuses an archive over trigger nodes', async () => {
+            file = storedZip('flows.zip', { 'export.json': JSON.stringify({ main_entity: 'Flow', version: 6 }) });
+
+            (await chooseFileToImport()).flush({ review_items: [] });
+            httpMock
+                .expectOne((request) => request.url === IMPORT_JOBS_URL)
+                .flush(REFUSAL_BODY, { status: 403, statusText: 'Forbidden' });
+
+            expect(confirm).toHaveBeenCalledExactlyOnceWith(IMPORT_REFUSAL_WARNING);
+            expect(toastError).not.toHaveBeenCalled();
+            expect(dialogOpen).not.toHaveBeenCalled();
+            expect(importButtonState()).toEqual(FREE);
+        });
+
+        it('is free again when the inspection fails', async () => {
+            (await chooseFileToImport()).flush(
+                { message: 'Not an export' },
+                { status: 400, statusText: 'Bad Request' }
+            );
+
+            expect(importButtonState()).toEqual(FREE);
+            expect(toastError).toHaveBeenCalledExactlyOnceWith('Not an export');
+        });
+
+        it('is free once the review dialog, with its own progress, opens, and stays free after a cancel', async () => {
+            const reviewClosed = new Subject<ImportReviewDialogCloseResult>();
+            dialogOpen.mockReturnValueOnce({ closed: reviewClosed });
+
+            (await chooseFileToImport()).flush({ review_items: [CODE_TO_REVIEW] });
+            expect(importButtonState()).toEqual(FREE);
+
+            reviewClosed.next({ action: 'cancel' });
+            expect(importButtonState()).toEqual(FREE);
+            httpMock.expectNone(IMPORT_URL);
+        });
     });
 
     describe('with code to review', () => {
@@ -373,10 +503,9 @@ describe('FlowsListPageComponent bulk export', () => {
         fixture.detectChanges();
     }
 
-    /** Clicks "Export 2 flows", then Export in the options it opens, leaving them as they open. */
+    /** Clicks "Export 2 flows"; the export options dialog answers with `exportOptionsAnswer`. */
     function exportSelectedFlows(): void {
         clickButton(fixture.nativeElement as HTMLElement, 'Export 2 flows');
-        clickButton(TestBed.inject(OverlayContainer).getContainerElement(), 'Export');
     }
 
     it('exports the selected flows with their knowledge as a job, downloads the archive and warns about what was left out', async () => {
@@ -384,7 +513,6 @@ describe('FlowsListPageComponent bulk export', () => {
 
         const start = httpMock.expectOne('/api/graphs/export-jobs/');
         expect(start.request.body).toEqual({ ids: [1, 2], include_knowledge: true });
-        expect(toastShow).toHaveBeenCalledWith('Preparing export…', 'info', expect.any(Number));
         start.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
 
         const poll = await vi.waitFor(() => httpMock.expectOne('/api/transfer-jobs/job-1/'));
@@ -405,7 +533,33 @@ describe('FlowsListPageComponent bulk export', () => {
             EXPORT_WARNING_DURATION_MS,
             undefined
         );
-        expect(toastRemove).toHaveBeenCalled();
+    });
+
+    it('exports the selected flows without their knowledge when the user clears it', () => {
+        exportOptionsAnswer = of({ includeKnowledge: false });
+
+        exportSelectedFlows();
+
+        const start = httpMock.expectOne('/api/graphs/export-jobs/');
+        expect(start.request.body).toEqual({ ids: [1, 2], include_knowledge: false });
+        // Refused, so no job is polled after the test.
+        start.flush(
+            { status_code: 429, code: 'too_many_jobs', message: 'Busy.' },
+            { status: 429, statusText: 'Too Many Requests' }
+        );
+    });
+
+    it('exports nothing and keeps the selection when the user cancels the export options', () => {
+        exportOptionsAnswer = EMPTY;
+
+        exportSelectedFlows();
+
+        httpMock.expectNone('/api/graphs/export-jobs/');
+        fixture.detectChanges();
+        const buttonLabels = [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')].map((button) =>
+            button.textContent?.trim()
+        );
+        expect(buttonLabels).toEqual(expect.arrayContaining(['Export 2 flows', 'Delete']));
     });
 
     it("reports a failed export job with the server's reason and downloads nothing", async () => {

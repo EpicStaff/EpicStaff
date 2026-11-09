@@ -1,19 +1,22 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { EXPORT_WARNING_DURATION_MS } from '@shared/constants';
-import { ExportResult, NodeType } from '@shared/models';
-import { NEVER, of } from 'rxjs';
+import { NodeType } from '@shared/models';
 
-import { ImportExportService } from '../../core/services/import-export.service';
+import { ExportTransferJob } from '../../core/models/transfer-job.model';
 import { FlowCopyImportFacadeService } from '../../features/flows/services/flow-copy-import-facade.service';
+import { ConfigService } from '../../services/config';
 import { ToastService } from '../../services/notifications';
-import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
 import { NodeModel } from '../core/models/node.model';
 import { FlowService } from '../services/flow.service';
 import { FlowImportExportService } from './flow-import-export-handler.service';
 import { FlowSelectionManagerService } from './flow-selection-manager.service';
 
 const FLOW_ID = 7;
+const PARTIAL_EXPORT_JOBS_URL = `/api/graphs/${FLOW_ID}/partial-export-jobs/`;
+const CDT_EXPORT_JOBS_URL = '/api/classification-decision-table-node/export-jobs/';
+const JOB_URL = '/api/transfer-jobs/job-1/';
 
 function node(id: string, type: NodeType, backendId: number | null): NodeModel {
     return {
@@ -32,153 +35,190 @@ function node(id: string, type: NodeType, backendId: number | null): NodeModel {
     } as unknown as NodeModel;
 }
 
-describe('FlowImportExportService — exporting', () => {
+function finishedJob(overrides: Partial<ExportTransferJob>): ExportTransferJob {
+    return {
+        id: 'job-1',
+        kind: 'export',
+        main_entity: 'FlowNodes',
+        status: 'completed',
+        display_name: 'Nodes',
+        file_name: 'nodes.zip',
+        result: { excluded: [] },
+        error: null,
+        created_at: '2026-11-09T10:00:00Z',
+        finished_at: '2026-11-09T10:01:00Z',
+        expires_at: null,
+        ...overrides,
+    };
+}
+
+describe('FlowImportExportService', () => {
     let service: FlowImportExportService;
+    let httpMock: HttpTestingController;
     let selectedNodeIds: ReturnType<typeof signal<string[]>>;
-    let partialExport: ReturnType<typeof vi.fn>;
-    let cdtExport: ReturnType<typeof vi.fn>;
-    let toastWarning: ReturnType<typeof vi.spyOn>;
+    let toast: {
+        show: () => number;
+        remove: () => void;
+        success: ReturnType<typeof vi.fn>;
+        warning: ReturnType<typeof vi.fn>;
+        error: ReturnType<typeof vi.fn>;
+    };
 
     beforeEach(() => {
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
         selectedNodeIds = signal<string[]>([]);
-        partialExport = vi.fn().mockReturnValue(NEVER);
-        cdtExport = vi.fn().mockReturnValue(NEVER);
+        toast = { show: () => 1, remove: () => undefined, success: vi.fn(), warning: vi.fn(), error: vi.fn() };
         TestBed.configureTestingModule({
             providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
                 FlowImportExportService,
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } },
+                { provide: ToastService, useValue: toast },
                 { provide: FlowSelectionManagerService, useValue: { selectedNodeIds } },
-                { provide: ImportExportService, useValue: { partialExport, cdtExport } },
                 { provide: FlowCopyImportFacadeService, useValue: {} },
-                { provide: CdtExportImportService, useValue: {} },
             ],
         });
-        toastWarning = vi.spyOn(TestBed.inject(ToastService), 'warning').mockImplementation(() => undefined);
         TestBed.inject(FlowService).setFlow({
-            nodes: [node('python-1', NodeType.PYTHON, 11), node('table-1', NodeType.CLASSIFICATION_TABLE, 12)],
+            nodes: [
+                node('start', NodeType.START, 1),
+                node('python-1', NodeType.PYTHON, 11),
+                node('table-1', NodeType.CLASSIFICATION_TABLE, 12),
+                node('table-2', NodeType.CLASSIFICATION_TABLE, 13),
+            ],
             connections: [],
         });
         service = TestBed.inject(FlowImportExportService);
-    });
-
-    describe('selected nodes as JSON', () => {
-        beforeEach(() => selectedNodeIds.set(['python-1']));
-
-        it('warns once and sends nothing while the flow has unsaved changes', () => {
-            service.onExportSelectedAsJson(FLOW_ID, true);
-
-            expect(toastWarning).toHaveBeenCalledTimes(1);
-            expect(toastWarning.mock.calls[0][0]).toBe('Save the flow before exporting');
-            expect(partialExport).not.toHaveBeenCalled();
-        });
-
-        it('requests the export of the selected nodes when the flow is saved', () => {
-            service.onExportSelectedAsJson(FLOW_ID, false);
-
-            expect(toastWarning).not.toHaveBeenCalled();
-            expect(partialExport).toHaveBeenCalledTimes(1);
-            expect(partialExport.mock.calls[0][0]).toBe(FLOW_ID);
-            expect(partialExport.mock.calls[0][1].python_node_list).toEqual([11]);
-        });
-    });
-
-    describe('selected nodes as CSV', () => {
-        beforeEach(() => selectedNodeIds.set(['table-1', 'python-1']));
-
-        it('warns once, not once per node, and sends nothing while the flow has unsaved changes', () => {
-            service.onExportSelectedAsCsv(true);
-
-            expect(toastWarning).toHaveBeenCalledTimes(1);
-            expect(toastWarning.mock.calls[0][0]).toBe('Save the flow before exporting');
-            expect(cdtExport).not.toHaveBeenCalled();
-        });
-
-        it('requests the export of each selected node when the flow is saved', () => {
-            service.onExportSelectedAsCsv(false);
-
-            expect(toastWarning).not.toHaveBeenCalled();
-            expect(cdtExport.mock.calls.map((call) => call[0])).toEqual([12, 11]);
-        });
-    });
-
-    describe('all nodes as JSON', () => {
-        it('warns once and sends nothing while the flow has unsaved changes', () => {
-            service.onExportAllAsJson(FLOW_ID, true);
-
-            expect(toastWarning).toHaveBeenCalledTimes(1);
-            expect(toastWarning.mock.calls[0][0]).toBe('Save the flow before exporting');
-            expect(partialExport).not.toHaveBeenCalled();
-        });
-
-        it('requests the export of the whole flow when the flow is saved', () => {
-            service.onExportAllAsJson(FLOW_ID, false);
-
-            expect(toastWarning).not.toHaveBeenCalled();
-            expect(partialExport).toHaveBeenCalledTimes(1);
-            expect(partialExport.mock.calls[0][1].classification_decision_table_node_list).toEqual([12]);
-        });
-
-        it('says there is nothing to export for a flow with only Start and End, saved or not', () => {
-            TestBed.inject(FlowService).setFlow({
-                nodes: [node('start', NodeType.START, 1), node('end', NodeType.END, 2)],
-                connections: [],
-            });
-
-            service.onExportAllAsJson(FLOW_ID, false);
-
-            expect(toastWarning).toHaveBeenCalledTimes(1);
-            expect(toastWarning.mock.calls[0][0]).toBe('No nodes to export');
-            expect(partialExport).not.toHaveBeenCalled();
-        });
-    });
-});
-
-const savedAgentNode = { id: 'agent-1', backendId: 7, type: NodeType.AGENT } as NodeModel;
-
-function exportAll(exportResult: ExportResult) {
-    const toast = { success: vi.fn(), warning: vi.fn(), error: vi.fn() };
-
-    TestBed.configureTestingModule({
-        providers: [
-            FlowImportExportService,
-            { provide: FlowService, useValue: { nodes: () => [savedAgentNode], connections: () => [] } },
-            { provide: FlowSelectionManagerService, useValue: { selectedNodeIds: () => [] } },
-            { provide: ImportExportService, useValue: { partialExport: () => of(exportResult) } },
-            { provide: CdtExportImportService, useValue: {} },
-            { provide: ToastService, useValue: toast },
-        ],
-    });
-
-    TestBed.inject(FlowImportExportService).onExportAllAsJson(1, false);
-    return toast;
-}
-
-describe('FlowImportExportService partial export', () => {
-    beforeEach(() => {
-        vi.stubGlobal('URL', { createObjectURL: () => 'blob:test', revokeObjectURL: () => undefined });
+        httpMock = TestBed.inject(HttpTestingController);
     });
 
     afterEach(() => {
-        vi.unstubAllGlobals();
+        httpMock.verify();
+        vi.restoreAllMocks();
     });
 
-    it('warns for the shared duration, bottom-right, about entities the user could not export', () => {
-        const toast = exportAll({
-            blob: new Blob(['{}']),
-            excluded: [{ type: 'AgentDefinition', count: 2, names: ['Alpha', 'Beta'] }],
+    /** Accepts the started job, reports it finished as `job`, and hands out its download link. */
+    async function finishJob(startUrl: string, job: ExportTransferJob): Promise<void> {
+        httpMock.expectOne(startUrl).flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+        (await vi.waitFor(() => httpMock.expectOne(JOB_URL))).flush(job);
+        if (job.status === 'completed') {
+            httpMock
+                .expectOne('/api/transfer-jobs/job-1/download-ticket/')
+                .flush({ download_url: '/api/transfer-jobs/job-1/download/?ticket=t-1' });
+        }
+    }
+
+    function saveFirstWarnings(): unknown[] {
+        return toast.warning.mock.calls.filter(([message]) => message === 'Save the flow before exporting');
+    }
+
+    describe.each([
+        ['selected nodes as JSON', () => service.onExportSelectedAsJson(FLOW_ID, true)],
+        ['selected nodes as CSV', () => service.onExportSelectedAsCsv(true)],
+        ['all nodes as JSON', () => service.onExportAllAsJson(FLOW_ID, true)],
+    ])('%s while the flow has unsaved changes', (_label, exportIt) => {
+        it('warns once and starts no export', () => {
+            selectedNodeIds.set(['table-1', 'table-2']);
+
+            exportIt();
+
+            expect(saveFirstWarnings()).toHaveLength(1);
+            httpMock.expectNone(() => true);
+        });
+    });
+
+    it('exports the selected nodes as a job of the flow', () => {
+        selectedNodeIds.set(['python-1']);
+
+        service.onExportSelectedAsJson(FLOW_ID, false);
+
+        const body = httpMock.expectOne(PARTIAL_EXPORT_JOBS_URL).request.body as Record<string, number[]>;
+        expect(body['python_node_list']).toEqual([11]);
+        expect(body['classification_decision_table_node_list']).toEqual([]);
+    });
+
+    it('exports every node but Start and End when exporting the whole flow', () => {
+        service.onExportAllAsJson(FLOW_ID, false);
+
+        const body = httpMock.expectOne(PARTIAL_EXPORT_JOBS_URL).request.body as Record<string, number[]>;
+        expect(body['python_node_list']).toEqual([11]);
+        expect(body['classification_decision_table_node_list']).toEqual([12, 13]);
+    });
+
+    it('says there is nothing to export for a flow with only Start and End', () => {
+        TestBed.inject(FlowService).setFlow({
+            nodes: [node('start', NodeType.START, 1), node('end', NodeType.END, 2)],
+            connections: [],
         });
 
-        expect(toast.success).toHaveBeenCalledTimes(1);
-        expect(toast.warning).toHaveBeenCalledTimes(1);
-        const [message, duration, position] = toast.warning.mock.calls[0] as [string, number, string];
-        expect(message).toContain('Alpha, Beta');
-        expect(duration).toBe(EXPORT_WARNING_DURATION_MS);
-        expect(position).toBe('bottom-right');
+        service.onExportAllAsJson(FLOW_ID, false);
+
+        expect(toast.warning.mock.calls.map(([message]) => message)).toEqual(['No nodes to export']);
     });
 
-    it('shows no warning when nothing was excluded', () => {
-        const toast = exportAll({ blob: new Blob(['{}']), excluded: [] });
+    it('exports each selected decision table to the server CSV in a job of its own', () => {
+        selectedNodeIds.set(['table-2', 'python-1', 'table-1']);
 
-        expect(toast.success).toHaveBeenCalledTimes(1);
+        service.onExportSelectedAsCsv(false);
+
+        expect(httpMock.match(CDT_EXPORT_JOBS_URL).map((request) => request.request.body)).toEqual([
+            { ids: [12], export_format: 'csv' },
+            { ids: [13], export_format: 'csv' },
+        ]);
+    });
+
+    it('reports the exported nodes once the job finished, and warns about what it left out', async () => {
+        service.onExportAllAsJson(FLOW_ID, false);
+
+        await finishJob(
+            PARTIAL_EXPORT_JOBS_URL,
+            finishedJob({
+                result: {
+                    excluded: [
+                        { entity_type: 'AgentDefinition', entity_id: 4, name: 'Alpha' },
+                        { entity_type: 'AgentDefinition', entity_id: 5, name: 'Beta' },
+                    ],
+                },
+            })
+        );
+
+        expect(toast.success.mock.calls.map(([message]) => message)).toEqual([
+            '3 nodes exported as a .zip archive (Start and End nodes excluded)',
+        ]);
+        expect(toast.warning).toHaveBeenCalledTimes(1);
+        expect(toast.warning.mock.calls[0][0]).toContain('Alpha, Beta');
+    });
+
+    it('does not warn when the job left nothing out', async () => {
+        selectedNodeIds.set(['python-1']);
+        service.onExportSelectedAsJson(FLOW_ID, false);
+
+        await finishJob(PARTIAL_EXPORT_JOBS_URL, finishedJob({}));
+
+        expect(toast.success.mock.calls.map(([message]) => message)).toEqual(['1 node exported as a .zip archive']);
         expect(toast.warning).not.toHaveBeenCalled();
+    });
+
+    it('shows the reason a failed job gave, and reports nothing exported', async () => {
+        service.onExportAllAsJson(FLOW_ID, false);
+
+        await finishJob(
+            PARTIAL_EXPORT_JOBS_URL,
+            finishedJob({ status: 'failed', result: null, error: { code: 'not_found', message: 'Nodes not found.' } })
+        );
+
+        expect(toast.error.mock.calls.map(([message]) => message)).toEqual(['Nodes not found.']);
+        expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it('lets the node import pick a zip export or a plain JSON file', () => {
+        const pickedAccepts: string[] = [];
+        vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
+            pickedAccepts.push(this.accept);
+        });
+
+        service.onImportNodes(FLOW_ID, () => true);
+
+        expect(pickedAccepts).toEqual(['.json,.zip']);
     });
 });

@@ -52,7 +52,6 @@ import {
     JsonObject,
     pluralize,
     readExportEnvelope,
-    withProgressToast,
 } from '@shared/utils';
 import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
 import {
@@ -81,22 +80,19 @@ import { TransferExportService } from '../../../../core/services/transfer-export
 import {
     describeTransferError,
     IMPORT_WITHOUT_SUMMARY_MESSAGE,
-    TRANSFER_JOB_MAX_WAIT_MS,
+    TransferJobsService,
 } from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { isUsableCondition } from '../../../audit/models/audit-filter.models';
 import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
-import {
-    ExportFlowOptionsPopoverComponent,
-    FlowExportOptions,
-} from '../../components/export-flow-options-popover/export-flow-options-popover.component';
 import { ImportFlowOptionsPopoverComponent } from '../../components/import-flow-options-popover/import-flow-options-popover.component';
 import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
 import { ImportReviewDialogComponent } from '../../components/import-review-dialog/import-review-dialog.component';
 import { EMPTY_FLOWS_FILTER, FlowsFilterState, FlowSortOrder } from '../../models/flow-filter.model';
 import { GraphDto } from '../../models/graph.model';
 import { FlowCopyImportFacadeService } from '../../services/flow-copy-import-facade.service';
+import { FlowExportOptionsDialogService } from '../../services/flow-export-options-dialog.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
@@ -106,7 +102,6 @@ import { FlowsFilterSidebarComponent } from './components/flows-filter-sidebar/f
 import { FLOWS_SORT_MENU_ITEMS, FlowsSortMenuComponent } from './components/flows-sort-menu/flows-sort-menu.component';
 
 const FILTER_PANEL_WIDTH_KEY = 'flows-filter-panel';
-const IMPORT_PROGRESS_MESSAGE = 'Importing…';
 const FLOW_FILE_UNREADABLE_MESSAGE = 'Failed to read the flow file. Please check the file and try again.';
 const FLOW_IMPORT_FAILED_MESSAGE = 'Failed to import flow. Please check the file and try again.';
 const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth: 640 } satisfies SidebarWidthOptions;
@@ -128,7 +123,6 @@ const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth:
         CollapseOnOverflowDirective,
         TooltipWhenCollapsedDirective,
         ImportFlowOptionsPopoverComponent,
-        ExportFlowOptionsPopoverComponent,
         OverlayModule,
         HasPermissionDirective,
         MatTooltipModule,
@@ -156,7 +150,9 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private cdr = inject(ChangeDetectorRef);
     private importExportService = inject(ImportExportService);
     private flowCopyImport = inject(FlowCopyImportFacadeService);
+    private transferJobs = inject(TransferJobsService);
     private transferExport = inject(TransferExportService);
+    private exportOptionsDialog = inject(FlowExportOptionsDialogService);
     private toastService = inject(ToastService);
     private labelsStorage = inject(LabelsStorageService);
     private importFlowSettings = inject(ImportFlowSettingsService);
@@ -166,7 +162,13 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private recycleBinSettings = inject(RecycleBinSettingsService);
 
     public importOptionsOpen = signal(false);
-    public exportOptionsOpen = signal(false);
+    /**
+     * From the pick of a file until a plain JSON import has finished, an archive's import has been accepted by the
+     * server, either fails, or the review dialog opens with its own progress: Import is disabled meanwhile, so a
+     * second click starts no second upload.
+     */
+    protected readonly isImporting = signal(false);
+    protected readonly importLabel = computed(() => (this.isImporting() ? 'Importing…' : 'Import'));
 
     public selectMode = this.flowStorageService.selectMode;
     public selectedFlowIds = this.flowStorageService.selectedFlowIds;
@@ -436,6 +438,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     }
 
     public onImportClick(): void {
+        if (this.isImporting()) return;
+
         const settings = this.importFlowSettings.requestSettings();
 
         const input = document.createElement('input');
@@ -445,12 +449,18 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             const file = (event.target as HTMLInputElement).files?.[0];
             if (!file) return;
 
+            const endImporting = this._startImporting();
             from(readExportEnvelope(file))
                 .pipe(
                     switchMap(({ format, data }) =>
-                        this._importFlowFile(data, this._importFunction(format, file, settings))
+                        this._importFlowFile(
+                            data,
+                            this._importFunction(format, file, settings, endImporting),
+                            endImporting
+                        )
                     ),
                     catchError((error: unknown) => this._reportImportError(error, FLOW_FILE_UNREADABLE_MESSAGE)),
+                    finalize(endImporting),
                     takeUntilDestroyed(this.destroyRef)
                 )
                 .subscribe(({ result, fileData }) => this._finishFlowImport(result, fileData));
@@ -459,27 +469,35 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     }
 
     /**
-     * A `.zip` archive is imported as a background job; a plain `.json` export, of any version, by the
-     * synchronous import, which is the only one that takes JSON.
+     * A `.zip` archive is imported as a background job, and `endImporting` is called once the server has accepted
+     * it; a plain `.json` export, of any version, by the synchronous import, which is the only one that takes JSON.
      */
     private _importFunction(
         format: ExportFileFormat,
         file: File,
-        settings: ImportFlowRequestOptions
+        settings: ImportFlowRequestOptions,
+        endImporting: () => void
     ): () => Observable<ImportResult | null> {
         return format === 'zip'
-            ? () => this.flowCopyImport.importFlowArchive(file, settings)
+            ? () =>
+                  this.flowCopyImport.startFlowArchiveImport(file, settings).pipe(
+                      tap(endImporting),
+                      switchMap((started) => this.transferJobs.waitForImport(started))
+                  )
             : () => this.flowCopyImport.importFlow(file, settings);
     }
 
     /**
      * Inspects the file's envelope, never its archived files, and imports it straight away or after the user has
-     * reviewed the code it carries. The progress toast covers the inspection and a straight import; the review
-     * dialog shows its own progress.
+     * reviewed the code it carries. A plain JSON export is imported synchronously: Import stays busy until it has
+     * finished. An archive is imported as a job: Import is free again once the server has accepted it, and
+     * TransferJobsStoreService announces the start. The review dialog shows its own progress, so `endImporting` is
+     * called when it opens.
      */
     private _importFlowFile(
         fileData: ImportFileData,
-        importFn: () => Observable<ImportResult | null>
+        importFn: () => Observable<ImportResult | null>,
+        endImporting: () => void
     ): Observable<{ result: ImportResult | null; fileData: ImportFileData }> {
         return this.importExportService.inspectFlow(exportEnvelopeFile(fileData)).pipe(
             catchError((error: unknown) => this._reportImportError(error, FLOW_FILE_UNREADABLE_MESSAGE)),
@@ -493,12 +511,11 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                               catchError((error: unknown) => this._reportImportError(error, FLOW_IMPORT_FAILED_MESSAGE))
                           )
             ),
-            withProgressToast(this.toastService, IMPORT_PROGRESS_MESSAGE, TRANSFER_JOB_MAX_WAIT_MS),
-            switchMap((inspected) =>
-                inspected.kind === 'imported'
-                    ? of(inspected.result)
-                    : this._reviewAndImport(inspected.reviewItems, fileData, importFn)
-            ),
+            switchMap((inspected) => {
+                if (inspected.kind === 'imported') return of(inspected.result);
+                endImporting();
+                return this._reviewAndImport(inspected.reviewItems, fileData, importFn);
+            }),
             map((result) => ({ result, fileData }))
         );
     }
@@ -529,6 +546,20 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 closeResult?.action === 'imported' ? of(closeResult.result as ImportResult | null) : EMPTY
             )
         );
+    }
+
+    /**
+     * Marks an import in flight and returns what ends it. Ending it twice is harmless: a job's end, long after its
+     * start was accepted, must not end a later import's busy state.
+     */
+    private _startImporting(): () => void {
+        this.isImporting.set(true);
+        let ended = false;
+        return () => {
+            if (ended) return;
+            ended = true;
+            this.isImporting.set(false);
+        };
     }
 
     private _reportImportError(error: unknown, fallback: string): Observable<never> {
@@ -582,28 +613,23 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     }
 
     public cancelSelection(): void {
-        this.closeExportOptions();
         this.flowStorageService.setSelectMode(false);
     }
 
-    public toggleExportOptions(): void {
-        this.exportOptionsOpen.update((open) => !open);
-    }
-
-    public closeExportOptions(): void {
-        this.exportOptionsOpen.set(false);
-    }
-
-    public confirmExport(options: FlowExportOptions): void {
-        this.closeExportOptions();
+    public exportSelectedFlows(): void {
         const ids = this.selectedFlowIds();
         if (ids.length === 0) {
             return;
         }
 
-        this.flowStorageService.setSelectMode(false);
-        // Not tied to this page: an export the user started still downloads after they leave it.
-        this.transferExport.exportFlows(ids, options.includeKnowledge).subscribe();
+        this.exportOptionsDialog
+            .ask(ids.length)
+            .pipe(
+                tap(() => this.flowStorageService.setSelectMode(false)),
+                // Not tied to this page: an export the user started still downloads after they leave it.
+                switchMap((options) => this.transferExport.exportFlows(ids, options.includeKnowledge))
+            )
+            .subscribe();
     }
 
     public deleteSelectedFlows(): void {

@@ -1,26 +1,17 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { EMPTY, Observable, Subject } from 'rxjs';
+import { EMPTY } from 'rxjs';
 
-import { ImportResult } from '../../../../core/models/import-result.model';
-import {
-    ImportReviewDialogCloseResult,
-    ImportReviewDialogData,
-    ReviewItem,
-} from '../../../../core/models/review-item.model';
 import { TransferJob } from '../../../../core/models/transfer-job.model';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
-import { storedZip } from '../../../../shared/utils/read-export-envelope.testing';
 import { FilesSearchService } from '../../../files/services/files-search.service';
-import { ImportResultDialogComponent } from '../../../flows/components/import-result-dialog/import-result-dialog.component';
-import { ImportReviewDialogComponent } from '../../../flows/components/import-review-dialog/import-review-dialog.component';
 import { CollectionStatus, GetCollectionRequest } from '../../models/collection.model';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
@@ -29,8 +20,6 @@ import { CollectionDetailsComponent } from './components/collection-details/coll
 
 const COLLECTIONS_URL = '/api/source-collections/';
 const EXPORT_JOBS_URL = '/api/source-collections/export-jobs/';
-const IMPORT_JOBS_URL = '/api/source-collections/import-jobs/';
-const INSPECT_URL = '/api/source-collections/import/inspect/';
 const JOB_URL = '/api/transfer-jobs/job-1/';
 const TICKET_URL = '/api/transfer-jobs/job-1/download-ticket/';
 const DOWNLOAD_URL = '/api/transfer-jobs/job-1/download/?ticket=t-1';
@@ -54,15 +43,6 @@ function collection(id: number, name: string, createdAt: string): GetCollectionR
 // Newest first, as the list shows them.
 const MANUALS = collection(1, 'Manuals', '2026-11-02T10:00:00Z');
 const POLICIES = collection(2, 'Policies', '2026-11-01T10:00:00Z');
-const IMPORTED = collection(3, 'Imported handbook', '2026-11-06T10:00:00Z');
-
-const IMPORT_SUMMARY: ImportResult = {
-    SourceCollection: {
-        total: 1,
-        created: { count: 1, items: [{ id: 3, name: 'Imported handbook' }] },
-        reused: { count: 0, items: [] },
-    },
-};
 
 function transferJob(overrides: Partial<TransferJob>): TransferJob {
     return {
@@ -84,9 +64,6 @@ let httpMock: HttpTestingController;
 let fixture: ComponentFixture<CollectionsListPageComponent>;
 let dialogOpen: ReturnType<typeof vi.fn>;
 let toastError: ReturnType<typeof vi.fn>;
-let toastWarning: ReturnType<typeof vi.fn>;
-let toastShow: ReturnType<typeof vi.fn>;
-let toastRemove: ReturnType<typeof vi.fn>;
 let clickedLinks: string[];
 
 // jsdom has no ResizeObserver; the buttons' collapse-on-overflow only needs it to exist.
@@ -104,9 +81,6 @@ function renderPage(
     vi.stubGlobal('ResizeObserver', ResizeObserverStub);
     dialogOpen = vi.fn(() => ({ closed: EMPTY }));
     toastError = vi.fn();
-    toastWarning = vi.fn();
-    toastShow = vi.fn(() => 1);
-    toastRemove = vi.fn();
     clickedLinks = [];
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
         clickedLinks.push(this.href);
@@ -134,10 +108,7 @@ function renderPage(
                 provide: ToastService,
                 useValue: {
                     error: toastError,
-                    warning: toastWarning,
                     success: vi.fn(),
-                    show: toastShow,
-                    remove: toastRemove,
                 },
             },
             // Polls collection details every few seconds; not what is under test.
@@ -202,6 +173,64 @@ async function completeExportJob(): Promise<void> {
     httpMock.expectOne(TICKET_URL).flush({ download_url: DOWNLOAD_URL });
 }
 
+/** Opens a card's ⋮ menu; its items render in an overlay. */
+function openCardMenu(name: string): void {
+    click(`More actions for ${name}`);
+}
+
+function menuItem(label: string): HTMLButtonElement | undefined {
+    return [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+        (item) => item.textContent?.trim() === label
+    );
+}
+
+function clickMenuItem(label: string): void {
+    const item = menuItem(label);
+    expect(item, `a "${label}" menu item`).toBeDefined();
+    item!.click();
+    fixture.detectChanges();
+}
+
+function exportFromCard(name: string): void {
+    openCardMenu(name);
+    clickMenuItem('Export');
+}
+
+function typeInSidebarSearch(term: string): void {
+    const field = host().querySelector<HTMLInputElement>('input[aria-label="Search collections"]');
+    expect(field, 'the sidebar search').not.toBeNull();
+    field!.value = term;
+    field!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+}
+
+function headerSearch(term: string): void {
+    TestBed.inject(FilesSearchService).setSearchTerm(term);
+    fixture.detectChanges();
+}
+
+/** The export control's menu button: the chevron, or in select mode the selected count. */
+function openSelectionMenu(): void {
+    const trigger = [...host().querySelectorAll('button')].find((button) =>
+        /selection options$/i.test(button.getAttribute('aria-label') ?? '')
+    );
+    expect(trigger, 'the selection menu button').toBeDefined();
+    trigger!.click();
+    fixture.detectChanges();
+}
+
+/** The selected count the export control shows in select mode; null outside it. */
+function selectedCount(): number | null {
+    const count = [...host().querySelectorAll('button')].find((button) =>
+        button.getAttribute('aria-label')?.startsWith('Selected ')
+    );
+    return count ? Number(count.textContent!.trim()) : null;
+}
+
+function checkboxesShown(): number {
+    return host().querySelectorAll('app-collection app-checkbox').length;
+}
+
 afterEach(() => {
     httpMock.verify();
     vi.restoreAllMocks();
@@ -209,11 +238,11 @@ afterEach(() => {
 });
 
 describe('CollectionsListPageComponent export', () => {
-    it('exports a collection from its card as a job and downloads the archive through a ticket', async () => {
+    it('exports a collection from its card menu as a job and downloads the archive through a ticket', async () => {
         renderPage([MANUALS, POLICIES]);
         await settle();
 
-        click('Export Policies');
+        exportFromCard('Policies');
 
         const start = httpMock.expectOne(EXPORT_JOBS_URL);
         expect(start.request.body).toEqual({ ids: [2] });
@@ -222,51 +251,42 @@ describe('CollectionsListPageComponent export', () => {
 
         expect(clickedLinks).toEqual([new URL(DOWNLOAD_URL, document.baseURI).href]);
         expect(toastError).not.toHaveBeenCalled();
-        // The export button does not open the collection.
+        // The card's menu does not open the collection.
         expect(cardNamed('Policies').querySelector('.collection.selected')).toBeNull();
-    });
-
-    it('exports every picked collection in one job', async () => {
-        renderPage([MANUALS, POLICIES]);
-        await settle();
-
-        click('Select');
-        cardNamed('Manuals').click();
-        cardNamed('Policies').click();
-        fixture.detectChanges();
-        click('Export');
-
-        const start = httpMock.expectOne(EXPORT_JOBS_URL);
-        expect(start.request.body).toEqual({ ids: [1, 2] });
-        start.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
-        await completeExportJob();
-
-        expect(clickedLinks).toHaveLength(1);
     });
 
     it("disables a card's Export while its export runs, so a second click starts no second job", async () => {
         renderPage([MANUALS, POLICIES]);
         await settle();
 
-        click('Export Policies');
+        exportFromCard('Policies');
         httpMock.expectOne(EXPORT_JOBS_URL).flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
         fixture.detectChanges();
 
-        expect(buttonLabelled('Export Policies')!.disabled).toBe(true);
-        expect(buttonLabelled('Export Manuals')!.disabled).toBe(false);
-        buttonLabelled('Export Policies')!.click();
+        openCardMenu('Policies');
+        expect(menuItem('Export')).toBeUndefined();
+        expect(menuItem('Exporting…')!.getAttribute('aria-disabled')).toBe('true');
+        menuItem('Exporting…')!.click();
         httpMock.expectNone(EXPORT_JOBS_URL);
+        document.body.click();
+        fixture.detectChanges();
+
+        openCardMenu('Manuals');
+        expect(menuItem('Export')!.getAttribute('aria-disabled')).not.toBe('true');
+        document.body.click();
+        fixture.detectChanges();
 
         await completeExportJob();
         fixture.detectChanges();
-        expect(buttonLabelled('Export Policies')!.disabled).toBe(false);
+        openCardMenu('Policies');
+        expect(menuItem('Export')).toBeDefined();
     });
 
     it("reports a failed export job with the server's reason and downloads nothing", async () => {
         renderPage([MANUALS]);
         await settle();
 
-        click('Export Manuals');
+        exportFromCard('Manuals');
         httpMock.expectOne(EXPORT_JOBS_URL).flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
         (await vi.waitFor(() => httpMock.expectOne(JOB_URL))).flush(
             transferJob({ status: 'failed', error: { code: 'export_failed', message: 'Storage is unavailable.' } })
@@ -280,72 +300,191 @@ describe('CollectionsListPageComponent export', () => {
 describe('CollectionsListPageComponent bulk selection', () => {
     const PROCEDURES = collection(4, 'Procedures', '2026-10-31T10:00:00Z');
 
-    function search(term: string): void {
-        TestBed.inject(FilesSearchService).setSearchTerm(term);
-        fixture.detectChanges();
-    }
+    it('enters select mode from Export collections: checkboxes on the cards, the count, cancel and confirm', async () => {
+        renderPage([MANUALS, POLICIES]);
+        await settle();
+        expect(checkboxesShown()).toBe(0);
+        expect(selectedCount()).toBeNull();
 
-    /** The "Select All" / "Deselect All" item of the Select menu, which opens in an overlay. */
-    function clickSelectMenuItem(label: 'Select All' | 'Deselect All'): void {
-        click(buttonLabelled('Select') ? 'Select' : `Selected (${selectedCount()})`);
-        const item = [...document.querySelectorAll<HTMLButtonElement>('.bulk-select-menu__item')].find(
-            (candidate) => candidate.textContent?.trim() === label
-        );
-        expect(item, `a "${label}" menu item`).toBeDefined();
-        item!.click();
-        fixture.detectChanges();
-    }
+        click('Export collections');
 
-    function selectedCount(): number {
-        const count = host().querySelector('.bulk-select__count')?.textContent ?? '(0)';
-        return Number(count.replace(/[()]/g, ''));
-    }
+        expect(checkboxesShown()).toBe(2);
+        expect(selectedCount()).toBe(0);
+        expect(buttonLabelled('Cancel selection')).toBeDefined();
+        expect(buttonLabelled('Export selected')).toBeDefined();
+        expect(buttonLabelled('Export collections')).toBeUndefined();
+    });
+
+    it('counts the picks and exports them all in one job with confirm, then leaves select mode', async () => {
+        renderPage([MANUALS, POLICIES]);
+        await settle();
+
+        click('Export collections');
+        cardNamed('Manuals').click();
+        cardNamed('Policies').click();
+        fixture.detectChanges();
+        expect(selectedCount()).toBe(2);
+        click('Export selected');
+
+        const start = httpMock.expectOne(EXPORT_JOBS_URL);
+        expect(start.request.body).toEqual({ ids: [1, 2] });
+        fixture.detectChanges();
+        expect(checkboxesShown()).toBe(0);
+        start.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+        await completeExportJob();
+
+        expect(clickedLinks).toHaveLength(1);
+    });
+
+    it('does nothing on confirm while nothing is picked', async () => {
+        renderPage([MANUALS]);
+        await settle();
+
+        click('Export collections');
+        expect(buttonLabelled('Export selected')!.getAttribute('aria-disabled')).toBe('true');
+        click('Export selected');
+
+        httpMock.expectNone(EXPORT_JOBS_URL);
+        expect(checkboxesShown()).toBe(1);
+    });
+
+    it('leaves select mode with cancel, dropping the picks and exporting nothing', async () => {
+        renderPage([MANUALS, POLICIES]);
+        await settle();
+        click('Export collections');
+        cardNamed('Manuals').click();
+        fixture.detectChanges();
+
+        click('Cancel selection');
+
+        expect(checkboxesShown()).toBe(0);
+        expect(buttonLabelled('Export collections')).toBeDefined();
+        httpMock.expectNone(EXPORT_JOBS_URL);
+        click('Export collections');
+        expect(selectedCount()).toBe(0);
+    });
+
+    it('enters select mode from the menu, with Select or Select all', async () => {
+        renderPage([MANUALS, POLICIES]);
+        await settle();
+
+        openSelectionMenu();
+        clickMenuItem('Select all');
+
+        expect(checkboxesShown()).toBe(2);
+        expect(selectedCount()).toBe(2);
+
+        click('Cancel selection');
+        openSelectionMenu();
+        clickMenuItem('Select');
+        expect(checkboxesShown()).toBe(2);
+        expect(selectedCount()).toBe(0);
+    });
 
     it('selects all shown collections without dropping a pick the search hides', async () => {
         renderPage([MANUALS, POLICIES, PROCEDURES]);
         await settle();
-        click('Select');
+        click('Export collections');
         cardNamed('Manuals').click();
         fixture.detectChanges();
 
-        search('P');
-        clickSelectMenuItem('Select All');
+        typeInSidebarSearch('P');
+        openSelectionMenu();
+        clickMenuItem('Select all');
         // Manuals is picked but hidden: neither counted nor exported.
         expect(selectedCount()).toBe(2);
 
-        search('');
+        typeInSidebarSearch('');
         expect(selectedCount()).toBe(3);
     });
 
     it('deselects only the shown collections', async () => {
         renderPage([MANUALS, POLICIES, PROCEDURES]);
         await settle();
-        click('Select');
+        click('Export collections');
         cardNamed('Manuals').click();
         cardNamed('Policies').click();
         fixture.detectChanges();
 
-        search('Pol');
-        clickSelectMenuItem('Deselect All');
-        search('');
+        typeInSidebarSearch('Pol');
+        openSelectionMenu();
+        clickMenuItem('Deselect all');
+        typeInSidebarSearch('');
 
         expect(selectedCount()).toBe(1);
-        click('Export');
+        click('Export selected');
         expect(httpMock.expectOne(EXPORT_JOBS_URL).request.body).toEqual({ ids: [1] });
+    });
+
+    it('leaves select mode when the last collection goes, so a refilled list starts outside it', async () => {
+        renderPage([MANUALS]);
+        await settle();
+        click('Export collections');
+        cardNamed('Manuals').click();
+        fixture.detectChanges();
+
+        const storage = TestBed.inject(CollectionsStorageService);
+        storage.setCollections([]);
+        fixture.detectChanges();
+        storage.setCollections([MANUALS, POLICIES]);
+        fixture.detectChanges();
+
+        expect(checkboxesShown()).toBe(0);
+        expect(selectedCount()).toBeNull();
+        click('Export collections');
+        expect(selectedCount()).toBe(0);
     });
 
     it('exports only the picks the list shows', async () => {
         renderPage([MANUALS, POLICIES, PROCEDURES]);
         await settle();
-        click('Select');
+        click('Export collections');
         cardNamed('Manuals').click();
         cardNamed('Policies').click();
         fixture.detectChanges();
 
-        search('Pol');
-        click('Export');
+        headerSearch('Pol');
+        click('Export selected');
 
         expect(httpMock.expectOne(EXPORT_JOBS_URL).request.body).toEqual({ ids: [2] });
+    });
+});
+
+describe('CollectionsListPageComponent search', () => {
+    const PROCEDURES = collection(4, 'Procedures', '2026-10-31T10:00:00Z');
+
+    it.each([
+        { term: 'pol', shown: ['Policies'] },
+        { term: '  MAN ', shown: ['Manuals'] },
+        { term: 'p', shown: ['Policies', 'Procedures'] },
+        { term: '', shown: ['Manuals', 'Policies', 'Procedures'] },
+    ])('shows the collections whose name contains "$term"', async ({ term, shown }) => {
+        renderPage([MANUALS, POLICIES, PROCEDURES]);
+        await settle();
+
+        typeInSidebarSearch(term);
+
+        expect(shownCollectionNames()).toEqual(shown);
+    });
+
+    it('says so when no collection matches', async () => {
+        renderPage([MANUALS, POLICIES]);
+        await settle();
+
+        typeInSidebarSearch('zzz');
+
+        expect(shownCollectionNames()).toEqual([]);
+        expect(host().textContent).toContain('No collections match');
+    });
+
+    it("narrows the list together with the page header's search", async () => {
+        renderPage([MANUALS, POLICIES, PROCEDURES]);
+        await settle();
+
+        typeInSidebarSearch('p');
+        headerSearch('olic');
+
+        expect(shownCollectionNames()).toEqual(['Policies']);
     });
 });
 
@@ -354,220 +493,16 @@ describe('CollectionsListPageComponent permissions', () => {
         renderPage([MANUALS], [ActionCode.Read, ActionCode.Create, ActionCode.Update]);
         await settle();
 
-        expect(buttonLabelled('Export Manuals')).toBeUndefined();
-        expect(buttonLabelled('Select')).toBeUndefined();
-        expect(buttonLabelled('Import')).toBeDefined();
+        expect(buttonLabelled('More actions for Manuals')).toBeUndefined();
+        expect(buttonLabelled('Export collections')).toBeUndefined();
+        expect(buttonLabelled('Selection options')).toBeUndefined();
     });
 
-    it('offers no import without the create permission', async () => {
+    it('offers export with the export permission alone', async () => {
         renderPage([MANUALS], [ActionCode.Read, ActionCode.Export]);
         await settle();
 
-        expect(buttonLabelled('Import')).toBeUndefined();
-        expect(buttonLabelled('Export Manuals')).toBeDefined();
-    });
-});
-
-describe('CollectionsListPageComponent import', () => {
-    // The page loads the zip reader on demand; loaded here, its first load does not eat into a test's time limit.
-    beforeAll(() => import('@zip.js/zip.js'));
-
-    /** Clicks Import and picks the file in the browser's file picker (a detached <input type="file">). */
-    function chooseFileToImport(file: File): void {
-        const picker = document.createElement('input');
-        vi.spyOn(picker, 'click').mockImplementation(() => undefined);
-        const createElement = vi.spyOn(document, 'createElement').mockReturnValueOnce(picker);
-        click('Import');
-        createElement.mockRestore();
-        Object.defineProperty(picker, 'files', { value: [file] });
-        picker.dispatchEvent(new Event('change'));
-    }
-
-    const ENVELOPE = { main_entity: 'SourceCollection', version: 6 };
-    const CODE_TO_REVIEW: ReviewItem = { kind: 'mcp_tool', name: 'Search', transport: 'stdio' };
-
-    function archiveToImport(): File {
-        return storedZip('collections.zip', {
-            'export.json': JSON.stringify(ENVELOPE),
-            'files/collection-3/handbook.pdf': '%PDF',
-        });
-    }
-
-    /** Picks the archive and waits for its inspection, which gets only the archive's envelope. */
-    async function chooseArchiveAndInspect(archive: File): Promise<TestRequest> {
-        chooseFileToImport(archive);
-        const inspect = await vi.waitFor(() => httpMock.expectOne(INSPECT_URL));
-        const inspected = (inspect.request.body as FormData).get('file') as File;
-        expect(inspected).not.toBe(archive);
-        expect(JSON.parse(await inspected.text())).toEqual(ENVELOPE);
-        return inspect;
-    }
-
-    function uploadArchive(archive: File): void {
-        const upload = httpMock.expectOne((request) => request.url === IMPORT_JOBS_URL);
-        expect(upload.request.body).toBe(archive);
-        upload.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
-    }
-
-    /** Picks an archive, passes its inspection with nothing to review and starts its import job. */
-    async function startArchiveImport(): Promise<void> {
-        const archive = archiveToImport();
-        (await chooseArchiveAndInspect(archive)).flush({ review_items: [] });
-        uploadArchive(archive);
-    }
-
-    async function finishImportJob(job: TransferJob): Promise<void> {
-        (await vi.waitFor(() => httpMock.expectOne(JOB_URL))).flush(job);
-    }
-
-    it('imports an archive as a job, shows the result and lists the imported collection', async () => {
-        renderPage([MANUALS]);
-        await settle();
-
-        await startArchiveImport();
-        await finishImportJob(transferJob({ kind: 'import', status: 'completed', result: IMPORT_SUMMARY }));
-
-        expect(dialogOpen).toHaveBeenCalledWith(
-            ImportResultDialogComponent,
-            expect.objectContaining({ data: { importResult: IMPORT_SUMMARY } })
-        );
-        httpMock.expectOne(COLLECTIONS_URL).flush([IMPORTED, MANUALS]);
-        await vi.waitFor(() => {
-            fixture.detectChanges();
-            expect(shownCollectionNames()).toEqual(['Imported handbook', 'Manuals']);
-        });
-        expect(toastError).not.toHaveBeenCalled();
-    });
-
-    it('shows its progress from the inspection until the import has finished', async () => {
-        renderPage([MANUALS]);
-        await settle();
-
-        const archive = archiveToImport();
-        const inspect = await chooseArchiveAndInspect(archive);
-        expect(toastShow).toHaveBeenCalledExactlyOnceWith('Importing…', 'info', expect.any(Number));
-        inspect.flush({ review_items: [] });
-        uploadArchive(archive);
-        expect(toastRemove).not.toHaveBeenCalled();
-
-        await finishImportJob(transferJob({ kind: 'import', status: 'completed', result: IMPORT_SUMMARY }));
-
-        expect(toastRemove).toHaveBeenCalledOnce();
-        httpMock.expectOne(COLLECTIONS_URL).flush([IMPORTED, MANUALS]);
-    });
-
-    it('says so, instead of showing an empty result, when the finished import reports no summary', async () => {
-        renderPage([MANUALS]);
-        await settle();
-
-        await startArchiveImport();
-        await finishImportJob(transferJob({ kind: 'import', status: 'completed', result: null }));
-
-        expect(toastWarning).toHaveBeenCalledExactlyOnceWith(
-            'The import has finished, but the server did not report what it brought in. Check the list for the new items.'
-        );
-        expect(dialogOpen).not.toHaveBeenCalled();
-        httpMock.expectOne(COLLECTIONS_URL).flush([IMPORTED, MANUALS]);
-    });
-
-    it('stops waiting for the import job when the page is left', async () => {
-        renderPage([MANUALS]);
-        await settle();
-
-        await startArchiveImport();
-        const poll = await vi.waitFor(() => httpMock.expectOne(JOB_URL));
-        fixture.destroy();
-
-        expect(poll.cancelled).toBe(true);
-        expect(toastRemove).toHaveBeenCalledOnce();
-        await new Promise((resolve) => setTimeout(resolve, 2_500));
-        httpMock.expectNone(JOB_URL);
-    });
-
-    describe('with code to review', () => {
-        let reviewClosed: Subject<ImportReviewDialogCloseResult>;
-
-        /** Picks an archive whose inspection finds code to review; returns what the review dialog is given. */
-        async function openReview(archive: File): Promise<ImportReviewDialogData> {
-            reviewClosed = new Subject();
-            dialogOpen.mockReturnValueOnce({ closed: reviewClosed });
-            (await chooseArchiveAndInspect(archive)).flush({ review_items: [CODE_TO_REVIEW] });
-
-            expect(dialogOpen).toHaveBeenCalledWith(ImportReviewDialogComponent, expect.anything());
-            httpMock.expectNone((request) => request.url === IMPORT_JOBS_URL);
-            // The dialog shows its own progress: the toast ends with the inspection.
-            expect(toastRemove).toHaveBeenCalledOnce();
-            return dialogOpen.mock.calls[0][1].data as ImportReviewDialogData;
-        }
-
-        function collect(source: Observable<unknown>): unknown[] {
-            const values: unknown[] = [];
-            source.subscribe((value) => values.push(value));
-            return values;
-        }
-
-        it("imports the archive when the review dialog's Import is pressed and shows the result", async () => {
-            renderPage([MANUALS]);
-            await settle();
-            const archive = archiveToImport();
-            const review = await openReview(archive);
-            expect(review.reviewItems).toEqual([CODE_TO_REVIEW]);
-
-            const imported = collect(review.importFn());
-            uploadArchive(archive);
-            await finishImportJob(transferJob({ kind: 'import', status: 'completed', result: IMPORT_SUMMARY }));
-            expect(imported).toEqual([IMPORT_SUMMARY]);
-            reviewClosed.next({ action: 'imported', result: IMPORT_SUMMARY });
-
-            expect(dialogOpen).toHaveBeenLastCalledWith(
-                ImportResultDialogComponent,
-                expect.objectContaining({ data: { importResult: IMPORT_SUMMARY } })
-            );
-            httpMock.expectOne(COLLECTIONS_URL).flush([IMPORTED, MANUALS]);
-        });
-
-        it('imports nothing when the review is cancelled', async () => {
-            renderPage([MANUALS]);
-            await settle();
-            await openReview(archiveToImport());
-
-            reviewClosed.next({ action: 'cancel' });
-
-            expect(dialogOpen).toHaveBeenCalledOnce();
-            httpMock.expectNone((request) => request.url === IMPORT_JOBS_URL);
-            httpMock.expectNone(COLLECTIONS_URL);
-        });
-    });
-
-    it("reports a failed import job with the server's reason and leaves the list as it was", async () => {
-        renderPage([MANUALS]);
-        await settle();
-
-        await startArchiveImport();
-        await finishImportJob(
-            transferJob({
-                kind: 'import',
-                status: 'failed',
-                error: { code: 'invalid_archive', message: 'handbook.pdf is missing.' },
-            })
-        );
-
-        expect(toastError).toHaveBeenCalledExactlyOnceWith('handbook.pdf is missing.');
-        expect(dialogOpen).not.toHaveBeenCalled();
-        httpMock.expectNone(COLLECTIONS_URL);
-    });
-
-    it('refuses a plain JSON export without uploading it, as only an archive carries the files', async () => {
-        renderPage([MANUALS]);
-        await settle();
-
-        chooseFileToImport(new File([JSON.stringify({ main_entity: 'SourceCollection' })], 'collections.json'));
-
-        await vi.waitFor(() =>
-            expect(toastError).toHaveBeenCalledExactlyOnceWith(
-                'Knowledge sources are imported from a .zip export. Choose a .zip file.'
-            )
-        );
-        httpMock.expectNone(INSPECT_URL);
+        expect(buttonLabelled('More actions for Manuals')).toBeDefined();
+        expect(buttonLabelled('Export collections')).toBeDefined();
     });
 });

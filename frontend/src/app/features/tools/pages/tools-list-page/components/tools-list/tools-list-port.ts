@@ -4,6 +4,7 @@ import { AuthorshipDetailsSource } from '@shared/components';
 import { Observable } from 'rxjs';
 
 import { InspectResult } from '../../../../../../core/models/review-item.model';
+import { StartedTransferJob } from '../../../../../../core/services/transfer-jobs.service';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../../../models/tool-config.model';
 import { ToolFilterAdapter } from '../../../../utils/tools-cards.util';
 import { ToolKind } from '../tool-card/tool-card.model';
@@ -33,14 +34,12 @@ export interface ToolsListPort<
     // per-tool projections
     isBuiltIn(t: T): boolean;
     descriptionOf(t: T): string;
-    exportFileName(toolName: string): string;
-    bulkExportFileName(): string;
 
     // service delegates
     getAll(): Observable<T[]>;
     copy(id: number): Observable<T>;
-    exportOne(id: number): Observable<Blob>;
-    bulkExport(ids: number[]): Observable<Blob>;
+    /** Starts a background export of the tools; TransferExportService follows it to the download. */
+    startExport(ids: number[]): Observable<StartedTransferJob>;
     patchLabels(id: number, labelIds: number[]): Observable<T>;
     delete(id: number): Observable<void>;
     bulkDelete(ids: number[]): Observable<BulkDeleteToolsResponse>;

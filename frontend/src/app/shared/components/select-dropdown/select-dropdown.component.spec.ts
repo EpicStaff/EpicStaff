@@ -39,6 +39,17 @@ const GROUPED: SelectDropdownListItem[] = [
     { name: 'Notes', value: 4, group: 'No group' },
 ];
 
+// jsdom has no ResizeObserver; the open panel only needs it to exist. Without this stub the
+// spec passed only when an earlier spec in the same worker left a ResizeObserver behind.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('SelectDropdownComponent list sections', () => {
     it('shows a title above each run of items of the same group', () => {
         const { panel } = open(GROUPED);

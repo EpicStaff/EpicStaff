@@ -12,12 +12,32 @@ export interface ToastMessage {
     duration: number;
     /** Show the whole message instead of clamping it to 3 lines. */
     fullText: boolean;
+    action: ToastAction | null;
+}
+
+/** A button on a toast; using it closes the toast. */
+export interface ToastAction {
+    label: string;
+    run: () => void;
 }
 
 /** Opt-in display options of one toast. */
 export interface ToastOptions {
     /** Show the whole message, however long, instead of clamping it to 3 lines. For messages that must be read in full. */
     fullText?: boolean;
+    /** A button that does something about the message, such as downloading what has become ready. */
+    action?: ToastAction;
+}
+
+/** A released toast stays at least this long, so it does not vanish the moment the pointer leaves it. */
+export const MIN_TIME_AFTER_RELEASE_MS = 2_000;
+
+/** The countdown to a toast closing on its own, stopped while anything holds the toast. */
+interface AutoClose {
+    timer: ReturnType<typeof setTimeout> | null;
+    remainingMs: number;
+    startedAt: number;
+    holds: number;
 }
 
 @Injectable({
@@ -27,6 +47,7 @@ export class ToastService {
     private toasts = new BehaviorSubject<ToastMessage[]>([]);
     private counter = 0;
     private toastPositions = new Map<number, ToastPosition>();
+    private autoCloses = new Map<number, AutoClose>();
     public defaultPosition: ToastPosition = 'bottom-right';
 
     get toasts$(): Observable<ToastMessage[]> {
@@ -54,14 +75,13 @@ export class ToastService {
             type,
             duration,
             fullText: options.fullText ?? false,
+            action: options.action ?? null,
         };
 
         this.toasts.next([...currentToasts, newToast]);
 
-        // Remove toast after duration
-        setTimeout(() => {
-            this.remove(id);
-        }, duration);
+        this.autoCloses.set(id, { timer: null, remainingMs: duration, startedAt: 0, holds: 0 });
+        this.startAutoClose(id);
 
         return id;
     }
@@ -70,6 +90,40 @@ export class ToastService {
         const currentToasts = this.toasts.value;
         this.toasts.next(currentToasts.filter((toast) => toast.id !== id));
         this.toastPositions.delete(id);
+        const autoClose = this.autoCloses.get(id);
+        if (autoClose?.timer != null) {
+            clearTimeout(autoClose.timer);
+        }
+        this.autoCloses.delete(id);
+    }
+
+    /**
+     * Keeps the toast up while the user points at it or moves focus into it, so its button can be reached. Every
+     * hold is ended by `releaseAutoClose`; the rest of its time runs once the last hold has ended.
+     */
+    holdAutoClose(id: number): void {
+        const autoClose = this.autoCloses.get(id);
+        if (!autoClose) {
+            return;
+        }
+        autoClose.holds++;
+        if (autoClose.timer != null) {
+            clearTimeout(autoClose.timer);
+            autoClose.timer = null;
+            autoClose.remainingMs = Math.max(autoClose.remainingMs - (Date.now() - autoClose.startedAt), 0);
+        }
+    }
+
+    releaseAutoClose(id: number): void {
+        const autoClose = this.autoCloses.get(id);
+        if (!autoClose || autoClose.holds === 0) {
+            return;
+        }
+        autoClose.holds--;
+        if (autoClose.holds === 0) {
+            autoClose.remainingMs = Math.max(autoClose.remainingMs, MIN_TIME_AFTER_RELEASE_MS);
+            this.startAutoClose(id);
+        }
     }
 
     success(message: string, duration: number = 5000, position?: ToastPosition, options?: ToastOptions): void {
@@ -96,5 +150,14 @@ export class ToastService {
     // Set the default position for all toasts (unless overridden per toast)
     setDefaultPosition(position: ToastPosition): void {
         this.defaultPosition = position;
+    }
+
+    private startAutoClose(id: number): void {
+        const autoClose = this.autoCloses.get(id);
+        if (!autoClose) {
+            return;
+        }
+        autoClose.startedAt = Date.now();
+        autoClose.timer = setTimeout(() => this.remove(id), autoClose.remainingMs);
     }
 }

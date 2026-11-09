@@ -27,9 +27,11 @@ import {
     SearchComponent,
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
-import { downloadBlob, escapeHtml } from '@shared/utils';
-import { catchError, EMPTY, filter, finalize, Observable, switchMap, tap } from 'rxjs';
+import { escapeHtml } from '@shared/utils';
+import { filter, finalize, Observable, switchMap, tap } from 'rxjs';
 
+import { TransferExportService } from '../../../../core/services/transfer-export.service';
+import { TransferJobsService } from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
 import {
     AuditEnumOption,
@@ -38,7 +40,6 @@ import {
     AuditMatchScopeState,
 } from '../../models/audit-filter.models';
 import { AuditPreset, AuditPresetScope } from '../../models/audit-preset.models';
-import { AuditPresetsApiService } from '../../services/audit-presets-api.service';
 import { AuditPresetsStorageService } from '../../services/audit-presets-storage.service';
 import { buildPresetBody, restorePresetState } from '../../utils/audit-preset-body.util';
 import { selectionState, toggleAll, toggleOne } from '../../utils/audit-preset-selection.util';
@@ -215,7 +216,8 @@ export class AuditPresetsComponent implements OnInit {
     protected readonly unavailableHint = "Created outside the filters panel — it can't be opened here";
 
     private readonly presetsStorage = inject(AuditPresetsStorageService);
-    private readonly presetsApi = inject(AuditPresetsApiService);
+    private readonly transferJobs = inject(TransferJobsService);
+    private readonly transferExport = inject(TransferExportService);
     private readonly toastService = inject(ToastService);
     private readonly confirmationDialog = inject(ConfirmationDialogService);
     private readonly destroyRef = inject(DestroyRef);
@@ -400,19 +402,18 @@ export class AuditPresetsComponent implements OnInit {
         this.selectedIds.update((selected) => toggleAll(selected, this.listedIds()));
     }
 
+    // Selecting ends once the server has taken the export; the job runs on, in the jobs panel.
     protected exportSelected(): void {
         if (!this.canExportSelected()) {
             return;
         }
         this.isExporting.set(true);
-        this.download(this.presetsApi.exportPresets(this.selectedInScope()), `audit-presets-export-${Date.now()}.json`)
-            .pipe(finalize(() => this.isExporting.set(false)))
-            .subscribe(() => this.stopSelecting());
+        this.exportPresets(this.selectedInScope(), () => this.stopSelecting());
     }
 
     protected exportPreset(preset: AuditPreset): void {
         this.closeMenu(preset.id);
-        this.download(this.presetsApi.exportPreset(preset.id), `${preset.name}.json`).subscribe();
+        this.exportPresets([preset.id]);
     }
 
     protected openImport(fileInput: HTMLInputElement): void {
@@ -502,17 +503,17 @@ export class AuditPresetsComponent implements OnInit {
             );
     }
 
-    // A generic toast on export failure is deliberate: the error body arrives as a Blob, and decoding it
-    // for a message is not worth it for the rare 400 (an id that is no longer visible).
-    private download(request: Observable<Blob>, filename: string): Observable<Blob> {
-        return request.pipe(
-            tap({
-                next: (blob) => downloadBlob(blob, filename),
-                error: (error: HttpErrorResponse) => this.toastError(error, 'Could not export presets.'),
+    /** Exports as a background job, which outlives this panel; TransferExportService reports how it ends. */
+    private exportPresets(ids: number[], onAccepted?: () => void): void {
+        const start = this.transferJobs.startExport('auditFilterPresets', { ids }).pipe(
+            tap(() => {
+                if (!this.destroyRef.destroyed) {
+                    onAccepted?.();
+                }
             }),
-            catchError(() => EMPTY),
-            takeUntilDestroyed(this.destroyRef)
+            finalize(() => this.isExporting.set(false))
         );
+        this.transferExport.export(start).subscribe();
     }
 
     private toCard(preset: AuditPreset): AuditPresetCard {

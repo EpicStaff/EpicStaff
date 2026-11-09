@@ -8,13 +8,12 @@ import {
     inject,
     Injector,
     input,
-    output,
     signal,
     untracked,
     viewChildren,
 } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { BulkSelectDropdownComponent, ButtonComponent, SelectComponent, SelectItem } from '@shared/components';
+import { SearchComponent, SelectComponent, SelectItem } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { isFocusLost } from '@shared/utils';
@@ -25,38 +24,41 @@ import { RagType } from '../../../../models/base-rag.model';
 import { GetCollectionRequest } from '../../../../models/collection.model';
 import { CollectionsStorageService } from '../../../../services/collections-storage.service';
 import { CollectionComponent } from './collection/collection.component';
+import { CollectionsExportControlComponent } from './collections-export-control/collections-export-control.component';
 
 @Component({
     selector: 'app-collections-list-sidebar',
     templateUrl: './collections-list-sidebar.component.html',
     styleUrls: ['./collections-list-sidebar.component.scss'],
     imports: [
-        ButtonComponent,
         ReactiveFormsModule,
         FormsModule,
         CollectionComponent,
         SelectComponent,
+        SearchComponent,
         HasPermissionDirective,
-        BulkSelectDropdownComponent,
+        CollectionsExportControlComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionsListItemSidebarComponent {
     collections = input<GetCollectionRequest[]>([]);
 
-    onCreateCollection = output();
-    readonly importRequested = output<void>();
-
     private readonly collectionCards = viewChildren(CollectionComponent);
 
     readonly selectedCollectionId = computed(() => this.collectionsStorage.selectedCollectionId());
     selectedRagType = signal<RagType | null>(null);
+    /** The sidebar's own search; the page header's search narrows the list too. */
+    readonly searchTerm = signal('');
 
     filteredCollections = computed(() => {
-        const search = this.filesSearchService.searchTerm().toLowerCase();
+        const searches = [this.filesSearchService.searchTerm(), this.searchTerm()].map((term) =>
+            term.trim().toLowerCase()
+        );
         const ragType = this.selectedRagType();
         return this.collections().filter((collection) => {
-            const matchesSearch = collection.collection_name.toLowerCase().includes(search);
+            const name = collection.collection_name.toLowerCase();
+            const matchesSearch = searches.every((search) => name.includes(search));
             const matchesRag = !ragType || collection.rag_configurations.some((r) => r.rag_type === ragType);
             return matchesSearch && matchesRag;
         });
@@ -82,6 +84,11 @@ export class CollectionsListItemSidebarComponent {
         return visible.length > 0 && visible.every((collection) => this.checkedIds().has(collection.collection_id));
     });
 
+    /** With no collections left the export control is gone, so select mode ends with them. */
+    private readonly leaveSelectModeWhenEmpty = effect(() => {
+        if (this.collections().length === 0) untracked(() => this.exitSelectMode());
+    });
+
     /** Deleting the open collection takes the focus away with its panel: hand it to the card now in its place. */
     private readonly recoverFocusAfterRemoval = effect(() => {
         const ids = this.filteredCollections().map((collection) => collection.collection_id);
@@ -94,7 +101,7 @@ export class CollectionsListItemSidebarComponent {
     });
 
     ragTypeItems: SelectItem[] = [
-        { name: 'All', value: null },
+        { name: 'All RAG types', value: null },
         { name: 'Naive RAG', value: 'naive' },
         { name: 'Graph RAG', value: 'graph' },
         // { name: 'Hybrid RAG', value: 'hybrid' },

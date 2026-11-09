@@ -3,7 +3,7 @@ import { Observable } from 'rxjs';
 
 import { ImportFlowRequestOptions, ImportResult } from '../../../core/models/import-result.model';
 import { ImportExportService } from '../../../core/services/import-export.service';
-import { TransferJobsService } from '../../../core/services/transfer-jobs.service';
+import { StartedTransferJob, TransferJobsService } from '../../../core/services/transfer-jobs.service';
 import { GraphDto, PartialImportResponse } from '../models/graph.model';
 import { FlowUsePermissionRefusalService } from './flow-use-permission-refusal.service';
 import { FlowsStorageService } from './flows-storage.service';
@@ -31,13 +31,12 @@ export class FlowCopyImportFacadeService {
     }
 
     /**
-     * Imports a `.zip` export archive as a background job and emits the import summary once it has finished,
-     * `null` when the server gave none. Errors with the job's failure (TransferJobFailedError) when the import
-     * fails on the server.
+     * Uploads a `.zip` export archive and starts importing it as a background job; emits the job once the server
+     * has accepted it. Follow it with TransferJobsService.waitForImport.
      */
-    importFlowArchive(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult | null> {
+    startFlowArchiveImport(file: File, settings: ImportFlowRequestOptions): Observable<StartedTransferJob> {
         return this.transferJobs
-            .importAndWait('flows', file, settings)
+            .startImport('flows', file, settings)
             .pipe(this.usePermissionRefusal.catchRefusal('import'));
     }
 

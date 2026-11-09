@@ -1,6 +1,8 @@
+import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
+import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, ElementRef, input, output, viewChild } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
-import { AppSvgIconComponent, CheckboxComponent, IconButtonComponent } from '@shared/components';
+import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
@@ -18,19 +20,21 @@ import { GetCollectionRequest } from '../../../../../models/collection.model';
         AppSvgIconComponent,
         CollectionDropTargetDirective,
         CheckboxComponent,
-        IconButtonComponent,
         HasPermissionDirective,
+        CdkMenuTrigger,
+        CdkMenu,
+        CdkMenuItem,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionComponent {
     collection = input.required<GetCollectionRequest>();
     selected = input<boolean>(false);
-    /** The list is picking collections for a bulk action: the card shows a checkbox instead of its actions. */
+    /** The list is picking collections for a bulk action: the card shows a checkbox instead of its ⋮ menu. */
     selectMode = input<boolean>(false);
     /** Picked for the bulk action; only shown in select mode. */
     checked = input<boolean>(false);
-    /** Its export has not finished yet: Export is disabled until it has, so a second click starts no second job. */
+    /** Its export has not finished yet: the menu's Export is disabled until it has, so no second job starts. */
     exporting = input<boolean>(false);
 
     readonly checkedChange = output<boolean>();
@@ -40,6 +44,12 @@ export class CollectionComponent {
 
     ragTypeConfig = RAG_TYPE_CONFIG;
     ragStatusConfig = RAG_STATUS_CONFIG;
+
+    // Below the ⋮, right edges aligned: the card sits at the sidebar's right edge.
+    protected readonly menuPositions: ConnectedPosition[] = [
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+    ];
 
     protected readonly ActionCode = ActionCode;
     protected readonly ResourceCode = ResourceCode;
