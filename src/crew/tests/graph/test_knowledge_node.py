@@ -20,7 +20,9 @@ class FakeKnowledgeClient:
     """Stand-in for `clients.KnowledgeClient`: returns `search_result`, makes no HTTP calls."""
 
     search_result: list[FoundChunk] | str = [
-        FoundChunk(order=0, similarity=0.9, text="chunk text", source="doc.txt")
+        FoundChunk(
+            order=0, similarity=0.9, text="chunk text", source="doc.txt", document_id=11
+        )
     ]
 
     def __init__(self, *args, **kwargs):
@@ -77,6 +79,7 @@ def test_execute_emits_naive_extracted_chunks_message_shape(monkeypatch):
         "message_type": "extracted_chunks",
         "rag_type": "naive",
         "collection_id": 5,
+        "rag_id": 2,
         "retrieved_chunks": 1,
         "knowledge_query": "hello world",
         "rag_search_config": {
@@ -85,7 +88,13 @@ def test_execute_emits_naive_extracted_chunks_message_shape(monkeypatch):
             "similarity_threshold": 0.2,
         },
         "chunks": [
-            {"order": 0, "similarity": 0.9, "text": "chunk text", "source": "doc.txt"}
+            {
+                "order": 0,
+                "similarity": 0.9,
+                "text": "chunk text",
+                "source": "doc.txt",
+                "document_id": 11,
+            }
         ],
         "answer": None,
         "token_usage": {},
@@ -118,6 +127,7 @@ def test_execute_emits_graph_extracted_chunks_message_shape(monkeypatch, answer)
         "message_type": "extracted_chunks",
         "rag_type": "graph",
         "collection_id": 5,
+        "rag_id": 7,
         "retrieved_chunks": 0,
         "knowledge_query": "hello world",
         "chunks": [],

@@ -88,6 +88,36 @@ describe('ExtractedChunksMessageComponent', () => {
         expect(texts(element, '.chunk-text')).toEqual(['first', 'second']);
     });
 
+    it('links a naive chunk to its place in Knowledge Sources in a new tab', () => {
+        const element = render({
+            rag_type: 'naive',
+            collection_id: 4,
+            rag_id: 6,
+            chunks: [{ text: 'purple lighthouse', order: 15, document_id: 13 }],
+        });
+
+        const link = element.querySelector<HTMLAnchorElement>('a.chunk-order');
+        expect(link?.textContent?.trim()).toBe('Chunk 15');
+        expect(link?.getAttribute('href')).toBe(
+            `${window.location.origin}/storage/knowledge-sources?collection=4&rag=6&doc=13&chunk=15`
+        );
+        expect(link?.getAttribute('target')).toBe('_blank');
+    });
+
+    it('shows the chunk number as plain text when the chunk has no document', () => {
+        const element = render({
+            rag_type: 'naive',
+            rag_id: 6,
+            chunks: [
+                { text: 'saved before document_id existed', order: 3 },
+                { text: 'document unknown', order: 4, document_id: null },
+            ],
+        });
+
+        expect(element.querySelector('a.chunk-order')).toBeNull();
+        expect(texts(element, '.chunk-order')).toEqual(['Chunk 3', 'Chunk 4']);
+    });
+
     it('renders a new graph message as one answer block', () => {
         const element = render({
             rag_type: 'graph',
