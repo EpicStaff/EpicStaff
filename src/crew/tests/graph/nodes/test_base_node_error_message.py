@@ -8,6 +8,7 @@ from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
 from services.graph.exceptions import InvalidStatePathError, ReturnCodeError, StopSession
 from services.graph.nodes.base_node import BaseNode
+from src.shared.flow_templates import RefusedPlaceholderError, render_template
 
 SECRET_TEXT = "postgres://admin:sup3rs3cret@internal-db.epicstaff.local:5432/crewdb"
 GENERIC_DETAILS_PATTERN = r"^Node execution failed \(reference: [0-9a-f]{12}\)$"
@@ -33,6 +34,13 @@ class StoppedNode(BaseNode):
 
     async def execute(self, state, writer, execution_order, input_):
         raise StopSession(reason="manual stop")
+
+
+class RefusedPlaceholderNode(BaseNode):
+    TYPE = "TASK"
+
+    async def execute(self, state, writer, execution_order, input_):
+        return render_template("Answer {context._x}", {"context": {"_x": SECRET_TEXT}})
 
 
 class RecordingNode(BaseNode):
@@ -160,6 +168,25 @@ async def test_sandbox_return_code_error_keeps_its_stderr_on_the_error_card(capt
     ]
     assert len(error_messages) == 1
     assert error_messages[0].message_data.details == SANDBOX_STDERR
+    assert captured_logs == []
+
+
+@pytest.mark.asyncio
+async def test_refused_template_placeholder_is_streamed_verbatim(captured_logs):
+    node = RefusedPlaceholderNode(session_id=7, node_name="task", stop_event=StopEvent())
+    messages = []
+
+    with pytest.raises(RefusedPlaceholderError):
+        await node.run(build_state(), writer=messages.append)
+
+    error_messages = [
+        message for message in messages if message.message_data.message_type == "error"
+    ]
+    assert len(error_messages) == 1
+    assert error_messages[0].message_data.details == (
+        "Placeholder '{context._x}' is not allowed: '_x' starts with '_'. "
+        "Rename that variable or key."
+    )
     assert captured_logs == []
 
 

@@ -88,7 +88,10 @@
                         >
                             <app-variable-highlight-textarea
                                 class="att-textarea-highlight"
-                                [class.att-textarea-highlight--invalid]="isInstructionsInvalid(task) && !readonly()"
+                                [class.att-textarea-highlight--invalid]="
+                                    (isInstructionsInvalid(task) || instructionsSaveErrors()[i].length > 0) &&
+                                    !readonly()
+                                "
                                 placeholder="Describe what this task should do..."
                                 ariaLabel="Task instructions"
                                 [value]="task.instructions"
@@ -229,6 +232,8 @@
         </div>
     </div>
 </div>
+
+<app-node-save-errors [messages]="instructionsSaveErrorList()" />
 
 <app-multi-select
     #contextMultiSelect

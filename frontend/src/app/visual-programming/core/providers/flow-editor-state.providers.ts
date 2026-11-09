@@ -8,6 +8,7 @@ import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowTestRunService } from '../../services/flow-test-run.service';
 import { NodeAuthorshipStore } from '../../services/node-authorship.store';
 import { NodeFactoryService } from '../../services/node-factory.service';
+import { NodeSaveErrorsStore } from '../../services/node-save-errors.store';
 import { SavedFlowStateService } from '../../services/saved-flow-state.service';
 import { ScheduleTriggerRuntimeService } from '../../services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../services/side-panel.service';
@@ -46,4 +47,5 @@ export const FLOW_EDITOR_STATE_PROVIDERS: Provider[] = [
     { provide: NodeAuthorshipStore, useExisting: VersionPreviewNodeAuthorshipStore },
     FlowTestRunService,
     FlowDiffStateService,
+    NodeSaveErrorsStore,
 ];

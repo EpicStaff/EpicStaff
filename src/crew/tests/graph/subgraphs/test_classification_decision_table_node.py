@@ -1347,7 +1347,8 @@ async def run_prompt_and_capture(monkeypatch, prompt_text: str, variables: dict)
         ("Classify {text} as {label}", "Classify {text} as {label}"),
         ('Classify {text}. Reply {{"label": "x"}}', 'Classify hello. Reply {"label": "x"}'),
         ('Classify {text}. Reply {"label": "x"}', 'Classify {text}. Reply {"label": "x"}'),
-        ("Classify {user.name}", "Classify {user.name}"),
+        ("Classify {user.name}", "Classify Ann"),
+        ("Classify {context[user_input]}", "Classify hi"),
         ("Classify {text[0]}", "Classify {text[0]}"),
         ("Classify { brace {text}", "Classify { brace {text}"),
     ],
@@ -1357,14 +1358,17 @@ async def run_prompt_and_capture(monkeypatch, prompt_text: str, variables: dict)
         "missing-variable-sends-prompt-as-written",
         "escaped-braces",
         "json-example-sends-prompt-as-written",
-        "attribute-placeholder-not-followed",
-        "index-placeholder-not-followed",
+        "dotted-key-path",
+        "key-path",
+        "index-into-text-sends-prompt-as-written",
         "lone-brace-sends-prompt-as-written",
     ],
 )
 async def test_prompt_is_rendered_from_flow_variables(monkeypatch, prompt_text, expected_prompt):
     sent_prompt, messages = await run_prompt_and_capture(
-        monkeypatch, prompt_text, {"text": "hello", "user": {"name": "Ann"}}
+        monkeypatch,
+        prompt_text,
+        {"text": "hello", "user": {"name": "Ann"}, "context": {"user_input": "hi"}},
     )
 
     assert sent_prompt == expected_prompt
@@ -1375,19 +1379,51 @@ async def test_prompt_is_rendered_from_flow_variables(monkeypatch, prompt_text, 
 
 
 @pytest.mark.asyncio
-async def test_prompt_placeholder_cannot_read_the_crew_environment(monkeypatch):
+@pytest.mark.parametrize(
+    "placeholder",
+    [
+        "{context.__class__}",
+        "{context.update.__globals__[ast].sys.modules[os].environ[CDT_PROMPT_TEST_CANARY]}",
+    ],
+    ids=["dunder-attribute", "chain-into-the-environment"],
+)
+async def test_refused_prompt_placeholder_routes_to_the_error_node_without_an_llm_call(
+    monkeypatch, placeholder
+):
     canary_value = "canary-from-the-crew-environment"
     monkeypatch.setenv("CDT_PROMPT_TEST_CANARY", canary_value)
-    prompt_text = (
-        "Classify {obj.update.__globals__[ast].sys.modules[os].environ[CDT_PROMPT_TEST_CANARY]}"
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+    prompt_config = PromptConfigData(
+        prompt_text=f"Classify {placeholder}",
+        llm_data=make_llm_data(),
+        result_variable="classification_result",
+    )
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="prompt_row",
+            expression="True",
+            prompt_id="classify",
+            next_node="after_prompt",
+            order=0,
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(
+            condition_groups=groups,
+            prompts={"classify": prompt_config},
+            next_error_node="error_node",
+        )
     )
 
-    sent_prompt, messages = await run_prompt_and_capture(
-        monkeypatch, prompt_text, {"obj": {"k": "v"}}
-    )
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+        result = await subgraph.ainvoke(make_state({"context": {"user_input": "hi"}}))
 
-    assert sent_prompt == prompt_text
-    assert canary_value not in json.dumps(messages)
+    mock_completion.assert_not_awaited()
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    details = first_error_message(redis_service)["details"]
+    assert details.startswith("Error in condition 'prompt_row': Prompt 'classify': ")
+    assert f"'{placeholder}'" in details
+    assert canary_value not in json.dumps(published_messages(redis_service))
 
 
 @pytest.mark.asyncio
@@ -1396,21 +1432,22 @@ async def test_prompt_placeholder_cannot_read_the_crew_environment(monkeypatch):
     [
         ("Classify {text}", []),
         (
-            "Classify {user.name}",
+            "Classify {0}",
             [
                 "Classification node 'cdt_node' prompt sent as written, no placeholder filled: "
-                "placeholder 'user.name' is not a plain variable name"
+                "Placeholder '{0}' has no variable name, so it is never filled."
             ],
         ),
         (
-            "Classify {text!r}",
+            "Classify {text:>10}",
             [
                 "Classification node 'cdt_node' prompt sent as written, no placeholder filled: "
-                "placeholder 'text' uses a conversion or format spec"
+                "Placeholder '{text:>10}' has a format spec or conversion, which is not "
+                "supported. If it is example text, write its braces as '{{' and '}}'."
             ],
         ),
     ],
-    ids=["rendered-no-warning", "dotted-placeholder", "conversion"],
+    ids=["rendered-no-warning", "positional-placeholder", "format-spec"],
 )
 async def test_prompt_sent_unrendered_leaves_a_warning(monkeypatch, prompt_text, expected_warnings):
     lines: list[str] = []
