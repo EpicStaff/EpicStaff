@@ -53,6 +53,7 @@ import { TaskNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InlineSurface } from '../../../core/models/task-node.model';
 import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
+import { NodeSaveErrorsStore } from '../../../services/node-save-errors.store';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { jsonChangeFor, linkedEntityFormat, mapFieldRowChanges } from '../../../utils/diff';
@@ -79,6 +80,7 @@ import {
     InstructionsViewToggleComponent,
 } from '../shared/instructions-view-toggle/instructions-view-toggle.component';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
+import { NodeSaveErrorsComponent } from '../shared/node-save-errors/node-save-errors.component';
 import { VariableHighlightTextareaComponent } from '../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 
 const LOCAL_SURFACE_VALUE = '__local_surface__';
@@ -108,6 +110,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         DiffFieldMarkComponent,
         CodeDiffViewComponent,
         MatTooltipModule,
+        NodeSaveErrorsComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -195,6 +198,11 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.dirtyCheckTick();
         return (this.form?.get('instructions')?.value as string) ?? '';
     });
+
+    /** Why the last save refused the instructions, until they are edited. */
+    protected readonly instructionsSaveErrors = computed(() =>
+        this.nodeSaveErrors.fieldMessages(this.node().id, 'instructions', this.instructionsValue())
+    );
 
     public readonly inputMapKeys = computed<string[]>(() => {
         this.dirtyCheckTick();
@@ -284,6 +292,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         (id) => this.surfacesById().get(id as number)?.name
     );
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
     private readonly nodeSurfaceCombineApi: NodeSurfaceCombineApiService = inject(NodeSurfaceCombineApiService);
