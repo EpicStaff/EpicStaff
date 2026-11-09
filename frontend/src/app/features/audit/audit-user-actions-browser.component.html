@@ -129,13 +129,22 @@
                                         }}</span>
                                     </td>
                                     <td>{{ row.targetType }}</td>
-                                    <td>
+                                    <td [class.audit-table__linked]="row.targetUrl">
                                         <app-audit-highlight
                                             [text]="row.targetName"
                                             [term]="highlightTerm()"
                                         />
+                                        @if (row.targetUrl; as targetUrl) {
+                                            <app-go-to-button
+                                                class="audit-table__go-to"
+                                                variant="icon"
+                                                target="_blank"
+                                                [href]="targetUrl"
+                                                [label]="row.targetLinkLabel"
+                                            />
+                                        }
                                     </td>
-                                    <td>
+                                    <td [class.audit-table__linked]="row.parentUrl">
                                         <app-audit-highlight
                                             [text]="row.parentName"
                                             [term]="highlightTerm()"
@@ -147,6 +156,15 @@
                                                 }
                                                 {{ parentType }}
                                             </span>
+                                        }
+                                        @if (row.parentUrl; as parentUrl) {
+                                            <app-go-to-button
+                                                class="audit-table__go-to"
+                                                variant="icon"
+                                                target="_blank"
+                                                [href]="parentUrl"
+                                                [label]="row.parentLinkLabel"
+                                            />
                                         }
                                     </td>
                                 </tr>

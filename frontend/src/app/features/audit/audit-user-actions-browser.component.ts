@@ -6,6 +6,7 @@ import {
     ActionDropdownButtonComponent,
     ActionDropdownItem,
     AppSvgIconComponent,
+    GoToButtonComponent,
     NumberStepperComponent,
 } from '@shared/components';
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
@@ -16,6 +17,8 @@ import { debounceTime, finalize, Subject, Subscription } from 'rxjs';
 
 import { ExportFormat } from '../../core/services/import-export.service';
 import { ActiveOrgService } from '../../services/auth/active-org.service';
+import { PermissionsService } from '../../services/auth/permissions.service';
+import { ConfigService } from '../../services/config';
 import { ToastService } from '../../services/notifications';
 import { FlowsApiService } from '../flows/services/flows-api.service';
 import { MembershipsService } from '../role-base-access/services/admin/memberships.service';
@@ -39,6 +42,7 @@ import {
     userActionTone,
     userActionTypeLabel,
 } from './utils/describe-user-action.util';
+import { CanOpenPage, userActionParentUrl, userActionTargetUrl } from './utils/user-action-links.util';
 
 const DEFAULT_PAGE_SIZE = 20;
 const MIN_PAGE_SIZE = 10;
@@ -54,6 +58,11 @@ const MEMBERS_PAGE_SIZE = 200;
 
 function memberLabel({ display_name, email }: AdminMembershipUser): string {
     return display_name ? `${display_name} (${email})` : email;
+}
+
+// `Open flow Billing (opens in a new tab)`; a record that kept no name leaves it out rather than show an id
+function openLinkLabel(type: string | null, name: string | null): string {
+    return `Open ${[type, name].filter(Boolean).join(' ')} (opens in a new tab)`;
 }
 
 function byLabel(options: AuditEnumOption[]): AuditEnumOption[] {
@@ -84,6 +93,11 @@ interface UserActionRow {
     targetName: string;
     parentName: string;
     parentType: string;
+    // the page that opens the target or the parent, or null when none does or the viewer may not open it
+    targetUrl: string | null;
+    parentUrl: string | null;
+    targetLinkLabel: string;
+    parentLinkLabel: string;
 }
 
 @Component({
@@ -95,6 +109,7 @@ interface UserActionRow {
         AuditFiltersPanelComponent,
         AuditHighlightComponent,
         DatePipe,
+        GoToButtonComponent,
         HasPermissionDirective,
         NumberStepperComponent,
         ResizableSidebarDirective,
@@ -133,6 +148,11 @@ export class AuditUserActionsBrowserComponent implements OnInit {
             targetName: userActionTargetName(event),
             parentName: userActionParentName(event),
             parentType: userActionTypeLabel(event.parent_type),
+            targetUrl: userActionTargetUrl(event, this.canOpenPage),
+            parentUrl: userActionParentUrl(event, this.canOpenPage),
+            // a rename or move names the target by its new name
+            targetLinkLabel: openLinkLabel(event.target_type, event.target_name),
+            parentLinkLabel: openLinkLabel(event.parent_type, event.parent_name),
         }))
     );
     protected readonly appliedChips = computed(() =>
@@ -171,6 +191,12 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     private readonly membershipsService = inject(MembershipsService);
     private readonly activeOrgId = inject(ActiveOrgService).activeOrgId();
     private readonly toastService = inject(ToastService);
+    private readonly permissionsService = inject(PermissionsService);
+    private readonly configService = inject(ConfigService);
+    // The checks the linked pages' route guards make: permissionGuard's read access, plus chatEnabledGuard for a desk.
+    private readonly canOpenPage: CanOpenPage = (resource) =>
+        this.permissionsService.can(resource, ActionCode.Read) &&
+        (resource !== ResourceCode.Chats || this.configService.isChatEnabled);
     private readonly destroyRef = inject(DestroyRef);
     private readonly searchInput = new Subject<string>();
     private searchSubscription: Subscription | null = null;

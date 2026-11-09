@@ -96,7 +96,7 @@ const typeOnlyParent: AuditUserAction = {
     parent_type: 'flow',
 };
 
-function setup(canExport = true) {
+function setup(canExport = true, deniedResources: ResourceCode[] = []) {
     TestBed.configureTestingModule({
         providers: [
             provideHttpClient(),
@@ -108,7 +108,8 @@ function setup(canExport = true) {
                 provide: PermissionsService,
                 useValue: {
                     can: (resource: ResourceCode, action: ActionCode) =>
-                        canExport || !(resource === ResourceCode.UserAudit && action === ActionCode.Export),
+                        !deniedResources.includes(resource) &&
+                        (canExport || !(resource === ResourceCode.UserAudit && action === ActionCode.Export)),
                 },
             },
         ],
@@ -266,7 +267,46 @@ describe('AuditUserActionsBrowserComponent', () => {
         expect(root.querySelector<HTMLElement>('col')!.style.width).toBe('130px');
     });
 
-    it('shows plain rows that open nothing', async () => {
+    // per row: each link's label and where it opens, in a new tab
+    function rowLinks(root: HTMLElement): string[][] {
+        return Array.from(root.querySelectorAll('tbody tr')).map((row) =>
+            Array.from(row.querySelectorAll<HTMLAnchorElement>('a[target="_blank"]')).map(
+                (link) => `${link.getAttribute('aria-label')} -> ${link.getAttribute('href')}`
+            )
+        );
+    }
+
+    it('opens the target and its parent in a new tab, but not a deleted target', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, [editedNode, { ...editedNode, id: 'action-7', number: 46, action: 'deleted' }]);
+        await render(fixture);
+
+        expect(rowLinks(root)).toEqual([
+            [
+                'Open python node Parse invoice (opens in a new tab) -> /flows/4?nodeId=12',
+                'Open flow Billing (opens in a new tab) -> /flows/4',
+            ],
+            ['Open flow Billing (opens in a new tab) -> /flows/4'],
+        ]);
+    });
+
+    it('names a renamed target by its new name', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, [renamedFlow]);
+        await render(fixture);
+
+        expect(rowLinks(root)).toEqual([['Open flow Billing (opens in a new tab) -> /flows/4']]);
+    });
+
+    it('offers no link to a page the viewer may not open', async () => {
+        const { fixture, http, root } = setup(true, [ResourceCode.Flows]);
+        flushSearch(http, [editedNode]);
+        await render(fixture);
+
+        expect(rowLinks(root)).toEqual([[]]);
+    });
+
+    it('opens no value viewer or side panel when a row is clicked', async () => {
         const { fixture, http, root } = setup();
         flushSearch(http, [editedNode]);
         await render(fixture);

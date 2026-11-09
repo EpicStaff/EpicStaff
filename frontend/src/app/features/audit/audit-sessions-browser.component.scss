@@ -339,6 +339,26 @@
     }
 }
 
+// A cell with an "open" arrow keeps its text, and the text's ellipsis, clear of the arrow.
+.audit-table td.audit-table__linked {
+    position: relative;
+    // the 28px arrow and its 8px offset from the cell edge
+    padding-right: 36px;
+}
+
+// Pinned to the cell's right edge, beside the first line: in the flow it would make the row taller.
+.audit-table__go-to {
+    position: absolute;
+    top: 2px;
+    right: 8px;
+    display: flex;
+
+    // The cell clips past its edges and the button nearly fills its height, so the keyboard ring goes inside it.
+    ::ng-deep .go-to-button:focus-visible {
+        outline-offset: -2px;
+    }
+}
+
 .audit-table__date {
     color: var(--color-text-secondary);
     font-variant-numeric: tabular-nums;
