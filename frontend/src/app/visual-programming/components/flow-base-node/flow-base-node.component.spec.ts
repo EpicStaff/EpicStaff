@@ -9,6 +9,7 @@ import { AgentDefinitionsApiService } from '../../../features/agent-definitions/
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { GraphVersionSnapshot } from '../../../features/flows/models/graph-version-preview.model';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
+import { FULL_FILE_ACCESS_TOOLTIP, NO_FILE_ACCESS_TOOLTIP } from '../../core/helpers/storage-grants.util';
 import { KeyValueMode } from '../../core/models/key-value-node.model';
 import { NodeModel, SubGraphNodeModel } from '../../core/models/node.model';
 import { FlowService } from '../../services/flow.service';
@@ -69,7 +70,12 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         );
     const tooltipOf = (element: HTMLElement): string => getDebugNode(element)!.injector.get(MatTooltip).message;
 
-    function render(node: NodeModel, readOnly = false): void {
+    function render(
+        node: NodeModel,
+        readOnly = false,
+        noFileAccessNodeIds: string[] = [],
+        fullFileAccessNodeIds: string[] = []
+    ): void {
         TestBed.configureTestingModule({
             providers: [
                 { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(readOnly) } },
@@ -88,6 +94,10 @@ describe('FlowBaseNodeComponent key-value summary', () => {
                 },
             ],
         });
+        vi.spyOn(TestBed.inject(FlowService), 'nodeIdsWithoutFileAccess').mockReturnValue(new Set(noFileAccessNodeIds));
+        vi.spyOn(TestBed.inject(FlowService), 'nodeIdsWithFullFileAccess').mockReturnValue(
+            new Set(fullFileAccessNodeIds)
+        );
         fixture = TestBed.createComponent(FlowBaseNodeComponent);
         fixture.componentRef.setInput('node', node);
         fixture.detectChanges();
@@ -145,6 +155,149 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         render(NO_TABLE_NODE);
 
         expect(tooltipOf(noTableBadge()!)).toBe('Select a table in the node panel');
+    });
+
+    const headerBadges = (): HTMLElement[] =>
+        Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.header .node-badge'));
+
+    it('shows no badge on a node without warnings', () => {
+        render(KEY_VALUE_NODE);
+
+        expect(headerBadges()).toEqual([]);
+    });
+
+    it('shows a single warning as its own badge in the header, with its own tooltip', () => {
+        render(NO_TABLE_NODE);
+
+        expect(headerBadges().map((badge) => badge.textContent!.trim())).toEqual(['No table']);
+        expect(tooltipOf(headerBadges()[0])).toBe('Select a table in the node panel');
+    });
+
+    it('folds several warnings into one chip that counts them and lists every message on its own bulleted line', () => {
+        render(NO_TABLE_NODE, false, [NO_TABLE_NODE.id]);
+
+        expect(headerBadges().map((badge) => badge.textContent!.trim())).toEqual(['2 issues']);
+        expect(tooltipOf(headerBadges()[0])).toBe(
+            [`• ${NO_FILE_ACCESS_TOOLTIP}`, '• Select a table in the node panel'].join('\n')
+        );
+        expect(getDebugNode(headerBadges()[0])!.injector.get(MatTooltip).tooltipClass).toBe('multiline-tooltip');
+    });
+
+    const hasClass = (badge: HTMLElement, name: string): boolean => badge.classList.contains(name);
+    const TRIGGER_NODE = { ...KEY_VALUE_NODE, type: NodeType.SCHEDULE_TRIGGER } as unknown as NodeModel;
+
+    it('shows a node with never-configured file access as one amber "Full file access" badge', () => {
+        render(KEY_VALUE_NODE, false, [], [KEY_VALUE_NODE.id]);
+
+        const [badge] = headerBadges();
+        expect(badge.textContent!.trim()).toBe('Full file access');
+        expect(tooltipOf(badge)).toBe(FULL_FILE_ACCESS_TOOLTIP);
+        expect(hasClass(badge, 'caution-badge')).toBe(true);
+        expect(hasClass(badge, 'llm-warning-badge')).toBe(false);
+    });
+
+    it('counts a never-configured file access among the issues, red while an error is behind the chip', () => {
+        render(NO_TABLE_NODE, false, [], [NO_TABLE_NODE.id]);
+
+        const [chip] = headerBadges();
+        expect(chip.textContent!.trim()).toBe('2 issues');
+        expect(tooltipOf(chip)).toBe(
+            [`• ${FULL_FILE_ACCESS_TOOLTIP}`, '• Select a table in the node panel'].join('\n')
+        );
+        expect(hasClass(chip, 'llm-warning-badge')).toBe(true);
+    });
+
+    it('turns the chip amber when only cautions are behind it', () => {
+        render(TRIGGER_NODE, false, [], [TRIGGER_NODE.id, 'other']);
+
+        const [chip] = headerBadges();
+        expect(chip.textContent!.trim()).toBe('2 issues');
+        expect(hasClass(chip, 'caution-badge')).toBe(true);
+        expect(hasClass(chip, 'llm-warning-badge')).toBe(false);
+    });
+
+    it('sums up the nodes with never-configured file access on a trigger node, next to those with none', () => {
+        render(TRIGGER_NODE, false, ['a'], ['b', 'c']);
+
+        const [chip] = headerBadges();
+        expect(chip.textContent!.trim()).toBe('2 issues');
+        expect(tooltipOf(chip)).toBe(
+            [
+                '• 1 node has no file access when this flow is started by a trigger.',
+                '• 2 nodes have full file access (not configured) when this flow is started by a trigger.',
+            ].join('\n')
+        );
+    });
+
+    it('shows the trigger summary of never-configured nodes alone as one amber badge', () => {
+        render(TRIGGER_NODE, false, [], ['b']);
+
+        const [badge] = headerBadges();
+        expect(badge.textContent!.trim()).toBe('1 node with full file access (not configured)');
+        expect(tooltipOf(badge)).toBe(
+            '1 node has full file access (not configured) when this flow is started by a trigger.'
+        );
+        expect(hasClass(badge, 'caution-badge')).toBe(true);
+    });
+
+    it('makes a badge focusable and described by its tooltip text, keeping its visible label', () => {
+        render(NO_TABLE_NODE, false, [NO_TABLE_NODE.id]);
+
+        TestBed.tick();
+        const [chip] = headerBadges();
+        const description = document.getElementById(chip.getAttribute('aria-describedby')!);
+        expect(chip.getAttribute('tabindex')).toBe('0');
+        expect(chip.hasAttribute('aria-label')).toBe(false);
+        expect(chip.textContent!.trim()).toBe('2 issues');
+        expect(description!.textContent).toBe(tooltipOf(chip));
+    });
+
+    const WEBHOOK_NODE = { ...KEY_VALUE_NODE, type: NodeType.WEBHOOK_TRIGGER } as unknown as NodeModel;
+
+    it('does not count an unconfigured webhook trigger twice: its own badge stands, its summary leaves it out', () => {
+        render(WEBHOOK_NODE, false, [], [WEBHOOK_NODE.id]);
+
+        expect(headerBadges().map((badge) => badge.textContent!.trim())).toEqual(['Full file access']);
+    });
+
+    it('counts only the other nodes in the summary of a webhook trigger that is itself unconfigured', () => {
+        render(WEBHOOK_NODE, false, [], [WEBHOOK_NODE.id, 'other']);
+
+        const [chip] = headerBadges();
+        expect(chip.textContent!.trim()).toBe('2 issues');
+        expect(tooltipOf(chip)).toBe(
+            [
+                `• ${FULL_FILE_ACCESS_TOOLTIP}`,
+                '• 1 node has full file access (not configured) when this flow is started by a trigger.',
+            ].join('\n')
+        );
+    });
+
+    it('counts only the other nodes in the no-access summary of a webhook trigger that has no access itself', () => {
+        render(WEBHOOK_NODE, false, [WEBHOOK_NODE.id, 'other'], []);
+
+        const [chip] = headerBadges();
+        expect(chip.textContent!.trim()).toBe('2 issues');
+        expect(tooltipOf(chip)).toBe(
+            [`• ${NO_FILE_ACCESS_TOOLTIP}`, '• 1 node has no file access when this flow is started by a trigger.'].join(
+                '\n'
+            )
+        );
+    });
+
+    function hoverTitle(clientWidth: number, scrollWidth: number): MatTooltip {
+        const name: HTMLElement = fixture.nativeElement.querySelector('.header .title__text');
+        Object.defineProperty(name, 'clientWidth', { value: clientWidth, configurable: true });
+        Object.defineProperty(name, 'scrollWidth', { value: scrollWidth, configurable: true });
+        name.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        return getDebugNode(name)!.injector.get(MatTooltip);
+    }
+
+    it('shows the full name on hover only when it is cut off', () => {
+        render({ ...NO_TABLE_NODE, node_name: 'A very very long key-value node name that cannot fit' });
+
+        expect(hoverTitle(100, 300).disabled).toBe(false);
+        expect(hoverTitle(300, 300).disabled).toBe(true);
     });
 
     it('flags a node without a table in a read-only flow without asking to pick one', () => {

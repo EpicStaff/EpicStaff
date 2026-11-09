@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, input, linkedSignal, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, linkedSignal, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ToggleSwitchComponent } from '@shared/components';
+import { HintMessageComponent, ToggleSwitchComponent } from '@shared/components';
 
 const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
 # ── Storage API ─────────────────────────────────
@@ -20,18 +20,21 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
 
 @Component({
     selector: 'app-node-storage-section',
-    imports: [FormsModule, ToggleSwitchComponent],
+    imports: [FormsModule, HintMessageComponent, ToggleSwitchComponent],
     template: `
         <div class="storage-section">
             <div class="storage-header">
                 <span class="section-label">Enable Storage</span>
                 <app-toggle-switch
                     ariaLabel="Enable Storage"
-                    [disabled]="readonly()"
+                    [disabled]="readonly() || !!shownLockReason()"
                     [checked]="enabled()"
                     (checkedChange)="onToggle($event)"
                 ></app-toggle-switch>
             </div>
+            @if (shownLockReason(); as reason) {
+                <app-hint-message tone="warning">{{ reason }}</app-hint-message>
+            }
         </div>
     `,
     styleUrl: './node-storage-section.component.scss',
@@ -40,6 +43,10 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
 export class NodeStorageSectionComponent {
     readonly useStorage = input.required<boolean>();
     readonly readonly = input<boolean>(false);
+    /** Why the switch may not be turned on, shown under it; the switch is disabled while set. */
+    readonly lockReason = input<string | null>(null);
+    /** The reason is shown only when it is the sole blocker: a read-only section already says nothing can change. */
+    protected readonly shownLockReason = computed(() => (this.readonly() ? null : this.lockReason()));
 
     readonly onInsertCode = output<string>();
     readonly onRemoveCode = output<string>();

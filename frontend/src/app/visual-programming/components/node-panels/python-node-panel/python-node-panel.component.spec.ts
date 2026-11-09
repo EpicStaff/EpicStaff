@@ -11,8 +11,9 @@ import {
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
     SelectComponent,
+    ToggleSwitchComponent,
 } from '@shared/components';
-import { NodeType, ResourceCode } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { of, Subject } from 'rxjs';
@@ -33,6 +34,7 @@ import {
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { PythonNode } from '../../../core/models/python-node.model';
+import { StorageGrants } from '../../../core/models/storage-grants.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { FlowService } from '../../../services/flow.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
@@ -943,7 +945,7 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
     );
 
     describe('changed storage grants', () => {
-        const NOT_CONFIGURED = { read: null, write: null, delete: null };
+        const NOT_CONFIGURED: StorageGrants = { read: null, write: null, delete: null };
 
         it.each([
             {
@@ -1164,19 +1166,19 @@ describe('PythonNodePanelComponent venv selection', () => {
     });
 });
 
+/** Stands in for the venv picker, a form control the panel renders without its forms module here. */
+@Component({ selector: 'app-select', template: '' })
+class VenvSelectStubComponent {
+    readonly readonly = input(false);
+}
+
+/** Stands in for the Input List: `nodeName` would otherwise land on the read-only DOM property. */
+@Component({ selector: 'app-input-map', template: '' })
+class InputMapStubComponent {
+    readonly nodeName = input<string>();
+}
+
 describe('PythonNodePanelComponent code that reads secrets', () => {
-    /** Stands in for the venv picker, a form control the panel renders without its forms module here. */
-    @Component({ selector: 'app-select', template: '' })
-    class VenvSelectStubComponent {
-        readonly readonly = input(false);
-    }
-
-    /** Stands in for the Input List: `nodeName` would otherwise land on the read-only DOM property. */
-    @Component({ selector: 'app-input-map', template: '' })
-    class InputMapStubComponent {
-        readonly nodeName = input<string>();
-    }
-
     let fixture: ComponentFixture<PythonNodePanelComponent>;
 
     /** The real panel template, for a node whose code reads secret 7; the controls not checked are unknown elements. */
@@ -1238,5 +1240,124 @@ describe('PythonNodePanelComponent code that reads secrets', () => {
         open(true);
 
         expect(locks()).toEqual({ codeEditor: false, venv: false, storage: false, hint: false });
+    });
+});
+
+describe('PythonNodePanelComponent storage grant lock for a not-configured node', () => {
+    const NOT_CONFIGURED: StorageGrants = { read: null, write: null, delete: null };
+    const ALL_FILES = [ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete];
+
+    function open(
+        files: ActionCode[],
+        useStorage: boolean,
+        storageGrants: StorageGrants = NOT_CONFIGURED
+    ): PythonNodePanelComponent {
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            resource === ResourceCode.Files ? files.includes(action) : true,
+                        canEditSecrets: () => true,
+                        isActivePermissionsLoaded: () => true,
+                    },
+                },
+            ],
+        });
+        TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
+        const fixture = TestBed.createComponent(PythonNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...pythonNode,
+            data: { ...pythonNode.data, secret_ids: [], use_storage: useStorage },
+            storageGrants,
+        });
+        fixture.detectChanges();
+        return fixture.componentInstance;
+    }
+
+    it('locks the panel when storage is on and the user lacks a Files action', () => {
+        const panel = open([ActionCode.Read, ActionCode.Create], true);
+
+        expect(panel.storageGrantLock()).toBe(
+            "This code runs with Files: Update, Files: Delete, which you don't have. Contact an admin to change it."
+        );
+        expect(panel.isReadOnly()).toBe(true);
+        expect(panel.form.disabled).toBe(true);
+        expect(panel.storageToggleLock()).toBeNull();
+    });
+
+    it('leaves the panel editable but refuses to turn storage on when storage is off', () => {
+        const panel = open([ActionCode.Read], false);
+
+        expect(panel.storageGrantLock()).toBeNull();
+        expect(panel.isReadOnly()).toBe(false);
+        expect(panel.form.enabled).toBe(true);
+        expect(panel.storageToggleLock()).toBe(
+            "Storage gives this code Files: Create, Files: Update, Files: Delete, which you don't have. Contact an admin to turn it on."
+        );
+    });
+
+    it.each([true, false])('locks nothing for a user holding every Files action (storage on: %s)', (useStorage) => {
+        const panel = open(ALL_FILES, useStorage);
+
+        expect(panel.isReadOnly()).toBe(false);
+        expect(panel.storageToggleLock()).toBeNull();
+    });
+
+    it('renders the toggle lock on the real storage section: switch disabled, reason under it', () => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            resource === ResourceCode.Files ? action === ActionCode.Read : true,
+                        canEditSecrets: () => true,
+                        isActivePermissionsLoaded: () => true,
+                    },
+                },
+                { provide: VenvsApiService, useValue: { getVenvs: () => of([]) } },
+                { provide: SecretsStorageService, useValue: { namesForIds: () => [] } },
+                { provide: RuffWasmService, useValue: { check: () => Promise.resolve([]) } },
+                { provide: RuffDiagnosticsService, useValue: { setMarkers: () => {}, hasSyntaxErrors: () => false } },
+            ],
+        });
+        TestBed.overrideComponent(PythonNodePanelComponent, {
+            set: {
+                imports: [
+                    CodeEditorComponent,
+                    NodeStorageSectionComponent,
+                    VenvSelectStubComponent,
+                    InputMapStubComponent,
+                ],
+                schemas: [NO_ERRORS_SCHEMA],
+            },
+        });
+        TestBed.overrideComponent(CodeEditorComponent, { set: { template: '', imports: [] } });
+        const fixture = TestBed.createComponent(PythonNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...pythonNode,
+            data: { ...pythonNode.data, secret_ids: [], use_storage: false },
+            storageGrants: NOT_CONFIGURED,
+        });
+        fixture.detectChanges();
+
+        const section = fixture.debugElement.query(By.directive(NodeStorageSectionComponent));
+        expect(section.query(By.directive(ToggleSwitchComponent)).componentInstance.disabled()).toBe(true);
+        expect((section.nativeElement.textContent ?? '').trim()).toContain(
+            "Storage gives this code Files: Create, Files: Update, Files: Delete, which you don't have."
+        );
+    });
+
+    it('leaves a configured node unchanged: explicit no access with storage on does not lock', () => {
+        const panel = open([], true, { read: false, write: false, delete: false });
+
+        expect(panel.isReadOnly()).toBe(false);
+        expect(panel.storageToggleLock()).toBeNull();
     });
 });

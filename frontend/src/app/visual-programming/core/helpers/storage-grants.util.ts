@@ -4,9 +4,15 @@ import {
     missingStorageGrantActions,
     STORAGE_GRANT_FILES_ACTIONS,
     storageGrantLockMessage,
+    storageToggleLockMessage,
 } from '@shared/utils';
 
-import { ClassificationDecisionTableNodeModel, NodeModel } from '../models/node.model';
+import {
+    ClassificationDecisionTableNodeModel,
+    NodeModel,
+    PythonNodeModel,
+    WebhookTriggerNodeModel,
+} from '../models/node.model';
 import {
     CdtStorageGrantFields,
     StorageGrantFields,
@@ -130,24 +136,95 @@ export function canSetStorageGrant(kind: StorageGrant, can: PermissionCheck): bo
     return STORAGE_GRANT_FILES_ACTIONS[kind].every((action) => can(ResourceCode.Files, action));
 }
 
+/**
+ * Whether the user may tick or untick one box of a slot with these grants. Leaving "not configured" makes the
+ * other boxes explicit false, so it takes the permissions behind every action; a configured slot takes its own.
+ */
+export function canEditStorageGrant(
+    grants: StorageGrants | undefined,
+    kind: StorageGrant,
+    can: PermissionCheck
+): boolean {
+    if (grants && !isStorageGrantConfigured(grants)) {
+        return STORAGE_GRANT_KINDS.every((each) => canSetStorageGrant(each, can));
+    }
+    return canSetStorageGrant(kind, can);
+}
+
+/** Shown on every box of a not-configured slot for a user who does not hold every Files permission. */
+export const NOT_CONFIGURED_GRANTS_DISABLED_TOOLTIP =
+    "Only someone with every Files permission can set file access for a node that isn't configured yet.";
+
 export function storageGrantDisabledTooltip(kind: StorageGrant): string {
     const needed = STORAGE_GRANT_FILES_ACTIONS[kind].map(filesPermissionLabel).join(' and ');
     return `Your role lacks the permission needed to change this: ${needed}.`;
 }
 
 /**
- * The note that locks a slot's code and its steering fields, or `null`: the slot's grants include a permission
- * the user's own role lacks. While the user's permissions are not loaded nothing locks, the server decides.
+ * Whether the slot's code reaches the flow's storage, which is what makes a not-configured slot hold every
+ * Files action on the server: a file extractor and an audio transcription always do, Python and webhook code
+ * and each classification table slot when its storage switch is on. An agent or task is decided by its tools,
+ * which the editor does not resolve, so only the server refuses those.
+ */
+export function slotInvolvesStorage(node: NodeModel, slot: StorageGrantSlot = 'main'): boolean {
+    switch (node.type) {
+        case NodeType.FILE_EXTRACTOR:
+        case NodeType.AUDIO_TO_TEXT:
+            return true;
+        case NodeType.PYTHON:
+            return (node as PythonNodeModel).data?.use_storage === true;
+        case NodeType.WEBHOOK_TRIGGER:
+            return (node as WebhookTriggerNodeModel).data?.use_storage === true;
+        case NodeType.CLASSIFICATION_TABLE: {
+            const table = (node as ClassificationDecisionTableNodeModel).data?.table;
+            if (slot === 'pre') return table?.pre_use_storage === true;
+            if (slot === 'post') return table?.post_use_storage === true;
+            return false;
+        }
+        default:
+            return false;
+    }
+}
+
+/**
+ * The grants a slot holds for locking: the ones it grants when configured; all three when it is not configured
+ * and its code reaches storage (the server counts that as every action); none otherwise.
+ */
+export function heldStorageGrantKinds(grants: StorageGrants | undefined, involvesStorage: boolean): StorageGrant[] {
+    if (!grants) return [];
+    if (isStorageGrantConfigured(grants)) return STORAGE_GRANT_KINDS.filter((kind) => grants[kind] === true);
+    return involvesStorage ? [...STORAGE_GRANT_KINDS] : [];
+}
+
+/**
+ * The note that locks a slot's code and its steering fields, or `null`: the grants the slot holds include a
+ * permission the user's own role lacks. While the user's permissions are not loaded nothing locks, the server decides.
  */
 export function storageGrantLockOf(
     grants: StorageGrants | undefined,
     can: PermissionCheck,
-    arePermissionsLoaded: () => boolean
+    arePermissionsLoaded: () => boolean,
+    involvesStorage = false
 ): string | null {
     if (!grants || !arePermissionsLoaded()) return null;
-    const granted = STORAGE_GRANT_KINDS.filter((kind) => grants[kind] === true);
-    const missing = missingStorageGrantActions(granted, (action) => can(ResourceCode.Files, action));
+    const held = heldStorageGrantKinds(grants, involvesStorage);
+    const missing = missingStorageGrantActions(held, (action) => can(ResourceCode.Files, action));
     return missing.length ? storageGrantLockMessage('code', missing) : null;
+}
+
+/**
+ * The note that keeps a storage switch off, or `null`: the slot is not configured, its storage is off, and the
+ * user lacks a Files action that turning storage on would make the code hold. Nothing else locks the slot yet.
+ */
+export function storageToggleLockOf(
+    grants: StorageGrants | undefined,
+    can: PermissionCheck,
+    arePermissionsLoaded: () => boolean,
+    involvesStorage: boolean
+): string | null {
+    if (!grants || isStorageGrantConfigured(grants) || involvesStorage || !arePermissionsLoaded()) return null;
+    const missing = missingStorageGrantActions(STORAGE_GRANT_KINDS, (action) => can(ResourceCode.Files, action));
+    return missing.length ? storageToggleLockMessage(missing) : null;
 }
 
 /**
@@ -208,4 +285,41 @@ export function hasNoFileAccessSlot(node: NodeModel): boolean {
 export function nodeIdsWithoutFileAccessWhenTriggered(nodes: readonly NodeModel[]): ReadonlySet<string> {
     if (!nodes.some((node) => isTriggerNodeType(node.type))) return new Set();
     return new Set(nodes.filter(hasNoFileAccessSlot).map((node) => node.id));
+}
+
+const FULL_FILE_ACCESS_CONSEQUENCE =
+    "code can read, write and delete the flow's files when the flow is started by a trigger. Set its file access in the node panel.";
+
+/** Shown on a node whose file access was never configured: the legacy behaviour gives its code every access. */
+export const FULL_FILE_ACCESS_TOOLTIP = `Not configured: this node's ${FULL_FILE_ACCESS_CONSEQUENCE}`;
+
+const CDT_SLOT_NAMES = { pre: 'pre-computation', post: 'post-computation' } as const;
+
+/** The tooltip for a classification table: names the code slot(s) whose file access is not configured. */
+export function fullFileAccessTooltipForSlots(slots: readonly ('pre' | 'post')[]): string {
+    const names = slots.map((slot) => CDT_SLOT_NAMES[slot]).join(' and ');
+    return `Not configured (${names}): this node's ${FULL_FILE_ACCESS_CONSEQUENCE}`;
+}
+
+/** The slots of a node whose grants were never configured (all three still null); `main` for a single-slot node. */
+export function notConfiguredFileAccessSlots(node: NodeModel): StorageGrantSlot[] {
+    if (!hasStorageGrantsForNodeType(node.type)) return [];
+    const isNotConfigured = (grants: StorageGrants | undefined): boolean =>
+        !!grants && !isStorageGrantConfigured(grants);
+    if (node.type === NodeType.CLASSIFICATION_TABLE) {
+        const table = node as ClassificationDecisionTableNodeModel;
+        return (['pre', 'post'] as const).filter(
+            (slot) => isNotConfigured(getNodeStorageGrants(table, slot)) && cdtSlotHasCode(table, slot)
+        );
+    }
+    return isNotConfigured(getNodeStorageGrants(node)) ? ['main'] : [];
+}
+
+/**
+ * The ids of the nodes whose file access was never configured, so the legacy full access applies when a trigger
+ * starts the flow. Empty when the flow has no trigger node.
+ */
+export function nodeIdsWithFullFileAccessWhenTriggered(nodes: readonly NodeModel[]): ReadonlySet<string> {
+    if (!nodes.some((node) => isTriggerNodeType(node.type))) return new Set();
+    return new Set(nodes.filter((node) => notConfiguredFileAccessSlots(node).length > 0).map((node) => node.id));
 }

@@ -149,9 +149,11 @@
                 }
             }
 
+            // The name gives way (ellipsis, full name on hover) so a badge never covers it or leaves the node.
             .title-column {
                 @include mixins.node-title-with-number;
                 flex: 1 1 auto;
+                min-width: 0;
             }
 
             .title {
@@ -162,9 +164,15 @@
                 font-weight: 500;
                 letter-spacing: 0.5px;
                 color: inherit;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
+                min-width: 0;
+
+                // A flex item's own text cannot take an ellipsis, so the name sits in a span that can.
+                &__text {
+                    min-width: 0;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
 
                 .active-dot {
                     display: inline-block;
@@ -176,29 +184,56 @@
                 }
             }
 
-            .blocked-badge {
+            // One badge, or one chip standing in for several: kept whole at the right of the header, cut with an
+            // ellipsis (the tooltip has the full text) once it passes the share of the row the name leaves it.
+            .node-badge {
+                flex-shrink: 0;
+                min-width: 0;
+                max-width: 60%;
                 margin-left: auto;
+                box-sizing: border-box;
                 font-size: 0.6875rem;
                 padding: 2px 6px;
                 border-radius: 10px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .blocked-badge {
                 background: var(--red-400-alpha-15);
                 color: var(--red-405);
                 border: 1px solid var(--red-400-alpha-60);
-                white-space: nowrap;
             }
 
             .llm-warning-badge {
-                margin-left: auto;
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-                font-size: 0.6875rem;
-                padding: 2px 6px;
-                border-radius: 10px;
                 background: color-mix(in srgb, var(--color-error) 15%, transparent);
                 color: var(--color-error);
                 border: 1px solid color-mix(in srgb, var(--color-error) 60%, transparent);
-                white-space: nowrap;
+            }
+
+            // Amber: file access that was never set, something to review rather than a fault.
+            .caution-badge {
+                background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+                color: var(--color-warning);
+                border: 1px solid color-mix(in srgb, var(--color-warning) 60%, transparent);
+            }
+
+            .llm-warning-badge,
+            .caution-badge {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+
+                app-svg-icon {
+                    flex-shrink: 0;
+                }
+
+                span {
+                    min-width: 0;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
             }
         }
 

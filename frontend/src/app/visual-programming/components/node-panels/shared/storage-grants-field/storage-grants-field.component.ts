@@ -6,8 +6,9 @@ import { StorageGrant } from '@shared/models';
 
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import {
-    canSetStorageGrant,
+    canEditStorageGrant,
     isStorageGrantConfigured,
+    NOT_CONFIGURED_GRANTS_DISABLED_TOOLTIP,
     STORAGE_GRANT_KINDS,
     STORAGE_GRANT_LABELS,
     storageGrantDisabledTooltip,
@@ -82,13 +83,19 @@ export class StorageGrantsFieldComponent implements ControlValueAccessor {
     protected readonly options = computed<StorageGrantOption[]>(() => {
         const grants = this.grants();
         return STORAGE_GRANT_KINDS.map((kind) => {
-            const permitted = canSetStorageGrant(kind, (resource, action) => this.permissions.can(resource, action));
+            const permitted = canEditStorageGrant(grants, kind, (resource, action) =>
+                this.permissions.can(resource, action)
+            );
             return {
                 kind,
                 label: STORAGE_GRANT_LABELS[kind],
                 checked: grants?.[kind] === true,
                 disabled: this.readonly() || !permitted,
-                tooltip: permitted ? '' : storageGrantDisabledTooltip(kind),
+                tooltip: permitted
+                    ? ''
+                    : this.isNotConfigured()
+                      ? NOT_CONFIGURED_GRANTS_DISABLED_TOOLTIP
+                      : storageGrantDisabledTooltip(kind),
             };
         });
     });

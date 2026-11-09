@@ -165,6 +165,7 @@
                     <app-diff-field-mark [diffField]="'use_storage'">
                         <app-node-storage-section
                             [readonly]="isCodeReadOnly()"
+                            [lockReason]="storageToggleLock()"
                             [useStorage]="useStorage()"
                             (onToggleChange)="onStorageToggle($event)"
                             (onInsertCode)="insertStorageCode($event)"

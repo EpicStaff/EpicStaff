@@ -76,11 +76,31 @@ describe('BaseSidePanel storage grant lock', () => {
         expect(fixture.componentInstance.form.enabled).toBe(true);
     });
 
-    it('does not lock a node with grants that are off or not configured', () => {
+    it('does not lock a node whose grants are explicitly off', () => {
         grantFilesPermissions([]);
 
         expect(banner(render({ read: false, write: false, delete: false }))).toBeNull();
-        expect(banner(render({ read: null, write: null, delete: null }))).toBeNull();
+    });
+
+    it('locks a not-configured node for a user lacking a Files action: it always reaches storage', () => {
+        grantFilesPermissions([ActionCode.Read]);
+
+        const fixture = render({ read: null, write: null, delete: null });
+
+        expect(banner(fixture)).toBe(
+            "This code runs with Files: Create, Files: Update, Files: Delete, which you don't have. Contact an admin to change it."
+        );
+        expect(fixture.componentInstance.isReadOnly()).toBe(true);
+        expect(fixture.componentInstance.form.disabled).toBe(true);
+    });
+
+    it('does not lock a not-configured node for a user holding every Files action', () => {
+        grantFilesPermissions(ALL_FILES);
+
+        const fixture = render({ read: null, write: null, delete: null });
+
+        expect(banner(fixture)).toBeNull();
+        expect(fixture.componentInstance.isReadOnly()).toBe(false);
     });
 
     it('does not lock before the permissions are loaded, and locks once they arrive', () => {

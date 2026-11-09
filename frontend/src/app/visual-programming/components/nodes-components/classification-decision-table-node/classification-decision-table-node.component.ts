@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { FFlowModule } from '@foblex/flow';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 import { NODE_COLORS, NODE_ICONS } from '@shared/models';
@@ -20,7 +21,17 @@ import { formatNodeLabel } from '@shared/utils';
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
-import { NO_FILE_ACCESS_TOOLTIP } from '../../../core/helpers/storage-grants.util';
+import {
+    buildNodeWarningChip,
+    enableTooltipOnlyWhenTruncated,
+    NodeWarningBadge,
+    nodeWarningChipKind,
+} from '../../../core/helpers/node-warning-badge.util';
+import {
+    fullFileAccessTooltipForSlots,
+    NO_FILE_ACCESS_TOOLTIP,
+    notConfiguredFileAccessSlots,
+} from '../../../core/helpers/storage-grants.util';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
@@ -29,6 +40,13 @@ import { FlowService } from '../../../services/flow.service';
 import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../../services/flow-settings.service';
+
+interface CdtHeaderBadge {
+    kind: 'errors' | 'file-access' | 'caution';
+    label: string;
+    tooltip: string;
+    tooltipClass: string;
+}
 
 @Component({
     selector: 'app-classification-decision-table-node',
@@ -116,6 +134,10 @@ export class ClassificationDecisionTableNodeComponent {
         this.flowService.nodeIdsWithoutFileAccess().has(this.node.id)
     );
 
+    readonly hasFullFileAccessWhenTriggered = computed(() =>
+        this.flowService.nodeIdsWithFullFileAccess().has(this.node.id)
+    );
+
     get title(): string {
         return this.node.node_name || 'Classification Table';
     }
@@ -190,6 +212,54 @@ export class ClassificationDecisionTableNodeComponent {
     get errorsBadgeLabel(): string {
         const n = this.errorMessages.length;
         return n === 1 ? '1 issue' : `${n} issues`;
+    }
+
+    /**
+     * The one badge the header shows: a lone group of errors, or the missing file access, or a chip when there are
+     * several messages (every error plus the file access), listing them one per line; `null` when there is none.
+     */
+    protected get headerBadge(): CdtHeaderBadge | null {
+        const errors = this.errorMessages.map((message) => `${message}.`);
+        const hasNoFileAccess = this.hasNoFileAccessWhenTriggered();
+        const fullAccessSlots = this.hasFullFileAccessWhenTriggered() ? this.fullFileAccessSlots() : [];
+        const hasFullAccess = fullAccessSlots.length > 0;
+        const fullAccessTooltip = fullFileAccessTooltipForSlots(fullAccessSlots);
+        const badges: NodeWarningBadge[] = [
+            ...errors.map((message): NodeWarningBadge => ({ kind: 'warning', label: message, tooltip: message })),
+            ...(hasNoFileAccess
+                ? [{ kind: 'warning', label: 'No file access', tooltip: this.noFileAccessTooltip } as const]
+                : []),
+            ...(hasFullAccess
+                ? [{ kind: 'caution', label: 'Full file access', tooltip: fullAccessTooltip } as const]
+                : []),
+        ];
+        if (badges.length >= 2) {
+            const kind = nodeWarningChipKind(badges) === 'caution' ? 'caution' : 'errors';
+            return { kind, ...buildNodeWarningChip(badges.map((badge) => badge.tooltip)) };
+        }
+        if (errors.length > 0) {
+            return { kind: 'errors', label: this.errorsBadgeLabel, tooltip: this.errorsTooltip, tooltipClass: '' };
+        }
+        if (hasNoFileAccess) {
+            return {
+                kind: 'file-access',
+                label: 'No file access',
+                tooltip: this.noFileAccessTooltip,
+                tooltipClass: '',
+            };
+        }
+        if (hasFullAccess) {
+            return { kind: 'caution', label: 'Full file access', tooltip: fullAccessTooltip, tooltipClass: '' };
+        }
+        return null;
+    }
+
+    private fullFileAccessSlots(): ('pre' | 'post')[] {
+        return notConfiguredFileAccessSlots(this.node).filter((slot): slot is 'pre' | 'post' => slot !== 'main');
+    }
+
+    protected onTitleHover(tooltip: MatTooltip, nameElement: HTMLElement): void {
+        enableTooltipOnlyWhenTruncated(tooltip, nameElement);
     }
 
     private get promptEntries(): PromptConfig[] {

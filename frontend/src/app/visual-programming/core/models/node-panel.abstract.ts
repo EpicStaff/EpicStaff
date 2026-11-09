@@ -15,7 +15,12 @@ import { notWhitespaceValidator } from '@shared/form-validators';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
-import { getNodeStorageGrants, storageGrantLockOf } from '../helpers/storage-grants.util';
+import {
+    getNodeStorageGrants,
+    slotInvolvesStorage,
+    storageGrantLockOf,
+    storageToggleLockOf,
+} from '../helpers/storage-grants.util';
 import { NodeModel } from './node.model';
 
 /** The backend's `node_name` column length. */
@@ -40,7 +45,20 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         storageGrantLockOf(
             getNodeStorageGrants(this.node()),
             (resource, action) => this.grantPermissions.can(resource, action),
-            () => this.grantPermissions.isActivePermissionsLoaded()
+            () => this.grantPermissions.isActivePermissionsLoaded(),
+            slotInvolvesStorage(this.node())
+        )
+    );
+    /**
+     * Why the storage switch may not be turned on: the code has no grants configured, storage is off, and the user
+     * lacks a Files action storage would give it. `null` otherwise. The rest of the panel stays editable.
+     */
+    public readonly storageToggleLock = computed<string | null>(() =>
+        storageToggleLockOf(
+            getNodeStorageGrants(this.node()),
+            (resource, action) => this.grantPermissions.can(resource, action),
+            () => this.grantPermissions.isActivePermissionsLoaded(),
+            slotInvolvesStorage(this.node())
         )
     );
     /** Nothing here can be changed: a read-only editor, a trigger node for a user without Flows:Use, or a storage grant lock. */

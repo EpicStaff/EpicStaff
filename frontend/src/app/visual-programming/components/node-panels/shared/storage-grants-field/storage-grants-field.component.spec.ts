@@ -2,9 +2,12 @@ import { provideHttpClient } from '@angular/common/http';
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 import { ActionCode, ActivePermissions, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
+import { NOT_CONFIGURED_GRANTS_DISABLED_TOOLTIP } from '../../../../core/helpers/storage-grants.util';
 import { StorageGrants } from '../../../../core/models/storage-grants.model';
 import { StorageGrantsFieldComponent } from './storage-grants-field.component';
 
@@ -52,6 +55,31 @@ describe('StorageGrantsFieldComponent', () => {
         expect(boxes(fixture).map((box) => box.disabled)).toEqual([false, false, false]);
     });
 
+    it('disables every box of a not-configured slot for a role missing any Files permission', () => {
+        const fixture = render([ActionCode.Read, ActionCode.Create, ActionCode.Update], {
+            read: null,
+            write: null,
+            delete: null,
+        });
+
+        expect(boxes(fixture).map((box) => box.disabled)).toEqual([true, true, true]);
+        const tooltips = fixture.debugElement
+            .queryAll(By.css('label.storage-grants__option'))
+            .map((tip) => tip.injector.get(MatTooltip).message);
+        expect(tooltips).toEqual(Array(3).fill(NOT_CONFIGURED_GRANTS_DISABLED_TOOLTIP));
+        expect(fixture.componentInstance.control.value).toEqual({ read: null, write: null, delete: null });
+    });
+
+    it('enables every box of a not-configured slot for a role holding all four Files permissions', () => {
+        const fixture = render([ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete], {
+            read: null,
+            write: null,
+            delete: null,
+        });
+
+        expect(boxes(fixture).map((box) => box.disabled)).toEqual([false, false, false]);
+    });
+
     it('says a stored all-null node is not configured and leaves the value alone', () => {
         const fixture = render([ActionCode.Read], { read: null, write: null, delete: null });
 
@@ -60,7 +88,11 @@ describe('StorageGrantsFieldComponent', () => {
     });
 
     it('makes the slot explicit when the user ticks a box of a not-configured node', () => {
-        const fixture = render([ActionCode.Read], { read: null, write: null, delete: null });
+        const fixture = render([ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete], {
+            read: null,
+            write: null,
+            delete: null,
+        });
 
         boxes(fixture)[0].click();
         fixture.detectChanges();

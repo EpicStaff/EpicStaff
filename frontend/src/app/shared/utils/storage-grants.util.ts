@@ -42,3 +42,9 @@ export function storageGrantLockMessage(
     const where = flowNames.length ? ` in flows ${flowNames.join(', ')}` : '';
     return `This ${subject} runs with ${permissions}${where}, which you don't have. Contact an admin to change it.`;
 }
+
+/** The note shown by a storage switch that may not be turned on: storage gives the code Files permissions the user lacks. */
+export function storageToggleLockMessage(missing: readonly ActionCode[]): string {
+    const permissions = missing.map(filesPermissionLabel).join(', ');
+    return `Storage gives this code ${permissions}, which you don't have. Contact an admin to turn it on.`;
+}

@@ -253,6 +253,7 @@
                             <app-diff-field-mark [diffField]="'pre_use_storage'">
                                 <app-node-storage-section
                                     [readonly]="isPreReadOnly() || isPreCodeLocked()"
+                                    [lockReason]="preStorageToggleLock()"
                                     [useStorage]="preUseStorage()"
                                     (onToggleChange)="onPreStorageToggle($event)"
                                     (onInsertCode)="insertPreStorageCode($event)"
@@ -368,6 +369,7 @@
                             <app-diff-field-mark [diffField]="'post_use_storage'">
                                 <app-node-storage-section
                                     [readonly]="isPostReadOnly() || isPostCodeLocked()"
+                                    [lockReason]="postStorageToggleLock()"
                                     [useStorage]="postUseStorage()"
                                     (onToggleChange)="onPostStorageToggle($event)"
                                     (onInsertCode)="insertPostStorageCode($event)"
