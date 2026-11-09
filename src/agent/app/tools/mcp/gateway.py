@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import anyio
+import httpx2
 from fastmcp import Client
 from loguru import logger
 from mcp import MCPError
@@ -16,7 +17,12 @@ from mcp.types import INTERNAL_ERROR, REQUEST_TIMEOUT
 from mcp.types.version import HANDSHAKE_PROTOCOL_VERSIONS
 
 from app.exceptions import McpToolError
-from app.logging_utils import format_exception_for_log
+from app.logging_utils import (
+    describe_http_status_error,
+    format_exception_for_log,
+    redact_urls,
+    url_origin,
+)
 from app.tools.mcp.client_factory import FastMCPClientFactory, http_error_status
 from app.tools.mcp.schema_sanitizer import (
     MAX_TEXT_CHARS,
@@ -116,7 +122,8 @@ class McpToolGateway:
 
         if tool is None:
             raise McpToolError(
-                f"Tool '{data.tool_name}' not found on MCP server at {data.transport!r}"
+                f"Tool '{data.tool_name}' not found on MCP server at "
+                f"{url_origin(data.transport)}"
             )
 
         # The input schema reaches the model next to the description, so it gets the
@@ -206,9 +213,15 @@ class McpToolGateway:
 
     @staticmethod
     def _failure_reason(client: Client, error: Exception) -> str:
+        # Every reason reaches the run's error event or the model, and the SDK and
+        # httpx2 quote URLs in their own texts (request URLs, redirect targets), which
+        # can carry a credential in the userinfo, path or query: URLs are cut to their
+        # origin. httpx2's status text also adds the server's reason phrase.
+        if isinstance(error, httpx2.HTTPStatusError):
+            return describe_http_status_error(error)
         # On the stateless protocol a read timeout surfaces as httpx2.ReadTimeout,
         # whose message is empty; the class name is then the only reason.
-        reason = str(error) or type(error).__name__
+        reason = redact_urls(str(error)) or type(error).__name__
         # mcp 2 turns a 4xx/5xx without a JSON-RPC error into a generic
         # INTERNAL_ERROR, so the recorded status is what names the cause.
         status = http_error_status(client)
