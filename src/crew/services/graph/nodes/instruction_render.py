@@ -1,8 +1,13 @@
 from loguru import logger
-from utils.template_render import render_template
+from src.shared.flow_templates import render_template
 
 
 def render_instructions(instructions: str, input_: dict) -> str:
+    """Fill the instructions' placeholders from the node input; log what stays unfilled.
+
+    Raises:
+        RefusedPlaceholderError: The instructions hold a refused placeholder.
+    """
     rendered = render_template(instructions, input_)
     if rendered.unrendered_reason:
         logger.warning(

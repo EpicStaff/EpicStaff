@@ -8,12 +8,18 @@ from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
 from services.graph.exceptions import InvalidStatePathError, ReturnCodeError, StopSession
 from src.shared.bench_log import BENCH_LEVEL
+from src.shared.flow_templates import RefusedPlaceholderError
 from utils import map_variables_to_input, set_output_variables
 from utils.state_path import split_state_path
 
 # Errors whose text is written for the user and carries nothing internal, so it is streamed
 # as-is instead of the generic message with a correlation id.
-_PUBLIC_ERROR_TYPES = (ReturnCodeError, StopSession, InvalidStatePathError)
+_PUBLIC_ERROR_TYPES = (
+    ReturnCodeError,
+    StopSession,
+    InvalidStatePathError,
+    RefusedPlaceholderError,
+)
 
 
 class BaseNode(ABC):

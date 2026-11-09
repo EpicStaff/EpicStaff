@@ -9,8 +9,8 @@ from services.graph.events import StopEvent
 from services.graph.exceptions import KnowledgeSearchError
 from services.graph.nodes.base_node import BaseNode
 from services.knowledge_search_service import KnowledgeSearchService
+from src.shared.flow_templates import render_template
 from src.shared.models import RagSearchConfig
-from utils.template_render import render_template
 
 
 class KnowledgeNode(BaseNode):
@@ -53,11 +53,15 @@ class KnowledgeNode(BaseNode):
         self.llm_extra_headers = llm_extra_headers
 
     def _build_query(self, input_: Any) -> str:
-        """Interpolate mapped variables into the template ({name}).
+        """Interpolate mapped variables into the template (`{name}`, `{name[key]}`).
 
         Partial-safe: a placeholder whose variable is absent is left intact
         instead of dropping the whole substitution; unmapped variables are logged.
         The FE composes the full query text. Empty template → empty query.
+
+        Raises:
+            RefusedPlaceholderError: The template holds a refused placeholder; raised
+                before any search is made.
         """
         if not self.query_template:
             return ""
