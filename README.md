@@ -221,6 +221,8 @@ cp /path/to/downloaded/docker-compose.yaml src/docker-compose.yaml
 
 Prepare a production `src/.env` with `envtool.py --setup` as described under the Quick Start, create the volumes and network as in the Quick Start block for your OS, and finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
 
+Each container keeps at most 50 MB of logs (five rotated 10 MB files, set by `x-bounded-logs` in `src/docker-compose.yaml`); older lines are dropped. To keep a longer history, raise `max-size` / `max-file` there or ship the logs to your own collector.
+
 ---
 
 ## Key Features 
