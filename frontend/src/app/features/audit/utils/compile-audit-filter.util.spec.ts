@@ -354,11 +354,11 @@ describe('user actions filter', () => {
 
     it.each(['in', 'not_in'] as const)('compiles Target Type %s to the raw recorded types', (op) => {
         const result = compileAuditFilter(
-            { ...EMPTY_AUDIT_FILTER, selections: { target_type: { op, values: ['flow', 'python node'] } } },
+            { ...EMPTY_AUDIT_FILTER, selections: { target_type: { op, values: ['flow', 'python code node'] } } },
             USER_ACTION_FIELD_CATALOG
         );
 
-        expect(result).toEqual({ filters: { field: 'target_type', op, value: ['flow', 'python node'] } });
+        expect(result).toEqual({ filters: { field: 'target_type', op, value: ['flow', 'python code node'] } });
     });
 
     it('shows a chip per catalog field, naming the picked flows, members and target types', () => {
@@ -368,7 +368,7 @@ describe('user actions filter', () => {
                 selections: {
                     action: { op: 'in', values: ['moved_to_recycle_bin'] },
                     actor_user_id: { op: 'in', values: ['3'] },
-                    target_type: { op: 'in', values: ['python node', 'webhook trigger'] },
+                    target_type: { op: 'in', values: ['python code node', 'webhook trigger'] },
                     flow_id: { op: 'not_in', values: ['12', '99'] },
                 },
                 textConditions: { target_name: conditions('contains', 'Inv') },
@@ -377,7 +377,7 @@ describe('user actions filter', () => {
             {
                 members: [{ value: '3', label: 'Ann Lee (ann@example.com)' }],
                 flows: [{ value: '12', label: 'Billing' }],
-                targetTypes: [{ value: 'python node', label: 'Python node' }],
+                targetTypes: [{ value: 'python code node', label: 'Python code node' }],
             }
         );
 
@@ -385,7 +385,7 @@ describe('user actions filter', () => {
             { key: 'action', label: 'Action', value: 'is any of Moved to Recycle Bin' },
             { key: 'actor_user_id', label: 'User', value: 'is any of Ann Lee (ann@example.com)' },
             // a type not in the loaded list shows as recorded
-            { key: 'target_type', label: 'Target Type', value: 'is any of Python node, webhook trigger' },
+            { key: 'target_type', label: 'Target Type', value: 'is any of Python code node, webhook trigger' },
             // a flow no longer in the list shows its id
             { key: 'flow_id', label: 'Flow', value: 'is none of Billing, 99' },
             { key: 'target_name', label: 'Target Name', value: 'contains Inv' },

@@ -42,8 +42,8 @@ import {
     userActionTypeLabel,
 } from './utils/describe-user-action.util';
 import {
-    CanOpenPage,
     isMovedToRecycleBin,
+    PageAccess,
     userActionParentUrl,
     userActionTargetUrl,
 } from './utils/user-action-links.util';
@@ -145,8 +145,13 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     private readonly nextCursor = signal<string | null>(null);
     private readonly appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
 
-    protected readonly rows = computed<UserActionRow[]>(() =>
-        this.events().map((event) => ({
+    protected readonly rows = computed<UserActionRow[]>(() => {
+        // what the linked pages' route guards check
+        const access: PageAccess = {
+            permissions: this.permissionsService,
+            isChatEnabled: this.configService.isChatEnabled,
+        };
+        return this.events().map((event) => ({
             event,
             actionLabel: userActionLabel(event.action),
             actionTone: userActionTone(event.action),
@@ -154,13 +159,13 @@ export class AuditUserActionsBrowserComponent implements OnInit {
             targetName: userActionTargetName(event),
             parentName: userActionParentName(event),
             parentType: userActionTypeLabel(event.parent_type),
-            targetUrl: userActionTargetUrl(event, this.canOpenPage),
-            parentUrl: userActionParentUrl(event, this.canOpenPage),
+            targetUrl: userActionTargetUrl(event, access),
+            parentUrl: userActionParentUrl(event, access),
             // a rename or move names the target by its new name
             targetLinkLabel: openLinkLabel(event.target_type, event.target_name, isMovedToRecycleBin(event)),
             parentLinkLabel: openLinkLabel(event.parent_type, event.parent_name),
-        }))
-    );
+        }));
+    });
     protected readonly appliedChips = computed(() =>
         describeAuditFilter(this.appliedFilter(), this.catalog, this.lookupOptions())
     );
@@ -199,10 +204,6 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     private readonly toastService = inject(ToastService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly configService = inject(ConfigService);
-    // The checks the linked pages' route guards make: permissionGuard's read access, plus chatEnabledGuard for a desk.
-    private readonly canOpenPage: CanOpenPage = (resource) =>
-        this.permissionsService.can(resource, ActionCode.Read) &&
-        (resource !== ResourceCode.Chats || this.configService.isChatEnabled);
     private readonly destroyRef = inject(DestroyRef);
     private readonly searchInput = new Subject<string>();
     private searchSubscription: Subscription | null = null;

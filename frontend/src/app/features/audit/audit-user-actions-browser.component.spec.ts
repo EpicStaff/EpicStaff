@@ -44,7 +44,7 @@ const editedNode: AuditUserAction = {
     number: 42,
     actor_api_key_name: null,
     action: 'import_entity',
-    target_type: 'python node',
+    target_type: 'python code node',
     target_id: '12',
     target_name: 'Parse invoice',
     previous_name: null,
@@ -201,7 +201,7 @@ describe('AuditUserActionsBrowserComponent', () => {
         expect(headers).toEqual(['ID', 'Date', 'User', 'Action', 'Target Type', 'Target Name', 'Target Parent']);
         expect(rows).toEqual([
             ['41', 'ann@example.com via API key Deploy bot', 'Renamed', 'Flow', 'Invoices v2 → Billing', ''],
-            ['42', 'ann@example.com', 'Import entity', 'Python node', 'Parse invoice', 'Billing · Flow'],
+            ['42', 'ann@example.com', 'Import entity', 'Python code node', 'Parse invoice', 'Billing · Flow'],
             ['43', 'ann@example.com', 'Sign-in failed', '', '', ''],
             ['44', 'ann@example.com', 'Updated', '', '', 'Billing · Flow'],
             ['45', 'ann@example.com', 'Moved to Recycle Bin', 'Tool', '#9', 'Researcher · Agent'],
@@ -283,7 +283,7 @@ describe('AuditUserActionsBrowserComponent', () => {
 
         expect(rowLinks(root)).toEqual([
             [
-                'Parse invoice | Open python node Parse invoice (opens in a new tab) -> /flows/4?nodeId=12',
+                'Parse invoice | Open python code node Parse invoice (opens in a new tab) -> /flows/4?nodeId=12',
                 'Billing · Flow | Open flow Billing (opens in a new tab) -> /flows/4',
             ],
             ['Billing · Flow | Open flow Billing (opens in a new tab) -> /flows/4'],

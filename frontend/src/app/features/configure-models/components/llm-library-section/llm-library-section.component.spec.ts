@@ -2,7 +2,12 @@ import { Dialog } from '@angular/cdk/dialog';
 import { DebugElement, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { AuthorshipDetailsDialogService } from '@shared/components';
+import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
+import {
+    AuthorshipDetailsDialogService,
+    EmbeddingModelConfigDialogComponent,
+    LlmModelConfigDialogComponent,
+} from '@shared/components';
 import {
     ActionCode,
     ElevenLabsRealtimeConfig,
@@ -193,7 +198,13 @@ function render(
         voiceConfigs = [],
         systemOneConfigs = [],
         grantedActions = [],
-    }: { voiceConfigs?: VoiceConfig[]; systemOneConfigs?: SystemOneConfig[]; grantedActions?: ActionCode[] } = {}
+        queryParams = {},
+    }: {
+        voiceConfigs?: VoiceConfig[];
+        systemOneConfigs?: SystemOneConfig[];
+        grantedActions?: ActionCode[];
+        queryParams?: Record<string, string>;
+    } = {}
 ): {
     fixture: ComponentFixture<LlmLibrarySectionComponent>;
     open: ReturnType<typeof vi.fn>;
@@ -246,6 +257,11 @@ function render(
             {
                 provide: PermissionsService,
                 useValue: { can: (_resource: ResourceCode, action: ActionCode) => grantedActions.includes(action) },
+            },
+            { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(queryParams) } } },
+            {
+                provide: Router,
+                useValue: { navigate: () => Promise.resolve(true), lastSuccessfulNavigation: () => null },
             },
         ],
     });
@@ -611,5 +627,69 @@ describe('LlmLibrarySectionComponent System One configs', () => {
             .click();
 
         expect(systemOneStorage.getAllConfigs).toHaveBeenCalledExactlyOnceWith(true);
+    });
+});
+
+describe('LlmLibrarySectionComponent ?configType=&configId= deep link', () => {
+    const LLM_MODEL = libraryModel(ModelTypes.LLM, SHARED_ID);
+    const EMBEDDING_MODEL = libraryModel(ModelTypes.EMBEDDING, SHARED_ID);
+
+    function renderLinked(queryParams: Record<string, string>, grantedActions: ActionCode[] = [ActionCode.Update]) {
+        return render([LLM_MODEL, EMBEDDING_MODEL], {
+            voiceConfigs: Object.values(VOICE_CONFIGS),
+            systemOneConfigs: [TYPESAFE_CONFIG],
+            grantedActions,
+            queryParams,
+        });
+    }
+
+    it.each([
+        ['llm', SHARED_ID, LlmModelConfigDialogComponent, { configId: SHARED_ID }],
+        ['embedding', SHARED_ID, EmbeddingModelConfigDialogComponent, { configId: SHARED_ID }],
+        ['system-one', TYPESAFE_CONFIG.id, SystemOneConfigDialogComponent, { config: TYPESAFE_CONFIG }],
+        [
+            'openai-voice',
+            OPENAI_VOICE_CONFIG.id,
+            RealtimeConfigDialogComponent,
+            { config: OPENAI_VOICE_CONFIG, provider: 'openai' },
+        ],
+        [
+            'elevenlabs-voice',
+            ELEVENLABS_VOICE_CONFIG.id,
+            RealtimeConfigDialogComponent,
+            { config: ELEVENLABS_VOICE_CONFIG, provider: 'elevenlabs' },
+        ],
+        [
+            'gemini-voice',
+            GEMINI_VOICE_CONFIG.id,
+            RealtimeConfigDialogComponent,
+            { config: GEMINI_VOICE_CONFIG, provider: 'gemini' },
+        ],
+    ])('opens the %s config with id %s in the dialog its Edit button opens', (configType, id, dialog, data) => {
+        const { openDialog } = renderLinked({ configType, configId: String(id) });
+
+        expect(openDialog).toHaveBeenCalledExactlyOnceWith(dialog, expect.objectContaining({ data }));
+    });
+
+    it('searches the library for the config instead, for a viewer who cannot edit configurations', () => {
+        const { fixture, openDialog } = renderLinked(
+            { configType: 'system-one', configId: String(TYPESAFE_CONFIG.id) },
+            []
+        );
+
+        expect(openDialog).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.searchQuery()).toBe(TYPESAFE_CONFIG.custom_name);
+    });
+
+    it.each([
+        ['an unknown id', { configType: 'llm', configId: '999' }],
+        ['an id of another config type', { configType: 'system-one', configId: String(SHARED_ID) }],
+        ['an unknown config type', { configType: 'transcription', configId: String(SHARED_ID) }],
+        ['a config type named after an Object member', { configType: 'constructor', configId: String(SHARED_ID) }],
+    ])('opens nothing for %s', (_case, queryParams) => {
+        const { fixture, openDialog } = renderLinked(queryParams);
+
+        expect(openDialog).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.searchQuery()).toBe('');
     });
 });

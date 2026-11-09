@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
     AuthorshipDetailsDialogService,
     AuthorshipDetailsSource,
@@ -28,10 +29,11 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { WebhookTriggerService } from '@shared/services';
-import { movedToRecycleBinMessage } from '@shared/utils';
+import { movedToRecycleBinMessage, takeQueryParams } from '@shared/utils';
 import { finalize } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { WebhookTriggerEditPermissionService } from '../../services/webhook-trigger-edit-permission.service';
@@ -64,6 +66,10 @@ export class WebhookTriggersSectionComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly injector = inject(Injector);
+    private readonly permissions = inject(PermissionsService);
+    private readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
+    private linkedTriggerHandled = false;
 
     status = signal<LoadingState>(LoadingState.IDLE);
     triggers = signal<WebhookTriggerModel[]>([]);
@@ -107,9 +113,22 @@ export class WebhookTriggersSectionComponent implements OnInit {
                 next: (triggers) => {
                     this.triggers.set(triggers);
                     this.status.set(LoadingState.LOADED);
+                    this.openLinkedTrigger();
                 },
                 error: () => this.status.set(LoadingState.ERROR),
             });
+    }
+
+    /**
+     * `?triggerId=` opens that trigger as its Edit button does, once, after the first load. A viewer without that button
+     * gets the list only. An unknown id is ignored.
+     */
+    private openLinkedTrigger(): void {
+        if (this.linkedTriggerHandled) return;
+        this.linkedTriggerHandled = true;
+        const { triggerId } = takeQueryParams(this.route, this.router, ['triggerId']);
+        const trigger = this.triggers().find((candidate) => candidate.id === Number(triggerId));
+        if (trigger && this.permissions.can(ResourceCode.Webhooks, ActionCode.Update)) this.onEdit(trigger);
     }
 
     private refresh(): void {

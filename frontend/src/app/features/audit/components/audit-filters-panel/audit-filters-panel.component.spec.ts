@@ -148,20 +148,20 @@ describe('AuditFiltersPanelComponent for user actions', () => {
         const fixture = renderPanel('builder', {
             targetTypes: [
                 { value: 'flow', label: 'Flow' },
-                { value: 'python node', label: 'Python node' },
+                { value: 'python code node', label: 'Python code node' },
             ],
         });
         const targetType: HTMLElement = Array.from<HTMLElement>(
             fixture.nativeElement.querySelectorAll('app-audit-filter-group')
         ).find((item) => item.querySelector('.filter-group__title')?.textContent?.trim() === 'Target Type')!;
 
-        expect(texts(targetType, '.checkbox-enum__option span')).toEqual(['Flow', 'Python node']);
+        expect(texts(targetType, '.checkbox-enum__option span')).toEqual(['Flow', 'Python code node']);
 
         targetType.querySelectorAll<HTMLInputElement>('.checkbox-enum__option input')[1].click();
         fixture.detectChanges();
 
         expect(fixture.componentInstance.filter().selections).toEqual({
-            target_type: { op: 'in', values: ['python node'] },
+            target_type: { op: 'in', values: ['python code node'] },
         });
         expect(targetType.querySelector('.filter-group__summary')?.textContent?.trim()).toBe('is any of Python node');
     });

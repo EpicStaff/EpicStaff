@@ -1,10 +1,14 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { HttpRequest, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
+import { NEVER } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
+import { VenvDialogComponent } from '../../components/venv-dialog/venv-dialog.component';
 import { Venv, VenvStatus } from '../../models/venv.model';
 import { VenvsListPageComponent } from './venvs-list-page.component';
 
@@ -92,6 +96,7 @@ describe('VenvsListPageComponent', () => {
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
+                provideRouter([]),
                 { provide: ConfigService, useValue: { apiUrl: API_URL } },
                 { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
                 { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
@@ -199,5 +204,72 @@ describe('VenvsListPageComponent', () => {
 
         // A poll without the search would answer with every venv and undo the narrowing.
         expect(answerList([venv(1, 'alpha', 'completed')]).params.get('search')).toBe('alp');
+    });
+});
+
+describe('VenvsListPageComponent ?venvId= deep link', () => {
+    const VENVS = [venv(1, 'alpha'), venv(2, 'beta')];
+
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
+    async function openAt(
+        url: string,
+        canEdit: boolean
+    ): Promise<{ fixture: ComponentFixture<VenvsListPageComponent>; openDialog: ReturnType<typeof vi.fn> }> {
+        const openDialog = vi.fn(() => ({ closed: NEVER }));
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                provideRouter([]),
+                { provide: ConfigService, useValue: { apiUrl: API_URL } },
+                { provide: PermissionsService, useValue: { can: () => canEdit, canAny: () => canEdit } },
+                { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
+                { provide: Dialog, useValue: { open: openDialog } },
+            ],
+        });
+        await TestBed.inject(Router).navigateByUrl(url);
+        const fixture = TestBed.createComponent(VenvsListPageComponent);
+        fixture.detectChanges();
+        TestBed.inject(HttpTestingController)
+            .expectOne((request) => request.url === `${API_URL}venvs/`)
+            .flush({ count: 2, limit: 1000, offset: 0, next: null, previous: null, result: VENVS });
+        fixture.detectChanges();
+        await fixture.whenStable();
+        return { fixture, openDialog };
+    }
+
+    it('opens the venv as a card click does', async () => {
+        const { openDialog } = await openAt('/?venvId=2', true);
+
+        expect(openDialog).toHaveBeenCalledExactlyOnceWith(
+            VenvDialogComponent,
+            expect.objectContaining({ data: { venv: VENVS[1] } })
+        );
+    });
+
+    it('focuses the card instead, for a viewer who cannot edit venvs', async () => {
+        const { fixture, openDialog } = await openAt('/?venvId=2', false);
+
+        expect(openDialog).not.toHaveBeenCalled();
+        const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('app-venv-card');
+        expect(cards[1].contains(document.activeElement)).toBe(true);
+    });
+
+    it('opens nothing for an unknown venv id', async () => {
+        const { fixture, openDialog } = await openAt('/?venvId=999', true);
+
+        expect(openDialog).not.toHaveBeenCalled();
+        expect((fixture.nativeElement as HTMLElement).contains(document.activeElement)).toBe(false);
     });
 });

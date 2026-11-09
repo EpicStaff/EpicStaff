@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -23,7 +24,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, takeQueryParams } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -118,7 +119,10 @@ export class VenvsListPageComponent {
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly injector = inject(Injector);
+    private readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
 
+    private linkedVenvHandled = false;
     private pollSubscription: Subscription | null = null;
     // Dropped before the next request is sent, so a slow answer to an old search cannot
     // land after a newer one and put the wrong list on screen.
@@ -258,6 +262,7 @@ export class VenvsListPageComponent {
                 next: (venvs) => {
                     this.applyVenvs(venvs);
                     this.isLoading.set(false);
+                    this.openLinkedVenv();
                 },
                 error: (error: HttpErrorResponse) => {
                     this.isLoading.set(false);
@@ -265,6 +270,25 @@ export class VenvsListPageComponent {
                     this.toastService.error(extractHttpErrorMessage(error));
                 },
             });
+    }
+
+    /**
+     * `?venvId=` opens that venv as a card click does, once, after the first load; a viewer who cannot edit venvs gets
+     * its card focused (and scrolled to) instead. An unknown id is ignored.
+     */
+    private openLinkedVenv(): void {
+        if (this.linkedVenvHandled) return;
+        this.linkedVenvHandled = true;
+        const { venvId } = takeQueryParams(this.route, this.router, ['venvId']);
+        const venv = this.venvs().find((item) => item.id === Number(venvId));
+        if (!venv) return;
+        if (this.canUpdate()) {
+            this.onEdit(venv);
+            return;
+        }
+        const linkedCard = (): VenvCardComponent | undefined =>
+            this.venvCards().find((card) => card.venv().id === venv.id);
+        afterNextRender(() => linkedCard()?.focus(), { injector: this.injector });
     }
 
     /** The deleted card takes its focused Delete button along: the focus moves to the card now in its place. */

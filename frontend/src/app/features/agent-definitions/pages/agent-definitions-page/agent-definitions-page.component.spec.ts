@@ -60,6 +60,7 @@ const AGENT: AgentDefinition = {
 function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
     return {
         load: () => undefined,
+        selectAgent: vi.fn(),
         updateAgent: vi.fn(),
         saveNewAgent: vi.fn(),
         loading: signal(false),
@@ -86,7 +87,10 @@ function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
     };
 }
 
-function render(canWrite: boolean): {
+function render(
+    canWrite: boolean,
+    queryParams: Record<string, string> = {}
+): {
     fixture: ComponentFixture<AgentDefinitionsPageComponent>;
     host: HTMLElement;
     overlay: HTMLElement;
@@ -97,8 +101,11 @@ function render(canWrite: boolean): {
                 provide: PermissionsService,
                 useValue: { active: signal(null), can: () => canWrite, canAny: () => canWrite },
             },
-            { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap({}) } } },
-            { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
+            { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(queryParams) } } },
+            {
+                provide: Router,
+                useValue: { navigate: () => Promise.resolve(true), lastSuccessfulNavigation: () => null },
+            },
             { provide: UnsavedChangesDialogService, useValue: {} },
             { provide: ConfirmationDialogService, useValue: {} },
             // The breadcrumb group picker reads the org's groups.
@@ -156,6 +163,32 @@ function viewDetailsItem(overlay: HTMLElement): HTMLButtonElement | null {
         ) ?? null
     );
 }
+
+describe('AgentDefinitionsPageComponent ?agentId= deep link', () => {
+    /** Renders the page from `queryParams` and lets its agent list finish loading. */
+    function renderLoaded(queryParams: Record<string, string>): AgentsPageStore {
+        const { fixture } = render(false, queryParams);
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+        const loading = store.loading as WritableSignal<boolean>;
+        loading.set(true);
+        fixture.detectChanges();
+        loading.set(false);
+        fixture.detectChanges();
+        return store;
+    }
+
+    it('selects the agent once its list has loaded, for a viewer who can only read agents', () => {
+        const store = renderLoaded({ agentId: String(AGENT.id) });
+
+        expect(store.selectAgent).toHaveBeenCalledExactlyOnceWith(AGENT.id);
+    });
+
+    it('ignores an agent id that is not in the list', () => {
+        const store = renderLoaded({ agentId: '999' });
+
+        expect(store.selectAgent).not.toHaveBeenCalled();
+    });
+});
 
 describe('AgentDefinitionsPageComponent agent header menu "View Details"', () => {
     it('sits between Duplicate and Delete', () => {

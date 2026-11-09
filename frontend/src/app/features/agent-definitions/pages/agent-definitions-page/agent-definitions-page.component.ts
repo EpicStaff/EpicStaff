@@ -26,7 +26,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { escapeHtml } from '@shared/utils';
+import { escapeHtml, takeQueryParams } from '@shared/utils';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
@@ -261,22 +261,19 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             }
             if (!this.sawLoading) return;
             this.preselectApplied = true;
-            this.applySurfaceIdPreselect();
+            this.applyQueryPreselect();
         });
     }
 
-    private applySurfaceIdPreselect(): void {
-        const raw = this.route.snapshot.queryParamMap.get('surfaceId');
-        if (raw == null) return;
-        void this.router.navigate([], {
-            relativeTo: this.route,
-            queryParams: { surfaceId: null },
-            queryParamsHandling: 'merge',
-            replaceUrl: true,
-        });
-        const surfaceId = Number(raw);
-        if (!Number.isFinite(surfaceId)) return;
-        const surface = this.store.surfaces().find((s) => s.id === surfaceId);
+    /** `?agentId=` selects that agent; `?surfaceId=` opens that surface where it lives. An unknown id is ignored. */
+    private applyQueryPreselect(): void {
+        const { agentId, surfaceId } = takeQueryParams(this.route, this.router, ['agentId', 'surfaceId']);
+        if (agentId != null) {
+            const id = Number(agentId);
+            if (this.store.agents().some((agent) => agent.id === id)) this.store.selectAgent(id);
+        }
+        if (surfaceId == null) return;
+        const surface = this.store.surfaces().find((s) => s.id === Number(surfaceId));
         if (!surface) return;
         if (surface.owner_agent != null) {
             this.store.selectAgent(surface.owner_agent);

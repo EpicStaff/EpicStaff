@@ -1,6 +1,13 @@
 import { afterNextRender, DestroyRef, Injector } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NavigationCancel, NavigationEnd, NavigationError, NavigationSkipped, Router } from '@angular/router';
+import {
+    ActivatedRoute,
+    NavigationCancel,
+    NavigationEnd,
+    NavigationError,
+    NavigationSkipped,
+    Router,
+} from '@angular/router';
 import { filter, take } from 'rxjs';
 
 /** A router URL without its query and fragment: the page it shows, whatever state the page keeps in its query. */
@@ -47,4 +54,31 @@ export function afterNavigationRender(router: Router, injector: Injector, callba
  */
 export function isPlainPrimaryClick(event: MouseEvent): boolean {
     return event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+}
+
+/**
+ * Reads a page's one-shot deep-link query params (a link that opens one item) and drops them from the URL, so a reload
+ * or a Back navigation does not open the item again. A param the URL lacks is absent from the result.
+ */
+export function takeQueryParams<Name extends string>(
+    route: ActivatedRoute,
+    router: Router,
+    names: readonly Name[]
+): Partial<Record<Name, string>> {
+    const params: Partial<Record<Name, string>> = {};
+    for (const name of names) {
+        const value = route.snapshot.queryParamMap.get(name);
+        if (value !== null) params[name] = value;
+    }
+    if (Object.keys(params).length === 0) return params;
+    void router.navigate([], {
+        relativeTo: route,
+        queryParams: Object.fromEntries(names.map((name) => [name, null])),
+        queryParamsHandling: 'merge',
+        preserveFragment: true,
+        replaceUrl: true,
+        // The history entry is replaced, so it keeps the state the navigation that made it carried.
+        state: router.lastSuccessfulNavigation()?.extras.state,
+    });
+    return params;
 }
