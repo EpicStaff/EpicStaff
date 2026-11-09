@@ -15,7 +15,6 @@ import pytest
 
 from tables.models import Graph, PythonCode, PythonCodeResult, PythonCodeTool, PythonNode, StorageFile
 from tables.services import run_python_code_service
-from tests.services_tests.test_run_code_storage_credentials import gateway  # noqa: F401
 
 pytestmark = pytest.mark.django_db
 
@@ -73,7 +72,7 @@ def _assert_storage_full(response) -> None:
 
 @pytest.mark.parametrize("named_by", ["python_code_id", "target"])
 def test_a_storage_run_over_quota_is_refused_and_leaves_every_result_in_place(
-    gateway, default_org, auth_client, sandbox_intake, older_results, flow, named_by  # noqa: F811
+    gateway, default_org, auth_client, sandbox_intake, older_results, flow, named_by
 ):
     _fill_storage(default_org, QUOTA + 1)
 
@@ -92,7 +91,7 @@ def test_a_storage_run_over_quota_is_refused_and_leaves_every_result_in_place(
 
 
 def test_code_without_storage_runs_over_quota(
-    gateway, default_org, auth_client, sandbox_intake  # noqa: F811
+    gateway, default_org, auth_client, sandbox_intake
 ):
     _fill_storage(default_org, QUOTA + 1)
 
@@ -105,7 +104,7 @@ def test_code_without_storage_runs_over_quota(
 
 
 def test_an_admitted_storage_run_evicts_the_oldest_result_past_the_limit(
-    gateway, default_org, auth_client, sandbox_intake, older_results  # noqa: F811
+    gateway, default_org, auth_client, sandbox_intake, older_results
 ):
     _fill_storage(default_org, QUOTA)
 

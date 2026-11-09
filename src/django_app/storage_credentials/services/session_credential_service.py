@@ -58,6 +58,7 @@ class SessionCredentialService:
             None otherwise.
 
         Raises:
+            OrganizationStorageFullError: If the organization is over its storage quota.
             CredentialScopeValidationError: If the collected scope is missing,
             malformed, or escapes the org's own prefix.
             TemporaryCredentialIssueError: If minting or DB persistence fails.
@@ -93,6 +94,7 @@ class SessionCredentialService:
         `use_storage=True`, so this always mints (never returns None).
 
         Raises:
+            OrganizationStorageFullError: If the organization is over its storage quota.
             CredentialScopeValidationError: If the given scope is missing,
             malformed, or escapes the org's own prefix.
             TemporaryCredentialIssueError: If minting or DB persistence fails.
@@ -113,6 +115,7 @@ class SessionCredentialService:
         call within it (mirrors `issue_for_session`'s one-per-session reuse).
 
         Raises:
+            OrganizationStorageFullError: If the organization is over its storage quota.
             CredentialScopeValidationError: If the given scope is missing,
             malformed, or escapes the org's own prefix.
             TemporaryCredentialIssueError: If minting or DB persistence fails.
@@ -178,7 +181,9 @@ class SessionCredentialService:
             )
             raise TemporaryCredentialIssueError() from error
 
-        # Before the mint: a crash between the two must not leave writes nobody measures.
+        # Before the mint, so a crash after it cannot leave minted keys unmeasured. Inside a
+        # caller's transaction (a schedule trigger) a rollback undoes this deadline along with
+        # the TemporaryStorageAccount row, while the minted keys stay valid until their TTL.
         request_measurement(org_id)
 
         ttl_hours = settings.STORAGE_TEMP_CREDENTIALS_TTL_HOURS

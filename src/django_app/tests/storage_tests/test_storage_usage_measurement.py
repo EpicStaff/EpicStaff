@@ -32,7 +32,6 @@ from tables.services.storage_service.usage_measurement import (
     request_measurement,
 )
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
-from tests.services_tests.test_run_code_storage_credentials import gateway  # noqa: F401
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
 pytestmark = pytest.mark.django_db
@@ -71,7 +70,7 @@ def store(monkeypatch):
 
 
 def _usage(org, **fields) -> OrganizationStorageUsage:
-    return OrganizationStorageUsage.objects.create(organization=org, **fields)
+    return OrganizationStorageUsage.objects.create(org=org, **fields)
 
 
 def _file_row(org, path: str, size: int | None) -> None:
@@ -91,7 +90,7 @@ def _deadline_window(call) -> tuple[datetime, datetime]:
 def test_a_first_request_creates_the_row_with_the_deadline(acme):
     earliest, latest = _deadline_window(lambda: request_measurement(acme.pk))
 
-    usage = OrganizationStorageUsage.objects.get(organization=acme)
+    usage = OrganizationStorageUsage.objects.get(org=acme)
     assert earliest <= usage.measure_until <= latest
     assert (usage.unindexed_bytes, usage.measured_at) == (0, None)
 
@@ -110,7 +109,7 @@ def test_a_request_extends_a_sooner_deadline_and_keeps_the_measured_bytes(acme, 
 
     earliest, latest = _deadline_window(lambda: request_measurement(acme.pk))
 
-    usage = OrganizationStorageUsage.objects.get(organization=acme)
+    usage = OrganizationStorageUsage.objects.get(org=acme)
     assert earliest <= usage.measure_until <= latest
     assert (usage.unindexed_bytes, usage.measured_at) == (42, measured_at)
 
@@ -121,7 +120,7 @@ def test_a_request_never_moves_a_later_deadline_earlier(acme):
 
     request_measurement(acme.pk)
 
-    assert OrganizationStorageUsage.objects.get(organization=acme).measure_until == later
+    assert OrganizationStorageUsage.objects.get(org=acme).measure_until == later
 
 
 @pytest.mark.parametrize("ttl_hours", [0, -1])
@@ -132,7 +131,7 @@ def test_credentials_that_never_expire_are_measured_indefinitely(acme, settings,
     settings.STORAGE_TEMP_CREDENTIALS_TTL_HOURS = TTL_HOURS
     request_measurement(acme.pk)
 
-    assert OrganizationStorageUsage.objects.get(organization=acme).measure_until == NEVER
+    assert OrganizationStorageUsage.objects.get(org=acme).measure_until == NEVER
 
 
 def test_a_request_touches_only_its_own_organization(acme, beta):
@@ -141,7 +140,7 @@ def test_a_request_touches_only_its_own_organization(acme, beta):
 
     request_measurement(acme.pk)
 
-    assert OrganizationStorageUsage.objects.get(organization=beta).measure_until == beta_deadline
+    assert OrganizationStorageUsage.objects.get(org=beta).measure_until == beta_deadline
 
 
 # --- minting requests the measurement -------------------------------------------------------
@@ -154,14 +153,14 @@ def _issue_for_test_run(org):
     )
 
 
-def test_every_mint_keeps_the_organization_measured_past_its_credentials(gateway, acme):  # noqa: F811
+def test_every_mint_keeps_the_organization_measured_past_its_credentials(gateway, acme):
     earliest, latest = _deadline_window(lambda: _issue_for_test_run(acme))
 
     assert len(gateway.created) == 1
-    assert earliest <= OrganizationStorageUsage.objects.get(organization=acme).measure_until <= latest
+    assert earliest <= OrganizationStorageUsage.objects.get(org=acme).measure_until <= latest
 
 
-def test_an_account_whose_mint_response_was_lost_is_still_measured(gateway, acme):  # noqa: F811
+def test_an_account_whose_mint_response_was_lost_is_still_measured(gateway, acme):
     async def created_then_lost(**kwargs):
         gateway.created.append(kwargs)
         raise TimeoutError("the response never arrived")
@@ -172,7 +171,7 @@ def test_an_account_whose_mint_response_was_lost_is_still_measured(gateway, acme
         _issue_for_test_run(acme)
 
     assert len(gateway.created) == 1
-    assert OrganizationStorageUsage.objects.get(organization=acme).measure_until > timezone.now()
+    assert OrganizationStorageUsage.objects.get(org=acme).measure_until > timezone.now()
 
 
 # --- measure_organization --------------------------------------------------------------------
@@ -190,7 +189,7 @@ def test_bytes_without_a_row_or_without_a_size_are_unindexed(store, acme):
     before = timezone.now()
     measure_organization(acme.pk)
 
-    usage = OrganizationStorageUsage.objects.get(organization=acme)
+    usage = OrganizationStorageUsage.objects.get(org=acme)
     assert usage.unindexed_bytes == 290
     assert before <= usage.measured_at <= timezone.now()
 
@@ -202,7 +201,7 @@ def test_rows_claiming_more_than_is_stored_leave_zero_unindexed(store, acme):
 
     measure_organization(acme.pk)
 
-    assert OrganizationStorageUsage.objects.get(organization=acme).unindexed_bytes == 0
+    assert OrganizationStorageUsage.objects.get(org=acme).unindexed_bytes == 0
 
 
 def test_only_the_organization_s_own_prefix_is_measured(store, acme, beta):
@@ -212,7 +211,7 @@ def test_only_the_organization_s_own_prefix_is_measured(store, acme, beta):
 
     measure_organization(acme.pk)
 
-    assert OrganizationStorageUsage.objects.get(organization=acme).unindexed_bytes == 10
+    assert OrganizationStorageUsage.objects.get(org=acme).unindexed_bytes == 10
 
 
 def test_an_organization_that_never_minted_gets_no_row(store, acme):
@@ -220,7 +219,7 @@ def test_an_organization_that_never_minted_gets_no_row(store, acme):
 
     measure_organization(acme.pk)
 
-    assert not OrganizationStorageUsage.objects.filter(organization=acme).exists()
+    assert not OrganizationStorageUsage.objects.filter(org=acme).exists()
 
 
 def test_an_upload_landing_while_listing_is_over_counted_until_the_next_measurement(
@@ -237,11 +236,11 @@ def test_an_upload_landing_while_listing_is_over_counted_until_the_next_measurem
 
     monkeypatch.setattr(backend, "total_size", listing_while_an_upload_lands)
     measure_organization(acme.pk)
-    assert OrganizationStorageUsage.objects.get(organization=acme).unindexed_bytes == 300
+    assert OrganizationStorageUsage.objects.get(org=acme).unindexed_bytes == 300
 
     monkeypatch.setattr(backend, "total_size", list_store)
     measure_organization(acme.pk)
-    assert OrganizationStorageUsage.objects.get(organization=acme).unindexed_bytes == 0
+    assert OrganizationStorageUsage.objects.get(org=acme).unindexed_bytes == 0
 
 
 def test_a_delete_landing_after_listing_is_over_counted_until_the_next_measurement(
@@ -261,11 +260,11 @@ def test_a_delete_landing_after_listing_is_over_counted_until_the_next_measureme
 
     monkeypatch.setattr(backend, "total_size", listing_then_a_delete_lands)
     measure_organization(acme.pk)
-    assert OrganizationStorageUsage.objects.get(organization=acme).unindexed_bytes == 300
+    assert OrganizationStorageUsage.objects.get(org=acme).unindexed_bytes == 300
 
     monkeypatch.setattr(backend, "total_size", list_store)
     measure_organization(acme.pk)
-    assert OrganizationStorageUsage.objects.get(organization=acme).unindexed_bytes == 0
+    assert OrganizationStorageUsage.objects.get(org=acme).unindexed_bytes == 0
 
 
 # --- measure_due_organizations ---------------------------------------------------------------
@@ -302,7 +301,7 @@ def test_the_hourly_run_measures_organizations_within_their_deadline_or_holding_
 
     measure_due_organizations()
 
-    usage = OrganizationStorageUsage.objects.get(organization=acme)
+    usage = OrganizationStorageUsage.objects.get(org=acme)
     if measured:
         assert (usage.unindexed_bytes, usage.measured_at is not None) == (70, True)
     else:
@@ -322,6 +321,6 @@ def test_one_organization_failing_does_not_stop_the_others(store, acme, beta, mo
 
     measure_due_organizations()
 
-    acme_usage = OrganizationStorageUsage.objects.get(organization=acme)
+    acme_usage = OrganizationStorageUsage.objects.get(org=acme)
     assert (acme_usage.unindexed_bytes, acme_usage.measured_at) == (5, None)
-    assert OrganizationStorageUsage.objects.get(organization=beta).unindexed_bytes == 70
+    assert OrganizationStorageUsage.objects.get(org=beta).unindexed_bytes == 70

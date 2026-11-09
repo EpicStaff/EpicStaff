@@ -14,16 +14,15 @@ backend's admin API (FakeStorageGateway) are the external boundaries.
 import pytest
 
 from storage_credentials.models import TemporaryStorageAccount
-from storage_credentials.tests.test_session_credential_service import (
-    _make_graph,
-    _make_session_data,
-    _make_storage_python_node,
+from storage_credentials.tests.session_data_builders import (
+    make_graph,
+    make_session_data,
+    make_storage_python_node,
 )
 from tables.models import Graph, Session, StartNode, StorageFile
 from tables.services.run_admission import RunAdmissionRefusedError
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
-from tests.services_tests.test_run_code_storage_credentials import gateway  # noqa: F401
 
 pytestmark = pytest.mark.django_db
 
@@ -50,8 +49,8 @@ def published(monkeypatch, default_org):
     monkeypatch.setattr(
         session_manager,
         "create_session_data",
-        lambda session, **kwargs: _make_session_data(
-            session.pk, _make_graph([_make_storage_python_node(org_id=default_org.pk)])
+        lambda session, **kwargs: make_session_data(
+            session.pk, make_graph([make_storage_python_node(org_id=default_org.pk)])
         ),
     )
     monkeypatch.setattr(
@@ -67,7 +66,7 @@ def _fill_storage(org, size: int) -> None:
 
 
 def test_a_flow_over_quota_is_stopped_and_never_published(
-    gateway, published, flow, default_org, regular_user  # noqa: F811
+    gateway, published, flow, default_org, regular_user
 ):
     _fill_storage(default_org, QUOTA + 1)
 
@@ -87,7 +86,7 @@ def test_a_flow_over_quota_is_stopped_and_never_published(
 
 
 def test_run_session_endpoint_answers_storage_full_with_409(
-    gateway, published, flow, default_org, auth_client  # noqa: F811
+    gateway, published, flow, default_org, auth_client
 ):
     _fill_storage(default_org, QUOTA + 1)
 
@@ -103,7 +102,7 @@ def test_run_session_endpoint_answers_storage_full_with_409(
 
 
 def test_a_flow_at_the_quota_is_published_with_its_credentials(
-    gateway, published, flow, default_org, regular_user  # noqa: F811
+    gateway, published, flow, default_org, regular_user
 ):
     _fill_storage(default_org, QUOTA)
 

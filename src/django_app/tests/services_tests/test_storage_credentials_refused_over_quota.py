@@ -17,15 +17,21 @@ from django.utils import timezone
 
 from storage_credentials.models import TemporaryStorageAccount
 from storage_credentials.services.session_credential_service import session_credential_service
-from storage_credentials.tests.test_session_credential_service import (
-    _make_graph,
-    _make_session_data,
-    _make_storage_python_node,
+from storage_credentials.tests.session_data_builders import (
+    make_graph,
+    make_session_data,
+    make_storage_python_node,
 )
-from tables.models import Graph, PythonCodeResult, RealtimeAgentChat, Session, StorageFile
+from tables.models import (
+    Graph,
+    OrganizationStorageUsage,
+    PythonCodeResult,
+    RealtimeAgentChat,
+    Session,
+    StorageFile,
+)
 from tables.services.run_admission import RunAdmissionRefusedError
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
-from tests.services_tests.test_run_code_storage_credentials import gateway  # noqa: F401
 
 pytestmark = pytest.mark.django_db
 
@@ -51,8 +57,8 @@ def _issue_for_test_run(org):
 def _issue_for_session(org):
     graph = Graph.objects.create(org=org, name="quota-flow")
     session = Session.objects.create(graph=graph, status=Session.SessionStatus.PENDING)
-    session_data = _make_session_data(
-        session.pk, _make_graph([_make_storage_python_node(org_id=org.pk)])
+    session_data = make_session_data(
+        session.pk, make_graph([make_storage_python_node(org_id=org.pk)])
     )
     return session_credential_service.issue_for_session(
         session_data=session_data, session_orm=session, org=org
@@ -71,7 +77,7 @@ ENTRY_POINT_IDS = ["test-run", "session", "realtime-chat"]
 
 
 @pytest.mark.parametrize("issue", ENTRY_POINTS, ids=ENTRY_POINT_IDS)
-def test_an_organization_over_its_quota_gets_no_credentials(gateway, acme, issue):  # noqa: F811
+def test_an_organization_over_its_quota_gets_no_credentials(gateway, acme, issue):
     _store_bytes(acme, QUOTA + 1)
 
     with pytest.raises(RunAdmissionRefusedError) as refusal:
@@ -83,10 +89,11 @@ def test_an_organization_over_its_quota_gets_no_credentials(gateway, acme, issue
     )
     assert gateway.created == []
     assert not TemporaryStorageAccount.objects.exists()
+    assert not OrganizationStorageUsage.objects.filter(org=acme).exists()
 
 
 @pytest.mark.parametrize("issue", ENTRY_POINTS, ids=ENTRY_POINT_IDS)
-def test_an_organization_exactly_at_its_quota_still_gets_credentials(gateway, acme, issue):  # noqa: F811
+def test_an_organization_exactly_at_its_quota_still_gets_credentials(gateway, acme, issue):
     _store_bytes(acme, QUOTA)
 
     credentials = issue(acme)
@@ -97,7 +104,7 @@ def test_an_organization_exactly_at_its_quota_still_gets_credentials(gateway, ac
     ]
 
 
-def test_another_organization_over_its_quota_never_refuses_this_one(gateway, acme, beta):  # noqa: F811
+def test_another_organization_over_its_quota_never_refuses_this_one(gateway, acme, beta):
     _store_bytes(beta, QUOTA * 50)
     _store_bytes(acme, QUOTA)
 
@@ -109,7 +116,7 @@ def test_another_organization_over_its_quota_never_refuses_this_one(gateway, acm
     assert len(gateway.created) == 1
 
 
-def test_files_in_the_recycle_bin_count_toward_the_refusal(gateway, acme):  # noqa: F811
+def test_files_in_the_recycle_bin_count_toward_the_refusal(gateway, acme):
     _store_bytes(acme, QUOTA)
     StorageFile.all_objects.create(
         org=acme,

@@ -24,13 +24,10 @@ from src.shared.redis_streams import (
 from tables.models import OrganizationStorageUsage
 from tables.services.recycle_bin import purge_request_consumer as consumer_module
 from tables.services.storage_service import usage_measurement
-from tests.services_tests.test_recycle_bin_purge_request_consumer import (  # noqa: F401
-    _consumer,
-    _pending_count,
-    _request_purge,
-    logged,
-    purge_calls,
-    redis_client,
+from tests.services_tests.recycle_bin_purge_consumer_fixtures import (
+    pending_count,
+    request_purge,
+    start_consumer,
 )
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
@@ -68,12 +65,12 @@ def store_listings(monkeypatch):
 @pytest.fixture
 def due_org(default_org):
     OrganizationStorageUsage.objects.create(
-        organization=default_org, measure_until=timezone.now() + timedelta(hours=1)
+        org=default_org, measure_until=timezone.now() + timedelta(hours=1)
     )
     return default_org
 
 
-def _request(redis_client, job: str) -> None:  # noqa: F811
+def _request(redis_client, job: str) -> None:
     redis_client.xadd(
         RECYCLE_BIN_PURGE_STREAM,
         {
@@ -84,39 +81,39 @@ def _request(redis_client, job: str) -> None:  # noqa: F811
 
 
 def test_a_measurement_request_measures_and_never_purges(
-    redis_client, purge_calls, store_listings, due_org  # noqa: F811
+    redis_client, purge_calls, store_listings, due_org
 ):
-    consumer = _consumer(redis_client)
+    consumer = start_consumer(redis_client)
     _request(redis_client, STORAGE_MEASUREMENT_JOB)
 
     assert consumer.process_new(block_milliseconds=None) == 1
 
     assert store_listings == [f"org_{due_org.pk}/"]
-    assert OrganizationStorageUsage.objects.get(organization=due_org).measured_at is not None
+    assert OrganizationStorageUsage.objects.get(org=due_org).measured_at is not None
     assert purge_calls == []
-    assert _pending_count(redis_client) == 0
+    assert pending_count(redis_client) == 0
 
 
 def test_a_mixed_backlog_runs_one_measurement_and_one_purge_and_acknowledges_all(
-    redis_client, purge_calls, store_listings, due_org  # noqa: F811
+    redis_client, purge_calls, store_listings, due_org
 ):
-    consumer = _consumer(redis_client)
+    consumer = start_consumer(redis_client)
     for _ in range(3):
         _request(redis_client, STORAGE_MEASUREMENT_JOB)
-    _request_purge(redis_client)
-    _request_purge(redis_client)
+    request_purge(redis_client)
+    request_purge(redis_client)
 
     assert consumer.process_new(block_milliseconds=None) == 5
 
     assert store_listings == [f"org_{due_org.pk}/"]
     assert len(purge_calls) == 1
-    assert _pending_count(redis_client) == 0
+    assert pending_count(redis_client) == 0
 
 
 def test_an_unknown_job_is_logged_and_dropped_never_purged(
-    redis_client, purge_calls, store_listings, due_org, logged  # noqa: F811
+    redis_client, purge_calls, store_listings, due_org, logged
 ):
-    consumer = _consumer(redis_client)
+    consumer = start_consumer(redis_client)
     _request(redis_client, "defragment")
 
     assert consumer.process_new(block_milliseconds=None) == 1
@@ -127,19 +124,19 @@ def test_an_unknown_job_is_logged_and_dropped_never_purged(
         record["level"].name == "WARNING" and "defragment" in record["message"]
         for record in logged
     )
-    assert _pending_count(redis_client) == 0
+    assert pending_count(redis_client) == 0
 
 
 def test_a_failing_measurement_is_logged_and_the_purge_of_its_batch_still_runs(
-    redis_client, purge_calls, monkeypatch, logged  # noqa: F811
+    redis_client, purge_calls, monkeypatch, logged
 ):
     def measurement_fails():
         raise RuntimeError("database is gone")
 
     monkeypatch.setattr(consumer_module, "measure_due_organizations", measurement_fails)
-    consumer = _consumer(redis_client)
+    consumer = start_consumer(redis_client)
     _request(redis_client, STORAGE_MEASUREMENT_JOB)
-    _request_purge(redis_client)
+    request_purge(redis_client)
 
     consumer.process_new(block_milliseconds=None)
 
@@ -148,5 +145,5 @@ def test_a_failing_measurement_is_logged_and_the_purge_of_its_batch_still_runs(
         record["level"].name == "ERROR" and "measurement failed" in record["message"]
         for record in logged
     )
-    assert _pending_count(redis_client) == 0
+    assert pending_count(redis_client) == 0
     assert consumer.process_new(block_milliseconds=None) == 0

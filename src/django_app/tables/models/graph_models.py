@@ -1162,7 +1162,7 @@ class OrganizationStorageUsage(models.Model):
     row, and the measurement must not wait on them.
     """
 
-    organization = models.OneToOneField(
+    org = models.OneToOneField(
         "rbac.Organization",
         on_delete=models.CASCADE,
         primary_key=True,

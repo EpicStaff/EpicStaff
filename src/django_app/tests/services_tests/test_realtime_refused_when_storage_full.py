@@ -15,7 +15,6 @@ from agents.models import AgentDefaultSurface, AgentDefinition, Surface, Surface
 from agents.models.surface_models import SurfacePythonTool, SurfaceStorageItem, ToolMode
 from tables.models import PythonCode, PythonCodeTool, RealtimeAgentChat, StorageFile
 from tables.models.realtime_models import RealtimeAgentDefinition
-from tests.services_tests.test_run_code_storage_credentials import gateway  # noqa: F401
 
 pytestmark = pytest.mark.django_db
 
@@ -69,7 +68,7 @@ def over_quota(default_org, surface):
 
 
 def test_a_chat_with_a_storage_tool_over_quota_is_refused_and_its_row_deleted(
-    gateway, voice_agent, surface, over_quota, auth_client, redis_client_mock  # noqa: F811
+    gateway, voice_agent, surface, over_quota, auth_client, redis_client_mock
 ):
     _grant_tool(surface, use_storage=True)
 
@@ -84,7 +83,7 @@ def test_a_chat_with_a_storage_tool_over_quota_is_refused_and_its_row_deleted(
 
 
 def test_a_chat_with_a_storage_tool_at_the_quota_gets_its_credentials(
-    gateway, voice_agent, surface, default_org, auth_client, redis_client_mock  # noqa: F811
+    gateway, voice_agent, surface, default_org, auth_client, redis_client_mock
 ):
     granted = StorageFile.objects.create(
         org=default_org, path="notes.txt", name="notes.txt", item_type="file", size=QUOTA
@@ -100,7 +99,7 @@ def test_a_chat_with_a_storage_tool_at_the_quota_gets_its_credentials(
 
 
 def test_a_chat_without_a_storage_tool_starts_over_quota(
-    gateway, voice_agent, surface, over_quota, auth_client, redis_client_mock  # noqa: F811
+    gateway, voice_agent, surface, over_quota, auth_client, redis_client_mock
 ):
     _grant_tool(surface, use_storage=False)
 

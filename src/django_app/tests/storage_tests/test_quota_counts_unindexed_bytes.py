@@ -23,7 +23,6 @@ from tables.services.storage_service.quota import (
     org_used_bytes,
 )
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
-from tests.services_tests.test_run_code_storage_credentials import gateway  # noqa: F401
 
 pytestmark = pytest.mark.django_db
 
@@ -40,7 +39,7 @@ def _file_row(org, path: str, size: int) -> None:
 
 
 def _unindexed(org, size: int) -> None:
-    OrganizationStorageUsage.objects.create(organization=org, unindexed_bytes=size)
+    OrganizationStorageUsage.objects.create(org=org, unindexed_bytes=size)
 
 
 @pytest.mark.parametrize(
@@ -90,7 +89,7 @@ def _issue_for_test_run(org):
     )
 
 
-def test_unindexed_bytes_alone_refuse_storage_credentials(gateway, acme):  # noqa: F811
+def test_unindexed_bytes_alone_refuse_storage_credentials(gateway, acme):
     _unindexed(acme, QUOTA + 1)
 
     with pytest.raises(RunAdmissionRefusedError) as refusal:
@@ -100,7 +99,7 @@ def test_unindexed_bytes_alone_refuse_storage_credentials(gateway, acme):  # noq
     assert gateway.created == []
 
 
-def test_another_organization_s_unindexed_bytes_never_count_here(gateway, acme, beta):  # noqa: F811
+def test_another_organization_s_unindexed_bytes_never_count_here(gateway, acme, beta):
     _file_row(acme, "rows", 300)
     _unindexed(beta, QUOTA * 50)
 

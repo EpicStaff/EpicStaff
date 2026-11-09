@@ -48,10 +48,10 @@ def request_measurement(org_id: int) -> None:
     else:
         deadline = NO_EXPIRY_DEADLINE
     OrganizationStorageUsage.objects.bulk_create(
-        [OrganizationStorageUsage(organization_id=org_id)], ignore_conflicts=True
+        [OrganizationStorageUsage(org_id=org_id)], ignore_conflicts=True
     )
     OrganizationStorageUsage.objects.filter(
-        Q(measure_until__isnull=True) | Q(measure_until__lt=deadline), organization_id=org_id
+        Q(measure_until__isnull=True) | Q(measure_until__lt=deadline), org_id=org_id
     ).update(measure_until=deadline)
 
 
@@ -67,7 +67,7 @@ def measure_organization(org_id: int) -> None:
     indexed_after = org_indexed_bytes(org_id)
     unindexed = max(0, stored - min(indexed_before, indexed_after))
 
-    OrganizationStorageUsage.objects.filter(organization_id=org_id).update(
+    OrganizationStorageUsage.objects.filter(org_id=org_id).update(
         unindexed_bytes=unindexed, measured_at=started
     )
 
@@ -76,7 +76,7 @@ def measure_due_organizations() -> None:
     """Measure every organization within its deadline and every one with unindexed bytes."""
     org_ids = OrganizationStorageUsage.objects.filter(
         Q(measure_until__gte=timezone.now()) | Q(unindexed_bytes__gt=0)
-    ).values_list("organization_id", flat=True)
+    ).values_list("org_id", flat=True)
     for org_id in list(org_ids):
         started = time.monotonic()
         try:

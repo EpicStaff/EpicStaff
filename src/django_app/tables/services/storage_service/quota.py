@@ -29,7 +29,7 @@ def org_used_bytes(org_id: int) -> int:
     """How many bytes the org stores: its StorageFile rows plus the bytes the hourly store
     measurement found without a row (written straight to the store by run code)."""
     unindexed = (
-        OrganizationStorageUsage.objects.filter(organization_id=org_id)
+        OrganizationStorageUsage.objects.filter(org_id=org_id)
         .values_list("unindexed_bytes", flat=True)
         .first()
     )

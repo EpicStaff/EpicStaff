@@ -77,7 +77,8 @@ class RecycleBinPurgeRequestConsumer:
         return cls(redis_client=redis_client, consumer_name=socket.gethostname())
 
     def run(self) -> None:
-        """Serve purge requests forever; after a Redis failure, wait (backing off) and start over."""
+        """Serve purge and measurement requests forever; after a Redis failure, wait (backing
+        off) and start over."""
         logger.info(
             "Start worker {} consuming {} as {}",
             os.getpid(),
@@ -95,7 +96,7 @@ class RecycleBinPurgeRequestConsumer:
                 consecutive_failures += 1
                 retry_delay = min(2 ** (consecutive_failures - 1), MAX_RETRY_DELAY_SECONDS)
                 logger.exception(
-                    "Recycle bin purge consumer lost Redis, starting over in {}s", retry_delay
+                    "Storage maintenance consumer lost Redis, starting over in {}s", retry_delay
                 )
                 self._sleep(retry_delay)
 
@@ -125,7 +126,8 @@ class RecycleBinPurgeRequestConsumer:
             self._acknowledge(pending_ids)
 
     def process_new(self, block_milliseconds: int | None) -> int:
-        """Read one batch of new requests, serve it with one purge; return how many there were."""
+        """Read one batch of new requests, run each job it names once; return how many there
+        were."""
         entries = self._read_new(block_milliseconds)
         if entries:
             self._handle(entries)

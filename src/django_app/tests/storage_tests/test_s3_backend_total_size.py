@@ -6,13 +6,17 @@ the store keeps but never lists as objects. Only the organization's prefix is li
 
 A real boto3 client with botocore's Stubber: each request is checked against the S3 service
 model, so a wrong operation name or parameter fails here rather than against the live store.
+
+InMemoryStorageBackend stands in for S3StorageBackend in the measurement tests, so its
+`total_size` is pinned to the same contract on the same store contents. It has no paging and
+no multipart uploads, so those cases are S3-only.
 """
 
 import boto3
 import pytest
 from botocore.stub import Stubber
 
-from tests.storage_tests.in_memory_backend import MODIFIED, make_s3_backend
+from tests.storage_tests.in_memory_backend import MODIFIED, InMemoryStorageBackend, make_s3_backend
 
 BUCKET = "bucket"
 ORG_PREFIX = "org_7/"
@@ -135,3 +139,35 @@ def test_a_folder_is_measured_under_the_organization_prefix(stubbed, backend):
     _no_uploads(stubbed, "org_7/docs/")
 
     assert backend.total_size("docs") == 100
+
+
+@pytest.mark.parametrize(
+    ("stored", "prefix", "expected"),
+    [
+        pytest.param(
+            {
+                "org_7/": 0,
+                "org_7/a.txt": 10,
+                "org_7/docs/": 3,
+                "org_7/docs/b.bin": 100,
+                "org_70/other.bin": 1000,
+                "org_8/other.bin": 1000,
+            },
+            "",
+            113,
+            id="every-object-and-marker-under-the-organization-only",
+        ),
+        pytest.param({}, "", 0, id="empty-prefix"),
+        pytest.param(
+            {"org_7/a.txt": 10, "org_7/docs/b.bin": 100, "org_7/docsx/c.bin": 1000},
+            "docs",
+            100,
+            id="folder-under-the-organization-prefix",
+        ),
+    ],
+)
+def test_the_in_memory_fake_measures_like_s3(stored, prefix, expected):
+    fake = InMemoryStorageBackend(organization_prefix=ORG_PREFIX)
+    fake._objects.update({key: (b"x" * size, MODIFIED) for key, size in stored.items()})
+
+    assert fake.total_size(prefix) == expected
