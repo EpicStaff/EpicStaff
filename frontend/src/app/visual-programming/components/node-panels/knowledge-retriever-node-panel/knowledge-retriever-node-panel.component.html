@@ -179,6 +179,7 @@
                                         [availableInputs]="availableInputs()"
                                     />
                                 </app-diff-field-mark>
+                                <app-node-save-errors [messages]="querySaveErrors()" />
                             </div>
                         </div>
                     </div>
@@ -225,6 +226,7 @@
                                 [availableInputs]="availableInputs()"
                             />
                         </app-diff-field-mark>
+                        <app-node-save-errors [messages]="querySaveErrors()" />
                     </div>
 
                     <app-inputs-you-can-use

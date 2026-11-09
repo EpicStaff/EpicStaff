@@ -51,9 +51,10 @@ x-communication-env: &communication-env
   REALTIME_CHANNELS_INVALIDATE_CHANNEL: ${REALTIME_CHANNELS_INVALIDATE_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
-# Bounded container logs (50 MB at most), for services a plugin can make log at will: a plugin's
-# flood of requests writes a line per request to plugins_egress's log, and its failing queries
-# to plugins_db's.
+# Bounded container logs (50 MB per container at most), set on every service: Docker's default
+# json-file log never rotates, so anything that makes a service log at will fills the host disk.
+# epicstaff-nginx writes a line per public request; a plugin's flood of requests does the same
+# to plugins_egress's log, and its failing queries to plugins_db's.
 x-bounded-logs: &bounded-logs
   driver: json-file
   options:
@@ -75,6 +76,7 @@ x-bounded-logs: &bounded-logs
 
 services:
   django_app:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
     build:
@@ -228,6 +230,7 @@ services:
       retries: 100
 
   realtime:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/realtime:${IMAGE_TAG:?}
     container_name: realtime
@@ -272,6 +275,7 @@ services:
         condition: service_started
 
   manager:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/manager:${IMAGE_TAG:?}
     build:
@@ -311,6 +315,7 @@ services:
         condition: service_healthy
 
   crewdb:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/crewdb:${IMAGE_TAG:?}
     build:
@@ -359,6 +364,7 @@ services:
   redis:
     image: redis
     container_name: redis
+    logging: *bounded-logs
     restart: unless-stopped
     networks:
       - backend-network
@@ -391,6 +397,7 @@ services:
       start_period: 5s
 
   crew:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/crew:${IMAGE_TAG:?}
     build:
@@ -517,6 +524,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging: *bounded-logs
     restart: unless-stopped
 
   storage-init:
@@ -550,9 +558,11 @@ services:
       'http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}?policy') &&
       case $$status in 2??) echo 'Avatars are readable without credentials.' ;; *) echo \"Bucket policy failed: HTTP $$status\" && exit 1 ;; esac
       "
+    logging: *bounded-logs
     restart: on-failure
 
   frontend:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/frontend:${IMAGE_TAG:?}
     build:
@@ -572,6 +582,7 @@ services:
       - frontend-network
 
   webhook:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?}
     container_name: webhook
@@ -731,6 +742,7 @@ services:
       # catches a crash-looping nginx (restarting), not one that runs but stops answering.
       retries: 3
       start_period: 10s
+    logging: *bounded-logs
     restart: always
 
 
@@ -748,6 +760,7 @@ services:
       - "8025:8025"   # web UI: http://localhost:8025/
     networks:
       - backend-network
+    logging: *bounded-logs
 
   agent:
     image: ghcr.io/epicstaff/agent:${IMAGE_TAG:?}
@@ -755,6 +768,7 @@ services:
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
+    logging: *bounded-logs
     restart: unless-stopped
     # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
     stop_grace_period: 5m
@@ -793,6 +807,7 @@ services:
   # COMPOSE_PROFILES includes "auditor"; AUDIT_TRAIL_ENABLED=true then makes them do work.
   # Nothing outside the profile may depend_on them, or a stack without the audit trail would not start.
   opensearch:
+    logging: *bounded-logs
     restart: unless-stopped
     image: opensearchproject/opensearch:2.19.1
     container_name: opensearch
@@ -826,6 +841,7 @@ services:
       start_period: 30s
 
   auditor:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:?}
     container_name: auditor
@@ -870,6 +886,7 @@ services:
       start_period: 5s
 
   knowledge_new:
+    logging: *bounded-logs
     restart: unless-stopped
     container_name: knowledge_new
     image: ghcr.io/epicstaff/knowledge_new:${IMAGE_TAG:?}
@@ -969,6 +986,7 @@ services:
       timeout: 10s
       retries: 20
       start_period: 20s
+    logging: *bounded-logs
     restart: unless-stopped
 
   chatdb:
@@ -989,6 +1007,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+    logging: *bounded-logs
     restart: unless-stopped
 
   # The plugin node. Gated behind profiles: ["plugins"]: it starts only when COMPOSE_PROFILES
@@ -1173,6 +1192,7 @@ services:
 
   sandbox_new:
     image: ghcr.io/epicstaff/sandbox_new:${IMAGE_TAG:?}
+    logging: *bounded-logs
     restart: unless-stopped
     container_name: sandbox_new
     build:

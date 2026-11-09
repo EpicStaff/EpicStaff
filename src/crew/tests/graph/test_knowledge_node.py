@@ -2,11 +2,11 @@ import asyncio
 from unittest.mock import MagicMock
 
 import pytest
-from dotdict import DotDict
 
 from services.graph.events import StopEvent
 from services.graph.nodes.knowledge_node import KnowledgeNode
 from services.knowledge_search_service import KnowledgeSearchService
+from src.shared.flow_templates import RefusedPlaceholderError
 from src.shared.models import (
     FoundChunk,
     GraphRagBasicSearchParams,
@@ -258,30 +258,40 @@ def search_query(monkeypatch, query_template: str, input_: dict) -> str:
         ("Docs {{literal}} about {topic}", "Docs {literal} about cats"),
         ('Docs like {"a": 1} about {topic}', 'Docs like {"a": 1} about {topic}'),
         ("Docs about {topic.upper}", "Docs about {topic.upper}"),
-        ("Docs about {user[name]}", "Docs about {user[name]}"),
+        ("Docs about {q[text]}", "Docs about dogs"),
     ],
     ids=[
         "plain",
         "missing-left-as-written",
         "escaped-braces",
         "json-example-verbatim",
-        "attribute-placeholder-verbatim",
-        "index-placeholder-verbatim",
+        "attribute-of-text-left-as-written",
+        "key-path",
     ],
 )
 def test_query_is_rendered_from_the_input(monkeypatch, query_template, expected_query):
-    query = search_query(monkeypatch, query_template, {"topic": "cats", "user": {"name": "Ann"}})
+    query = search_query(monkeypatch, query_template, {"topic": "cats", "q": {"text": "dogs"}})
 
     assert query == expected_query
 
 
-def test_query_placeholder_cannot_read_the_crew_environment(monkeypatch):
-    canary_value = "canary-from-the-crew-environment"
-    monkeypatch.setenv("KNOWLEDGE_QUERY_TEST_CANARY", canary_value)
-    query_template = (
-        "Docs {user.update.__globals__[ast].sys.modules[os].environ[KNOWLEDGE_QUERY_TEST_CANARY]}"
-    )
+class RecordingKnowledgeSearchService:
+    def __init__(self):
+        self.searches = []
 
-    query = search_query(monkeypatch, query_template, {"user": DotDict({"name": "Ann"})})
+    def search_knowledges(self, **kwargs):
+        self.searches.append(kwargs)
+        return []
 
-    assert query == query_template
+
+def test_refused_query_placeholder_fails_before_any_search():
+    service = RecordingKnowledgeSearchService()
+    node = make_node(service)
+    node.query_template = "Docs about {q._x}"
+
+    with pytest.raises(RefusedPlaceholderError):
+        asyncio.run(
+            node.execute(state={}, writer=MagicMock(), execution_order=1, input_={"q": {"_x": "x"}})
+        )
+
+    assert service.searches == []

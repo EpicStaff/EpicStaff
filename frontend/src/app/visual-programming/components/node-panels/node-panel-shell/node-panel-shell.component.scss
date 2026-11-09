@@ -244,6 +244,14 @@ header.dialog-header--compact {
     }
 }
 
+// Capped, so a long list scrolls instead of pushing the panel's fields out of view.
+.node-level-save-errors {
+    flex-shrink: 0;
+    max-height: 160px;
+    overflow-y: auto;
+    padding: 0 1rem;
+}
+
 main {
     flex: 1;
     overflow-y: auto;
