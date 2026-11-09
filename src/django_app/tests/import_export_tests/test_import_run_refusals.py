@@ -53,6 +53,16 @@ def _classification_prompt_with_refused_text(graph):
     )
 
 
+def _classification_input_map_with_refused_path(graph):
+    ClassificationDecisionTableNode.objects.create(
+        graph=graph, node_name="Classifier", pre_input_map={"x": "variables._x|null"}
+    )
+    return (
+        "Node 'Classifier' of flow 'Source', field 'pre_input_map': Variable path "
+        "'variables._x' is not allowed: path segments cannot start with '_'."
+    )
+
+
 def _task_with_refused_output_path(graph):
     TaskNode.objects.create(graph=graph, node_name="Writer", output_variable_path="variables._out")
     return (
@@ -89,6 +99,9 @@ def source(acme):
         pytest.param(_task_with_refused_instructions, id="task-instructions"),
         pytest.param(_agent_task_with_refused_instructions, id="agent-task-instructions"),
         pytest.param(_classification_prompt_with_refused_text, id="classification-prompt"),
+        pytest.param(
+            _classification_input_map_with_refused_path, id="classification-table-input-map"
+        ),
         pytest.param(_task_with_refused_output_path, id="state-path"),
     ],
 )
