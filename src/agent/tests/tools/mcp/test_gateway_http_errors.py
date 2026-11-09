@@ -16,6 +16,7 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
+import anyio
 import pytest
 import uvicorn
 from app.exceptions import McpToolError
@@ -162,6 +163,11 @@ def _server_with_tool(name: str, tool: Callable) -> FastMCP:
 
 def _lookup(query: str) -> str:
     return query
+
+
+async def _search_slowly() -> str:
+    await asyncio.sleep(1)
+    return "done"
 
 
 def _url_with_secrets(base_url: str, path: str) -> str:
@@ -345,3 +351,41 @@ async def test_the_server_receives_the_authorization_the_url_and_token_imply(
         await _run("describe", _tool_data(url).model_copy(update={"auth": token}))
 
     assert set(authorizations) == {expected_authorization}
+
+
+@pytest.mark.parametrize(
+    ("operation", "prefix"),
+    [("describe", "MCP server unreachable"), ("call", "MCP call failed")],
+)
+async def test_sse_server_that_never_announces_its_endpoint_fails_within_init_timeout(
+    operation, prefix
+):
+    async with _http_server(lambda http_method, request: _EventStream()) as (base_url, _):
+        data = _tool_data(f"{base_url}/sse").model_copy(update={"init_timeout": 0.5})
+        # Unbounded, the SDK waits 300 s (its sse_read_timeout) for the endpoint event.
+        with anyio.fail_after(5):
+            message = await _run(operation, data)
+
+    expected = f"{prefix} for tool_name=search: did not finish connecting within init_timeout=0.5 s"
+    assert message == expected
+
+
+async def test_an_init_timeout_of_zero_means_no_limit():
+    app = _server_with_tool("search", _lookup).http_app(transport="sse", path="/sse")
+    async with _serving(app, lifespan="on") as base_url:
+        data = _tool_data(f"{base_url}/sse").model_copy(update={"init_timeout": 0})
+        gateway = McpToolGateway(FastMCPClientFactory(), describe_cache_ttl_s=300)
+        described = await gateway.describe(data)
+
+    assert described.input_schema["required"] == ["query"]
+
+
+@_HTTP_TRANSPORTS
+async def test_a_tool_call_may_run_longer_than_init_timeout(transport, path):
+    app = _server_with_tool("search", _search_slowly).http_app(transport=transport, path=path)
+    async with _serving(app, lifespan="on") as base_url:
+        data = _tool_data(f"{base_url}{path}").model_copy(update={"init_timeout": 0.5})
+        gateway = McpToolGateway(FastMCPClientFactory(), describe_cache_ttl_s=300)
+        output = await gateway.call(data, {})
+
+    assert output == '{"result": "done"}'

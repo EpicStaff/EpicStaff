@@ -6,6 +6,7 @@ import hashlib
 import json
 import time
 from collections.abc import Callable
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 
 import anyio
@@ -109,7 +110,7 @@ class McpToolGateway:
         client = self._factory.create(data)
 
         try:
-            async with client:
+            async with self._connected(client, data.init_timeout):
                 tools = await client.list_tools()
 
         except Exception as error:
@@ -183,7 +184,7 @@ class McpToolGateway:
         client = self._factory.create(data)
 
         try:
-            async with client:
+            async with self._connected(client, data.init_timeout):
                 try:
                     result = await client.call_tool(data.tool_name, arguments=args)
                 except MCPError as error:
@@ -210,6 +211,25 @@ class McpToolGateway:
             return " ".join(self._render_content_block(c) for c in result.content)
 
         return str(result.data)
+
+    @staticmethod
+    @asynccontextmanager
+    async def _connected(client: Client, init_timeout: float | None):
+        # fastmcp bounds only initialize by init_timeout. Before it, the SSE transport
+        # waits for the server's endpoint event with no bound: the SDK's
+        # sse_read_timeout (300 s) ends the read, but its error then waits on a stream
+        # nothing reads yet. Lowering sse_read_timeout would also cut off a slow tool's
+        # result on the same stream, so the whole connect phase is bounded here, and
+        # the call after it is not.
+        async with AsyncExitStack() as stack:
+            # 0 means no limit, as in fastmcp.
+            with anyio.move_on_after(init_timeout or None) as connect_scope:
+                await stack.enter_async_context(client)
+            if connect_scope.cancelled_caught:
+                raise TimeoutError(
+                    f"did not finish connecting within init_timeout={init_timeout:g} s"
+                )
+            yield
 
     @staticmethod
     def _failure_reason(client: Client, error: Exception) -> str:
