@@ -1087,6 +1087,26 @@ class StorageFile(OrgScopedModel, LastEditTrackedModel, SoftDeleteFields):
         ]
 
 
+class OrganizationStorageUsage(models.Model):
+    """Stored bytes of an organization that no StorageFile row accounts for.
+
+    Code run with temporary storage credentials writes straight to the store, past the
+    StorageFile index; the hourly store measurement records those bytes here so the quota
+    counts them. A row of its own, not an Organization column: uploads lock the Organization
+    row, and the measurement must not wait on them.
+    """
+
+    organization = models.OneToOneField(
+        "rbac.Organization",
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="storage_usage",
+    )
+    unindexed_bytes = models.BigIntegerField(default=0)
+    measured_at = models.DateTimeField(null=True)
+    measure_until = models.DateTimeField(null=True)
+
+
 class GraphStorageFile(SoftDeleteFields):
     soft_delete_reference_fields = ("storage_file",)
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="storage_files")

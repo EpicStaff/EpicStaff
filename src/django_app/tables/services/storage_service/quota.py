@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import Sum
 from rbac.models import Organization
 from tables.exceptions import StorageQuotaExceeded
-from tables.models import StorageFile
+from tables.models import OrganizationStorageUsage, StorageFile
 from tables.services.storage_service.dataclasses import BinPurgeGrant, PurgedBinEntry
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.recycle_bin import StorageRecycleBinService
@@ -15,14 +15,25 @@ def _total_size(rows) -> int:
     return rows.aggregate(s=Sum("size"))["s"] or 0
 
 
-def org_used_bytes(org_id: int) -> int:
-    """How many bytes the org's files take, summed from StorageFile rows.
+def org_indexed_bytes(org_id: int) -> int:
+    """How many bytes the org's StorageFile rows account for.
 
     Files in the recycle bin count too: their bytes are still stored, and
     leaving them out would let an org go past its quota by deleting and
     uploading again.
     """
     return _total_size(StorageFile.all_objects.filter(org_id=org_id))
+
+
+def org_used_bytes(org_id: int) -> int:
+    """How many bytes the org stores: its StorageFile rows plus the bytes the hourly store
+    measurement found without a row (written straight to the store by run code)."""
+    unindexed = (
+        OrganizationStorageUsage.objects.filter(organization_id=org_id)
+        .values_list("unindexed_bytes", flat=True)
+        .first()
+    )
+    return org_indexed_bytes(org_id) + (unindexed or 0)
 
 
 def size_of_paths(org_id: int, paths) -> int:
