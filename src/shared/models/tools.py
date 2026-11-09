@@ -41,7 +41,8 @@ class McpToolData(BaseModel):
     """In-memory carrier for SecretResolver; excluded from every dump."""
 
     init_timeout: float | None = 10
-    """Timeout for session initialization. Optional, default is 10 seconds."""
+    """Timeout for connecting to the server, up to and including session initialization.
+    Optional, default is 10 seconds; None or 0 means no limit."""
 
     model_config = ConfigDict(
         from_attributes=True,
