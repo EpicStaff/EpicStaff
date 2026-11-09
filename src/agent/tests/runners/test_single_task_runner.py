@@ -398,6 +398,23 @@ async def test_output_schema_with_tools_runs_loop_then_enforces():
     assert final.tool_invocations == 1
 
 
+@pytest.mark.parametrize("with_tools", [False, True])
+async def test_structured_final_text_keeps_non_ascii_text_readable(with_tools):
+    emitter = FakeEmitter()
+    schema = {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}
+    usage = TokenUsage(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+    turns = [({"city": "Київ"}, usage)]
+    if with_tools:
+        turns.insert(0, (None, usage))
+    resolver = FakeResolverWithTools() if with_tools else None
+    runner = _runner(resolver=resolver, loop=AnswerToolLoop(turns))
+    request = _request({"task_instructions": "Name a city", "output_schema": schema})
+
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    assert emitter.finals[0].final_text == '{"city": "Київ"}'
+
+
 async def test_schema_validation_error_calls_on_error():
     """SchemaValidationError from enforcer → on_error called, on_final not."""
     emitter = FakeEmitter()
