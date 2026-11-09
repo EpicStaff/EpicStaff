@@ -34,7 +34,8 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { fieldGroupChange, linkedEntityFormat, mapFieldRowChanges } from '../../../utils/diff';
 import { DiffFieldMarkChange, DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
-import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { inputMapFromRows } from '../../input-map/input-map-rows';
+import { initializeInputMap } from '../node-panel-form.utils';
 import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 import { NodeSaveErrorsComponent } from '../shared/node-save-errors/node-save-errors.component';
 import { buildGraphSearchConfig } from './knowledge-retriever-search-configs.util';
@@ -225,8 +226,7 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
 
     protected createUpdatedNode(): KnowledgeRetrieverNodeModel {
         const node = this.node();
-        const validPairs = getValidInputPairs(this.inputMapPairs);
-        const inputMap = createInputMapFromPairs(validPairs);
+        const inputMap = inputMapFromRows(this.inputMapPairs.getRawValue());
 
         const choice: RagChoice | null = this.form.value.rag ?? null;
         const kind = this.selectedRagKind();

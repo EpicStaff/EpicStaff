@@ -22,6 +22,7 @@ import { NODE_PANEL_DIFF } from '../../../../core/providers/node-panel-diff.toke
 import { linkedEntityFormat, mapFieldRowChanges } from '../../../../utils/diff';
 import { DiffFieldMarkComponent } from '../../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../../input-map/input-map.component';
+import { inputMapFromRows } from '../../../input-map/input-map-rows';
 import { MissingReferenceNoteComponent } from '../../../missing-reference-note/missing-reference-note.component';
 import { isCompleteQuestion, isValidQuestionName, MAX_SYSTEM_ONE_QUESTIONS } from './question-name.util';
 import { KEPT_QUESTION_ROW, QuestionRowMark, systemOneQuestionRowChanges } from './system-one-question-row-changes';
@@ -323,10 +324,7 @@ export class CdtSystemOneEntryComponent implements OnInit {
     }
 
     private emitInputMap(): void {
-        const pairs: { key: string | null; value: string | null }[] = this.inputMapForm.controls.input_map.value;
-        const inputMap = Object.fromEntries(
-            pairs.filter((pair) => pair.key?.trim()).map((pair) => [pair.key!.trim(), pair.value ?? ''])
-        );
+        const inputMap = inputMapFromRows(this.inputMapForm.controls.input_map.getRawValue());
         if (deepEqual(inputMap, this.prompt().input_map ?? {})) return;
         this.promptChange.emit({ input_map: inputMap });
     }
