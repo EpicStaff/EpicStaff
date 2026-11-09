@@ -120,16 +120,20 @@ async def test_a_flow_archive_is_stored_under_a_server_built_key_and_queued(
     user = await sync_to_async(_user)(custom_role_user, acme)
     body = _zip(await sync_to_async(_envelope)(acme))
 
-    response = await _post(FLOWS, user, acme, body, "?import_labels=false&preserve_uuids=1")
+    response = await _post(
+        FLOWS, user, acme, body, "?import_labels=false&preserve_uuids=1&file_name=support.zip"
+    )
 
     assert response.status_code == 202, response.text
     job = await TransferJob.objects.aget(pk=response.json()["job_id"])
-    assert (job.kind, job.main_entity, job.org_id, job.created_by_id) == (
+    assert (job.kind, job.main_entity, job.org_id, job.created_by_id, job.display_name) == (
         "import",
         "Flow",
         acme.id,
         user.id,
+        "support.zip",
     )
+    # The file name is not an import setting.
     assert job.request == {
         "settings": {"preserve_uuids": True, "replace_existing": False, "import_labels": False}
     }
@@ -237,6 +241,7 @@ async def test_a_streamed_body_past_the_cap_is_refused_while_reading(
         (FLOWS, "?replace_existing=true"),
         (FLOWS, "?preserve_uuids=maybe"),
         (COLLECTIONS, "?import_labels=true"),
+        (COLLECTIONS, f"?file_name={'x' * 256}"),
     ],
 )
 async def test_invalid_import_settings_are_refused_before_reading(
@@ -383,11 +388,15 @@ async def test_a_collection_archive_is_stored_and_queued(
 
     body = _zip(await sync_to_async(collection_envelope)())
 
-    response = await _post(COLLECTIONS, user, acme, body)
+    response = await _post(COLLECTIONS, user, acme, body, "?file_name=handbook.zip")
 
     assert response.status_code == 202, response.text
     job = await TransferJob.objects.aget(pk=response.json()["job_id"])
-    assert (job.main_entity, job.request) == ("SourceCollection", {"settings": {}})
+    assert (job.main_entity, job.request, job.display_name) == (
+        "SourceCollection",
+        {"settings": {}},
+        "handbook.zip",
+    )
     assert backend.objects[job.archive_key] == body
     assert enqueued == [job.id]
 

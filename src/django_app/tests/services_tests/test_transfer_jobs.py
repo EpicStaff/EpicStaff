@@ -31,7 +31,8 @@ from tables.services import organization_deletion
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.organization_deletion import TablesOrganizationDeletion
 from tables.services.transfer_jobs.archive_store import TransferArchiveStore
-from tables.services.transfer_jobs.consumer import TransferJobConsumer
+from tables.services.transfer_jobs.consumer import HeavyTransferJobConsumer
+from tables.services.transfer_jobs.export_definitions import export_definition
 from tables.services.transfer_jobs.queue import enqueue_transfer_job
 from tables.clients.errors import (
     ClientBadGatewayError,
@@ -177,6 +178,51 @@ def test_export_runs_with_the_creators_current_rights(runner, flow, member_witho
     assert (job.status, job.error["code"]) == (TransferJob.Status.FAILED, "permission_denied")
 
 
+def _drop_export_right(user, org):
+    membership = OrganizationUser.objects.get(user=user, org=org)
+    RolePermission.objects.filter(role=membership.role, resource_type=ResourceType.FLOWS).update(
+        permissions=int(Permission.READ)
+    )
+
+
+def _leave_org(user, org):
+    OrganizationUser.objects.filter(user=user, org=org).delete()
+
+
+@pytest.mark.parametrize(
+    "lose_the_right",
+    [
+        pytest.param(_drop_export_right, id="export right revoked"),
+        pytest.param(_leave_org, id="creator left the organization"),
+    ],
+)
+def test_an_export_whose_creator_loses_the_right_while_it_runs_stores_nothing(
+    runner, backend, flow, member_without, monkeypatch, lose_the_right
+):
+    # A custom role that keeps EXPORT, so revoking its rights leaves the built-in roles alone.
+    creator = member_without(Permission.UPDATE)
+    job = _export_job(flow, creator)
+    definition = export_definition(job.main_entity)
+    write_archive = definition.write_archive
+
+    def write_while_the_right_is_lost(*args, **kwargs):
+        artifact = write_archive(*args, **kwargs)
+        lose_the_right(creator, flow.org)
+        return artifact
+
+    monkeypatch.setattr(definition, "write_archive", write_while_the_right_is_lost)
+
+    runner.run(job.id)
+
+    job.refresh_from_db()
+    assert (job.status, job.error["code"], job.archive_key) == (
+        TransferJob.Status.FAILED,
+        "permission_denied",
+        "",
+    )
+    assert backend.objects == {}
+
+
 # --- import ------------------------------------------------------------------------------
 
 
@@ -274,6 +320,39 @@ def test_temporary_files_are_removed_when_a_job_fails(
     assert len(written) == 1 and len(downloaded) == 1
     assert not os.path.exists(written[0])
     assert not os.path.exists(downloaded[0])
+
+
+def test_an_export_that_fails_after_storing_its_archive_leaves_nothing_stored(
+    runner, backend, flow, regular_user, monkeypatch
+):
+    def failing_file_name(*args, **kwargs):
+        raise RuntimeError("naming broke")
+
+    monkeypatch.setattr(runner_module, "generate_file_name", failing_file_name)
+    job = _export_job(flow, regular_user)
+
+    runner.run(job.id)
+
+    job.refresh_from_db()
+    assert (job.status, job.error["code"]) == (TransferJob.Status.FAILED, "internal_error")
+    assert backend.objects == {}
+
+
+class _UploadBreaksAfterWriting(FakeStorageBackend):
+    def upload_stream(self, path: str, file_object) -> None:
+        super().upload_stream(path, file_object)
+        raise RuntimeError("connection lost after the first part")
+
+
+def test_an_export_whose_upload_breaks_part_way_leaves_nothing_stored(flow, regular_user):
+    backend = _UploadBreaksAfterWriting()
+    job = _export_job(flow, regular_user)
+
+    TransferJobRunner(store=TransferArchiveStore(backend=backend)).run(job.id)
+
+    job.refresh_from_db()
+    assert (job.status, job.archive_key) == (TransferJob.Status.FAILED, "")
+    assert backend.objects == {}
 
 
 def test_a_job_that_is_not_queued_is_left_alone(runner, flow, regular_user):
@@ -516,7 +595,7 @@ def test_consumer_runs_each_enqueued_job_and_acknowledges_it(
     redis_client, flow, regular_user, fail
 ):
     runner = RecordingRunner(fail=fail)
-    consumer = TransferJobConsumer(redis_client, "host-a", runner=runner)
+    consumer = HeavyTransferJobConsumer(redis_client, "host-a", runner=runner)
     consumer.start()
     first, second = _export_job(flow, regular_user), _export_job(flow, regular_user)
     enqueue_transfer_job(first, redis_client=redis_client)
@@ -532,7 +611,7 @@ def test_consumer_runs_each_enqueued_job_and_acknowledges_it(
 
 def test_consumer_sweeps_when_asked(redis_client):
     sweeps = []
-    consumer = TransferJobConsumer(
+    consumer = HeavyTransferJobConsumer(
         redis_client,
         "host-a",
         runner=RecordingRunner(),
@@ -589,7 +668,8 @@ def test_a_user_keeps_only_their_newest_export_archives(
     now = timezone.now()
     older = [
         _completed_export(store, regular_user, default_org, now - timedelta(hours=hours))
-        for hours in (4, 3, 2)
+        # Ten kept archives; the export about to complete is the eleventh.
+        for hours in range(11, 1, -1)
     ]
     colleague = django_user_model.objects.create_user(
         email="colleague-exports@example.com", password="StrongPass123!"
@@ -622,7 +702,8 @@ def test_an_archive_that_cannot_be_deleted_is_left_as_it_was(
     now = timezone.now()
     older = [
         _completed_export(store, regular_user, default_org, now - timedelta(hours=hours))
-        for hours in (4, 3, 2)
+        # Ten kept archives; the export about to complete is the eleventh.
+        for hours in range(11, 1, -1)
     ]
     real_delete = TransferArchiveStore.delete_job
 

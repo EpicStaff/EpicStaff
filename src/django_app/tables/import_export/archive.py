@@ -106,6 +106,14 @@ class ExportArchiveWriter:
         with self._zip.open(member, "w", force_zip64=True) as target:
             shutil.copyfileobj(source, target, _COPY_CHUNK_SIZE)
 
+    def open_member(self, member: str) -> BinaryIO:
+        """Open `member` for writing; what is written goes into the archive as it arrives.
+
+        Close it (use it as a context manager) before adding another member.
+        """
+        # zipfile cannot know the size up front here; without ZIP64 a member past 2 GiB fails.
+        return self._zip.open(member, "w", force_zip64=True)
+
     def write_envelope(self, envelope: dict) -> None:
         self.add_bytes(ENVELOPE_MEMBER, json.dumps(envelope).encode())
 

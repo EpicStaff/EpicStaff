@@ -26,9 +26,7 @@ from tests.import_export_tests.knowledge_builders import make_document, make_nai
 
 @pytest.fixture
 def flow_service():
-    return ViewSetImportExportService(
-        entity_type=EntityType.GRAPH, export_prefix="graph", filename_attr="name"
-    )
+    return ViewSetImportExportService(EntityType.GRAPH)
 
 
 @pytest.fixture

@@ -149,22 +149,24 @@ CDT messages (start, condition-group result, manipulation, prompt, finish) are t
 
 ## Export
 
-A CDT node can be exported on its own via `GET /api/classification-decision-table-node/{id}/export`. The `export_format` query parameter selects the output:
+A CDT node can be exported on its own as a background job, like every export. The `export_format` in the body selects what the job's `.zip` holds:
 
 ```
-GET /api/classification-decision-table-node/{id}/export?export_format=json   # default
-GET /api/classification-decision-table-node/{id}/export?export_format=csv
+POST /api/classification-decision-table-node/export-jobs/   {"ids": [<node id>], "export_format": "json"}   # default
+POST /api/classification-decision-table-node/export-jobs/   {"ids": [<node id>], "export_format": "csv"}
 ```
+
+It answers `202 {"job_id"}`; poll `GET /api/transfer-jobs/{job_id}/` and download the archive once the job completes. A node outside the active organization is a `404 export_entities_not_found`.
 
 ### JSON (`export_format=json`, default)
 
-Reuses the partial-export pipeline (`GraphPartialExportService`), so the file is structurally identical to a [partial node export](../import_export/PARTIAL_NODE_IMPORT_EXPORT.md) of a single CDT node — the node plus its transitive dependencies (LLM configs, prompts' configs, referenced Python code). Because of this, a JSON export **is re-importable** into any existing graph via the graph `partial-import` endpoint, which returns the node unsaved for the flow editor to place on the canvas; it is persisted when the user saves the flow.
+Reuses the partial-export pipeline (`GraphPartialExportService`), so the file is structurally identical to a [partial node export](../import_export/PARTIAL_NODE_IMPORT_EXPORT.md) of a single CDT node — the node plus its transitive dependencies (LLM configs, prompts' configs, referenced Python code). The archive holds it as `export.json`. Because of this, the archive **is re-importable** into any existing graph via the graph `partial-import` endpoint, which returns the node unsaved for the flow editor to place on the canvas; it is persisted when the user saves the flow.
 
-The filename is prefixed `CDT_` (e.g. `CDT_my_node_20260611.json`).
+The archive's file name is prefixed `CDT_` (e.g. `CDT_my_node_2026-06-11.zip`).
 
 ### CSV (`export_format=csv`)
 
-Produced by `export_condition_groups_csv()` in `tables/import_export/tabular/classification_decision_table.py`. This is a **read-only, human-readable report** — it flattens the node's rules into a spreadsheet and **cannot be re-imported**. Use it for review, sharing, or auditing decision logic outside the app.
+Produced by `export_condition_groups_csv()` in `tables/import_export/tabular/classification_decision_table.py`. The archive holds it as `CDT_<node name>_<date>.csv`. This is a **read-only, human-readable report** — it flattens the node's rules into a spreadsheet and **cannot be re-imported**. Use it for review, sharing, or auditing decision logic outside the app.
 
 The file is laid out as several labelled sections:
 

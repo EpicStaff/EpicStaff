@@ -385,6 +385,14 @@ _IMPORT_JOB_DESCRIPTION = (
     "Poll GET /api/transfer-jobs/{job_id}/."
 )
 
+_FILE_NAME_PARAMETER = {
+    "in": "query",
+    "name": "file_name",
+    "required": False,
+    "schema": {"type": "string", "maxLength": 255},
+    "description": "Name of the uploaded file, shown as the job's display_name.",
+}
+
 
 def _import_job_responses(permission: str) -> dict:
     return {
@@ -430,6 +438,7 @@ def add_import_job_upload_postprocessing_hook(result, generator, request, public
             "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
             "description": _IMPORT_JOB_DESCRIPTION,
             "parameters": [
+                _FILE_NAME_PARAMETER,
                 {
                     "in": "query",
                     "name": "preserve_uuids",
@@ -463,7 +472,8 @@ def add_import_job_upload_postprocessing_hook(result, generator, request, public
         "post": {
             "operationId": "source_collections_import_jobs_create",
             "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
-            "description": _IMPORT_JOB_DESCRIPTION + " Takes no query parameters.",
+            "description": _IMPORT_JOB_DESCRIPTION,
+            "parameters": [_FILE_NAME_PARAMETER],
             "requestBody": _ZIP_BODY,
             "responses": _import_job_responses("KNOWLEDGE_SOURCES:CREATE"),
         }

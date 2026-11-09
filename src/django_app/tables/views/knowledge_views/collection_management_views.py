@@ -14,6 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.exceptions import CollectionNotFoundException
 from tables.import_export.enums import EntityType
+from tables.models import TransferJob
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.serializers.knowledge_serializers import (
     CopySourceCollectionSerializer,
@@ -31,6 +32,7 @@ from tables.services.knowledge_services.collection_management_service import (
 )
 from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
+from tables.services.transfer_jobs.export_definitions import export_definition
 from tables.swagger_schemas.knowledge_schemas.collection_management_schemas import (
     SOURCE_COLLECTION_AVAILABLE_RAGS_GET,
     SOURCE_COLLECTION_BULK_DELETE_POST,
@@ -94,15 +96,11 @@ class SourceCollectionViewSet(
         "inspect_import": Permission.CREATE,
     }
     recycle_bin_resource_key = RecycleBinSource.COLLECTION
-    export_job_entity_type = EntityType.SOURCE_COLLECTION
+    export_job_definition = export_definition(TransferJob.MainEntity.SOURCE_COLLECTION)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.SOURCE_COLLECTION,
-            export_prefix="knowledge",
-            filename_attr="collection_name",
-        )
+        self.import_export_service = ViewSetImportExportService(EntityType.SOURCE_COLLECTION)
 
     def get_queryset(self):
         """Active-org collections only, optimized per action."""

@@ -59,8 +59,8 @@ class AuditFilterPresetCopySerializer(serializers.Serializer):
 
 
 class AuditFilterPresetImportFileSerializer(serializers.Serializer):
-    """The actual upload - a `.json` file, exactly what `export`/`bulk_export`
-    produce, attached as multipart/form-data (matches the Agent/Crew/Graph
+    """The actual upload - the `.zip` an export job produced, or the `.json` of an
+    older export, attached as multipart/form-data (matches the Agent/Crew/Graph
     import convention - see ImportRequestSerializer) rather than pasted as
     a raw JSON request body. Each preset in it is then validated by
     AuditFilterPresetEntitySerializer inside AuditFilterPresetStrategy."""

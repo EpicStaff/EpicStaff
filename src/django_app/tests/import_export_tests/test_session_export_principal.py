@@ -86,10 +86,9 @@ def _export_csv_rows(session_id: int) -> list[dict]:
         )
         .data
     )
-    response = CsvExportFormatStrategy(SessionTabularProjection()).render(
-        data, EntityType.SESSION, "session", str(session_id)
-    )
-    reader = csv.DictReader(io.StringIO(response.content.decode()))
+    stream = io.StringIO(newline="")
+    CsvExportFormatStrategy(SessionTabularProjection()).write(data, EntityType.SESSION, stream)
+    reader = csv.DictReader(io.StringIO(stream.getvalue()))
     return list(reader)
 
 

@@ -3,13 +3,13 @@ from drf_spectacular.utils import extend_schema
 from rbac.access.effective import EffectivePermissions
 from rbac.access.resolver import PermissionResolver
 from rbac.authorship import resolve_author
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from tables.exceptions import TransferJobRequiresUserError
-from tables.import_export.enums import EntityType
+from tables.models.user import User
 from tables.serializers.serializers import (
     BulkDeleteQuerySerializer,
     BulkDeleteRequestSerializer,
@@ -24,10 +24,14 @@ from tables.serializers.transfer_job_serializers import (
 )
 from tables.services.delete_services import BaseDeleteService
 from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
+from tables.services.transfer_jobs.export_definitions import ExportJobDefinition
 from tables.services.transfer_jobs.job_service import TransferJobService
 from tables.services.trigger_nodes import trigger_node_access
 from tables.throttles import TransferJobCreateThrottle
 from utils.logger import logger
+
+# Starting a job is throttled on top of the project defaults, in one bucket with imports.
+EXPORT_JOB_THROTTLE_CLASSES = [*api_settings.DEFAULT_THROTTLE_CLASSES, TransferJobCreateThrottle]
 
 
 class CopyActionMixin:
@@ -255,33 +259,57 @@ class InspectActionMixin:
 class ExportJobActionMixin:
     """Adds an ``export_jobs`` action that queues a background export of the viewset's items.
 
-    Set `export_job_entity_type` (an entity `TransferJob.MainEntity` lists) and, when the body
-    takes more than `ids`, `export_job_request_serializer_class`; map
-    `export_jobs` to `Permission.EXPORT` in `rbac_action_map`. The job belongs
-    to the requesting user, so a caller with no user row is refused.
+    Set `export_job_definition` (an entry of `EXPORT_JOB_DEFINITIONS`) and, when the
+    body holds more than `ids`, `export_job_request_serializer_class` to validate it.
+    Map `export_jobs` to the definition's `permission` in `rbac_action_map`, and give
+    the action its request schema with `@extend_schema_view`. A viewset whose body
+    needs resolving first (e.g. filters into ids) overrides `export_job_data`. The job
+    belongs to the requesting user, so a caller with no user row is refused before
+    anything else runs.
     """
 
-    export_job_entity_type: EntityType
-    export_job_request_serializer_class = ExportJobCreateSerializer
+    export_job_definition: ExportJobDefinition
+    export_job_request_serializer_class: type[serializers.Serializer] = ExportJobCreateSerializer
 
     @extend_schema(responses={202: ExportJobCreatedSerializer})
     @action(
         detail=False,
         methods=["post"],
         url_path="export-jobs",
-        throttle_classes=[*api_settings.DEFAULT_THROTTLE_CLASSES, TransferJobCreateThrottle],
+        throttle_classes=EXPORT_JOB_THROTTLE_CLASSES,
     )
     def export_jobs(self, request):
-        author = resolve_author(request.user)
-        if author is None:
-            raise TransferJobRequiresUserError()
+        author = self.export_job_author()
         serializer = self.export_job_request_serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
+        return self.start_export_job(
+            author, self.export_job_definition, self.export_job_data(serializer.validated_data)
+        )
+
+    def export_job_data(self, validated_data: dict) -> dict:
+        """The data the job is built from; the validated body unless a viewset resolves it."""
+        return validated_data
+
+    def export_job_author(self) -> User:
+        """The user an export job will belong to.
+
+        Raises:
+            TransferJobRequiresUserError: The caller has no user row (a system API key
+                or a plugin account), so no job could be owned by it.
+        """
+        author = resolve_author(self.request.user)
+        if author is None:
+            raise TransferJobRequiresUserError()
+        return author
+
+    def start_export_job(
+        self, author: User, definition: ExportJobDefinition, validated_data: dict
+    ) -> Response:
+        """Queue an export of `definition` for `author` and answer 202 `{job_id}`."""
         job = TransferJobService().start_export(
             user=author,
             org_id=self.get_active_org_id(),
-            entity_type=self.export_job_entity_type,
-            ids=serializer.validated_data["ids"],
-            include_knowledge=serializer.validated_data.get("include_knowledge"),
+            definition=definition,
+            validated_data=validated_data,
         )
         return Response({"job_id": str(job.id)}, status=status.HTTP_202_ACCEPTED)

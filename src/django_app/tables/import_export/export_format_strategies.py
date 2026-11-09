@@ -1,55 +1,15 @@
 import csv
-import io
 import json
-from abc import ABC, abstractmethod
-
-from django.http import HttpResponse
+import textwrap
+from collections.abc import Iterable
+from typing import TextIO
 
 from tables.import_export.archive import ExportArchiveWriter
+from tables.import_export.constants import IMPORT_VERSION, MAIN_ENTITY_KEY
 from tables.import_export.enums import EntityType
-from tables.import_export.export_exclusions import (
-    EXPORT_EXCLUDED_HEADER,
-    ExcludedEntity,
-    build_excluded_header_value,
-)
 from tables.import_export.export_tabular_projections._csv_helpers import _neutralize_formula
 from tables.import_export.export_tabular_projections.base import TabularProjection
 from tables.import_export.registry import entity_registry
-from tables.utils.helpers import generate_file_name
-
-
-def apply_excluded_header(response: HttpResponse, excluded: list[ExcludedEntity]) -> None:
-    header_value = build_excluded_header_value(excluded)
-    if header_value is not None:
-        response[EXPORT_EXCLUDED_HEADER] = header_value
-
-
-class ExportFormatStrategy(ABC):
-    @abstractmethod
-    def render(
-        self,
-        data: dict,
-        entity_type: str,
-        prefix: str,
-        base_name: str,
-        excluded: list[ExcludedEntity] | None = None,
-    ) -> HttpResponse: ...
-
-
-class JsonExportFormatStrategy(ExportFormatStrategy):
-    def render(
-        self,
-        data: dict,
-        entity_type: str,
-        prefix: str,
-        base_name: str,
-        excluded: list[ExcludedEntity] | None = None,
-    ) -> HttpResponse:
-        filename = generate_file_name(base_name, prefix=prefix)
-        response = HttpResponse(json.dumps(data, indent=4), content_type="application/json")
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        apply_excluded_header(response, excluded or [])
-        return response
 
 
 class ArchiveExportFormatStrategy:
@@ -75,33 +35,56 @@ class ArchiveExportFormatStrategy:
         return writer.path
 
 
-class CsvExportFormatStrategy(ExportFormatStrategy):
+class CsvExportFormatStrategy:
+    """Write the exported entries of one type as CSV, one row per projected row."""
+
     def __init__(self, projection: TabularProjection):
         self.projection = projection
 
-    def render(
-        self,
-        data: dict,
-        entity_type: str,
-        prefix: str,
-        base_name: str,
-        excluded: list[ExcludedEntity] | None = None,
-    ) -> HttpResponse:
-        rows = self.projection.expand_all(data.get(entity_type, []))
+    def write(self, data: dict, entity_type: str, stream: TextIO) -> None:
+        """Write the header and every row of `data[entity_type]` into `stream`.
 
-        buf = io.StringIO()
-        writer = csv.DictWriter(buf, fieldnames=self.projection.FIELDS, extrasaction="ignore")
+        The projection expands all entries before the first row is written, so the
+        whole export is in memory; a large export streams its rows into `write_rows`.
+        """
+        self.write_rows(self.projection.expand_all(data.get(entity_type, [])), stream)
+
+    def write_rows(self, rows: Iterable[dict], stream: TextIO) -> None:
+        """Write the header, then each expanded row as `rows` yields it.
+
+        Values a spreadsheet would run as a formula are neutralized.
+        """
+        writer = csv.DictWriter(stream, fieldnames=self.projection.FIELDS, extrasaction="ignore")
         writer.writeheader()
         for row in rows:
             writer.writerow(
                 {
-                    k: ("" if v is None else _neutralize_formula(v))
-                    for k, v in self.projection.project(row).items()
+                    key: ("" if value is None else _neutralize_formula(value))
+                    for key, value in self.projection.project(row).items()
                 }
             )
 
-        filename = generate_file_name(base_name, prefix=prefix).replace(".json", ".csv")
-        response = HttpResponse(buf.getvalue(), content_type="text/csv")
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        apply_excluded_header(response, excluded or [])
-        return response
+
+_JSON_INDENT = " " * 4
+
+
+def write_json_envelope(entity_type: EntityType, entries: Iterable[dict], stream: TextIO) -> None:
+    """Write the envelope `ExportService` builds for `entries`, one entry at a time.
+
+    The text is what `json.dump(envelope, stream, indent=4)` writes for
+    `{entity_type: entries, "main_entity": entity_type, "version": IMPORT_VERSION}`,
+    but only one entry is held in memory at once.
+    """
+    stream.write("{\n" + _JSON_INDENT + json.dumps(entity_type) + ": [")
+    separator = "\n"
+    for entry in entries:
+        stream.write(separator + textwrap.indent(json.dumps(entry, indent=4), _JSON_INDENT * 2))
+        separator = ",\n"
+    if separator != "\n":
+        stream.write("\n" + _JSON_INDENT)
+    stream.write("]")
+    stream.writelines(
+        ",\n" + _JSON_INDENT + json.dumps(key) + ": " + json.dumps(value)
+        for key, value in ((MAIN_ENTITY_KEY, entity_type), ("version", IMPORT_VERSION))
+    )
+    stream.write("\n}")
