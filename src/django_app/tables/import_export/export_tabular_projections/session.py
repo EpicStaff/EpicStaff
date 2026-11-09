@@ -1,4 +1,6 @@
 import json
+from collections import defaultdict
+from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime
 
 from tables.import_export.export_tabular_projections.base import TabularProjection
@@ -182,6 +184,10 @@ def _copy_key(row: dict) -> tuple:
     return row["created_at"], row["name"], row["execution_order"], message_type
 
 
+def _session_id(item: dict) -> int:
+    return (item.get("session") or {}).get("id") or 0
+
+
 def _node_key(message: dict) -> tuple:
     # A subflow node may share its name with a parent node; the subflow path tells them apart.
     execution_ids = (message.get("message_data") or {}).get("subgraph_execution_ids") or []
@@ -262,18 +268,39 @@ class SessionTabularProjection(TabularProjection):
         return {key: _encode(value) for key, value in projected.items()}
 
     def expand_all(self, items: list[dict]) -> list[dict]:
-        # Subflow inner rows are written to the parent session, then copied into the child
-        # session after the parent finishes, so the copy always sits in a later session id.
-        # Dedupe on the copied fields across sessions only; fan-out children are separate
-        # runs whose rows exist only in the child, so nothing of theirs matches.
-        ordered = sorted(items, key=lambda item: (item.get("session") or {}).get("id") or 0)
-        seen = set()
-        rows = []
-        for item in ordered:
+        """Expand sessions given in any order; holds them all, so only for small exports."""
+        return list(self.expand_in_session_order(sorted(items, key=_session_id)))
+
+    def expand_in_session_order(
+        self, items: Iterable[dict], tree_of: Mapping[int, int] | None = None
+    ) -> Iterator[dict]:
+        """Expand sessions that come by ascending session id, one session at a time.
+
+        Subflow inner rows are written to the root session, then copied into each
+        enclosing subflow session after the root finishes, so a copy always sits in a
+        later session id of the same session tree. Dedupe on the copied fields across
+        sessions only; fan-out children are separate runs whose rows exist only in the
+        child, so nothing of theirs matches.
+
+        Args:
+            tree_of: Each session id's session tree. Copies are then matched within
+                their tree only, and a tree's keys are dropped after its last session,
+                so memory follows the trees still being written, not the whole export.
+                Without it, every session is matched against all earlier ones.
+        """
+        last_session_of_tree = {}
+        for session_id, tree in (tree_of or {}).items():
+            last_session_of_tree[tree] = max(session_id, last_session_of_tree.get(tree, session_id))
+        seen_by_tree: dict[int | None, set[tuple]] = defaultdict(set)
+        for item in items:
+            session_id = _session_id(item)
+            tree = tree_of[session_id] if tree_of is not None else None
+            seen = seen_by_tree[tree]
             session_rows = self.expand(item)
-            rows.extend(row for row in session_rows if _copy_key(row) not in seen)
+            yield from (row for row in session_rows if _copy_key(row) not in seen)
             seen.update(_copy_key(row) for row in session_rows)
-        return rows
+            if tree is not None and last_session_of_tree[tree] == session_id:
+                del seen_by_tree[tree]
 
     def expand(self, item: dict) -> list[dict]:
         session = item.get("session") or {}

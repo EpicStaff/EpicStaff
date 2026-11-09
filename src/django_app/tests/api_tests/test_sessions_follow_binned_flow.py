@@ -56,7 +56,6 @@ def beta_flows_client(client_as, custom_role_user, beta):
 SESSION_ENDPOINTS = [
     ("get", "{id}/"),
     ("delete", "{id}/"),
-    ("get", "{id}/export/"),
     ("get", "{id}/warnings/"),
     ("get", "{id}/output-files/"),
     ("get", "{id}/get-updates/"),
@@ -111,12 +110,13 @@ class TestBinningTheFlow:
         assert response.data["results"] == []
 
     def test_refuses_to_export_the_session(self, acme_admin_client, binned_flow, session):
-        bulk = acme_admin_client.post(
-            f"{SESSIONS_URL}bulk-export/", {"ids": [session.pk]}, format="json"
+        picked = acme_admin_client.post(
+            f"{SESSIONS_URL}export-jobs/", {"ids": [session.pk]}, format="json"
         )
-        everything = acme_admin_client.post(f"{SESSIONS_URL}export_all/", {}, format="json")
+        everything = acme_admin_client.post(f"{SESSIONS_URL}export-jobs/", {}, format="json")
 
-        assert bulk.status_code == 400
+        assert picked.status_code == 404
+        assert picked.json()["code"] == "export_entities_not_found"
         assert everything.status_code == 404
 
     def test_bulk_delete_leaves_the_session_alone(self, acme_admin_client, binned_flow, session):

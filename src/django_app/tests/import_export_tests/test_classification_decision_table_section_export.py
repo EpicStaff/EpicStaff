@@ -8,7 +8,9 @@ from django.urls import reverse
 
 from tables.models.graph_models import ClassificationConditionGroup
 from tables.import_export.enums import EntityType
+from tables.models import TransferJob
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY
+from tests.transfer_job_helpers import export_via_job
 
 
 def _condition_groups_of(export_data, cdt_node):
@@ -28,13 +30,12 @@ class TestCDTSectionExportJsonSerializability:
     ):
         graph, cdt_node, *_ = cdt_condition_group_factory(default_org)
 
-        url = reverse("graphs-partial-export", kwargs={"pk": graph.id})
+        url = reverse("graphs-partial-export-jobs", kwargs={"pk": graph.id})
         payload = {"classification_decision_table_node_list": [str(cdt_node.id)]}
-        response = auth_client.post(url, payload, format="json")
+        exported = export_via_job(auth_client, url, payload)
 
-        assert response.status_code == 200
-        export_data = json.loads(response.content)
-        assert json.dumps(export_data) is not None
+        assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+        assert json.dumps(exported.envelope) is not None
 
     def test_cdt_node_direct_export_returns_valid_json(
         self, default_org, export_service, cdt_condition_group_factory

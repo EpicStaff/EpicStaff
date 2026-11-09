@@ -109,6 +109,7 @@ def test_a_flow_export_job_is_stored_and_queued_after_commit(
     )
     # Only validated keys are stored.
     assert job.request == {"ids": [flow.id], "include_knowledge": False}
+    assert job.display_name == "Support"
 
     for callback in callbacks:
         callback()
@@ -147,7 +148,7 @@ def test_a_flow_of_another_org_is_not_exported(client_in, exporter, acme, beta, 
 
     response = _create_flow_job(client_in(exporter, acme), {"ids": [foreign.id]})
 
-    assert response.status_code == 400
+    assert response.status_code == 404
     assert response.json()["code"] == "export_entities_not_found"
     assert not TransferJob.objects.exists()
 
@@ -268,6 +269,7 @@ def test_status_shows_the_jobs_outcome(client_in, exporter, acme):
         "id",
         "kind",
         "main_entity",
+        "display_name",
         "status",
         "file_name",
         "result",
@@ -412,17 +414,6 @@ def test_a_system_api_key_cannot_own_a_job(api_client, default_org, env_api_key,
 
     assert response.status_code == 403
     assert not TransferJob.objects.exists()
-
-
-def test_the_synchronous_flow_export_is_gone(client_in, exporter, acme, flow):
-    client = client_in(exporter, acme)
-
-    single = client.get(f"/api/graphs/{flow.id}/export/")
-    bulk = client.post("/api/graphs/bulk-export/", {"ids": [flow.id]}, format="json")
-
-    assert single.status_code == 404
-    # Read as the detail route of a flow called "bulk-export": refused, never served.
-    assert bulk.status_code in {403, 404, 405}
 
 
 # --- inspecting a collection archive ---------------------------------------------------------

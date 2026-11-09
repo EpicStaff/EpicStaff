@@ -14,15 +14,12 @@ from tables.clients.errors import ClientError, ClientValidationError
 from tables.exceptions import CustomAPIExeption, TransferJobArchiveRemovedError
 from tables.import_export.archive import temporary_archive
 from tables.import_export.enums import EntityType
-from tables.import_export.export_format_strategies import ArchiveExportFormatStrategy
-from tables.import_export.permissions import ENTITY_RESOURCE_MAP, ExportAccessPolicy
-from tables.import_export.registry import entity_registry
+from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.schemas import ImportSettings
-from tables.import_export.services.export_service import ExportService
-from tables.models import Graph, TransferJob
-from tables.models.knowledge_models import SourceCollection
+from tables.models import TransferJob
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.transfer_jobs.archive_store import TransferArchiveStore
+from tables.services.transfer_jobs.export_definitions import TransferJobError, export_definition
 from tables.utils.helpers import generate_file_name
 from utils.exception_handler import flatten_error_detail
 from utils.logger import logger
@@ -39,7 +36,7 @@ TRANSFER_JOB_STALE_AFTER = timedelta(hours=2)
 # shared bucket, outside every organization's quota, until it expires; when an
 # export completes, the archives of that user's older completed exports past this
 # many are deleted.
-MAX_STORED_EXPORTS_PER_USER = 3
+MAX_STORED_EXPORTS_PER_USER = 10
 
 EXPORT_ARCHIVE_NAME = "export.zip"
 IMPORT_ARCHIVE_NAME = "import.zip"
@@ -50,21 +47,6 @@ ARCHIVE_REMOVED_ERROR = {
     "code": TransferJobArchiveRemovedError.default_code,
     "message": TransferJobArchiveRemovedError.default_detail,
 }
-
-# The main entities a job carries: their model, and the prefix of their archive's name.
-MAIN_ENTITY_MODELS = {
-    EntityType.GRAPH: (Graph, "flow"),
-    EntityType.SOURCE_COLLECTION: (SourceCollection, "knowledge"),
-}
-
-
-class TransferJobError(Exception):
-    """A failure the job's creator may be told about, as `{code, message}`."""
-
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
-        self.message = message
 
 
 def public_error(error: Exception, kind: str) -> dict:
@@ -181,45 +163,33 @@ class TransferJobRunner:
             self._delete_archives(job)
 
     def _export(self, job: TransferJob) -> None:
-        entity_type = EntityType(job.main_entity)
+        definition = export_definition(job.main_entity)
         user, org_id = job.created_by, job.org_id
         # Checked again here: the creator's rights may have changed since the job was queued.
-        assert_org_permission(user, org_id, ENTITY_RESOURCE_MAP[entity_type], Permission.EXPORT)
-        model, prefix = MAIN_ENTITY_MODELS[entity_type]
+        assert_org_permission(user, org_id, definition.resource_type, definition.permission)
         entity_ids = list(job.request.get("ids", []))
-        instances = list(model.objects.filter(pk__in=entity_ids, org_id=org_id))
-        if not entity_ids or len(instances) != len(set(entity_ids)):
+        selected = definition.scoped_queryset(user=user, org_id=org_id).filter(pk__in=entity_ids)
+        if not entity_ids or selected.count() != len(set(entity_ids)):
             raise TransferJobError("not_found", "Some of the requested items do not exist.")
 
-        result = ExportService(entity_registry).export_entities(
-            entity_type,
-            entity_ids,
-            org_id=org_id,
-            policy=ExportAccessPolicy.for_user(user, org_id),
-            include_knowledge=job.request.get("include_knowledge", True),
-        )
-        path = ArchiveExportFormatStrategy().render_to_file(result)
+        artifact = definition.write_archive(job, selected, user=user, org_id=org_id)
         try:
-            # An archive past the import cap could not be imported again, and would
-            # only take room in the shared bucket.
-            if os.path.getsize(path) > settings.MAX_KNOWLEDGE_ARCHIVE_SIZE:
+            # The cap bounds what one job may leave in the shared bucket. It is the
+            # import jobs' upload cap too, so a flow or collection archive past it
+            # would be refused on import.
+            if os.path.getsize(artifact.path) > settings.MAX_KNOWLEDGE_ARCHIVE_SIZE:
                 raise TransferJobError(
                     "archive_too_large",
-                    "The export is larger than the import size limit, so it could not be "
-                    "imported again either. Export fewer items, or export without knowledge.",
+                    "The export is larger than the archive size limit. Export fewer items, "
+                    "or export flows without their knowledge.",
                 )
-            with open(path, "rb") as archive:
+            with open(artifact.path, "rb") as archive:
                 job.archive_key = self._store.upload_file(job.id, EXPORT_ARCHIVE_NAME, archive)
         finally:
-            os.unlink(path)
+            os.unlink(artifact.path)
 
-        strategy = entity_registry.get_strategy(entity_type)
-        base_name = (
-            str(strategy.get_preview_data(instances[0])["name"])
-            if len(instances) == 1
-            else f"bulk_{len(instances)}"
-        )
-        job.file_name = generate_file_name(base_name, prefix=prefix).replace(".json", ".zip")
+        file_name = generate_file_name(artifact.base_name, prefix=definition.file_prefix)
+        job.file_name = file_name.removesuffix(".json") + ".zip"
         job.result = {
             "excluded": [
                 {
@@ -227,7 +197,7 @@ class TransferJobRunner:
                     "entity_id": item.entity_id,
                     "name": item.name,
                 }
-                for item in result.excluded
+                for item in artifact.excluded
             ]
         }
 
@@ -239,11 +209,8 @@ class TransferJobRunner:
         if settings.replace_existing:
             assert_org_permission(user, org_id, ENTITY_RESOURCE_MAP[entity_type], Permission.UPDATE)
 
-        _model, prefix = MAIN_ENTITY_MODELS[entity_type]
         with temporary_archive(partial(self._store.download_to, job.archive_key)) as path:
-            job.result = ViewSetImportExportService(
-                entity_type=entity_type, export_prefix=prefix, filename_attr="name"
-            ).import_archive(
+            job.result = ViewSetImportExportService(entity_type).import_archive(
                 path, org_id=org_id, user=user, settings=settings, main_entity=entity_type
             )
 

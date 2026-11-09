@@ -1,7 +1,7 @@
 """
-Tests for ViewSetImportExportService._parse_and_validate via inspect_entity().
+Tests for reading and checking an export file, through ViewSetImportExportService.inspect_entity().
 
-All cases are DB-free: inspect_entity calls _parse_and_validate then InspectService.inspect,
+All cases are DB-free: inspect_entity reads and checks the envelope, then InspectService.inspect,
 neither of which touches the ORM.
 """
 
@@ -23,11 +23,7 @@ from tables.services.import_export_service import ViewSetImportExportService
 @pytest.fixture
 def service():
     """A ViewSetImportExportService for PythonCodeTool — no DB access required."""
-    return ViewSetImportExportService(
-        entity_type=EntityType.PYTHON_CODE_TOOL,
-        export_prefix="python_code_tool",
-        filename_attr="name",
-    )
+    return ViewSetImportExportService(EntityType.PYTHON_CODE_TOOL)
 
 
 def _file(raw: bytes) -> io.BytesIO:
@@ -35,7 +31,7 @@ def _file(raw: bytes) -> io.BytesIO:
 
 
 # ---------------------------------------------------------------------------
-# _parse_and_validate guard cases (exercised via inspect_entity)
+# envelope guard cases (exercised via inspect_entity)
 # ---------------------------------------------------------------------------
 
 

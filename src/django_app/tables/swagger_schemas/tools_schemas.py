@@ -11,7 +11,7 @@ from tables.serializers.model_serializers import (
     McpToolSerializer,
     PythonCodeToolSerializer,
 )
-from tables.serializers.serializers import BulkExportSerializer, BulkIdsSerializer
+from tables.serializers.serializers import BulkIdsSerializer
 from tables.serializers.utils.bulk_ids import BULK_DELETE_MAX_IDS
 from tables.swagger_schemas.common_schemas import (
     FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
@@ -241,65 +241,13 @@ MCP_TOOL_BULK_DELETE_POST = {
 }
 
 
-def _export_get_schema(*, model_name: str) -> dict:
-    return {
-        "summary": f"Export a {model_name}",
-        "description": (
-            f"Downloads a single `{model_name}` (identified by the id in the "
-            "URL) as a JSON bundle file, scoped to the active org. The "
-            f"response is a raw file download — not a `{model_name}` "
-            "representation — shaped like "
-            f'`{{"{model_name}": [{{...}}], "Label": [...], '
-            f'"main_entity": "{model_name}", "version": <int>}}`, suitable '
-            "for later re-import via the `import` action."
-        ),
-        "request": None,
-        "responses": {
-            200: OpenApiTypes.BINARY,
-            401: UNAUTHORIZED_401_RESPONSE,
-        },
-    }
-
-
-def _bulk_export_post_schema(*, model_name: str) -> dict:
-    return {
-        "summary": f"Bulk export {model_name}s",
-        "description": (
-            f"Downloads multiple `{model_name}` rows (identified by `ids`, "
-            "scoped to the active org) as a single JSON bundle file. The "
-            f"response is a raw file download — not a list of `{model_name}` "
-            "representations — shaped like "
-            f'`{{"{model_name}": [{{...}}], "Label": [...], '
-            f'"main_entity": "{model_name}", "version": <int>}}`, suitable '
-            "for later re-import via the `import` action."
-        ),
-        "request": BulkExportSerializer,
-        "responses": {
-            200: OpenApiTypes.BINARY,
-            400: OpenApiResponse(
-                response=OpenApiTypes.STR,
-                description="One or more requested `ids` do not exist (or are not visible to the active org).",
-                examples=[
-                    OpenApiExample(
-                        "Missing ids",
-                        value={"message": "Some entity IDs do not exist"},
-                        response_only=True,
-                        status_codes=["400"],
-                    ),
-                ],
-            ),
-            401: UNAUTHORIZED_401_RESPONSE,
-        },
-    }
-
-
 def _import_post_schema(*, model_name: str) -> dict:
     return {
         "summary": f"Import {model_name}(s)",
         "description": (
-            f"Imports one or more `{model_name}` rows from a JSON bundle file "
-            "previously produced by the `export`/`bulk-export` actions "
-            "(multipart form upload), scoped to the active org. "
+            f"Imports one or more `{model_name}` rows from an export file "
+            "(multipart form upload), scoped to the active org: the `.zip` an "
+            "export job produced, or the plain `.json` of an older export. "
             "`import_labels` controls whether labels included in the bundle "
             "are also created/attached (defaults to `true`). The response is "
             "an import summary — a dict keyed by entity type name, each with "
@@ -331,10 +279,6 @@ def _import_post_schema(*, model_name: str) -> dict:
     }
 
 
-PYTHON_CODE_TOOL_EXPORT_GET = _export_get_schema(model_name="PythonCodeTool")
-PYTHON_CODE_TOOL_BULK_EXPORT_POST = _bulk_export_post_schema(model_name="PythonCodeTool")
 PYTHON_CODE_TOOL_IMPORT_POST = _import_post_schema(model_name="PythonCodeTool")
 
-MCP_TOOL_EXPORT_GET = _export_get_schema(model_name="McpTool")
-MCP_TOOL_BULK_EXPORT_POST = _bulk_export_post_schema(model_name="McpTool")
 MCP_TOOL_IMPORT_POST = _import_post_schema(model_name="McpTool")

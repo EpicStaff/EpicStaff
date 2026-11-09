@@ -14,7 +14,7 @@ Covers both enforcement layers:
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Graph
+from tables.models import Graph, TransferJob
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
@@ -544,11 +544,9 @@ def test_cdt_group_prompt_key_other_node_never_attached(client_a, org_a):
     ).exists()
 
 
-# ---- export action: permission gate + org-scoped fetch (bypasses get_object) ----
+# ---- export jobs: permission gate + org-scoped node ----
 
-
-def _export_url(node_id: int) -> str:
-    return f"{CDT_URL}{node_id}/export/"
+EXPORT_JOBS_URL = f"{CDT_URL}export-jobs/"
 
 
 def _viewer_client(django_user_model, org, email):
@@ -562,59 +560,43 @@ def _viewer_client(django_user_model, org, email):
 
 
 @pytest.mark.django_db
-def test_cdt_export_json_allowed_for_org_admin(client_a, org_a):
+@pytest.mark.parametrize("export_format", ["json", "csv"])
+def test_cdt_export_job_allowed_for_org_admin(client_a, org_a, export_format):
     graph_a = _graph(org_a, "a")
-    node = ClassificationDecisionTableNode.objects.create(
-        graph=graph_a, node_name="cdt1"
+    node = ClassificationDecisionTableNode.objects.create(graph=graph_a, node_name="cdt1")
+
+    resp = client_a.post(
+        EXPORT_JOBS_URL, {"ids": [node.id], "export_format": export_format}, format="json"
     )
-    resp = client_a.get(_export_url(node.id), {"export_format": "json"})
-    assert resp.status_code == 200, resp.content
-    assert resp["Content-Type"] == "application/json"
+
+    assert resp.status_code == 202, resp.content
+    job = TransferJob.objects.get(pk=resp.json()["job_id"])
+    assert job.request == {"ids": [node.id], "export_format": export_format}
 
 
 @pytest.mark.django_db
-def test_cdt_export_csv_allowed_for_org_admin(client_a, org_a):
-    graph_a = _graph(org_a, "a")
-    node = ClassificationDecisionTableNode.objects.create(
-        graph=graph_a, node_name="cdt1"
-    )
-    resp = client_a.get(_export_url(node.id), {"export_format": "csv"})
-    assert resp.status_code == 200, resp.content
-    assert resp["Content-Type"] == "text/csv"
-
-
-@pytest.mark.django_db
-def test_cdt_export_denied_for_viewer(db, django_user_model, org_a):
+def test_cdt_export_job_denied_for_viewer(db, django_user_model, org_a):
     # Viewer's FLOWS bitmask (READ) does not include EXPORT.
     graph_a = _graph(org_a, "a")
-    node = ClassificationDecisionTableNode.objects.create(
-        graph=graph_a, node_name="cdt1"
-    )
+    node = ClassificationDecisionTableNode.objects.create(graph=graph_a, node_name="cdt1")
     viewer = _viewer_client(django_user_model, org_a, "viewer_a@example.com")
-    resp = viewer.get(_export_url(node.id), {"export_format": "json"})
+
+    resp = viewer.post(EXPORT_JOBS_URL, {"ids": [node.id]}, format="json")
+
     assert resp.status_code == 403, resp.content
+    assert not TransferJob.objects.exists()
 
 
 @pytest.mark.django_db
-def test_cdt_export_json_cross_org_node_404(client_a, org_a, org_b):
-    # The node belongs to org_b; org_a's admin must not be able to export it,
-    # even though the export path bypasses the viewset's get_object() scoping.
+@pytest.mark.parametrize("export_format", ["json", "csv"])
+def test_cdt_export_job_of_a_cross_org_node_is_not_found(client_a, org_b, export_format):
     graph_b = _graph(org_b, "b")
-    foreign_node = ClassificationDecisionTableNode.objects.create(
-        graph=graph_b, node_name="cdt_b"
-    )
-    resp = client_a.get(_export_url(foreign_node.id), {"export_format": "json"})
-    assert resp.status_code == 404, resp.content
-    assert resp.data["code"] == "classification_decision_table_node_not_found"
-    assert str(foreign_node.id) in resp.data["message"]
+    foreign_node = ClassificationDecisionTableNode.objects.create(graph=graph_b, node_name="cdt_b")
 
-
-@pytest.mark.django_db
-def test_cdt_export_csv_cross_org_node_404(client_a, org_a, org_b):
-    graph_b = _graph(org_b, "b")
-    foreign_node = ClassificationDecisionTableNode.objects.create(
-        graph=graph_b, node_name="cdt_b"
+    resp = client_a.post(
+        EXPORT_JOBS_URL, {"ids": [foreign_node.id], "export_format": export_format}, format="json"
     )
-    resp = client_a.get(_export_url(foreign_node.id), {"export_format": "csv"})
+
     assert resp.status_code == 404, resp.content
-    assert resp.data["code"] == "classification_decision_table_node_not_found"
+    assert resp.data["code"] == "export_entities_not_found"
+    assert not TransferJob.objects.exists()

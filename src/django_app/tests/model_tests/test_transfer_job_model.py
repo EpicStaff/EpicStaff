@@ -52,4 +52,14 @@ def test_an_explicit_expiry_is_kept(default_org):
 
 
 def test_main_entities_are_the_export_file_types():
-    assert set(TransferJob.MainEntity.values) == {"Flow", "SourceCollection"}
+    # The client switches on these strings; "FlowNodes" is a flow editor partial export.
+    assert set(TransferJob.MainEntity.values) == {
+        "Flow",
+        "SourceCollection",
+        "PythonCodeTool",
+        "MCPTool",
+        "AuditFilterPreset",
+        "Session",
+        "ClassificationDecisionTableNode",
+        "FlowNodes",
+    }

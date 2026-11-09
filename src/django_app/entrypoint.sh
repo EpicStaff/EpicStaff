@@ -86,9 +86,12 @@ DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py cache_redis
 echo "Starting recycle bin purge consumer..."
 DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_recycle_bin_purge &
 
-# Start the transfer job consumer in the background: export and import jobs, and their sweep
-echo "Starting transfer job consumer..."
-DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_transfer_jobs &
+# Start the transfer job consumers in the background, one per lane: the heavy lane runs
+# flow, knowledge and session exports, every import and the job sweep; the light lane the
+# small exports, so they never wait behind a large one.
+echo "Starting transfer job consumers..."
+DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_transfer_jobs --lane heavy &
+DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_transfer_jobs --lane light &
 
 # Start session callback sender in the background
 echo "Starting session callback sender..."

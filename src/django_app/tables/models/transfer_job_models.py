@@ -13,12 +13,19 @@ from tables.models.base_models import TimestampMixin
 
 
 class TransferJob(OrgScopedModel, TimestampMixin):
-    """One export or import of flows or knowledge collections, run in the background.
+    """One export or import, run in the background.
+
+    Every export is a job that produces a `.zip`: flows, knowledge collections,
+    tools, MCP tools, audit filter presets, sessions, a classification decision
+    table node, or nodes picked in the flow editor (`MainEntity.FLOW_NODES`).
+    Imports run as jobs only for flows and knowledge collections; the others
+    import synchronously.
 
     Only its creator, in its organization, may see it. Its archive lives in the
     storage bucket under `system/transfers/<id>/` until `expires_at`, when the
     sweep deletes the job and the archive together; an export's archive goes
-    earlier once its creator has newer ones (`MAX_STORED_EXPORTS_PER_USER`).
+    earlier once its creator has newer ones (`MAX_STORED_EXPORTS_PER_USER`), and
+    the creator may delete a job that is not running.
     """
 
     class Kind(models.TextChoices):
@@ -34,11 +41,21 @@ class TransferJob(OrgScopedModel, TimestampMixin):
     class MainEntity(models.TextChoices):
         FLOW = EntityType.GRAPH.value
         SOURCE_COLLECTION = EntityType.SOURCE_COLLECTION.value
+        PYTHON_CODE_TOOL = EntityType.PYTHON_CODE_TOOL.value
+        MCP_TOOL = EntityType.MCP_TOOL.value
+        AUDIT_FILTER_PRESET = EntityType.AUDIT_FILTER_PRESET.value
+        SESSION = EntityType.SESSION.value
+        CLASSIFICATION_DECISION_TABLE_NODE = EntityType.CLASSIFICATION_DECISION_TABLE_NODE.value
+        # Nodes exported from the flow editor (a partial export of one flow).
+        FLOW_NODES = "FlowNodes"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     kind = models.CharField(max_length=10, choices=Kind.choices)
     main_entity = models.CharField(max_length=40, choices=MainEntity.choices)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.QUEUED)
+    # What the job list shows: the exported item's name, a count such as "3 tools",
+    # or the uploaded file's name of an import.
+    display_name = models.CharField(max_length=255, blank=True, default="")
     # What the job was asked to do: the ids and include_knowledge of an export,
     # the import settings of an import.
     request = models.JSONField(default=dict, blank=True)

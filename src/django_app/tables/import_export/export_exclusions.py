@@ -1,6 +1,5 @@
 """Bookkeeping for dependencies an export left out because the caller may not export them."""
 
-import json
 from dataclasses import dataclass
 
 from agents.models import Surface
@@ -10,12 +9,9 @@ from tables.import_export.enums import EntityType
 from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import EntityRegistry
 
-EXPORT_EXCLUDED_HEADER = "X-Export-Excluded"
-
+# Excluded entities named per type; the rest are counted without a name, so a large
+# export does not look up every name.
 MAX_EXCLUDED_NAMES_PER_TYPE = 5
-
-# Proxies and servers commonly cap a single header around 8 KB; stay well under.
-MAX_EXCLUDED_HEADER_BYTES = 4096
 
 
 @dataclass(frozen=True)
@@ -76,7 +72,6 @@ class ExcludedEntityRecorder:
     def _lookup_name(self, entity_type: EntityType, entity_id: int) -> str | None:
         if not self._policy.can_reveal_names(entity_type):
             return None
-        # Only the names the header can carry are worth a query.
         if self._named_count.get(entity_type, 0) >= MAX_EXCLUDED_NAMES_PER_TYPE:
             return None
         strategy = self._registry.get_strategy(entity_type)
@@ -89,33 +84,3 @@ class ExcludedEntityRecorder:
             return None
         self._named_count[entity_type] = self._named_count.get(entity_type, 0) + 1
         return strategy.get_preview_data(instance).get("name")
-
-
-def build_excluded_header_value(excluded: list[ExcludedEntity]) -> str | None:
-    """Serialize excluded entities for the `X-Export-Excluded` response header.
-
-    One entry per entity type: `{"type", "count", "names"}`. `count` is always exact;
-    `names` holds at most MAX_EXCLUDED_NAMES_PER_TYPE names and is trimmed further
-    until the value fits MAX_EXCLUDED_HEADER_BYTES. Returns None when nothing was excluded.
-    """
-    if not excluded:
-        return None
-
-    by_type: dict[EntityType, list[ExcludedEntity]] = {}
-    for entity in excluded:
-        by_type.setdefault(entity.entity_type, []).append(entity)
-
-    value = ""
-    for name_limit in range(MAX_EXCLUDED_NAMES_PER_TYPE, -1, -1):
-        entries = [
-            {
-                "type": entity_type.value,
-                "count": len(entities),
-                "names": [entity.name for entity in entities if entity.name][:name_limit],
-            }
-            for entity_type, entities in by_type.items()
-        ]
-        value = json.dumps(entries, ensure_ascii=True, separators=(",", ":"))
-        if len(value) <= MAX_EXCLUDED_HEADER_BYTES:
-            break
-    return value

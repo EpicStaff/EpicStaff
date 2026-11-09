@@ -5,7 +5,10 @@ from tables.import_export.enums import EntityType
 from tables.serializers.model_serializers.audit_filter_preset_serializers import (
     AuditFilterPresetCopySerializer,
 )
-from tables.serializers.serializers import BulkExportSerializer
+from tables.serializers.transfer_job_serializers import (
+    ExportJobCreatedSerializer,
+    ExportJobCreateSerializer,
+)
 from tables.swagger_schemas.common_schemas import (
     FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
     UNAUTHORIZED_401_RESPONSE,
@@ -56,59 +59,26 @@ AUDIT_FILTER_PRESET_COPY = {
     },
 }
 
-AUDIT_FILTER_PRESET_EXPORT_ONE = {
-    "summary": "Export one saved preset by id",
+AUDIT_FILTER_PRESET_EXPORT_JOBS = {
+    "summary": "Queue an export of a selection of saved presets",
     "description": (
-        "Downloads a single preset as a `.json` attachment - the bare "
-        "`{id, name, filter_body}` object, matching the single-item shape "
-        "`import` accepts. Same convention as Agent/Crew/Graph export. "
-        "Visibility is not exported - an import reuses a preset with the same "
-        "search or creates a private one. "
-        "A colleague's private preset 404s."
+        "Starts a background export job of the presets in `ids` and answers 202 "
+        "with its `job_id`; poll `GET /api/transfer-jobs/{id}/` and download the "
+        "`.zip` (`export.json` inside) once it completes. Every id must be a preset "
+        "the caller can see in the active org (their own, or a shared one): any "
+        "other id - another org's, a colleague's private preset, or none at all - "
+        "404s the whole request with `export_entities_not_found`. Visibility is not "
+        "exported - an import reuses a preset with the same search or creates a "
+        "private one."
     ),
+    "request": ExportJobCreateSerializer,
     "responses": {
-        200: OpenApiResponse(
-            response=OpenApiTypes.OBJECT,
-            description="The preset, as a downloadable JSON file.",
-            examples=[OpenApiExample("Exported", value=_PRESET_EXAMPLE, response_only=True)],
+        202: ExportJobCreatedSerializer,
+        404: OpenApiResponse(
+            description="`export_entities_not_found`: an id is no preset the caller can see."
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-    },
-}
-
-AUDIT_FILTER_PRESET_EXPORT_ALL = {
-    "summary": "Export a selection of the active org's saved presets",
-    "description": (
-        "Bulk counterpart to the single-preset export above - always "
-        'returns the `{"presets": [...]}` batch shape (even for one id), '
-        "matching what `import`'s batch mode accepts. `ids` is required "
-        "and non-empty (`BulkExportSerializer`) - an id outside the active "
-        "org, a colleague's private preset, or one that doesn't exist, 400s "
-        "the whole request rather than being silently dropped."
-    ),
-    "request": BulkExportSerializer,
-    "responses": {
-        200: OpenApiResponse(
-            response=OpenApiTypes.OBJECT,
-            description="A `{presets: [...]}` batch, as a downloadable JSON file.",
-            examples=[
-                OpenApiExample(
-                    "Exported", value={"presets": [_PRESET_EXAMPLE]}, response_only=True
-                ),
-            ],
-        ),
-        400: OpenApiResponse(
-            response=OpenApiTypes.OBJECT,
-            description="One or more requested ids aren't visible to the caller in the active org.",
-            examples=[
-                OpenApiExample(
-                    "Unknown id",
-                    value={"message": "Some entity IDs do not exist"},
-                    response_only=True,
-                ),
-            ],
-        ),
-        401: UNAUTHORIZED_401_RESPONSE,
+        429: OpenApiResponse(description="`too_many_jobs`: wait for an export to finish."),
     },
     "examples": [
         OpenApiExample("Export a selection", value={"ids": [1, 2, 3]}, request_only=True),
@@ -118,8 +88,8 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = {
 AUDIT_FILTER_PRESET_IMPORT = {
     "summary": "Import a preset file (upload) - single object or a batch",
     "description": (
-        "Upload the exact `.json` file the single or bulk export endpoint "
-        'produced - either the single-object shape or a `{"presets": '
+        "Upload the `.zip` an export job produced, or the `.json` of an older "
+        'export - either the single-object shape or a `{"presets": '
         "[...]}` batch. `org`/`created_by` always come from the caller's "
         "own request, regardless of anything the imported file itself "
         "claims. An entry with the same search (`filters`, `query`, `match_scope`) "

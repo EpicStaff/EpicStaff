@@ -4,11 +4,12 @@ from agents.models import AgentInlineSurface, AgentInlineSurfacePythonTool
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
 from rbac.models.role import RolePermission
-from tables.import_export.enums import EntityType
-from tables.models import AgentNode, Graph
+from tables.models import AgentNode, Graph, TransferJob
 from tables.models.label_models import Label
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.services.import_export_service import ViewSetImportExportService
+from tables.services.transfer_jobs.export_definitions import export_definition
+from tables.services.transfer_jobs.job_service import TransferJobService
+from tests.transfer_job_helpers import run_job
 
 
 @pytest.fixture
@@ -61,38 +62,21 @@ def flow_using_shared_built_in_tool(org_a, org_b):
     return graph
 
 
-def _graph_export_service():
-    # The flow export payload the export job writes into its archive.
-    return ViewSetImportExportService(
-        entity_type=EntityType.GRAPH, export_prefix="graph", filename_attr="name"
-    )
-
-
 @pytest.mark.django_db
 def test_flow_export_does_not_leak_other_org_labels_on_shared_tool(
     exporter_a, org_a, flow_using_shared_built_in_tool
 ):
-    response = _graph_export_service().export_entity(
-        flow_using_shared_built_in_tool, org_id=org_a.id, user=exporter_a
+    job = TransferJobService().start_export(
+        user=exporter_a,
+        org_id=org_a.id,
+        definition=export_definition(TransferJob.MainEntity.FLOW),
+        validated_data={"ids": [flow_using_shared_built_in_tool.id], "include_knowledge": False},
     )
 
-    assert response.status_code == 200, response.content
-    body = response.content.decode()
-    assert "SharedBuiltIn" in body
-    assert "OrgALabel" in body
-    assert "OrgBLabel" not in body
+    exported = run_job(job.id)
 
-
-@pytest.mark.django_db
-def test_flow_bulk_export_does_not_leak_other_org_labels_on_shared_tool(
-    exporter_a, org_a, flow_using_shared_built_in_tool
-):
-    response = _graph_export_service().bulk_export(
-        [flow_using_shared_built_in_tool.id], org_id=org_a.id, user=exporter_a
-    )
-
-    assert response.status_code == 200, response.content
-    body = response.content.decode()
+    assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+    body = exported.members["export.json"].decode()
     assert "SharedBuiltIn" in body
     assert "OrgALabel" in body
     assert "OrgBLabel" not in body

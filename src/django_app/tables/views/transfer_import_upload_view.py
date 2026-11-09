@@ -115,6 +115,7 @@ class _Admission:
     user: User
     org_id: int
     import_settings: ImportSettings | None
+    file_name: str
 
 
 def import_upload_app(route: ImportJobRoute):
@@ -163,6 +164,7 @@ async def _serve_import_upload(route: ImportJobRoute, scope, receive, send) -> N
                             entity_type=route.entity_type,
                             settings=admission.import_settings,
                             archive_path=archive_path,
+                            file_name=admission.file_name,
                         )
                 except ValidationError as error:
                     raise _rejection(error) from error
@@ -197,8 +199,10 @@ def _admit(scope, route: ImportJobRoute) -> _Admission:
 
     query = route.query_serializer_class(data=request.query_params.dict())
     query.is_valid(raise_exception=True)
+    settings_data = dict(query.validated_data)
+    file_name = settings_data.pop("file_name", "")
     # A route whose query declares no settings (collections) imports with the defaults.
-    import_settings = ImportSettings(**query.validated_data) if query.validated_data else None
+    import_settings = ImportSettings(**settings_data) if settings_data else None
     body_size = declared_size(request)
     if body_size is not None and body_size > settings.MAX_KNOWLEDGE_ARCHIVE_SIZE:
         raise ImportArchiveTooLargeError()
@@ -207,7 +211,9 @@ def _admit(scope, route: ImportJobRoute) -> _Admission:
     if import_settings is not None and import_settings.replace_existing:
         # Replacing overwrites existing items in place; the gate above only checks CREATE.
         assert_org_permission(request.user, org_id, route.resource_type, Permission.UPDATE)
-    return _Admission(user=user, org_id=org_id, import_settings=import_settings)
+    return _Admission(
+        user=user, org_id=org_id, import_settings=import_settings, file_name=file_name
+    )
 
 
 @asynccontextmanager

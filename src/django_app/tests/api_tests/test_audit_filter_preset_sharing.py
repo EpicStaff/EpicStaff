@@ -3,8 +3,6 @@ anyone with AUDIT:read can see, export and copy a shared preset, nobody but the
 author sees a private one, only the author can edit, delete or share a preset,
 sharing is one-way, and another org never sees any of them."""
 
-import json
-
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -12,12 +10,16 @@ from django.urls import reverse
 
 from rbac.models import OrganizationUser
 from tables.import_export.enums import EntityType
+from tables.models import TransferJob
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.services.copy_services.audit_filter_preset_copy_service import (
     next_free_preset_name,
 )
 from tests.helpers import data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.transfer_job_helpers import export_via_job, run_job
+
+EXPORT_JOBS_URL = "/api/audit-filter-presets/export-jobs/"
 
 
 @pytest.fixture
@@ -148,21 +150,14 @@ class TestPresetVisibleToWholeOrg:
         assert clone.org_id == authors_preset.org_id
         assert clone.filter_body == authors_preset.filter_body
 
-    def test_export_single_of_another_users_preset(self, colleague_client, authors_preset):
-        url = reverse("auditfilterpreset-export", kwargs={"pk": authors_preset.id})
-        response = colleague_client.get(url)
+    def test_export_of_another_users_shared_preset(self, colleague_client, authors_preset):
+        exported = export_via_job(
+            colleague_client, EXPORT_JOBS_URL, {"ids": [authors_preset.id]}
+        )
 
-        assert response.status_code == 200
-        exported = json.loads(response.content)[EntityType.AUDIT_FILTER_PRESET]
-        assert [item["id"] for item in exported] == [authors_preset.id]
-
-    def test_bulk_export_of_another_users_preset(self, colleague_client, authors_preset):
-        url = reverse("auditfilterpreset-bulk-export")
-        response = colleague_client.post(url, {"ids": [authors_preset.id]}, format="json")
-
-        assert response.status_code == 200
-        exported = json.loads(response.content)[EntityType.AUDIT_FILTER_PRESET]
-        assert [item["id"] for item in exported] == [authors_preset.id]
+        assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+        presets = exported.envelope[EntityType.AUDIT_FILTER_PRESET]
+        assert [item["id"] for item in presets] == [authors_preset.id]
 
 
 @pytest.mark.django_db
@@ -216,7 +211,6 @@ class TestPresetInvisibleToOtherOrg:
             ("patch", "auditfilterpreset-detail"),
             ("delete", "auditfilterpreset-detail"),
             ("post", "auditfilterpreset-copy"),
-            ("get", "auditfilterpreset-export"),
         ],
     )
     def test_other_org_detail_routes_404(self, beta_client, authors_preset, method, route):
@@ -226,11 +220,12 @@ class TestPresetInvisibleToOtherOrg:
         assert response.status_code == 404
         assert AuditFilterPreset.objects.filter(pk=authors_preset.pk).count() == 1
 
-    def test_other_org_bulk_export_400s(self, beta_client, authors_preset):
-        url = reverse("auditfilterpreset-bulk-export")
-        response = beta_client.post(url, {"ids": [authors_preset.id]}, format="json")
+    def test_other_org_export_is_refused(self, beta_client, authors_preset):
+        response = beta_client.post(EXPORT_JOBS_URL, {"ids": [authors_preset.id]}, format="json")
 
-        assert response.status_code == 400
+        assert response.status_code == 404
+        assert response.json()["code"] == "export_entities_not_found"
+        assert not TransferJob.objects.exists()
 
 
 NAME_TAKEN = "You already have a preset with this name."
@@ -408,7 +403,6 @@ class TestPrivatePresetVisibleOnlyToAuthor:
             ("patch", "auditfilterpreset-detail"),
             ("delete", "auditfilterpreset-detail"),
             ("post", "auditfilterpreset-copy"),
-            ("get", "auditfilterpreset-export"),
         ],
     )
     def test_colleague_detail_routes_404(self, colleague_client, private_preset, method, route):
@@ -418,29 +412,38 @@ class TestPrivatePresetVisibleOnlyToAuthor:
         assert response.status_code == 404
         assert AuditFilterPreset.objects.count() == 1
 
-    def test_colleague_bulk_export_with_a_private_id_400s(
+    def test_colleague_export_with_a_private_id_is_refused(
         self, colleague_client, authors_preset, private_preset
     ):
         response = colleague_client.post(
-            reverse("auditfilterpreset-bulk-export"),
-            {"ids": [authors_preset.id, private_preset.id]},
-            format="json",
+            EXPORT_JOBS_URL, {"ids": [authors_preset.id, private_preset.id]}, format="json"
         )
 
-        assert response.status_code == 400
-        assert response.json()["message"] == "Some entity IDs do not exist"
+        assert response.status_code == 404
+        assert response.json()["code"] == "export_entities_not_found"
+        assert not TransferJob.objects.exists()
+
+    def test_a_preset_made_private_after_the_export_started_fails_the_job(
+        self, colleague_client, authors_preset
+    ):
+        response = colleague_client.post(
+            EXPORT_JOBS_URL, {"ids": [authors_preset.id]}, format="json"
+        )
+        # Sharing is one-way through the API; the author's row changes underneath.
+        AuditFilterPreset.objects.filter(pk=authors_preset.pk).update(is_shared=False)
+
+        job = run_job(response.json()["job_id"]).job
+
+        assert (job.status, job.error["code"]) == (TransferJob.Status.FAILED, "not_found")
 
     def test_author_retrieves_and_exports_own_private_preset(self, author_client, private_preset):
         retrieve = author_client.get(_detail_url(private_preset))
-        bulk = author_client.post(
-            reverse("auditfilterpreset-bulk-export"), {"ids": [private_preset.id]}, format="json"
-        )
+        exported = export_via_job(author_client, EXPORT_JOBS_URL, {"ids": [private_preset.id]})
 
         assert retrieve.status_code == 200
         assert retrieve.json()["is_shared"] is False
-        assert bulk.status_code == 200
-        exported = json.loads(bulk.content)[EntityType.AUDIT_FILTER_PRESET]
-        assert exported == [
+        assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+        assert exported.envelope[EntityType.AUDIT_FILTER_PRESET] == [
             {"id": private_preset.id, "name": "My private", "filter_body": {"query": "status = ok"}}
         ]
 

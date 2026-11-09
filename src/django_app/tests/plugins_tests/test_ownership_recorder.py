@@ -51,6 +51,7 @@ NOT_OWNABLE_MODELS = {
     "tables.PythonCodeResult": "a run's result, written by the sandbox callback; its key is text",
     "tables.PythonCodeToolConfig": "a configuration of one Python tool, deleted with the tool: not a root",
     "tables.RealtimeSessionItem": "conversation data the realtime service writes",
+    "tables.TransferJob": "a user's own export or import job; refused to plugin credentials",
 }
 # Each `bulk_create` (or the `_insert` it is built on) of an ownable root outside tests, by file
 # and function, and how its rows get owned (or why they never need to be).

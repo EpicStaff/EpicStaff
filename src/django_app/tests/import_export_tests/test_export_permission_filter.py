@@ -2,7 +2,7 @@
 
 The main entity is always exported. A dependency whose resource the caller lacks
 EXPORT on is left out together with everything reachable only through it, and the
-response names what was left out in the `X-Export-Excluded` header.
+export job's result names what was left out (`result.excluded`).
 """
 
 import json
@@ -26,17 +26,6 @@ from rbac.models import OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
 from rbac.models.role import RolePermission
 from tables.import_export.enums import EntityType
-from tables.import_export.export_exclusions import (
-    EXPORT_EXCLUDED_HEADER,
-    MAX_EXCLUDED_HEADER_BYTES,
-    ExcludedEntity,
-    build_excluded_header_value,
-)
-from tables.import_export.export_format_strategies import (
-    CsvExportFormatStrategy,
-    JsonExportFormatStrategy,
-)
-from tables.import_export.export_tabular_projections.session import SessionTabularProjection
 from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
@@ -50,11 +39,12 @@ from tables.models import (
     StartNode,
     SubGraphNode,
     TaskNode,
+    TransferJob,
 )
 from tables.models.label_models import Label
-from tables.services.import_export_service import ViewSetImportExportService
 from tests.helpers import data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.transfer_job_helpers import FinishedExport, export_via_job
 
 READ_AND_EXPORT = int(Permission.READ | Permission.EXPORT)
 READ_ONLY = int(Permission.READ)
@@ -164,33 +154,50 @@ def flow_with_agent(acme):
     return {"graph": graph, "agent": agent, "agent_node": agent_node}
 
 
-# The flow export payload the export job writes into its archive, rendered with
-# the excluded header the synchronous exports of other entities send.
-_GRAPH_EXPORT = ViewSetImportExportService(
-    entity_type=EntityType.GRAPH, export_prefix="graph", filename_attr="name"
-)
-
-
 def _export(user, graph):
-    return _GRAPH_EXPORT.export_entity(graph, org_id=graph.org_id, user=user)
+    """What a flow export job of `graph`, started by `user`, writes and reports."""
+    return _bulk_export(user, [graph])
 
 
 def _bulk_export(user, graphs):
-    return _GRAPH_EXPORT.bulk_export(
-        [graph.id for graph in graphs], org_id=graphs[0].org_id, user=user
+    org_id = graphs[0].org_id
+    return ExportService(entity_registry).export_entities(
+        EntityType.GRAPH,
+        [graph.id for graph in graphs],
+        org_id=org_id,
+        policy=ExportAccessPolicy.for_user(user, org_id),
     )
 
 
-def _payload(response) -> dict:
-    return json.loads(response.content)
+def _payload(exported) -> dict:
+    if isinstance(exported, FinishedExport):
+        return exported.envelope
+    return json.loads(json.dumps(exported.data))
 
 
 def _names(payload: dict, entity_type: EntityType) -> set[str]:
     return {entry["name"] for entry in payload.get(entity_type, [])}
 
 
-def _excluded_by_type(response) -> dict[str, dict]:
-    return {entry["type"]: entry for entry in json.loads(response[EXPORT_EXCLUDED_HEADER])}
+def _excluded(exported) -> list[dict]:
+    if isinstance(exported, FinishedExport):
+        return exported.job.result["excluded"]
+    return [
+        {"entity_type": str(item.entity_type), "entity_id": item.entity_id, "name": item.name}
+        for item in exported.excluded
+    ]
+
+
+def _excluded_by_type(exported) -> dict[str, dict]:
+    by_type: dict[str, dict] = {}
+    for item in _excluded(exported):
+        entry = by_type.setdefault(
+            item["entity_type"], {"type": item["entity_type"], "count": 0, "names": []}
+        )
+        entry["count"] += 1
+        if item["name"]:
+            entry["names"].append(item["name"])
+    return by_type
 
 
 @pytest.mark.django_db
@@ -202,7 +209,6 @@ class TestFullExport:
 
         response = _export(user, flow_with_agent["graph"])
 
-        assert response.status_code == 200
         payload = _payload(response)
         assert payload["main_entity"] == "Flow"
         assert _names(payload, EntityType.GRAPH) == {"agent flow"}
@@ -255,14 +261,14 @@ class TestFullExport:
         assert _names(payload, EntityType.AGENT_DEFINITION) == {"secret agent"}
         assert len(payload[EntityType.PYTHON_CODE_TOOL]) == 3
         assert len(payload[EntityType.MCP_TOOL]) == 1
-        assert EXPORT_EXCLUDED_HEADER not in response
+        assert _excluded(response) == []
 
-    def test_member_with_every_export_right_gets_no_header(self, flow_with_agent, make_user):
+    def test_member_with_every_export_right_has_nothing_excluded(self, flow_with_agent, make_user):
         user = make_user("everything@example.com", agents=READ_AND_EXPORT, tools=READ_AND_EXPORT)
 
         response = _export(user, flow_with_agent["graph"])
 
-        assert EXPORT_EXCLUDED_HEADER not in response
+        assert _excluded(response) == []
         assert _names(_payload(response), EntityType.AGENT_DEFINITION) == {"secret agent"}
 
 
@@ -277,25 +283,19 @@ class TestBulkAndPartialExport:
 
         response = _bulk_export(user, [flow_with_agent["graph"], second])
 
-        assert response.status_code == 200
         payload = _payload(response)
         assert _names(payload, EntityType.GRAPH) == {"agent flow", "second flow"}
         assert EntityType.AGENT_DEFINITION not in payload
         assert _excluded_by_type(response)["AgentDefinition"]["count"] == 1
 
-    def test_partial_export_leaves_out_denied_dependencies_and_sets_header(
+    def test_partial_export_leaves_out_denied_dependencies_and_names_them(
         self, flow_with_agent, make_user, client_in_acme
     ):
         user = make_user("partial@example.com")
-        graph = flow_with_agent["graph"]
 
-        response = client_in_acme(user).post(
-            f"/api/graphs/{graph.id}/partial-export/",
-            {"agent_node_list": [flow_with_agent["agent_node"].id]},
-            format="json",
-        )
+        response = _partial_export(client_in_acme(user), flow_with_agent)
 
-        assert response.status_code == 200
+        assert response.job.status == TransferJob.Status.COMPLETED, response.job.error
         payload = _payload(response)
         assert len(payload[EntityType.AGENT_NODE]) == 1
         assert EntityType.AGENT_DEFINITION not in payload
@@ -308,20 +308,14 @@ class TestBulkAndPartialExport:
         user = make_user(
             "partial-agents@example.com", agents=READ_AND_EXPORT, tools=READ_AND_EXPORT
         )
-        graph = flow_with_agent["graph"]
-
-        response = client_in_acme(user).post(
-            f"/api/graphs/{graph.id}/partial-export/",
-            {"agent_node_list": [flow_with_agent["agent_node"].id]},
-            format="json",
-        )
+        response = _partial_export(client_in_acme(user), flow_with_agent)
 
         assert _names(_payload(response), EntityType.AGENT_DEFINITION) == {"secret agent"}
-        assert EXPORT_EXCLUDED_HEADER not in response
+        assert _excluded(response) == []
 
 
 @pytest.mark.django_db
-class TestExcludedHeader:
+class TestExcludedNames:
     def test_names_are_listed_when_the_caller_can_read_the_type(self, flow_with_agent, make_user):
         user = make_user("reader@example.com", agents=READ_ONLY)
 
@@ -347,7 +341,7 @@ class TestExcludedHeader:
             "names": [],
         }
         assert sorted(excluded["PythonCodeTool"]["names"]) == ["inline tool", "surface tool"]
-        assert "secret agent" not in response[EXPORT_EXCLUDED_HEADER]
+        assert "secret agent" not in json.dumps(_excluded(response))
 
     def test_names_are_capped_but_count_stays_exact(self, acme, make_user):
         graph = _flow(acme, "many agents")
@@ -365,7 +359,7 @@ class TestExcludedHeader:
         assert entry["count"] == 7
         assert len(entry["names"]) == 5
 
-    def test_header_is_ascii_even_for_non_ascii_names(self, acme, make_user):
+    def test_non_ascii_names_are_kept(self, acme, make_user):
         graph = _flow(acme, "unicode")
         AgentNode.objects.create(
             graph=graph, node_name="agent_node_1", agent_definition=_agent(acme, "Агент ☃")
@@ -374,41 +368,7 @@ class TestExcludedHeader:
 
         response = _export(user, graph)
 
-        response[EXPORT_EXCLUDED_HEADER].encode("ascii")
         assert _excluded_by_type(response)["AgentDefinition"]["names"] == ["Агент ☃"]
-
-    @pytest.mark.parametrize(
-        "strategy",
-        [JsonExportFormatStrategy(), CsvExportFormatStrategy(SessionTabularProjection())],
-        ids=["json", "csv"],
-    )
-    def test_both_formats_carry_the_header(self, strategy):
-        excluded = [ExcludedEntity(EntityType.MCP_TOOL, 4, "search")]
-
-        response = strategy.render({}, EntityType.SESSION, "prefix", "name", excluded=excluded)
-
-        assert json.loads(response[EXPORT_EXCLUDED_HEADER]) == [
-            {"type": "MCPTool", "count": 1, "names": ["search"]}
-        ]
-
-    def test_no_header_value_when_nothing_was_excluded(self):
-        assert build_excluded_header_value([]) is None
-
-    def test_oversized_names_are_trimmed_and_counts_stay_exact(self):
-        long_name = "я" * 255
-        excluded = [
-            ExcludedEntity(entity_type, entity_id, f"{long_name}{entity_id}")
-            for entity_type in (EntityType.AGENT_DEFINITION, EntityType.PYTHON_CODE_TOOL)
-            for entity_id in range(5)
-        ]
-
-        value = build_excluded_header_value(excluded)
-
-        assert len(value) <= MAX_EXCLUDED_HEADER_BYTES
-        entries = json.loads(value)
-        assert [entry["count"] for entry in entries] == [5, 5]
-        assert all(len(entry["names"]) < 5 for entry in entries)
-
 
 class TestExportAccessPolicy:
     @staticmethod
@@ -470,7 +430,7 @@ class TestNameLookupOrgScoping:
         entry = _excluded_by_type(response)["AgentDefinition"]
         assert entry["count"] == 2
         assert entry["names"] == ["secret agent"]
-        assert "beta secret agent" not in response[EXPORT_EXCLUDED_HEADER]
+        assert "beta secret agent" not in json.dumps(_excluded(response))
 
 
 @pytest.mark.django_db
@@ -489,21 +449,23 @@ class TestNullReferences:
 
 @pytest.mark.django_db
 class TestClassificationDecisionTableExport:
-    def test_restricted_user_exports_a_cdt_node_without_a_header(
+    def test_restricted_user_exports_a_cdt_node_with_nothing_excluded(
         self, acme, make_user, client_in_acme
     ):
         graph = _flow(acme, "cdt flow")
         node = ClassificationDecisionTableNode.objects.create(graph=graph, node_name="cdt_node")
         user = make_user("cdt@example.com")
 
-        response = client_in_acme(user).get(
-            f"/api/classification-decision-table-node/{node.id}/export/"
+        response = export_via_job(
+            client_in_acme(user),
+            "/api/classification-decision-table-node/export-jobs/",
+            {"ids": [node.id], "export_format": "json"},
         )
 
-        assert response.status_code == 200, response.content
+        assert response.job.status == TransferJob.Status.COMPLETED, response.job.error
         cdt_entries = _payload(response)[EntityType.CLASSIFICATION_DECISION_TABLE_NODE]
         assert [entry["node_name"] for entry in cdt_entries] == ["cdt_node"]
-        assert EXPORT_EXCLUDED_HEADER not in response
+        assert _excluded(response) == []
 
 
 @pytest.fixture
@@ -525,11 +487,11 @@ def flow_with_owned_and_shared_surfaces(acme):
     return {"graph": graph, "agent_node": agent_node}
 
 
-def _partial_export(client, flow):
-    return client.post(
-        f"/api/graphs/{flow['graph'].id}/partial-export/",
+def _partial_export(client, flow) -> FinishedExport:
+    return export_via_job(
+        client,
+        f"/api/graphs/{flow['graph'].id}/partial-export-jobs/",
         {"agent_node_list": [flow["agent_node"].id]},
-        format="json",
     )
 
 
@@ -588,7 +550,7 @@ class TestOwnedSurfaceFollowsItsAgent:
             payload = _payload(response)
             assert _names(payload, EntityType.SURFACE) == {"agent private", "team shared"}
             assert _names(payload, EntityType.PYTHON_CODE_TOOL) == {"private tool"}
-            assert EXPORT_EXCLUDED_HEADER not in response
+            assert _excluded(response) == []
 
     def test_shared_surface_is_exported_when_agent_export_is_denied(
         self, flow_with_owned_and_shared_surfaces, make_user

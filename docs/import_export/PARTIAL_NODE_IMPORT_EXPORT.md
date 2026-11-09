@@ -94,7 +94,7 @@ Partial import/export are actions on the `Graph` viewset and run under the same 
 
 | Action | Required permission |
 |---|---|
-| `partial-export` | `FLOWS` · `EXPORT` |
+| `partial-export-jobs` | `FLOWS` · `EXPORT` |
 | `partial-import` | `FLOWS` · `UPDATE` (it prepares content for an existing graph and creates dependencies) |
 
 **Per-dependency create enforcement.** Passing the view gate is not sufficient to create the dependencies an import pulls in. For every genuinely-new dependency (a `find_existing` miss), the caller must have `CREATE` on that dependency's resource type, mapped via `ENTITY_RESOURCE_MAP`:
@@ -122,9 +122,9 @@ This mirrors the enforcement applied to full graph/agent/crew import.
 
 Both operations are exposed on the `Graph` viewset.
 
-### `POST /graphs/{id}/partial-export`
+### `POST /graphs/{id}/partial-export-jobs`
 
-Exports selected nodes from graph `{id}`.
+Queues a background export job (`main_entity` `FlowNodes`) of selected nodes from graph `{id}`; answers `202 {"job_id"}`. Poll `GET /transfer-jobs/{job_id}/` and download the `.zip` once it completes.
 
 **Request body** (JSON):
 
@@ -138,15 +138,15 @@ Exports selected nodes from graph `{id}`.
 
 Supported list keys: `start_node_list`, `python_node_list`, `audio_transcription_node_list`, `file_extractor_node_list`, `telegram_trigger_node_list`, `webhook_trigger_node_list`, `decision_table_node_list`, `classification_decision_table_node_list`, `subgraph_node_list`, `end_node`, `graph_note_list`, `schedule_trigger_node_list`, `agent_node_list`, `task_node_list`.
 
-The view converts these keys to `NodeRef` objects using `LIST_KEY_TO_ENTITY_TYPE` defined in `services/partial_export_service.py`, then calls `GraphPartialExportService.export()`.
+The job (`FlowNodesExportDefinition` in `tables/services/transfer_jobs/export_definitions.py`) converts these keys to `NodeRef` objects using `LIST_KEY_TO_ENTITY_TYPE` defined in `services/partial_export_service.py`, then calls `GraphPartialExportService.export()`. A node or edge id outside the graph's organization fails the job with `not_found`.
 
-**Response**: a downloadable JSON file containing the serialized nodes and their dependencies.
+**Result**: the job's archive holds `export.json` with the serialized nodes and their dependencies; dependencies left out for missing export rights are listed in the job's `result.excluded`.
 
 ### `POST /graphs/{id}/partial-import`
 
 Prepares the nodes of a partial-export file for pasting into graph `{id}`. Dependencies are created and committed; nodes and edges are not saved.
 
-**Request body**: multipart/form-data upload of the JSON file produced by `partial-export`.
+**Request body**: multipart/form-data upload of the `.zip` a `partial-export-jobs` job produced, or the plain `.json` of an older partial export. A `.zip` carrying knowledge collections is refused with `400 use_import_job`.
 
 **Response**: `200` with
 

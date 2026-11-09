@@ -14,33 +14,34 @@ from rbac.identity.tickets import (
     TRANSFER_DOWNLOAD_TICKET_TTL_SECONDS,
     transfer_download_ticket_service,
 )
-from rbac.models.enums import Permission
 from rbac.scoping.mixins import OrgScopedResolverMixin
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.exceptions import TransferJobArchiveRemovedError, TransferJobNotReadyError
-from tables.import_export.enums import EntityType
-from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.models import TransferJob
 from tables.serializers.transfer_job_serializers import (
     TransferJobDownloadTicketSerializer,
+    TransferJobListQuerySerializer,
+    TransferJobsClearedSerializer,
     TransferJobSerializer,
 )
 from tables.services.transfer_jobs.archive_store import TransferArchiveStore
+from tables.services.transfer_jobs.export_definitions import export_definition
+from tables.services.transfer_jobs.job_service import TransferJobService
 
 TICKET_QUERY_PARAM = "ticket"
 
 
 class TransferJobViewSet(OrgScopedResolverMixin, viewsets.GenericViewSet):
-    """Status and archive download of the caller's own export and import jobs.
+    """List, status, removal and archive download of the caller's own export and import jobs.
 
     A job is visible only to its creator, in the organization it was started in:
-    any other job id, a malformed one included, is a 404. The status needs no
-    permission bit (it is the caller's own job); the download re-checks the
-    EXPORT right on the job's main entity, which may have been revoked since.
+    any other job id, a malformed one included, is a 404. Listing, status and
+    removal need no permission bit (they are the caller's own jobs); the download
+    re-checks the right the job's export needed, which may have been revoked since.
 
     A browser navigation cannot send the Authorization header, so the download
     also accepts a one-time ticket (`download-ticket`) in its query string
@@ -59,11 +60,9 @@ class TransferJobViewSet(OrgScopedResolverMixin, viewsets.GenericViewSet):
         return super().get_permissions()
 
     def get_queryset(self):
-        # A system API key or a plugin service account owns no jobs.
-        author = resolve_author(self.request.user)
-        if author is None:
-            return TransferJob.objects.none()
-        return TransferJob.objects.filter(org_id=self.get_active_org_id(), created_by=author)
+        return TransferJobService.owned_jobs(
+            resolve_author(self.request.user), self.get_active_org_id()
+        )
 
     def get_object(self) -> TransferJob:
         job = self.get_queryset().filter(pk=self._job_id()).first()
@@ -71,8 +70,58 @@ class TransferJobViewSet(OrgScopedResolverMixin, viewsets.GenericViewSet):
             raise NotFound()
         return job
 
+    @extend_schema(
+        parameters=[TransferJobListQuerySerializer],
+        responses={200: TransferJobSerializer(many=True)},
+        description="The caller's jobs in the active organization, newest first.",
+    )
+    def list(self, request):
+        query = TransferJobListQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        jobs = self.get_queryset().order_by("-created_at", "-pk")
+        if query.validated_data.get("status"):
+            jobs = jobs.filter(status__in=query.validated_data["status"])
+        if "kind" in query.validated_data:
+            jobs = jobs.filter(kind=query.validated_data["kind"])
+        page = self.paginate_queryset(jobs)
+        return self.get_paginated_response(self.get_serializer(page, many=True).data)
+
     def retrieve(self, request, pk=None):
         return Response(self.get_serializer(self.get_object()).data)
+
+    @extend_schema(
+        responses={
+            204: None,
+            409: OpenApiResponse(description="`job_running`: wait until the job has finished."),
+        },
+        description=(
+            "Remove a job that is not running, with its stored archive. A queued "
+            "job is removed before it starts and never runs."
+        ),
+    )
+    def destroy(self, request, pk=None):
+        TransferJobService().remove_job(
+            job_id=self._job_id(),
+            user=resolve_author(request.user),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        request=None,
+        responses={200: TransferJobsClearedSerializer},
+        description=(
+            "Remove every job of the caller in the active organization that is not "
+            "running, with their stored archives; running jobs are kept. Queued jobs "
+            "removed this way never run. Nothing to remove is still a 200."
+        ),
+    )
+    @action(detail=False, methods=["post"], url_path="clear")
+    def clear(self, request):
+        deleted = TransferJobService().remove_jobs(
+            user=resolve_author(request.user), org_id=self.get_active_org_id()
+        )
+        return Response(TransferJobsClearedSerializer({"deleted": deleted}).data)
 
     @extend_schema(
         request=None,
@@ -196,11 +245,12 @@ class TransferJobViewSet(OrgScopedResolverMixin, viewsets.GenericViewSet):
 def _assert_downloadable(job: TransferJob, user, api_key_org_id: int | None) -> None:
     if job.kind != TransferJob.Kind.EXPORT or job.status != TransferJob.Status.COMPLETED:
         raise TransferJobNotReadyError()
+    definition = export_definition(job.main_entity)
     assert_row_org_permission(
         user,
         job.org_id,
-        ENTITY_RESOURCE_MAP[EntityType(job.main_entity)],
-        Permission.EXPORT,
+        definition.resource_type,
+        definition.permission,
         not_found=NotFound(),
         api_key_org_id=api_key_org_id,
     )

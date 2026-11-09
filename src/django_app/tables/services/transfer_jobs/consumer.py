@@ -1,6 +1,7 @@
-"""Runs transfer jobs and sweeps from the transfer-job stream.
+"""Runs transfer jobs and sweeps from the transfer-job streams, one consumer per lane.
 
-Each entry is either one job to run or one sweep request from manager. Entries are
+Each entry is either one job to run or one sweep request from manager (on the
+heavy stream only). Entries are
 served one at a time and acknowledged one at a time, so a container stopped mid-batch
 leaves only the unserved ones pending. A job that fails is not retried: it ends
 `failed` with a reason its creator sees.
@@ -13,20 +14,23 @@ from django.utils import timezone
 from src.shared.redis_streams import (
     TRANSFER_JOB_CONSUMER_GROUP,
     TRANSFER_JOB_ID_FIELD,
+    TRANSFER_JOB_LIGHT_CONSUMER_GROUP,
+    TRANSFER_JOB_LIGHT_STREAM,
     TRANSFER_JOB_STREAM,
     TRANSFER_JOB_SWEEP_REQUESTED_AT_FIELD,
 )
 from tables.services.stream_request_consumer import StreamRequestConsumer
+from tables.services.transfer_jobs.export_definitions import TransferLane
 from tables.services.transfer_jobs.runner import TransferJobRunner, sweep_transfer_jobs
 from utils.logger import logger
 
 
 class TransferJobConsumer(StreamRequestConsumer):
-    """Reads transfer-job entries through one consumer group and serves each of them."""
+    """Serves the entries of one lane's stream, each read through the lane's consumer group.
 
-    stream = TRANSFER_JOB_STREAM
-    group = TRANSFER_JOB_CONSUMER_GROUP
-    description = "Transfer job consumer"
+    A subclass per lane names the stream and group; `LANE_CONSUMERS` maps lanes to them.
+    """
+
     # A job can run for minutes; a batch read here would hold the rest of it pending
     # behind that job instead of letting another container take it.
     read_count = 1
@@ -59,3 +63,25 @@ class TransferJobConsumer(StreamRequestConsumer):
             )
         else:
             logger.warning("Transfer job entry without a job or a sweep: {}", fields)
+
+
+class HeavyTransferJobConsumer(TransferJobConsumer):
+    """Serves the heavy lane (large exports and every import) and the sweep requests."""
+
+    stream = TRANSFER_JOB_STREAM
+    group = TRANSFER_JOB_CONSUMER_GROUP
+    description = "Heavy transfer job consumer"
+
+
+class LightTransferJobConsumer(TransferJobConsumer):
+    """Serves the light lane: small exports that should not wait behind a large one."""
+
+    stream = TRANSFER_JOB_LIGHT_STREAM
+    group = TRANSFER_JOB_LIGHT_CONSUMER_GROUP
+    description = "Light transfer job consumer"
+
+
+LANE_CONSUMERS: dict[TransferLane, type[TransferJobConsumer]] = {
+    TransferLane.HEAVY: HeavyTransferJobConsumer,
+    TransferLane.LIGHT: LightTransferJobConsumer,
+}

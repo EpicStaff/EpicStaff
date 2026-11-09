@@ -37,8 +37,8 @@ class NotifyEmailThrottle(SimpleRateThrottle):
 
 class TransferJobCreateThrottle(SimpleRateThrottle):
     """
-    Throttle for starting transfer jobs, one bucket for all of them: export jobs
-    (`POST /api/graphs/export-jobs/`, `POST /api/source-collections/export-jobs/`)
+    Throttle for starting transfer jobs, one bucket for all of them: every export
+    job (each `POST .../export-jobs/` and `POST /api/graphs/{id}/partial-export-jobs/`)
     and import uploads (`POST /api/graphs/import-jobs/`,
     `POST /api/source-collections/import-jobs/`).
 

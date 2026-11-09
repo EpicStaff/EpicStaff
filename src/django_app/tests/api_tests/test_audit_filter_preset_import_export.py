@@ -1,11 +1,11 @@
-import json
-
 import pytest
 from django.urls import reverse
 
 from tables.import_export.enums import EntityType
 from tables.models.audit_filter_preset_models import AuditFilterPreset
+from tables.models import TransferJob
 from tests.helpers import data_to_json_file
+from tests.transfer_job_helpers import export_via_job
 
 
 @pytest.fixture
@@ -19,8 +19,8 @@ def preset(regular_user, default_org):
 
 
 def _envelope(presets: list[dict]) -> dict:
-    """Matches the shape ExportService/JsonExportFormatStrategy actually
-    produce (and what a real export download looks like): {main_entity,
+    """Matches the shape ExportService actually produces (the `export.json` of a
+    real export archive): {main_entity,
     version, <EntityType>: [...]}, not the bare/`{"presets": [...]}` shape
     - see AUDIT_FILTER_PRESET_IMPORT / AuditFilterPresetViewSet.import_presets."""
     return {
@@ -30,52 +30,37 @@ def _envelope(presets: list[dict]) -> dict:
     }
 
 
+EXPORT_JOBS_URL = "/api/audit-filter-presets/export-jobs/"
+
+
 @pytest.mark.django_db
 class TestAuditFilterPresetExport:
-    def test_export_single_returns_envelope_with_preset(self, auth_client, preset):
-        url = reverse("auditfilterpreset-export", kwargs={"pk": preset.id})
-        response = auth_client.get(url)
+    def test_export_job_archive_holds_the_envelope_with_every_preset(self, auth_client, preset):
+        exported = export_via_job(auth_client, EXPORT_JOBS_URL, {"ids": [preset.id]})
 
-        assert response.status_code == 200
-        data = json.loads(response.content)
-        assert data["main_entity"] == EntityType.AUDIT_FILTER_PRESET
-        assert data[EntityType.AUDIT_FILTER_PRESET] == [
+        assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+        assert exported.job.main_entity == TransferJob.MainEntity.AUDIT_FILTER_PRESET
+        assert exported.job.display_name == "my preset"
+        assert exported.envelope["main_entity"] == EntityType.AUDIT_FILTER_PRESET
+        assert exported.envelope[EntityType.AUDIT_FILTER_PRESET] == [
             {"id": preset.id, "name": preset.name, "filter_body": preset.filter_body}
         ]
 
-    def test_bulk_export_returns_envelope_with_all_ids(self, auth_client, preset):
-        url = reverse("auditfilterpreset-bulk-export")
-        response = auth_client.post(url, {"ids": [preset.id]}, format="json")
+    def test_export_of_an_unknown_id_is_refused(self, auth_client, preset):
+        response = auth_client.post(EXPORT_JOBS_URL, {"ids": [preset.id, 999999]}, format="json")
 
-        assert response.status_code == 200
-        data = json.loads(response.content)
-        assert data[EntityType.AUDIT_FILTER_PRESET] == [
-            {"id": preset.id, "name": preset.name, "filter_body": preset.filter_body}
-        ]
+        assert response.status_code == 404
+        assert response.json()["code"] == "export_entities_not_found"
+        assert not TransferJob.objects.exists()
 
-    def test_bulk_export_unknown_id_400s(self, auth_client, preset):
-        url = reverse("auditfilterpreset-bulk-export")
-        response = auth_client.post(
-            url, {"ids": [preset.id, 999999]}, format="json"
-        )
+    def test_a_repeated_id_is_exported_once(self, auth_client, preset):
+        exported = export_via_job(auth_client, EXPORT_JOBS_URL, {"ids": [preset.id, preset.id]})
 
-        assert response.status_code == 400
-
-    def test_bulk_export_repeated_id_exports_it_once(self, auth_client, preset):
-        url = reverse("auditfilterpreset-bulk-export")
-        response = auth_client.post(
-            url, {"ids": [preset.id, preset.id]}, format="json"
-        )
-
-        assert response.status_code == 200
-        data = json.loads(response.content)
-        assert [item["id"] for item in data[EntityType.AUDIT_FILTER_PRESET]] == [
+        assert [item["id"] for item in exported.envelope[EntityType.AUDIT_FILTER_PRESET]] == [
             preset.id
         ]
 
-    def test_export_of_another_orgs_preset_404s(
-        self, auth_client, django_user_model
-    ):
+    def test_export_of_another_orgs_preset_is_refused(self, auth_client, django_user_model):
         from rbac.models import Organization
 
         other_org = Organization.objects.create(name="Other org for presets")
@@ -89,10 +74,24 @@ class TestAuditFilterPresetExport:
             filter_body={"query": ""},
         )
 
-        url = reverse("auditfilterpreset-export", kwargs={"pk": foreign_preset.id})
-        response = auth_client.get(url)
+        response = auth_client.post(EXPORT_JOBS_URL, {"ids": [foreign_preset.id]}, format="json")
 
         assert response.status_code == 404
+        assert response.json()["code"] == "export_entities_not_found"
+        assert not TransferJob.objects.exists()
+
+    def test_the_exported_archive_imports_again(self, auth_client, preset):
+        exported = export_via_job(auth_client, EXPORT_JOBS_URL, {"ids": [preset.id]})
+        preset.delete()
+
+        response = auth_client.post(
+            reverse("auditfilterpreset-import-presets"),
+            {"file": exported.upload()},
+            format="multipart",
+        )
+
+        assert response.status_code == 200, response.content
+        assert AuditFilterPreset.objects.get().name == "my preset"
 
 
 @pytest.mark.django_db

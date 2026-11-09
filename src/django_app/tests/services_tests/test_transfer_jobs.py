@@ -31,7 +31,7 @@ from tables.services import organization_deletion
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.organization_deletion import TablesOrganizationDeletion
 from tables.services.transfer_jobs.archive_store import TransferArchiveStore
-from tables.services.transfer_jobs.consumer import TransferJobConsumer
+from tables.services.transfer_jobs.consumer import HeavyTransferJobConsumer
 from tables.services.transfer_jobs.queue import enqueue_transfer_job
 from tables.clients.errors import (
     ClientBadGatewayError,
@@ -516,7 +516,7 @@ def test_consumer_runs_each_enqueued_job_and_acknowledges_it(
     redis_client, flow, regular_user, fail
 ):
     runner = RecordingRunner(fail=fail)
-    consumer = TransferJobConsumer(redis_client, "host-a", runner=runner)
+    consumer = HeavyTransferJobConsumer(redis_client, "host-a", runner=runner)
     consumer.start()
     first, second = _export_job(flow, regular_user), _export_job(flow, regular_user)
     enqueue_transfer_job(first, redis_client=redis_client)
@@ -532,7 +532,7 @@ def test_consumer_runs_each_enqueued_job_and_acknowledges_it(
 
 def test_consumer_sweeps_when_asked(redis_client):
     sweeps = []
-    consumer = TransferJobConsumer(
+    consumer = HeavyTransferJobConsumer(
         redis_client,
         "host-a",
         runner=RecordingRunner(),
@@ -589,7 +589,8 @@ def test_a_user_keeps_only_their_newest_export_archives(
     now = timezone.now()
     older = [
         _completed_export(store, regular_user, default_org, now - timedelta(hours=hours))
-        for hours in (4, 3, 2)
+        # Ten kept archives; the export about to complete is the eleventh.
+        for hours in range(11, 1, -1)
     ]
     colleague = django_user_model.objects.create_user(
         email="colleague-exports@example.com", password="StrongPass123!"
@@ -622,7 +623,8 @@ def test_an_archive_that_cannot_be_deleted_is_left_as_it_was(
     now = timezone.now()
     older = [
         _completed_export(store, regular_user, default_org, now - timedelta(hours=hours))
-        for hours in (4, 3, 2)
+        # Ten kept archives; the export about to complete is the eleventh.
+        for hours in range(11, 1, -1)
     ]
     real_delete = TransferArchiveStore.delete_job
 
