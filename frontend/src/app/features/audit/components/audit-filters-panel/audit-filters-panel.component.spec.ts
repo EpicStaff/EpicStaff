@@ -35,6 +35,16 @@ function setup(
     return { panel, confirm };
 }
 
+// The filter controls measure themselves with ResizeObserver, which jsdom lacks.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('AuditFiltersPanelComponent tab sync', () => {
     it('writes the Builder filters into the query, but never the search text', () => {
         const { panel } = setup(
@@ -163,7 +173,9 @@ describe('AuditFiltersPanelComponent for user actions', () => {
         expect(fixture.componentInstance.filter().selections).toEqual({
             target_type: { op: 'in', values: ['python code node'] },
         });
-        expect(targetType.querySelector('.filter-group__summary')?.textContent?.trim()).toBe('is any of Python node');
+        expect(targetType.querySelector('.filter-group__summary')?.textContent?.trim()).toBe(
+            'is any of Python code node'
+        );
     });
 
     it('offers the org members and flows by name and picks them by id', () => {

@@ -185,6 +185,16 @@ function optionLabels(group: HTMLElement): (string | undefined)[] {
     return Array.from(group.querySelectorAll('.checkbox-enum__option span')).map((item) => cellText(item));
 }
 
+// The filter controls measure themselves with ResizeObserver, which jsdom lacks.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('AuditUserActionsBrowserComponent', () => {
     it('shows id, date, user, action, target type, target name and target parent for each action', async () => {
         const { fixture, http, root } = setup();
