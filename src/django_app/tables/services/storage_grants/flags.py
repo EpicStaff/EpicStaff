@@ -33,6 +33,16 @@ class GrantFlags:
         """What an unattended run lets the code do: everything when not configured."""
         return self.granted if self.configured else _ALL_ACTIONS
 
+    def held_for_lock(self, *, uses_storage: bool) -> frozenset[StorageAction]:
+        """What a writer must hold to change the code of a slot with these flags.
+
+        The granted actions; for a slot that is not configured, every action when the
+        slot touches storage (its unattended runs get them all) and nothing otherwise.
+        """
+        if self.configured:
+            return self.granted
+        return _ALL_ACTIONS if uses_storage else frozenset()
+
     @classmethod
     def of(cls, source, slot: GrantSlot) -> "GrantFlags":
         """The flags of `slot` read from a model instance, or from a dict keyed by column name."""

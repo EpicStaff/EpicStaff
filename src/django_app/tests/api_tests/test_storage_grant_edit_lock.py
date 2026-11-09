@@ -226,19 +226,54 @@ def test_a_refused_steering_write_changes_nothing(kind, flow, no_files_client):
     assert _stored(kind, node, field_name) == before != value
 
 
+# A node that is not configured runs with every action, so it is locked like a granted one
+# where its steering touches storage; the other kinds do not touch it here.
+STORAGE_TOUCHING_KINDS = [
+    kind for kind in KINDS if kind.name in {"webhook", "file_extractor", "audio"}
+]
+STORAGE_FREE_KINDS = [kind for kind in KINDS if kind not in STORAGE_TOUCHING_KINDS]
+
+
+def _steer(entry, client, kind, flow, node):
+    if entry == "viewset":
+        return _patch(client, kind, node, kind.steer)
+    return _bulk(client, kind, flow, node, kind.steer)
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("entry", ["viewset", "bulk_save"])
 @pytest.mark.parametrize("kind", KINDS, ids=KIND_IDS)
-def test_a_node_without_a_grant_is_not_locked(kind, entry, flow, no_files_client):
-    not_configured = kind.make(flow, {})
-    granted_nothing = kind.make(flow, _granted(kind, (False, False, False)))
+def test_a_node_that_grants_nothing_is_not_locked(kind, entry, flow, no_files_client):
+    node = kind.make(flow, _granted(kind, (False, False, False)))
 
-    for node in (not_configured, granted_nothing):
-        if entry == "viewset":
-            response = _patch(no_files_client, kind, node, kind.steer)
-        else:
-            response = _bulk(no_files_client, kind, flow, node, kind.steer)
-        assert response.status_code == status.HTTP_200_OK, response.content
+    response = _steer(entry, no_files_client, kind, flow, node)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("entry", ["viewset", "bulk_save"])
+@pytest.mark.parametrize("kind", STORAGE_TOUCHING_KINDS, ids=lambda kind: kind.name)
+def test_a_not_configured_node_that_touches_storage_is_locked(kind, entry, flow, no_files_client):
+    node = kind.make(flow, {})
+
+    response = _steer(entry, no_files_client, kind, flow, node)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
+    assert response.data["missing_grants"] == ["read", "write", "delete"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("entry", ["viewset", "bulk_save"])
+@pytest.mark.parametrize("kind", STORAGE_FREE_KINDS, ids=lambda kind: kind.name)
+def test_a_not_configured_node_that_does_not_touch_storage_is_not_locked(
+    kind, entry, flow, no_files_client
+):
+    node = kind.make(flow, {})
+
+    response = _steer(entry, no_files_client, kind, flow, node)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
 
 
 @pytest.mark.django_db

@@ -371,6 +371,8 @@ def test_checking_granted_agent_nodes_in_a_bulk_save_costs_no_query_per_node(
         assert response.status_code == status.HTTP_200_OK, response.content
         return len(captured.captured_queries)
 
+    # The first save of a process also fills the content type cache; leave that out.
+    saved_queries("warm-up-flow", {})
     ungranted = saved_queries("ungranted-flow", {})
     granted = saved_queries("granted-flow", RW_GRANT)
 

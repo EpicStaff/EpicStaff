@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 
 from src.shared.models.storage_scope import StorageAction
 from tables.models.graph_models import (
@@ -18,6 +19,19 @@ GRANT_ACTION_NAMES: tuple[tuple[StorageAction, str], ...] = (
 )
 
 
+class StorageUse(Enum):
+    """How a slot comes to touch storage, which decides whether an unconfigured slot is locked.
+
+    SWITCH: the node has a `use_storage` switch (with the slot's prefix).
+    ALWAYS: the node reads storage whenever it runs.
+    TOOLS: the node touches storage through the Python tools it uses that have storage on.
+    """
+
+    SWITCH = "switch"
+    ALWAYS = "always"
+    TOOLS = "tools"
+
+
 @dataclass(frozen=True)
 class GrantSlot:
     """One grant of a node: its flag columns and the node fields that steer what its code does.
@@ -29,11 +43,21 @@ class GrantSlot:
             code does or reads, compared as stored. `surface_list`, `inline_surface` and
             `agent_definition` stand for the node's tools, which come from its surfaces.
         code_fields: Names of nested PythonCode fields on the node that hold the code.
+        storage_use: How the slot touches storage. A slot that is not configured runs
+            with every action, so it is locked like a granted one when it touches storage.
     """
 
     prefix: str = ""
     steering_fields: tuple[str, ...] = ()
     code_fields: tuple[str, ...] = ()
+    storage_use: StorageUse = StorageUse.SWITCH
+
+    @property
+    def use_storage_field(self) -> str:
+        """The node's storage switch, for a `StorageUse.SWITCH` slot."""
+        if self.storage_use is not StorageUse.SWITCH:
+            raise ValueError("Only a slot with a storage switch has a use_storage field.")
+        return f"{self.prefix}use_storage"
 
     @property
     def flag_names(self) -> tuple[str, str, str]:
@@ -63,11 +87,18 @@ STORAGE_GRANT_SLOTS: dict[type, tuple[GrantSlot, ...]] = {
     WebhookTriggerNode: (
         GrantSlot(steering_fields=("use_storage",), code_fields=("python_code",)),
     ),
-    FileExtractorNode: (GrantSlot(steering_fields=("input_map",)),),
-    AudioTranscriptionNode: (GrantSlot(steering_fields=("input_map",)),),
-    AgentNode: (GrantSlot(steering_fields=(*_TOOL_STEERING_FIELDS, "tasks")),),
+    FileExtractorNode: (GrantSlot(steering_fields=("input_map",), storage_use=StorageUse.ALWAYS),),
+    AudioTranscriptionNode: (
+        GrantSlot(steering_fields=("input_map",), storage_use=StorageUse.ALWAYS),
+    ),
+    AgentNode: (
+        GrantSlot(steering_fields=(*_TOOL_STEERING_FIELDS, "tasks"), storage_use=StorageUse.TOOLS),
+    ),
     TaskNode: (
-        GrantSlot(steering_fields=(*_TOOL_STEERING_FIELDS, "instructions", "output_schema")),
+        GrantSlot(
+            steering_fields=(*_TOOL_STEERING_FIELDS, "instructions", "output_schema"),
+            storage_use=StorageUse.TOOLS,
+        ),
     ),
     ClassificationDecisionTableNode: (
         GrantSlot(

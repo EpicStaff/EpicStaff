@@ -17,6 +17,8 @@ from tables.services.storage_grants.flow_checks import (
     actions_granted_in_flows,
     actions_granted_in_snapshot,
     assert_actor_holds,
+    flow_has_unconfigured_storage_slot,
+    snapshot_has_unconfigured_storage_slot,
     snapshot_unconfigures_explicit_slot,
 )
 
@@ -266,12 +268,20 @@ class GraphVersioningService:
         # discards those of the flow as it is: the user must hold both sets. A slot of the
         # version that is not configured runs with every action, so where it replaces an
         # explicit slot of the flow it needs all three: the restore is refused rather than
-        # lowering it. Over a slot that is not configured either, it hands out nothing new.
+        # lowering it. Over a slot that is not configured either, it hands out nothing new,
+        # unless that slot touches storage (File Extractor, Audio transcription, a code slot
+        # with storage on, an agent or task node reaching a Python tool with storage on):
+        # such a slot runs with every action and the restore swaps what it does, so a
+        # not-configured storage slot on either side needs all three, like the edit lock.
         snapshot_nodes = prepared.filtered_snapshot["nodes"]
         required = actions_granted_in_snapshot(snapshot_nodes) | actions_granted_in_flows(
             [graph.id]
         )
         if snapshot_unconfigures_explicit_slot(snapshot_nodes, graph.id):
+            required |= frozenset(StorageAction)
+        if flow_has_unconfigured_storage_slot(graph.id) or snapshot_has_unconfigured_storage_slot(
+            snapshot_nodes
+        ):
             required |= frozenset(StorageAction)
         # A call with no acting user is internal (the restore endpoint always has one) and
         # has no one whose permissions could be short.

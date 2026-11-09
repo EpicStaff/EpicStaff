@@ -1,6 +1,7 @@
 import json
 from collections.abc import Callable
 
+from agents.models import ToolMode
 from src.shared.models.storage_scope import StorageAction
 from tables.models.graph_models import AgentNode, TaskNode
 from tables.services.storage_grants.actor import GrantActor
@@ -10,6 +11,14 @@ from tables.services.storage_grants.slots import (
     PYTHON_CODE_STEERING_FIELDS,
     STORAGE_GRANT_SLOTS,
     GrantSlot,
+    StorageUse,
+)
+from tables.services.storage_grants.storage_use import (
+    model_uses_tools_for_storage,
+    nodes_using_storage_tools,
+    surfaces_allow_storage_tool,
+    switch_uses_storage,
+    with_uses_storage_tool,
 )
 
 # What the steering comparison reads from the stored node of a kind, so a bulk save loads
@@ -18,6 +27,14 @@ STEERING_PREFETCHES: dict[type, tuple[str, ...]] = {
     AgentNode: ("surface_list", "inline_surface__python_tools", "tasks"),
     TaskNode: ("surface_list", "inline_surface__python_tools"),
 }
+
+
+def annotate_for_steering_check(queryset):
+    """Load into `queryset` what the steering check needs of a stored node beyond its prefetches."""
+    if model_uses_tools_for_storage(queryset.model):
+        return with_uses_storage_tool(queryset)
+    return queryset
+
 
 StorageGrantCheck = Callable[[GrantActor | None, object, dict], None]
 
@@ -43,7 +60,8 @@ def check_storage_grant_write(
       created counts as holding none, so creating one with the default flags is free.
     - Changing what the code does (`GrantSlot.steering_fields`, the nested code) needs
       every permission the slot grants, before or after the write. A slot that is not
-      configured grants nothing and is never locked.
+      configured counts as granting every action when it touches storage (its unattended
+      runs get them all, see `GrantFlags.held_for_lock`), and is not locked otherwise.
 
     A missing permission is never worked around by lowering the flags: the write is
     refused whole, naming every missing permission of every slot.
@@ -68,22 +86,67 @@ def check_storage_grant_write(
             for action in StorageAction
             if (action in current.effective) != (action in incoming.effective)
         }
-        # A slot that grants nothing before or after the write locks nothing: skipping the
-        # comparison also keeps a bulk save from loading each node's surfaces and tools.
-        needed_for_code = current.granted | incoming.granted
-        if (
-            instance is None
-            or not needed_for_code
-            or not (
-                _moved_to_another_flow(instance, data) or _steering_changed(instance, data, slot)
-            )
-        ):
-            needed_for_code = frozenset()
+        needed_for_code = _needed_for_code(instance, data, slot, current, incoming)
         missing_for_flags |= _missing(actor, changed)
         missing_for_code |= _missing(actor, needed_for_code)
     missing = missing_for_flags | missing_for_code
     if missing:
         raise StorageGrantDeniedError.for_actor(actor, missing, change=not missing_for_code)
+
+
+def _needed_for_code(
+    instance, data: dict, slot: GrantSlot, current: GrantFlags, incoming: GrantFlags
+) -> frozenset[StorageAction]:
+    """The actions the writer must hold to change what the slot's code does, none if it does not."""
+    if instance is None:
+        return frozenset()
+    # A slot that is configured and grants nothing locks nothing: skipping the comparison
+    # also keeps a bulk save from loading each node's surfaces and tools.
+    if not (current.granted | incoming.granted) and current.configured and incoming.configured:
+        return frozenset()
+    if not (_moved_to_another_flow(instance, data) or _steering_changed(instance, data, slot)):
+        return frozenset()
+    # Asked only for a slot that is not configured, and only once the write changes
+    # something: it may cost queries.
+    uses_storage = not (current.configured and incoming.configured) and slot_uses_storage(
+        instance, data, slot
+    )
+    return current.held_for_lock(uses_storage=uses_storage) | incoming.held_for_lock(
+        uses_storage=uses_storage
+    )
+
+
+def slot_uses_storage(instance, data: dict, slot: GrantSlot) -> bool:
+    """Whether the slot of a persisted node touches storage before or after the write of `data`."""
+    if slot.storage_use is StorageUse.TOOLS:
+        return _uses_storage_tools(instance, data)
+    if switch_uses_storage(instance, slot):
+        return True
+    return slot.storage_use is StorageUse.SWITCH and bool(data.get(slot.use_storage_field))
+
+
+def _uses_storage_tools(instance, data: dict) -> bool:
+    stored = getattr(instance, "uses_storage_tool", None)
+    if stored is None:
+        stored = bool(nodes_using_storage_tools(type(instance), [instance.pk]))
+    if stored:
+        return True
+    tool_fields = ("surface_list", "inline_surface", "agent_definition")
+    changed = [
+        name for name in tool_fields if name in data and _field_changed(instance, name, data[name])
+    ]
+    if not changed:
+        return False
+    surfaces = data["surface_list"] if "surface_list" in changed else instance.surface_list.all()
+    agent_definition = data.get("agent_definition", instance.agent_definition_id)
+    if surfaces_allow_storage_tool(
+        (surface.pk for surface in surfaces), [getattr(agent_definition, "pk", agent_definition)]
+    ):
+        return True
+    return any(
+        entry["mode"] == ToolMode.ALLOW and entry["python_tool"].use_storage
+        for entry in (data.get("inline_surface") or {}).get("python_tools", [])
+    )
 
 
 def _missing(actor: GrantActor | None, actions) -> frozenset[StorageAction]:

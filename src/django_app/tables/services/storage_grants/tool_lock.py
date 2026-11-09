@@ -16,6 +16,7 @@ from tables.services.storage_grants.errors import PERMISSION_LABELS
 from tables.services.storage_grants.flags import GrantFlags
 from tables.services.storage_grants.flow_checks import assert_actor_holds
 from tables.services.storage_grants.slots import STORAGE_GRANT_SLOTS
+from tables.services.storage_grants.storage_use import nodes_using_storage_tools
 from tables.services.storage_grants.write_checks import python_code_changed
 
 _TOOL_NODE_MODELS = (AgentNode, TaskNode)
@@ -34,13 +35,21 @@ class ToolGrantLock:
     flow_names: tuple[str, ...]
 
 
-def grant_locks_for_tools(tool_ids: Iterable[int], org_id: int) -> dict[int, ToolGrantLock]:
+def grant_locks_for_tools(
+    tool_ids: Iterable[int], org_id: int, *, incoming_gives_storage: bool = False
+) -> dict[int, ToolGrantLock]:
     """The lock of each given Python tool that a granted node of the org uses.
 
     A node uses a tool when the tool is allowed on a surface the node attaches, on one
     its agent has as a default, or on the node's own inline surface. A deny entry is
     ignored, which can only lock more. A tool no granted node uses has no entry.
+    A node that is not configured counts as granted every action when it uses a tool
+    with storage on (see `GrantFlags.held_for_lock`).
     The number of queries does not depend on the number of tools.
+
+    Args:
+        incoming_gives_storage: Treat the given tools as having storage on, for the lock of
+            switching it on.
     """
     tool_ids = list(tool_ids)
     if not tool_ids:
@@ -66,7 +75,7 @@ def grant_locks_for_tools(tool_ids: Iterable[int], org_id: int) -> dict[int, Too
     ).values_list("python_tool_id", "agent_inline_surface__agent_node_id"):
         node_ids_by_tool[tool_id][AgentNode].add(node_id)
 
-    return _locks_of_nodes(node_ids_by_tool, org_id)
+    return _locks_of_nodes(node_ids_by_tool, org_id, incoming_gives_storage=incoming_gives_storage)
 
 
 def _collect_through_surfaces(
@@ -101,20 +110,37 @@ def _collect_through_surfaces(
 
 
 def _locks_of_nodes(
-    node_ids_by_tool: dict[int, dict[type, set[int]]], org_id: int
+    node_ids_by_tool: dict[int, dict[type, set[int]]],
+    org_id: int,
+    *,
+    incoming_gives_storage: bool = False,
 ) -> dict[int, ToolGrantLock]:
+    """The lock of each key of `node_ids_by_tool` from the grants of the nodes it maps to.
+
+    Args:
+        incoming_gives_storage: Count every given node as using storage, for a write that gives
+            the tools it reaches storage.
+    """
     grants_by_node: dict[tuple[type, int], tuple[frozenset[StorageAction], str]] = {}
     for model in _TOOL_NODE_MODELS:
         wanted = {
             node_id for per_model in node_ids_by_tool.values() for node_id in per_model[model]
         }
         (slot,) = STORAGE_GRANT_SLOTS[model]
-        rows = model.objects.filter(pk__in=wanted, graph__org_id=org_id).values(
-            "pk", "graph__name", *slot.flag_names
+        rows = list(
+            model.objects.filter(pk__in=wanted, graph__org_id=org_id).values(
+                "pk", "graph__name", *slot.flag_names
+            )
+        )
+        not_configured = [row["pk"] for row in rows if not GrantFlags.of(row, slot).configured]
+        using_storage = (
+            set(not_configured)
+            if incoming_gives_storage
+            else nodes_using_storage_tools(model, not_configured)
         )
         for row in rows:
             grants_by_node[(model, row["pk"])] = (
-                GrantFlags.of(row, slot).granted,
+                GrantFlags.of(row, slot).held_for_lock(uses_storage=row["pk"] in using_storage),
                 row["graph__name"],
             )
 
@@ -154,7 +180,13 @@ def check_python_tool_write(actor: GrantActor | None, tool, data: dict, *, org_i
     variables_edited = "variables" in data and data["variables"] != tool.variables
     if not (code_edited or storage_switched or variables_edited):
         return
-    lock = grant_locks_for_tools([tool.pk], org_id).get(tool.pk)
+    # Switching storage on is locked by the nodes that reach the tool as if it already
+    # had it, as those nodes then run with storage. Switching it off while editing the
+    # code stays locked: the stored state counts too.
+    incoming_gives_storage = tool.use_storage or bool(data.get("use_storage"))
+    lock = grant_locks_for_tools(
+        [tool.pk], org_id, incoming_gives_storage=incoming_gives_storage
+    ).get(tool.pk)
     if lock is not None:
         assert_actor_holds(actor, lock.actions)
 
@@ -186,8 +218,15 @@ def _merge_locks(locks: Iterable[ToolGrantLock]) -> ToolGrantLock | None:
     )
 
 
-def grant_lock_for_surfaces(surface_ids: Iterable[int], org_id: int) -> ToolGrantLock | None:
-    """What editing these surfaces requires: the grants of the nodes that attach them or whose agent defaults to them."""
+def grant_lock_for_surfaces(
+    surface_ids: Iterable[int], org_id: int, *, incoming_gives_storage: bool = False
+) -> ToolGrantLock | None:
+    """What editing these surfaces requires: the grants of the nodes that attach them or whose agent defaults to them.
+
+    Args:
+        incoming_gives_storage: The edit gives the surfaces a tool with storage on, so the nodes
+            reaching them count as using storage.
+    """
     surface_ids = list(surface_ids)
     if not surface_ids:
         return None
@@ -197,11 +236,20 @@ def grant_lock_for_surfaces(surface_ids: Iterable[int], org_id: int) -> ToolGran
     _collect_through_surfaces(
         {surface_id: {surface_id} for surface_id in surface_ids}, org_id, node_ids
     )
-    return _merge_locks(_locks_of_nodes(node_ids, org_id).values())
+    return _merge_locks(
+        _locks_of_nodes(node_ids, org_id, incoming_gives_storage=incoming_gives_storage).values()
+    )
 
 
-def grant_lock_for_agent_definition(agent_definition_id: int, org_id: int) -> ToolGrantLock | None:
-    """What editing an agent definition requires: the grants of the nodes that run it."""
+def grant_lock_for_agent_definition(
+    agent_definition_id: int, org_id: int, *, incoming_gives_storage: bool = False
+) -> ToolGrantLock | None:
+    """What editing an agent definition requires: the grants of the nodes that run it.
+
+    Args:
+        incoming_gives_storage: The edit gives the agent a tool with storage on, so the nodes
+            running it count as using storage.
+    """
     node_ids = {agent_definition_id: {model: set() for model in _TOOL_NODE_MODELS}}
     for model in _TOOL_NODE_MODELS:
         node_ids[agent_definition_id][model].update(
@@ -209,7 +257,9 @@ def grant_lock_for_agent_definition(agent_definition_id: int, org_id: int) -> To
                 graph__org_id=org_id, agent_definition_id=agent_definition_id
             ).values_list("pk", flat=True)
         )
-    return _merge_locks(_locks_of_nodes(node_ids, org_id).values())
+    return _merge_locks(
+        _locks_of_nodes(node_ids, org_id, incoming_gives_storage=incoming_gives_storage).values()
+    )
 
 
 def grant_lock_for_venv(binding, org_id: int) -> ToolGrantLock | None:
@@ -228,9 +278,11 @@ def grant_lock_for_venv(binding, org_id: int) -> ToolGrantLock | None:
         )
         rows = site.model.objects.filter(
             graph__org_id=org_id, **{f"{site.code_field}__venv": binding}
-        ).values("graph__name", *slot.flag_names)
+        ).values("graph__name", slot.use_storage_field, *slot.flag_names)
         for row in rows:
-            granted = GrantFlags.of(row, slot).granted
+            granted = GrantFlags.of(row, slot).held_for_lock(
+                uses_storage=row[slot.use_storage_field]
+            )
             if granted:
                 locks.append(ToolGrantLock(granted, (row["graph__name"],)))
     tool_ids = PythonCodeTool.objects.filter(org_id=org_id, python_code__venv=binding).values_list(
@@ -257,7 +309,13 @@ def check_surface_write(actor: GrantActor | None, surface, data: dict, *, org_id
     instructions_changed = "instructions" in data and data["instructions"] != surface.instructions
     if not (tools_changed or instructions_changed):
         return
-    lock = grant_lock_for_surfaces([surface.pk], org_id)
+    incoming_gives_storage = tools_changed and any(
+        entry["mode"] == ToolMode.ALLOW and entry["python_tool"].use_storage
+        for entry in data["python_tools"]
+    )
+    lock = grant_lock_for_surfaces(
+        [surface.pk], org_id, incoming_gives_storage=incoming_gives_storage
+    )
     if lock is not None:
         assert_actor_holds(actor, lock.actions)
 
@@ -277,7 +335,17 @@ def check_agent_definition_write(
     )
     if not (surfaces_changed or instructions_changed):
         return
-    lock = grant_lock_for_agent_definition(agent_definition.pk, org_id)
+    incoming_gives_storage = (
+        surfaces_changed
+        and SurfacePythonTool.objects.filter(
+            surface_id__in=[entry["surface"].pk for entry in data["default_surfaces"]],
+            mode=ToolMode.ALLOW,
+            python_tool__use_storage=True,
+        ).exists()
+    )
+    lock = grant_lock_for_agent_definition(
+        agent_definition.pk, org_id, incoming_gives_storage=incoming_gives_storage
+    )
     if lock is not None:
         assert_actor_holds(actor, lock.actions)
 
@@ -295,4 +363,8 @@ def check_agent_node_task_write(actor: GrantActor | None, agent_node) -> None:
     The tasks' instructions are the prompt of an agent holding the node's tools.
     """
     (slot,) = STORAGE_GRANT_SLOTS[type(agent_node)]
-    assert_actor_holds(actor, GrantFlags.of(agent_node, slot).granted)
+    flags = GrantFlags.of(agent_node, slot)
+    uses_storage = not flags.configured and bool(
+        nodes_using_storage_tools(type(agent_node), [agent_node.pk])
+    )
+    assert_actor_holds(actor, flags.held_for_lock(uses_storage=uses_storage))
