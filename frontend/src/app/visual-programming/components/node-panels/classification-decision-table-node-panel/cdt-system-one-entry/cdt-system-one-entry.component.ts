@@ -145,7 +145,7 @@ export class CdtSystemOneEntryComponent implements OnInit {
     protected readonly typeItems = QUESTION_TYPE_ITEMS;
     protected readonly typeHelp = TYPE_HELP;
     protected readonly inputMapForm = new FormGroup({
-        input_map: new FormArray<FormGroup>([]),
+        input_map: new FormArray<FormGroup<{ key: FormControl<string | null>; value: FormControl<string | null> }>>([]),
         test_input: new FormArray<FormGroup>([]),
     });
     /** How a diff tooltip names a config: as the select does, else as "System One config #id" (deleted since). */
