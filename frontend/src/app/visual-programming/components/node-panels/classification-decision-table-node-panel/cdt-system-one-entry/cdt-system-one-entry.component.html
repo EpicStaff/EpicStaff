@@ -1,23 +1,40 @@
 <div class="config-row">
     <ng-content select="[promptName]" />
-    <app-select
-        class="config-select"
-        label="System One config"
-        placeholder="Select a config"
-        [items]="configItems()"
-        [selectedValue]="prompt().system_one_config ?? null"
-        [readonly]="readOnly()"
-        (changed)="onConfigChange($event)"
-    />
+    <app-diff-field-mark
+        [diffField]="'prompts[].system_one_config'"
+        [diffPath]="configPath()"
+        [diffFormat]="configFormat"
+        [diffBadge]="false"
+    >
+        <app-select
+            class="config-select"
+            label="System One config"
+            placeholder="Select a config"
+            [items]="configItems()"
+            [selectedValue]="prompt().system_one_config ?? null"
+            [readonly]="readOnly()"
+            (changed)="onConfigChange($event)"
+        />
+    </app-diff-field-mark>
 </div>
-
-<app-custom-input
-    label="Result Variable"
-    placeholder="e.g. classification"
-    [ngModel]="prompt().result_variable"
-    [readonly]="readOnly()"
-    (ngModelChange)="onResultVariableChange($event)"
+<app-missing-reference-note
+    [fields]="['prompts[].system_one_config']"
+    [path]="configPath()"
 />
+
+<app-diff-field-mark
+    [diffField]="'prompts[].result_variable'"
+    [diffPath]="resultVariablePath()"
+    [diffBadge]="false"
+>
+    <app-custom-input
+        label="Result Variable"
+        placeholder="e.g. classification"
+        [ngModel]="prompt().result_variable"
+        [readonly]="readOnly()"
+        (ngModelChange)="onResultVariableChange($event)"
+    />
+</app-diff-field-mark>
 
 <div class="section">
     <span class="section__label">Input to classify</span>
@@ -26,6 +43,7 @@
             label=""
             keyPlaceholder="Name"
             [readonly]="readOnly()"
+            [rowChanges]="inputMapRowChanges()"
         />
     </div>
 </div>
@@ -33,12 +51,29 @@
 <div class="section">
     <span class="section__label">Questions</span>
     @for (item of questionViews(); track item.row.uid) {
-        <div class="question">
+        @let rowMark = questionRowMark(item.row.name);
+        <!-- Version diff (Changes tab): one mark per question, its tooltip naming the parts a restore changes. The
+             mark makes a changed question focusable, so the question is a named group. -->
+        <div
+            class="question"
+            role="group"
+            [attr.aria-label]="item.row.name ? 'Question ' + item.row.name : 'New question'"
+            [class.question--added]="rowMark.added"
+            appDiffFieldMark
+            diffLabel="Restore changes this question"
+            [diffChange]="rowMark.change"
+            [diffHint]="rowMark.hint"
+        >
+            @if (rowMark.added) {
+                <span class="visually-hidden">Restore adds this question: </span>
+            }
             <div class="question__header">
                 <app-tooltip label="Question name" />
+                <!-- data-own-tooltip: over its help icon only the help shows, not the question's diff tooltip. -->
                 <app-tooltip
                     label="Question type"
                     [tooltipText]="typeHelp[item.row.question.type]"
+                    data-own-tooltip
                 />
                 <app-custom-input
                     class="question__name"
@@ -121,22 +156,30 @@
             }
         </div>
     }
+    <!-- Version diff (Changes tab): the canvas questions a restore removes, read-only. -->
+    @for (removed of removedQuestions(); track removed.name) {
+        <div class="question question--removed">
+            <span class="visually-hidden">Restore removes this question: </span>
+            <div class="question__removed-title">
+                <span>{{ removed.name }}</span>
+                <span>{{ removed.type }}</span>
+            </div>
+            <p class="question__removed-instructions">{{ removed.instructions }}</p>
+        </div>
+    }
     <app-button
         class="add-question"
         type="outline-secondary"
         mod="small"
         leftIcon="plus"
-        [disabled]="readOnly()"
+        [disabled]="readOnly() || atQuestionLimit()"
         (click)="addQuestion()"
         >Add question</app-button
     >
 </div>
 
-@if (isLlmBacked()) {
-    <app-hint-message tone="warning">
-        This config uses an LLM. Its probabilities are the LLM's own estimate, so thresholds tuned on Jev may behave
-        differently.
-    </app-hint-message>
+@if (calibrationNote(); as note) {
+    <app-hint-message tone="warning">{{ note }}</app-hint-message>
 }
 
 <app-hint-message>

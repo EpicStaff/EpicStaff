@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from src.shared.system_one.constants import JEV_MODEL_VERSIONS
 
 from tables.models import (
     EmbeddingConfig,
@@ -18,7 +17,10 @@ from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
 )
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
-from tables.serializers.model_serializers.llm_serializers import SYSTEM_ONE_FORBIDDEN_FIELDS
+from tables.serializers.model_serializers.llm_serializers import (
+    SYSTEM_ONE_FORBIDDEN_FIELDS,
+    system_one_model_error,
+)
 from tables.serializers.utils.llm_config_data_validation import (
     LLMConfigDataFieldsValidationMixin,
 )
@@ -149,12 +151,10 @@ class GeminiRealtimeConfigImportSerializer(serializers.ModelSerializer):
 
 
 class SystemOneConfigImportSerializer(serializers.ModelSerializer):
-    """Secrets never travel through import/export. An imported TypeSafe config
+    """Secrets never travel through import/export. An imported TypeSafe or OpenAI config
     lands with no key; the destination org's admin must assign one after import."""
 
-    model_name = serializers.ChoiceField(
-        choices=JEV_MODEL_VERSIONS, required=False, allow_null=True
-    )
+    model_name = serializers.CharField(max_length=64, required=False, allow_null=True)
 
     class Meta:
         model = SystemOneConfig
@@ -163,12 +163,15 @@ class SystemOneConfigImportSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         # The database forbids the other provider's fields, and DRF does not run
         # check constraints: reject them here so a crafted file is a 400, not a 500.
-        # Required fields are not checked: an imported TypeSafe config has no key.
+        # Required fields are not checked: an imported config has no key.
         errors = {
             field: message
             for field, message in SYSTEM_ONE_FORBIDDEN_FIELDS[attrs["provider"]].items()
             if attrs.get(field) is not None
         }
+        model_error = system_one_model_error(attrs["provider"], attrs.get("model_name"))
+        if model_error:
+            errors["model_name"] = model_error
         if errors:
             raise serializers.ValidationError(errors)
         return attrs

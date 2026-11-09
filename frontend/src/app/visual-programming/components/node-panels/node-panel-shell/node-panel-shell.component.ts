@@ -23,17 +23,38 @@ import { TooltipOnOverflowDirective } from '@shared/directives';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
+import { NODE_DIFF_BADGES } from '../../../core/constants/node-diff-badges';
 import { COMPACT_HEADER_NODE_TYPES, PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { hasNodeDetails } from '../../../core/helpers/node-details.util';
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
+import { NODE_PANEL_DIFF, NodePanelDiff } from '../../../core/providers/node-panel-diff.token';
+import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { KeymapService } from '../../../services/keymap.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
+import { NodeSaveErrorsStore } from '../../../services/node-save-errors.store';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { SaveFieldError } from '../../../utils/save/bulk-save-errors';
+import { NodeSaveErrorsComponent } from '../shared/node-save-errors/node-save-errors.component';
 
 const INVALID_FIELDS_NOT_SAVED_MESSAGE = "Changes weren't saved — this node has invalid fields.";
+
+/** `input_map` → `Input map`. */
+function humanizeKey(key: string): string {
+    const words = key.replace(/_/g, ' ');
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** A save error with where it is: `Input map: …`, `Prompt configs 2 › Input map: …`, or the message alone for the node as a whole. */
+function describeSaveError(error: SaveFieldError): string[] {
+    const place = [
+        ...(error.child ? [`${humanizeKey(error.child.list)} ${error.child.position + 1}`] : []),
+        ...(error.field !== null ? [humanizeKey(error.field)] : []),
+    ].join(' › ');
+    return error.messages.map((message) => (place ? `${place}: ${message}` : message));
+}
 
 /** What the shell reads from the open panel (the component the outlet rendered). */
 interface PanelInstanceView {
@@ -50,7 +71,14 @@ interface PanelInstanceView {
 
 @Component({
     selector: 'app-node-panel-shell',
-    imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule, TooltipOnOverflowDirective],
+    imports: [
+        NgComponentOutlet,
+        NgTemplateOutlet,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+        NodeSaveErrorsComponent,
+    ],
     template: `
         @if (node() && panelComponent()) {
             <!-- Escape is handled here, ahead of the tooltip of the focused control, which would take the first one, and
@@ -172,10 +200,33 @@ interface PanelInstanceView {
                     }
                 </ng-template>
 
+                <!-- Changes tab of a version preview: what a restore does to an added or removed node. -->
+                @if (diffBanner(); as banner) {
+                    <div
+                        class="diff-banner diff-banner--{{ banner.status }}"
+                        role="status"
+                    >
+                        <span class="diff-banner__icon">
+                            <i
+                                [class]="banner.icon"
+                                aria-hidden="true"
+                            ></i>
+                        </span>
+                        <span class="diff-banner__text">{{ banner.text }}</span>
+                    </div>
+                }
+
+                <!-- What the last save refused in this node, but in no field its panel marks itself. -->
+                <app-node-save-errors
+                    class="node-level-save-errors"
+                    [messages]="nodeLevelSaveErrors()"
+                />
+
                 <main>
                     <ng-container
                         [ngComponentOutlet]="panelComponent()"
                         [ngComponentOutletInputs]="componentInputs()"
+                        [ngComponentOutletInjector]="outletInjector"
                         #outlet="ngComponentOutlet"
                     ></ng-container>
                 </main>
@@ -256,6 +307,29 @@ export class NodePanelShellComponent {
         return Object.fromEntries(Object.entries(offered).filter(([name]) => declared.has(name)));
     });
 
+    /** The open node's diff on the Changes tab of a version preview; `null` elsewhere. */
+    private readonly panelDiff = computed<NodePanelDiff | null>(() => {
+        const node = this.node();
+        return node ? this.flowDiffState.nodeDiff(node.id) : null;
+    });
+    /** Changed and unchanged nodes get no banner: only a node a restore adds or removes as a whole. */
+    protected readonly diffBanner = computed(() => {
+        const status = this.panelDiff()?.status;
+        if (status !== 'added' && status !== 'deleted') return null;
+        const badge = NODE_DIFF_BADGES[status];
+        return { status, icon: badge.icon, text: `${badge.label}.` };
+    });
+    /** The open node's save errors that its panel does not show under a field. */
+    protected readonly nodeLevelSaveErrors = computed<string[]>(() => {
+        const node = this.node();
+        return node ? this.nodeSaveErrors.nodeLevelErrors(node).flatMap(describeSaveError) : [];
+    });
+    /** Gives the panel, and the notes inside it, the open node's diff without a new input on every panel. */
+    protected readonly outletInjector = Injector.create({
+        providers: [{ provide: NODE_PANEL_DIFF, useValue: this.panelDiff }],
+        parent: inject(Injector),
+    });
+
     protected readonly isShaking = signal(false);
     protected readonly isExpanded = signal(false);
     private panelInstance:
@@ -300,6 +374,8 @@ export class NodePanelShellComponent {
     private readonly sidePanelService = inject(SidePanelService);
     private readonly toastService = inject(ToastService);
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly flowDiffState = inject(FlowDiffStateService);
+    private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly keymap = inject(KeymapService);

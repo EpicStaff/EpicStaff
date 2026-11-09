@@ -15,6 +15,11 @@ on:
         required: true
         type: string
 
+# No token rights: both steps run local commands on the self-hosted runner and
+# never check out the repository or call the GitHub API. Declaring this keeps
+# the token's scope in the code instead of in the repository's default setting.
+permissions: {}
+
 jobs:
   nuke_database:
     name: Nuke DB on ${{ github.event.inputs.target_server }}

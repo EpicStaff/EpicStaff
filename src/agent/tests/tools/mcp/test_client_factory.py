@@ -89,7 +89,7 @@ def test_timeouts_are_passed_to_client():
 
     client = FastMCPClientFactory().create(data)
 
-    assert client._session_kwargs["read_timeout_seconds"].total_seconds() == 12
+    assert client._session_kwargs["read_timeout_seconds"] == 12
     assert client._init_timeout == 3
 
 

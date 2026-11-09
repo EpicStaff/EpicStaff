@@ -57,6 +57,7 @@ import {
     NodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
+    TaskNodeModel,
     WebhookTriggerNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
 import { SubGraphNode } from '../../../../visual-programming/core/models/subgraph-node.model';
@@ -68,6 +69,7 @@ import { CdtExplanationsApiService } from '../../../../visual-programming/servic
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
+import { NodeSaveErrorsStore } from '../../../../visual-programming/services/node-save-errors.store';
 import { ScheduleTriggerRuntimeService } from '../../../../visual-programming/services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
@@ -116,6 +118,7 @@ const RESTORED_GRAPH = graphDto({
     graph_note_list: [
         {
             id: 99,
+            uuid: '00000000-0000-4000-8000-000000000099',
             created_at: '2026-01-01T00:00:00Z',
             node_name: 'Restored note',
             graph: 1,
@@ -169,6 +172,7 @@ class FlowGraphStubComponent {
 class FlowVersionPreviewStubComponent {
     readonly version = input.required<GraphVersionDto>();
     readonly flowsLight = input<unknown[]>([]);
+    readonly liveFlow = input.required<FlowModel>();
     readonly closed = output<void>();
     readonly openShortcuts = output<DOMRect>();
 
@@ -458,6 +462,21 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(component.hasUnsavedChangesSignal()).toBe(dirtyBefore);
             expect(flowService.getFlowState()).toEqual(flowBefore);
+        });
+
+        it('gives the preview the live canvas, unsaved edits included, to compare the version with', () => {
+            const savedFlow = flowService.getFlowState();
+            const editedFlow = {
+                ...savedFlow,
+                nodes: savedFlow.nodes.map((node) => ({ ...node, node_name: 'Edited' })),
+            };
+            flowService.setFlow(editedFlow);
+
+            enterPreview();
+
+            const previewComponent = fixture.debugElement.query(By.directive(FlowVersionPreviewStubComponent))
+                .componentInstance as FlowVersionPreviewStubComponent;
+            expect(previewComponent.liveFlow()).toBe(editedFlow);
         });
 
         it('hands the viewport captured on entry back to the live canvas on a plain exit', () => {
@@ -1431,6 +1450,7 @@ describe('FlowVisualProgrammingComponent', () => {
     describe('test run from a trigger node', () => {
         const savedWebhook: GetWebhookTriggerNodeRequest = {
             id: 21,
+            uuid: '00000000-0000-4000-8000-000000000021',
             graph: 1,
             node_number: 1,
             node_name: 'Webhook Trigger #1',
@@ -1634,6 +1654,7 @@ describe('FlowVisualProgrammingComponent', () => {
                         webhook_trigger_node_list: [
                             {
                                 id: 21,
+                                uuid: '00000000-0000-4000-8000-000000000021',
                                 graph: graphId,
                                 node_number: 1,
                                 node_name: 'Webhook Trigger #1',
@@ -1702,6 +1723,7 @@ describe('FlowVisualProgrammingComponent', () => {
             graph_note_list: [
                 {
                     id: 77,
+                    uuid: '00000000-0000-4000-8000-000000000077',
                     created_at: '2026-01-01T00:00:00Z',
                     node_name: 'Remote note',
                     graph: 1,
@@ -1895,6 +1917,132 @@ describe('FlowVisualProgrammingComponent', () => {
             );
 
             expect(saveAndReadToast()).toContain('"Summarise #4" is missing instructions');
+        });
+    });
+
+    describe('a save the backend refuses for fields of its nodes', () => {
+        const SENT = 'Use {context._x}';
+        const REFUSED = "Placeholder '{context._x}' is not allowed.";
+        let saveErrors: NodeSaveErrorsStore;
+
+        function canvasTask(): TaskNodeModel {
+            return flowService.nodes().find((node): node is TaskNodeModel => node.backendId === liveTask.id)!;
+        }
+
+        function editInstructions(instructions: string): void {
+            flowService.updateNode({ ...canvasTask(), data: { ...canvasTask().data, instructions } });
+        }
+
+        function refusal(errors: Record<string, unknown>): HttpErrorResponse {
+            return new HttpErrorResponse({ status: 400, error: { errors } });
+        }
+
+        function refusedInstructions(): Observable<never> {
+            return throwError(() => refusal({ task_node_list: [{ index: 0, errors: { instructions: [REFUSED] } }] }));
+        }
+
+        function savedWithInstructions(instructions: string): Observable<GraphDto> {
+            return of(
+                graphDto({
+                    save_version: 2,
+                    start_node_list: [liveStart],
+                    task_node_list: [{ ...liveTask, instructions }],
+                })
+            );
+        }
+
+        beforeEach(() => {
+            saveErrors = TestBed.inject(NodeSaveErrorsStore);
+            flowsApi['getGraphById'].mockReturnValue(
+                of(graphDto({ start_node_list: [liveStart], task_node_list: [liveTask] }))
+            );
+            component.refreshCurrentFlow();
+            editInstructions(SENT);
+        });
+
+        it('keeps the edit unsaved, holds why for the field and names the node in the toast', () => {
+            flowsApi['bulkSaveGraph'].mockReturnValue(refusedInstructions());
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(saveErrors.fieldMessages(canvasTask().id, 'instructions', SENT)).toEqual([REFUSED]);
+            expect(toast['error']).toHaveBeenCalledWith('Failed to save graph — fix the refused fields in "Task #2".');
+            expect(canvasTask().data.instructions).toBe(SENT);
+            expect(component.hasUnsavedChanges()).toBe(true);
+        });
+
+        it('sends the fixed field on the next save and drops the errors once it goes through', () => {
+            flowsApi['bulkSaveGraph'].mockReturnValueOnce(refusedInstructions());
+            component.onGraphSave(flowService.getFlowState());
+            editInstructions('Use {topic}');
+            flowsApi['bulkSaveGraph'].mockReturnValue(savedWithInstructions('Use {topic}'));
+
+            component.onGraphSave(flowService.getFlowState());
+
+            const retried = flowsApi['bulkSaveGraph'].mock.calls[1][1] as {
+                task_node_list: { instructions: string }[];
+            };
+            expect(retried.task_node_list.map((item) => item.instructions)).toEqual(['Use {topic}']);
+            expect(saveErrors.errors().size).toBe(0);
+            expect(component.hasUnsavedChanges()).toBe(false);
+        });
+
+        it('holds the errors of a refused one-node save too, until that node saves', () => {
+            const sidePanel = TestBed.inject(SidePanelService);
+            flowsApi['bulkSaveGraph'].mockReturnValueOnce(refusedInstructions());
+
+            sidePanel.requestSaveNode(canvasTask());
+
+            expect(saveErrors.fieldMessages(canvasTask().id, 'instructions', SENT)).toEqual([REFUSED]);
+            expect(toast['error']).toHaveBeenCalledWith('Failed to save node — fix the refused fields in "Task #2".');
+
+            editInstructions('Use {topic}');
+            flowsApi['bulkSaveGraph'].mockReturnValue(savedWithInstructions('Use {topic}'));
+            sidePanel.requestSaveNode(canvasTask());
+
+            expect(saveErrors.errors().size).toBe(0);
+        });
+
+        it("says what the server said when its errors name none of the flow's nodes", () => {
+            const errors = { nodes: ['This uuid is already used by another node of this flow.'] };
+            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => refusal(errors)));
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(toast['error']).toHaveBeenCalledWith(expect.stringMatching(/^Failed to save graph: /));
+            expect(saveErrors.errors().size).toBe(0);
+        });
+
+        it('says too what no node shows, next to the node it names', () => {
+            const errors = {
+                task_node_list: [{ index: 0, errors: { instructions: [REFUSED] } }],
+                edge_list: ['Edge references node IDs not found in this graph: [9]'],
+            };
+            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => refusal(errors)));
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(toast['error']).toHaveBeenCalledWith(
+                'Failed to save graph — fix the refused fields in "Task #2".' +
+                    ' Also: Edge references node IDs not found in this graph: [9]'
+            );
+        });
+
+        it.each([
+            ['a full save', () => component.onGraphSave(flowService.getFlowState())],
+            ['a one-node save', () => TestBed.inject(SidePanelService).requestSaveNode(canvasTask())],
+        ])('changes nothing when %s is refused after another flow loaded', (_case, save) => {
+            const inFlight = new Subject<GraphDto>();
+            flowsApi['bulkSaveGraph'].mockReturnValue(inFlight);
+            save();
+
+            flowsApi['getGraphById'].mockReturnValue(of(graphDto({ id: 2, start_node_list: [liveStart] })));
+            paramMap$.next(convertToParamMap({ id: '2' }));
+            fixture.detectChanges();
+            inFlight.error(refusal({ task_node_list: [{ index: 0, errors: { instructions: [REFUSED] } }] }));
+
+            expect(toast['error']).not.toHaveBeenCalled();
+            expect(saveErrors.errors().size).toBe(0);
         });
     });
 
@@ -2730,6 +2878,7 @@ describe('FlowVisualProgrammingComponent', () => {
     describe('full save of an agent node', () => {
         const SAVED_AGENT: AgentNode = {
             ...UNEDITED_NODE,
+            uuid: '00000000-0000-4000-8000-000000000041',
             id: 50,
             metadata: {},
             node_number: 1,
@@ -2809,6 +2958,7 @@ describe('FlowVisualProgrammingComponent', () => {
         function cdtDto(id: number, name: string, routeCode: string): GetClassificationDecisionTableNodeRequest {
             return {
                 ...UNEDITED_NODE,
+                uuid: '00000000-0000-4000-8000-000000000042',
                 id,
                 graph: 1,
                 node_number: id,
@@ -3371,6 +3521,7 @@ describe('FlowVisualProgrammingComponent', () => {
         describe('unpack a subflow', () => {
             const SUBGRAPH_NODE: SubGraphNode = {
                 ...UNEDITED_NODE,
+                uuid: '00000000-0000-4000-8000-000000000043',
                 id: 41,
                 node_number: 1,
                 node_name: 'Inner flow',

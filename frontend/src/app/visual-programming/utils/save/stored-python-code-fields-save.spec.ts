@@ -18,6 +18,7 @@ const AUTHORSHIP = { created_by: null, last_edited_by: null, last_edited_at: nul
 const PYTHON: PythonNode = {
     ...AUTHORSHIP,
     id: 7,
+    uuid: '00000000-0000-4000-8000-000000000007',
     graph: 1,
     node_name: 'Python #1',
     node_number: 1,
@@ -33,6 +34,7 @@ const PYTHON: PythonNode = {
 const WEBHOOK: GetWebhookTriggerNodeRequest = {
     ...AUTHORSHIP,
     id: 8,
+    uuid: '00000000-0000-4000-8000-000000000008',
     graph: 1,
     node_name: 'Webhook #1',
     node_number: 2,
@@ -55,6 +57,7 @@ function cdt(preBlock: CDTPythonCodeBlock) {
     return mapClassificationDecisionTableNodeToModel({
         ...AUTHORSHIP,
         id: 9,
+        uuid: '00000000-0000-4000-8000-000000000009',
         graph: 1,
         node_number: 3,
         node_name: 'Triage',

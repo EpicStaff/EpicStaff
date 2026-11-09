@@ -41,6 +41,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { mapGraphDtoToFlowModel } from '../../../utils/load/map-graph-dto-to-flow-model';
 import { mapKeyValueNodeToModel } from '../../../utils/load/nodes/key-value-node.mapper';
 import { getNodeDiff } from '../../../utils/save/diff';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { NodePanelShellComponent } from '../node-panel-shell/node-panel-shell.component';
 import { KeyValueNodePanelComponent } from './key-value-node-panel.component';
 
@@ -48,6 +49,7 @@ const ALL_ACTIONS = [ActionCode.Create, ActionCode.Read, ActionCode.Update, Acti
 
 const DTO: GetKeyValueNodeRequest = {
     id: 12,
+    uuid: '00000000-0000-4000-8000-000000000012',
     graph: 1,
     node_number: 1,
     node_name: 'Key-Value',
@@ -217,6 +219,8 @@ function createPanel(
                       MatTooltip,
                       SelectDropdownComponent,
                       SelectDropdownTriggerDirective,
+                      // Its attribute form sits on every entry row; it shows nothing outside a version diff.
+                      DiffFieldMarkComponent,
                   ],
                   schemas: [CUSTOM_ELEMENTS_SCHEMA],
               }

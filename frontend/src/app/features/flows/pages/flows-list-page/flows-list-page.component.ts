@@ -608,8 +608,9 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
                 showExportExclusionWarning(this.toastService, excluded);
             },
-            error: (error) => {
+            error: (error: HttpErrorResponse) => {
                 console.error('Bulk export failed:', error);
+                this.toastService.error(extractHttpErrorMessage(error, 'Failed to export the selected flows'));
             },
         });
     }

@@ -10,6 +10,7 @@ export function mapStartNodeToModel(sn: StartNode): StartNodeModel {
     return {
         id: generateUuid(),
         backendId: sn.id,
+        nodeUuid: sn.uuid,
         type: NodeType.START,
         node_name: '__start__',
         data: { initialState: sn.variables ?? {} },

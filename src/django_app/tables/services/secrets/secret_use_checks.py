@@ -125,7 +125,7 @@ def check_gemini_realtime_config_write(actor: SecretActor | None, instance, data
 def check_system_one_config_write(actor: SecretActor | None, instance, data: dict) -> None:
     """Gate a change of a SystemOneConfig's API-key secret.
 
-    The config has no destination field: the TypeSafe endpoint is a constant.
+    The config has no destination field: the TypeSafe and OpenAI endpoints are constants.
     Choosing an LLM config is not a secret use, as for agents.
     """
     _check_secret_reference(actor, instance, data, attribute="api_key_secret")

@@ -1,10 +1,12 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, ExportResult, ResourceCode } from '@shared/models';
+import { toExportResult } from '@shared/utils';
 import { map, Observable, tap } from 'rxjs';
 
 import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
+import { InspectResult } from '../../../core/models/review-item.model';
 import { ConfigService } from '../../../services/config';
 import {
     AgentDefinition,
@@ -60,6 +62,31 @@ export class AgentDefinitionsApiService {
 
     delete(id: number): Observable<void> {
         return this.http.delete<void>(`${this.baseUrl}${id}/`, { headers: this.httpHeaders });
+    }
+
+    exportAgent(id: number): Observable<ExportResult> {
+        return this.http
+            .get(`${this.baseUrl}${id}/export/`, { observe: 'response', responseType: 'blob' })
+            .pipe(map(toExportResult));
+    }
+
+    bulkExportAgents(ids: number[]): Observable<ExportResult> {
+        return this.http
+            .post(`${this.baseUrl}bulk-export/`, { ids }, { observe: 'response', responseType: 'blob' })
+            .pipe(map(toExportResult));
+    }
+
+    inspectImport(file: File): Observable<InspectResult> {
+        const form = new FormData();
+        form.append('file', file);
+        return this.http.post<InspectResult>(`${this.baseUrl}import/inspect/`, form);
+    }
+
+    importAgents(file: File, importLabels = true): Observable<Record<string, unknown>> {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('import_labels', String(importLabels));
+        return this.http.post<Record<string, unknown>>(`${this.baseUrl}import/`, form);
     }
 
     // no backend "copy" endpoint. Client-side: clone fields + new name.

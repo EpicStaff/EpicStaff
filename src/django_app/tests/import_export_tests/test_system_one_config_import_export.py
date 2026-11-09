@@ -186,3 +186,30 @@ def test_import_refuses_a_mapped_llm_config_on_a_typesafe_config(acme, beta):
         )
 
     assert "llm_config" in error.value.detail
+
+
+@pytest.mark.django_db
+def test_exported_openai_config_imports_without_a_key(acme):
+    secret = secret_service.create(text="oa-key", org=acme, name="OA")
+    config = SystemOneConfig.objects.create(
+        custom_name="luna", provider="openai", model_name="gpt-6-luna", api_key_secret=secret, org=acme
+    )
+    data = SystemOneConfigStrategy().export_entity(config)
+    data["custom_name"] = "luna-copy"
+
+    created = SystemOneConfigStrategy().create_entity(data, IDMapper(), org_id=acme.id)
+
+    assert (created.provider, created.model_name) == ("openai", "gpt-6-luna")
+    assert created.api_key_secret_id is None
+
+
+@pytest.mark.django_db
+def test_import_refuses_a_jev_version_on_an_openai_config(acme):
+    with pytest.raises(ValidationError) as error:
+        SystemOneConfigStrategy().create_entity(
+            {"custom_name": "luna", "provider": "openai", "model_name": "jev-1.14.0", "llm_config": None},
+            IDMapper(),
+            org_id=acme.id,
+        )
+
+    assert "model_name" in error.value.detail

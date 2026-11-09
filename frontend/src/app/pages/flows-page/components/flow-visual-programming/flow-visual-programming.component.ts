@@ -37,7 +37,7 @@ import {
     SystemOnePromptKind,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, LABELS_STORE, LlmConfigStorageService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, formatNodeLabel, generateUuid } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, formatNodeLabel, generateUuid, joinErrorMessages } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -96,6 +96,7 @@ import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
+import { getNodeTitle } from '../../../../visual-programming/core/enums/node-title.util';
 import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
 import { renumberUnsavedNodesHolding } from '../../../../visual-programming/core/helpers/node-number.util';
 import { isTriggerNodeType } from '../../../../visual-programming/core/helpers/trigger-node-type.util';
@@ -123,6 +124,7 @@ import { FlowReadOnlyService } from '../../../../visual-programming/services/flo
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
 import { KeymapService } from '../../../../visual-programming/services/keymap.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
+import { NodeSaveErrorsStore } from '../../../../visual-programming/services/node-save-errors.store';
 import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
 import { ScheduleTriggerRuntimeService } from '../../../../visual-programming/services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
@@ -145,6 +147,8 @@ import {
     getConnectionDiff,
     getNodeDiff,
     hasTriggerNodeWrites,
+    mapBulkSaveErrors,
+    MappedSaveErrors,
     NodeDiffByType,
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
@@ -271,6 +275,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly flowTestRunService = inject(FlowTestRunService);
+    private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     /** The root instance, as for the live canvas and its panels; the version preview has its own. */
     private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
@@ -1202,12 +1207,37 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.toastService.warning(
                         'This graph was modified by another user. Please refresh to see the latest changes.'
                     );
+                } else if (err.status === 400) {
+                    if (!this.isCurrentGraph(graphId)) return EMPTY;
+                    // The backend checks every node of the save before refusing it, so these replace all earlier ones.
+                    const refused = mapBulkSaveErrors(payload, err.error?.errors, this.flowService.nodes());
+                    this.nodeSaveErrors.setAll(refused.byNodeId);
+                    this.toastService.error(this.saveRefusedMessage('Failed to save graph', refused, err));
                 } else {
                     this.toastService.error(`Failed to save graph: ${extractHttpErrorMessage(err)}`);
                 }
                 return EMPTY;
             })
         );
+    }
+
+    /**
+     * The toast of a refused save: the nodes whose fields it refused, as their panels show why, then what no
+     * node shows (an edge, the graph as a whole); the server's message when it named none of the nodes.
+     */
+    private saveRefusedMessage(prefix: string, refused: MappedSaveErrors, error: HttpErrorResponse): string {
+        const labels = this.flowService
+            .nodes()
+            .filter((node) => refused.byNodeId.has(node.id))
+            .map((node) =>
+                formatNodeLabel({
+                    node_name: getNodeTitle(node) || node.node_name || 'Untitled node',
+                    nodeNumber: node.nodeNumber,
+                })
+            );
+        if (labels.length === 0) return `${prefix}: ${extractHttpErrorMessage(error)}`;
+        const fixIn = `${prefix} — fix the refused fields in ${labels.map((label) => `"${label}"`).join(', ')}.`;
+        return refused.unplaced.length > 0 ? `${fixIn} Also: ${joinErrorMessages(refused.unplaced)}` : fixIn;
     }
 
     private onFlowSaved(
@@ -1221,6 +1251,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.setGraphState(graph);
         this.availableFlowLights.set(flows);
         this.flowService.setNodeNumberFloor(graph.node_number_seq);
+        this.nodeSaveErrors.clear();
 
         // What was sent becomes the saved baseline; the canvas keeps what it holds now.
         // Patching the snapshot onto the canvas would revert anything that changed
@@ -1387,6 +1418,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     );
                 }
 
+                this.nodeSaveErrors.setForNode(nodeId, []);
                 this.toastService.success('Node saved');
             }),
             map(() => void 0),
@@ -1395,6 +1427,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.toastService.warning(
                         'This graph was modified by another user. Please refresh to see the latest changes.'
                     );
+                } else if (err.status === 400) {
+                    if (!this.isCurrentGraph(graphId)) return EMPTY;
+                    // Only this node was sent; the errors of the others stand.
+                    const refused = mapBulkSaveErrors(payload, err.error?.errors, this.flowService.nodes());
+                    this.nodeSaveErrors.setForNode(nodeId, refused.byNodeId.get(nodeId) ?? []);
+                    this.toastService.error(this.saveRefusedMessage('Failed to save node', refused, err));
                 } else {
                     this.toastService.error(`Failed to save node: ${extractHttpErrorMessage(err)}`);
                 }
@@ -1797,6 +1835,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {
+        // Keyed by canvas node id, which every load mints anew.
+        this.nodeSaveErrors.clear();
         this.setGraphState(graph);
         this.availableFlowLights.set(flows);
         this.flowService.setNodeNumberFloor(graph.node_number_seq);
@@ -1989,7 +2029,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
-    /** A renamed or re-described version keeps the preview bar in step; same id, so nothing reloads. */
+    /** Replaces the previewed version with its renamed or re-described copy; same id, so the preview does not reload. */
     public onVersionUpdated(version: GraphVersionDto): void {
         if (this.previewedVersion()?.id === version.id) {
             this.previewedVersion.set(version);
