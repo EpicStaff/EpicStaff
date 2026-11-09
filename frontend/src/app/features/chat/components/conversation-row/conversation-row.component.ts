@@ -20,12 +20,12 @@ import {
     ConversationDeskRules,
     conversationTime,
     conversationTimeLabel,
-    isOverdue,
     operatorName,
     senderPrefix,
     visitorName,
     waitDuration,
 } from '../../utils/conversation-row.util';
+import { isWaitingForPerson, isWaitOverdue, WAIT_OVERDUE_NOTE } from '../../utils/conversation-wait.util';
 import { ConversationAvatarComponent } from '../conversation-avatar/conversation-avatar.component';
 
 export type ConversationRowMove = 'next' | 'previous' | 'first' | 'last';
@@ -96,18 +96,12 @@ export class ConversationRowComponent {
         return this.isTimedByClose() ? conversation.closed_at : conversation.last_message_at;
     });
     protected readonly time = computed(() => conversationTime(this.shownTime(), this.now(), this.locale));
-    /** Waiting for a person, whether or not someone took it: a visitor message after the last operator reply waits too. */
-    // Loose on purpose: a row without the field (an older chat service) is not waiting. A closed row never waits.
-    protected readonly isWaiting = computed(
-        () => !this.isClosed() && this.conversation().visitor_waiting_since != null
-    );
+    /** Waiting for a person (see `isWaitingForPerson`). */
+    protected readonly isWaiting = computed(() => isWaitingForPerson(this.conversation()));
     protected readonly waitedFor = computed(() => waitDuration(this.conversation().visitor_waiting_since, this.now()));
     /** Waited past the desk's response time on a desk that marks it; moves with the clock. Tests run no timers. */
-    protected readonly isOverdue = computed(
-        () =>
-            this.isWaiting() &&
-            !this.conversation().is_test &&
-            isOverdue(this.conversation().visitor_waiting_since, this.rules()?.overdueAfterMs ?? null, this.now())
+    protected readonly isOverdue = computed(() =>
+        isWaitOverdue(this.conversation(), this.rules()?.overdueAfterMs ?? null, this.now())
     );
     protected readonly isReplying = computed(() => !this.isClosed() && this.conversation().state === 'processing');
     protected readonly preview = computed(() =>
@@ -176,6 +170,7 @@ export class ConversationRowComponent {
             .join(', ');
     });
     protected readonly previewId = computed(() => `conversation-preview-${this.conversation().id}`);
+    protected readonly overdueNote = WAIT_OVERDUE_NOTE;
 
     private readonly profileService = inject(ProfileService);
     private readonly readMarks = inject(ConversationReadMarksService);

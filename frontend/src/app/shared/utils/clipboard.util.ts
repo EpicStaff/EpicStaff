@@ -21,10 +21,15 @@ export async function writeClipboardText(text: string | Promise<string>): Promis
 }
 
 /**
- * Copies with the app's toasts. When loading the text fails with an HTTP error (e.g. a 404 for an entry deleted
- * meanwhile), the toast gives the server's reason; any other failure reads "Failed to copy".
+ * Copies with the app's toasts: `successMessage` once copied. When loading the text fails with an HTTP error (e.g. a
+ * 404 for an entry deleted meanwhile), the toast gives the server's reason; any other failure reads "Failed to copy".
+ * Resolves (never rejects) to whether the text was copied, for a caller that also confirms it in place.
  */
-export function copyWithFeedback(text: string | Promise<string>, toastService: ToastService): Promise<void> {
+export function copyWithFeedback(
+    text: string | Promise<string>,
+    toastService: ToastService,
+    successMessage = 'Copied to clipboard!'
+): Promise<boolean> {
     let loadError: unknown = null;
     const guarded =
         typeof text === 'string'
@@ -34,12 +39,17 @@ export function copyWithFeedback(text: string | Promise<string>, toastService: T
                   throw error;
               });
     return writeClipboardText(guarded).then(
-        () => toastService.success('Copied to clipboard!', 3000, 'bottom-right'),
-        () =>
+        () => {
+            toastService.success(successMessage, 3000, 'bottom-right');
+            return true;
+        },
+        () => {
             toastService.error(
                 loadError instanceof HttpErrorResponse ? extractHttpErrorMessage(loadError) : 'Failed to copy',
                 3000,
                 'top-right'
-            )
+            );
+            return false;
+        }
     );
 }

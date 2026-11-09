@@ -1,0 +1,22 @@
+// How long a visitor has waited for a person, as a chip: the conversation list's row and the open conversation's
+// header. The orange marks what needs a person; past the desk's response time, the error colour (and an alert icon,
+// which the template picks). The height is the caller's: each fits its own row.
+@mixin chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    box-sizing: border-box;
+    border-radius: 4px;
+    background: var(--color-status-waiting-background);
+    color: var(--color-status-waiting);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    white-space: nowrap;
+}
+
+@mixin overdue {
+    background: var(--color-error-background);
+    color: var(--color-error);
+}

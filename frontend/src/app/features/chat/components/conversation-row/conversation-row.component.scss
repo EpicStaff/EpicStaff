@@ -1,4 +1,5 @@
 @use '../../../../../styles/status-chip';
+@use '../../styles/wait-chip';
 
 // The row is the button and, on a waiting row, the actions beside it: the host draws the background and the border
 // under both, so the row reads as one.
@@ -196,26 +197,14 @@
         --button-small-gap: 8px;
     }
 
-    // The orange marks what needs a person; past the desk's response time, the error colour and an alert icon.
+    // The wait chip, as tall as Take over beside it.
     &__wait {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
+        @include wait-chip.chip;
         height: 28px;
-        padding: 4px 8px;
-        box-sizing: border-box;
-        border-radius: 4px;
-        background: var(--color-status-waiting-background);
-        color: var(--color-status-waiting);
-        font-size: var(--text-body-small-size);
-        font-weight: var(--text-body-small-weight);
-        line-height: var(--text-body-small-line-height);
-        white-space: nowrap;
         cursor: pointer;
 
         &--overdue {
-            background: var(--color-error-background);
-            color: var(--color-error);
+            @include wait-chip.overdue;
         }
     }
 

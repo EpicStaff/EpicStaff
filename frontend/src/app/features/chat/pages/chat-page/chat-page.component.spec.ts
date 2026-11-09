@@ -317,7 +317,7 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
     }
 
-    /** A button beside the open conversation's title (the holder's main action). */
+    /** A button in the open conversation's header (its main action). */
     const threadAction = (label: string): HTMLButtonElement | undefined =>
         Array.from(
             (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
@@ -587,7 +587,7 @@ describe('ChatPageComponent', () => {
             listBindings([binding]);
             scopeTo('b-1');
             openConversation();
-            expect(openThreadMenu()).toEqual(['Resolve', 'Delete Conversation']);
+            expect(openThreadMenu()).toEqual(['Copy Visitor ID', 'Delete Conversation']);
             expect(
                 document.querySelector('.chat-action-menu [role="separator"]')?.nextElementSibling?.textContent?.trim()
             ).toBe('Delete Conversation');
@@ -597,7 +597,7 @@ describe('ChatPageComponent', () => {
             // All desks: there is no one desk to delete.
             scopeTo('');
             openConversation();
-            expect(openThreadMenu()).toEqual(['Resolve']);
+            expect(openThreadMenu()).toEqual(['Copy Visitor ID']);
             closeMenu();
 
             permissions.can = (resource, action) => resource === ResourceCode.Chats && action !== ActionCode.Delete;
@@ -605,7 +605,7 @@ describe('ChatPageComponent', () => {
             listBindings([binding]);
             scopeTo('b-1');
             openConversation();
-            expect(openThreadMenu()).toEqual(['Resolve']);
+            expect(openThreadMenu()).toEqual(['Copy Visitor ID']);
         } finally {
             permissions.can = (resource, action) =>
                 resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
@@ -1517,9 +1517,12 @@ describe('ChatPageComponent', () => {
 
         expect(component.selected()?.assigned_operator_id).toBe(7);
         expect(threadView().isClaimedByMe()).toBe(false);
-        expect(fixture.debugElement.query(By.css('.thread-header .mode-badge')).injector.get(MatTooltip).message).toBe(
-            'Held by Operator #7'
-        );
+        // Another operator's now: the header offers taking it over.
+        expect(
+            threadHeader()
+                .conversationMenuItems()
+                .map(({ label }) => label)
+        ).toContain('Take over');
         expect(composerInput().disabled).toBe(true);
         expect(composerInput().placeholder).toBe('Claim the conversation to reply');
     });
@@ -1540,7 +1543,7 @@ describe('ChatPageComponent', () => {
         conversationUpdated$.next({ ...created, state: 'processing' });
         fixture.detectChanges();
         expect(component.selected()?.state).toBe('processing');
-        expect(text('.thread-header__title')).toHaveLength(1);
+        expect(text('.thread-header__visitor')).toHaveLength(1);
     });
 
     it('enables the composer from the claim response without waiting for a stream event', () => {
@@ -1638,8 +1641,8 @@ describe('ChatPageComponent', () => {
         const rings = (): string[] =>
             Array.from(header().querySelectorAll('.usage-ring')).map((ring) => ring.getAttribute('aria-label') ?? '');
 
-        const pillTooltip = (): string =>
-            fixture.debugElement.query(By.css('.thread-header .mode-badge')).injector.get(MatTooltip).message;
+        const waitTooltip = (): string =>
+            fixture.debugElement.query(By.css('.thread-header__wait'))?.injector.get(MatTooltip).message ?? '';
 
         function open(conversation: ChatConversation): void {
             listBindings([binding]);
@@ -1648,25 +1651,21 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
         }
 
-        it("shows the mode, title, Test chip and today's turns and tokens against the binding's limits", () => {
+        it("shows the visitor, the path with the id, Test chip and today's turns and tokens against the limits", () => {
             open(row({ id: 'c-1', is_test: true, tokens_used: 9000, tokens_today: 250, turns: 40, turns_today: 3 }));
-            expect(text('.thread-header .mode-badge')).toEqual(['Bot']);
-            expect(text('.thread-header__title')).toEqual(['Support · Visitor 1']);
-            const title = fixture.debugElement.query(By.css('.thread-header__title'));
-            expect(title.injector.get(MatTooltip).message).toBe('Conversation c-1');
-            expect(title.nativeElement.getAttribute('tabindex')).toBe('0');
+            expect(header().querySelector('.mode-badge')).toBeNull();
+            expect(text('.thread-header__visitor')).toEqual(['Visitor 1']);
+            expect(text('.thread-header__path')).toEqual(['Bot / c-1']);
             expect(text('.thread-header .test-chip')).toEqual(['Test']);
             expect(rings()).toEqual(['Turns today: 3 of 50', 'Tokens today: 250 of 1,000']);
             expect(
                 Array.from(header().querySelectorAll('.usage-ring__icon use')).map((use) => use.getAttribute('href'))
             ).toEqual(['#icon-message', '#icon-token']);
-            // The shared status chip, with the closest of its looks per mode.
-            expect(header().querySelector('.mode-badge')?.className).toContain('mode-badge--bot');
             expect(text('.usage-ring__text')).toEqual(['3/50', '250/1K']);
             expect(header().querySelector('.thread-header__reason')).toBeNull();
         });
 
-        it('names who holds the conversation on the mode pill and shows the handoff reason only once handed off', () => {
+        it("shows the handoff reason in the wait chip's tooltip only while handed off", () => {
             open(
                 handedOff('c-1', '2026-10-10T09:00:00Z', {
                     mode: 'human',
@@ -1674,27 +1673,14 @@ describe('ChatPageComponent', () => {
                     handoff_reason: 'Asked for a human',
                 })
             );
-            const pill = header().querySelector('.mode-badge') as HTMLElement;
-            // The visible mode is its name; who holds it is the tooltip, announced as its description.
-            expect(pill.hasAttribute('aria-label')).toBe(false);
-            expect(pill.getAttribute('tabindex')).toBe('0');
-            expect(pillTooltip()).toBe('Held by Operator #7');
-            expect(text('.thread-header__reason')).toEqual(['Asked for a human']);
-
-            conversationUpdated$.next(row({ id: 'c-1', handoff_reason: 'Asked for a human' }));
-            fixture.detectChanges();
-            expect(header().querySelector('.thread-header__reason')).toBeNull();
-            expect(pill.hasAttribute('tabindex')).toBe(false);
-
-            conversationUpdated$.next(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
-            fixture.detectChanges();
-            expect(pillTooltip()).toBe('Held by you');
+            expect(waitTooltip()).toContain('Asked for a human');
+            expect(text('.thread-header__path')[0]).toMatch(/^Bot \/ Human \/ /);
 
             conversationUpdated$.next(
-                row({ id: 'c-1', mode: 'human', assigned_operator_id: 7, assigned_operator_name: 'Grace Hopper' })
+                row({ id: 'c-1', handoff_reason: 'Asked for a human', visitor_waiting_since: '2026-10-10T09:00:00Z' })
             );
             fixture.detectChanges();
-            expect(pillTooltip()).toBe('Held by Grace Hopper');
+            expect(waitTooltip()).not.toContain('Asked for a human');
         });
 
         it('has no Claim or Take over in the header: the composer offers claiming', () => {
@@ -1702,16 +1688,17 @@ describe('ChatPageComponent', () => {
             const labels = Array.from(header().querySelectorAll('button')).map((button) => button.textContent?.trim());
             expect(labels).not.toContain('Claim');
             expect(labels).not.toContain('Take over');
-            // The bot's conversation on a Support desk: Resolve is all the ⋯ menu has.
+            // The bot's conversation on a Support desk: Resolve is the button, so the ⋯ menu has only the copy.
+            expect(text('.thread-header app-button')).toEqual(['Resolve']);
             expect(
                 threadHeader()
                     .conversationMenuItems()
                     .map(({ label }) => label)
-            ).toEqual(['Resolve']);
+            ).toEqual(['Copy Visitor ID']);
             expect(text('.composer app-button')).toContain('Claim to reply');
         });
 
-        it('offers Take over, Release to bot and Resolve in the ⋯ menu when another operator holds it', () => {
+        it('offers Take over and Hand Back to Bot in the ⋯ menu, and Resolve beside it, when another operator holds it', () => {
             open(handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 7 }));
             chatApi.claim.mockReturnValue(of(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 })));
             (header().querySelector('.chat-action-menu__trigger') as HTMLButtonElement).click();
@@ -1720,21 +1707,23 @@ describe('ChatPageComponent', () => {
                 Array.from(document.querySelectorAll<HTMLButtonElement>('.chat-action-menu__item')).find(
                     (button) => button.textContent?.trim() === label
                 );
-            expect(item('Release to bot')).toBeDefined();
-            expect(item('Resolve')).toBeDefined();
+            expect(item('Hand Back to Bot')).toBeDefined();
+            expect(item('Resolve')).toBeUndefined();
+            expect(threadAction('Resolve')).toBeDefined();
             item('Take over')!.click();
             expect(chatApi.claim).toHaveBeenCalledWith('c-1');
             fixture.detectChanges();
             expect(document.querySelector('.chat-action-menu')).toBeNull();
         });
 
-        it('offers Release beside the title while the desk is not known, and no ⋯ menu besides it', () => {
+        it('offers Release as the button while the desk is not known, and only the copy in the ⋯ menu', () => {
             open(
                 handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 3, binding_id: 'b-9' })
             );
             chatApi.release.mockReturnValue(of(row({ id: 'c-1', binding_id: 'b-9' })));
             expect(text('.thread-header app-button')).toEqual(['Release']);
-            expect(header().querySelector('.chat-action-menu__trigger')).toBeNull();
+            expect(openThreadMenu()).toEqual(['Copy Visitor ID']);
+            closeMenu();
             threadAction('Release')!.click();
             expect(chatApi.release).toHaveBeenCalledWith('c-1');
         });
@@ -1745,8 +1734,9 @@ describe('ChatPageComponent', () => {
                 fixture = TestBed.createComponent(ChatPageComponent);
                 fixture.detectChanges();
                 open(handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 3 }));
-                expect(header().querySelector('.chat-action-menu__trigger')).toBeNull();
                 expect(header().querySelector('app-button')).toBeNull();
+                // Copying the visitor's id changes nothing, so it stays.
+                expect(openThreadMenu()).toEqual(['Copy Visitor ID']);
             } finally {
                 permissions.can = (resource, action) =>
                     resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
@@ -1789,23 +1779,26 @@ describe('ChatPageComponent', () => {
         // The table itself is `conversation-actions.util.spec.ts`; these prove the page feeds it.
         it("feeds the desk's style, who holds it, whether it is closed and the width into the actions", () => {
             openOn(binding, mine);
-            expect(actions()).toEqual({ primary: 'Resolve', menu: ['Release to bot'] });
+            expect(actions()).toEqual({ primary: 'Resolve', menu: ['Hand Back to Bot', 'Copy Visitor ID'] });
             openOn(ongoing, others);
-            expect(actions()).toEqual({ primary: null, menu: ['Take over', 'Release to bot', 'Close conversation'] });
+            expect(actions()).toEqual({
+                primary: null,
+                menu: ['Take over', 'Hand Back to Bot', 'Close conversation', 'Copy Visitor ID'],
+            });
             openOn(null, bots);
-            expect(actions()).toEqual({ primary: null, menu: [] });
+            expect(actions()).toEqual({ primary: null, menu: ['Copy Visitor ID'] });
             openOn(binding, unclaimed);
-            expect(actions()).toEqual({ primary: null, menu: ['Resolve'] });
+            expect(actions()).toEqual({ primary: 'Resolve', menu: ['Copy Visitor ID'] });
             openOn(binding, closed);
-            expect(actions()).toEqual({ primary: null, menu: [] });
+            expect(actions()).toEqual({ primary: null, menu: ['Copy Visitor ID'] });
             expect(threadView().isClaimedByMe()).toBe(false);
 
             isPhone.set(true);
             openOn(ongoing, mine);
-            expect(actions()).toEqual({ primary: 'Done', menu: ['Done', 'Close conversation'] });
+            expect(actions()).toEqual({ primary: 'Done', menu: ['Done', 'Close conversation', 'Copy Visitor ID'] });
         });
 
-        it('disables the menu items while an action runs', () => {
+        it("disables the conversation's actions while one runs; Copy Visitor ID, which changes nothing, stays", () => {
             openOn(binding, others);
             chatApi.claim.mockReturnValueOnce(NEVER);
             threadHeader().runConversationAction('take-over');
@@ -1813,11 +1806,15 @@ describe('ChatPageComponent', () => {
             expect(
                 threadHeader()
                     .conversationMenuItems()
-                    .every(({ disabled }) => disabled)
-            ).toBe(true);
+                    .map(({ label, disabled }) => [label, !!disabled])
+            ).toEqual([
+                ['Take over', true],
+                ['Hand Back to Bot', true],
+                ['Copy Visitor ID', false],
+            ]);
         });
 
-        it('resolves from the button beside the title at once, without asking', () => {
+        it('resolves from the main action button at once, without asking', () => {
             openOn(binding, mine);
             chatApi.close.mockReturnValue(of(closed));
             threadAction('Resolve')!.click();
@@ -1872,21 +1869,21 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
         }
 
-        it('turns read-only as it closes: a banner instead of the composer, Closed instead of the mode', () => {
+        it('turns read-only as it closes: a banner instead of the composer, and no actions in the header', () => {
             openMine();
             expect(composerInput()).not.toBeNull();
-            expect(text('.thread-header__reason')).toEqual(['Asked for a human']);
+            expect(fixture.nativeElement.querySelector('.thread-header__wait')).not.toBeNull();
 
             conversationUpdated$.next(closedVersion({ close_reason: 'ended', closed_by_user_id: null }));
             fixture.detectChanges();
             expect(fixture.nativeElement.querySelector('app-chat-thread-composer')).toBeNull();
             expect(banner()?.getAttribute('role')).toBe('status');
             expect(text('.thread-closed')[0]).toMatch(/^Closed · Ended by the visitor · /);
-            expect(text('.thread-header .mode-badge')).toEqual(['Closed']);
-            expect(fixture.nativeElement.querySelector('.mode-badge')?.className).toContain('mode-badge--closed');
-            expect(fixture.nativeElement.querySelector('.thread-header__reason')).toBeNull();
-            expect(fixture.nativeElement.querySelector('.thread-header .chat-action-menu__trigger')).toBeNull();
+            // Nobody waits on a closed conversation; a person still took part in it.
+            expect(fixture.nativeElement.querySelector('.thread-header__wait')).toBeNull();
+            expect(text('.thread-header__path')[0]).toMatch(/^Bot \/ Human \/ /);
             expect(fixture.nativeElement.querySelector('.thread-header app-button')).toBeNull();
+            expect(openThreadMenu()).toEqual(['Copy Visitor ID']);
         });
 
         it('names who resolved it, by the desk style', () => {
@@ -2186,8 +2183,8 @@ describe('ChatPageComponent', () => {
             expect(host().querySelector('.thread-header app-button')).toBeNull();
 
             openMenu('.thread-header__nav');
-            expect(menuItems()).toEqual(['Resolve', 'Release to bot']);
-            chooseInMenu('Release to bot');
+            expect(menuItems()).toEqual(['Resolve', 'Hand Back to Bot', 'Copy Visitor ID']);
+            chooseInMenu('Hand Back to Bot');
             expect(chatApi.release).toHaveBeenCalledWith('c-1');
         });
 
@@ -2200,12 +2197,12 @@ describe('ChatPageComponent', () => {
             chatApi.release.mockReturnValue(of(row({ id: 'c-1' })));
 
             openMenu('.thread-header__nav');
-            expect(menuItems()).toEqual(['Done', 'Close conversation']);
+            expect(menuItems()).toEqual(['Done', 'Close conversation', 'Copy Visitor ID']);
             chooseInMenu('Done');
             expect(chatApi.release).toHaveBeenCalledWith('c-1');
         });
 
-        it('replaces the composer with the banner and empties the thread menu once closed', () => {
+        it('replaces the composer with the banner and leaves only Copy Visitor ID in the thread menu once closed', () => {
             scopeTo('b-1');
             const closed = row({
                 id: 'c-1',
@@ -2216,7 +2213,8 @@ describe('ChatPageComponent', () => {
             conversationUpdated$.next(closed);
             fixture.componentInstance.selectConversation(closed);
             fixture.detectChanges();
-            expect(host().querySelector('.thread-header__nav app-chat-action-menu')).toBeNull();
+            openMenu('.thread-header__nav');
+            expect(menuItems()).toEqual(['Copy Visitor ID']);
             expect(host().querySelector('app-chat-thread-composer')).toBeNull();
             expect(text('.thread-closed')[0]).toMatch(/^Closed · Ended by the visitor · /);
         });

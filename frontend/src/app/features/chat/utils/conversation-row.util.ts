@@ -134,20 +134,6 @@ export function waitDuration(sinceIso: string | null | undefined, now: number): 
     return `${Math.floor(waited / DAY)}d`;
 }
 
-/**
- * Whether a visitor has waited longer than `overdueAfterMs` (null: the desk marks no one overdue). Exactly the response
- * time is not overdue yet; a missing or unusable time never is.
- */
-export function isOverdue(
-    waitingSinceIso: string | null | undefined,
-    overdueAfterMs: number | null,
-    now: number
-): boolean {
-    if (overdueAfterMs === null) return false;
-    const since = waitingSinceIso ? Date.parse(waitingSinceIso) : NaN;
-    return !Number.isNaN(since) && now - since > overdueAfterMs;
-}
-
 function timeBucket(iso: string, now: number): TimeBucket {
     const date = new Date(iso);
     const elapsed = now - date.getTime();

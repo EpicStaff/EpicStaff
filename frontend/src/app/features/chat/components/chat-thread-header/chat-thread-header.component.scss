@@ -1,8 +1,15 @@
 @use '../../../../../styles/status-chip';
 @use '../../../../../styles/touch';
+@use '../../styles/wait-chip';
 
-// The widest row without the title (Human, Test, both rings with numbers, Resolve and ⋯) takes about 450px.
-$usage-numbers-min-width: 480px;
+// Where the usage rings drop their numbers: below the desktop row's widest fixed part, about 574px. That is the
+// header's 32px side padding, the avatar (36px and its 8px gap), the identity column's least and its 8px gap, then
+// Test, the filled Resolve (about 89px: 12px, the 8px check, 8px, the label, 16px), both rings with numbers and ⋯
+// (about 410px in all, gaps included). The column's least is its widest uncut line, about 80px
+// either way: the name line (the name cut to nothing, 8px, then the wait chip: "12m 16s" with its icon, gap and
+// padding, about 72px) or the path (Bot / Human / at about 60px, two 4px gaps and the 12px copy icon, the id cut to
+// nothing). A longer wait ("23h 59m") makes the name line the wider by a few px; the margin covers it.
+$usage-numbers-min-width: 590px;
 
 :host {
     display: block;
@@ -29,6 +36,7 @@ $usage-numbers-min-width: 480px;
     margin-left: 6px;
 }
 
+// Phones only: desktop says Bot or Bot / Human on the path line, and the wait on its chip.
 .mode-badge {
     @include status-chip.chip;
     @include status-chip.pending;
@@ -47,16 +55,10 @@ $usage-numbers-min-width: 480px;
     }
 }
 
-// One compact row: mode pill, title, Test chip, today's usage rings and the operator's actions; the handoff
-// reason, when there is one, on a muted second line.
 .thread-header {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 2px;
-    min-height: 48px;
-    padding: 6px 16px;
-    box-sizing: border-box;
     border-bottom: 1px solid var(--color-divider-regular);
 
     &__row {
@@ -66,6 +68,7 @@ $usage-numbers-min-width: 480px;
         min-width: 0;
     }
 
+    // The visitor, centred in the phone's nav bar.
     &__title {
         min-width: 0;
         overflow: hidden;
@@ -82,6 +85,7 @@ $usage-numbers-min-width: 480px;
         }
     }
 
+    // The right-hand group starts here, pushed to the end; after the main action (below) it simply follows it.
     &__usage {
         display: flex;
         align-items: center;
@@ -90,22 +94,171 @@ $usage-numbers-min-width: 480px;
         flex-shrink: 0;
     }
 
-    // The shared button's host has min-width: 0, so it would shrink and clip its label.
+    // The main action, first in the right-hand group: the shared small primary button with its check, 12px
+    // before the icon, 8px after it and 16px after the label. The shared button's host has min-width: 0, so it would
+    // otherwise shrink and clip its label.
     &__action {
         flex-shrink: 0;
-    }
+        margin-left: auto;
+        --button-small-font-weight: var(--text-body-small-large-weight);
+        --button-small-icon-left-padding: 28px;
+        --button-small-icon-left-padding-right: 16px;
 
-    &__reason {
-        color: var(--color-text-secondary);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        + .thread-header__usage {
+            margin-left: 0;
+        }
     }
 
     .mode-badge:focus-visible {
         outline: 2px solid var(--accent-color);
         outline-offset: 2px;
     }
+}
+
+// Desktop: one row, 60px tall, then its 1px divider (61px in all, as boxes are border-box), level with the hairline
+// under the conversation list's tabs (conversation-list-toolbar: 8px + the 40px switch + 12px, then the same subtle
+// line). Left to right: the visitor's avatar; the identity column (their name, with the wait chip after it while they
+// wait, over the conversation's path and id); the Test chip; then, at the end, the main action, today's usage
+// rings and the ⋯ menu. The handoff reason is in the wait chip's tooltip: the fixed height has no room for another
+// line.
+:host(:not(.chat-thread-header--phone)) .thread-header {
+    height: 61px;
+    padding: 0 16px;
+    border-bottom-color: var(--color-divider-subtle);
+}
+
+// The shared avatar at 36px here; 32px everywhere else.
+.thread-header__avatar {
+    width: 36px;
+    height: 36px;
+}
+
+// Two lines, centred in the 60px row with no gap: the name line over the path (13px). The name line is 18px, or 24px
+// with the wait chip, which is taller than the name: 31px or 37px in all, the name centred on the chip. The name and
+// the id are cut first when the row runs short. The column may get narrower than the path's uncut part (CSS cannot
+// make that its minimum: the name and the id, which do get cut, would count too), so it clips rather than paint over
+// the Test chip or the usage. The 6px padding, taken back by the margin, keeps the focus outlines and the copy icon's
+// hit area inside the clip.
+.thread-header__identity {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    margin: -6px;
+    padding: 6px;
+    overflow: hidden;
+}
+
+// The visitor's name, then the wait chip 8px after it; the name is cut, the chip never.
+.thread-header__name-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+// The list row's wait chip, 24px tall here. Positioned, so it paints (and takes the pointer) above the copy icon's hit
+// area, which reaches 6px up into this line and is not positioned: no z-index needed.
+.thread-header__wait {
+    @include wait-chip.chip;
+    position: relative;
+    flex-shrink: 0;
+    height: 24px;
+
+    &--overdue {
+        @include wait-chip.overdue;
+    }
+
+    // Focusable for its tooltip (the overdue note, the handoff reason).
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+.thread-header__visitor {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-primary);
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: var(--text-body-medium-line-height);
+}
+
+// Bot / (Human /) and the conversation id, then its copy icon. The path keeps its width; the id is cut instead.
+.thread-header__path {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-caption-size);
+    font-weight: var(--text-caption-weight);
+    line-height: var(--text-caption-line-height);
+}
+
+.thread-header__trail {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+// Both copy the id: the id itself, and the icon after it.
+.thread-header__id,
+.thread-header__copy {
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.thread-header__id {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: start;
+}
+
+// A 12px box in the line, so the check (a smaller shape) takes the copy icon's place without moving anything; the
+// button reaches 6px past it on every side (24px to hit), taken back by the margin so the line does not move.
+.thread-header__copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    margin: -6px;
+
+    // The design's 16% of the primary text colour at rest; no token has it, and the 16% primitive does not follow the
+    // theme. The full colour on hover and keyboard focus.
+    app-svg-icon {
+        color: var(--color-text-primary);
+        opacity: 0.16;
+    }
+
+    &:is(:hover, :focus-visible) app-svg-icon {
+        opacity: 1;
+    }
+
+    &--done app-svg-icon {
+        color: var(--color-text-secondary);
+        opacity: 1;
+    }
+}
+
+.thread-header__trail:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
+// Inside the 24px hit area, which the identity column's padding keeps unclipped.
+.thread-header__copy:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
 }
 
 // The thread screen's header on phones: a nav bar (Back, the visitor centred, ⋯), then the mode, Test and today's
@@ -126,7 +279,11 @@ $usage-numbers-min-width: 480px;
 
     .thread-header__reason {
         padding: 0 8px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         text-align: center;
+        color: var(--color-text-secondary);
     }
 }
 

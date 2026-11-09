@@ -103,7 +103,7 @@
             class="conversation-row__wait"
             aria-hidden="true"
             matTooltipPosition="above"
-            matTooltip="Overdue: waiting longer than the desk's response time"
+            [matTooltip]="overdueNote"
             [class.conversation-row__wait--overdue]="isOverdue()"
             [matTooltipDisabled]="!isOverdue()"
             (click)="selectRequested.emit()"

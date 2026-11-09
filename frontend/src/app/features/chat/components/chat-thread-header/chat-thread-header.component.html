@@ -25,44 +25,139 @@
                 >{{ visitorName(conversation()) }}</span
             >
             <span class="thread-header__nav-end">
-                @if (conversationMenuItems().length) {
-                    <app-chat-action-menu
-                        label="Conversation actions"
-                        icon="horizontal-dots"
-                        [items]="conversationMenuItems()"
-                        (chosen)="runConversationAction($event)"
-                    />
-                }
+                <app-chat-action-menu
+                    label="Conversation actions"
+                    icon="horizontal-dots"
+                    [items]="conversationMenuItems()"
+                    (chosen)="runConversationAction($event)"
+                />
             </span>
         </div>
     }
     <div class="thread-header__row">
-        <!-- Closed replaces the mode: whatever it was, nobody is on it any more. -->
-        <span
-            class="mode-badge"
-            [class]="'mode-badge--' + (isClosed() ? 'closed' : conversation().mode)"
-            [attr.tabindex]="holderLabel() ? 0 : null"
-            [matTooltip]="holderLabel() ? 'Held by ' + holderLabel() : ''"
-            [matTooltipDisabled]="!holderLabel()"
-            matTooltipPosition="below"
-        >
-            {{ isClosed() ? 'Closed' : modeLabel(conversation().mode) }}
-        </span>
-        <!-- The visitor number is not unique: the full conversation id is one hover or focus away. -->
         @if (!isPhone()) {
+            <!-- Who the conversation is with, and which one it is: the visitor number is not unique, the id is. -->
+            <app-conversation-avatar
+                class="thread-header__avatar"
+                [conversation]="conversation()"
+            />
+            <div class="thread-header__identity">
+                <div class="thread-header__name-line">
+                    <span
+                        class="thread-header__visitor"
+                        appTooltipOnOverflow
+                        matTooltipPosition="below"
+                        [matTooltip]="visitorName(conversation())"
+                        >{{ visitorName(conversation()) }}</span
+                    >
+                    <!--
+                        As the list's row shows it. Overdue is said by the icon too, not by the colour alone; focusable
+                        only when it has a tooltip (the overdue note, the handoff reason).
+                    -->
+                    @if (wait(); as waited) {
+                        <span
+                            class="thread-header__wait"
+                            matTooltipPosition="below"
+                            [class.thread-header__wait--overdue]="waited.isOverdue"
+                            [attr.tabindex]="waitTooltip() ? 0 : null"
+                            [matTooltip]="waitTooltip()"
+                            [matTooltipDisabled]="!waitTooltip()"
+                        >
+                            <app-svg-icon
+                                size="10px"
+                                [icon]="waited.isOverdue ? 'alert-circle' : 'clock'"
+                            />
+                            <span class="visually-hidden">Waiting for a person for</span>
+                            {{ waited.duration }}
+                            @if (waited.isOverdue) {
+                                <span class="visually-hidden">, overdue</span>
+                            }
+                        </span>
+                    }
+                </div>
+                <div class="thread-header__path">
+                    @if (isWithOperator()) {
+                        <span
+                            class="thread-header__trail"
+                            tabindex="0"
+                            matTooltip="The bot and an operator took part in this conversation"
+                            matTooltipPosition="below"
+                            >Bot / Human /</span
+                        >
+                    } @else {
+                        <span class="thread-header__trail">Bot /</span>
+                    }
+                    <!-- A click on the id copies it too; out of the tab order: the icon after it is the one stop. -->
+                    <button
+                        type="button"
+                        class="thread-header__id"
+                        tabindex="-1"
+                        [attr.aria-label]="'Copy conversation ID ' + conversation().id"
+                        appTooltipOnOverflow
+                        matTooltipPosition="below"
+                        [matTooltip]="conversation().id"
+                        (click)="copyConversationId()"
+                    >
+                        {{ conversation().id }}
+                    </button>
+                    <button
+                        type="button"
+                        class="thread-header__copy"
+                        [class.thread-header__copy--done]="isIdCopied()"
+                        aria-label="Copy conversation ID"
+                        matTooltip="Copy conversation ID"
+                        matTooltipPosition="below"
+                        (click)="copyConversationId()"
+                    >
+                        @if (isIdCopied()) {
+                            <app-svg-icon
+                                icon="check-small"
+                                width="8px"
+                                height="6px"
+                            />
+                        } @else {
+                            <app-svg-icon
+                                icon="copy-small"
+                                size="8.34px"
+                            />
+                        }
+                    </button>
+                </div>
+            </div>
+        } @else {
+            <!-- Closed replaces the mode: whatever it was, nobody is on it any more. -->
             <span
-                class="thread-header__title"
-                tabindex="0"
+                class="mode-badge"
+                [class]="'mode-badge--' + (isClosed() ? 'closed' : conversation().mode)"
+                [attr.tabindex]="holderLabel() ? 0 : null"
+                [matTooltip]="holderLabel() ? 'Held by ' + holderLabel() : ''"
+                [matTooltipDisabled]="!holderLabel()"
                 matTooltipPosition="below"
-                [matTooltip]="'Conversation ' + conversation().id"
-                >{{ binding()?.name ?? 'Desk' }} · {{ visitorName(conversation()) }}</span
             >
-        } @else if (isAllBindings() && binding(); as desk) {
-            <!-- Phones: Back says All desks, so the desk is said here. -->
-            <span class="thread-header__desk text-body-small">{{ desk.name }}</span>
+                {{ isClosed() ? 'Closed' : modeLabel(conversation().mode) }}
+            </span>
+            @if (isAllBindings() && binding(); as desk) {
+                <!-- Phones: Back says All desks, so the desk is said here. -->
+                <span class="thread-header__desk text-body-small">{{ desk.name }}</span>
+            }
         }
         @if (conversation().is_test) {
             <span class="test-chip">Test</span>
+        }
+        @if (!isPhone() && primaryAction(); as action) {
+            <!-- The main action, first on the right: Resolve on a Support desk; for the holder, Done or Release. -->
+            <app-button
+                class="thread-header__action"
+                type="primary"
+                mod="small"
+                leftIcon="check-small"
+                iconSize="6px"
+                iconWidth="8px"
+                [disabled]="isActionPending()"
+                (click)="runConversationAction(action.id)"
+            >
+                {{ action.label }}
+            </app-button>
         }
         <div class="thread-header__usage">
             <app-chat-usage-ring
@@ -82,30 +177,17 @@
             />
         </div>
         @if (!isPhone()) {
-            <!-- The holder's main action: Resolve, or Done on an Ongoing desk. -->
-            @if (primaryAction(); as action) {
-                <app-button
-                    class="thread-header__action"
-                    type="ghost"
-                    mod="small"
-                    [disabled]="isActionPending()"
-                    (click)="runConversationAction(action.id)"
-                >
-                    {{ action.label }}
-                </app-button>
-            }
-            <!-- Only with something besides the main action, which has the button above. -->
-            @if (conversationMenuItems().length) {
-                <app-chat-action-menu
-                    class="thread-header__menu"
-                    label="Conversation actions"
-                    [items]="conversationMenuItems()"
-                    (chosen)="runConversationAction($event)"
-                />
-            }
+            <!-- Never empty: Copy Visitor ID is always there. -->
+            <app-chat-action-menu
+                class="thread-header__menu"
+                label="Conversation actions"
+                [items]="conversationMenuItems()"
+                (chosen)="runConversationAction($event)"
+            />
         }
     </div>
-    @if (conversation().handoff_reason && conversation().mode !== 'bot' && !isClosed()) {
-        <div class="thread-header__reason text-body-small">{{ conversation().handoff_reason }}</div>
+    <!-- Phones only: desktop's fixed-height row has no room for it, so there it is in the wait chip's tooltip. -->
+    @if (isPhone() && handoffReason(); as reason) {
+        <div class="thread-header__reason text-body-small">{{ reason }}</div>
     }
 </header>

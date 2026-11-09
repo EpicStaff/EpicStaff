@@ -34,6 +34,7 @@ import {
     tabOfSection,
 } from '../../utils/conversation-list-tab.util';
 import { ConversationDeskRules, deskRulesOf, visitorName } from '../../utils/conversation-row.util';
+import { WAIT_TICK_MS } from '../../utils/conversation-wait.util';
 import { tickingNow } from '../../utils/ticking-now.util';
 import { ConversationListTabsComponent } from '../conversation-list-tabs/conversation-list-tabs.component';
 import { ConversationListToolbarComponent } from '../conversation-list-toolbar/conversation-list-toolbar.component';
@@ -50,8 +51,6 @@ import { ConversationListMotion } from './conversation-list-motion';
 
 // Relative times ("6m") move on without a reload.
 const NOW_TICK_MS = 30_000;
-// A wait counts the seconds ("12m 16s"): only Waiting's rows take this clock, so the others do not redraw every second.
-const WAIT_TICK_MS = 1_000;
 // A section's next page starts loading a little before its end scrolls into view.
 const SENTINEL_MARGIN = '0px 0px 200px 0px';
 
@@ -102,6 +101,7 @@ export class ConversationListComponent {
     /** The desk whose conversations the column holds (null: every desk); the `bindingId` input until it has reloaded. */
     readonly listedBindingId = computed(() => this.store.query().bindingId);
     protected readonly now = tickingNow(NOW_TICK_MS);
+    // Only Waiting's rows take the wait clock, so the others do not redraw every second.
     protected readonly waitNow = tickingNow(WAIT_TICK_MS);
     /** Take over, and Mine: both are about conversations the user holds. */
     protected readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
