@@ -46,7 +46,13 @@ import {
     SecretsStorageService,
     SystemOneConfigStorageService,
 } from '@shared/services';
-import { downloadBlob, formatNodeLabel, getProviderIconPath, SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
+import {
+    downloadBlob,
+    escapeHtml,
+    formatNodeLabel,
+    getProviderIconPath,
+    SECRET_CODE_NEEDS_USE_MESSAGE,
+} from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -935,7 +941,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.confirmationDialogService
             .confirm({
                 title: 'Delete Prompt',
-                message: `Are you sure you want to delete <strong>${id}</strong> prompt?`,
+                message: `Are you sure you want to delete <strong>${escapeHtml(id)}</strong> prompt?`,
                 confirmText: 'Delete',
                 cancelText: 'Cancel',
                 type: 'danger',

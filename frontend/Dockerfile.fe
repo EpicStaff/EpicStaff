@@ -37,7 +37,9 @@ COPY . .
 RUN npm run build -- --configuration production
 
 # ─── Stage: production ────────────────────────────────────────────────────────
-FROM docker.io/library/nginx:1.31.8-alpine@sha256:713fc2ebfd92e8217db451477182ee91944b123d2b1ee9fd5a8c6e91ca6c3a11 AS production
+# Pinned to the same multi-arch index digest as the epicstaff-nginx gateway in
+# src/docker-compose.yaml.
+FROM docker.io/library/nginx:1.31.6-trixie@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86 AS production
 
 COPY --from=build /app/dist/epicstaff-frontend/browser/ /usr/share/nginx/html/
 

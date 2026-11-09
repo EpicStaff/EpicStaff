@@ -5,11 +5,16 @@ import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, Provider, s
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
-import { ExecutionTimeoutFieldComponent, ExecutionTimeoutFormField, JsonEditorComponent } from '@shared/components';
+import {
+    ConfirmationDialogService,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
+    JsonEditorComponent,
+} from '@shared/components';
 import { NodeType, ResourceCode } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
 import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
-import { of } from 'rxjs';
+import { Observable, of } from 'rxjs';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -1438,6 +1443,22 @@ describe('ClassificationDecisionTableNodePanelComponent — System One entries i
         panel.updatePromptFields('System One', { system_one_config: 7 });
 
         expect(sentPromptConfigs()[0]).toMatchObject({ system_one_config: 7 });
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — the delete prompt message', () => {
+    it('shows a prompt name with markup as text, because the dialog renders the message as HTML', () => {
+        const confirm = vi.fn<(options: { message: string }) => Observable<boolean>>(() => of(false));
+        configurePanelTestBed({ providers: [{ provide: ConfirmationDialogService, useValue: { confirm } }] });
+        const fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', tableNode());
+        fixture.detectChanges();
+
+        fixture.componentInstance.deletePrompt('<img src=https://example.com/x.gif>');
+
+        const { message } = confirm.mock.calls[0][0];
+        expect(message).toContain('<strong>&lt;img src=https://example.com/x.gif&gt;</strong>');
+        expect(message).not.toContain('<img');
     });
 });
 
