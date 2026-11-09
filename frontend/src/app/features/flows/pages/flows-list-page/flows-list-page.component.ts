@@ -87,16 +87,13 @@ import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { isUsableCondition } from '../../../audit/models/audit-filter.models';
 import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
-import {
-    ExportFlowOptionsPopoverComponent,
-    FlowExportOptions,
-} from '../../components/export-flow-options-popover/export-flow-options-popover.component';
 import { ImportFlowOptionsPopoverComponent } from '../../components/import-flow-options-popover/import-flow-options-popover.component';
 import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
 import { ImportReviewDialogComponent } from '../../components/import-review-dialog/import-review-dialog.component';
 import { EMPTY_FLOWS_FILTER, FlowsFilterState, FlowSortOrder } from '../../models/flow-filter.model';
 import { GraphDto } from '../../models/graph.model';
 import { FlowCopyImportFacadeService } from '../../services/flow-copy-import-facade.service';
+import { FlowExportOptionsDialogService } from '../../services/flow-export-options-dialog.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
@@ -128,7 +125,6 @@ const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth:
         CollapseOnOverflowDirective,
         TooltipWhenCollapsedDirective,
         ImportFlowOptionsPopoverComponent,
-        ExportFlowOptionsPopoverComponent,
         OverlayModule,
         HasPermissionDirective,
         MatTooltipModule,
@@ -157,6 +153,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private importExportService = inject(ImportExportService);
     private flowCopyImport = inject(FlowCopyImportFacadeService);
     private transferExport = inject(TransferExportService);
+    private exportOptionsDialog = inject(FlowExportOptionsDialogService);
     private toastService = inject(ToastService);
     private labelsStorage = inject(LabelsStorageService);
     private importFlowSettings = inject(ImportFlowSettingsService);
@@ -166,7 +163,6 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private recycleBinSettings = inject(RecycleBinSettingsService);
 
     public importOptionsOpen = signal(false);
-    public exportOptionsOpen = signal(false);
 
     public selectMode = this.flowStorageService.selectMode;
     public selectedFlowIds = this.flowStorageService.selectedFlowIds;
@@ -582,28 +578,23 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     }
 
     public cancelSelection(): void {
-        this.closeExportOptions();
         this.flowStorageService.setSelectMode(false);
     }
 
-    public toggleExportOptions(): void {
-        this.exportOptionsOpen.update((open) => !open);
-    }
-
-    public closeExportOptions(): void {
-        this.exportOptionsOpen.set(false);
-    }
-
-    public confirmExport(options: FlowExportOptions): void {
-        this.closeExportOptions();
+    public exportSelectedFlows(): void {
         const ids = this.selectedFlowIds();
         if (ids.length === 0) {
             return;
         }
 
-        this.flowStorageService.setSelectMode(false);
-        // Not tied to this page: an export the user started still downloads after they leave it.
-        this.transferExport.exportFlows(ids, options.includeKnowledge).subscribe();
+        this.exportOptionsDialog
+            .ask(ids.length)
+            .pipe(
+                tap(() => this.flowStorageService.setSelectMode(false)),
+                // Not tied to this page: an export the user started still downloads after they leave it.
+                switchMap((options) => this.transferExport.exportFlows(ids, options.includeKnowledge))
+            )
+            .subscribe();
     }
 
     public deleteSelectedFlows(): void {

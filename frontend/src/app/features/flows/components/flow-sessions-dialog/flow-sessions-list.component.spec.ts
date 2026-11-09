@@ -36,7 +36,7 @@ class ResizeObserverStub {
     disconnect(): void {}
 }
 
-describe('FlowSessionsListComponent "Delete Selected"', () => {
+describe('FlowSessionsListComponent bulk actions', () => {
     let fixture: ComponentFixture<FlowSessionsListComponent>;
     let http: HttpTestingController;
 
@@ -208,5 +208,36 @@ describe('FlowSessionsListComponent "Delete Selected"', () => {
         request.flush({ deleted: 1, ids: [1] });
         respondWithSessions([session(2), session(3)]);
         expect(deleteButton.disabled).toBe(false);
+    });
+    describe('export', () => {
+        function expectExportJob(): TestRequest {
+            return http.expectOne(
+                (request) => request.method === 'POST' && request.url === '/api/sessions/export-jobs/'
+            );
+        }
+
+        it('exports the selected sessions as one background job in the chosen format', () => {
+            tickSession(1);
+            tickSession(3);
+
+            fixture.componentInstance.onExport('csv');
+
+            expect(expectExportJob().request.body).toEqual({ ids: [1, 3], export_format: 'csv' });
+        });
+
+        it('exports every session of the flow when none is selected', () => {
+            fixture.componentInstance.onExport('json');
+
+            expect(expectExportJob().request.body).toEqual({ graph_id: FLOW_ID, export_format: 'json' });
+        });
+
+        it('lets the user export again once the server has taken the job', () => {
+            fixture.componentInstance.onExport('json');
+            expect(fixture.componentInstance.isExporting()).toBe(true);
+
+            expectExportJob().flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+
+            expect(fixture.componentInstance.isExporting()).toBe(false);
+        });
     });
 });

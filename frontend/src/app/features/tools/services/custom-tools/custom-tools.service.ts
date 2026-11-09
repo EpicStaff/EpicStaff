@@ -90,10 +90,6 @@ export class CustomToolsService {
         );
     }
 
-    exportPythonCodeTool(toolId: number): Observable<Blob> {
-        return this.http.get(`${this.baseUrl}${toolId}/export/`, { responseType: 'blob' });
-    }
-
     updatePythonCodeTool(
         toolId: string,
         updatedTool: UpdatePythonCodeToolRequest
@@ -137,14 +133,6 @@ export class CustomToolsService {
         const body = { ids };
         return this.http.post<BulkDeleteToolsResponse>(`${this.baseUrl}bulk-delete/`, body, {
             headers: this.httpHeaders,
-        });
-    }
-
-    bulkExportPythonCodeTool(ids: number[]): Observable<Blob> {
-        const body = { ids };
-        return this.http.post(`${this.baseUrl}bulk-export/`, body, {
-            headers: this.httpHeaders,
-            responseType: 'blob',
         });
     }
 

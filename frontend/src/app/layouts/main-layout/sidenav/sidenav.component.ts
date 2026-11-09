@@ -31,6 +31,7 @@ import { filter, map } from 'rxjs/operators';
 
 import { GuidedTourService } from '../../../core/guided-tour';
 import { AppNavigationDrawerService } from '../../../core/services/app-navigation-drawer.service';
+import { TransferJobsStoreService } from '../../../core/services/transfer-jobs-store.service';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../features/create-agent-tour/create-agent-tour-anchors';
 import { AppsListComponent } from '../../../features/plugins/components/apps-list/apps-list.component';
@@ -41,6 +42,7 @@ import { QUICK_START_TOUR_ANCHORS } from '../../../features/quick-start-tour/qui
 import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
+import { TransferJobsPanelComponent } from '../../../features/transfer-jobs/components/transfer-jobs-panel/transfer-jobs-panel.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
@@ -72,10 +74,10 @@ interface NavItem {
 }
 
 /**
- * The lists the sidebar opens: the apps, from the Apps row in EpicStaff and from the app switcher in an app, and the
- * guides, from the Help row.
+ * The lists the sidebar opens: the apps, from the Apps row in EpicStaff and from the app switcher in an app, the
+ * user's exports and imports, and the guides, from the Help row.
  */
-type SidenavListKind = 'apps' | 'switcher' | 'help';
+type SidenavListKind = 'apps' | 'switcher' | 'help' | 'jobs';
 
 // To the right of the sidebar, level with the row (its `<li>` spans the sidebar), or rising from the row's bottom when
 // there is no room below.
@@ -85,11 +87,20 @@ const RIGHT_OF_ROW: ConnectedPosition[] = [
 ];
 
 const BACK_TO_EPICSTAFF_LABEL = 'Back to EpicStaff';
+const JOBS_LABEL = 'Exports and imports';
 
 const PAGE_STEP_BY_CODE: Partial<Record<'ArrowUp' | 'ArrowDown', 1 | -1>> = { ArrowUp: -1, ArrowDown: 1 };
 
 function isPlainAltChord(event: KeyboardEvent): boolean {
     return event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && !event.repeat;
+}
+
+/**
+ * The target is in an overlay: its pane, or the backdrop behind it. The CDK already keeps a click in a popover's own pane
+ * from reaching that popover's outside-click handler, so any overlay found here is another one.
+ */
+function isInOverlay(target: EventTarget | null): boolean {
+    return target instanceof Element && target.closest('.cdk-overlay-pane, .cdk-overlay-backdrop') !== null;
 }
 
 function isEditableTarget(element: Element): boolean {
@@ -115,6 +126,7 @@ function isEditableTarget(element: Element): boolean {
         PluginMenuIconComponent,
         AppsListComponent,
         HelpMenuComponent,
+        TransferJobsPanelComponent,
         CdkTrapFocus,
         CdkScrollable,
         NgTemplateOutlet,
@@ -172,6 +184,13 @@ export class LeftSidebarComponent {
         source: () => [this.currentPath(), this.isExpanded(), this.inDrawer(), this.showsHelp()],
         computation: () => null,
     });
+    /** The user's exports and imports still queued or running, counted on the jobs row whether its list is open or not. */
+    protected readonly unfinishedJobsCount = inject(TransferJobsStoreService).unfinishedCount;
+    /** Names the jobs row when collapsed, with what is still in progress. */
+    protected readonly jobsRowLabel = computed(() => {
+        const count = this.unfinishedJobsCount();
+        return count > 0 ? `${JOBS_LABEL}, ${count} in progress` : JOBS_LABEL;
+    });
     /** The apps that were new when the open list opened: they keep their tag while it stays open. */
     protected readonly newAppTags = signal<ReadonlySet<string>>(new Set());
 
@@ -190,6 +209,7 @@ export class LeftSidebarComponent {
     protected readonly quickStartTourAnchors = QUICK_START_TOUR_ANCHORS;
     protected readonly createAgentTourAnchors = CREATE_AGENT_TOUR_ANCHORS;
     protected readonly backToEpicStaffLabel = BACK_TO_EPICSTAFF_LABEL;
+    protected readonly jobsLabel = JOBS_LABEL;
     /** Names the account row when collapsed, and is its tooltip. */
     protected readonly accountTooltip = 'Account';
     protected readonly manageAppsUrl = MANAGE_APPS_URL;
@@ -388,7 +408,7 @@ export class LeftSidebarComponent {
             this.closeLists();
             return;
         }
-        if (kind !== 'help') this.newAppTags.set(this.appNavigation.acknowledgeNewApps());
+        if (kind === 'apps' || kind === 'switcher') this.newAppTags.set(this.appNavigation.acknowledgeNewApps());
         this.openList.set(kind);
     }
 
@@ -422,6 +442,16 @@ export class LeftSidebarComponent {
      */
     protected onPopoverDetach(kind: SidenavListKind): void {
         if (this.openList() === kind) this.closeLists();
+    }
+
+    /**
+     * A click on the page closes the popover. A click in another overlay does not: that one is over the popover — a
+     * dialog it opened, such as the Clear all confirmation of the jobs list, or that dialog's backdrop — and answering it
+     * leaves the popover where it was.
+     */
+    protected onPopoverOutsideClick(event: MouseEvent): void {
+        if (isInOverlay(event.target)) return;
+        this.closeLists();
     }
 
     /** Escape closes the popover and hands the focus back to the row it opened from. */

@@ -10,6 +10,7 @@ import { ConfigService } from '../../services/config';
 import { activeOrgInterceptor } from '../interceptors/active-org.interceptor';
 import { ImportResult } from '../models/import-result.model';
 import { TransferJob, TransferJobKind } from '../models/transfer-job.model';
+import type { PartialExportRequest } from './import-export.service';
 import {
     DOWNLOAD_FRAME_LIFETIME_MS,
     StartedTransferJob,
@@ -140,8 +141,8 @@ describe('TransferJobsService', () => {
         it.each<[TransferJobKind, string]>([
             [
                 'export',
-                'The export is taking longer than usual and is still running on the server. Export again later to ' +
-                    'download it.',
+                'The export is taking longer than usual and is still running on the server. Download it from Exports ' +
+                    'and imports once it is ready.',
             ],
             [
                 'import',
@@ -174,6 +175,67 @@ describe('TransferJobsService', () => {
             poll.flush(transferJob({ status: 'completed' }));
 
             expect(outcome.values).toHaveLength(1);
+        });
+
+        describe('who tells how the job ended', () => {
+            let abandoned: string[];
+
+            beforeEach(() => {
+                abandoned = [];
+                service.waitAbandoned$.subscribe((jobId) => abandoned.push(jobId));
+            });
+
+            function endWithStatus(status: 'completed' | 'failed'): void {
+                httpMock.expectOne(JOB_URL).flush(transferJob({ status }));
+            }
+
+            it.each(['completed', 'failed'] as const)('is the wait, once it has passed on a %s job', (status) => {
+                waitForJob();
+                expect(service.isWaitedFor(JOB_ID)).toBe(true);
+
+                endWithStatus(status);
+
+                expect(service.isWaitedFor(JOB_ID)).toBe(false);
+                expect(service.wasEndTold(JOB_ID)).toBe(true);
+                expect(abandoned).toEqual([]);
+            });
+
+            it('is nobody once the only wait was left before the job ended', () => {
+                const subscription = service.waitForJob(STARTED_EXPORT).subscribe();
+                vi.advanceTimersByTime(0);
+                httpMock.expectOne(JOB_URL).flush(transferJob({ status: 'running' }));
+
+                subscription.unsubscribe();
+
+                expect(service.isWaitedFor(JOB_ID)).toBe(false);
+                expect(service.wasEndTold(JOB_ID)).toBe(false);
+                expect(abandoned).toEqual([JOB_ID]);
+            });
+
+            it('is the wait still running when another wait for the same job was left', () => {
+                const left = service.waitForJob(STARTED_EXPORT).subscribe();
+                waitForJob();
+
+                left.unsubscribe();
+
+                expect(service.isWaitedFor(JOB_ID)).toBe(true);
+                expect(abandoned).toEqual([]);
+                httpMock
+                    .match(JOB_URL)
+                    .filter((request) => !request.cancelled)
+                    .forEach((request) => request.flush(transferJob({ status: 'completed' })));
+            });
+
+            it('is nobody once the wait gave up on a job still running', () => {
+                waitForJob();
+
+                for (let waited = 0; waited < TRANSFER_JOB_MAX_WAIT_MS; waited += TRANSFER_JOB_POLL_INTERVAL_MS) {
+                    httpMock.match(JOB_URL).forEach((request) => request.flush(transferJob({ status: 'running' })));
+                    vi.advanceTimersByTime(TRANSFER_JOB_POLL_INTERVAL_MS);
+                }
+
+                expect(abandoned).toEqual([JOB_ID]);
+            });
         });
 
         describe('when a poll fails', () => {
@@ -250,7 +312,7 @@ describe('TransferJobsService', () => {
         beforeEach(() => setUp());
 
         it('remembers the organization it started in and sends the start there', () => {
-            const outcome = observe(service.startCollectionExport([4]));
+            const outcome = observe(service.startExport('collections', { ids: [4] }));
             activeOrg.set(9);
 
             const start = httpMock.expectOne('/api/source-collections/export-jobs/');
@@ -260,7 +322,68 @@ describe('TransferJobsService', () => {
             expect(outcome.values).toEqual([{ id: JOB_ID, kind: 'export', orgId: 7 }]);
         });
 
-        it('uploads the archive as the raw body with the flow import settings in the query', () => {
+        it.each([
+            ['flows', { ids: [1], include_knowledge: true }, '/api/graphs/export-jobs/'],
+            ['collections', { ids: [2] }, '/api/source-collections/export-jobs/'],
+            ['pythonCodeTools', { ids: [3] }, '/api/python-code-tool/export-jobs/'],
+            ['mcpTools', { ids: [4] }, '/api/mcp-tools/export-jobs/'],
+            ['auditFilterPresets', { ids: [5] }, '/api/audit-filter-presets/export-jobs/'],
+            ['sessions', { ids: [6], export_format: 'csv' }, '/api/sessions/export-jobs/'],
+            [
+                'classificationDecisionTables',
+                { ids: [7], export_format: 'json' },
+                '/api/classification-decision-table-node/export-jobs/',
+            ],
+        ] as const)('starts a %s export with its body at %s', (target, body, url) => {
+            observe(service.startExport(target, body as never));
+
+            const start = httpMock.expectOne(url);
+            expect(start.request.method).toBe('POST');
+            expect(start.request.body).toEqual(body);
+            start.flush({ job_id: JOB_ID }, { status: 202, statusText: 'Accepted' });
+        });
+
+        it('starts an export of flow nodes on the flow it belongs to', () => {
+            const body = { agent_node_list: [3], edge_list: [] } as unknown as PartialExportRequest;
+
+            observe(service.startFlowNodesExport(12, body));
+
+            const start = httpMock.expectOne('/api/graphs/12/partial-export-jobs/');
+            expect(start.request.body).toEqual(body);
+            start.flush({ job_id: JOB_ID }, { status: 202, statusText: 'Accepted' });
+        });
+
+        it('tells about every job it started, once the server has accepted it', () => {
+            const started: StartedTransferJob[] = [];
+            service.started$.subscribe((job) => started.push(job));
+
+            observe(service.startExport('mcpTools', { ids: [4] }));
+            expect(started).toEqual([]);
+            httpMock
+                .expectOne('/api/mcp-tools/export-jobs/')
+                .flush({ job_id: JOB_ID }, { status: 202, statusText: 'Accepted' });
+
+            expect(started).toEqual([{ id: JOB_ID, kind: 'export', orgId: 7 }]);
+        });
+
+        it('tells about no job when the server refused to start it', () => {
+            const started: StartedTransferJob[] = [];
+            service.started$.subscribe((job) => started.push(job));
+
+            observe(service.startExport('mcpTools', { ids: [4] }));
+            httpMock
+                .expectOne('/api/mcp-tools/export-jobs/')
+                .flush({ message: 'Too many exports.' }, { status: 429, statusText: 'Too Many Requests' });
+
+            expect(started).toEqual([]);
+        });
+
+        /** The query as the server reads it: `+` is a space there. */
+        function receivedQuery(request: TestRequest): Record<string, string> {
+            return Object.fromEntries(new URL(request.request.urlWithParams, 'http://localhost').searchParams);
+        }
+
+        it('uploads the archive as the raw body with the file name and the flow import settings in the query', () => {
             const archive = new File(['PK'], 'flows.zip');
 
             const outcome = observe(
@@ -276,21 +399,49 @@ describe('TransferJobsService', () => {
             );
             expect(request.request.body).toBe(archive);
             expect(request.request.headers.get('Content-Type')).toBe('application/zip');
-            expect(request.request.params.toString()).toBe(
-                'preserve_uuids=true&replace_existing=true&import_labels=false'
-            );
+            expect(receivedQuery(request)).toEqual({
+                file_name: 'flows.zip',
+                preserve_uuids: 'true',
+                replace_existing: 'true',
+                import_labels: 'false',
+            });
             request.flush({ job_id: JOB_ID }, { status: 202, statusText: 'Accepted' });
             expect(outcome.values).toEqual([{ id: JOB_ID, kind: 'import', orgId: 7 }]);
         });
 
-        it('uploads a collection archive with no query', () => {
+        it('uploads a collection archive with only its file name in the query', () => {
             const archive = new File(['PK'], 'collections.zip');
 
             service.startImport('collections', archive).subscribe();
 
-            const request = httpMock.expectOne('/api/source-collections/import-jobs/');
+            const request = httpMock.expectOne((candidate) => candidate.url === '/api/source-collections/import-jobs/');
             expect(request.request.body).toBe(archive);
-            expect(request.request.params.keys()).toEqual([]);
+            expect(receivedQuery(request)).toEqual({ file_name: 'collections.zip' });
+            request.flush({ job_id: JOB_ID }, { status: 202, statusText: 'Accepted' });
+        });
+
+        it.each([
+            ['keeps reserved characters', 'a+b & c=d?#%.zip', 'a+b & c=d?#%.zip'],
+            ['keeps a name of exactly 255 characters', 'x'.repeat(255), 'x'.repeat(255)],
+            ['cuts a longer name to 255 characters', 'x'.repeat(300), 'x'.repeat(255)],
+            [
+                'counts an emoji as one character and never splits it',
+                `${'x'.repeat(254)}😀😀.zip`,
+                `${'x'.repeat(254)}😀`,
+            ],
+        ])('sends the file name the server keeps: %s', (_case, name, expected) => {
+            service.startImport('collections', new File(['PK'], name)).subscribe();
+
+            const request = httpMock.expectOne((candidate) => candidate.url === '/api/source-collections/import-jobs/');
+            expect(receivedQuery(request)['file_name']).toBe(expected);
+            request.flush({ job_id: JOB_ID }, { status: 202, statusText: 'Accepted' });
+        });
+
+        it('sends no file name for a file without one', () => {
+            service.startImport('collections', new File(['PK'], '')).subscribe();
+
+            const request = httpMock.expectOne((candidate) => candidate.url === '/api/source-collections/import-jobs/');
+            expect(receivedQuery(request)).toEqual({});
             request.flush({ job_id: JOB_ID }, { status: 202, statusText: 'Accepted' });
         });
     });
@@ -300,7 +451,7 @@ describe('TransferJobsService', () => {
 
         async function finishImport(job: TransferJob): Promise<void> {
             httpMock
-                .expectOne('/api/source-collections/import-jobs/')
+                .expectOne((candidate) => candidate.url === '/api/source-collections/import-jobs/')
                 .flush({ job_id: JOB_ID }, { status: 202, statusText: 'Accepted' });
             (await vi.waitFor(() => httpMock.expectOne(JOB_URL))).flush(job);
         }
@@ -374,6 +525,53 @@ describe('TransferJobsService', () => {
 
             vi.advanceTimersByTime(DOWNLOAD_FRAME_LIFETIME_MS);
             expect(document.querySelector('iframe')).toBeNull();
+        });
+    });
+    describe('the list of jobs', () => {
+        beforeEach(() => setUp());
+
+        it('asks for the jobs in each of the statuses and of the kind given', () => {
+            const page = { count: 0, results: [] };
+            let received: unknown = null;
+            service
+                .listJobs({ status: ['queued', 'running'], kind: 'export' })
+                .subscribe((value) => (received = value));
+
+            const request = httpMock.expectOne((candidate) => candidate.url === '/api/transfer-jobs/');
+            expect(request.request.params.getAll('status')).toEqual(['queued', 'running']);
+            expect(request.request.params.get('kind')).toBe('export');
+            request.flush(page);
+
+            expect(received).toEqual(page);
+        });
+
+        it('asks for every job when given no filter', () => {
+            service.listJobs().subscribe();
+
+            const request = httpMock.expectOne((candidate) => candidate.url === '/api/transfer-jobs/');
+            expect(request.request.params.keys()).toEqual([]);
+            request.flush({ count: 0, results: [] });
+        });
+
+        it('deletes a job', () => {
+            const outcome = observe(service.deleteJob(JOB_ID));
+
+            const request = httpMock.expectOne(JOB_URL);
+            expect(request.request.method).toBe('DELETE');
+            request.flush(null, { status: 204, statusText: 'No Content' });
+
+            expect(outcome.completed).toBe(true);
+        });
+
+        it('clears the jobs and emits how many the server deleted', () => {
+            const outcome = observe(service.clearJobs());
+
+            const request = httpMock.expectOne('/api/transfer-jobs/clear/');
+            expect(request.request.method).toBe('POST');
+            request.flush({ deleted: 3 });
+
+            expect(outcome.values).toEqual([3]);
+            expect(outcome.completed).toBe(true);
         });
     });
 });

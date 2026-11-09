@@ -11,8 +11,3 @@ export interface ExcludedExportItem {
     /** Null when the user may not see the name. */
     name: string | null;
 }
-
-export interface ExportResult {
-    blob: Blob;
-    excluded: ExcludedExportEntity[];
-}

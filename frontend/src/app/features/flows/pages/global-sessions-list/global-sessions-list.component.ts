@@ -23,11 +23,12 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
-import { downloadBlob } from '@shared/utils';
-import { catchError, EMPTY, filter, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
+import { catchError, EMPTY, filter, finalize, interval, Subject, switchMap, takeUntil } from 'rxjs';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
-import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
+import { ExportFormat } from '../../../../core/models/transfer-job.model';
+import { TransferExportService } from '../../../../core/services/transfer-export.service';
+import { TransferJobsService } from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
 import { FlowSessionsTableComponent } from '../../components/flow-sessions-dialog/flow-sessions-table.component';
 import { GetGraphLightRequest } from '../../models/graph.model';
@@ -40,6 +41,7 @@ import {
     TriggerType,
 } from '../../services/flows-sessions.service';
 import { SessionDeletionService } from '../../services/session-deletion.service';
+import { sessionExportRequest } from '../../utils/session-export-request.util';
 
 @Component({
     selector: 'app-global-sessions-list',
@@ -96,6 +98,8 @@ export class GlobalSessionsListComponent {
     private static readonly POLL_INTERVAL_MS = 5000;
     private destroyRef = inject(DestroyRef);
     private readonly sessionDeletionService = inject(SessionDeletionService);
+    private readonly transferJobs = inject(TransferJobsService);
+    private readonly transferExport = inject(TransferExportService);
 
     readonly exportItems: ActionDropdownItem[] = [
         { label: 'Export as JSON', value: 'json' },
@@ -106,7 +110,6 @@ export class GlobalSessionsListComponent {
         private graphSessionService: GraphSessionService,
         private flowsApiService: FlowsApiService,
         private router: Router,
-        private importExportService: ImportExportService,
         private toastService: ToastService
     ) {
         effect(() => {
@@ -276,44 +279,25 @@ export class GlobalSessionsListComponent {
         this.currentPage.set(1);
     }
 
+    /** Exports the selected sessions, or every one the filters match, as a background job that outlives the page. */
     public onExport(format: ExportFormat): void {
         if (this.selectedIds().size === 0 && this.totalCount() === 0) {
             return;
         }
         this.isExporting.set(true);
-        let obs$: Observable<Blob>;
-
-        if (this.selectedIds().size > 0) {
-            obs$ = this.importExportService.bulkExportSessions(Array.from(this.selectedIds()), format);
-        } else {
-            const activeStatuses = this.statusFilter().filter((s) => s !== 'all');
-            const selectedFlowNames = this.flowFilter();
-            const selectedFlow =
-                selectedFlowNames.length === 1
-                    ? this.availableFlows().find((f) => f.name === selectedFlowNames[0])
-                    : null;
-            obs$ = this.importExportService.exportAll(
-                {
-                    graph: selectedFlow?.id,
-                    status: activeStatuses.length > 0 ? activeStatuses : undefined,
-                    is_error_cause: this.isErrorCauseFilter() || undefined,
-                },
-                format
-            );
-        }
-
-        obs$.pipe(
-            finalize(() => this.isExporting.set(false)),
-            takeUntilDestroyed(this.destroyRef)
-        ).subscribe({
-            next: (blob) => {
-                downloadBlob(blob, `sessions_export_${Date.now()}.${format}`);
-                this.toastService.success('Sessions exported successfully');
-            },
-            error: () => {
-                this.toastService.error('Failed to export sessions');
-            },
-        });
+        const activeStatuses = this.statusFilter().filter((s) => s !== 'all');
+        const selectedFlowNames = this.flowFilter();
+        const selectedFlow =
+            selectedFlowNames.length === 1 ? this.availableFlows().find((f) => f.name === selectedFlowNames[0]) : null;
+        const request = sessionExportRequest(
+            this.selectedIds(),
+            { graphId: selectedFlow?.id, statuses: activeStatuses, errorCauseOnly: this.isErrorCauseFilter() },
+            format
+        );
+        const start = this.transferJobs
+            .startExport('sessions', request)
+            .pipe(finalize(() => this.isExporting.set(false)));
+        this.transferExport.export(start).subscribe();
     }
 
     public onExportItemSelected(item: ActionDropdownItem): void {

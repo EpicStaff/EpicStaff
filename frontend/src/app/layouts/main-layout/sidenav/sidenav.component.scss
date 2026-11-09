@@ -207,6 +207,12 @@ $logo-padding-bottom: 0.75rem;
             position: absolute;
             top: 2px;
             right: 2px;
+
+            // The exports and imports count: the app's accent purple, not the Chat badge's yellow.
+            &--accent {
+                background-color: var(--accent-color);
+                color: var(--white);
+            }
         }
 
         // A sibling of the item's link (links cannot nest). Its 24px target (WCAG 2.5.8) sits on the icon box's

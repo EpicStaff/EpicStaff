@@ -385,6 +385,12 @@ describe('MyFlowsComponent export action', () => {
         return TestBed.inject(OverlayContainer).getContainerElement();
     }
 
+    function openExportOptions(fixture: ComponentFixture<MyFlowsComponent>, host: HTMLElement): HTMLButtonElement {
+        const menuButton = cardMenuButton(card(host, 'Test Flow 1'));
+        chooseMenuItem(fixture, menuButton, 'Export');
+        return menuButton;
+    }
+
     function includeKnowledgeBox(): HTMLInputElement {
         const option = [...overlayElement().querySelectorAll('label')].find((label) =>
             label.textContent?.includes('Include knowledge data')
@@ -392,19 +398,20 @@ describe('MyFlowsComponent export action', () => {
         return option!.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     }
 
-    function clickExport(fixture: ComponentFixture<MyFlowsComponent>): void {
-        [...overlayElement().querySelectorAll<HTMLButtonElement>('.popover button')]
-            .find((button) => button.textContent?.trim() === 'Export')!
+    function clickDialogButton(fixture: ComponentFixture<MyFlowsComponent>, label: string): void {
+        [...overlayElement().querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+            .find((button) => button.textContent?.trim() === label)!
             .click();
         fixture.detectChanges();
     }
 
-    it("asks for the export options next to the card's menu and exports the flow with knowledge data by default", () => {
+    it('asks for the export options in a dialog and exports the flow with knowledge data by default', () => {
         const { fixture, host } = render({ flows: [FLOW] });
 
-        chooseMenuItem(fixture, cardMenuButton(card(host, 'Test Flow 1')), 'Export');
+        openExportOptions(fixture, host);
+        expect(overlayElement().querySelector('[role="dialog"] h2')?.textContent?.trim()).toBe('Export 1 flow');
         expect(includeKnowledgeBox().checked).toBe(true);
-        clickExport(fixture);
+        clickDialogButton(fixture, 'Export');
 
         const start = TestBed.inject(HttpTestingController).expectOne('/api/graphs/export-jobs/');
         expect(start.request.body).toEqual({ ids: [FLOW.id], include_knowledge: true });
@@ -414,12 +421,45 @@ describe('MyFlowsComponent export action', () => {
     it('exports the flow without knowledge data once the box is cleared', () => {
         const { fixture, host } = render({ flows: [FLOW] });
 
-        chooseMenuItem(fixture, cardMenuButton(card(host, 'Test Flow 1')), 'Export');
+        openExportOptions(fixture, host);
         includeKnowledgeBox().click();
         fixture.detectChanges();
-        clickExport(fixture);
+        clickDialogButton(fixture, 'Export');
 
         const start = TestBed.inject(HttpTestingController).expectOne('/api/graphs/export-jobs/');
         expect(start.request.body).toEqual({ ids: [FLOW.id], include_knowledge: false });
+    });
+
+    it("exports nothing on Cancel and closes back to the card's ⋮ button", async () => {
+        const { fixture, host } = render({ flows: [FLOW] });
+
+        const menuButton = openExportOptions(fixture, host);
+        clickDialogButton(fixture, 'Cancel');
+
+        TestBed.inject(HttpTestingController).expectNone('/api/graphs/export-jobs/');
+        expect(overlayElement().textContent).not.toContain('Include knowledge data');
+        await vi.waitFor(() => expect(document.activeElement).toBe(menuButton));
+    });
+
+    it("closes back to the card's ⋮ button once the export has started, as the menu item is gone", async () => {
+        const { fixture, host } = render({ flows: [FLOW] });
+
+        const menuButton = openExportOptions(fixture, host);
+        clickDialogButton(fixture, 'Export');
+
+        TestBed.inject(HttpTestingController).expectOne('/api/graphs/export-jobs/');
+        await vi.waitFor(() => expect(document.activeElement).toBe(menuButton));
+    });
+
+    it('starts with knowledge data included again after it was cleared and cancelled', () => {
+        const { fixture, host } = render({ flows: [FLOW] });
+
+        openExportOptions(fixture, host);
+        includeKnowledgeBox().click();
+        fixture.detectChanges();
+        clickDialogButton(fixture, 'Cancel');
+        openExportOptions(fixture, host);
+
+        expect(includeKnowledgeBox().checked).toBe(true);
     });
 });

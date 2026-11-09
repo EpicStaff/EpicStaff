@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy
 import { AppSvgIconComponent } from '@shared/components';
 import { Subscription } from 'rxjs';
 
-import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
+import { ToastAction, ToastMessage, ToastPosition, ToastService } from '../toast.service';
 
 @Component({
     selector: 'app-toast',
@@ -13,6 +13,8 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
         <div
             class="toast-container"
             [ngClass]="position"
+            aria-live="polite"
+            aria-relevant="additions"
         >
             @for (toast of toasts; track toast.id) {
                 <div
@@ -20,6 +22,11 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                     animate.leave="toast-leave"
                     class="toast-item"
                     [ngClass]="toast.type"
+                    [attr.role]="toast.type === 'error' ? 'alert' : null"
+                    (mouseenter)="holdAutoClose(toast.id)"
+                    (mouseleave)="releaseAutoClose(toast.id)"
+                    (focusin)="holdAutoClose(toast.id)"
+                    (focusout)="releaseAutoClose(toast.id)"
                 >
                     <div class="toast-content">
                         <div class="toast-icon-wrapper">
@@ -34,8 +41,19 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                             >{{ toast.message }}</span
                         >
                     </div>
+                    @if (toast.action; as action) {
+                        <button
+                            type="button"
+                            class="toast-action-btn text-body-medium"
+                            (click)="runAction(toast.id, action); $event.stopPropagation()"
+                        >
+                            {{ action.label }}
+                        </button>
+                    }
                     <button
+                        type="button"
                         class="toast-close-btn"
+                        aria-label="Close notification"
                         (click)="closeToast(toast.id); $event.stopPropagation()"
                     >
                         <app-svg-icon
@@ -160,6 +178,25 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 }
             }
 
+            .toast-action-btn {
+                flex-shrink: 0;
+                padding: 4px 8px;
+                border: 0;
+                border-radius: 4px;
+                background: transparent;
+                color: var(--accent-color);
+                cursor: pointer;
+
+                &:hover {
+                    background: var(--color-ghost-btn-hover);
+                }
+
+                &:focus-visible {
+                    outline: 2px solid var(--accent-color);
+                    outline-offset: -2px;
+                }
+            }
+
             .toast-close-btn {
                 background: transparent;
                 border: none;
@@ -279,6 +316,19 @@ export class ToastComponent implements OnInit, OnDestroy {
 
     public closeToast(id: number): void {
         this.toastService.remove(id);
+    }
+
+    protected holdAutoClose(id: number): void {
+        this.toastService.holdAutoClose(id);
+    }
+
+    protected releaseAutoClose(id: number): void {
+        this.toastService.releaseAutoClose(id);
+    }
+
+    protected runAction(id: number, action: ToastAction): void {
+        this.toastService.remove(id);
+        action.run();
     }
 
     public getIconId(type: string): string {

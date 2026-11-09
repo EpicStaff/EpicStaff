@@ -18,7 +18,8 @@ export const EXPORT_PROGRESS_MESSAGE = 'Preparing export…';
  * Exports as a background job: shows the progress, downloads the archive once it is ready and warns
  * about what was left out. A failure is shown as a toast and the observable completes without emitting.
  *
- * Not tied to the page that started it: an export the user started still downloads after they leave.
+ * Not tied to the page that started it: an export the user started still downloads after they leave. Every job
+ * started here also shows in the jobs panel (TransferJobsStoreService follows each start).
  */
 @Injectable({
     providedIn: 'root',
@@ -36,7 +37,7 @@ export class TransferExportService {
 
     /** Emits the finished job once its download has started. */
     exportFlows(ids: number[], includeKnowledge: boolean): Observable<TransferJob> {
-        return this.exportAndDownload(this.transferJobs.startFlowExport(ids, includeKnowledge));
+        return this.export(this.transferJobs.startExport('flows', { ids, include_knowledge: includeKnowledge }));
     }
 
     /**
@@ -50,13 +51,17 @@ export class TransferExportService {
                 return EMPTY;
             }
             this.countCollectionExports(ids, 1);
-            return this.exportAndDownload(this.transferJobs.startCollectionExport(ids)).pipe(
+            return this.export(this.transferJobs.startExport('collections', { ids })).pipe(
                 finalize(() => this.countCollectionExports(ids, -1))
             );
         });
     }
 
-    private exportAndDownload(start: Observable<StartedTransferJob>): Observable<TransferJob> {
+    /**
+     * Runs the export that `start` starts (a `TransferJobsService` start), and emits the finished job once its
+     * download has started. A failed start is shown like a failed job: subscribers see no error.
+     */
+    export(start: Observable<StartedTransferJob>): Observable<TransferJob> {
         return start.pipe(
             switchMap((started) =>
                 this.transferJobs

@@ -85,10 +85,6 @@ export class McpToolsService {
         );
     }
 
-    exportMcpTool(toolId: number): Observable<Blob> {
-        return this.http.get(`${this.baseUrl}${toolId}/export/`, { responseType: 'blob' });
-    }
-
     updateMcpTool(id: number, tool: CreateMcpToolRequest): Observable<GetMcpToolRequest> {
         return this.http.put<GetMcpToolRequest>(`${this.baseUrl}${id}/`, tool, {
             headers: this.httpHeaders,
@@ -123,14 +119,6 @@ export class McpToolsService {
         const body = { ids };
         return this.http.post<BulkDeleteToolsResponse>(`${this.baseUrl}bulk-delete/`, body, {
             headers: this.httpHeaders,
-        });
-    }
-
-    bulkExportMcpTool(ids: number[]): Observable<Blob> {
-        const body = { ids };
-        return this.http.post(`${this.baseUrl}bulk-export/`, body, {
-            headers: this.httpHeaders,
-            responseType: 'blob',
         });
     }
 

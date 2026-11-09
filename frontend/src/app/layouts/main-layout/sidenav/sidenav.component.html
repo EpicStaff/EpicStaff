@@ -110,7 +110,7 @@
                     [cdkConnectedOverlayPush]="true"
                     (attach)="focusOpenedPopover()"
                     (detach)="onPopoverDetach('switcher')"
-                    (overlayOutsideClick)="closeLists()"
+                    (overlayOutsideClick)="onPopoverOutsideClick($event)"
                     (overlayKeydown)="onPopoverKeydown($event, switcherRow)"
                 >
                     <div
@@ -277,7 +277,7 @@
                         [cdkConnectedOverlayPush]="true"
                         (attach)="focusOpenedPopover()"
                         (detach)="onPopoverDetach('apps')"
-                        (overlayOutsideClick)="closeLists()"
+                        (overlayOutsideClick)="onPopoverOutsideClick($event)"
                         (overlayKeydown)="onPopoverKeydown($event, appsRow)"
                     >
                         <div
@@ -368,6 +368,85 @@
             }
         }
 
+        @if (!appContext()) {
+            <li
+                class="sidenav-nav-item"
+                cdkOverlayOrigin
+                #jobsOrigin="cdkOverlayOrigin"
+            >
+                <button
+                    #jobsRow
+                    type="button"
+                    class="sidenav-nav-link sidenav-nav-button"
+                    data-test="sidenav-jobs-row"
+                    [class.active]="openList() === 'jobs'"
+                    [attr.aria-expanded]="openList() === 'jobs'"
+                    [attr.aria-haspopup]="listsInline() ? null : 'dialog'"
+                    [attr.aria-controls]="listsInline() && openList() === 'jobs' ? 'sidenav-jobs-list' : null"
+                    [attr.aria-label]="isExpanded() ? null : jobsRowLabel()"
+                    [matTooltip]="jobsLabel"
+                    matTooltipPosition="right"
+                    [matTooltipDisabled]="isExpanded() || openList() === 'jobs'"
+                    (click)="toggleList('jobs')"
+                >
+                    <div class="sidenav-link-icon">
+                        <i
+                            class="sidenav-font-icon ti ti-arrows-transfer-up-down"
+                            aria-hidden="true"
+                        ></i>
+                        @if (unfinishedJobsCount(); as count) {
+                            <span
+                                class="sidenav-badge sidenav-badge--accent"
+                                data-test="sidenav-jobs-badge"
+                                aria-hidden="true"
+                                >{{ count > 99 ? '99+' : count }}</span
+                            >
+                        }
+                    </div>
+                    @if (isExpanded()) {
+                        <span class="sidenav-row-label text-body-medium">{{ jobsLabel }}</span>
+                        @if (unfinishedJobsCount(); as count) {
+                            <span class="visually-hidden">, {{ count }} in progress</span>
+                        }
+                        <app-svg-icon
+                            class="sidenav-row-trail"
+                            [icon]="listsInline() && openList() === 'jobs' ? 'chevron-down' : 'chevron-right'"
+                            size="1rem"
+                        />
+                    }
+                </button>
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="jobsOrigin"
+                    [cdkConnectedOverlayOpen]="openList() === 'jobs' && !listsInline()"
+                    [cdkConnectedOverlayPositions]="popoverPositions"
+                    [cdkConnectedOverlayPush]="true"
+                    (attach)="focusOpenedPopover()"
+                    (detach)="onPopoverDetach('jobs')"
+                    (overlayOutsideClick)="onPopoverOutsideClick($event)"
+                    (overlayKeydown)="onPopoverKeydown($event, jobsRow)"
+                >
+                    <div
+                        #appsListTrap
+                        class="sidenav-popover"
+                        role="dialog"
+                        [attr.aria-label]="jobsLabel"
+                        cdkTrapFocus
+                    >
+                        <app-transfer-jobs-panel variant="popover" />
+                    </div>
+                </ng-template>
+            </li>
+            @if (listsInline() && openList() === 'jobs') {
+                <li
+                    id="sidenav-jobs-list"
+                    class="sidenav-inline-list"
+                >
+                    <app-transfer-jobs-panel variant="inline" />
+                </li>
+            }
+        }
+
         @if (showsHelp()) {
             <li
                 class="sidenav-nav-item"
@@ -411,7 +490,7 @@
                     [cdkConnectedOverlayPush]="true"
                     (attach)="focusOpenedPopover()"
                     (detach)="onPopoverDetach('help')"
-                    (overlayOutsideClick)="closeLists()"
+                    (overlayOutsideClick)="onPopoverOutsideClick($event)"
                     (overlayKeydown)="onPopoverKeydown($event, helpRow)"
                 >
                     <div

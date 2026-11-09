@@ -85,20 +85,12 @@
                 @if (selectMode()) {
                     <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Export]">
                         <app-button
-                            #exportOriginEl="cdkOverlayOrigin"
-                            cdkOverlayOrigin
                             type="primary"
                             [disabled]="selectedFlowIds().length === 0"
-                            (click)="toggleExportOptions()"
+                            (click)="exportSelectedFlows()"
                         >
                             {{ exportSelectedLabel() }}
                         </app-button>
-                        <app-export-flow-options-popover
-                            [origin]="exportOriginEl"
-                            [open]="exportOptionsOpen()"
-                            (closed)="closeExportOptions()"
-                            (exportRequested)="confirmExport($event)"
-                        />
                     </ng-container>
                 } @else {
                     <div

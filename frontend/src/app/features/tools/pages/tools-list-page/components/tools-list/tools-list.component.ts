@@ -31,16 +31,19 @@ import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
 import {
     buildPreviewImportResult,
-    downloadBlob,
+    exportEnvelopeFile,
     extractHttpErrorMessage,
     ImportFileData,
     isFocusLost,
     movedToRecycleBinMessage,
+    readExportEnvelope,
 } from '@shared/utils';
 import { EMPTY, from, Observable, of } from 'rxjs';
 import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
 import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
+import { TransferExportService } from '../../../../../../core/services/transfer-export.service';
+import { describeTransferError } from '../../../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import { ImportReviewDialogComponent } from '../../../../../flows/components/import-review-dialog/import-review-dialog.component';
@@ -101,6 +104,7 @@ export class ToolsListComponent implements OnInit {
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
     private readonly port = inject<ToolsListPort<Tool>>(TOOLS_LIST_PORT);
+    private readonly transferExport = inject(TransferExportService);
 
     public readonly viewState = inject(ToolsViewStorageService);
 
@@ -268,15 +272,7 @@ export class ToolsListComponent implements OnInit {
                     });
                 return;
             case 'export':
-                this.port
-                    .exportOne(payload.tool.id)
-                    .pipe(takeUntilDestroyed(this.destroyRef))
-                    .subscribe({
-                        next: (blob) => downloadBlob(blob, this.port.exportFileName(payload.tool.name)),
-                        error: (err: HttpErrorResponse) => {
-                            this.handleStaleResource(err, `Failed to export "${payload.tool.name}".`);
-                        },
-                    });
+                this.exportTools([payload.tool.id]);
                 return;
             case 'view_details': {
                 const tool = this.findToolById(payload.tool.id);
@@ -374,18 +370,17 @@ export class ToolsListComponent implements OnInit {
     private handleImport(): void {
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.json,application/json';
+        input.accept = '.json,.zip';
         input.onchange = (event: Event) => {
             const file = (event.target as HTMLInputElement).files?.[0];
             if (!file) return;
 
-            from(file.text())
+            from(readExportEnvelope(file))
                 .pipe(
-                    map((text) => this._parseFileData(text)),
-                    switchMap((fileData) => this._importToolFile(file, fileData)),
-                    catchError((err: HttpErrorResponse) => {
+                    switchMap(({ data }) => this._importToolFile(file, data)),
+                    catchError((error: unknown) => {
                         this.toastService.error(
-                            extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
+                            describeTransferError(error, `Failed to read the ${this.port.entityLabel} file.`)
                         );
                         return EMPTY;
                     }),
@@ -396,16 +391,12 @@ export class ToolsListComponent implements OnInit {
         input.click();
     }
 
-    private _parseFileData(text: string): ImportFileData {
-        try {
-            return JSON.parse(text) as ImportFileData;
-        } catch {
-            return {};
-        }
-    }
-
+    /**
+     * Inspects only the file's envelope, so an archive's files stay on the user's machine, and imports the file the
+     * user chose, a `.zip` archive or a plain `.json` export.
+     */
     private _importToolFile(file: File, fileData: ImportFileData): Observable<unknown> {
-        return this.port.inspectFile(file).pipe(
+        return this.port.inspectFile(exportEnvelopeFile(fileData)).pipe(
             switchMap((inspection) => {
                 if (!hasReviewableItems(inspection.review_items)) {
                     return this.port.importFile(file).pipe(
@@ -453,17 +444,7 @@ export class ToolsListComponent implements OnInit {
             this.toastService.info('Select at least one tool to export.');
             return;
         }
-        this.port
-            .bulkExport(ids)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (blob) => downloadBlob(blob, this.port.bulkExportFileName()),
-                error: (err: HttpErrorResponse) => {
-                    this.toastService.error(
-                        err.error?.message || `Failed to export selected ${this.port.entityLabelPlural}.`
-                    );
-                },
-            });
+        this.exportTools(ids);
     }
 
     private openIncludeExcludeDialog(initialTab: IncludeExcludeTab): void {
@@ -740,6 +721,23 @@ export class ToolsListComponent implements OnInit {
 
     public reload(): void {
         this.loadTools();
+    }
+
+    /**
+     * Exports the tools as a background job, which outlives this page. TransferExportService reports a failure; a
+     * tool that is gone (404, 410) also refreshes the list.
+     */
+    private exportTools(ids: number[]): void {
+        const start = this.port.startExport(ids).pipe(
+            tap({
+                error: (error: unknown) => {
+                    if (error instanceof HttpErrorResponse && (error.status === 404 || error.status === 410)) {
+                        this.loadTools();
+                    }
+                },
+            })
+        );
+        this.transferExport.export(start).subscribe();
     }
 
     private handleStaleResource(err: HttpErrorResponse, defaultMessage: string): void {

@@ -1,0 +1,154 @@
+<div class="transfer-jobs-panel__head">
+    @if (variant() === 'popover') {
+        <span class="transfer-jobs-panel__heading text-body-bold">{{ heading }}</span>
+    }
+    <!-- aria-disabled, not disabled: it keeps the focus the dialog gives back, and its hint stays reachable by keyboard. -->
+    <app-button
+        class="transfer-jobs-panel__clear-all"
+        type="ghost"
+        mod="small"
+        data-test="transfer-jobs-clear-all"
+        [ariaDisabled]="!canClearAll() || isClearingAll()"
+        [tooltip]="clearAllHint()"
+        (click)="clearAll()"
+        >Clear all</app-button
+    >
+</div>
+
+@if (isLoading()) {
+    <p
+        class="transfer-jobs-panel__state text-body-small"
+        role="status"
+    >
+        <span
+            class="transfer-jobs-panel__spinner"
+            aria-hidden="true"
+        ></span>
+        Loading…
+    </p>
+} @else if (loadFailed()) {
+    <div class="transfer-jobs-panel__state text-body-small">
+        <span role="alert">Could not load your exports and imports.</span>
+        <app-button
+            type="ghost"
+            mod="small"
+            (click)="reload()"
+            >Try again</app-button
+        >
+    </div>
+} @else {
+    <ul
+        class="transfer-jobs-panel__items"
+        [attr.aria-label]="heading"
+    >
+        @for (row of rows(); track row.job.id) {
+            <!-- tabindex: takes the focus when the last "show more" removes the button that held it. -->
+            <li
+                #jobRow
+                class="transfer-jobs-panel__item"
+                tabindex="-1"
+                data-test="transfer-job"
+            >
+                <div class="transfer-jobs-panel__item-main">
+                    <span
+                        class="transfer-jobs-panel__name text-body-medium"
+                        [matTooltip]="row.name"
+                        appTooltipOnOverflow
+                        >{{ row.name }}</span
+                    >
+                    <span class="transfer-jobs-panel__description text-caption">{{ row.description }}</span>
+                    <span class="transfer-jobs-panel__meta text-caption">
+                        <span
+                            class="transfer-jobs-panel__status"
+                            [class.transfer-jobs-panel__status--completed]="row.status === 'completed'"
+                            [class.transfer-jobs-panel__status--failed]="row.status === 'failed'"
+                            data-test="transfer-job-status"
+                        >
+                            @if (row.inProgress) {
+                                <span
+                                    class="transfer-jobs-panel__spinner"
+                                    aria-hidden="true"
+                                ></span>
+                            }
+                            {{ row.statusLabel }}
+                        </span>
+                        @if (row.availableUntil) {
+                            <span data-test="transfer-job-available-until"
+                                >· Available until {{ row.availableUntil | date: 'MMM d, h:mm a' }}</span
+                            >
+                        }
+                    </span>
+                    @if (row.errorMessage) {
+                        <span
+                            class="transfer-jobs-panel__error text-caption"
+                            data-test="transfer-job-error"
+                            >{{ row.errorMessage }}</span
+                        >
+                    }
+                </div>
+                <div
+                    class="transfer-jobs-panel__actions"
+                    data-test="transfer-job-actions"
+                >
+                    @if (row.canDownload) {
+                        <button
+                            class="transfer-jobs-panel__action"
+                            type="button"
+                            [attr.aria-label]="'Download ' + row.name"
+                            matTooltip="Download"
+                            (click)="download(row.job)"
+                        >
+                            <app-svg-icon
+                                icon="download"
+                                size="0.875rem"
+                            />
+                        </button>
+                    }
+                    <!-- aria-disabled, not disabled: the hint saying why stays reachable by hover and focus. -->
+                    <button
+                        class="transfer-jobs-panel__action"
+                        type="button"
+                        [attr.aria-label]="'Clear ' + row.name"
+                        [attr.aria-disabled]="!row.canClear || null"
+                        [matTooltip]="row.clearHint"
+                        (click)="clear(row)"
+                    >
+                        <app-svg-icon
+                            icon="x"
+                            size="1rem"
+                        />
+                    </button>
+                </div>
+            </li>
+        } @empty {
+            <li class="transfer-jobs-panel__state text-body-small">No exports or imports yet.</li>
+        }
+    </ul>
+    @if (showsMoreButton()) {
+        <div
+            class="transfer-jobs-panel__more"
+            data-test="transfer-jobs-more"
+        >
+            @if (loadMoreFailed()) {
+                <span
+                    class="transfer-jobs-panel__more-error text-caption"
+                    role="alert"
+                    >Could not load more.</span
+                >
+            }
+            @if (isLoadingMore()) {
+                <span
+                    class="transfer-jobs-panel__spinner"
+                    aria-hidden="true"
+                ></span>
+            }
+            <app-button
+                type="ghost"
+                mod="small"
+                [ariaDisabled]="isLoadingMore()"
+                (click)="showMore()"
+                >{{ moreLabel() }}</app-button
+            >
+        </div>
+    }
+}

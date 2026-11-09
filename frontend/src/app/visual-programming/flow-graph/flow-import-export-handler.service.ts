@@ -2,13 +2,13 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NodeType } from '@shared/models';
-import { downloadBlob, showExportExclusionWarning } from '@shared/utils';
 
-import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
+import { PartialExportRequest } from '../../core/services/import-export.service';
+import { TransferExportService } from '../../core/services/transfer-export.service';
+import { TransferJobsService } from '../../core/services/transfer-jobs.service';
 import { GraphContentDto } from '../../features/flows/models/graph.model';
 import { FlowCopyImportFacadeService } from '../../features/flows/services/flow-copy-import-facade.service';
 import { ToastService } from '../../services/notifications';
-import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
 import { FlowService } from '../services/flow.service';
 import { FlowSelectionManagerService } from './flow-selection-manager.service';
 
@@ -16,8 +16,9 @@ import { FlowSelectionManagerService } from './flow-selection-manager.service';
 export type ImportedContentHandler = (content: GraphContentDto) => boolean;
 
 /**
- * Handles import and export operations for the flow graph: partial/full JSON export,
- * CSV export and partial import.
+ * Handles import and export operations for the flow graph: partial/full export of nodes,
+ * CSV export of classification decision tables and partial import. Exports run as
+ * background jobs and download a `.zip`.
  *
  * Provided at the FlowGraphComponent level — one instance per editor.
  */
@@ -25,9 +26,9 @@ export type ImportedContentHandler = (content: GraphContentDto) => boolean;
 export class FlowImportExportService {
     private readonly flowService = inject(FlowService);
     private readonly selectionManager = inject(FlowSelectionManagerService);
-    private readonly importExportService = inject(ImportExportService);
+    private readonly transferJobs = inject(TransferJobsService);
+    private readonly transferExport = inject(TransferExportService);
     private readonly flowCopyImportFacade = inject(FlowCopyImportFacadeService);
-    private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
 
@@ -49,36 +50,24 @@ export class FlowImportExportService {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
-        const selectedIds = this.selectionManager.selectedNodeIds();
-        const nodes = this.flowService.nodes();
+        const selectedIds = new Set(this.selectionManager.selectedNodeIds());
+        // The CSV export exists for classification decision tables only, one table per job.
+        const tableIds = this.flowService
+            .nodes()
+            .filter((node) => selectedIds.has(node.id) && node.type === NodeType.CLASSIFICATION_TABLE)
+            .map((node) => node.backendId)
+            .filter((backendId): backendId is number => backendId !== null);
 
-        for (const id of selectedIds) {
-            const node = nodes.find((n) => n.id === id);
-
-            if (!node || node.backendId === null) {
-                continue;
-            }
-
-            this.importExportService
-                .cdtExport(node.backendId, 'json')
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe({
-                    next: (blob) => {
-                        blob.text()
-                            .then((text) => {
-                                const parsed = JSON.parse(text) as Record<string, unknown>;
-                                const exportData = this.cdtExportImportService.partialExportNodeToCdtExportData(parsed);
-                                const csv = this.cdtExportImportService.exportToCsv(exportData);
-                                this.cdtExportImportService.downloadFile(
-                                    csv,
-                                    node.node_name + '.csv',
-                                    'text/csv;charset=utf-8;'
-                                );
-                            })
-                            .catch(() => this.toastService.error('Export failed', 3000, 'bottom-right'));
-                    },
-                    error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
-                });
+        for (const tableId of tableIds) {
+            // Not tied to the editor: an export the user started still downloads after they leave it.
+            this.transferExport
+                .export(
+                    this.transferJobs.startExport('classificationDecisionTables', {
+                        ids: [tableId],
+                        export_format: 'csv',
+                    })
+                )
+                .subscribe();
         }
     }
 
@@ -101,13 +90,14 @@ export class FlowImportExportService {
     // ── Import ─────────────────────────────────────────────────────
 
     /**
-     * Picks a node bundle file and hands the backend's unsaved `content` for it to `onImported`; nothing is
-     * written to the flow, so the caller adds the nodes to the canvas and the flow save persists them.
+     * Picks a node bundle file (a `.zip` export or a plain `.json`) and hands the backend's unsaved `content` for
+     * it to `onImported`; nothing is written to the flow, so the caller adds the nodes to the canvas and the flow
+     * save persists them.
      */
     onImportNodes(currentFlowId: number, onImported: ImportedContentHandler): void {
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.json';
+        input.accept = '.json,.zip';
         input.value = '';
         input.onchange = (e: Event) => {
             const file = (e.target as HTMLInputElement).files?.[0];
@@ -121,31 +111,26 @@ export class FlowImportExportService {
 
     private triggerPartialExport(nodeIds: string[], currentFlowId: number): void {
         const body = this.buildPartialExportBody(nodeIds);
-        const filename = nodeIds.length > 0 ? 'selected-nodes.json' : 'all-nodes.json';
-        this.importExportService
-            .partialExport(currentFlowId, body)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: ({ blob, excluded }) => {
-                    downloadBlob(blob, filename);
-                    const count = Object.entries(body)
-                        .filter(([key]) => key !== 'edge_list')
-                        .reduce((sum, [, list]) => sum + (list as number[]).length, 0);
-                    const isExportAll = nodeIds.length === 0;
-                    const hasStartOrEnd =
-                        !isExportAll &&
-                        this.flowService
-                            .nodes()
-                            .some(
-                                (n) => nodeIds.includes(n.id) && (n.type === NodeType.START || n.type === NodeType.END)
-                            );
-                    const suffix = isExportAll || hasStartOrEnd ? ' (Start and End nodes excluded)' : '';
-                    this.toastService.success(`${count} nodes exported as JSON${suffix}`, 3000, 'bottom-right');
+        const successMessage = this.describePartialExport(nodeIds, body);
+        // Not tied to the editor: an export the user started still downloads after they leave it. The exclusion
+        // warning and the failure toast come from the transfer export.
+        this.transferExport
+            .export(this.transferJobs.startFlowNodesExport(currentFlowId, body))
+            .subscribe(() => this.toastService.success(successMessage, 3000, 'bottom-right'));
+    }
 
-                    showExportExclusionWarning(this.toastService, excluded, 'bottom-right');
-                },
-                error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
-            });
+    private describePartialExport(nodeIds: string[], body: PartialExportRequest): string {
+        const count = Object.entries(body)
+            .filter(([key]) => key !== 'edge_list')
+            .reduce((sum, [, list]) => sum + (list as number[]).length, 0);
+        const isExportAll = nodeIds.length === 0;
+        const hasStartOrEnd =
+            !isExportAll &&
+            this.flowService
+                .nodes()
+                .some((n) => nodeIds.includes(n.id) && (n.type === NodeType.START || n.type === NodeType.END));
+        const suffix = isExportAll || hasStartOrEnd ? ' (Start and End nodes excluded)' : '';
+        return `${count} ${count === 1 ? 'node' : 'nodes'} exported as a .zip archive${suffix}`;
     }
 
     private buildPartialExportBody(selectedIds: string[]): PartialExportRequest {

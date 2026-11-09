@@ -5,6 +5,7 @@ import { GetPythonCodeToolRequest } from '@shared/models';
 import { Observable } from 'rxjs';
 
 import { InspectResult } from '../../../../../../core/models/review-item.model';
+import { StartedTransferJob, TransferJobsService } from '../../../../../../core/services/transfer-jobs.service';
 import { CreateCustomToolDialogComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../../../models/tool-config.model';
 import { CustomToolsService } from '../../../../services/custom-tools/custom-tools.service';
@@ -17,6 +18,7 @@ import { ToolsListPort } from './tools-list-port';
 export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> {
     private readonly service = inject(CustomToolsService);
     private readonly events = inject(ToolsEventsService);
+    private readonly transferJobs = inject(TransferJobsService);
     private readonly destroyRef = inject(DestroyRef);
 
     public readonly kind: ToolKind = 'custom';
@@ -49,12 +51,6 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
     public descriptionOf(t: GetPythonCodeToolRequest): string {
         return t.description;
     }
-    public exportFileName(toolName: string): string {
-        return `${toolName}.json`;
-    }
-    public bulkExportFileName(): string {
-        return `python-code-tools-export-${Date.now()}.json`;
-    }
 
     public getAll(): Observable<GetPythonCodeToolRequest[]> {
         return this.service.getPythonCodeTools();
@@ -62,11 +58,8 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
     public copy(id: number): Observable<GetPythonCodeToolRequest> {
         return this.service.copyPythonCodeTool(id);
     }
-    public exportOne(id: number): Observable<Blob> {
-        return this.service.exportPythonCodeTool(id);
-    }
-    public bulkExport(ids: number[]): Observable<Blob> {
-        return this.service.bulkExportPythonCodeTool(ids);
+    public startExport(ids: number[]): Observable<StartedTransferJob> {
+        return this.transferJobs.startExport('pythonCodeTools', { ids });
     }
     public patchLabels(id: number, labelIds: number[]): Observable<GetPythonCodeToolRequest> {
         return this.service.patchPythonCodeTool(id, { labels: labelIds });
