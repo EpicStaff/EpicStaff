@@ -123,8 +123,7 @@ class McpToolGateway:
 
         if tool is None:
             raise McpToolError(
-                f"Tool '{data.tool_name}' not found on MCP server at "
-                f"{url_origin(data.transport)}"
+                f"Tool '{data.tool_name}' not found on MCP server at {url_origin(data.transport)}"
             )
 
         # The input schema reaches the model next to the description, so it gets the
