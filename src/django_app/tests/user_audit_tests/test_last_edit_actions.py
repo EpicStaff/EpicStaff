@@ -91,7 +91,7 @@ def test_editing_python_node_code_records_updated_node_in_flow(
     )
 
     [event] = sent_events
-    assert _target(event) == ("updated", "python node", str(python_node.id), "Fetch invoices")
+    assert _target(event) == ("updated", "python code node", str(python_node.id), "Fetch invoices")
     assert _parent(event) == ("flow", str(flow.id), "Billing flow")
     assert event.org_id == default_org.id
     assert event.previous_name is None
@@ -135,7 +135,7 @@ def test_adding_a_node_records_created_node_not_updated_flow(
 
     created = PythonNode.objects.get(graph=flow)
     [event] = sent_events
-    assert _target(event) == ("created", "python node", str(created.id), "Send reminders")
+    assert _target(event) == ("created", "python code node", str(created.id), "Send reminders")
     assert _parent(event) == ("flow", str(flow.id), "Billing flow")
 
 
@@ -255,7 +255,7 @@ def test_editing_key_value_entry_records_updated_table(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     [event] = sent_events
-    assert _target(event) == ("updated", "key value table", str(table.id), "Customers")
+    assert _target(event) == ("updated", "key-value table", str(table.id), "Customers")
     assert event.org_id == default_org.id
 
 

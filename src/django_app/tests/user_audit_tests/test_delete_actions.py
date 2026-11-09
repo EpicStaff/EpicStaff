@@ -280,7 +280,7 @@ def test_graph_save_deleting_node_records_deleted_node_in_flow(
     # Gone for good, not binned: so "deleted" is what happened.
     assert not PythonNode.all_objects.filter(pk=node.pk).exists()
     [event] = sent_events
-    assert _target(event) == ("deleted", "python node", str(node.id), "Fetch invoices")
+    assert _target(event) == ("deleted", "python code node", str(node.id), "Fetch invoices")
     assert _parent(event) == ("flow", str(flow.id), "Billing flow")
     assert event.org_id == acme.id
 
@@ -318,7 +318,7 @@ def test_rest_node_delete_records_deleted_node_in_flow(
     assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
     assert not PythonNode.all_objects.filter(pk=node.pk).exists()
     [event] = sent_events
-    assert _target(event) == ("deleted", "python node", str(node.id), "Fetch invoices")
+    assert _target(event) == ("deleted", "python code node", str(node.id), "Fetch invoices")
     assert _parent(event) == ("flow", str(flow.id), "Billing flow")
     assert event.org_id == acme.id
 

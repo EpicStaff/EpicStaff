@@ -139,7 +139,7 @@ def _hook_events(sent_events) -> list:
 
 
 def _collection_updated(collection) -> tuple:
-    return ("updated", "source collection", str(collection.pk), collection.collection_name)
+    return ("updated", "knowledge collection", str(collection.pk), collection.collection_name)
 
 
 # ---- documents ----
@@ -166,11 +166,11 @@ def test_document_upload_records_each_document_created_in_its_collection(
     documents = {document.file_name: document for document in collection.documents.all()}
     events = _hook_events(sent_events)
     assert sorted(_target(event) for event in events) == [
-        ("created", "document", str(documents["first.txt"].pk), "first.txt"),
-        ("created", "document", str(documents["second.txt"].pk), "second.txt"),
+        ("created", "collection file", str(documents["first.txt"].pk), "first.txt"),
+        ("created", "collection file", str(documents["second.txt"].pk), "second.txt"),
     ]
     assert {_parent(event) for event in events} == {
-        ("source collection", str(collection.pk), "Manuals")
+        ("knowledge collection", str(collection.pk), "Manuals")
     }
     assert {event.org_id for event in events} == {acme.id}
 
@@ -194,8 +194,8 @@ def test_document_import_from_storage_records_the_document_created(
     assert response.status_code == status.HTTP_201_CREATED, response.content
     document = collection.documents.get()
     [event] = _hook_events(sent_events)
-    assert _target(event) == ("created", "document", str(document.pk), "plan.txt")
-    assert _parent(event) == ("source collection", str(collection.pk), "Manuals")
+    assert _target(event) == ("created", "collection file", str(document.pk), "plan.txt")
+    assert _parent(event) == ("knowledge collection", str(collection.pk), "Manuals")
 
 
 def test_document_copy_records_the_copy_under_the_target_collection(
@@ -215,8 +215,8 @@ def test_document_copy_records_the_copy_under_the_target_collection(
     assert response.status_code == status.HTTP_201_CREATED, response.content
     copy = collection.documents.get()
     [event] = _hook_events(sent_events)
-    assert _target(event) == ("copied", "document", str(copy.pk), "guide.txt")
-    assert _parent(event) == ("source collection", str(collection.pk), "Manuals")
+    assert _target(event) == ("copied", "collection file", str(copy.pk), "guide.txt")
+    assert _parent(event) == ("knowledge collection", str(collection.pk), "Manuals")
 
 
 def test_document_copy_that_skips_everything_records_nothing(
@@ -253,8 +253,8 @@ def test_document_bulk_delete_records_each_document_deleted(
     assert response.status_code == status.HTTP_200_OK, response.content
     assert not DocumentMetadata.objects.filter(document_id=document_id).exists()
     [event] = _hook_events(sent_events)
-    assert _target(event) == ("deleted", "document", str(document_id), "guide.txt")
-    assert _parent(event) == ("source collection", str(collection.pk), "Manuals")
+    assert _target(event) == ("deleted", "collection file", str(document_id), "guide.txt")
+    assert _parent(event) == ("knowledge collection", str(collection.pk), "Manuals")
 
 
 # ---- imports ----
@@ -343,7 +343,7 @@ def test_naive_rag_create_records_the_rag_created_under_its_collection(
     rag = NaiveRag.objects.get(base_rag_type__source_collection=collection)
     [event] = _hook_events(sent_events)
     assert _target(event) == ("created", "naive RAG", str(rag.pk), "Manuals")
-    assert _parent(event) == ("source collection", str(collection.pk), "Manuals")
+    assert _parent(event) == ("knowledge collection", str(collection.pk), "Manuals")
 
 
 @pytest.mark.parametrize("change_embedder", [True, False], ids=["changed", "unchanged"])
@@ -381,7 +381,7 @@ def test_graph_rag_create_records_the_rag_created_under_its_collection(
     rag = GraphRag.objects.get(base_rag_type__source_collection=collection)
     [event] = _hook_events(sent_events)
     assert _target(event) == ("created", "graph RAG", str(rag.pk), "Manuals")
-    assert _parent(event) == ("source collection", str(collection.pk), "Manuals")
+    assert _parent(event) == ("knowledge collection", str(collection.pk), "Manuals")
 
 
 @pytest.mark.parametrize("has_new_document", [True, False], ids=["new-document", "nothing-new"])
@@ -566,7 +566,7 @@ def test_default_models_change_records_them_updated_once(
     assert unchanged.status_code == status.HTTP_200_OK, unchanged.content
     default_models = DefaultModels.objects.get(org=acme)
     assert [(*_target(event), event.org_id) for event in _hook_events(sent_events)] == [
-        ("updated", "default models", str(default_models.pk), None, acme.id)
+        ("updated", "default LLMs", str(default_models.pk), None, acme.id)
     ]
 
 
@@ -602,7 +602,7 @@ def test_twilio_webhook_configuration_records_the_voice_channel_updated(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert [_target(event) for event in _hook_events(sent_events)] == [
-        ("updated", "realtime channel", str(channel.pk), "Support line")
+        ("updated", "voice channel", str(channel.pk), "Support line")
     ]
 
 
@@ -807,7 +807,7 @@ def test_collection_update_records_only_a_real_change(
         (event.action, event.target_name, event.previous_name)
         for event in _hook_events(sent_events)
     ] == expected
-    assert {event.target_type for event in sent_events} <= {"source collection"}
+    assert {event.target_type for event in sent_events} <= {"knowledge collection"}
 
 
 def test_fallback_types_a_view_that_defines_only_get_queryset(
@@ -846,11 +846,11 @@ def test_fallback_names_a_document_config_after_its_document(
     [event] = sent_events
     assert _target(event) == (
         "updated",
-        "document chunking settings",
+        "file parameters",
         str(config.pk),
         "guide.txt",
     )
-    assert _parent(event) == ("document", str(config.document_id), "guide.txt")
+    assert _parent(event) == ("collection file", str(config.document_id), "guide.txt")
 
 
 def test_fallback_names_a_graph_rag_after_its_collection(
@@ -871,7 +871,7 @@ def test_fallback_names_a_graph_rag_after_its_collection(
     assert response.status_code == status.HTTP_200_OK, response.content
     [event] = sent_events
     assert _target(event) == ("update_index_config", "graph RAG", str(rag.pk), "Manuals")
-    assert _parent(event) == ("source collection", str(collection.pk), "Manuals")
+    assert _parent(event) == ("knowledge collection", str(collection.pk), "Manuals")
 
 
 def test_fallback_never_names_a_rag_of_another_org(

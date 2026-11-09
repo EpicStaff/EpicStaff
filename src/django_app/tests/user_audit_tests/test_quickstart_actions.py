@@ -50,7 +50,7 @@ def _recorded(events):
 
 @pytest.mark.parametrize(
     ("provider_name", "realtime_type"),
-    [("openai", "OpenAI realtime config"), ("gemini", "gemini realtime config")],
+    [("openai", "OpenAI voice config"), ("gemini", "Gemini voice config")],
 )
 def test_quickstart_records_each_created_row_in_the_checked_org(
     admin_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks,
@@ -90,7 +90,7 @@ def test_quickstart_records_the_models_it_had_to_create(
     assert sorted((event.target_type, event.target_name) for event in sent_events) == [
         ("LLM config", "quickstart_openai"),
         ("LLM model", "gpt-4o-mini"),
-        ("OpenAI realtime config", "quickstart_openai"),
+        ("OpenAI voice config", "quickstart_openai"),
         ("embedding config", "quickstart_openai"),
         ("embedding model", "text-embedding-3-small"),
         ("secret", "quickstart-openai-api-key"),
@@ -113,7 +113,7 @@ def test_quickstart_with_a_reused_secret_records_no_secret(
     assert response.status_code == status.HTTP_200_OK, response.content
     assert sorted(event.target_type for event in sent_events) == [
         "LLM config",
-        "OpenAI realtime config",
+        "OpenAI voice config",
         "embedding config",
     ]
 

@@ -302,7 +302,7 @@ def test_api_key_create_records_created_in_the_keys_org_only(
     key = ApiKey.objects.get(name="mcp-laptop")
     assert [
         (e.action, e.org_id, e.target_type, e.target_id, e.target_name) for e in sent_events
-    ] == [("created", beta.id, "api key", str(key.id), "mcp-laptop")]
+    ] == [("created", beta.id, "API key", str(key.id), "mcp-laptop")]
 
 
 def test_api_key_revoke_records_updated_once(

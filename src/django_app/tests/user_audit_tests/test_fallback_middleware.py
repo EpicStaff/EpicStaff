@@ -210,7 +210,7 @@ def test_fallback_labels_a_collection_by_its_collection_name(
 
     [event] = sent_events
     assert (event.target_type, event.target_id, event.target_name) == (
-        "source collection",
+        "knowledge collection",
         str(collection.pk),
         expected_name,
     )
@@ -249,7 +249,7 @@ def test_quickstart_apply_records_the_default_models_update_and_no_fallback_reco
     assert [
         (event.action, event.org_id, event.actor_user_id, event.target_type, event.target_id, event.route)
         for event in sent_events
-    ] == [("updated", acme.id, admin_in_two_orgs.id, "default models", str(default_models.pk), None)]
+    ] == [("updated", acme.id, admin_in_two_orgs.id, "default LLMs", str(default_models.pk), None)]
 
 
 def test_fallback_names_an_untracked_generic_create_by_the_id_its_response_names(

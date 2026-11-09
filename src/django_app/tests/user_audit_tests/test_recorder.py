@@ -9,10 +9,35 @@ from plugins.identity.principals import PluginServiceAccountPrincipal
 from plugins.ownership.request_scope import request_scope
 from rbac.access.org_context import cache_active_org_id
 from rbac.identity.authentication import JwtOrApiKeyAuthentication
-from rbac.models import OrganizationConfig, OrganizationUser
+from rbac.models import ApiKey, OrganizationConfig, OrganizationUser
 from src.shared.models import UserAction
 from agents.models import AgentDefinition, Surface
-from tables.models import Graph, McpTool, PythonCode, PythonNode, SourceCollection, WebhookTrigger
+from tables.models import (
+    AudioTranscriptionNode,
+    DefaultModels,
+    DocumentMetadata,
+    ElevenLabsRealtimeConfig,
+    GeminiRealtimeConfig,
+    Graph,
+    GraphNote,
+    KeyValueNode,
+    KeyValueTable,
+    KnowledgeNode,
+    McpTool,
+    OpenAIRealtimeConfig,
+    PythonCode,
+    PythonCodeTool,
+    PythonNode,
+    RealtimeChannel,
+    RealtimeConfig,
+    RealtimeTranscriptionConfig,
+    RealtimeTranscriptionModel,
+    SourceCollection,
+    SubGraphNode,
+    SystemOneConfig,
+    WebhookTrigger,
+)
+from tables.models.knowledge_models import NaiveRagDocumentConfig
 from user_audit import recorder
 from user_audit.actor import Actor, actor_from_request
 from user_audit.context import user_action_context
@@ -73,7 +98,7 @@ def test_record_sends_event_after_commit_only(
         None,
     )
     assert (event.target_type, event.target_id, event.target_name) == (
-        "python node",
+        "python code node",
         str(python_node.id),
         "Fetch invoices",
     )
@@ -231,10 +256,41 @@ def test_mcp_tools_are_labelled_mcp_tool_not_their_verbose_name():
     assert target_type(McpTool) == "MCP tool"
 
 
+# The frontend links and filters records by these labels, so each is part of its contract.
+@pytest.mark.parametrize(
+    ("model", "label"),
+    [
+        (SourceCollection, "knowledge collection"),
+        (PythonCodeTool, "custom tool"),
+        (KeyValueTable, "key-value table"),
+        (RealtimeChannel, "voice channel"),
+        (OpenAIRealtimeConfig, "OpenAI voice config"),
+        (ElevenLabsRealtimeConfig, "ElevenLabs voice config"),
+        (GeminiRealtimeConfig, "Gemini voice config"),
+        (RealtimeConfig, "voice config"),
+        (RealtimeTranscriptionConfig, "transcription config"),
+        (RealtimeTranscriptionModel, "transcription model"),
+        (SystemOneConfig, "System One config"),
+        (ApiKey, "API key"),
+        (DefaultModels, "default LLMs"),
+        (DocumentMetadata, "collection file"),
+        (NaiveRagDocumentConfig, "file parameters"),
+        (PythonNode, "python code node"),
+        (KeyValueNode, "key-value node"),
+        (KnowledgeNode, "knowledge retriever node"),
+        (AudioTranscriptionNode, "audio to text node"),
+        (SubGraphNode, "subflow node"),
+        (GraphNote, "note"),
+    ],
+)
+def test_models_are_labelled_by_the_name_the_ui_gives_them(model, label):
+    assert target_type(model) == label
+
+
 @pytest.mark.django_db
-def test_describe_uses_verbose_name_and_node_name(python_node):
+def test_describe_uses_the_label_and_node_name(python_node):
     assert describe(python_node) == TargetDescription(
-        type="python node", id=str(python_node.id), name="Fetch invoices"
+        type="python code node", id=str(python_node.id), name="Fetch invoices"
     )
 
 

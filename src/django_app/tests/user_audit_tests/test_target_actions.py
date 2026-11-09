@@ -71,7 +71,7 @@ def test_collection_create_records_created_with_its_name(
 
     collection = SourceCollection.objects.get(org=acme, collection_name="Contracts")
     event = _only_event(sent_events)
-    assert _target(event) == ("created", "source collection", str(collection.pk), "Contracts")
+    assert _target(event) == ("created", "knowledge collection", str(collection.pk), "Contracts")
     assert (event.org_id, event.actor_user_id) == (acme.id, admin_acme.id)
 
 
