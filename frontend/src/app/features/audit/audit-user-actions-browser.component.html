@@ -129,41 +129,57 @@
                                         }}</span>
                                     </td>
                                     <td>{{ row.targetType }}</td>
-                                    <td [class.audit-table__linked]="row.targetUrl">
-                                        <app-audit-highlight
-                                            [text]="row.targetName"
-                                            [term]="highlightTerm()"
-                                        />
+                                    <td>
                                         @if (row.targetUrl; as targetUrl) {
-                                            <app-go-to-button
-                                                class="audit-table__go-to"
-                                                variant="icon"
+                                            <a
+                                                class="audit-link"
                                                 target="_blank"
+                                                rel="noopener noreferrer"
                                                 [href]="targetUrl"
-                                                [label]="row.targetLinkLabel"
+                                                [attr.aria-label]="row.targetLinkLabel"
+                                            >
+                                                <span class="audit-link__text">
+                                                    <app-audit-highlight
+                                                        [text]="row.targetName"
+                                                        [term]="highlightTerm()"
+                                                    />
+                                                </span>
+                                                <app-svg-icon
+                                                    icon="arrow-up-right"
+                                                    size="16px"
+                                                />
+                                            </a>
+                                        } @else {
+                                            <app-audit-highlight
+                                                [text]="row.targetName"
+                                                [term]="highlightTerm()"
                                             />
                                         }
                                     </td>
-                                    <td [class.audit-table__linked]="row.parentUrl">
-                                        <app-audit-highlight
-                                            [text]="row.parentName"
-                                            [term]="highlightTerm()"
-                                        />
-                                        @if (row.parentType; as parentType) {
-                                            <span class="audit-name-label">
-                                                @if (row.parentName) {
-                                                    ·
-                                                }
-                                                {{ parentType }}
-                                            </span>
-                                        }
+                                    <td>
                                         @if (row.parentUrl; as parentUrl) {
-                                            <app-go-to-button
-                                                class="audit-table__go-to"
-                                                variant="icon"
+                                            <a
+                                                class="audit-link"
                                                 target="_blank"
+                                                rel="noopener noreferrer"
                                                 [href]="parentUrl"
-                                                [label]="row.parentLinkLabel"
+                                                [attr.aria-label]="row.parentLinkLabel"
+                                            >
+                                                <span class="audit-link__text">
+                                                    <ng-container
+                                                        [ngTemplateOutlet]="parentText"
+                                                        [ngTemplateOutletContext]="{ $implicit: row }"
+                                                    />
+                                                </span>
+                                                <app-svg-icon
+                                                    icon="arrow-up-right"
+                                                    size="16px"
+                                                />
+                                            </a>
+                                        } @else {
+                                            <ng-container
+                                                [ngTemplateOutlet]="parentText"
+                                                [ngTemplateOutletContext]="{ $implicit: row }"
                                             />
                                         }
                                     </td>
@@ -254,3 +270,22 @@
         }
     </div>
 </div>
+
+<!-- the parent's name and type, shown alone or as a link's text -->
+<ng-template
+    #parentText
+    let-row
+>
+    <app-audit-highlight
+        [text]="row.parentName"
+        [term]="highlightTerm()"
+    />
+    @if (row.parentType; as parentType) {
+        <span class="audit-name-label">
+            @if (row.parentName) {
+                ·
+            }
+            {{ parentType }}
+        </span>
+    }
+</ng-template>

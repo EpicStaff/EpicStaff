@@ -339,24 +339,26 @@
     }
 }
 
-// A cell with an "open" arrow keeps its text, and the text's ellipsis, clear of the arrow.
-.audit-table td.audit-table__linked {
-    position: relative;
-    // the 28px arrow and its 8px offset from the cell edge
-    padding-right: 36px;
+// A target or parent that opens in a new tab, styled like the session link on the Key-Value Tables page. The text
+// ellipsizes and the arrow after it stays visible however narrow the column is.
+.audit-link {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    color: var(--accent-color);
+    text-decoration: none;
+
+    app-svg-icon {
+        flex-shrink: 0;
+    }
 }
 
-// Pinned to the cell's right edge, beside the first line: in the flow it would make the row taller.
-.audit-table__go-to {
-    position: absolute;
-    top: 2px;
-    right: 8px;
-    display: flex;
-
-    // The cell clips past its edges and the button nearly fills its height, so the keyboard ring goes inside it.
-    ::ng-deep .go-to-button:focus-visible {
-        outline-offset: -2px;
-    }
+// white-space and overflow-wrap still come from the cell, so Expand All Rows wraps the text.
+.audit-link__text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .audit-table__date {

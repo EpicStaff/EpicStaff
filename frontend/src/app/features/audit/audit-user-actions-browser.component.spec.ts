@@ -267,11 +267,11 @@ describe('AuditUserActionsBrowserComponent', () => {
         expect(root.querySelector<HTMLElement>('col')!.style.width).toBe('130px');
     });
 
-    // per row: each link's label and where it opens, in a new tab
+    // per row: each link's visible text, its label and where it opens, in a new tab
     function rowLinks(root: HTMLElement): string[][] {
         return Array.from(root.querySelectorAll('tbody tr')).map((row) =>
             Array.from(row.querySelectorAll<HTMLAnchorElement>('a[target="_blank"]')).map(
-                (link) => `${link.getAttribute('aria-label')} -> ${link.getAttribute('href')}`
+                (link) => `${cellText(link)} | ${link.getAttribute('aria-label')} -> ${link.getAttribute('href')}`
             )
         );
     }
@@ -283,10 +283,10 @@ describe('AuditUserActionsBrowserComponent', () => {
 
         expect(rowLinks(root)).toEqual([
             [
-                'Open python node Parse invoice (opens in a new tab) -> /flows/4?nodeId=12',
-                'Open flow Billing (opens in a new tab) -> /flows/4',
+                'Parse invoice | Open python node Parse invoice (opens in a new tab) -> /flows/4?nodeId=12',
+                'Billing · Flow | Open flow Billing (opens in a new tab) -> /flows/4',
             ],
-            ['Open flow Billing (opens in a new tab) -> /flows/4'],
+            ['Billing · Flow | Open flow Billing (opens in a new tab) -> /flows/4'],
         ]);
     });
 
@@ -295,7 +295,9 @@ describe('AuditUserActionsBrowserComponent', () => {
         flushSearch(http, [renamedFlow]);
         await render(fixture);
 
-        expect(rowLinks(root)).toEqual([['Open flow Billing (opens in a new tab) -> /flows/4']]);
+        expect(rowLinks(root)).toEqual([
+            ['Invoices v2 → Billing | Open flow Billing (opens in a new tab) -> /flows/4'],
+        ]);
     });
 
     it('offers no link to a page the viewer may not open', async () => {

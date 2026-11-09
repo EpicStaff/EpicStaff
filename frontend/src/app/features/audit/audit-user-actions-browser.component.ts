@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -6,7 +6,6 @@ import {
     ActionDropdownButtonComponent,
     ActionDropdownItem,
     AppSvgIconComponent,
-    GoToButtonComponent,
     NumberStepperComponent,
 } from '@shared/components';
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
@@ -109,8 +108,8 @@ interface UserActionRow {
         AuditFiltersPanelComponent,
         AuditHighlightComponent,
         DatePipe,
-        GoToButtonComponent,
         HasPermissionDirective,
+        NgTemplateOutlet,
         NumberStepperComponent,
         ResizableSidebarDirective,
     ],
