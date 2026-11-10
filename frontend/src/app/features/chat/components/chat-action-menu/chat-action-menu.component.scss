@@ -14,6 +14,13 @@
         outline: 2px solid var(--accent-color);
         color: var(--color-text-primary);
     }
+
+    // Accent while pressed and while its menu is open, so the open menu shows which ⋮ it belongs to. After the focus
+    // ring's rule: a menu opened from the keyboard keeps the accent too.
+    &:active,
+    &[aria-expanded='true'] {
+        color: var(--accent-color);
+    }
 }
 
 .chat-action-menu {

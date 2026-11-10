@@ -43,13 +43,25 @@ describe('ChatUsageRingComponent', () => {
         );
     });
 
-    it('draws a full ring in the failed colour for a limit of 0, which blocks everything', () => {
-        show(0, 0);
-        expect(ring().className).toContain('usage-ring--full');
-        expect(fixture.nativeElement.querySelector('.usage-ring__value').getAttribute('stroke-dashoffset')).toBe('0');
+    // A limit of 0 blocks everything, so its bar is full; an unknown limit leaves it empty.
+    it.each([
+        { used: 0, limit: 200, width: '0%' },
+        { used: 50, limit: 200, width: '25%' },
+        { used: 200, limit: 200, width: '100%' },
+        { used: 300, limit: 200, width: '100%' },
+        { used: 0, limit: 0, width: '100%' },
+        { used: 3, limit: null, width: '0%' },
+    ])('fills the bar to $width for $used of $limit', ({ used, limit, width }) => {
+        show(used, limit);
+        expect((fixture.nativeElement.querySelector('.usage-ring__fill') as HTMLElement).style.width).toBe(width);
     });
 
-    it('writes large counts compactly beside the ring and shows ? while the limit is unknown', () => {
+    it('shows a limit of 0 in the failed colour', () => {
+        show(0, 0);
+        expect(ring().className).toContain('usage-ring--full');
+    });
+
+    it('writes large counts compactly above the bar and shows ? while the limit is unknown', () => {
         show(12_000, 50_000, true);
         expect(fixture.nativeElement.querySelector('.usage-ring__text').textContent.trim()).toBe('12K/50K');
         show(3, null);

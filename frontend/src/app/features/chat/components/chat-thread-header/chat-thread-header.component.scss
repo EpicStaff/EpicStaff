@@ -85,13 +85,18 @@ $usage-numbers-min-width: 590px;
         }
     }
 
-    // The right-hand group starts here, pushed to the end; after the main action (below) it simply follows it.
+    // The right-hand group starts here, pushed to the end; after the main action (below) it simply follows it. Its
+    // items (main action, usage meters, menu) are 16px apart: the row's 8px gap plus 8px of margin.
     &__usage {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 16px;
         margin-left: auto;
         flex-shrink: 0;
+    }
+
+    &__menu {
+        margin-left: 8px;
     }
 
     // The main action, first in the right-hand group: the shared small primary button with its check, 12px
@@ -105,7 +110,7 @@ $usage-numbers-min-width: 590px;
         --button-small-icon-left-padding-right: 16px;
 
         + .thread-header__usage {
-            margin-left: 0;
+            margin-left: 8px;
         }
     }
 
