@@ -48,7 +48,7 @@
     .header-actions {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: 8px;
         min-width: 0;
         margin-left: auto;
 
@@ -64,9 +64,10 @@
         }
     }
 
-    // Icon only, bordered like the column toggles: 28px square, a 14px icon in the muted text colour, accent border on
-    // hover. Under .header-actions, so the narrow screens' button padding there does not squeeze it.
-    .header-actions .desk-settings {
+    // Delete desk and Settings: icon only, bordered like the column toggles: 28px square, a 14px icon in the muted text
+    // colour, accent border on hover. Under .header-actions, so the narrow screens' button padding there does not
+    // squeeze them.
+    .header-actions .desk-icon-action {
         @include column-toggle.button;
         // Figma's Line is #2B2D30; the nearest token is --color-ks-line (#2c2c2e).
         border-color: var(--color-ks-line);

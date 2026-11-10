@@ -39,13 +39,27 @@
             </div>
         }
         @for (message of messages(); track message.id) {
+            @for (note of threadNotes(); track note.kind) {
+                @if (note.beforeMessageId === message.id) {
+                    <ng-container
+                        [ngTemplateOutlet]="eventLine"
+                        [ngTemplateOutletContext]="{ $implicit: note }"
+                    />
+                }
+            }
             <div
                 class="message"
                 [class]="'message--' + message.role"
             >
                 @if (message.role !== 'system') {
-                    <div class="message__author">
-                        {{ message.role === 'operator' ? operatorLabel(message) : message.role }}
+                    <!-- Above the bubble, not in it: who, and when relative to now ("now", "6m", "2:05 PM"). -->
+                    <div class="message__meta text-caption">
+                        <span class="message__author">{{ authorLabel(message) }}</span>
+                        <time
+                            [attr.datetime]="message.created_at"
+                            [attr.aria-label]="relativeTimeLabel(message.created_at)"
+                            >{{ relativeTime(message.created_at) }}</time
+                        >
                     </div>
                 }
                 @if (message.content) {
@@ -58,43 +72,95 @@
                         <div class="message__content">{{ message.content }}</div>
                     }
                 }
-                <!-- Test conversations only: what the widget sent with the message, or what the bot sent to it. -->
-                @if (conversation().is_test && rawData(message); as raw) {
-                    <details
-                        class="message__raw"
-                        (toggle)="onRawToggle(message.id, $event)"
-                    >
-                        <summary>Raw data</summary>
-                        <!-- Mounted on open only: one Monaco editor per message would be heavy. -->
-                        @if (openRawIds().has(message.id)) {
+                @if (message.role === 'system') {
+                    <div class="message__time">
+                        {{ message.created_at | date: 'mediumTime' }}
+                        @if (message.session_id) {
+                            ·
+                            @if (sessionLink(message); as link) {
+                                <a
+                                    class="message__session"
+                                    [routerLink]="link"
+                                    >run #{{ message.session_id }}</a
+                                >
+                            } @else {
+                                run #{{ message.session_id }}
+                            }
+                        }
+                    </div>
+                } @else {
+                    <!-- Test conversations only: what the widget sent with the message, or what the bot sent to it. -->
+                    @let raw = conversation().is_test ? rawData(message) : null;
+                    <!-- The run a bot or operator message belongs to; never under a visitor's. -->
+                    @let runId = message.role === 'user' ? null : message.session_id;
+                    @if (raw || runId) {
+                        <!-- Below the bubble, 8px apart: Raw data, then the run. -->
+                        <div class="message__actions">
+                            @if (raw) {
+                                <button
+                                    type="button"
+                                    class="message__chip"
+                                    [attr.aria-expanded]="openRawIds().has(message.id)"
+                                    [attr.aria-controls]="rawPanelId(message.id)"
+                                    (click)="toggleRaw(message.id)"
+                                >
+                                    <app-svg-icon
+                                        class="message__chip-icon"
+                                        icon="code-snippet"
+                                        width="12px"
+                                        height="11px"
+                                    />
+                                    <span>Raw data</span>
+                                </button>
+                            }
+                            @if (runId) {
+                                <!-- Plain text without flows read: the run page would refuse them, the id is still worth sharing. -->
+                                @if (sessionLink(message); as link) {
+                                    <a
+                                        class="message__chip"
+                                        [routerLink]="link"
+                                    >
+                                        <span>Run #{{ runId }}</span>
+                                        <app-svg-icon
+                                            class="message__chip-icon"
+                                            icon="arrow-up-right-filled"
+                                            size="9px"
+                                        />
+                                    </a>
+                                } @else {
+                                    <span class="message__chip message__chip--static">Run #{{ runId }}</span>
+                                }
+                            }
+                        </div>
+                    }
+                    <!-- Mounted on open only: one Monaco editor per message would be heavy. -->
+                    @if (raw && openRawIds().has(message.id)) {
+                        <div
+                            class="message__raw"
+                            [id]="rawPanelId(message.id)"
+                        >
+                            <!-- The shared editor's header: "JSON Editor" and Copy; the frame sets its height. -->
                             <app-json-editor
                                 [jsonData]="raw"
                                 [readonly]="true"
-                                [showHeader]="false"
-                                [editorHeight]="160"
+                                [allowCopy]="true"
+                                [fullHeight]="true"
+                                [resizable]="false"
                             />
-                        }
-                    </details>
-                }
-                <div class="message__time">
-                    {{ message.created_at | date: 'mediumTime' }}
-                    @if (message.session_id) {
-                        ·
-                        <!-- Plain text without flows read: the run page would refuse them, the id is still worth sharing. -->
-                        @if (sessionLink(message); as link) {
-                            <a
-                                class="message__session"
-                                [routerLink]="link"
-                                >run #{{ message.session_id }}</a
-                            >
-                        } @else {
-                            run #{{ message.session_id }}
-                        }
+                        </div>
                     }
-                </div>
+                }
             </div>
         } @empty {
             <div class="thread__empty">No messages.</div>
+        }
+        @for (note of threadNotes(); track note.kind) {
+            @if (note.beforeMessageId === null) {
+                <ng-container
+                    [ngTemplateOutlet]="eventLine"
+                    [ngTemplateOutletContext]="{ $implicit: note }"
+                />
+            }
         }
     </div>
 </div>
@@ -126,3 +192,36 @@
         (operatorMessageSent)="onOperatorMessageSent($event)"
     />
 }
+
+<!--
+    Something that happened to the conversation, where it happened in the thread: queued (orange, a clock) or an
+    operator joined (green, a headset); what, and when.
+-->
+<ng-template
+    #eventLine
+    let-note
+>
+    <div
+        class="thread-event"
+        [class.thread-event--joined]="note.kind === 'joined'"
+    >
+        @if (note.kind === 'joined') {
+            <app-svg-icon
+                icon="headset"
+                width="9px"
+                height="10px"
+            />
+        } @else {
+            <app-svg-icon
+                icon="clock"
+                size="10px"
+            />
+        }
+        <span>{{ note.text }}</span>
+        <time
+            [attr.datetime]="note.at"
+            [attr.aria-label]="relativeTimeLabel(note.at)"
+            >{{ relativeTime(note.at) }}</time
+        >
+    </div>
+</ng-template>

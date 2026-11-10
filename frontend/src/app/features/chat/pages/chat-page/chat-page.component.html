@@ -49,6 +49,20 @@
                             <span class="btn-label">Copy install snippet</span>
                         </button>
                     }
+                    @if (canDelete()) {
+                        <button
+                            type="button"
+                            class="desk-icon-action"
+                            aria-label="Delete desk"
+                            matTooltip="Delete desk"
+                            (click)="deleteDesk()"
+                        >
+                            <app-svg-icon
+                                icon="trash"
+                                size="12px"
+                            />
+                        </button>
+                    }
                     <!-- The name visitors see now is in its accessible name and tooltip. -->
                     @if (canUse()) {
                         <button
@@ -65,7 +79,7 @@
                     @if (canUpdate()) {
                         <button
                             type="button"
-                            class="desk-settings"
+                            class="desk-icon-action"
                             aria-label="Settings"
                             matTooltip="Settings"
                             (click)="openSettings()"

@@ -383,20 +383,13 @@ export class ChatPageComponent {
             });
     }
 
-    /**
-     * The settings' Delete desk runs `deleteDesk`, which reloads the desks itself once the desk is gone; no reload is
-     * sent before it, as a list that lands after the delete would read as "no longer exists".
-     */
     openSettings(): void {
         const binding = this.routeBinding();
         if (!binding) return;
         this.bindingActions
-            .openSettings(binding, { canDelete: this.canDelete() })
+            .openSettings(binding)
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((outcome) => {
-                if (outcome === 'delete-requested') this.deleteDesk();
-                else this.desksStorage.reload();
-            });
+            .subscribe(() => this.desksStorage.reload());
     }
 
     /** The name the user goes by on the open desk; the dialog stores a change itself. */

@@ -2,6 +2,7 @@ import {
     conversationTime,
     conversationTimeLabel,
     deskRulesOf,
+    messageTime,
     operatorName,
     senderPrefix,
     visitorAvatarText,
@@ -102,6 +103,15 @@ describe('conversationTime', () => {
         ['an earlier year', at(2025, 12, 31, 10, 0), 'Dec 31, 2025'],
     ])('shows %s as %s', (_case, date, expected) => {
         expect(plain(conversationTime(iso(date), NOW, LOCALE))).toBe(expected);
+    });
+
+    it.each([
+        ['under a minute ago', at(2026, 10, 12, 14, 29, 31), 'now'],
+        ['one minute ago', at(2026, 10, 12, 14, 29), '1m ago'],
+        ['under an hour ago', at(2026, 10, 12, 13, 31), '59m ago'],
+        ['earlier today', at(2026, 10, 12, 9, 5), '9:05 AM'],
+    ])("in the thread, shows %s as %s: minutes read 'ago'", (_case, date, expected) => {
+        expect(plain(messageTime(iso(date), NOW, LOCALE))).toBe(expected);
     });
 
     it('counts minutes, not the calendar, within the hour across midnight', () => {

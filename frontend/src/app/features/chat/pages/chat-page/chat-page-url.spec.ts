@@ -60,6 +60,7 @@ const row = (id: string, overrides: Partial<ChatConversation> = {}): ChatConvers
     last_message_preview: id,
     handoff_reason: '',
     handoff_at: null,
+    claimed_at: null,
     visitor_number: Number(id.replace(/\D/g, '')) || 1,
     chat_user_id: null,
     assigned_operator_name: null,

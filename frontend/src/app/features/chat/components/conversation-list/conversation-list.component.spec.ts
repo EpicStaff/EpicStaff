@@ -89,6 +89,7 @@ const row = (overrides: Partial<ChatConversation>): ChatConversation => ({
     last_message_author_name: null,
     handoff_reason: '',
     handoff_at: null,
+    claimed_at: null,
     visitor_waiting_since: null,
     status: 'open',
     close_reason: null,

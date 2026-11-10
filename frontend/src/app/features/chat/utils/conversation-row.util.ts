@@ -101,6 +101,13 @@ export function conversationTime(iso: string | null, now: number, locale: string
     }
 }
 
+/** A message's time in the thread: as `conversationTime`, but minutes read "6m ago". */
+export function messageTime(iso: string | null, now: number, locale: string): string {
+    if (!iso) return '';
+    const bucket = timeBucket(iso, now);
+    return bucket.kind === 'minutes' ? `${bucket.minutes}m ago` : conversationTime(iso, now, locale);
+}
+
 /**
  * The same time in words for a screen reader, absolute so it stays the same while the clock ticks (it changes at
  * midnight only): "today at 2:05 PM", "yesterday at 9:00 AM", "Wednesday at 4:30 PM", "October 5".

@@ -91,6 +91,7 @@ const row = (overrides: Partial<ChatConversation>): ChatConversation => ({
     last_message_preview: 'hello',
     handoff_reason: '',
     handoff_at: null,
+    claimed_at: null,
     visitor_number: 1,
     chat_user_id: null,
     assigned_operator_name: null,
@@ -530,12 +531,9 @@ describe('ChatPageComponent', () => {
             expect(bindingActions.resume).toHaveBeenCalled();
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1);
 
-            bindingActions.openSettings.mockReturnValue(of('closed'));
+            bindingActions.openSettings.mockReturnValue(of(undefined));
             headerButton('Settings')!.click();
-            expect(bindingActions.openSettings).toHaveBeenCalledWith(
-                { ...binding, is_active: false },
-                { canDelete: true }
-            );
+            expect(bindingActions.openSettings).toHaveBeenCalledWith({ ...binding, is_active: false });
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 2);
             expect(bindingActions.delete).not.toHaveBeenCalled();
         } finally {
@@ -557,16 +555,17 @@ describe('ChatPageComponent', () => {
                     [...button.classList]
                         .filter(
                             (name) =>
-                                name.startsWith('header-action') || ['operator-name', 'desk-settings'].includes(name)
+                                name.startsWith('header-action') || ['operator-name', 'desk-icon-action'].includes(name)
                         )
                         .join(' '),
                     button.getAttribute('aria-label'),
                 ])
             ).toEqual([
                 ['header-action header-action--ghost header-action--snippet', 'Copy install snippet'],
+                ['desk-icon-action', 'Delete desk'],
                 // My aliases have not loaded here: the action names no one rather than a name that may be wrong.
                 ['operator-name', 'Operator name'],
-                ['desk-settings', 'Settings'],
+                ['desk-icon-action', 'Settings'],
             ]);
         } finally {
             permissions.can = (resource, action) =>
@@ -642,7 +641,7 @@ describe('ChatPageComponent', () => {
         }
     });
 
-    it("deletes the route binding from the settings' Delete desk through the same confirmation, goes to All desks, then reloads the desks; a cancel stays", async () => {
+    it("deletes the route binding from the toolbar's Delete desk through the same confirmation, goes to All desks, then reloads the desks; a cancel stays", async () => {
         permissions.can = () => true;
         try {
             listBindings([binding]);
@@ -650,23 +649,34 @@ describe('ChatPageComponent', () => {
             const callsBefore = chatApi.getBindings.mock.calls.length;
             let finishNavigation: (navigated: boolean) => void = () => undefined;
             navigate.mockReturnValueOnce(new Promise<boolean>((resolve) => (finishNavigation = resolve)));
-            bindingActions.openSettings.mockReturnValueOnce(of('delete-requested'));
             bindingActions.delete.mockReturnValueOnce(of(true));
 
-            headerButton('Settings')!.click();
+            headerButton('Delete desk')!.click();
             expect(bindingActions.delete).toHaveBeenCalledWith(binding);
             expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'all']);
-            // Neither the settings' close nor the delete reloads before the page has left.
+            // The delete does not reload before the page has left.
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore);
             finishNavigation(true);
             await vi.waitFor(() => expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1));
             expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
 
             navigate.mockClear();
-            bindingActions.openSettings.mockReturnValueOnce(of('delete-requested'));
             bindingActions.delete.mockReturnValueOnce(of());
-            headerButton('Settings')!.click();
+            headerButton('Delete desk')!.click();
             expect(navigate).not.toHaveBeenCalled();
+        } finally {
+            permissions.can = (resource, action) =>
+                resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
+        }
+    });
+
+    it('offers Delete desk in the toolbar only with chats:delete', () => {
+        permissions.can = (resource, action) => resource === ResourceCode.Chats && action !== ActionCode.Delete;
+        try {
+            listBindings([binding]);
+            scopeTo('b-1');
+            expect(headerButton('Delete desk')).toBeUndefined();
+            expect(headerButton('Settings')).toBeDefined();
         } finally {
             permissions.can = (resource, action) =>
                 resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
@@ -850,10 +860,76 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
             expect(text('.message__author')).toEqual([
                 'Bea Agent · as Mike',
-                'You · as Support',
+                // The user's own: no name to add, they know what visitors see.
+                'You',
                 'Operator #9 · as Support',
                 'Bea Agent',
             ]);
+        });
+
+        it('places the hand-off to the queue and the operator joining where they happened in the thread', () => {
+            const message = (id: string, minute: number): ChatOperatorMessage => ({
+                id,
+                role: 'user',
+                content: id,
+                actions: null,
+                action: null,
+                session_id: null,
+                created_at: `2026-10-10T10:0${minute}:00Z`,
+                author_user_id: null,
+                author_name: null,
+                visible_name: null,
+            });
+            const threadItems = (): string[] =>
+                Array.from(
+                    (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+                        '.thread__messages > .message .message__content, .thread__messages > .thread-event > span'
+                    )
+                ).map((element) => element.textContent!.trim());
+            chatApi.getMessages.mockReturnValueOnce(of([message('m-1', 1), message('m-2', 3), message('m-3', 5)]));
+            fixture.componentInstance.selectConversation(
+                row({
+                    id: 'c-1',
+                    mode: 'human',
+                    assigned_operator_id: 3,
+                    handoff_reason: 'the flow asked for a human',
+                    handoff_at: '2026-10-10T10:02:00Z',
+                    claimed_at: '2026-10-10T10:06:00Z',
+                })
+            );
+            fixture.detectChanges();
+            expect(threadItems()).toEqual([
+                'm-1',
+                'Moved to the queue: the flow asked for a human',
+                'm-2',
+                'm-3',
+                'You have joined the conversation',
+            ]);
+            expect(fixture.nativeElement.querySelector('.thread-event--joined')).not.toBeNull();
+        });
+
+        it("names the visitor above the bubble and shows no run under a visitor's message", () => {
+            chatApi.getMessages.mockReturnValueOnce(
+                of([
+                    {
+                        id: 'm-1',
+                        role: 'user',
+                        content: 'hi',
+                        actions: null,
+                        action: null,
+                        session_id: 610,
+                        created_at: '2026-10-10T10:01:00Z',
+                        author_user_id: null,
+                        author_name: null,
+                        visible_name: null,
+                    },
+                ] satisfies ChatOperatorMessage[])
+            );
+            fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
+            fixture.detectChanges();
+            expect(text('.message--user .message__author')).toEqual(['Visitor']);
+            expect(fixture.nativeElement.querySelector('.message--user .message__actions')).toBeNull();
+            expect(fixture.nativeElement.textContent).not.toContain('610');
         });
 
         it('keeps the name visitors saw on a streamed operator message, and on a later copy without it', () => {
@@ -1147,8 +1223,17 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
 
             expect(text('.message__content')).toEqual(['<i>why</i>']);
-            expect(text('.message__raw summary')).toEqual(Array(rawDataCount).fill('Raw data'));
+            expect(text('.message__actions button')).toEqual(Array(rawDataCount).fill('Raw data'));
             expect(fixture.nativeElement.querySelector('.message b, .message i')).toBeNull();
+
+            // Raw data is a closed disclosure naming the panel it opens (the Monaco editor itself is not mounted here).
+            const rawButtons = Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.message__actions button')
+            );
+            expect(rawButtons.map((button) => button.getAttribute('aria-expanded'))).toEqual(
+                Array(rawDataCount).fill('false')
+            );
+            expect(rawButtons.every((button) => button.getAttribute('aria-controls'))).toBe(true);
         }
     );
 
@@ -2102,17 +2187,13 @@ describe('ChatPageComponent', () => {
                 renderOnDesk();
                 openMenu('.phone-bar');
                 expect(menuItems()).toEqual(['Operator name', 'Settings', 'Copy install snippet', 'Pause']);
-                bindingActions.openSettings.mockReturnValue(of('closed'));
-                // Nor in the settings.
+                bindingActions.openSettings.mockReturnValue(of(undefined));
                 chooseInMenu('Settings');
-                expect(bindingActions.openSettings).toHaveBeenLastCalledWith(binding, { canDelete: false });
+                expect(bindingActions.openSettings).toHaveBeenLastCalledWith(binding);
+                expect(document.querySelector('.chat-action-menu')).toBeNull();
 
                 permissions.can = () => true;
                 renderOnDesk();
-                openMenu('.phone-bar');
-                chooseInMenu('Settings');
-                expect(bindingActions.openSettings).toHaveBeenLastCalledWith(binding, { canDelete: true });
-                expect(document.querySelector('.chat-action-menu')).toBeNull();
 
                 openConversation(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
                 openMenu('.thread-header__nav');

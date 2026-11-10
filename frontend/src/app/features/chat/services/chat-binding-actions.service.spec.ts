@@ -16,7 +16,7 @@ import {
 } from '../components/my-desk-alias-dialog/my-desk-alias-dialog.component';
 import { CHAT_BINDING_DEFAULTS, ChatBinding, ChatMyAliasResult } from '../models/chat.model';
 import { ChatApiService } from './chat-api.service';
-import { ChatBindingActionsService, ChatBindingSettingsOutcome } from './chat-binding-actions.service';
+import { ChatBindingActionsService } from './chat-binding-actions.service';
 import { ChatDesksStorageService } from './chat-desks-storage.service';
 
 const binding: ChatBinding = {
@@ -90,24 +90,17 @@ describe('ChatBindingActionsService', () => {
         expect(router.navigate).toHaveBeenCalledWith(['/chat-bindings', 'b-1']);
     });
 
-    it("opens a desk's settings, with Delete desk only when asked, and emits once how the dialog closed", () => {
-        const outcomes: ChatBindingSettingsOutcome[] = [];
-        dialog.open
-            .mockReturnValueOnce({ closed: of(undefined) })
-            .mockReturnValueOnce({ closed: of(binding) })
-            .mockReturnValueOnce({ closed: of({ deleteRequested: true }) });
-        service.openSettings(binding).subscribe((outcome) => outcomes.push(outcome));
-        service.openSettings(binding).subscribe((outcome) => outcomes.push(outcome));
-        service.openSettings(binding, { canDelete: true }).subscribe((outcome) => outcomes.push(outcome));
+    it("opens a desk's settings and emits once when the dialog closes, saved or not", () => {
+        let closes = 0;
+        dialog.open.mockReturnValueOnce({ closed: of(undefined) }).mockReturnValueOnce({ closed: of(binding) });
+        service.openSettings(binding).subscribe(() => closes++);
+        service.openSettings(binding).subscribe(() => closes++);
 
         expect(dialog.open.mock.calls.map(([component, config]) => [component, config.data])).toEqual([
-            [ChatBindingsDialogComponent, { binding, canDelete: false }],
-            [ChatBindingsDialogComponent, { binding, canDelete: false }],
-            [ChatBindingsDialogComponent, { binding, canDelete: true }],
+            [ChatBindingsDialogComponent, { binding }],
+            [ChatBindingsDialogComponent, { binding }],
         ]);
-        expect(outcomes).toEqual(['closed', 'closed', 'delete-requested']);
-        // The opener deletes, with its own confirmation: the settings delete nothing here.
-        expect(chatApi.deleteBinding).not.toHaveBeenCalled();
+        expect(closes).toBe(2);
     });
 
     it('opens my name on a desk, named by its title, and emits what was saved, or null', () => {

@@ -1,3 +1,5 @@
+@use '../../styles/wait-chip';
+
 // The open conversation: its header, messages and composer.
 :host {
     display: flex;
@@ -54,29 +56,26 @@
     }
 }
 
+// A message: who and when above, the bubble (its content) below, as wide as its text, then the run it belongs to.
 .message {
     display: flex;
     flex-direction: column;
     gap: 4px;
     max-width: 70%;
-    padding: 8px 12px;
-    border-radius: 8px;
     font-size: var(--text-body-size);
     font-weight: var(--text-body-weight);
     line-height: var(--text-body-line-height);
 
-    &__author {
+    &__meta {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: var(--text-body-small-large-size);
-        font-weight: var(--text-body-small-large-weight);
-        line-height: var(--text-body-small-large-line-height);
-        text-transform: capitalize;
-        color: var(--color-text-secondary);
+        gap: 4px;
+        color: var(--color-ks-transparent-text-60);
     }
 
     &__content {
+        padding: 8px 12px;
+        border-radius: 8px;
         white-space: pre-wrap;
         word-break: break-word;
 
@@ -151,22 +150,75 @@
         color: var(--accent-color);
     }
 
-    // Test conversations: the message's action payloads, closed by default.
+    // Under the bubble: Raw data and the run, 8px apart.
+    &__actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+    }
+
+    // A 28px outlined chip: 8px either side, 8px between its icon and its label.
+    &__chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 28px;
+        padding: 0 8px;
+        box-sizing: border-box;
+        // Figma's #2B2D30; the nearest semantic token is --color-ks-line (#2c2c2e).
+        border: 1px solid var(--color-ks-line);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--color-text-primary);
+        // Undoes the button's own font; the type itself is the 12px medium style.
+        font-family: inherit;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
+        line-height: var(--text-body-small-large-line-height);
+        text-decoration: none;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+            color 0.2s ease-in-out,
+            border-color 0.2s ease-in-out;
+
+        // Hover, keyboard focus and Raw data while its editor is open: the border, the label and the icon in the
+        // accent; no fill.
+        &:not(.message__chip--static):is(:hover, :focus-visible, [aria-expanded='true']) {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+
+            .message__chip-icon {
+                color: var(--accent-color);
+            }
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+
+        // Run without flows read: the same chip, nothing to open, so nothing lights up.
+        &--static {
+            cursor: default;
+        }
+    }
+
+    &__chip-icon {
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    // Test conversations: the message's action payloads, open under its buttons, in a 714 × 280 frame.
     &__raw {
-        margin-top: 4px;
-        font-size: var(--text-body-small-size);
-        font-weight: var(--text-body-small-weight);
-        line-height: var(--text-body-small-line-height);
-        color: var(--color-ks-transparent-text-80);
-
-        summary {
-            cursor: pointer;
-        }
-
-        app-json-editor {
-            display: block;
-            margin-top: 4px;
-        }
+        width: 714px;
+        max-width: 100%;
+        height: 280px;
+        box-sizing: border-box;
+        overflow: hidden;
+        // Figma's #2B2D30; the nearest semantic token is --color-ks-line (#2c2c2e).
+        border: 1px solid var(--color-ks-line);
+        border-radius: 10px;
     }
 
     &__time {
@@ -176,37 +228,85 @@
         color: var(--color-text-secondary);
     }
 
+    // The visitor, on the left. A single line is 42px tall.
     &--user {
         align-self: flex-start;
-        background-color: var(--color-input-background);
-    }
+        align-items: flex-start;
 
-    &--assistant {
-        align-self: flex-end;
-        background-color: var(--color-ghost-btn-active);
-    }
-
-    &--operator {
-        align-self: flex-end;
-        background-color: color-mix(in srgb, var(--color-ks-status-new) 18%, transparent);
-        border: 1px solid color-mix(in srgb, var(--color-ks-status-new) 50%, transparent);
-
-        .message__author {
-            color: var(--color-ks-status-new);
-            text-transform: none;
+        .message__content {
+            min-height: 42px;
+            padding: 12px;
+            box-sizing: border-box;
+            // Figma's #2B2D30; the nearest semantic token is --color-ks-line (#2c2c2e).
+            background-color: var(--color-ks-line);
+            color: var(--color-text-primary);
         }
     }
 
+    // The bot and the operator who took over, on the right: the accent at 40%, then in full. A single line is 42px tall.
+    &--assistant,
+    &--operator {
+        align-self: flex-end;
+        align-items: flex-end;
+
+        .message__content {
+            min-height: 42px;
+            padding: 12px;
+            box-sizing: border-box;
+            border-radius: 4px;
+            color: var(--color-text-primary);
+        }
+    }
+
+    &--assistant .message__content {
+        // Figma's #685FFF66.
+        background-color: color-mix(in srgb, var(--accent-color) 40%, transparent);
+    }
+
+    &--operator {
+        .message__content {
+            background-color: var(--accent-color);
+
+            // An accent link would vanish on the accent bubble: the text colour, underlined.
+            ::ng-deep a {
+                color: inherit;
+                text-decoration: underline;
+            }
+        }
+    }
+
+    // A note in the middle, not a bubble: its dashed frame holds the text and its time.
     &--system {
         align-self: center;
         max-width: 90%;
         padding: 4px 8px;
+        border-radius: 8px;
         font-size: var(--text-body-small-size);
         font-weight: var(--text-body-small-weight);
         line-height: var(--text-body-small-line-height);
         text-align: center;
         color: var(--color-text-secondary);
         border: 1px dashed var(--color-divider-regular);
+
+        .message__content {
+            padding: 0;
+        }
+    }
+}
+
+// What happened to the conversation, centred in the thread: the wait chip's look (orange on its 8% tint, 4px 8px, 8px
+// apart); one line of 12px text makes it 24px tall. A long reason wraps rather than leaving the thread.
+.thread-event {
+    @include wait-chip.chip;
+    align-self: center;
+    max-width: 90%;
+    white-space: normal;
+    text-align: center;
+
+    // An operator joined: the same chip in green.
+    &--joined {
+        background: var(--transparent-green-8);
+        color: var(--success-color);
     }
 }
 

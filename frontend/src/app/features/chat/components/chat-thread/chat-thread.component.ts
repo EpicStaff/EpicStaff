@@ -1,4 +1,4 @@
-import { DatePipe, DOCUMENT } from '@angular/common';
+import { DatePipe, DOCUMENT, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     afterNextRender,
@@ -37,7 +37,7 @@ import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-stor
 import { ChatVisitorTokensStore } from '../../services/chat-visitor-tokens.store';
 import { isDeskBuilder } from '../../utils/chat-permissions.util';
 import { closedSummary, isClosed } from '../../utils/conversation-close.util';
-import { operatorName } from '../../utils/conversation-row.util';
+import { conversationTimeLabel, messageTime, operatorName } from '../../utils/conversation-row.util';
 import { microseconds, upsertMessage } from '../../utils/inbox-merge.util';
 import { tickingNow } from '../../utils/ticking-now.util';
 import {
@@ -49,6 +49,18 @@ import { ChatThreadHeaderComponent } from '../chat-thread-header/chat-thread-hea
 // The closed banner's time changes form at midnight only ("14:05", then "Oct 5, 14:05"): a minute is close enough.
 const CLOCK_TICK_MS = 60_000;
 
+/** Something that happened to the conversation, shown as a line in the thread: queued (orange) or joined (green). */
+interface ThreadEvent {
+    kind: 'queued' | 'joined';
+    at: string;
+    text: string;
+}
+
+/** A thread event and the message it goes before; null after the last one. */
+interface PlacedThreadEvent extends ThreadEvent {
+    beforeMessageId: string | null;
+}
+
 /**
  * The open conversation: its header, its messages (newest first in view, older ones paged in as the user scrolls up)
  * and its composer. A closed conversation is read-only: a banner says why it closed where the composer was. Needs the
@@ -58,6 +70,7 @@ const CLOCK_TICK_MS = 60_000;
     selector: 'app-chat-thread',
     imports: [
         DatePipe,
+        NgTemplateOutlet,
         RouterLink,
         AppSvgIconComponent,
         ButtonComponent,
@@ -112,6 +125,42 @@ export class ChatThreadComponent {
         if (!isClosed(conversation)) return '';
         const myUserId = this.profileService.currentUserSignal()?.id ?? null;
         return closedSummary(conversation, this.binding()?.style ?? null, myUserId, this.now(), this.locale);
+    });
+    /**
+     * What happened to the conversation, as lines in the thread where it happened: the hand-off to the queue, then the
+     * operator joining. Drawn from the conversation, which keeps only the latest of each: no hand-off line for a
+     * take-over straight from the bot (no reason), none of either once back with the bot.
+     */
+    private readonly threadEvents = computed<ThreadEvent[]>(() => {
+        const conversation = this.conversation();
+        const events: ThreadEvent[] = [];
+        if (conversation.handoff_at && conversation.handoff_reason) {
+            events.push({
+                kind: 'queued',
+                at: conversation.handoff_at,
+                text: `Moved to the queue: ${conversation.handoff_reason}`,
+            });
+        }
+        const holderId = conversation.assigned_operator_id;
+        if (conversation.claimed_at && holderId !== null) {
+            const isMe = holderId === this.profileService.currentUserSignal()?.id;
+            const who = isMe ? 'You have' : `${operatorName(holderId, conversation.assigned_operator_name)}`;
+            events.push({ kind: 'joined', at: conversation.claimed_at, text: `${who} joined the conversation` });
+        }
+        return events.sort((left, right) => microseconds(left.at) - microseconds(right.at));
+    });
+    /**
+     * Each event placed before the first message after it, or last (`beforeMessageId` null). One that falls before the
+     * loaded messages is left out while older pages are not loaded: its place is not known yet.
+     */
+    protected readonly threadNotes = computed<PlacedThreadEvent[]>(() => {
+        const messages = this.messages();
+        return this.threadEvents().flatMap((event) => {
+            const eventTime = microseconds(event.at);
+            const nextIndex = messages.findIndex((message) => microseconds(message.created_at) > eventTime);
+            if (nextIndex === 0 && this.hasOlderMessages()) return [];
+            return [{ ...event, beforeMessageId: nextIndex === -1 ? null : messages[nextIndex].id }];
+        });
     });
     /** The name visitors see on the user's replies on the conversation's desk; null until that desk is known. */
     readonly myNameOnConversationDesk = computed(() => {
@@ -294,13 +343,31 @@ export class ChatThreadComponent {
     }
 
     /**
-     * Who wrote an operator message: "You", their name, or "Operator #7" while the name is not known; then the name
-     * visitors saw on it when that was another one: "Bea Agent · as Mike". Operators only see this line.
+     * Who wrote an operator message: "You" alone on the user's own; else their name, or "Operator #7" while the name is
+     * not known, then the name visitors saw on it when that was another one: "Bea Agent · as Mike". Operators only see
+     * this line.
      */
     operatorLabel(message: ChatOperatorMessage): string {
+        if (this.isMine(message)) return 'You';
         const author = this.operatorAuthor(message);
         const visibleName = message.visible_name;
         return visibleName && visibleName !== message.author_name ? `${author} · as ${visibleName}` : author;
+    }
+
+    /** Who wrote a message, shown above it: "Visitor", "Assistant", or the operator's label. */
+    authorLabel(message: ChatOperatorMessage): string {
+        if (message.role === 'operator') return this.operatorLabel(message);
+        return message.role === 'user' ? 'Visitor' : 'Assistant';
+    }
+
+    /** A message's or the hand-off's time relative to now: "now", "6m ago", "2:05 PM", "Yesterday"… */
+    relativeTime(iso: string): string {
+        return messageTime(iso, this.now(), this.locale);
+    }
+
+    /** The same time in words for a screen reader, steady while the clock ticks: "today at 2:05 PM". */
+    relativeTimeLabel(iso: string): string {
+        return conversationTimeLabel(iso, this.now(), this.locale);
     }
 
     /** The message's action payloads as JSON; null when it carries none. */
@@ -313,14 +380,19 @@ export class ChatThreadComponent {
         return JSON.stringify(raw, null, 2);
     }
 
-    onRawToggle(messageId: string, event: Event): void {
-        const isOpen = (event.target as HTMLDetailsElement).open;
+    /** Opens or closes a message's raw data, under its buttons. */
+    toggleRaw(messageId: string): void {
         this.openRawIds.update((ids) => {
             const next = new Set(ids);
-            if (isOpen) next.add(messageId);
-            else next.delete(messageId);
+            if (next.has(messageId)) next.delete(messageId);
+            else next.add(messageId);
             return next;
         });
+    }
+
+    /** The id of a message's raw data panel, which its Raw data button controls. */
+    rawPanelId(messageId: string): string {
+        return `chat-message-raw-${messageId}`;
     }
 
     sessionLink(message: ChatOperatorMessage): unknown[] | null {
@@ -330,10 +402,14 @@ export class ChatThreadComponent {
             : null;
     }
 
+    private isMine(message: ChatOperatorMessage): boolean {
+        const authorId = message.author_user_id;
+        return authorId !== null && authorId === this.profileService.currentUserSignal()?.id;
+    }
+
     private operatorAuthor(message: ChatOperatorMessage): string {
         const authorId = message.author_user_id;
         if (authorId === null) return message.author_name || '—';
-        if (authorId === this.profileService.currentUserSignal()?.id) return 'You';
         return operatorName(authorId, message.author_name);
     }
 

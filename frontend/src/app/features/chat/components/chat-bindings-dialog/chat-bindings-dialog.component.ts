@@ -174,31 +174,15 @@ const BINDING_TABS: { id: BindingTab; label: string; controls: BindingControl[] 
     },
 ];
 
-/**
- * No binding = create mode; a binding = its settings. `canDelete` offers Delete desk in the settings: the opener
- * deletes the desk, so only an opener that handles the request passes it.
- */
+/** No binding = create mode; a binding = its settings. */
 export interface ChatBindingsDialogData {
     binding: ChatBinding | null;
-    canDelete?: boolean;
 }
-
-/** The settings' Delete desk: the dialog deletes nothing, the opener deletes the desk with its own confirmation. */
-export interface ChatBindingDeleteRequest {
-    readonly deleteRequested: true;
-}
-
-export type ChatBindingsDialogResult = ChatBinding | ChatBindingDeleteRequest;
-
-export const isChatBindingDeleteRequest = (
-    result: ChatBindingsDialogResult | null | undefined
-): result is ChatBindingDeleteRequest => !!result && 'deleteRequested' in result;
 
 /**
  * Creates a chat binding or edits one's settings. Closes with the binding as it last saved it (without the identity
- * secret), or without a result when it saved nothing; Escape and a backdrop click always close without one. Delete
- * desk closes with a `ChatBindingDeleteRequest` instead. An identity secret the server issues on save is shown here
- * once before the dialog closes.
+ * secret), or without a result when it saved nothing; Escape and a backdrop click always close without one. An
+ * identity secret the server issues on save is shown here once before the dialog closes.
  */
 @Component({
     selector: 'app-chat-bindings-dialog',
@@ -300,9 +284,6 @@ export class ChatBindingsDialogComponent {
     protected readonly tabs = computed(() =>
         this.isCreating() ? BINDING_TABS.filter(({ id }) => id === 'general') : BINDING_TABS
     );
-    // Delete desk: only an existing desk, and only when the opener offers it (it checked chats:delete).
-    protected readonly canRequestDelete =
-        !this.isCreating() && !!inject<ChatBindingsDialogData | null>(DIALOG_DATA, { optional: true })?.canDelete;
     protected readonly identityItems = IDENTITY_ITEMS;
     protected readonly onExhaustedItems = ON_EXHAUSTED_ITEMS;
     protected readonly onResponseTimeoutItems = ON_RESPONSE_TIMEOUT_ITEMS;
@@ -402,7 +383,7 @@ export class ChatBindingsDialogComponent {
 
     private readonly chatApi = inject(ChatApiService);
     private readonly permissionsService = inject(PermissionsService);
-    private readonly dialogRef = inject<DialogRef<ChatBindingsDialogResult>>(DialogRef);
+    private readonly dialogRef = inject<DialogRef<ChatBinding>>(DialogRef);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
@@ -551,11 +532,6 @@ export class ChatBindingsDialogComponent {
 
     close(): void {
         this.dialogRef.close(this.saved ?? undefined);
-    }
-
-    /** Closes asking the opener to delete the desk; the opener confirms and deletes it. */
-    requestDelete(): void {
-        this.dialogRef.close({ deleteRequested: true });
     }
 
     /** Checks the picked flow's contract again, through the live check (the same flow, emitted once more). */
