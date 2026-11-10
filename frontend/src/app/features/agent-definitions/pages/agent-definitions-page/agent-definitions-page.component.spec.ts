@@ -165,20 +165,28 @@ function viewDetailsItem(overlay: HTMLElement): HTMLButtonElement | null {
 }
 
 describe('AgentDefinitionsPageComponent ?agentId= deep link', () => {
-    /** Renders the page from `queryParams` and lets its agent list finish loading. */
-    function renderLoaded(queryParams: Record<string, string>): AgentsPageStore {
+    /** Renders the page from `queryParams` and lets its agent list finish loading, `loads` times. */
+    function renderLoaded(queryParams: Record<string, string>, loads = 1): AgentsPageStore {
         const { fixture } = render(false, queryParams);
         const store = fixture.debugElement.injector.get(AgentsPageStore);
         const loading = store.loading as WritableSignal<boolean>;
-        loading.set(true);
-        fixture.detectChanges();
-        loading.set(false);
-        fixture.detectChanges();
+        for (let load = 0; load < loads; load++) {
+            loading.set(true);
+            fixture.detectChanges();
+            loading.set(false);
+            fixture.detectChanges();
+        }
         return store;
     }
 
     it('selects the agent once its list has loaded, for a viewer who can only read agents', () => {
         const store = renderLoaded({ agentId: String(AGENT.id) });
+
+        expect(store.selectAgent).toHaveBeenCalledExactlyOnceWith(AGENT.id);
+    });
+
+    it('does not select it again when the list reloads', () => {
+        const store = renderLoaded({ agentId: String(AGENT.id) }, 2);
 
         expect(store.selectAgent).toHaveBeenCalledExactlyOnceWith(AGENT.id);
     });

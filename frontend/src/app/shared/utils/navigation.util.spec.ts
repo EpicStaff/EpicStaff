@@ -1,9 +1,11 @@
-import { Component } from '@angular/core';
+import { Location } from '@angular/common';
+import { Component, inject, OnInit } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter, Router } from '@angular/router';
+import { ActivatedRoute, provideRouter, Router } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { config } from 'rxjs';
 
-import { afterNavigationRender, isPlainPrimaryClick } from './navigation.util';
+import { afterNavigationRender, isPlainPrimaryClick, takeQueryParams } from './navigation.util';
 
 @Component({ template: '' })
 class OwnerComponent {}
@@ -97,5 +99,47 @@ describe('isPlainPrimaryClick', () => {
         for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey'] as const) {
             expect(isPlainPrimaryClick(new MouseEvent('click', { button: 0, [modifier]: true }))).toBe(false);
         }
+    });
+});
+
+/** A page that takes its deep-link params as it starts, the way the pages that use the helper do. */
+@Component({ template: '' })
+class LinkedPageComponent implements OnInit {
+    public params: Partial<Record<'toolId' | 'rag', string>> = {};
+
+    private readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
+
+    public ngOnInit(): void {
+        this.params = takeQueryParams(this.route, this.router, ['toolId', 'rag']);
+    }
+}
+
+describe('takeQueryParams', () => {
+    async function openPage(url: string): Promise<{ params: LinkedPageComponent['params']; router: Router }> {
+        TestBed.configureTestingModule({
+            providers: [provideRouter([{ path: 'page', component: LinkedPageComponent }])],
+        });
+        const harness = await RouterTestingHarness.create();
+        const router = TestBed.inject(Router);
+        await router.navigateByUrl(url, { state: { from: 'audit' } });
+        harness.detectChanges();
+        await harness.fixture.whenStable();
+        return { params: harness.routeDebugElement!.componentInstance.params, router };
+    }
+
+    it('returns the params the URL has and drops them, keeping its other params, fragment and history state', async () => {
+        const { params, router } = await openPage('/page?toolId=4&tab=2#row');
+
+        expect(params).toEqual({ toolId: '4' });
+        expect(router.url).toBe('/page?tab=2#row');
+        expect(TestBed.inject(Location).getState()).toEqual(expect.objectContaining({ from: 'audit' }));
+    });
+
+    it('leaves a URL without them as it is', async () => {
+        const { params, router } = await openPage('/page?tab=2');
+
+        expect(params).toEqual({});
+        expect(router.url).toBe('/page?tab=2');
     });
 });

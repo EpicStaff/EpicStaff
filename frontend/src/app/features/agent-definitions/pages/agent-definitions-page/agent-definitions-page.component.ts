@@ -12,6 +12,7 @@ import {
     Injector,
     OnInit,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -155,7 +156,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         read: ElementRef,
     });
 
-    private preselectApplied = false;
+    // `?agentId=` and `?surfaceId=`, taken from the URL at init and applied once the agent list has loaded
+    private queryPreselect: Partial<Record<'agentId' | 'surfaceId', string>> = {};
     private sawLoading = false;
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
@@ -253,21 +255,20 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         });
 
         effect(() => {
-            if (this.preselectApplied) return;
             const loading = this.store.loading();
             if (loading) {
                 this.sawLoading = true;
                 return;
             }
-            if (!this.sawLoading) return;
-            this.preselectApplied = true;
-            this.applyQueryPreselect();
+            // Only the end of a load reruns this: not the lists and selection the preselect reads and sets.
+            if (this.sawLoading) untracked(() => this.applyQueryPreselect());
         });
     }
 
     /** `?agentId=` selects that agent; `?surfaceId=` opens that surface where it lives. An unknown id is ignored. */
     private applyQueryPreselect(): void {
-        const { agentId, surfaceId } = takeQueryParams(this.route, this.router, ['agentId', 'surfaceId']);
+        const { agentId, surfaceId } = this.queryPreselect;
+        this.queryPreselect = {};
         if (agentId != null) {
             const id = Number(agentId);
             if (this.store.agents().some((agent) => agent.id === id)) this.store.selectAgent(id);
@@ -283,6 +284,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     ngOnInit(): void {
+        this.queryPreselect = takeQueryParams(this.route, this.router, ['agentId', 'surfaceId']);
         this.store.load();
     }
 

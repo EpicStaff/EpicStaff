@@ -2,6 +2,7 @@ import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     ActionDropdownButtonComponent,
     ActionDropdownItem,
@@ -64,12 +65,9 @@ function memberLabel({ display_name, email }: AdminMembershipUser): string {
     return display_name ? `${display_name} (${email})` : email;
 }
 
-// `Open flow Billing (opens in a new tab)`, or `… in the recycle bin …`; a record that kept no name leaves it out
-// rather than show an id
-function openLinkLabel(type: string | null, name: string | null, inRecycleBin = false): string {
-    const place = inRecycleBin ? ' in the recycle bin' : '';
-    return `Open ${[type, name].filter(Boolean).join(' ')}${place} (opens in a new tab)`;
-}
+// read after a link's visible text, so its accessible name starts with what it shows
+const NEW_TAB_HINT = '(opens in a new tab)';
+const RECYCLE_BIN_HINT = `in the recycle bin ${NEW_TAB_HINT}`;
 
 function byLabel(options: AuditEnumOption[]): AuditEnumOption[] {
     return [...options].sort((left, right) => left.label.localeCompare(right.label));
@@ -102,8 +100,7 @@ interface UserActionRow {
     // the page that opens the target or the parent, or null when none does or the viewer may not open it
     targetUrl: string | null;
     parentUrl: string | null;
-    targetLinkLabel: string;
-    parentLinkLabel: string;
+    targetLinkHint: string;
 }
 
 @Component({
@@ -116,6 +113,7 @@ interface UserActionRow {
         AuditHighlightComponent,
         DatePipe,
         HasPermissionDirective,
+        MatTooltip,
         NgTemplateOutlet,
         NumberStepperComponent,
         ResizableSidebarDirective,
@@ -123,7 +121,7 @@ interface UserActionRow {
     providers: [{ provide: AUDIT_FIELD_CATALOG, useValue: USER_ACTION_FIELD_CATALOG }],
     templateUrl: './audit-user-actions-browser.component.html',
     // the toolbar, table, pager and side panel look the same as on the Sessions tab
-    styleUrls: ['./audit-sessions-browser.component.scss'],
+    styleUrls: ['./audit-sessions-browser.component.scss', './audit-user-actions-browser.component.scss'],
 })
 export class AuditUserActionsBrowserComponent implements OnInit {
     protected readonly isLoading = signal(false);
@@ -161,9 +159,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
             parentType: userActionTypeLabel(event.parent_type),
             targetUrl: userActionTargetUrl(event, access),
             parentUrl: userActionParentUrl(event, access),
-            // a rename or move names the target by its new name
-            targetLinkLabel: openLinkLabel(event.target_type, event.target_name, isMovedToRecycleBin(event)),
-            parentLinkLabel: openLinkLabel(event.parent_type, event.parent_name),
+            targetLinkHint: isMovedToRecycleBin(event) ? RECYCLE_BIN_HINT : NEW_TAB_HINT,
         }));
     });
     protected readonly appliedChips = computed(() =>
@@ -182,6 +178,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     });
 
     protected readonly columns = USER_ACTION_COLUMNS;
+    protected readonly newTabHint = NEW_TAB_HINT;
     protected readonly timeZoneLabel = buildTimeZoneLabel();
     protected readonly exportItems: ActionDropdownItem[] = [
         { label: 'Export as JSON', value: 'json' },

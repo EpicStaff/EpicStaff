@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ConfirmationDialogService, ConfirmationResult } from '@shared/components';
@@ -36,7 +36,7 @@ import { KeyValueTablesStorageService } from '../../services/key-value-tables-st
     templateUrl: './key-value-tables-page.component.html',
     styleUrls: ['./key-value-tables-page.component.scss'],
 })
-export class KeyValueTablesPageComponent {
+export class KeyValueTablesPageComponent implements OnInit {
     private readonly tableList = viewChild.required(KeyValueTableListComponent);
 
     readonly selectedTableId = signal<number | null>(null);
@@ -94,9 +94,14 @@ export class KeyValueTablesPageComponent {
     private readonly destroyRef = inject(DestroyRef);
     private readonly route = inject(ActivatedRoute);
     private readonly router = inject(Router);
-    private linkedTableHandled = false;
+    // `?tableId=`, taken from the URL at init and selected after the first load
+    private linkedTableId: string | undefined;
     // A delete takes the row whose ⋮ had the focus: the next list moves it to the row selected in its place.
     private focusSelectedAfterReload = false;
+
+    ngOnInit(): void {
+        this.linkedTableId = takeQueryParams(this.route, this.router, ['tableId']).tableId;
+    }
 
     onCreate(): void {
         this.dialog
@@ -150,10 +155,8 @@ export class KeyValueTablesPageComponent {
 
     /** `?tableId=` selects that table, once, after the first load. An unknown id is ignored. */
     private selectLinkedTable(tables: KeyValueTable[]): void {
-        if (this.linkedTableHandled) return;
-        this.linkedTableHandled = true;
-        const { tableId } = takeQueryParams(this.route, this.router, ['tableId']);
-        const id = Number(tableId);
+        const id = Number(this.linkedTableId);
+        this.linkedTableId = undefined;
         if (tables.some((table) => table.id === id)) this.selectedTableId.set(id);
     }
 

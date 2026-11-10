@@ -70,7 +70,8 @@ export class VoiceSettingsSectionComponent implements OnInit {
     private readonly permissions = inject(PermissionsService);
     private readonly route = inject(ActivatedRoute);
     private readonly router = inject(Router);
-    private linkedChannelHandled = false;
+    // `?channelId=`, taken from the URL at init and opened after the first load
+    private linkedChannelId: string | undefined;
 
     status = signal<LoadingState>(LoadingState.IDLE);
 
@@ -88,6 +89,7 @@ export class VoiceSettingsSectionComponent implements OnInit {
     ];
 
     ngOnInit(): void {
+        this.linkedChannelId = takeQueryParams(this.route, this.router, ['channelId']).channelId;
         this.loadAll();
 
         this.channelService.channelsChanged$
@@ -125,9 +127,8 @@ export class VoiceSettingsSectionComponent implements OnInit {
      * gets the list only. An unknown id is ignored.
      */
     private openLinkedChannel(): void {
-        if (this.linkedChannelHandled) return;
-        this.linkedChannelHandled = true;
-        const { channelId } = takeQueryParams(this.route, this.router, ['channelId']);
+        const channelId = this.linkedChannelId;
+        this.linkedChannelId = undefined;
         const channel = this.channels().find((candidate) => candidate.id === Number(channelId));
         if (channel && this.permissions.can(ResourceCode.Voice, ActionCode.Update)) this.onEditChannel(channel);
     }

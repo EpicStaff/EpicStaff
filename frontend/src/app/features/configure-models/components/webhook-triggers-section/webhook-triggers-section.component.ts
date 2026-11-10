@@ -69,7 +69,8 @@ export class WebhookTriggersSectionComponent implements OnInit {
     private readonly permissions = inject(PermissionsService);
     private readonly route = inject(ActivatedRoute);
     private readonly router = inject(Router);
-    private linkedTriggerHandled = false;
+    // `?triggerId=`, taken from the URL at init and opened after the first load
+    private linkedTriggerId: string | undefined;
 
     status = signal<LoadingState>(LoadingState.IDLE);
     triggers = signal<WebhookTriggerModel[]>([]);
@@ -96,6 +97,7 @@ export class WebhookTriggersSectionComponent implements OnInit {
     }
 
     ngOnInit(): void {
+        this.linkedTriggerId = takeQueryParams(this.route, this.router, ['triggerId']).triggerId;
         this.loadTriggers();
         this.service.changed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refresh());
     }
@@ -124,9 +126,8 @@ export class WebhookTriggersSectionComponent implements OnInit {
      * gets the list only. An unknown id is ignored.
      */
     private openLinkedTrigger(): void {
-        if (this.linkedTriggerHandled) return;
-        this.linkedTriggerHandled = true;
-        const { triggerId } = takeQueryParams(this.route, this.router, ['triggerId']);
+        const triggerId = this.linkedTriggerId;
+        this.linkedTriggerId = undefined;
         const trigger = this.triggers().find((candidate) => candidate.id === Number(triggerId));
         if (trigger && this.permissions.can(ResourceCode.Webhooks, ActionCode.Update)) this.onEdit(trigger);
     }

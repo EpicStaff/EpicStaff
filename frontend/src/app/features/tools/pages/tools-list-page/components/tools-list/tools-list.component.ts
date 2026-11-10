@@ -105,7 +105,8 @@ export class ToolsListComponent implements OnInit {
 
     private readonly allTools = signal<Tool[]>([]);
     private readonly usageById = signal<Map<number, GetBulkToolUsageItem>>(new Map());
-    private linkedToolHandled = false;
+    // `?toolId=`, taken from the URL at init and opened after the first load
+    private linkedToolId: string | undefined;
 
     public readonly loadingMessage = computed(() => `Loading ${this.port.entityLabelPlural}...`);
     public readonly emptyMessage = computed(() => `No ${this.port.entityLabelPlural} found.`);
@@ -193,6 +194,7 @@ export class ToolsListComponent implements OnInit {
     }
 
     public ngOnInit(): void {
+        this.linkedToolId = takeQueryParams(this.route, this.router, ['toolId']).toolId;
         this.loadTools();
 
         this.port.createdEvent$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((newTool) => {
@@ -691,9 +693,8 @@ export class ToolsListComponent implements OnInit {
 
     /** `?toolId=` opens that tool as a card click does, once, after the first load. An unknown id is ignored. */
     private openLinkedTool(): void {
-        if (this.linkedToolHandled) return;
-        this.linkedToolHandled = true;
-        const { toolId } = takeQueryParams(this.route, this.router, ['toolId']);
+        const toolId = this.linkedToolId;
+        this.linkedToolId = undefined;
         const tool = toolId == null ? undefined : this.findToolById(Number(toolId));
         if (tool) this.onConfigure(tool);
     }

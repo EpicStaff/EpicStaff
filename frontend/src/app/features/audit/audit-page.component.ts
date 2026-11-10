@@ -19,10 +19,10 @@ const TABS: Record<AuditDomainName, RouteTab> = {
     styleUrls: ['./audit-page.component.scss'],
 })
 export class AuditPageComponent {
-    private readonly configService = inject(ConfigService);
-    private readonly permissionsService = inject(PermissionsService);
-
     protected readonly routeTabs = computed<RouteTab[]>(() =>
         auditTabsFor(this.configService, this.permissionsService).map((domain) => TABS[domain])
     );
+
+    private readonly configService = inject(ConfigService);
+    private readonly permissionsService = inject(PermissionsService);
 }

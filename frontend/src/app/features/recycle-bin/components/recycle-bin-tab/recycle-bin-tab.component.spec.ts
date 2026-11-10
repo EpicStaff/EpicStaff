@@ -792,6 +792,26 @@ describe('RecycleBinTabComponent', () => {
             expect(rowNames(element)).toEqual(['Web search']);
         });
 
+        it('searches again when a link to the open tab names another item', async () => {
+            grant(ResourceCode.Flows);
+            fixture = TestBed.createComponent(RecycleBinTabComponent);
+            fixture.componentRef.setInput('recycleBinTab', 'flows');
+            fixture.componentRef.setInput('search', 'Report');
+            fixture.detectChanges();
+            httpTesting.expectOne(listUrl(FLOWS_BIN, '&search=Report')).flush(page([entry(5, 'Report')]));
+            fixture.detectChanges();
+
+            fixture.componentRef.setInput('search', 'Digest');
+            fixture.detectChanges();
+            httpTesting.expectOne(listUrl(FLOWS_BIN, '&search=Digest')).flush(page([entry(6, 'Digest')]));
+            fixture.detectChanges();
+            await fixture.whenStable();
+
+            const element = fixture.nativeElement as HTMLElement;
+            expect(element.querySelector<HTMLInputElement>('app-search input')?.value).toBe('Digest');
+            expect(rowNames(element)).toEqual(['Digest']);
+        });
+
         it('asks the server to search and sort every list, from the first page', () => {
             vi.useFakeTimers();
             grant(ResourceCode.Flows);

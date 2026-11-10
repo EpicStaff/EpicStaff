@@ -40,8 +40,9 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
     private toastService = inject(ToastService);
     private readonly route = inject(ActivatedRoute);
     private readonly router = inject(Router);
-    // A chunk link (all four params) opens its own way; otherwise `?collection=` is applied once, after the first load.
-    private collectionLinkPending = false;
+    // `?collection=&rag=`, taken from the URL at init and applied after the first load. A chunk link (all four params)
+    // opens its own way and leaves them in the URL.
+    private collectionLink: Partial<Record<'collection' | 'rag', string>> = {};
 
     isLoading = signal<boolean>(true);
     error = signal<string | null>(null);
@@ -52,7 +53,9 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
 
     ngOnInit(): void {
         this.deepLinkService.initFromUrl();
-        this.collectionLinkPending = this.deepLinkService.pending() === null;
+        if (this.deepLinkService.pending() === null) {
+            this.collectionLink = takeQueryParams(this.route, this.router, ['collection', 'rag']);
+        }
         this.getCollections();
         this.pollingService.startPagePolling();
     }
@@ -137,9 +140,8 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
 
     /** `?collection=` selects that collection; `&rag=` also opens that naive RAG's configuration. Unknown ids are ignored. */
     private applyCollectionLink(): void {
-        if (!this.collectionLinkPending) return;
-        this.collectionLinkPending = false;
-        const { collection, rag } = takeQueryParams(this.route, this.router, ['collection', 'rag']);
+        const { collection, rag } = this.collectionLink;
+        this.collectionLink = {};
         const collectionId = Number(collection);
         if (!this.collections().some((candidate) => candidate.collection_id === collectionId)) return;
         this.collectionsStorageService.setSelectedCollectionId(collectionId);

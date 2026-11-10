@@ -59,6 +59,9 @@ export function isPlainPrimaryClick(event: MouseEvent): boolean {
 /**
  * Reads a page's one-shot deep-link query params (a link that opens one item) and drops them from the URL, so a reload
  * or a Back navigation does not open the item again. A param the URL lacks is absent from the result.
+ *
+ * Call it once as the page starts (`ngOnInit`) and keep the result until the page's data has loaded. Called later, from
+ * a load's callback, its URL cleanup would cancel a navigation the user started while the data loaded.
  */
 export function takeQueryParams<Name extends string>(
     route: ActivatedRoute,

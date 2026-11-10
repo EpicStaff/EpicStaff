@@ -364,31 +364,31 @@ export class AuditFiltersPanelComponent implements OnInit {
         this.updateBuilder({ tokens });
     }
 
-    public optionsOf(builderField: AuditSelectField | AuditLookupField): AuditEnumOption[] {
+    protected optionsOf(builderField: AuditSelectField | AuditLookupField): AuditEnumOption[] {
         return catalogFieldOptions(builderField, this.lookupOptions());
     }
 
-    public selectionOf(field: string): AuditValuesFilter {
+    protected selectionOf(field: string): AuditValuesFilter {
         return catalogSelection(this.filter(), field);
     }
 
-    public idFilterOf(field: string): AuditIdFilter {
+    protected idFilterOf(field: string): AuditIdFilter {
         return catalogIdFilter(this.filter(), field);
     }
 
-    public textConditionsOf(textField: AuditTextField): AuditConditionGroup[] {
+    protected textConditionsOf(textField: AuditTextField): AuditConditionGroup[] {
         return catalogTextConditions(this.filter(), textField);
     }
 
-    public setSelection(field: string, selection: AuditValuesFilter): void {
+    protected setSelection(field: string, selection: AuditValuesFilter): void {
         this.updateBuilder({ selections: { ...this.filter().selections, [field]: selection } });
     }
 
-    public setIdFilter(field: string, id: AuditIdFilter): void {
+    protected setIdFilter(field: string, id: AuditIdFilter): void {
         this.updateBuilder({ idFilters: { ...this.filter().idFilters, [field]: id } });
     }
 
-    public setTextConditions(field: string, groups: AuditConditionGroup[]): void {
+    protected setTextConditions(field: string, groups: AuditConditionGroup[]): void {
         this.updateBuilder({ textConditions: { ...this.filter().textConditions, [field]: groups } });
     }
 

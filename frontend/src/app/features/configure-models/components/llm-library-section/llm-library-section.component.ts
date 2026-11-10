@@ -182,6 +182,8 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly permissions = inject(PermissionsService);
     private readonly route = inject(ActivatedRoute);
     private readonly router = inject(Router);
+    // `?configType=&configId=`, taken from the URL at init and opened after the first load
+    private linkedConfigParams: Partial<Record<'configType' | 'configId', string>> = {};
 
     readonly voiceProviders: VoiceProvider[] = [
         {
@@ -390,6 +392,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     });
 
     ngOnInit() {
+        this.linkedConfigParams = takeQueryParams(this.route, this.router, ['configType', 'configId']);
         this.loadAll();
     }
 
@@ -464,7 +467,8 @@ export class LlmLibrarySectionComponent implements OnInit {
      * searched for it instead. An unknown config is ignored.
      */
     private openLinkedConfig(): void {
-        const { configType, configId } = takeQueryParams(this.route, this.router, ['configType', 'configId']);
+        const { configType, configId } = this.linkedConfigParams;
+        this.linkedConfigParams = {};
         if (configType == null || configId == null) return;
         const linked = this.findLinkedConfig(configType, Number(configId));
         if (!linked) return;

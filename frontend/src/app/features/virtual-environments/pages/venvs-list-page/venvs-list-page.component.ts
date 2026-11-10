@@ -8,6 +8,7 @@ import {
     DestroyRef,
     inject,
     Injector,
+    OnInit,
     signal,
     viewChild,
     viewChildren,
@@ -71,7 +72,7 @@ const SEARCH_DEBOUNCE_MS = 300;
     templateUrl: './venvs-list-page.component.html',
     styleUrls: ['./venvs-list-page.component.scss'],
 })
-export class VenvsListPageComponent {
+export class VenvsListPageComponent implements OnInit {
     private readonly venvCards = viewChildren(VenvCardComponent);
     private readonly createButton = viewChild('createButton', { read: ButtonComponent });
 
@@ -122,14 +123,14 @@ export class VenvsListPageComponent {
     private readonly route = inject(ActivatedRoute);
     private readonly router = inject(Router);
 
-    private linkedVenvHandled = false;
+    // `?venvId=`, taken from the URL at init and opened after the first load
+    private linkedVenvId: string | undefined;
     private pollSubscription: Subscription | null = null;
     // Dropped before the next request is sent, so a slow answer to an old search cannot
     // land after a newer one and put the wrong list on screen.
     private listSubscription: Subscription | null = null;
 
     constructor() {
-        this.loadVenvs();
         // Typing reloads the list; a sort does so from `applySort`, which needs no debounce.
         toObservable(this.searchTerm)
             .pipe(
@@ -140,6 +141,11 @@ export class VenvsListPageComponent {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe(() => this.loadVenvs());
+    }
+
+    ngOnInit(): void {
+        this.linkedVenvId = takeQueryParams(this.route, this.router, ['venvId']).venvId;
+        this.loadVenvs();
     }
 
     toggleFilterMenu(): void {
@@ -277,9 +283,8 @@ export class VenvsListPageComponent {
      * its card focused (and scrolled to) instead. An unknown id is ignored.
      */
     private openLinkedVenv(): void {
-        if (this.linkedVenvHandled) return;
-        this.linkedVenvHandled = true;
-        const { venvId } = takeQueryParams(this.route, this.router, ['venvId']);
+        const venvId = this.linkedVenvId;
+        this.linkedVenvId = undefined;
         const venv = this.venvs().find((item) => item.id === Number(venvId));
         if (!venv) return;
         if (this.canUpdate()) {

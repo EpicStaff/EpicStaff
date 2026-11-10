@@ -180,6 +180,11 @@ export class RecycleBinTabComponent implements OnInit {
         this.serverSearches
             .pipe(debounceTime(SERVER_SEARCH_DEBOUNCE_MS), distinctUntilChanged(), takeUntilDestroyed())
             .subscribe(() => this.reload(1));
+        // A link to the tab already open keeps this instance and only changes these inputs; the first value is the
+        // one ngOnInit loads.
+        toObservable(computed(() => [this.search(), this.kind()]))
+            .pipe(skip(1), takeUntilDestroyed())
+            .subscribe(() => this.reload(1));
         if (this.reloadRequests) {
             // The first value is the current count; only later requests (the page's "Empty recycle bin") reload.
             toObservable(this.reloadRequests.requests)

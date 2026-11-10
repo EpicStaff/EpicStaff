@@ -234,7 +234,7 @@ describe('sessions filter compatibility', () => {
         '"matchScope":{"ancestors":true,"children":true,"rows_before":3}}';
 
     it('sessions filter panel compiles the same filter as before', () => {
-        expect(JSON.stringify(compileAuditFilter(sessionState, SESSION_FIELD_CATALOG))).toBe(compiledBefore);
+        expect(compileAuditFilter(sessionState, SESSION_FIELD_CATALOG)).toEqual(JSON.parse(compiledBefore));
     });
 });
 

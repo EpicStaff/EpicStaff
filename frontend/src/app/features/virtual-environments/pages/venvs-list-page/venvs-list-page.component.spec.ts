@@ -2,7 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { HttpRequest, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter, Router } from '@angular/router';
+import { provideRouter, Router, Routes } from '@angular/router';
 import { NEVER } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -222,28 +222,37 @@ describe('VenvsListPageComponent ?venvId= deep link', () => {
     );
     afterEach(() => vi.unstubAllGlobals());
 
-    async function openAt(
-        url: string,
-        canEdit: boolean
-    ): Promise<{ fixture: ComponentFixture<VenvsListPageComponent>; openDialog: ReturnType<typeof vi.fn> }> {
+    function configure(canEdit: boolean, routes: Routes = []): ReturnType<typeof vi.fn> {
         const openDialog = vi.fn(() => ({ closed: NEVER }));
         TestBed.configureTestingModule({
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
-                provideRouter([]),
+                provideRouter(routes),
                 { provide: ConfigService, useValue: { apiUrl: API_URL } },
                 { provide: PermissionsService, useValue: { can: () => canEdit, canAny: () => canEdit } },
                 { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
                 { provide: Dialog, useValue: { open: openDialog } },
             ],
         });
-        await TestBed.inject(Router).navigateByUrl(url);
-        const fixture = TestBed.createComponent(VenvsListPageComponent);
-        fixture.detectChanges();
+        return openDialog;
+    }
+
+    function answerList(): void {
         TestBed.inject(HttpTestingController)
             .expectOne((request) => request.url === `${API_URL}venvs/`)
             .flush({ count: 2, limit: 1000, offset: 0, next: null, previous: null, result: VENVS });
+    }
+
+    async function openAt(
+        url: string,
+        canEdit: boolean
+    ): Promise<{ fixture: ComponentFixture<VenvsListPageComponent>; openDialog: ReturnType<typeof vi.fn> }> {
+        const openDialog = configure(canEdit);
+        await TestBed.inject(Router).navigateByUrl(url);
+        const fixture = TestBed.createComponent(VenvsListPageComponent);
+        fixture.detectChanges();
+        answerList();
         fixture.detectChanges();
         await fixture.whenStable();
         return { fixture, openDialog };
@@ -264,6 +273,32 @@ describe('VenvsListPageComponent ?venvId= deep link', () => {
         expect(openDialog).not.toHaveBeenCalled();
         const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('app-venv-card');
         expect(cards[1].contains(document.activeElement)).toBe(true);
+    });
+
+    it('drops the param from the URL without cancelling a navigation the user starts while the list loads', async () => {
+        let letThrough: (allowed: boolean) => void = () => undefined;
+        // held at its guard until the list has loaded: a sidenav click that is still on its way
+        const openDialog = configure(true, [
+            {
+                path: 'slow',
+                canActivate: [() => new Promise<boolean>((resolve) => (letThrough = resolve))],
+                children: [],
+            },
+        ]);
+        const router = TestBed.inject(Router);
+        await router.navigateByUrl('/?venvId=2');
+        TestBed.createComponent(VenvsListPageComponent).detectChanges();
+        await new Promise((resolve) => setTimeout(resolve));
+        expect(router.url).toBe('/');
+
+        const navigation = router.navigateByUrl('/slow');
+        await new Promise((resolve) => setTimeout(resolve));
+        answerList();
+        letThrough(true);
+
+        expect(await navigation).toBe(true);
+        expect(router.url).toBe('/slow');
+        expect(openDialog).toHaveBeenCalledOnce();
     });
 
     it('opens nothing for an unknown venv id', async () => {

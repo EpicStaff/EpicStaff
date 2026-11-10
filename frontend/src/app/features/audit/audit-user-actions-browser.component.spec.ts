@@ -134,8 +134,15 @@ function buttonWithText(root: HTMLElement, text: string): HTMLButtonElement {
     return button;
 }
 
-function cellText(element: Element): string | undefined {
+function normalizedText(element: Element): string | undefined {
     return element.textContent?.replace(/\s+/g, ' ').trim();
+}
+
+// the text on screen: text kept for screen readers only is left out
+function cellText(element: Element): string | undefined {
+    const copy = element.cloneNode(true) as Element;
+    copy.querySelectorAll('.visually-hidden').forEach((hidden) => hidden.remove());
+    return normalizedText(copy);
 }
 
 async function render(fixture: ComponentFixture<AuditUserActionsBrowserComponent>): Promise<void> {
@@ -241,7 +248,7 @@ describe('AuditUserActionsBrowserComponent', () => {
         flushSearch(http, []);
         await render(fixture);
 
-        const search = root.querySelector<HTMLInputElement>('input[aria-label="Search every field"]')!;
+        const search = root.querySelector<HTMLInputElement>('input[aria-label="Search emails and names"]')!;
         search.value = 'bill';
         search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
         flushSearch(http, [renamedFlow, editedNode]);
@@ -277,12 +284,14 @@ describe('AuditUserActionsBrowserComponent', () => {
         expect(root.querySelector<HTMLElement>('col')!.style.width).toBe('130px');
     });
 
-    // per row: each link's visible text, its label and where it opens, in a new tab
+    // per row: each link's visible text, the name a screen reader reads (its whole text, as it has no aria-label)
+    // and where it opens, in a new tab
     function rowLinks(root: HTMLElement): string[][] {
         return Array.from(root.querySelectorAll('tbody tr')).map((row) =>
-            Array.from(row.querySelectorAll<HTMLAnchorElement>('a[target="_blank"]')).map(
-                (link) => `${cellText(link)} | ${link.getAttribute('aria-label')} -> ${link.getAttribute('href')}`
-            )
+            Array.from(row.querySelectorAll<HTMLAnchorElement>('a[target="_blank"]')).map((link) => {
+                const name = link.getAttribute('aria-label') ?? normalizedText(link);
+                return `${cellText(link)} | ${name} -> ${link.getAttribute('href')}`;
+            })
         );
     }
 
@@ -293,10 +302,10 @@ describe('AuditUserActionsBrowserComponent', () => {
 
         expect(rowLinks(root)).toEqual([
             [
-                'Parse invoice | Open python code node Parse invoice (opens in a new tab) -> /flows/4?nodeId=12',
-                'Billing · Flow | Open flow Billing (opens in a new tab) -> /flows/4',
+                'Parse invoice | Parse invoice (opens in a new tab) -> /flows/4?nodeId=12',
+                'Billing · Flow | Billing · Flow (opens in a new tab) -> /flows/4',
             ],
-            ['Billing · Flow | Open flow Billing (opens in a new tab) -> /flows/4'],
+            ['Billing · Flow | Billing · Flow (opens in a new tab) -> /flows/4'],
         ]);
     });
 
@@ -306,19 +315,18 @@ describe('AuditUserActionsBrowserComponent', () => {
         await render(fixture);
 
         expect(rowLinks(root)).toEqual([
-            [
-                'Billing | Open flow Billing in the recycle bin (opens in a new tab) -> /recycle-bin/flows?search=Billing',
-            ],
+            ['Billing | Billing in the recycle bin (opens in a new tab) -> /recycle-bin/flows?search=Billing'],
         ]);
     });
 
-    it('names a renamed target by its new name', async () => {
+    it('names each link by the text it shows, a renamed or nameless target too', async () => {
         const { fixture, http, root } = setup();
-        flushSearch(http, [renamedFlow]);
+        flushSearch(http, [renamedFlow, { ...renamedFlow, id: 'action-8', target_name: null, previous_name: null }]);
         await render(fixture);
 
         expect(rowLinks(root)).toEqual([
-            ['Invoices v2 → Billing | Open flow Billing (opens in a new tab) -> /flows/4'],
+            ['Invoices v2 → Billing | Invoices v2 → Billing (opens in a new tab) -> /flows/4'],
+            ['#4 | #4 (opens in a new tab) -> /flows/4'],
         ]);
     });
 
@@ -328,6 +336,35 @@ describe('AuditUserActionsBrowserComponent', () => {
         await render(fixture);
 
         expect(rowLinks(root)).toEqual([[]]);
+    });
+
+    it('keeps the page buttons focusable on the only page, and loads nothing when they are pressed', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, [renamedFlow]);
+        await render(fixture);
+
+        const pager = ['«', '‹ Newer', 'Older ›'].map((text) => buttonWithText(root, text));
+        expect(pager.map((button) => [button.disabled, button.getAttribute('aria-disabled')])).toEqual([
+            [false, 'true'],
+            [false, 'true'],
+            [false, 'true'],
+        ]);
+        pager.forEach((button) => button.click());
+        http.expectNone(SEARCH_URL);
+    });
+
+    it('tells assistive technology whether the Filters button has opened its panel', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, []);
+        await render(fixture);
+        const toggle = buttonWithText(root, 'Filters');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+        toggle.click();
+        await render(fixture);
+
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(root.querySelector(`#${toggle.getAttribute('aria-controls')}`)?.tagName).toBe('ASIDE');
     });
 
     it('opens no value viewer or side panel when a row is clicked', async () => {
@@ -443,7 +480,7 @@ describe('AuditUserActionsBrowserComponent', () => {
         flushSearch(http, []);
         await render(fixture);
 
-        const search = root.querySelector<HTMLInputElement>('input[aria-label="Search every field"]')!;
+        const search = root.querySelector<HTMLInputElement>('input[aria-label="Search emails and names"]')!;
         search.value = 'ann';
         search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
 
