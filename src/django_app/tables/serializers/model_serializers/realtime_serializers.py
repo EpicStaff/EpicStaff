@@ -434,6 +434,18 @@ class ConversationRecordingSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A recording must be a WAV file.")
         return file
 
+    def validate(self, attrs):
+        """Require the recording's chat, by id or, for realtime, by connection_key.
+
+        The view resolves connection_key. Without either, saving would write the file
+        and then fail on the NOT NULL chat, leaving a file no row deletes.
+        """
+        if attrs.get("rt_agent_chat") is None and not self.initial_data.get("connection_key"):
+            raise serializers.ValidationError(
+                {"rt_agent_chat": "A recording needs its chat: rt_agent_chat or connection_key."}
+            )
+        return attrs
+
 
 class RealtimeAgentReadSerializer(serializers.ModelSerializer):
     openai_config = OpenAIRealtimeConfigSerializer(read_only=True)
