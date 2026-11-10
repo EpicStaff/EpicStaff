@@ -1,5 +1,6 @@
 import functools
 import threading
+from collections.abc import Callable
 from uuid import uuid4
 
 from django.conf import settings
@@ -14,7 +15,12 @@ from src.shared.retention import DataType
 from user_audit.actor import Actor, actor_from_request
 from user_audit.context import UserActionContext, current_context
 from user_audit.sender import get_user_audit_sender
-from user_audit.targets import TargetDescription, describe, target_parent
+from user_audit.targets import (
+    TargetDescription,
+    describe,
+    describe_reads_the_database,
+    target_parent,
+)
 
 # Records made on this thread and not numbered yet, in record order. Django gives a thread
 # one connection, so one transaction at a time: these are its records, plus any a rolled-back
@@ -155,7 +161,7 @@ def _retention_days(org_id: int, context: UserActionContext | None) -> int:
     return retention_days
 
 
-def user_audit_hook(function):
+def user_audit_hook[**P, R](function: Callable[P, R]) -> Callable[P, R | None]:
     """Run `function` only while the user audit trail is on, and never let it raise.
 
     For capture code that reads the database to name what a record describes: with the
@@ -165,7 +171,7 @@ def user_audit_hook(function):
     """
 
     @functools.wraps(function)
-    def guarded(*args, **kwargs):
+    def guarded(*args: P.args, **kwargs: P.kwargs) -> R | None:
         if not settings.USER_AUDIT_TRAIL_ENABLED:
             return None
         try:
@@ -178,13 +184,24 @@ def user_audit_hook(function):
     return guarded
 
 
-@user_audit_hook
-def describe_for_record(instance: models.Model) -> TargetDescription:
+def describe_for_record(instance: models.Model) -> TargetDescription | None:
     """Describe `instance` now, for a record written once it is deleted, or for a copy's source.
 
-    None while the switch is off, or when describing it failed (logged).
+    None while the switch is off, or when describing it failed (logged). Never raises, and
+    a failure leaves the caller's transaction usable: a description that may query runs in
+    a savepoint. One that reads only loaded columns opens none, so a bulk delete describing
+    each row it removes costs no round trip per row.
     """
-    return describe(instance)
+    if not settings.USER_AUDIT_TRAIL_ENABLED:
+        return None
+    try:
+        if not describe_reads_the_database(instance):
+            return describe(instance)
+        with transaction.atomic():
+            return describe(instance)
+    except Exception:
+        logger.exception("Failed to describe {} for a user action", type(instance).__name__)
+        return None
 
 
 def record_copy(source: models.Model, copy: models.Model) -> None:

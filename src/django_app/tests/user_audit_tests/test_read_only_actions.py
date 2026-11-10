@@ -25,6 +25,7 @@ from user_audit.middleware import (
     FALLBACK_EXCLUDED_ACTIONS,
     FALLBACK_EXCLUDED_VIEWS,
     GENERIC_ACTIONS,
+    HOOK_ONLY_ACTIONS,
     UserActionMiddleware,
 )
 from rbac.views.cross_org_base import CrossOrgAdminViewSet
@@ -36,7 +37,7 @@ pytestmark = pytest.mark.django_db
 WRITE_METHODS = ("post", "put", "patch", "delete")
 
 # Every write route that changes something, other than DRF's generic create, update,
-# partial_update and destroy, which change their row by definition, is in one of the two
+# partial_update and destroy, which change their row by definition, is in one of the three
 # sets below. A write route that changes nothing gets `@reads_only` on its handler, one
 # that only keeps a run's own state `@not_a_user_change`.
 #
@@ -49,7 +50,6 @@ FALLBACK_RECORDED_ROUTES = frozenset(
     {
         "DELETE api/agent-definitions/<pk>/purge/",
         "POST api/agent-definitions/<pk>/restore/",
-        "POST api/audit-filter-presets/<pk>/copy/",
         "PUT api/classification-decision-table-node/<pk>/explanations/",
         "DELETE api/graph-rag/<pk>/documents/<document_id>/",
         "POST api/graph-rag/<pk>/documents/bulk-delete/",
@@ -57,24 +57,20 @@ FALLBACK_RECORDED_ROUTES = frozenset(
         "PUT api/graph-rag/<pk>/index-config/",
         "POST api/graph-versions/<pk>/create-graph/",
         "POST api/graph-versions/<pk>/restore/",
-        "POST api/graphs/<pk>/copy/",
         "POST api/graphs/<pk>/partial-import/",
         "DELETE api/graphs/<pk>/purge/",
         "POST api/graphs/<pk>/restore/",
         "POST api/graphs/<pk>/save/",
         "DELETE api/key-value-tables/<pk>/purge/",
         "POST api/key-value-tables/<pk>/restore/",
-        "POST api/mcp-tools/<pk>/copy/",
         "DELETE api/mcp-tools/<pk>/purge/",
         "POST api/mcp-tools/<pk>/restore/",
-        "POST api/python-code-tool/<pk>/copy/",
         "DELETE api/python-code-tool/<pk>/purge/",
         "POST api/python-code-tool/<pk>/restore/",
         "DELETE api/realtime-channels/<pk>/purge/",
         "POST api/realtime-channels/<pk>/restore/",
         "DELETE api/secrets/<pk>/purge/",
         "POST api/secrets/<pk>/restore/",
-        "POST api/source-collections/<pk>/copy/",
         "DELETE api/source-collections/<pk>/purge/",
         "POST api/source-collections/<pk>/restore/",
         "DELETE api/surfaces/<pk>/purge/",
@@ -132,6 +128,13 @@ HOOK_RECORDED_ROUTES = frozenset(
         "DELETE api/graphs/uuid/<graph_uuid>/",
         # SessionViewSet.bulk_delete records each deleted session under its flow.
         "POST api/sessions/bulk_delete/",
+        # record_copy records the new copy in its own org, its source's name as previous
+        # name. The fallback never records a copy: its URL names the source, not the copy.
+        "POST api/audit-filter-presets/<pk>/copy/",
+        "POST api/graphs/<pk>/copy/",
+        "POST api/mcp-tools/<pk>/copy/",
+        "POST api/python-code-tool/<pk>/copy/",
+        "POST api/source-collections/<pk>/copy/",
         # ImportService records each main entity the file creates.
         "POST api/agent-definitions/import/",
         "POST api/audit-filter-presets/import/",
@@ -194,7 +197,6 @@ HOOK_RECORDED_ROUTES = frozenset(
         "DELETE api/admin/memberships/<pk>/",
         "PATCH api/admin/memberships/<pk>/",
         "POST api/admin/organizations/",
-        "DELETE api/admin/organizations/<pk>/",
         "PATCH api/admin/organizations/<pk>/",
         "POST api/admin/organizations/<pk>/deactivate/",
         "POST api/admin/organizations/<pk>/reactivate/",
@@ -207,6 +209,16 @@ HOOK_RECORDED_ROUTES = frozenset(
         "POST api/admin/users/<pk>/deactivate/",
         "POST api/admin/users/<pk>/grant-superadmin/",
         "POST api/admin/users/<pk>/reactivate/",
+    }
+)
+
+
+# Write routes that change something yet are recorded nowhere: the change reaches no
+# organization's trail, and there is no platform-level trail yet. A superadmin holds no
+# membership, and a deleted organization's own trail can no longer be read.
+NOT_AUDITED_ROUTES = frozenset(
+    {
+        "DELETE api/admin/organizations/<pk>/",
         "POST api/admin/users/<pk>/revoke-superadmin/",
     }
 )
@@ -254,7 +266,7 @@ READ_ONLY_HANDLERS = sorted(
 
 
 def test_every_write_route_is_classified():
-    classified = FALLBACK_RECORDED_ROUTES | HOOK_RECORDED_ROUTES
+    classified = FALLBACK_RECORDED_ROUTES | HOOK_RECORDED_ROUTES | NOT_AUDITED_ROUTES
     unclassified = sorted(
         key
         for key, view_class, name, _route, _actions in _write_handlers()
@@ -317,7 +329,7 @@ def test_cross_org_admin_routes_record_themselves():
         if issubclass(view_class, CrossOrgAdminViewSet)
         and not handler_reads_only(view_class, name)
         and not _excluded(view_class, name)
-        and key not in HOOK_RECORDED_ROUTES
+        and key not in HOOK_RECORDED_ROUTES | NOT_AUDITED_ROUTES
     )
 
     assert relying_on_the_fallback == [], (
@@ -336,8 +348,23 @@ def test_classified_routes_list_only_live_unmarked_routes():
         if not handler_reads_only(view_class, name) and not _excluded(view_class, name)
     }
 
-    assert sorted((FALLBACK_RECORDED_ROUTES | HOOK_RECORDED_ROUTES) - live) == []
-    assert FALLBACK_RECORDED_ROUTES.isdisjoint(HOOK_RECORDED_ROUTES)
+    route_sets = (FALLBACK_RECORDED_ROUTES, HOOK_RECORDED_ROUTES, NOT_AUDITED_ROUTES)
+    assert sorted(frozenset().union(*route_sets) - live) == []
+    assert sum(len(routes) for routes in route_sets) == len(frozenset().union(*route_sets))
+
+
+def test_no_hook_only_action_relies_on_the_fallback():
+    left_to_the_fallback = sorted(
+        key
+        for key, _view_class, name, _route, _actions in _write_handlers()
+        if name in HOOK_ONLY_ACTIONS and key not in HOOK_RECORDED_ROUTES
+    )
+
+    assert left_to_the_fallback == [], (
+        "The fallback never records these actions: a copy's URL names its source, not the "
+        "copy it made. Record the copy with user_audit.recorder.record_copy, then add the "
+        "route to HOOK_RECORDED_ROUTES."
+    )
 
 
 @pytest.mark.parametrize(

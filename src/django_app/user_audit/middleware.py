@@ -1,6 +1,6 @@
 """Capture layer 3: one generic record for a change no earlier layer recorded.
 
-A successful change request (copy, import, version restore, ...) that neither a
+A successful change request (import, version restore, ...) that neither a
 `LastEditTracker` nor an explicit `record_user_action` call described is recorded once,
 with its action (a custom DRF action keeps its name; DRF's generic ones read like the
 recorder's own verbs), its route and the object its URL names, or for DRF's generic
@@ -12,8 +12,8 @@ import io
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.handlers.asgi import ASGIRequest
-from django.db import transaction
 from django.db.models import F, Model
 from rbac.views.auth import (
     ApiKeyValidateView,
@@ -91,9 +91,10 @@ GENERIC_ACTIONS = {
     "partial_update": UserAction.UPDATED,
     "destroy": UserAction.DELETED,
 }
-# Custom DRF actions recorded under a recorder verb: a flow, tool or collection copy reads
-# like a storage copy.
-CUSTOM_ACTION_VERBS = {"copy": UserAction.COPIED}
+# Custom DRF actions the fallback never records, because their URL names another object
+# than the one they change: a copy's names its source, so the copy records itself
+# (`record_copy`).
+HOOK_ONLY_ACTIONS = frozenset({"copy"})
 # Where every authentication class reads its credentials (JWT, API key, plugin keys). A
 # request with neither is anonymous, and an anonymous request is never recorded.
 CREDENTIAL_HEADERS = ("HTTP_AUTHORIZATION", "HTTP_X_API_KEY")
@@ -206,7 +207,8 @@ def _record_unhandled_change(
 ) -> None:
     """Record the request once when it changed something and nothing recorded it yet.
 
-    Skips a handler marked `reads_only`, besides the excluded views and actions.
+    Skips a handler marked `reads_only`, besides the excluded views and actions and the
+    actions only a hook records (`HOOK_ONLY_ACTIONS`).
 
     Best-effort: never raises. The record goes to the org `OrgContextService` checked for
     the request; a request with no checked org is not recorded, nor is one whose target
@@ -229,6 +231,7 @@ def _record_unhandled_change(
             or context.recorded
             or view_class in FALLBACK_EXCLUDED_VIEWS
             or action in FALLBACK_EXCLUDED_ACTIONS
+            or action in HOOK_ONLY_ACTIONS
             or handler_reads_only(view_class, action or request.method.lower())
         ):
             return
@@ -238,7 +241,7 @@ def _record_unhandled_change(
             return
         created_data = response_data if action == "create" else None
         action = action or METHOD_ACTIONS.get(request.method, request.method.lower())
-        action = GENERIC_ACTIONS.get(action) or CUSTOM_ACTION_VERBS.get(action, action)
+        action = GENERIC_ACTIONS.get(action, action)
         route_text = f"{request.method} {url_path_pattern(route)}" if route is not None else None
         org_id = getattr(request, "_rbac_active_org_id", None)
         if org_id is not None:
@@ -284,9 +287,10 @@ def _fallback_target(
 def _row_before_delete(view_func, match) -> Model | None:
     """The row the URL of a DELETE names, whatever org owns it, with that org's id; None
     while the switch is off, for a custom action (a purge records itself), for a URL that
-    names no row and for a view whose rows reach no org.
+    names no row or an id its model cannot hold, and for a view whose rows reach no org.
 
-    Loads only what naming it takes (`fields_to_describe`).
+    Loads only what naming it takes (`fields_to_describe`). Runs before the view, outside
+    any transaction (`ATOMIC_REQUESTS` is off), so a failed read leaves nothing to roll back.
     """
     try:
         if not settings.USER_AUDIT_TRAIL_ENABLED:
@@ -301,14 +305,16 @@ def _row_before_delete(view_func, match) -> Model | None:
         org_path = org_path_of(view_class, model)
         if org_path is None:
             return None
-        # A savepoint, so a failed read caught below leaves the request's transaction usable.
-        with transaction.atomic():
-            return (
-                model._base_manager.filter(pk=url_id)
-                .only(*fields_to_describe(model))
-                .annotate(**{ORG_BEFORE_DELETE_ATTRIBUTE: F(org_path)})
-                .first()
-            )
+        return (
+            model._base_manager.filter(pk=url_id)
+            .only(*fields_to_describe(model))
+            .annotate(**{ORG_BEFORE_DELETE_ATTRIBUTE: F(org_path)})
+            .first()
+        )
+    except (TypeError, ValueError, ValidationError):
+        # An id the model cannot hold ("abc" for an integer key): the view answers 404, and
+        # anyone can send one, so it is not worth a log line.
+        return None
     except Exception:
         logger.exception("Failed to load the row a DELETE names for its user-action record")
         return None

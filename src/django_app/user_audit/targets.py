@@ -126,6 +126,14 @@ def fields_to_describe(model: type[models.Model]) -> list[str]:
     return [name for name in wanted if name in field_names]
 
 
+def describe_reads_the_database(instance: models.Model) -> bool:
+    """Whether `describe(instance)` may query: a column it reads was not loaded, or the row
+    is named after its parent, which may not be loaded either."""
+    if instance._meta.label_lower in TARGET_NAMED_AFTER_PARENT:
+        return True
+    return not instance.get_deferred_fields().isdisjoint(fields_to_describe(type(instance)))
+
+
 def _instance_type(instance: models.Model) -> str:
     # One storage model holds both files and folders; a reader tells them apart.
     if instance._meta.label_lower == "tables.storagefile" and instance.item_type == "folder":

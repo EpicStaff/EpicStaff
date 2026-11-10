@@ -6,12 +6,13 @@ the storage capture directly, for the failures no endpoint can provoke."""
 from unittest.mock import patch
 
 import pytest
-from django.db import transaction
+from django.db import connection, transaction
 from django.urls import reverse
 from rest_framework import status
 
 from tables.models import Graph, GraphStorageFile, GraphVersion, SourceCollection, StorageFile
 from src.shared.models import UserAction
+from tables.services.storage_service import db_sync
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -245,6 +246,10 @@ def _cross_org_transfer(client, transfer, acme, beta, capture):
     )
 
 
+def _carries_path(event, path) -> bool:
+    return path in (event.target_name, event.previous_name, event.parent_name)
+
+
 def test_storage_cross_org_copy_is_recorded_in_the_destination_org_only(
     superadmin_in_acme, acme, beta, storage_manager, sent_events, django_capture_on_commit_callbacks
 ):
@@ -255,7 +260,9 @@ def test_storage_cross_org_copy_is_recorded_in_the_destination_org_only(
     landed = StorageFile.objects.get(org=beta, path="inbox/a.txt")
     event = _only_event(sent_events)
     assert _target(event) == ("copied", "storage file", str(landed.id), "inbox/a.txt")
-    assert (event.org_id, event.previous_name) == (beta.id, "a.txt")
+    # The destination org never learns where in the source org the entry came from.
+    assert (event.org_id, event.previous_name) == (beta.id, None)
+    assert not _carries_path(event, "a.txt")
 
 
 def test_storage_cross_org_move_is_recorded_in_both_orgs_naming_only_their_own_paths(
@@ -269,11 +276,13 @@ def test_storage_cross_org_move_is_recorded_in_both_orgs_naming_only_their_own_p
     landed = StorageFile.objects.get(org=beta, path="inbox/a.txt")
     by_org = {event.org_id: event for event in sent_events}
     assert len(sent_events) == 2
-    # The source org learns what left, never where it went.
+    # Each org learns only its own side: what left, or what arrived.
     assert _target(by_org[acme.id]) == ("moved", "storage file", str(source_row_id), "a.txt")
     assert by_org[acme.id].previous_name is None
+    assert not _carries_path(by_org[acme.id], "inbox/a.txt")
     assert _target(by_org[beta.id]) == ("moved", "storage file", str(landed.id), "inbox/a.txt")
-    assert by_org[beta.id].previous_name == "a.txt"
+    assert by_org[beta.id].previous_name is None
+    assert not _carries_path(by_org[beta.id], "a.txt")
 
 
 def test_storage_add_to_flow_records_the_flow_updated_once(
@@ -371,14 +380,20 @@ def test_admin_user_create_with_no_org_records_nothing(
 
 
 def test_a_failing_storage_capture_never_raises_and_leaves_the_transaction_usable(
-    acme, admin_acme, sent_events, django_capture_on_commit_callbacks
+    acme, admin_acme, sent_events, django_capture_on_commit_callbacks, monkeypatch
 ):
+    StorageFile.objects.create(org=acme, path="a.txt", name="a.txt", item_type="file")
+
+    def failing_record(**kwargs):
+        # Fails on the server, which aborts the transaction unless a savepoint contains it.
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM table_that_does_not_exist")
+
+    monkeypatch.setattr(db_sync, "record_user_action", failing_record)
+
     with django_capture_on_commit_callbacks(execute=True), transaction.atomic():
-        # A path the database refuses makes the lookup itself fail.
-        StorageFileSync.record_transfer(
-            UserAction.CREATED, acme.id, "bad\x00name.txt", user=admin_acme
-        )
-        assert not StorageFile.objects.filter(org=acme).exists()
+        StorageFileSync.record_transfer(UserAction.CREATED, acme.id, "a.txt", user=admin_acme)
+        assert StorageFile.objects.filter(org=acme, path="a.txt").exists()
 
     assert sent_events == []
 

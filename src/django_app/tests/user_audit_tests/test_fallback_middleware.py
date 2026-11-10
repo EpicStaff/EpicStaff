@@ -236,8 +236,8 @@ def test_fallback_labels_a_collection_by_its_collection_name(
         _serve(
             _checked_request(admin_acme, acme.id),
             view_class=_CollectionViewSet,
-            actions={"post": "copy"},
-            route="api/^source-collections/(?P<pk>[^/.]+)/copy/$",
+            actions={"post": "reindex"},
+            route="api/^source-collections/(?P<pk>[^/.]+)/reindex/$",
             kwargs={"pk": str(collection.pk)},
         )
 
@@ -446,18 +446,34 @@ def test_fallback_never_labels_a_target_from_another_org(
         _serve(
             _checked_request(admin_acme, acme.id),
             view_class=GraphViewSet,
-            actions={"post": "copy"},
-            route="api/^graphs/(?P<pk>[^/.]+)/copy/$",
+            actions={"post": "restore"},
+            route="api/^graphs/(?P<pk>[^/.]+)/restore/$",
             kwargs={"pk": str(other_org_flow.pk)},
         )
 
     [event] = sent_events
     assert (event.action, event.target_type, event.target_id, event.target_name) == (
-        "copied",
+        "restore",
         "flow",
         str(other_org_flow.pk),
         None,
     )
+
+
+def test_a_copy_no_hook_recorded_is_never_recorded_as_its_source(
+    admin_acme, acme, flow, sent_events, django_capture_on_commit_callbacks
+):
+    # A copy's URL names its source; recorded here, the source would read as the copy.
+    with django_capture_on_commit_callbacks(execute=True):
+        _serve(
+            _checked_request(admin_acme, acme.id),
+            view_class=GraphViewSet,
+            actions={"post": "copy"},
+            route="api/^graphs/(?P<pk>[^/.]+)/copy/$",
+            kwargs={"pk": str(flow.pk)},
+        )
+
+    assert sent_events == []
 
 
 def test_fallback_names_its_target_without_reading_the_rows_json(
@@ -468,8 +484,8 @@ def test_fallback_names_its_target_without_reading_the_rows_json(
             _serve(
                 _checked_request(admin_acme, acme.id),
                 view_class=GraphViewSet,
-                actions={"post": "copy"},
-                route="api/^graphs/(?P<pk>[^/.]+)/copy/$",
+                actions={"post": "restore"},
+                route="api/^graphs/(?P<pk>[^/.]+)/restore/$",
                 kwargs={"pk": str(flow.pk)},
             )
 
@@ -659,7 +675,7 @@ def test_a_deleted_session_is_named_under_its_flow(
     )
 
 
-def test_a_delete_of_another_orgs_row_records_nothing(
+def test_a_delete_of_another_orgs_row_is_404_and_records_nothing(
     token_client, admin_acme, beta, sent_events, django_capture_on_commit_callbacks
 ):
     preset = AuditFilterPreset.objects.create(
@@ -671,6 +687,51 @@ def test_a_delete_of_another_orgs_row_records_nothing(
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert AuditFilterPreset.objects.filter(pk=preset.pk).exists()
+    assert sent_events == []
+
+
+def test_a_deleted_row_another_org_owned_is_never_named(
+    admin_acme, acme, beta, sent_events, django_capture_on_commit_callbacks
+):
+    # A view that deleted another org's row and still answered 2xx: the row loaded before
+    # the delete is not acme's, so the record must not name it.
+    preset = AuditFilterPreset.objects.create(
+        org=beta, created_by=admin_acme, name="Beta secret", filter_body={"query": "x"}
+    )
+    preset_id = preset.pk
+    view = AuditFilterPresetViewSet.as_view({"delete": "destroy"})
+    match = ResolverMatch(
+        view, (), {"pk": str(preset_id)}, route="api/^audit-filter-presets/(?P<pk>[^/.]+)/$"
+    )
+    request = _checked_request(
+        admin_acme, acme.id, method="delete", path=f"/api/audit-filter-presets/{preset_id}/"
+    )
+    request.META["HTTP_AUTHORIZATION"] = "Bearer token"
+
+    def get_response(request_in_view):
+        request_in_view.resolver_match = match
+        middleware.process_view(request_in_view, view, (), match.kwargs)
+        AuditFilterPreset.objects.filter(pk=preset_id).delete()
+        return HttpResponse(status=status.HTTP_204_NO_CONTENT)
+
+    middleware = UserActionMiddleware(get_response)
+    with django_capture_on_commit_callbacks(execute=True):
+        middleware(request)
+
+    [event] = sent_events
+    assert (event.action, event.org_id, event.target_id, event.target_name) == (
+        "deleted", acme.id, str(preset_id), None
+    )
+
+
+def test_a_delete_naming_a_malformed_id_logs_and_records_nothing(
+    token_client, sent_events, captured_log_output, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        response = token_client.delete("/api/labels/abc/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert captured_log_output == []
     assert sent_events == []
 
 

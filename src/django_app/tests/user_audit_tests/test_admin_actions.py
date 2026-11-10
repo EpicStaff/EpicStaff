@@ -1,4 +1,5 @@
-"""Superadmin actions on users and organizations, recorded through the cross-org admin API.
+"""Superadmin actions on users and organizations, recorded through the cross-org admin API,
+and the ones that reach no organization's trail and so are not audited.
 
 Presentation tests: each goes through its endpoint. The request has no checked org, so the
 middleware's fallback never records these; the governance services do. Only the object
@@ -99,26 +100,38 @@ def test_reactivating_a_user_records_reactivated_and_a_repeat_records_nothing(
     ]
 
 
-def test_revoking_superadmin_is_recorded_in_the_orgs_the_user_belongs_to(
-    superadmin_client, django_user_model, acme, role_member, sent_events,
+# A superadmin can hold no membership, and there is no platform-level trail yet, so a
+# change to a superadmin reaches no trail at all.
+@pytest.mark.parametrize(
+    "method, path, body, state_after",
+    [
+        ("post", "revoke-superadmin/", None, [(False, True)]),
+        ("post", "deactivate/", None, [(True, False)]),
+        ("delete", "", {"verification_phrase": "delete-second-superadmin@example.com"}, []),
+    ],
+)
+def test_a_change_to_a_superadmin_records_nothing(
+    method, path, body, state_after, superadmin_client, django_user_model, acme, sent_events,
     django_capture_on_commit_callbacks,
 ):
-    # A grant purges every membership, so only a membership added since gets the record.
     second_superadmin = django_user_model.objects.create_user(
         email="second-superadmin@example.com", password="StrongPass123!", is_superadmin=True
     )
-    OrganizationUser.objects.create(user=second_superadmin, org=acme, role=role_member)
 
     _send(
         superadmin_client,
-        "post",
-        f"{USERS_URL}{second_superadmin.id}/revoke-superadmin/",
+        method,
+        f"{USERS_URL}{second_superadmin.id}/{path}",
         django_capture_on_commit_callbacks,
+        body,
     )
 
-    assert _records(sent_events) == [
-        ("superadmin_revoked", acme.id, "user", str(second_superadmin.id), second_superadmin.email)
-    ]
+    assert list(
+        django_user_model.objects.filter(pk=second_superadmin.id).values_list(
+            "is_superadmin", "is_active"
+        )
+    ) == state_after
+    assert sent_events == []
 
 
 def test_deleting_a_user_is_recorded_in_each_org_they_belonged_to_by_their_email(
@@ -183,23 +196,23 @@ def test_deactivating_and_reactivating_an_organization_are_recorded_in_it(
     ]
 
 
-def test_deleting_an_organization_is_recorded_in_its_own_trail_by_name(
+def test_deleting_an_organization_records_nothing(
     superadmin_client, acme, beta, sent_events, django_capture_on_commit_callbacks
 ):
-    beta_id, beta_name = beta.id, beta.name
+    # Its own trail is the only one it could land in, and no one can read it once the org
+    # is gone; there is no platform-level trail yet.
+    beta_id = beta.id
 
     _send(
         superadmin_client,
         "delete",
         f"{ORGANIZATIONS_URL}{beta_id}/",
         django_capture_on_commit_callbacks,
-        {"verification_phrase": f"delete-{beta_name}"},
+        {"verification_phrase": f"delete-{beta.name}"},
     )
 
     assert not Organization.objects.filter(pk=beta_id).exists()
-    assert _records(sent_events) == [
-        ("deleted", beta_id, "organization", str(beta_id), beta_name)
-    ]
+    assert sent_events == []
 
 
 def test_a_refused_organization_delete_records_nothing(

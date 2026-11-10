@@ -40,7 +40,6 @@ describe('userActionLabel', () => {
         ['deactivated', 'Deactivated'],
         ['reactivated', 'Reactivated'],
         ['superadmin_granted', 'Superadmin granted'],
-        ['superadmin_revoked', 'Superadmin revoked'],
         ['upload_stream', 'Upload stream'],
         ['register_webhook', 'Register webhook'],
     ])('labels %s as %s', (action, expected) => {
@@ -130,7 +129,6 @@ describe('userActionTone', () => {
         ['deactivated', 'alert'],
         ['reactivated', 'added'],
         ['superadmin_granted', 'alert'],
-        ['superadmin_revoked', 'changed'],
         ['moved_to_recycle_bin', 'removed'],
         ['deleted', 'destroyed'],
         ['sign_in_failed', 'destroyed'],

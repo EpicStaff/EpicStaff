@@ -28,6 +28,7 @@ from rbac.exceptions import (
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.identity.first_setup import FirstSetupService
 from rbac.identity.first_setup_mode import FirstSetupMode
+from rbac.identity.passwords.failure_description import describe_failure
 from rbac.identity.passwords.recovery import PasswordRecoveryService
 from rbac.identity.refresh_cookie import (
     clear_refresh_cookie,
@@ -138,14 +139,18 @@ class LoginView(TokenObtainPairView):
 
 def _record_sign_in_for_account(login: str, action: str) -> None:
     # The login is read only to find the account, the way the serializer's backend does; an
-    # unknown login records nothing, and the password is never read.
+    # unknown login records nothing, and the password is never read. Never raises, on the
+    # request thread or off it; a failure is logged only by where it was raised, because
+    # its message and locals can hold the login email.
     try:
         user_model = get_user_model()
         user = user_model.objects.filter(**{user_model.USERNAME_FIELD: login}).first()
         if user is not None:
             record_for_user_orgs(action=action, actor=_user_actor(user))
-    except Exception:
-        logger.exception("Failed to record user action {} for a login", action)
+    except Exception as error:
+        logger.error(
+            "Failed to record user action {} for a login {}", action, describe_failure(error)
+        )
 
 
 class LogoutView(APIView):

@@ -887,18 +887,13 @@ class StorageManager:
         org's quota. Caller authorization (superadmin) is enforced at the API
         layer. Uses a server-side S3 copy — no data streams through the app.
         Returns the destination org's bin entries purged to make room, which only
-        a `bin_purge` grant allows. The copy is recorded in the destination org.
+        a `bin_purge` grant allows. The copy is recorded in the destination org, naming
+        only the entry as it arrived: never the source org's path.
         """
         purged, entry_path = self._copy_within_quota(
             src_org_id, src_path, dst_org_id, dst_path, user=user, bin_purge=bin_purge
         )
-        StorageFileSync.record_transfer(
-            UserAction.COPIED,
-            dst_org_id,
-            entry_path,
-            source_path=_stored_source_path(src_path, entry_path),
-            user=user,
-        )
+        StorageFileSync.record_transfer(UserAction.COPIED, dst_org_id, entry_path, user=user)
         return purged
 
     def move_cross_org(
@@ -923,8 +918,9 @@ class StorageManager:
         member of the destination org, and otherwise has none; `user` only authors the
         ancestor folders the move creates there. An existing destination file keeps its
         own author. Every moved row gets `user` as its last editor: the move is an edit in
-        the destination org, where the move is recorded as a user action. The source org
-        records it too, naming only the entry that left: never where it went.
+        the destination org, where the move is recorded as a user action naming only the
+        entry as it arrived: never where it came from. The source org records it too,
+        naming only the entry that left: never where it went.
         """
         purged, entry_path = self._copy_within_quota(
             src_org_id,
@@ -948,7 +944,5 @@ class StorageManager:
             record_user_action(
                 action=UserAction.MOVED, org_id=src_org_id, target_description=departed
             )
-        StorageFileSync.record_transfer(
-            UserAction.MOVED, dst_org_id, entry_path, source_path=source_path, user=user
-        )
+        StorageFileSync.record_transfer(UserAction.MOVED, dst_org_id, entry_path, user=user)
         return purged

@@ -21,7 +21,6 @@ const ACTION_TONES: Record<string, UserActionTone> = {
     renamed: 'changed',
     moved: 'changed',
     key_rotated: 'changed',
-    superadmin_revoked: 'changed',
     // still in the recycle bin, so recoverable
     moved_to_recycle_bin: 'removed',
     // gone for good: at once (a member, a role, an API key) or emptied from the recycle bin

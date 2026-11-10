@@ -285,3 +285,35 @@ def test_save_changing_several_nodes_reads_retention_once(
         query for query in queries.captured_queries if f'FROM "{retention_table}"' in query["sql"]
     ]
     assert len(retention_reads) == 1
+
+
+def _queries_of_a_save_deleting(client, flow, capture, nodes) -> list[str]:
+    with CaptureQueriesContext(connection) as queries:
+        _save_flow(
+            client, flow, capture, deleted={"python_node_ids": [node.id for node in nodes]}
+        )
+    return [query["sql"] for query in queries.captured_queries]
+
+
+@pytest.mark.django_db
+def test_a_save_deleting_nodes_records_each_without_a_query_per_node(
+    auth_client, default_org, sent_events, django_capture_on_commit_callbacks
+):
+    one_flow = Graph.objects.create(name="One", org=default_org)
+    four_flow = Graph.objects.create(name="Four", org=default_org)
+    [lone] = _create_python_nodes(auth_client, one_flow, ["Fetch invoices"])
+    four = _create_python_nodes(auth_client, four_flow, ["A", "B", "C", "D"])
+
+    one_delete = _queries_of_a_save_deleting(
+        auth_client, one_flow, django_capture_on_commit_callbacks, [lone]
+    )
+    sent_events.clear()
+    four_deletes = _queries_of_a_save_deleting(
+        auth_client, four_flow, django_capture_on_commit_callbacks, four
+    )
+
+    assert sorted(
+        (event.action, event.target_name) for event in sent_events if event.action == "deleted"
+    ) == [("deleted", "A"), ("deleted", "B"), ("deleted", "C"), ("deleted", "D")]
+    # Describing a fully loaded node reads nothing, so it opens no savepoint either.
+    assert len(four_deletes) == len(one_delete)

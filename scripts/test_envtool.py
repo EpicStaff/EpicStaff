@@ -137,27 +137,26 @@ class UpdateEnvFileTest(unittest.TestCase):
         text = self.env_file.read_text(encoding="utf-8")
         self.assertEqual(envtool.read_env_values(text)["DB_PASSWORD"], "generated")
 
-    def test_old_audit_switch_carries_into_the_missing_new_switches(self):
+    def test_old_audit_switch_carries_into_the_session_switch_only(self):
         schema = {
             "groups": {
                 "auditor": {
                     "vars": {
                         name: {"description": "Switch.", "default": {"prod": False, "dev": True}}
-                        for name in envtool.SPLIT_AUDIT_SWITCHES
+                        for name in ("SESSION_AUDIT_TRAIL_ENABLED", "USER_AUDIT_TRAIL_ENABLED")
                     }
                 }
             }
         }
-        self.env_file.write_text(
-            "AUDIT_TRAIL_ENABLED=true\nUSER_AUDIT_TRAIL_ENABLED=false\n", encoding="utf-8"
-        )
+        self.env_file.write_text("AUDIT_TRAIL_ENABLED=true\n", encoding="utf-8")
 
         added, _ = envtool.update_env_file(schema, "prod", self.env_file, TODAY)
 
-        self.assertEqual(added, ["SESSION_AUDIT_TRAIL_ENABLED"])
+        self.assertEqual(added, ["SESSION_AUDIT_TRAIL_ENABLED", "USER_AUDIT_TRAIL_ENABLED"])
         values = envtool.read_env_values(self.env_file.read_text(encoding="utf-8"))
         self.assertEqual(values["SESSION_AUDIT_TRAIL_ENABLED"], "true")
-        self.assertEqual(values["USER_AUDIT_TRAIL_ENABLED"], "false")
+        # The user trail collects new personal data: the operator opts in to it.
+        self.assertEqual(values["USER_AUDIT_TRAIL_ENABLED"], "False")
 
     def test_without_the_old_audit_switch_the_new_ones_get_their_default(self):
         schema = {

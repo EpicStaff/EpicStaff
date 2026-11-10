@@ -497,18 +497,20 @@ def update_env_file(
     return added, needs_value
 
 
-# The single audit switch released before the session and user trails got one each.
+# The single audit switch released before the session and user trails got one each. It
+# only ever audited sessions, so its value carries into the session switch alone; the user
+# trail collects new personal data, so its switch keeps its default and an operator opts in.
 LEGACY_AUDIT_SWITCH = "AUDIT_TRAIL_ENABLED"
-SPLIT_AUDIT_SWITCHES = ("SESSION_AUDIT_TRAIL_ENABLED", "USER_AUDIT_TRAIL_ENABLED")
+SESSION_AUDIT_SWITCH = "SESSION_AUDIT_TRAIL_ENABLED"
 
 
 def _split_audit_switch(env_text: str) -> dict[str, str]:
-    """The old audit switch's value for each new one, so an upgrade that had auditing on keeps
-    it on instead of getting the new switches' `false` default."""
+    """The old audit switch's value for the session switch, so an upgrade that audited
+    sessions keeps doing so instead of getting the new switch's `false` default."""
     legacy_value = read_env_values(env_text).get(LEGACY_AUDIT_SWITCH)
     if legacy_value is None:
         return {}
-    return dict.fromkeys(SPLIT_AUDIT_SWITCHES, legacy_value)
+    return {SESSION_AUDIT_SWITCH: legacy_value}
 
 
 def read_env_values(text: str) -> dict[str, str]:

@@ -591,3 +591,22 @@ def test_describe_for_record_reads_nothing_with_the_switch_off(
 
     with django_assert_num_queries(0):
         assert recorder.describe_for_record(voice_settings) is None
+
+
+@pytest.mark.django_db
+def test_describing_a_row_with_unloaded_columns_names_it_and_a_failure_leaves_the_transaction_usable(
+    flow, sent_events, monkeypatch
+):
+    unloaded = Graph.objects.only("pk").get(pk=flow.pk)
+    assert recorder.describe_for_record(unloaded).name == "Billing flow"
+
+    def failing_describe(instance):
+        # Fails on the server, which aborts the transaction unless a savepoint contains it.
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM table_that_does_not_exist")
+
+    monkeypatch.setattr(recorder, "describe", failing_describe)
+
+    with transaction.atomic():
+        assert recorder.describe_for_record(Graph.objects.only("pk").get(pk=flow.pk)) is None
+        assert Graph.objects.filter(pk=flow.pk).exists()

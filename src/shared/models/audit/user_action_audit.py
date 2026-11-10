@@ -12,8 +12,7 @@ class UserAction(StrEnum):
     storage entries put at a new path, or a new copy of any resource. `PAUSED`, `RESUMED`
     and `KEY_ROTATED` are a chat desk stopped answering, answering again, and given a new
     public key. `DEACTIVATED` and `REACTIVATED` are a user account or an organization
-    switched off and on again; `SUPERADMIN_GRANTED` and `SUPERADMIN_REVOKED` change a
-    user's superadmin role.
+    switched off and on again; `SUPERADMIN_GRANTED` gives a user the superadmin role.
     """
 
     CREATED = "created"
@@ -34,23 +33,26 @@ class UserAction(StrEnum):
     DEACTIVATED = "deactivated"
     REACTIVATED = "reactivated"
     SUPERADMIN_GRANTED = "superadmin_granted"
-    SUPERADMIN_REVOKED = "superadmin_revoked"
 
 
 class UserActionEvent(BaseAuditEvent):
     """One action a user (or an API key) took, as it was at the time it happened.
 
     Attributes:
-        number: Short record number from one deployment-wide sequence, increasing with
-            each record but with gaps. Every record sent now carries one; it is None only
-            on records stored before numbering existed. `id` stays the unique key.
+        number: Short record number from one deployment-wide sequence, with gaps. It is
+            given at commit, so across concurrent requests it follows commit order, not
+            record order: a request that commits later numbers its records higher even
+            when it recorded them first. Every record sent now carries one; it is None
+            only on records stored before numbering existed. `id` stays the unique key.
         actor_email: Email at the time of the action; empty for the system API key.
-        action: A UserAction value, or a custom DRF action name ("copy") for fallback records.
+        action: A UserAction value, or a custom DRF action name ("register_webhook") for
+            fallback records.
         target_type: Display label such as "python node", "flow" or "member".
         previous_name: What the target was known by before the action: the name a
             "renamed" target had, the path a "moved" storage entry had, the name of the
             source a "copied" target was copied from, or the role an "updated" member held.
-        route: Fallback records only, e.g. "POST api/graphs/<pk>/copy/".
+        route: Fallback records only, such as
+            "POST api/telegram-trigger-nodes/<pk>/register-webhook/".
     """
 
     number: int | None = None

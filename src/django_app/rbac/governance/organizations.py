@@ -137,7 +137,6 @@ class OrganizationManagementService(CrossOrgResourceService):
             raise OrganizationNameConflictError() from exc
         org_storage_provisioning_service.provision_for_organization(org)
         OrganizationConfig.objects.create(org=org, audit_retention_days=audit_retention_days)
-        # After the config: the record reads the new org's audit retention.
         record_user_action(action=UserAction.CREATED, org_id=org.pk, target=org)
         return self._get_organization_with_member_count(org.pk)
 
@@ -331,10 +330,8 @@ class OrganizationManagementService(CrossOrgResourceService):
         # Narrower, lock-scoped re-check of the same last-active-org invariant `_assert_deletable_org` enforces unlocked above -- not a full re-implementation, so don't assume edits to one mirror the other.
         if instance.pk in locked and not set(locked) - {instance.pk}:
             raise LastOrganizationError()
-        # Recorded in the deleted org's own trail, while its row and retention still exist.
-        # The auditor keeps the record until that retention ends, but no one can read it
-        # there: an audit token is issued only for an existing organization.
-        record_user_action(action=UserAction.DELETED, org_id=instance.pk, target=instance)
+        # Not audited: the only trail this delete could land in is the deleted org's own,
+        # which no one can read once it is gone, and there is no platform-level trail yet.
 
         # Each participant counts non-destructively immediately before its
         # sweep, under the same locks, so this agrees with the preview. The

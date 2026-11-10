@@ -22,7 +22,6 @@ export const USER_ACTION_OPTIONS: AuditEnumOption[] = [
     { value: 'deactivated', label: 'Deactivated' },
     { value: 'reactivated', label: 'Reactivated' },
     { value: 'superadmin_granted', label: 'Superadmin granted' },
-    { value: 'superadmin_revoked', label: 'Superadmin revoked' },
     { value: 'import_entity', label: 'Import entity' },
 ];
 
