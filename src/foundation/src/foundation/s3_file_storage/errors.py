@@ -20,10 +20,18 @@ __all__ = [
     "S3UnavailableError",
 ]
 
+
 class S3FileStorageError(Exception):
     """Base error for all S3 file storage failures."""
 
-    def __init__(self, message: str, *, code: str | None = None, bucket: str | None = None, key: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        bucket: str | None = None,
+        key: str | None = None,
+    ):
         """Store the failure message plus whatever S3 context is known.
 
         Args:
@@ -66,15 +74,16 @@ class S3ConfigurationError(S3FileStorageError):
     """The client is misconfigured: bad credentials or invalid call parameters."""
 
 
-ERRORS_MAP = MappingProxyType({
-    # bucket errors
-    "NoSuchBucket": S3BucketNotExistError,
-    "BucketAlreadyExists": S3BucketAlreadyExistsError,
-    "BucketAlreadyOwnedByYou": S3BucketAlreadyExistsError,
-
-    # object errors
-    "NoSuchKey": S3ObjectNotExistError,
-})
+ERRORS_MAP = MappingProxyType(
+    {
+        # bucket errors
+        "NoSuchBucket": S3BucketNotExistError,
+        "BucketAlreadyExists": S3BucketAlreadyExistsError,
+        "BucketAlreadyOwnedByYou": S3BucketAlreadyExistsError,
+        # object errors
+        "NoSuchKey": S3ObjectNotExistError,
+    }
+)
 
 
 def handle_error(fn):
@@ -91,6 +100,7 @@ def handle_error(fn):
     Returns:
         `fn`, wrapped so its boto3/botocore exceptions become domain exceptions.
     """
+
     @wraps(fn)
     def wrap(*args, **kwargs):
         self = args[0] if args else None
@@ -114,4 +124,5 @@ def handle_error(fn):
             boto3_exceptions.NoCredentialsError,
         ) as e:
             raise S3ConfigurationError(str(e), bucket=bucket, key=key) from e
+
     return wrap
