@@ -3,7 +3,10 @@ from tables.services.recycle_bin.purge_request_consumer import RecycleBinPurgeRe
 
 
 class Command(BaseCommand):
-    help = "Run the recycle-bin purge each time manager requests it through Redis"
+    help = (
+        "Run the daily purge (recycle bin and voice-recording retention) each time manager "
+        "requests it through Redis"
+    )
 
     def handle(self, *args, **kwargs):
         RecycleBinPurgeRequestConsumer.from_settings().run()

@@ -82,7 +82,8 @@ DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py listen_redi
 echo "Starting Redis caching..."
 DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py cache_redis &
 
-# Start the recycle-bin purge consumer in the background; manager requests the purge daily
+# Start the daily purge consumer in the background (recycle bin and voice-recording retention);
+# manager requests the purge daily
 echo "Starting recycle bin purge consumer..."
 DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_recycle_bin_purge &
 

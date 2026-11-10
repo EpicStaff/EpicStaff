@@ -191,6 +191,27 @@ def read_recycle_bin_retention_days(environment: Env) -> int:
 # Days a deleted item stays in the recycle bin before the purge job removes it for good.
 RECYCLE_BIN_RETENTION_DAYS = read_recycle_bin_retention_days(env)
 
+
+def read_voice_recording_retention_days(environment: Env) -> int:
+    """Read DJANGO_VOICE_RECORDING_RETENTION_DAYS, the days a voice-call recording is kept.
+
+    Only a whole number of at least 1 is accepted: recordings are always deleted in the
+    end, so there is no 0 for "keep forever", and `none` would leave the daily job
+    without a cutoff.
+    """
+    message = "DJANGO_VOICE_RECORDING_RETENTION_DAYS must be a whole number, at least 1."
+    try:
+        days = environment.int("DJANGO_VOICE_RECORDING_RETENTION_DAYS")
+    except ValueError as error:
+        raise ImproperlyConfigured(message) from error
+    if days is None or days < 1:
+        raise ImproperlyConfigured(message)
+    return days
+
+
+# Days a voice-call recording is kept before the daily job deletes it, row and file.
+VOICE_RECORDING_RETENTION_DAYS = read_voice_recording_retention_days(env)
+
 try:
     RETENTION_POLICY = load_retention_policy(env)
 except ValueError as error:
