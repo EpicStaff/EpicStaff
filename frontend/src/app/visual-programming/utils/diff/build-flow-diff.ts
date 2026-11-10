@@ -15,7 +15,9 @@ import { FlowDiff, FlowDiffInput, FlowDiffSummary, MissingReference, NodeDiffEnt
  *
  * - A node in the version only is `added` (a restore adds it); a node on the canvas only is `deleted`.
  * - A matched node is `changed` when a restore adds, deletes or changes at least one field; each
- *   field change reads current → version.
+ *   field change reads current → version. One accepted exception: Start variables that are not set count as
+ *   the default template (see `startVariables` in `semantic-projections.ts`), so `{}` against the template is
+ *   `unchanged` though a restore writes `{}`.
  * - Missing references (what the version had that no longer exists) are listed per node with a
  *   version side. They never change the status: a node whose only finding is a missing reference
  *   stays `unchanged`.
