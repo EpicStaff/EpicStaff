@@ -809,7 +809,7 @@ services:
   opensearch:
     logging: *bounded-logs
     restart: unless-stopped
-    image: opensearchproject/opensearch:2.19.1@sha256:72fe2fc84be8295906b8efca020b46c58ed45c8da60cd9b8b49e1991e38e89a4
+    image: opensearchproject/opensearch:3.9.0@sha256:3b55f6b6249cfdb92b52ee59adc8a266203ba9ef9f5d82544fad6f1af2f3609e
     container_name: opensearch
     profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
