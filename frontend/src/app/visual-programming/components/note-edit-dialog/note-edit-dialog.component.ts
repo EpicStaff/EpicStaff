@@ -20,6 +20,7 @@ export interface NoteEditDialogData {
     node: GraphNoteModel;
     /** Who created and who last edited the note; the dialog cannot read the editor's store itself. */
     authorship: AuthorshipDetailsSource;
+    readonly?: boolean;
 }
 
 @Component({
@@ -33,7 +34,7 @@ export interface NoteEditDialogData {
                         icon="note"
                         size="1.25rem"
                     ></app-svg-icon>
-                    Edit Note
+                    {{ data.readonly ? 'View Note' : 'Edit Note' }}
                 </span>
 
                 <div class="actions">
@@ -56,6 +57,7 @@ export interface NoteEditDialogData {
                     [(ngModel)]="noteContent"
                     placeholder="Add note text..."
                     aria-label="Note text"
+                    [readonly]="data.readonly"
                     autofocus
                 ></textarea>
             </div>
@@ -192,7 +194,7 @@ export class NoteEditDialogComponent implements OnInit {
     }
 
     close(): void {
-        this.dialogRef.close({ content: this.noteContent() });
+        this.dialogRef.close(this.data.readonly ? undefined : { content: this.noteContent() });
     }
 
     // The host listener runs ahead of the tooltip of the focused control, which would take the first Escape;
