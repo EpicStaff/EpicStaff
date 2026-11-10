@@ -1,8 +1,17 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ChangeDetectorRef, Component, CUSTOM_ELEMENTS_SCHEMA, NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import {
+    ChangeDetectorRef,
+    Component,
+    CUSTOM_ELEMENTS_SCHEMA,
+    getDebugNode,
+    NO_ERRORS_SCHEMA,
+    signal,
+} from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 
 import { GraphSessionService } from '../../../features/flows/services/flows-sessions.service';
@@ -11,6 +20,10 @@ import { ConfigService } from '../../../services/config';
 import { FlowService } from '../../services/flow.service';
 import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
+import { MapKeyChange } from '../../utils/diff';
+import { DiffFieldMarkComponent } from '../diff-field-mark/diff-field-mark.component';
+import { layOutWindowWithRowAt } from '../diff-field-mark/diff-mark-tooltip.testing';
+import { provideChangesTabDiff } from '../missing-reference-note/missing-reference-note.testing';
 import { InputMapComponent } from './input-map.component';
 
 // The start node state a developer reported the picker order with.
@@ -31,9 +44,11 @@ class PythonPanelHostComponent {
 describe('InputMapComponent variable picker', () => {
     let fixture: ComponentFixture<PythonPanelHostComponent>;
 
-    const valueInput = (): HTMLInputElement => fixture.nativeElement.querySelector('input[formControlName="value"]');
+    const valueInput = (): HTMLInputElement => fixture.nativeElement.querySelector('.value-field-wrapper input');
+    // Each row's full variable path, shown in its tooltip.
+    const fullPath = (item: HTMLElement): string => getDebugNode(item)!.injector.get(MatTooltip).message;
     const listed = (): string[] =>
-        Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
+        Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), fullPath);
     const typeValue = (text: string): void => {
         valueInput().value = text;
         valueInput().dispatchEvent(new Event('input'));
@@ -60,29 +75,24 @@ describe('InputMapComponent variable picker', () => {
 
     afterEach(() => fixture.destroy());
 
-    it('lists an object before its fields, keeps it above the fields a filter matches, and leaves it out once typed', () => {
+    it('shows only top-level on focus, scopes into children on separator, and filters by what follows', () => {
         valueInput().dispatchEvent(new FocusEvent('focus'));
         fixture.detectChanges();
-        expect(listed()).toEqual([
-            'variables.my_object',
-            'variables.my_object.user_id',
-            'variables.my_object.user_email',
-        ]);
+        expect(listed()).toEqual(['variables.my_object']);
 
-        typeValue('variables.user');
-        expect(listed()).toEqual([
-            'variables.my_object',
-            'variables.my_object.user_id',
-            'variables.my_object.user_email',
-        ]);
+        typeValue('.my');
+        expect(listed()).toEqual(['variables.my_object']);
 
-        typeValue('variables.my_object.user_e');
+        typeValue('.my_object.');
+        expect(listed()).toEqual(['variables.my_object.user_id', 'variables.my_object.user_email']);
+
+        typeValue('.my_object.user_e');
         expect(listed()).toEqual(['variables.my_object.user_email']);
     });
 
     describe('with another row using the object', () => {
         const valueInputs = (): HTMLInputElement[] =>
-            Array.from(fixture.nativeElement.querySelectorAll('input[formControlName="value"]'));
+            Array.from(fixture.nativeElement.querySelectorAll('.value-field-wrapper input'));
         const pairs = (): FormArray => fixture.componentInstance.form.get('input_map') as FormArray;
         const press = (key: string, init: KeyboardEventInit = {}): void => {
             valueInputs()[1].dispatchEvent(
@@ -102,15 +112,11 @@ describe('InputMapComponent variable picker', () => {
 
         afterEach(() => delete (Element.prototype as Partial<Element>).scrollIntoView);
 
-        it('keeps the object above its fields, disabled, and offers the fields', () => {
-            expect(listed()).toEqual([
+        it('shows only the top-level object (disabled) on focus; children appear once scoped into', () => {
+            expect(listed()).toEqual(['variables.my_object']);
+            expect(Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), fullPath)).toEqual([
                 'variables.my_object',
-                'variables.my_object.user_id',
-                'variables.my_object.user_email',
             ]);
-            expect(
-                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), (item) => item.title)
-            ).toEqual(['variables.my_object']);
             expect(valueInputs()[1].getAttribute('aria-expanded')).toBe('true');
         });
 
@@ -122,8 +128,8 @@ describe('InputMapComponent variable picker', () => {
             expect(listed()).toEqual([]);
         });
 
-        it('picks the first field on Enter once something is typed, passing the object by', () => {
-            valueInputs()[1].value = 'variables.my';
+        it('picks the first child on Enter once scoped into the object', () => {
+            valueInputs()[1].value = '.my_object.';
             valueInputs()[1].dispatchEvent(new Event('input'));
             fixture.detectChanges();
 
@@ -135,11 +141,15 @@ describe('InputMapComponent variable picker', () => {
             expect(valueInputs()[1].getAttribute('aria-expanded')).toBe('false');
         });
 
-        it('picks another field with the arrow keys and Enter', () => {
+        it('picks another field with the arrow keys and Enter once scoped into the object', () => {
             Element.prototype.scrollIntoView = vi.fn();
 
-            // From nothing highlighted, down passes the object by.
-            press('ArrowDown');
+            // Scope into the object to see its children.
+            valueInputs()[1].value = '.my_object.';
+            valueInputs()[1].dispatchEvent(new Event('input'));
+            fixture.detectChanges();
+
+            // The first child (user_id) is preselected; ArrowDown moves to user_email.
             press('ArrowDown');
             press('Enter');
 
@@ -148,7 +158,7 @@ describe('InputMapComponent variable picker', () => {
         });
 
         it('still adds a row on Enter while the list has nothing to pick', () => {
-            valueInputs()[1].value = 'variables.nothing';
+            valueInputs()[1].value = '.nothing';
             valueInputs()[1].dispatchEvent(new Event('input'));
             fixture.detectChanges();
 
@@ -160,7 +170,8 @@ describe('InputMapComponent variable picker', () => {
         });
 
         it('adds a row on Enter once the pointer has left the list, not the row it passed over', () => {
-            document.querySelectorAll('.vpf-item')[2].dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+            // On focus only the disabled top-level object shows; the pointer passes over it and leaves.
+            document.querySelectorAll('.vpf-item')[0].dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
             document.querySelector('.vpf-list')!.dispatchEvent(new MouseEvent('mouseleave'));
             fixture.detectChanges();
 
@@ -174,7 +185,7 @@ describe('InputMapComponent variable picker', () => {
             press('Enter', { shiftKey: true });
 
             expect(pairs().length).toBe(2);
-            expect(listed().length).toBe(3);
+            expect(listed().length).toBe(1);
         });
     });
 });
@@ -320,5 +331,238 @@ describe('InputMapComponent last successful session lookup', () => {
         fixture.detectChanges();
 
         expect(searchedNodeNames()).toEqual(['Py #2 #42']);
+    });
+});
+
+// A read-only Input List showing a version (the version preview), with what a restore does to each row.
+@Component({
+    imports: [ReactiveFormsModule, InputMapComponent],
+    template: `<form [formGroup]="form">
+        <app-input-map
+            [readonly]="true"
+            [rowChanges]="rowChanges()"
+        />
+    </form>`,
+})
+class VersionInputListHostComponent {
+    readonly rowChanges = signal<MapKeyChange[] | null>(null);
+    readonly form: FormGroup = new FormBuilder().group({
+        input_map: inputListOf([
+            ['user', 'variables.account'],
+            ['fresh', 'variables.fresh'],
+            ['kept', 'variables.kept'],
+        ]),
+        test_input: new FormArray([]),
+    });
+}
+
+function inputListOf(rows: [key: string, value: string][]): FormArray {
+    return new FormArray(rows.map(([key, value]) => new FormBuilder().group({ key: [key], value: [value] })));
+}
+
+describe('InputMapComponent rows on the Changes tab of a version preview', () => {
+    let fixture: ComponentFixture<VersionInputListHostComponent>;
+
+    const RESTORE: MapKeyChange[] = [
+        { key: 'fresh', status: 'added', current: null, version: 'variables.fresh' },
+        { key: 'user', status: 'changed', current: 'variables.user', version: 'variables.account' },
+        { key: 'gone', status: 'deleted', current: 'variables.gone', version: null },
+    ];
+
+    const ROW_MARKS: [className: string, mark: string][] = [
+        ['diff-field-mark--shown', ' (changed)'],
+        ['readonly-row--added', ' (added)'],
+        ['readonly-row--removed', ' (removed)'],
+    ];
+
+    /** Each row as the user reads it, with its diff mark: `changed` / `added` / `removed`, or none. */
+    const rows = (): string[] =>
+        Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.readonly-row'), (row) => {
+            const cells = Array.from(row.querySelectorAll('.readonly-cell'), (cell) =>
+                cell.textContent?.replace(/\s+/g, ' ').trim()
+            );
+            const mark = ROW_MARKS.find(([className]) => row.classList.contains(className))?.[1] ?? '';
+            return `${cells.join(' = ')}${mark}`;
+        });
+
+    /** `versionRows`: the rows the version has, in place of the default three. */
+    function render(rowChanges: MapKeyChange[] | null, versionRows?: [key: string, value: string][]): void {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowService, useValue: { startNodeInitialState: signal(null) } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: GraphSessionService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                { provide: SidePanelService, useValue: {} },
+                provideChangesTabDiff(),
+            ],
+        });
+        TestBed.overrideComponent(InputMapComponent, {
+            set: {
+                imports: [ReactiveFormsModule, NgTemplateOutlet, DiffFieldMarkComponent, MatTooltip],
+                schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            },
+        });
+        fixture = TestBed.createComponent(VersionInputListHostComponent);
+        if (versionRows) fixture.componentInstance.form.setControl('input_map', inputListOf(versionRows));
+        fixture.componentInstance.rowChanges.set(rowChanges);
+        fixture.detectChanges();
+    }
+
+    afterEach(() => fixture.destroy());
+
+    it('marks each row with what a restore does to it, and lists the rows a restore removes last', () => {
+        render(RESTORE);
+
+        expect(rows()).toEqual([
+            'user = variables.account (changed)',
+            'Restore adds this input: fresh = variables.fresh (added)',
+            'kept = variables.kept',
+            'Restore removes this input: gone = variables.gone (removed)',
+        ]);
+    });
+
+    it('shows only the rows a restore removes when the version has none (no blank row above them)', () => {
+        // A panel's form holds one blank pair when the node has no input list.
+        render([{ key: 'gone', status: 'deleted', current: 'variables.gone', version: null }], [['', '']]);
+
+        expect(rows()).toEqual(['Restore removes this input: gone = variables.gone (removed)']);
+    });
+
+    it('shows the current value of a changed row on hover; the other rows have no tooltip', () => {
+        render(RESTORE);
+        const [changed, added, , removed] = Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.readonly-row')
+        );
+
+        for (const row of [added, removed]) row.dispatchEvent(new Event('mouseenter'));
+        fixture.detectChanges();
+        expect(document.querySelector('.diff-field-mark__tooltip')).toBeNull();
+        // Their status is read out instead (see above); a native tooltip would cover the cells' own.
+        expect([added, removed].map((row) => row.hasAttribute('title'))).toEqual([false, false]);
+
+        changed.dispatchEvent(new Event('mouseenter'));
+        fixture.detectChanges();
+        expect(document.querySelector('.diff-field-mark__tooltip-value')?.textContent?.replace(/\s/g, '')).toBe(
+            'variables.user'
+        );
+    });
+
+    describe('the cell tooltips next to the diff tooltip of a changed row', () => {
+        afterEach(() => vi.restoreAllMocks());
+
+        const readonlyRows = (): HTMLElement[] =>
+            Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.readonly-row'));
+
+        /**
+         * Points at the row, as a user does before a cell's own tooltip opens (after its delay), and gives the side
+         * each cell asks its tooltip to open on. jsdom cannot lay out where Material then puts it.
+         */
+        async function cellTooltipSides(row: HTMLElement): Promise<string[]> {
+            row.dispatchEvent(new Event('mouseenter'));
+            fixture.detectChanges();
+            // The diff tooltip is placed once it has rendered and reports its side; the next check applies it.
+            await fixture.whenStable();
+            fixture.detectChanges();
+            return Array.from(
+                row.querySelectorAll<HTMLElement>('.readonly-cell'),
+                (cell) => getDebugNode(cell)!.injector.get(MatTooltip).position
+            );
+        }
+
+        it.each([
+            // Room above the row: the diff tooltip opens above it.
+            { where: 'above', rowTop: 300, cells: ['below', 'below'] },
+            // No room above the row (window top): the diff tooltip opens below it.
+            { where: 'below', rowTop: 4, cells: ['above', 'above'] },
+        ])('opens them on the other side of the row when the diff tooltip is $where it', async ({ rowTop, cells }) => {
+            render(RESTORE);
+            const [changed] = readonlyRows();
+            layOutWindowWithRowAt(changed, rowTop);
+
+            expect(await cellTooltipSides(changed)).toEqual(cells);
+            expect(document.querySelector('.diff-field-mark__tooltip')).not.toBeNull();
+        });
+
+        it.each([
+            { row: 'a row a restore keeps', rowChanges: RESTORE, rowIndex: 2 },
+            { row: 'any row without row changes (the live editor)', rowChanges: null, rowIndex: 0 },
+        ])('keeps them above on $row', async ({ rowChanges, rowIndex }) => {
+            render(rowChanges);
+            const row = readonlyRows()[rowIndex];
+            layOutWindowWithRowAt(row, 4);
+
+            expect(await cellTooltipSides(row)).toEqual(['above', 'above']);
+        });
+    });
+
+    it('shows the rows as they are without row changes, as everywhere but the Changes tab', () => {
+        render(null);
+
+        expect(rows()).toEqual(['user = variables.account', 'fresh = variables.fresh', 'kept = variables.kept']);
+    });
+});
+
+@Component({
+    imports: [ReactiveFormsModule, InputMapComponent],
+    template: `<form [formGroup]="form">
+        <app-input-map
+            [label]="label()"
+            [keyPlaceholder]="keyPlaceholder()"
+            [valuePlaceholder]="valuePlaceholder()"
+        />
+    </form>`,
+})
+class CopyHostComponent {
+    readonly label = signal('');
+    readonly keyPlaceholder = signal('');
+    readonly valuePlaceholder = signal('');
+    readonly form: FormGroup = new FormBuilder().group({
+        input_map: new FormArray([new FormBuilder().group({ key: [''], value: [''] })]),
+        test_input: new FormArray([]),
+    });
+}
+
+describe('InputMapComponent copy', () => {
+    let fixture: ComponentFixture<PythonPanelHostComponent | CopyHostComponent>;
+    const text = (): string => fixture.nativeElement.textContent;
+    const placeholders = (): string[] =>
+        Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('input'), (input) => input.placeholder);
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowService, useValue: { startNodeInitialState: signal(STATE) } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: GraphSessionService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                { provide: SidePanelService, useValue: {} },
+            ],
+        });
+        TestBed.overrideComponent(InputMapComponent, {
+            set: { imports: [ReactiveFormsModule], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        });
+    });
+
+    afterEach(() => fixture.destroy());
+
+    it('keeps the Input List header and placeholders for callers that set nothing', () => {
+        fixture = TestBed.createComponent(PythonPanelHostComponent);
+        fixture.detectChanges();
+
+        expect(text()).toContain('Input List');
+        expect(placeholders()).toEqual(['Function Argument Name', 'all fields']);
+    });
+
+    it('takes its own header and key placeholder, and shows no header for an empty label', () => {
+        const host = TestBed.createComponent(CopyHostComponent);
+        fixture = host;
+        host.componentInstance.keyPlaceholder.set('Name');
+        host.componentInstance.valuePlaceholder.set('Flow variable');
+        host.detectChanges();
+
+        expect(text()).not.toContain('Input List');
+        expect(fixture.nativeElement.querySelector('.input-map-header')).toBeNull();
+        expect(placeholders()).toEqual(['Name', 'all fields']);
     });
 });

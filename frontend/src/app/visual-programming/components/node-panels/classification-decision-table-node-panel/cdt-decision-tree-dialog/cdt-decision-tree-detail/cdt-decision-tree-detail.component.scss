@@ -81,7 +81,7 @@
     border: 1px solid var(--color-divider-regular);
     border-radius: 6px;
 
-    &:hover:has(button:not(:disabled)) {
+    &:hover:has(button:not([aria-disabled='true'])) {
         border-color: color-mix(in srgb, var(--color-text-secondary) 40%, transparent);
     }
 }
@@ -101,11 +101,11 @@
     background: transparent;
     border: none;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not([aria-disabled='true']) {
         background: var(--color-secondary-btn-background-hover);
     }
 
-    &:disabled {
+    &[aria-disabled='true'] {
         cursor: default;
         opacity: 0.5;
     }
@@ -120,7 +120,7 @@
     gap: 0.5rem;
     padding: 0.4rem 0.6rem;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not([aria-disabled='true']) {
         // `--color-divider-strong` does not exist in this project — it fell back to
         // `--color-divider-regular`, which is the resting border, so this hover did
         // nothing at all. Mixed from a real token instead; the divider tokens are
@@ -136,7 +136,7 @@
     padding: 0.4rem 0.45rem;
     color: var(--color-text-secondary);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not([aria-disabled='true']) {
         color: var(--color-text-primary);
     }
 }
@@ -160,7 +160,7 @@
     border: none;
     border-radius: 4px;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
         background: var(--cdt-detail-raised);
     }

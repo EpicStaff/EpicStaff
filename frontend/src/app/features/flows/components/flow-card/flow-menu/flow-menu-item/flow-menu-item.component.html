@@ -1,7 +1,9 @@
-<div
+<button
+    type="button"
     class="menu-item"
+    role="menuitem"
     [ngClass]="{ 'delete-action': isDelete }"
     (click)="onClick($event)"
 >
     <span>{{ label }}</span>
-</div>
+</button>

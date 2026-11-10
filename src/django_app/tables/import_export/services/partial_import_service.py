@@ -151,6 +151,9 @@ class PartialImportService:
                         id_mapper,
                         is_partial=True,
                         user=user,
+                        # The same nodes can be pasted into one graph more than once, so
+                        # every pasted node gets a fresh uuid.
+                        keep_node_uuids=False,
                     )
                     content = self._serialize_content(
                         graph,

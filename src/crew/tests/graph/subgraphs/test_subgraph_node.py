@@ -14,6 +14,7 @@ from langgraph.graph import StateGraph
 
 from models.state import State
 from services.graph.events import StopEvent
+from services.graph.exceptions import InvalidStatePathError
 from services.graph.graph_builder import SessionGraphBuilder
 from services.graph.subgraphs.subgraph_node import SubGraphNode
 from src.shared.models import (
@@ -249,3 +250,15 @@ async def test_child_nodes_use_the_parents_services():
     updated = await node.run(_parent_state(), writer=lambda message: None)
 
     assert updated["variables"].result.out == "stored k"
+
+
+async def test_underscore_output_path_fails_before_the_child_flow_runs():
+    node = _subgraph_node(_python_child("def main(): return {'done': True}"), "variables.__class__.status")
+    state = _parent_state()
+    messages = []
+
+    with pytest.raises(InvalidStatePathError, match=r"'variables\.__class__\.status'"):
+        await node.run(state, writer=messages.append)
+
+    assert messages == []
+    assert state["variables"].deep_dump() == PARENT

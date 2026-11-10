@@ -139,12 +139,22 @@
         width: 200px;
     }
 
+    &__col-custom {
+        width: 96px;
+    }
+
     &__col-action {
         width: 40px;
     }
 
     &__libs-table &__cell--center {
         text-align: center;
+    }
+
+    &__cell--center app-checkbox {
+        height: 100%;
+        align-items: center;
+        justify-content: center;
     }
 
     &__col-header {
@@ -202,7 +212,7 @@
         cursor: pointer;
         vertical-align: middle;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background-color: var(--color-ghost-btn-hover);
         }
 
@@ -218,7 +228,7 @@
         &--remove {
             color: var(--color-ks-transparent-text-60);
 
-            &:hover:not(:disabled) {
+            &:is(:hover, :focus-visible):not(:disabled) {
                 color: var(--color-text-primary);
             }
         }
@@ -234,7 +244,7 @@
         text-align: center;
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--accent-color);
             border-color: var(--accent-color);
         }

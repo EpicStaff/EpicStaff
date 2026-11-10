@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     AvatarUploadComponent,
@@ -20,7 +21,6 @@ import { ToastService } from '../../../../services/notifications';
 
 export interface ProfileEditDialogData {
     name: string;
-    email: string;
     avatarUrl: string | null;
 }
 
@@ -37,6 +37,7 @@ export interface ProfileEditDialogData {
         HelpTooltipComponent,
         ReactiveFormsModule,
         ValidationErrorsComponent,
+        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -53,7 +54,6 @@ export class ProfileEditDialogComponent {
 
     readonly form = this.fb.group({
         full_name: [this.data.name, [Validators.required, Validators.maxLength(50)]],
-        email: [{ value: this.data.email, disabled: true }],
         picture: [null as File | null],
     });
 

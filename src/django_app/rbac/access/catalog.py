@@ -181,6 +181,14 @@ RESOURCE_TYPE_METADATA = [
         "platform_actions": [],
     },
     {
+        "code": ResourceType.CUSTOM_LIBRARIES.value,
+        "label": "Custom Libraries",
+        "group": "workspace",
+        "description": "Private Python packages the organization uploads for its venvs to install",
+        "applicable_actions": ["create", "read", "update", "delete"],
+        "platform_actions": [],
+    },
+    {
         "code": ResourceType.CHATS.value,
         "label": "Conversations",
         "group": "workspace",
@@ -318,6 +326,16 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "create": (("key_value_tables", "read"),),
         "update": (("key_value_tables", "read"),),
         "delete": (("key_value_tables", "read"),),
+    },
+    ResourceType.VENVS.value: {
+        "create": (("venvs", "read"), ("custom_libraries", "read")),
+        "update": (("venvs", "read"), ("custom_libraries", "read")),
+        "delete": (("venvs", "read"),),
+    },
+    ResourceType.CUSTOM_LIBRARIES.value: {
+        "create": (("custom_libraries", "read"),),
+        "update": (("custom_libraries", "read"),),
+        "delete": (("custom_libraries", "read"),),
     },
     ResourceType.CHATS.value: {
         # No flows:read for read: the inbox shows a run's id as text without it.

@@ -73,7 +73,8 @@ class TablesConfig(AppConfig):
             logger.info(f"{settings.DEBUG=}")
 
         # Elect a single owner across web-server workers to run the daily
-        # litellm model-cost refresh; skip during migrate/makemigrations/tests.
+        # litellm model-cost refresh when LITELLM_MODEL_COST_REFRESH_ENABLED is on;
+        # skip during migrate/makemigrations/tests.
         argv0 = sys.argv[0] if sys.argv else ""
         is_web_server = (
             "runserver" in sys.argv
@@ -85,10 +86,6 @@ class TablesConfig(AppConfig):
             from tables.utils.litellm_model_info import start_litellm_refresh_if_owner
 
             start_litellm_refresh_if_owner()
-
-            from tables.utils.recycle_bin_scheduler import start_recycle_bin_purge_if_owner
-
-            start_recycle_bin_purge_if_owner()
 
         redis_service = RedisService()
         converter_service = ConverterService()
@@ -124,6 +121,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(configs.OpenAIRealtimeConfigStrategy())
         entity_registry.register(configs.ElevenLabsRealtimeConfigStrategy())
         entity_registry.register(configs.GeminiRealtimeConfigStrategy())
+        entity_registry.register(configs.SystemOneConfigStrategy())
         entity_registry.register(venv.VenvStrategy())
         entity_registry.register(python_tools.PythonCodeToolStrategy())
         entity_registry.register(mcp_tools.McpToolStrategy())

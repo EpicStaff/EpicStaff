@@ -10,15 +10,19 @@
         @if (hint()) {
             <p class="file-uploader__hint">{{ hint() }}</p>
         }
-        <label
+        <button
+            #chooseButton
+            type="button"
             class="file-uploader__button"
+            aria-label="Choose files"
+            matTooltip="Choose files"
             (click)="fileInput.click()"
         >
             <app-svg-icon
                 icon="upload"
                 size="2rem"
             />
-        </label>
+        </button>
         <input
             #fileInput
             type="file"

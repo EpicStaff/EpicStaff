@@ -1,0 +1,59 @@
+// A column whose list scrolls when the owner caps its height (the popover does).
+:host {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+// Indented under the Help row and set off by a line, so the guides read as that row's children.
+:host(.help-menu--inline) {
+    margin: 0 0 var(--space-xs) 1.1875rem; // the line sits under the row icon's centre
+    padding-left: var(--space-sm);
+    border-left: 1px solid var(--color-divider-subtle);
+}
+
+.help-menu__head {
+    padding: var(--space-md) var(--space-md) var(--space-sm);
+}
+
+.help-menu__heading {
+    color: var(--color-text-primary);
+}
+
+.help-menu__items {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    overflow-y: auto;
+
+    :host(.help-menu--inline) & {
+        padding: 0;
+    }
+}
+
+// A guide, drawn like a row of the apps list; its 16px icon sits 8px from the label, like the links under that list.
+.help-menu__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    width: 100%;
+    padding: var(--space-sm);
+    border: 0;
+    border-radius: 8px;
+    background-color: transparent;
+    color: var(--color-text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.2s ease-out;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+}

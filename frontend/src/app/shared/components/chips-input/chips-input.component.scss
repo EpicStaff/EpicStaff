@@ -7,8 +7,14 @@
         column-gap: 0.5rem;
 
         .input-icon {
+            display: inline-flex;
+            flex-shrink: 0;
+            align-items: center;
+            justify-content: center;
             height: 40px;
             width: 40px;
+            padding: 0;
+            border: none;
             align-self: center;
             // Same square filled add button as app-listbox.
             border-radius: 8px;
@@ -21,7 +27,7 @@
                 cursor: not-allowed;
             }
 
-            &:hover:not(.disabled) {
+            &:is(:hover, :focus-visible):not(.disabled) {
                 background-color: var(--accent-color-hover);
             }
         }
@@ -56,6 +62,12 @@
             font-size: 0.875rem;
 
             .action {
+                display: inline-flex;
+                padding: 0;
+                border: none;
+                border-radius: 4px;
+                background: transparent;
+                color: inherit;
                 cursor: pointer;
             }
         }

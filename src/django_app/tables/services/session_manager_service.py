@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from rbac.access.principals import is_pinned_org_principal
 from rbac.governance.organization_retention import effective_retention_days_for_org
@@ -19,7 +20,11 @@ from src.shared.models import (
 )
 from src.shared.retention import DataType
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
-from tables.exceptions import GraphEntryPointException
+from tables.exceptions import (
+    GraphEntryPointException,
+    SubflowEntryPointException,
+    SubGraphValidationError,
+)
 from tables.models import (
     AudioTranscriptionNode,
     Edge,
@@ -35,6 +40,7 @@ from tables.models.graph_models import (
     AgentNode,
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     ConditionGroup,
     DecisionTableNode,
     GraphSessionMessage,
@@ -79,6 +85,7 @@ from tables.validators.subgraph_validator import SubGraphValidator
 from utils.graph_utils import (
     NodeNameResolver,
     generate_node_name,
+    node_label,
     resolve_node_names,
     runtime_node_name,
 )
@@ -298,6 +305,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         `callback_url` / `callback_secret`: delivered on the terminal status by the
         callback sender; validated by the caller.
 
+        Once crew has received the session, nothing raises: the run is live, and a caller
+        retrying the error (the fanout tool retries a 5xx) would start it a second time.
+
         Raises:
             RunAdmissionRefusedError: The run is refused. Before the session is created,
                 nothing is written; refused again just before the publish, the session
@@ -375,22 +385,6 @@ class SessionManagerService(metaclass=SingletonMeta):
                 org_id=graph.org_id,
                 storage_credentials=storage_credentials,
             )
-            logger.log(
-                BENCH_LEVEL,
-                "bench {checkpoint}",
-                checkpoint="published",
-                session_id=session.pk,
-                received_n=received_n,
-            )
-            if received_n == 0:
-                logger.error(
-                    "Session {} was published, but no crew instance is listening.", session.pk
-                )
-                self._mark_session_error(
-                    session=session, reason="No crew instance received the session."
-                )
-            logger.info("Session data published in Redis for session ID: {}.", session.pk)
-
         except RunAdmissionRefusedError as refusal:
             self._stop_refused_session(session=session, refusal=refusal)
             raise
@@ -399,6 +393,20 @@ class SessionManagerService(metaclass=SingletonMeta):
             logger.exception(msg)
             self._mark_session_error(session=session, reason=msg)
             raise
+
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="published",
+            session_id=session.pk,
+            received_n=received_n,
+        )
+        if received_n == 0:
+            logger.error("Session {} was published, but no crew instance is listening.", session.pk)
+            self._mark_session_error(
+                session=session, reason="No crew instance received the session."
+            )
+        logger.info("Session data published in Redis for session ID: {}.", session.pk)
 
         if session.status == Session.SessionStatus.ERROR:
             # Publish was not received; the status handler will never see this session end.
@@ -409,11 +417,25 @@ class SessionManagerService(metaclass=SingletonMeta):
             except Exception as exc:  # a callback failure must never mask the session error
                 logger.error("Session {} callback enqueue failed: {}", session.pk, exc)
 
-        surface_knowledge_warnings = self.surface_knowledge_warning_service.build_warnings(graph)
-        all_warnings = run_vars.warnings + surface_knowledge_warnings
-        if all_warnings:
-            SessionWarningMessage.objects.create(session_id=session.pk, messages=all_warnings)
+        self._save_warnings(session=session, graph=graph, run_warnings=run_vars.warnings)
         return session.pk
+
+    def _save_warnings(self, *, session: Session, graph: Graph, run_warnings: list) -> None:
+        # Best effort: the session is already published, so a failure here must not reach
+        # the caller. The savepoint keeps a failed query from aborting a transaction
+        # run_session runs inside (the schedule trigger's), which would roll back the live
+        # session's row.
+        try:
+            with transaction.atomic():
+                warnings = run_warnings + self.surface_knowledge_warning_service.build_warnings(
+                    graph
+                )
+                if warnings:
+                    SessionWarningMessage.objects.create(session_id=session.pk, messages=warnings)
+        except Exception as error:
+            logger.error(
+                "Session {} started, but its warnings were not saved: {}", session.pk, error
+            )
 
     # message_type values handled generically by the branch below: this is a
     # plain GraphSessionMessage row + redis republish. "user" is the original
@@ -453,6 +475,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         session: Session = None,
         *,
         start_node: StartNode | None,
+        visiting_graph_ids: set[int] | None = None,
+        parent_graph: Graph | None = None,
+        subflow_node: SubGraphNode | None = None,
     ) -> GraphData:
         """Recursively build GraphData for a graph to handle subgraphs
 
@@ -461,7 +486,25 @@ class SessionManagerService(metaclass=SingletonMeta):
             unique_subgraphs: Dictionary to collect unique subgraphs (only used at top level)
             start_node: The graph's start node, already loaded by the caller, or
                 None when the graph has none.
+            visiting_graph_ids: Set of graph IDs currently being visited in the recursion stack.
+                Used to detect cycles that bypass the validator.
+            parent_graph: The graph whose subgraph reference led to this call, used only to
+                name the offending edge if the re-entry guard below fires.
+            subflow_node: The Subflow node that uses this graph, named in the error when
+                nothing is connected to the graph's Start; None for the flow that was run.
         """
+        if visiting_graph_ids is None:
+            visiting_graph_ids = set()
+
+        # Guard against re-entry into a graph currently being built
+        if graph.pk in visiting_graph_ids:
+            parent_name = parent_graph.name if parent_graph else f"Flow {graph.pk}"
+            raise SubGraphValidationError(
+                f"Recursion detected: '{parent_name}' references '{graph.name}' which creates "
+                f"a cycle."
+            )
+
+        visiting_graph_ids_for_recursion = visiting_graph_ids | {graph.pk}
         python_node_list = (
             PythonNode.objects.filter(graph=graph.pk)
             .defer("test_input")
@@ -500,9 +543,20 @@ class SessionManagerService(metaclass=SingletonMeta):
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = (
             ClassificationDecisionTableNode.objects.filter(graph=graph.pk)
-            .select_related("pre_python_code__venv", "post_python_code__venv")
+            .select_related(
+                "pre_python_code__venv",
+                "post_python_code__venv",
+                "default_llm_config__model__llm_provider",
+            )
             .prefetch_related(
                 "condition_groups",
+                Prefetch(
+                    "prompt_configs",
+                    queryset=ClassificationDecisionTablePrompt.objects.select_related(
+                        "llm_config__model__llm_provider",
+                        "system_one_config__llm_config__model__llm_provider",
+                    ),
+                ),
                 secret_names_prefetch("pre_python_code__secrets"),
                 secret_names_prefetch("post_python_code__secrets"),
             )
@@ -518,6 +572,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 "agent_definition__fcm_llm_config",
                 "agent_definition__fcm_llm_config__model",
                 "agent_definition__fcm_llm_config__model__llm_provider",
+                "agent_definition__fallback_llm_config",
+                "agent_definition__fallback_llm_config__model",
+                "agent_definition__fallback_llm_config__model__llm_provider",
             )
             .prefetch_related(
                 "surface_list__python_tools",
@@ -549,6 +606,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 "agent_definition__fcm_llm_config",
                 "agent_definition__fcm_llm_config__model",
                 "agent_definition__fcm_llm_config__model__llm_provider",
+                "agent_definition__fallback_llm_config",
+                "agent_definition__fallback_llm_config__model",
+                "agent_definition__fallback_llm_config__model__llm_provider",
             )
             .prefetch_related(
                 "tasks",
@@ -737,9 +797,13 @@ class SessionManagerService(metaclass=SingletonMeta):
             edge_data_list.append(edge_data)
 
         if entrypoint is None:
-            raise GraphEntryPointException()
-
-        if start_node is None and entrypoint is None:
+            if subflow_node is not None:
+                raise SubflowEntryPointException(
+                    flow_name=graph.name,
+                    subflow_node_label=node_label(
+                        node_name=subflow_node.node_name, node_number=subflow_node.node_number
+                    ),
+                )
             raise GraphEntryPointException()
 
         decision_table_node_data_list = [
@@ -754,7 +818,13 @@ class SessionManagerService(metaclass=SingletonMeta):
             if unique_subgraphs is not None and item.subgraph_id not in unique_subgraphs:
                 subgraph_start_node = subgraph.start_node_list.first()
                 subgraph_data = self._build_graph_data(
-                    subgraph, unique_subgraphs, None, start_node=subgraph_start_node
+                    subgraph,
+                    unique_subgraphs,
+                    None,
+                    start_node=subgraph_start_node,
+                    visiting_graph_ids=visiting_graph_ids_for_recursion,
+                    parent_graph=graph,
+                    subflow_node=item,
                 )
                 # Not None here: _build_graph_data raises GraphEntryPointException without one.
                 variables = self._get_actual_variables(subgraph_start_node.variables or {})

@@ -88,6 +88,10 @@ def test_restore_clears_both_cdt_slots_independently(manager, graph, default_org
     cleared = _venv_ref_cleared_warnings(warnings)
     assert len(cleared) == 2
     assert {w["node_id"] for w in cleared} == {cdt_node.id}
+    assert {(w["field"], w["missing_id"]) for w in cleared} == {
+        ("pre_python_code", foreign_venv.id),
+        ("post_python_code", foreign_venv.id),
+    }
 
 
 @pytest.mark.django_db

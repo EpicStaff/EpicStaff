@@ -1,14 +1,22 @@
-<div class="key-value-dialog">
+<div
+    class="key-value-dialog"
+    (appEnterSubmit)="submit()"
+    [appEnterSubmitDisabled]="isSubmitting()"
+>
     <header class="key-value-dialog__header">
         <span class="key-value-dialog__title">{{ isRename ? 'Rename table' : 'Create table' }}</span>
-        <app-svg-icon
+        <button
+            type="button"
             class="key-value-dialog__close-btn"
-            icon="close"
-            size="16px"
+            aria-label="Close"
             matTooltip="Close"
-            matTooltipPosition="above"
             (click)="cancel()"
-        />
+        >
+            <app-svg-icon
+                icon="close"
+                size="16px"
+            />
+        </button>
     </header>
 
     <form
@@ -23,7 +31,9 @@
         }
 
         <div>
+            <!-- The dialog opens with the focus here, its first field. -->
             <app-custom-input
+                cdkFocusInitial
                 label="Name"
                 formControlName="name"
                 [required]="true"

@@ -11,7 +11,11 @@ from app.enums import RunType
 from app.factory import RunnerFactory
 from app.llm.config import configure_litellm
 from app.llm.litellm_client import LiteLLMClient
-from app.logging_utils import format_exception_for_log, summarize_validation_error
+from app.logging_utils import (
+    format_exception_for_log,
+    route_mcp_sdk_logs_to_loguru,
+    summarize_validation_error,
+)
 from app.loop.agent_loop import DefaultAgentLoop
 from app.request_handler import RequestHandler
 from app.resources.resolver import AgentResolver
@@ -179,6 +183,7 @@ async def main() -> None:
         backtrace=True,
         diagnose=False,
     )
+    route_mcp_sdk_logs_to_loguru()
     add_bench_sink(sys.stderr, settings.LOG_LEVEL)
 
     consumer_name = f"{socket.gethostname()}-{uuid4().hex[:8]}"
@@ -198,6 +203,8 @@ async def main() -> None:
         result_channel=settings.CODE_RESULT_CHANNEL,
         sandbox_base_url=f"http://{settings.SANDBOX_HOST}:{settings.SANDBOX_PORT}",
         sandbox_timeout=settings.AGENT_SANDBOX_TIMEOUT,
+        queue_timeout=settings.SANDBOX_QUEUE_TIMEOUT,
+        code_result_timeout=settings.AGENT_CODE_RESULT_TIMEOUT,
     )
     await sandbox_client.start()
 

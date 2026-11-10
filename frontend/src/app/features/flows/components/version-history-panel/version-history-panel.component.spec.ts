@@ -15,6 +15,9 @@ import { CreateGraphWarningsService } from '../../services/create-graph-warnings
 import { FlowsApiService } from '../../services/flows-api.service';
 import { VersionHistoryPanelComponent } from './version-history-panel.component';
 
+const SECRETS_REFUSAL_MESSAGE =
+    'This contains code that reads secrets. This action requires the Use permission on secrets.';
+
 const VERSIONS: GraphVersionDto[] = [
     { id: 1, graph_id: 7, name: 'First', description: '', created_at: '2026-09-01T10:00:00Z' },
     { id: 2, graph_id: 7, name: 'Second', description: 'Second description', created_at: '2026-09-02T10:00:00Z' },
@@ -211,7 +214,7 @@ describe('VersionHistoryPanelComponent', () => {
     it('does not offer Preview in the options menu', () => {
         openMenu(0);
 
-        expect(menuItemLabels()).toContain('Restore');
+        expect(menuItemLabels()).toContain('Restore this version');
         expect(menuItemLabels()).not.toContain('Preview');
     });
 
@@ -274,6 +277,35 @@ describe('VersionHistoryPanelComponent', () => {
 
             expect(toast.error).toHaveBeenCalledWith('Failed to create flow');
             expect(confirmationDialog.confirm).not.toHaveBeenCalled();
+            expect(navigate).not.toHaveBeenCalled();
+        });
+
+        it('explains a refusal over code that reads secrets, with no toast and no navigation', () => {
+            flowsApi.createGraphFromVersion.mockReturnValue(
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 403,
+                            error: {
+                                status_code: 403,
+                                code: 'code_with_secrets_requires_secrets_use_permission',
+                                message: SECRETS_REFUSAL_MESSAGE,
+                            },
+                        })
+                )
+            );
+
+            openMenuAndClick(0, 'Create flow from this');
+
+            expect(confirmationDialog.confirm).toHaveBeenCalledExactlyOnceWith(
+                expect.objectContaining({
+                    title: 'Use permission required',
+                    message: 'This version contains code that reads secrets.',
+                    caution:
+                        '<strong>Creating a flow</strong> from it requires the <strong>Use</strong> permission on secrets.',
+                })
+            );
+            expect(toast.error).not.toHaveBeenCalled();
             expect(navigate).not.toHaveBeenCalled();
         });
     });
@@ -345,7 +377,12 @@ describe('VersionHistoryPanelComponent', () => {
 
         expect(previewed).toEqual([]);
         expect(component.isVersionSelected(1)).toBe(true);
-        expect(cards()[0].getAttribute('aria-pressed')).toBe('true');
+        // While selecting, the named checkbox is the card's only control: the card itself is no button.
+        const checkbox = cards()[0].querySelector<HTMLInputElement>('.version-checkbox app-checkbox input')!;
+        expect(checkbox.checked).toBe(true);
+        expect(checkbox.getAttribute('aria-label')).toBe('Select First');
+        expect(cards()[0].getAttribute('role')).toBeNull();
+        expect(cards()[0].hasAttribute('tabindex')).toBe(false);
     });
 
     it('gives each row a secondary (light box, dark tick) selection checkbox', () => {
@@ -435,7 +472,7 @@ describe('VersionHistoryPanelComponent', () => {
             expect(fixture.nativeElement.querySelector('app-bulk-select-dropdown')).toBeNull();
             expect(fixture.nativeElement.querySelector('.footer-delete-button')).toBeNull();
             openMenu(0);
-            expect(menuItemLabels()).toContain('Restore');
+            expect(menuItemLabels()).toContain('Restore this version');
             expect(menuItemLabels()).not.toContain('Delete');
         });
     });

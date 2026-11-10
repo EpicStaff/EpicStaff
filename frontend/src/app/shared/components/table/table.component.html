@@ -1,25 +1,57 @@
 @if (data().length || hasAnyFilter()) {
-    <div class="table-wrapper">
+    <div
+        #wrapper
+        class="table-wrapper"
+        [class.table-wrapper--customizable]="customizable()"
+        [class.table-wrapper--pinned]="hasPinnedColumns()"
+        [class.table-wrapper--shadow-start]="shadowStart()"
+        [class.table-wrapper--shadow-end]="shadowEnd()"
+        (scroll)="onWrapperScroll()"
+        (wheel)="onWrapperWheel($event)"
+    >
         <!-- HEADER ROW -->
         <div
+            #tableHeader
             class="table-header"
             [style.grid-template-columns]="gridTemplateColumns()"
         >
             @if (selectable()) {
-                <div class="table-cell checkbox">
+                <div
+                    class="table-cell checkbox"
+                    [class.pinned-start]="hasPinnedStart()"
+                    [style.grid-area]="headerGroups().length ? '1 / 1 / span 2' : null"
+                >
                     <app-checkbox
                         color="secondary"
+                        ariaLabel="Select all"
                         [checked]="allSelected()"
                         [indeterminate]="indeterminate()"
                         (changed)="toggleAll()"
                     />
                 </div>
             }
-            @for (col of columns(); track col.key) {
+            @for (group of headerGroups(); track group.start) {
                 <div
+                    class="table-header-group"
+                    [style.grid-area]="'1 / ' + group.start + ' / auto / span ' + group.span"
+                >
+                    {{ group.label }}
+                </div>
+            }
+            @for (col of displayedColumns(); track col.key; let columnIndex = $index) {
+                <div
+                    #headerCell
                     class="table-cell cell"
                     [class.center]="col.align === 'center'"
                     [class.end]="col.align === 'end'"
+                    [class.pinned-start]="col.pinned === 'start'"
+                    [class.pinned-end]="col.pinned === 'end'"
+                    [class.pinned-edge-start]="col.key === pinnedEdgeKeys().start"
+                    [class.pinned-edge-end]="col.key === pinnedEdgeKeys().end"
+                    [class.resizable]="isResizable(col)"
+                    [style.left]="pinnedLeft(col)"
+                    [style.right]="pinnedRight(col)"
+                    [style.grid-area]="headerGridArea(col, columnIndex)"
                     [attr.aria-sort]="col.sortDirection ?? null"
                 >
                     @if (col.headerIcon) {
@@ -53,6 +85,7 @@
                                 type="button"
                                 class="col-label col-label--filter"
                                 [class.col-label--filter--active]="hasFilterValue(col.key)"
+                                [matTooltip]="'Filter by ' + (col.label ?? '')"
                                 [appSelectTrigger]="sel"
                             >
                                 {{ col.label }}
@@ -81,6 +114,7 @@
                                 type="button"
                                 class="col-label col-label--filter"
                                 [class.col-label--filter--active]="hasFilterValue(col.key)"
+                                [matTooltip]="'Filter by ' + (col.label ?? '')"
                                 [appMultiSelectTrigger]="ms"
                             >
                                 {{ col.label }}
@@ -95,6 +129,34 @@
                         </app-multi-select>
                     } @else {
                         <span class="col-label">{{ col.label }}</span>
+                    }
+                    @if (isResizable(col)) {
+                        @let width = columnWidth(col.key);
+                        <span
+                            class="resize-handle"
+                            role="separator"
+                            aria-orientation="vertical"
+                            tabindex="0"
+                            [attr.aria-label]="'Resize ' + (col.label ?? col.key) + ' column'"
+                            aria-description="Press Enter to fit all columns to the screen"
+                            [attr.aria-valuenow]="width"
+                            [attr.aria-valuetext]="width === null ? null : width + ' pixels'"
+                            [attr.aria-valuemin]="minColumnWidth"
+                            [attr.aria-valuemax]="maxColumnWidth()"
+                            [matTooltip]="resizeHandleTooltip"
+                            [matTooltipDisabled]="resizeDragging()"
+                            (pointerenter)="onResizeHandleEnter(col.key)"
+                            (pointerleave)="onResizeHandleLeave()"
+                            (focus)="onResizeHandleEnter(col.key)"
+                            (blur)="onResizeHandleLeave()"
+                            (pointerdown)="onResizeStart(col.key, $event)"
+                            (pointermove)="onResizeMove($event)"
+                            (pointerup)="onResizeEnd()"
+                            (pointercancel)="onResizeEnd()"
+                            (lostpointercapture)="onResizeEnd()"
+                            (keydown)="onResizeKeydown(col.key, $event)"
+                            (dblclick)="fitColumnsToTable()"
+                        ></span>
                     }
                 </div>
             }
@@ -114,21 +176,30 @@
                         @if (selectable()) {
                             <div
                                 class="table-cell checkbox"
+                                [class.pinned-start]="hasPinnedStart()"
                                 (click)="$event.stopPropagation()"
                             >
                                 <app-checkbox
                                     color="secondary"
+                                    ariaLabel="Select row"
                                     [checked]="isSelected(item)"
                                     [disabled]="!rowSelectable()(item)"
                                     (changed)="toggleRow(item)"
                                 />
                             </div>
                         }
-                        @for (col of columns(); track col.key) {
+                        @for (col of displayedColumns(); track col.key) {
                             <div
                                 class="table-cell"
                                 [class.center]="col.align === 'center'"
                                 [class.end]="col.align === 'end'"
+                                [class.pinned-start]="col.pinned === 'start'"
+                                [class.pinned-end]="col.pinned === 'end'"
+                                [class.pinned-edge-start]="col.key === pinnedEdgeKeys().start"
+                                [class.pinned-edge-end]="col.key === pinnedEdgeKeys().end"
+                                [class.resize-line]="col.key === activeResizeKey()"
+                                [style.left]="pinnedLeft(col)"
+                                [style.right]="pinnedRight(col)"
                             >
                                 @if (getCellTemplate(col.key); as tmpl) {
                                     <ng-container *ngTemplateOutlet="tmpl; context: { $implicit: item, index: i }" />
@@ -147,6 +218,7 @@
                                                     [class.warning]="variant === 'warning'"
                                                     [class.action-btn--muted]="variant === 'muted'"
                                                     [attr.disabled]="action.disabled?.(item) ? '' : null"
+                                                    [attr.aria-label]="action.tooltip ?? null"
                                                     [matTooltip]="action.tooltip ?? ''"
                                                     (click)="action.onClick(item)"
                                                 >
@@ -172,6 +244,28 @@
             </div>
         }
     </div>
+    <!-- Horizontal scrollbar under the scrolling columns only, drawn by the table so it looks the same in every browser; the wrapper stays scrollable by keyboard and wheel. -->
+    @if (hasPinnedColumns() && scrollbarOverflow() > 0) {
+        <div
+            class="table-scrollbar"
+            [class.table-scrollbar--dragging]="scrollbarDragging()"
+            [style.margin-left]="scrollbarInset().start"
+            [style.margin-right]="scrollbarInset().end"
+            aria-hidden="true"
+            (pointerdown)="onScrollbarPointerDown($event)"
+            (pointermove)="onScrollbarPointerMove($event)"
+            (pointerup)="onScrollbarPointerEnd()"
+            (pointercancel)="onScrollbarPointerEnd()"
+            (lostpointercapture)="onScrollbarPointerEnd()"
+            (wheel)="onWrapperWheel($event)"
+        >
+            <div
+                class="table-scrollbar__thumb"
+                [style.width.%]="scrollbarThumb().width"
+                [style.left.%]="scrollbarThumb().left"
+            ></div>
+        </div>
+    }
 } @else {
     <!-- True empty state — no data has ever existed / no filters applied. -->
     <ng-content select="[tableEmpty]" />

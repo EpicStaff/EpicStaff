@@ -13,7 +13,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
-import { CollapseOnOverflowDirective, HasPermissionDirective } from '@shared/directives';
+import { CollapseOnOverflowDirective, HasPermissionDirective, TooltipWhenCollapsedDirective } from '@shared/directives';
 import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
 
 import {
@@ -36,7 +36,13 @@ const POST_TERMINAL_RETRY_DELAYS_MS = [1000, 2000, 4000];
 
 @Component({
     selector: 'app-session-files-button',
-    imports: [AppSvgIconComponent, CollapseOnOverflowDirective, HasPermissionDirective, MatTooltip],
+    imports: [
+        AppSvgIconComponent,
+        CollapseOnOverflowDirective,
+        TooltipWhenCollapsedDirective,
+        HasPermissionDirective,
+        MatTooltip,
+    ],
     templateUrl: './session-files-button.component.html',
     styleUrls: ['./session-files-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,17 +1,21 @@
 import { Dialog, DialogModule } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
     effect,
     inject,
+    Injector,
     OnInit,
     signal,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppIncludeExcludeDialogComponent,
     AppIncludeExcludeDialogData,
@@ -23,21 +27,14 @@ import {
     IncludeExcludeTab,
     LoadingSpinnerComponent,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
-import {
-    buildPreviewImportResult,
-    downloadBlob,
-    extractHttpErrorMessage,
-    ImportFileData,
-    movedToRecycleBinMessage,
-} from '@shared/utils';
-import { EMPTY, from, Observable, of } from 'rxjs';
-import { catchError, map, switchMap, tap } from 'rxjs/operators';
+import { downloadBlob, isFocusLost, movedToRecycleBinMessage } from '@shared/utils';
+import { map, tap } from 'rxjs/operators';
 
-import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
-import { ImportReviewDialogComponent } from '../../../../../flows/components/import-review-dialog/import-review-dialog.component';
+import { ImportWithReviewService } from '../../../../../flows/components/import-review-dialog/import-with-review.service';
 import { ToolUsageDialogComponent } from '../../../../components/tool-usage-dialog/tool-usage-dialog.component';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
@@ -72,10 +69,21 @@ const RECENT_TOOLS_MAX = 8;
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './tools-list.component.html',
     styleUrls: ['./tools-list.component.scss'],
-    imports: [LoadingSpinnerComponent, ToolCardComponent, DialogModule, CommonModule, FetchErrorStateComponent],
+    imports: [
+        LoadingSpinnerComponent,
+        ToolCardComponent,
+        DialogModule,
+        CommonModule,
+        FetchErrorStateComponent,
+        MatTooltip,
+        TooltipOnOverflowDirective,
+    ],
 })
 export class ToolsListComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
+    private readonly document = inject(DOCUMENT);
+    private readonly toolCards = viewChildren(ToolCardComponent);
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
@@ -84,6 +92,7 @@ export class ToolsListComponent implements OnInit {
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
     private readonly port = inject<ToolsListPort<Tool>>(TOOLS_LIST_PORT);
+    private readonly importWithReview = inject(ImportWithReviewService);
 
     public readonly viewState = inject(ToolsViewStorageService);
 
@@ -124,6 +133,7 @@ export class ToolsListComponent implements OnInit {
                 labelIds: t.labels ?? [],
                 favorite: t.is_favorite,
                 builtIn: this.port.isBuiltIn(t),
+                copyBlockedReason: this.port.copyBlockedReason?.(t),
                 ...toUsageVmFields(usage, t.id, showUsage),
             }));
     });
@@ -355,74 +365,15 @@ export class ToolsListComponent implements OnInit {
     }
 
     private handleImport(): void {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json,application/json';
-        input.onchange = (event: Event) => {
-            const file = (event.target as HTMLInputElement).files?.[0];
-            if (!file) return;
-
-            from(file.text())
-                .pipe(
-                    map((text) => this._parseFileData(text)),
-                    switchMap((fileData) => this._importToolFile(file, fileData)),
-                    catchError((err: HttpErrorResponse) => {
-                        this.toastService.error(
-                            extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
-                        );
-                        return EMPTY;
-                    }),
-                    takeUntilDestroyed(this.destroyRef)
-                )
-                .subscribe(() => this._finishToolImport());
-        };
-        input.click();
-    }
-
-    private _parseFileData(text: string): ImportFileData {
-        try {
-            return JSON.parse(text) as ImportFileData;
-        } catch {
-            return {};
-        }
-    }
-
-    private _importToolFile(file: File, fileData: ImportFileData): Observable<unknown> {
-        return this.port.inspectFile(file).pipe(
-            switchMap((inspection) => {
-                if (!hasReviewableItems(inspection.review_items)) {
-                    return this.port.importFile(file).pipe(
-                        catchError((err: HttpErrorResponse) => {
-                            this.toastService.error(
-                                extractHttpErrorMessage(err, `Failed to import ${this.port.entityLabelPlural}.`)
-                            );
-                            return EMPTY;
-                        })
-                    );
-                }
-
-                const dialogRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
-                    width: 'calc(100vw - 2rem)',
-                    height: 'calc(100vh - 2rem)',
-                    autoFocus: false,
-                    data: {
-                        importResult: buildPreviewImportResult(fileData),
-                        reviewItems: inspection.review_items,
-                        importFn: () => this.port.importFile(file),
-                    },
-                });
-
-                return dialogRef.closed.pipe(
-                    switchMap((closeResult) => (closeResult?.action === 'imported' ? of(closeResult.result) : EMPTY))
-                );
-            }),
-            catchError((err: HttpErrorResponse) => {
-                this.toastService.error(
-                    extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
-                );
-                return EMPTY;
+        this.importWithReview
+            .pickAndImport({
+                entityLabel: this.port.entityLabel,
+                entityLabelPlural: this.port.entityLabelPlural,
+                inspect: (file) => this.port.inspectFile(file),
+                importFile: (file) => this.port.importFile(file),
             })
-        );
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this._finishToolImport());
     }
 
     private _finishToolImport(): void {
@@ -495,10 +446,18 @@ export class ToolsListComponent implements OnInit {
     }
 
     private handleBulkDuplicate(): void {
-        const ids = Array.from(this.viewState.selectedIds());
-        const requests = ids.map((id) => {
-            return this.port.copy(id);
+        const selected = Array.from(this.viewState.selectedIds());
+        const copyable = selected.filter((id) => {
+            const tool = this.findToolById(id);
+            return !!tool && !this.port.copyBlockedReason?.(tool);
         });
+        const skipped = selected.length - copyable.length;
+        if (skipped > 0) {
+            this.toastService.info(
+                `${skipped} ${this.port.entityLabel}(s) read secrets you may not use and will not be duplicated.`
+            );
+        }
+        const requests = copyable.map((id) => this.port.copy(id));
         runSettledBulk(requests, {
             destroyRef: this.destroyRef,
             toast: this.toastService,
@@ -608,7 +567,9 @@ export class ToolsListComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => {
+                    const index = this.cards().findIndex((card) => card.id === tool.id);
                     this.allTools.update((list) => list.filter((t) => t.id !== tool.id));
+                    this.keepFocusAfterRemoval(index);
                     this.toastService.success(
                         movedToRecycleBinMessage(1, this.port.entityLabel, this.port.entityLabelPlural)
                     );
@@ -620,6 +581,19 @@ export class ToolsListComponent implements OnInit {
                     );
                 },
             });
+    }
+
+    /** The deleted card takes its focused ⋮ button along: the focus moves to the card now in its place. */
+    private keepFocusAfterRemoval(index: number): void {
+        if (index === -1) return;
+        afterNextRender(
+            () => {
+                if (!isFocusLost(this.document)) return;
+                const cards = this.toolCards();
+                cards[Math.min(index, cards.length - 1)]?.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     private runBulkSelectedDelete(ids: number[]): void {

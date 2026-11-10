@@ -25,6 +25,7 @@ import { flowUrl } from '@shared/utils';
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { CAPTION_TABLE_NAME_LIMIT, keyValueSummaryParts } from '../../core/constants/key-value-mode-visuals';
+import { NODE_DIFF_BADGES } from '../../core/constants/node-diff-badges';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { showsNodeNumber } from '../../core/helpers/node-number.util';
@@ -44,12 +45,17 @@ import {
     ToolNodeModel,
 } from '../../core/models/node.model';
 import { CustomPortId } from '../../core/models/port.model';
+import { NOTE_COLORS } from '../../core/utils/note-colors.util';
 import { FlowService } from '../../services/flow.service';
+import { FlowDiffStateService } from '../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
+import { FieldChange, fieldChangeFor, FieldName, NodeDiffStatus, showsFieldMarks } from '../../utils/diff';
+import { FontSizeSelectComponent } from '../font-size-select/font-size-select.component';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
+import { NoteColorPickerComponent } from '../note-color-picker/note-color-picker.component';
 
 @Component({
     selector: 'app-flow-base-node',
@@ -66,6 +72,8 @@ import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.co
         GoToButtonComponent,
         AppSvgIconComponent,
         MatTooltipModule,
+        FontSizeSelectComponent,
+        NoteColorPickerComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
@@ -79,6 +87,7 @@ export class FlowBaseNodeComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
     private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+    private readonly flowDiffState = inject(FlowDiffStateService);
 
     @Input({ required: true }) node!: NodeModel;
     @Output() fNodeSizeChange = new EventEmitter<{
@@ -88,6 +97,8 @@ export class FlowBaseNodeComponent implements OnInit {
     @Output() editClicked = new EventEmitter<NodeModel>();
     @Output() deleteClicked = new EventEmitter<NodeModel>();
     readonly unpackClicked = output<void>();
+    readonly noteDoubleClicked = output<NodeModel>();
+    readonly reselectAreaClicked = output<NodeModel>();
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
     multiSelectActive = input<boolean>(false);
@@ -96,6 +107,8 @@ export class FlowBaseNodeComponent implements OnInit {
     @Output() portMouseleave = new EventEmitter<void>();
 
     public NodeType = NodeType;
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
     public readonly eResizeHandleType = EFResizeHandleType;
 
     public portConnections = computed((): Record<string, CustomPortId[]> => {
@@ -139,9 +152,7 @@ export class FlowBaseNodeComponent implements OnInit {
             event.preventDefault();
             event.stopPropagation();
         }
-        if (this.isBlockedSubgraph) {
-            return;
-        }
+        // A subflow node whose flow was deleted opens too: its panel is where another flow is chosen.
         this.editClicked.emit(this.node);
     }
 
@@ -152,11 +163,66 @@ export class FlowBaseNodeComponent implements OnInit {
         this.unpackClicked.emit();
     }
 
+    public onNoteDoubleClick(event: MouseEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
+        this.noteDoubleClicked.emit(this.node);
+    }
+
+    public onReselectAreaClick(event: MouseEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
+        this.reselectAreaClicked.emit(this.node);
+    }
+
     trackByPort(index: number, port: { id: string }): string {
         return port.id;
     }
 
     public getNodeClass(): string {
+        const status = this.diffStatus;
+        return status ? `${this.typeClass()} diff-${status}` : this.typeClass();
+    }
+
+    /** The node's status on a version diff canvas; `null` elsewhere. */
+    protected get diffStatus(): NodeDiffStatus | null {
+        return this.flowDiffState.nodeStatus(this.node.id);
+    }
+
+    /** The status badge: none for an unchanged node, or off a diff canvas. */
+    protected get diffBadge(): { status: NodeDiffStatus; icon: string; label: string } | null {
+        const status = this.diffStatus;
+        return status && status !== 'unchanged' ? { status, ...NODE_DIFF_BADGES[status] } : null;
+    }
+
+    /**
+     * What a restore does to a note's text, for its "Current canvas" tooltip: only on the Changes tab, on a note a
+     * restore changes (an added or removed note is marked as a whole by the badge); `null` anywhere else.
+     */
+    protected get noteContentChange(): FieldChange | null {
+        return this.noteFieldChange('content');
+    }
+
+    /** What a restore does to the canvas area a note is linked to, for the same tooltip; `null` as above. */
+    protected get noteLinkedRegionChange(): FieldChange | null {
+        return this.noteFieldChange('linked_region');
+    }
+
+    protected get hasMissingReferences(): boolean {
+        return this.flowDiffState.hasMissingReferences(this.node.id);
+    }
+
+    /** The hover/selected-only summary tab above a Key-Value node is drawn, in the badge's top-left corner. */
+    protected get showsSummaryTab(): boolean {
+        return this.keyValueNode !== null;
+    }
+
+    private noteFieldChange(field: FieldName): FieldChange | null {
+        const diff = this.flowDiffState.nodeDiff(this.node.id);
+        return showsFieldMarks(diff) ? fieldChangeFor(diff, field) : null;
+    }
+
+    private typeClass(): string {
         const blockedClass = this.isBlockedSubgraph ? ' is-blocked' : '';
         switch (this.node.type) {
             case NodeType.AGENT:
@@ -314,6 +380,28 @@ export class FlowBaseNodeComponent implements OnInit {
 
     onNodeSizeChanged(size: { width: number; height: number }): void {
         this.fNodeSizeChange.emit(size);
+    }
+
+    public onNoteFontSizeChange(fontSize: number): void {
+        const note = this.noteNode;
+        if (!note) return;
+        const updated: GraphNoteModel = { ...note, data: { ...note.data, fontSize } };
+        this.flowService.updateNode(updated);
+    }
+
+    public onNoteColorChange(backgroundColor: string): void {
+        const note = this.noteNode;
+        if (!note) return;
+        const updated: GraphNoteModel = { ...note, data: { ...note.data, backgroundColor } };
+        this.flowService.updateNode(updated);
+    }
+
+    public get noteBackgroundColor(): string {
+        return this.noteNode?.data.backgroundColor || NOTE_COLORS[0];
+    }
+
+    public get noteFontSize(): number {
+        return this.noteNode?.data.fontSize || 14;
     }
 
     get isScheduleTriggerActive(): boolean {

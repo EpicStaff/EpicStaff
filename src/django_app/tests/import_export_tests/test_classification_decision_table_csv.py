@@ -5,7 +5,8 @@ import pytest
 from tables.import_export.export_tabular_projections.export_classification_decision_table_csv import (
     export_condition_groups_csv,
 )
-from tables.models.graph_models import Graph, PythonNode
+from tables.models import SystemOneConfig
+from tables.models.graph_models import ClassificationDecisionTablePrompt, Graph, PythonNode
 from tables.models.python_models import PythonCode
 from tests.rbac_cross_org_fixtures import beta  # noqa: F401
 
@@ -63,3 +64,39 @@ def test_routing_to_a_foreign_node_does_not_export_its_name(
     assert ["On Error Go To", f"node #{foreign.id}"] in rows
     [rule] = [row for row in rows if row and row[0] == "1"]
     assert rule[-1] == f"node #{foreign.id}"
+
+
+def _system_one_rule(cdt_node, group, config):
+    prompt = ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=cdt_node,
+        prompt_key="company_check",
+        kind="system_one",
+        system_one_config=config,
+        questions={"is_engineering": {"type": "noul", "instructions": "Engineering?"}},
+    )
+    group.prompt = prompt
+    group.save()
+    rows = list(csv.reader(export_condition_groups_csv(cdt_node).getvalue().splitlines()))
+    [rule] = [row for row in rows if row and row[0] == "1"]
+    return rule
+
+
+@pytest.mark.django_db
+def test_system_one_rule_shows_its_config_and_question_names(default_org, cdt_condition_group_factory):
+    _, cdt_node, _, group = cdt_condition_group_factory(default_org)
+    config = SystemOneConfig.objects.create(
+        org=default_org, custom_name="jev", provider="typesafe", model_name="jev-1.14.0"
+    )
+
+    rule = _system_one_rule(cdt_node, group, config)
+
+    assert rule[5:7] == ["is_engineering", "System One: jev"]
+
+
+@pytest.mark.django_db
+def test_system_one_rule_without_a_config_says_so(default_org, cdt_condition_group_factory):
+    _, cdt_node, _, group = cdt_condition_group_factory(default_org)
+
+    rule = _system_one_rule(cdt_node, group, None)
+
+    assert rule[5:7] == ["is_engineering", "System One: (no config)"]

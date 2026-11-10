@@ -1,71 +1,133 @@
-from unittest.mock import MagicMock
+"""DjangoAuthClient: token introspection against Django's auth API.
 
+Django is the external boundary, replaced by an `httpx.MockTransport` that answers
+the two auth endpoints and records every request it receives.
+"""
+
+import asyncio
+import json
+
+import httpx
 import pytest
+import pytest_asyncio
 
-import utils.auth as auth_module
-from core import config
+from utils.auth import DjangoAuthClient
 
+pytestmark = pytest.mark.asyncio
 
-@pytest.fixture(autouse=True)
-def _reset_validation_cache():
-    """validate_api_key() memoizes success in a module-level flag; reset between tests."""
-    auth_module._api_key_validated = False
-    yield
-    auth_module._api_key_validated = False
-
-
-def _mock_response(status_code: int = 200, json_data: dict | None = None) -> MagicMock:
-    response = MagicMock()
-    response.status_code = status_code
-    response.json.return_value = json_data or {"active": True}
-    return response
+BASE_URL = "http://django:8000"
+VALIDATE_PATH = "/api/auth/api-key/validate/"
+INTROSPECT_PATH = "/api/auth/introspect/"
+ACTIVE_USER = {"active": True, "user_id": 1, "org_ids": [1], "is_superadmin": False}
 
 
-def test_validate_api_key_overrides_host_header(monkeypatch):
-    """The Host header must be pinned to a value (e.g. "localhost") that is both
-    regex-valid and present in DJANGO_ALLOWED_HOSTS, since the URL authority
-    (DJANGO_AUTH_URL, resolved via the Docker Compose network alias) would
-    otherwise fail Django's host_validation_re if used verbatim as the Host
-    header. The request must still connect to the real service via the
-    configured URL authority, not a hardcoded hostname.
-    """
-    captured = {}
+class FakeDjangoAuth:
+    """Answers the auth endpoints with scripted responses; records what it was sent."""
 
-    def fake_get(url, headers, timeout):
-        captured["url"] = url
-        captured["headers"] = headers
-        return _mock_response()
+    def __init__(self):
+        self.answers: dict[str, httpx.Response | Exception] = {
+            VALIDATE_PATH: httpx.Response(200, json={"active": True}),
+            INTROSPECT_PATH: httpx.Response(200, json=ACTIVE_USER),
+        }
+        self.requests: list[httpx.Request] = []
+        # Set, a request waits for it before answering: lets a test hold handshakes open.
+        self.hold: asyncio.Event | None = None
 
-    monkeypatch.setattr(auth_module.httpx, "get", fake_get)
+    async def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self.hold is not None:
+            await self.hold.wait()
+        answer = self.answers[request.url.path]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
-    result = auth_module.validate_api_key()
-
-    assert result is True
-    assert captured["headers"]["Host"] == "localhost"
-    assert captured["url"] == f"{config.DJANGO_AUTH_URL}/api/auth/api-key/validate/"
+    def paths(self) -> list[str]:
+        return [request.url.path for request in self.requests]
 
 
-def test_introspect_token_overrides_host_header(monkeypatch):
-    """The Host header must be pinned to a value (e.g. "localhost") that is both
-    regex-valid and present in DJANGO_ALLOWED_HOSTS, since the URL authority
-    (DJANGO_AUTH_URL, resolved via the Docker Compose network alias) would
-    otherwise fail Django's host_validation_re if used verbatim as the Host
-    header. The request must still connect to the real service via the
-    configured URL authority, not a hardcoded hostname.
-    """
-    monkeypatch.setattr(auth_module, "_api_key_validated", True)
+@pytest.fixture
+def django():
+    return FakeDjangoAuth()
 
-    captured = {}
 
-    def fake_post(url, json, headers, timeout):
-        captured["url"] = url
-        captured["headers"] = headers
-        return _mock_response(json_data={"active": True, "sub": "user-1"})
+@pytest_asyncio.fixture
+async def auth_client(django):
+    client = DjangoAuthClient(
+        base_url=BASE_URL, api_key="service-key", timeout=5.0, transport=httpx.MockTransport(django)
+    )
+    await client.start()
+    yield client
+    await client.stop()
 
-    monkeypatch.setattr(auth_module.httpx, "post", fake_post)
 
-    result = auth_module.introspect_token("some-token")
+async def test_active_token_returns_the_introspection(auth_client, django):
+    assert await auth_client.introspect_token("user-token") == ACTIVE_USER
 
-    assert result == {"active": True, "sub": "user-1"}
-    assert captured["headers"]["Host"] == "localhost"
-    assert captured["url"] == f"{config.DJANGO_AUTH_URL}/api/auth/introspect/"
+    validate, introspect = django.requests
+    assert str(validate.url) == f"{BASE_URL}{VALIDATE_PATH}"
+    assert str(introspect.url) == f"{BASE_URL}{INTROSPECT_PATH}"
+    assert json.loads(introspect.content) == {"token": "user-token"}
+    # Django would reject the compose service name as a Host header.
+    for request in django.requests:
+        assert request.headers["Host"] == "localhost"
+        assert request.headers["X-API-Key"] == "service-key"
+
+
+async def test_a_validated_api_key_is_not_checked_again(auth_client, django):
+    await auth_client.introspect_token("first")
+    await auth_client.introspect_token("second")
+
+    assert django.paths() == [VALIDATE_PATH, INTROSPECT_PATH, INTROSPECT_PATH]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        pytest.param(httpx.Response(200, json={"active": False}), id="inactive"),
+        pytest.param(httpx.Response(403, json={"detail": "forbidden"}), id="non-200"),
+        pytest.param(httpx.Response(200, text="<html>proxy</html>"), id="non-json-200"),
+        pytest.param(httpx.Response(200, json=["active"]), id="non-object-200"),
+        pytest.param(httpx.ConnectTimeout("timed out"), id="request-error"),
+    ],
+)
+async def test_refused_api_key_rejects_the_token_and_is_checked_again_next_time(
+    auth_client, django, answer
+):
+    django.answers[VALIDATE_PATH] = answer
+
+    assert await auth_client.introspect_token("user-token") is None
+    assert await auth_client.introspect_token("user-token") is None
+
+    assert django.paths() == [VALIDATE_PATH, VALIDATE_PATH]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        pytest.param(httpx.Response(200, json={"active": False}), id="inactive"),
+        pytest.param(httpx.Response(401, json={"detail": "bad token"}), id="non-200"),
+        pytest.param(httpx.Response(200, text="<html>proxy</html>"), id="non-json-200"),
+        pytest.param(httpx.Response(200, content=b"null"), id="non-object-200"),
+        pytest.param(httpx.ConnectError("connection refused"), id="request-error"),
+    ],
+)
+async def test_refused_or_failed_introspection_returns_none(auth_client, django, answer):
+    django.answers[INTROSPECT_PATH] = answer
+
+    assert await auth_client.introspect_token("user-token") is None
+
+
+async def test_handshakes_waiting_on_django_do_not_block_each_other(auth_client, django):
+    """Both cold-start handshakes reach Django while neither has an answer yet."""
+    django.hold = asyncio.Event()
+
+    first = asyncio.create_task(auth_client.introspect_token("first"))
+    second = asyncio.create_task(auth_client.introspect_token("second"))
+    async with asyncio.timeout(1):
+        while len(django.requests) < 2:
+            await asyncio.sleep(0)
+        django.hold.set()
+        results = await asyncio.gather(first, second)
+
+    assert results == [ACTIVE_USER, ACTIVE_USER]

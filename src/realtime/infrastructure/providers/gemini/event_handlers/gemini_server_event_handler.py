@@ -55,6 +55,9 @@ class GeminiServerEventHandler:
         self._assistant_output_index = 0
         self._current_transcript = ""
         self._discarding_audio = False  # True after client cancel, until Gemini confirms
+        # The event loop keeps only a weak reference to a task, so a running tool call
+        # held nowhere else can be garbage-collected before it sends its result.
+        self._tool_call_tasks: set[asyncio.Task] = set()
 
     def reset(self) -> None:
         self._current_response_id = None
@@ -421,5 +424,8 @@ class GeminiServerEventHandler:
             self._current_output_index += 1
             logger.info(f"Gemini: Calling tool {tool_name}")
             # Run as a background task so the receive loop stays unblocked
-            # while waiting for the tool result from Redis.
-            asyncio.ensure_future(self.client.call_tool(call_id, tool_name, args))  # noqa: RUF006
+            # while waiting for the tool result from Redis. Not cancelled on reset():
+            # call_tool drops a result whose session was replaced meanwhile.
+            task = asyncio.create_task(self.client.call_tool(call_id, tool_name, args))
+            self._tool_call_tasks.add(task)
+            task.add_done_callback(self._tool_call_tasks.discard)

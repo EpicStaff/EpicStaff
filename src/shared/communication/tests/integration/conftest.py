@@ -47,19 +47,21 @@ def redis_url():
 def s3_params():
     _skip_if_no_docker()
     from testcontainers.core.container import DockerContainer
-    from testcontainers.core.wait_strategies import wait_for_logs
+    from testcontainers.core.wait_strategies import HttpWaitStrategy
 
     access_key = "admin"
     secret_key = "admin"
 
     container = (
         DockerContainer(
-            image="rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff"
+            image="rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2"
         )
         .with_env("RUSTFS_ACCESS_KEY", access_key)
         .with_env("RUSTFS_SECRET_KEY", secret_key)
         .with_exposed_ports(9000)
-        .with_wait_strategy(wait_for_logs("(?i)(listening|ready|started|running)"))
+        # The same liveness probe as the storage service's compose healthcheck;
+        # RustFS logs to a file, so there is no startup line on stdout to wait for.
+        .waiting_for(HttpWaitStrategy(9000, "/minio/health/live").for_status_code(200))
     )
 
     with container:

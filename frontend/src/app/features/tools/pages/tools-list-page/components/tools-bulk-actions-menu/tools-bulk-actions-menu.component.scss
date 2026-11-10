@@ -5,5 +5,11 @@
 
     .menu-item {
         @include menu-item();
+
+        // The hover look and the ring, drawn inside: the items sit tight in the panel.
+        &:focus-visible {
+            background: var(--transparent-white-8);
+            outline-offset: -2px;
+        }
     }
 }

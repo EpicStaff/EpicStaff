@@ -25,11 +25,11 @@ dev = [
 # floor (.github/dependency-floor.toml) for them and add a second copy of the package to
 # THIRD-PARTY-NOTICES.md.
 transitive-pins = [
-    "certifi==2026.7.22",
+    "certifi==2026.10.23",
     "cryptography==50.0.1",
     "idna==3.18",
     "pycparser==3.0",
-    "pyjwt==2.13.0",
+    "pyjwt==2.15.1",
 ]
 
 [tool.uv]
@@ -46,6 +46,8 @@ testpaths = ["tests"]
 pythonpath = [".", "../.."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# A test still running after two minutes dumps every thread's stack, so a hang in CI says where.
+faulthandler_timeout = 120
 markers = [
     "linux: needs Linux kernel features (SOCK_SEQPACKET, SO_PEERCRED, pidfd, /proc); skipped elsewhere",
     "root: needs root with CAP_SETUID, CAP_SETGID and CAP_CHOWN (the node's container); skipped otherwise",

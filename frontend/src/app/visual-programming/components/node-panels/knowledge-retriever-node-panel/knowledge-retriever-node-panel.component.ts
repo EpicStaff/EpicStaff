@@ -28,10 +28,15 @@ import { AgentsService } from '../../../../features/staff/services/staff.service
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { KnowledgeRetrieverNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
+import { NodeSaveErrorsStore } from '../../../services/node-save-errors.store';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { fieldGroupChange, linkedEntityFormat, mapFieldRowChanges } from '../../../utils/diff';
+import { DiffFieldMarkChange, DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
+import { NodeSaveErrorsComponent } from '../shared/node-save-errors/node-save-errors.component';
 import { buildGraphSearchConfig } from './knowledge-retriever-search-configs.util';
 
 type RagKind = 'naive' | 'graph';
@@ -57,6 +62,8 @@ interface RagChoice {
         InputsYouCanUseComponent,
         ValidationErrorsComponent,
         IfFlowEditableDirective,
+        DiffFieldMarkComponent,
+        NodeSaveErrorsComponent,
     ],
     templateUrl: './knowledge-retriever-node-panel.component.html',
     styleUrls: ['./knowledge-retriever-node-panel.component.scss'],
@@ -68,6 +75,8 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
 
     private readonly collectionsService = inject(CollectionsApiService);
     private readonly sidePanelService = inject(SidePanelService);
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
 
     readonly collections = signal<GetCollectionRequest[]>([]);
     readonly loadingCollections = signal<boolean>(false);
@@ -86,6 +95,12 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
     private readonly currentRagChoice = signal<RagChoice | null>(null);
 
     private readonly formSignal = signal<FormGroup | null>(null);
+    /** Why the last save refused the query, until it is edited. */
+    protected readonly querySaveErrors = computed(() => {
+        this.dirtyCheckTick();
+        const query: unknown = this.formSignal()?.get('query')?.value ?? '';
+        return this.nodeSaveErrors.fieldMessages(this.node().id, 'query', query);
+    });
     readonly ragTabFormList = computed<FormGroup[]>(() => {
         const f = this.formSignal();
         return f ? [f] : [];
@@ -107,6 +122,36 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
     );
 
     readonly selectedRagKind = computed<RagKind | null>(() => this.currentRagChoice()?.rag_type ?? null);
+
+    /** Changes tab of a version preview: what a restore does to each Input List row; `null` anywhere else. */
+    protected readonly inputMapRowChanges = computed(() => mapFieldRowChanges(this.panelDiff(), 'input_map'));
+    /** The RAG picked is one field holding two diffed values, its type and its id. */
+    protected readonly ragChange = computed<DiffFieldMarkChange | null>(() => {
+        const data = this.node().data;
+        return fieldGroupChange(this.panelDiff(), { rag_type: data.rag_type, rag_id: data.rag_id });
+    });
+    /** The search settings are one section holding two diffed values, the settings and the search method. */
+    protected readonly searchSettingsChange = computed<DiffFieldMarkChange | null>(() => {
+        const data = this.node().data;
+        return fieldGroupChange(this.panelDiff(), {
+            search_method: data.search_method,
+            search_configs: data.search_configs,
+        });
+    });
+    /** The loaded collections name a changed collection in the mark's tooltip; one not loaded: `collection #id`. */
+    protected readonly collectionNameFormat = linkedEntityFormat(
+        'collection',
+        (id) => this.collections().find((collection) => collection.collection_id === id)?.collection_name
+    );
+    /**
+     * A RAG has no name: the select shows its type. One the select does not list (another collection's, or one
+     * that is gone) also gets its id, so two RAGs of one type still read apart.
+     */
+    protected readonly ragFormat = (value: unknown): string => {
+        const { rag_type: type, rag_id: id } = value as { rag_type: unknown; rag_id: unknown };
+        if (id == null || this.rags().some((rag) => rag.rag_id === id && rag.rag_type === type)) return String(type);
+        return type == null ? `RAG #${String(id)}` : `${String(type)} (RAG #${String(id)})`;
+    };
 
     constructor() {
         super();

@@ -1,11 +1,13 @@
 <ng-content select="[appMultiSelectTrigger]" />
 
 @if (!projectedTriggerEl() && !hideTrigger()) {
-    <div
+    <button
         #triggerBtn
+        type="button"
         class="multi-select__btn"
         [class.multi-select__btn--disabled]="disabled()"
-        [attr.aria-disabled]="disabled() || null"
+        [disabled]="disabled()"
+        [attr.aria-expanded]="isOpen()"
         (click)="toggle()"
     >
         {{ label() }}
@@ -17,7 +19,7 @@
                 [icon]="icon()"
             />
         }
-    </div>
+    </button>
 }
 
 @if (!projectedTriggerEl() && hideTrigger()) {
@@ -30,9 +32,24 @@
 <ng-template #dropdownTemplate>
     <div
         class="multi-select__dropdown"
+        [class.multi-select__dropdown--outlined]="variant() === 'outlined'"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
         [style.--ms-width]="panelWidth()"
         [style.--ms-height]="panelHeight()"
     >
+        @if (headerTitle()) {
+            <div class="multi-select__header">
+                <span>{{ headerTitle() }}</span>
+                <span
+                    class="multi-select__header-count"
+                    aria-live="polite"
+                >
+                    <span class="multi-select__header-selected">{{ tempSelected().length }}</span> /
+                    {{ items().length }}
+                </span>
+            </div>
+        }
         @if (showSearch()) {
             <input
                 class="multi-select__search"
@@ -40,6 +57,8 @@
                 [value]="search()"
                 (input)="search.set($any($event.target).value)"
                 [placeholder]="searchPlaceholder()"
+                [attr.aria-label]="searchPlaceholder()"
+                [matTooltip]="searchPlaceholder()"
             />
         }
 
@@ -79,6 +98,8 @@
                             <button
                                 type="button"
                                 class="multi-select__group-action"
+                                [attr.aria-label]="groupActionLabel()[group.group] || null"
+                                [matTooltip]="groupActionLabel()[group.group] ?? ''"
                                 (click)="onGroupAction($event, group.group)"
                             >
                                 <app-svg-icon
@@ -93,7 +114,9 @@
                 @for (item of group.items; track item.name) {
                     <div
                         class="multi-select__item"
-                        [class.multi-select__item--selected]="isChecked(item.value) && !readonlyView()"
+                        [class.multi-select__item--selected]="
+                            variant() === 'default' && isChecked(item.value) && !readonlyView()
+                        "
                         [class.multi-select__item--checkbox-left]="checkboxPosition() === 'left'"
                         [class.multi-select__item--checkbox-white]="color() === 'white'"
                         [class.multi-select__item--has-action]="!!item.trailingActionIcon"
@@ -105,12 +128,14 @@
                                 [disabled]="readonlyView()"
                                 mod="multiselect"
                                 [checked]="isChecked(item.value)"
+                                [ariaLabel]="item.name"
                             />
                         }
                         <span class="multi-select__item-text">
                             <span
                                 class="multi-select__item-name"
-                                [title]="item.name"
+                                appTooltipOnOverflow
+                                [matTooltip]="item.name"
                                 >{{ item.name }}</span
                             >
                             @if (item.tip) {
@@ -124,12 +149,15 @@
                                 [disabled]="readonlyView()"
                                 color="secondary"
                                 [checked]="isChecked(item.value)"
+                                [ariaLabel]="item.name"
                             />
                         }
                         @if (item.trailingActionIcon && !readonlyView()) {
                             <button
                                 type="button"
                                 class="multi-select__item-action"
+                                [attr.aria-label]="item.trailingActionLabel"
+                                [matTooltip]="item.trailingActionLabel"
                                 (click)="onItemAction($event, item.value)"
                             >
                                 <app-svg-icon
@@ -157,6 +185,16 @@
                         (click)="clearFilter()"
                     >
                         Clear Filter
+                    </app-button>
+                }
+                @if (selectAllLabel()) {
+                    <app-button
+                        class="multi-select__footer-btn"
+                        mod="default"
+                        type="outline-primary"
+                        (click)="selectAll()"
+                    >
+                        {{ selectAllLabel() }}
                     </app-button>
                 }
 
