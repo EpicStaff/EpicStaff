@@ -19,8 +19,7 @@ from tables.services.knowledge_services.collection_management_service import (
 from tables.services.recycle_bin.registry import bin_resource_for, bin_resources
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service.recycle_bin import StorageRecycleBinService
-from user_audit.recorder import record_user_action
-from user_audit.targets import describe
+from user_audit.recorder import describe_for_record, record_user_action
 from utils.logger import logger
 
 RETENTION_JOB_ACTOR = "retention job"
@@ -53,7 +52,7 @@ class PurgeService:
         org_id = getattr(root, f"{resource.org_field}_id")
         batch = root.soft_delete_batch
         # Read now: the purge clears the root's primary key.
-        target = describe(root)
+        target = describe_for_record(root)
 
         if isinstance(root, SourceCollection):
             CollectionManagementService.purge_collection(root)

@@ -1,3 +1,4 @@
+import functools
 from uuid import uuid4
 
 from django.conf import settings
@@ -116,10 +117,59 @@ def _retention_days(org_id: int, context: UserActionContext | None) -> int:
     return retention_days
 
 
+def user_audit_hook(function):
+    """Run `function` only while the user audit trail is on, and never let it raise.
+
+    For capture code that reads the database to name what a record describes: with the
+    switch off it costs nothing, and a failure is logged rather than failing the change it
+    describes. The call returns None when skipped or failed. It runs in a savepoint, so a
+    failed query caught here leaves the caller's transaction usable.
+    """
+
+    @functools.wraps(function)
+    def guarded(*args, **kwargs):
+        if not settings.USER_AUDIT_TRAIL_ENABLED:
+            return None
+        try:
+            with transaction.atomic():
+                return function(*args, **kwargs)
+        except Exception:
+            logger.exception("User action capture {} failed", function.__qualname__)
+            return None
+
+    return guarded
+
+
+@user_audit_hook
+def describe_for_record(instance: models.Model) -> TargetDescription:
+    """Describe `instance` now, for a record written once it is deleted, or for a copy's source.
+
+    None while the switch is off, or when describing it failed (logged).
+    """
+    return describe(instance)
+
+
+def record_copy(source: models.Model, copy: models.Model) -> None:
+    """Record `copy` as copied, in its own org, with the name `source` had as previous name.
+
+    Records nothing for a copy that belongs to no org. Best-effort like `record_user_action`.
+    """
+    org_id = getattr(copy, "org_id", None)
+    if org_id is None:
+        return
+    source_description = describe_for_record(source)
+    record_user_action(
+        action=UserAction.COPIED,
+        org_id=org_id,
+        target=copy,
+        previous_name=source_description.name if source_description is not None else None,
+    )
+
+
 def record_for_user_orgs(
     *,
     action: str,
-    actor: Actor,
+    actor: Actor | None = None,
     target: models.Model | None = None,
     target_description: TargetDescription | None = None,
     org_user_id: int | None = None,
@@ -128,15 +178,22 @@ def record_for_user_orgs(
     """Record the action once in every active organization `actor` is a member of.
 
     For actions that belong to no single org, such as signing in. Best-effort like
-    `record_user_action`.
+    `record_user_action`, and like it records nothing when no `actor` is passed and the
+    current request (if any) was not made by a user or the system API key.
 
     Args:
         org_user_id: Fan out over this user's organizations instead of the actor's, for an
             action one user takes on another, such as an administrator resetting a password.
+            The memberships are read now, so call it before they are deleted.
     """
     if not settings.USER_AUDIT_TRAIL_ENABLED:
         return
     try:
+        if actor is None:
+            context = current_context()
+            actor = actor_from_request(context.request) if context is not None else None
+        if actor is None:
+            return
         # A savepoint, so a failed read caught below leaves the caller's transaction usable.
         with transaction.atomic():
             org_ids = list(
@@ -155,4 +212,4 @@ def record_for_user_orgs(
                 actor=actor,
             )
     except Exception:
-        logger.exception("Failed to record user action {} for user {}", action, actor.user_id)
+        logger.exception("Failed to record user action {} across a user's orgs", action)

@@ -6,7 +6,7 @@ from django.db.models import Prefetch, Q, QuerySet
 from loguru import logger
 from src.shared.models import UserAction
 from tables.models.user import User
-from user_audit.recorder import record_user_action
+from user_audit.recorder import record_for_user_orgs, record_user_action
 from user_audit.targets import describe_user
 
 from rbac.exceptions import (
@@ -197,7 +197,7 @@ class UserManagementService(CrossOrgResourceService):
     @transaction.atomic
     def grant_superadmin(self, actor, target_user_id):
         """Sets is_superadmin=True on target_user_id. Idempotent if
-        already True."""
+        already True. Recorded as a user action in each org the user belonged to."""
         UserModel = get_user_model()  # noqa: N806
         try:
             target = UserModel.objects.select_for_update().get(pk=target_user_id)
@@ -211,6 +211,12 @@ class UserManagementService(CrossOrgResourceService):
         target.save(update_fields=["is_superadmin", "updated_at"])
         target.refresh_from_db()
 
+        # Before the purge below empties the memberships the record fans out over.
+        record_for_user_orgs(
+            action=UserAction.SUPERADMIN_GRANTED,
+            target_description=describe_user(target),
+            org_user_id=target.pk,
+        )
         purged = self._purge_memberships(target)
 
         logger.info(
@@ -227,7 +233,8 @@ class UserManagementService(CrossOrgResourceService):
         every org they are not a member of, including the authorship recorded in that
         org's flow version snapshots. Deletes their USER API keys bound to those orgs,
         which the account can no longer act in. Last-active-superadmin guard.
-        Idempotent if already False."""
+        Idempotent if already False. Recorded as a user action in each org the user
+        belongs to: usually none, as the grant purged their memberships."""
         UserModel = get_user_model()  # noqa: N806
         superadmins = (
             UserModel.objects
@@ -262,6 +269,13 @@ class UserManagementService(CrossOrgResourceService):
                 .exclude(org_id__in=OrganizationUser.objects.filter(user=target).values("org_id"))
                 .delete()
             )
+            # Lands in no org's trail unless the user joined an org after the grant: granting
+            # superadmin purged every membership.
+            record_for_user_orgs(
+                action=UserAction.SUPERADMIN_REVOKED,
+                target_description=describe_user(target),
+                org_user_id=target.pk,
+            )
 
         logger.info(
             "UserManagementService.revoke_superadmin actor={a} target={t} released_authorship={r} "
@@ -279,7 +293,8 @@ class UserManagementService(CrossOrgResourceService):
     def set_user_active(self, actor, target_user_id, value):
         """Set is_active on a user account (superadmin-only, gated at the
         view). Idempotent. Deactivating the last active superadmin is
-        refused (reuses the last-active-superadmin guard)."""
+        refused (reuses the last-active-superadmin guard). A change is recorded
+        as a user action in each org the user belongs to."""
         UserModel = get_user_model()  # noqa: N806
         superadmins = (
             UserModel.objects
@@ -302,6 +317,11 @@ class UserManagementService(CrossOrgResourceService):
             target.is_active = value
             target.save(update_fields=["is_active", "updated_at"])
             target.refresh_from_db()
+            record_for_user_orgs(
+                action=UserAction.REACTIVATED if value else UserAction.DEACTIVATED,
+                target_description=describe_user(target),
+                org_user_id=target.pk,
+            )
 
         logger.info(
             "UserManagementService.set_user_active actor={a} target={t} active={v}",
@@ -365,6 +385,8 @@ class UserManagementService(CrossOrgResourceService):
         every organization, in the same transaction: a superadmin holds no memberships yet
         may have authored flows in any organization, and restoring a version replays the
         recorded ids, which would then point at no user.
+
+        Recorded as a user action in each org the user belonged to.
         """
         UserModel = get_user_model()  # noqa: N806
         instance = self._target_user_or_404(target_user_id)
@@ -400,6 +422,14 @@ class UserManagementService(CrossOrgResourceService):
             raise UserNotFoundError() from exc
         if locked_target.is_superadmin and not (superadmin_pks - {instance.pk}):
             raise LastSuperadminError()
+
+        # Before the delete: it removes the memberships the record fans out over, and the
+        # account it names.
+        record_for_user_orgs(
+            action=UserAction.DELETED,
+            target_description=describe_user(instance),
+            org_user_id=instance.pk,
+        )
 
         # The user's API keys cascade-delete below anyway; revoking them first
         # keeps "log this user out everywhere" in one place rather than

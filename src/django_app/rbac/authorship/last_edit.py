@@ -11,8 +11,8 @@ from loguru import logger
 from rest_framework import serializers
 from src.shared.models import UserAction
 from user_audit.context import current_context
-from user_audit.recorder import record_user_action
-from user_audit.targets import TARGET_NAME_FIELDS, TargetDescription, describe
+from user_audit.recorder import describe_for_record, record_user_action
+from user_audit.targets import TARGET_NAME_FIELDS, TargetDescription
 
 from rbac.authorship.policy import resolve_author
 from rbac.models.last_edit import LastEditTrackedModel, ResourceLastEdit
@@ -189,9 +189,11 @@ class LastEditTracker:
         would record it twice.
         """
         self._add_owner_reference(_owner_reference(instance))
-        self._deletions.append(
-            _EditAction(UserAction.DELETED, instance, target_description=describe(instance))
-        )
+        target_description = describe_for_record(instance)
+        if target_description is not None:
+            self._deletions.append(
+                _EditAction(UserAction.DELETED, instance, target_description=target_description)
+            )
 
     def mark_edited(self, resource: LastEditTrackedModel) -> None:
         """Record `resource` as edited by a write this tracker did not watch."""

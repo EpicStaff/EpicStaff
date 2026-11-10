@@ -27,7 +27,7 @@ env_bool() {
 }
 # <<< env_bool
 
-if ! env_bool SESSION_AUDIT_TRAIL_ENABLED false && ! env_bool USER_AUDIT_TRAIL_ENABLED false; then
+if ! env_bool SESSION_AUDIT_TRAIL_ENABLED && ! env_bool USER_AUDIT_TRAIL_ENABLED; then
     echo "SESSION_AUDIT_TRAIL_ENABLED and USER_AUDIT_TRAIL_ENABLED are both false - auditor has nothing to do, exiting."
     exit 0
 fi

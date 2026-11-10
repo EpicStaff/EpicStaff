@@ -11,7 +11,15 @@ from rest_framework.views import APIView
 
 from agents.models import AgentDefinition
 from rbac.models import OrganizationUser
-from tables.models import AuditFilterPreset, Graph, Provider, SourceCollection, StorageFile
+from tables.models import (
+    AuditFilterPreset,
+    Graph,
+    Label,
+    Provider,
+    Session,
+    SourceCollection,
+    StorageFile,
+)
 from tables.models.default_models import DefaultModels
 from tables.services.quickstart_service import QuickstartService
 from tables.services.storage_service.upload import admission, archive_upload, file_upload
@@ -77,21 +85,42 @@ def _checked_request(user, org_id, *, method="post", path="/api/things/"):
     return request
 
 
-def test_fallback_records_a_flow_copy_as_copied(
-    admin_client, admin_acme, acme, flow, sent_events, django_capture_on_commit_callbacks
+def _copy_of(model, source, **filters):
+    return model.objects.filter(**filters).exclude(pk=source.pk).get()
+
+
+@pytest.mark.parametrize(
+    "kind, target_type",
+    [("flow", "flow"), ("collection", "knowledge collection"), ("preset", "audit filter preset")],
+)
+def test_a_copy_records_the_new_copy_with_its_source_name(
+    kind, target_type, admin_client, admin_acme, acme, flow, sent_events,
+    django_capture_on_commit_callbacks,
 ):
+    if kind == "flow":
+        source, url, body = flow, reverse("graphs-copy", args=[flow.pk]), {}
+    elif kind == "collection":
+        source = SourceCollection.objects.create(collection_name="Billing flow", org=acme)
+        url, body = f"/api/source-collections/{source.pk}/copy/", {"new_collection_name": "Copy"}
+    else:
+        source = AuditFilterPreset.objects.create(
+            org=acme, created_by=admin_acme, name="Billing flow", filter_body={"query": "x"}
+        )
+        url, body = reverse("auditfilterpreset-copy", kwargs={"pk": source.pk}), {}
+
     with django_capture_on_commit_callbacks(execute=True):
-        response = admin_client.post(reverse("graphs-copy", args=[flow.pk]), {}, format="json")
+        response = admin_client.post(url, body, format="json")
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
+    copy = _copy_of(type(source), source, org=acme)
     [event] = sent_events
     assert (event.action, event.org_id, event.actor_user_id) == ("copied", acme.id, admin_acme.id)
-    assert (event.target_type, event.target_id, event.target_name) == (
-        "flow",
-        str(flow.pk),
+    assert (event.target_type, event.target_id, event.previous_name) == (
+        target_type,
+        str(copy.pk),
         "Billing flow",
     )
-    assert event.route == "POST api/graphs/<pk>/copy/"
+    assert event.route is None
 
 
 def test_fallback_skips_when_tracker_recorded(
@@ -519,3 +548,91 @@ async def test_a_streamed_archive_records_the_folder_it_unpacked_into(
     assert [(event.action, event.target_id, event.target_name) for event in sent_events] == [
         ("created", str(folder.pk), "docs/bundle/")
     ]
+
+
+# ---- a hard delete the fallback records still names the row it deleted ----
+
+
+def _deleted_event(sent_events) -> tuple:
+    [event] = sent_events
+    assert event.route is not None  # recorded by the fallback, not a hook
+    return (
+        event.action,
+        event.target_type,
+        event.target_id,
+        event.target_name,
+        event.parent_type,
+        event.parent_name,
+    )
+
+
+def _delete(client, url, capture):
+    with capture(execute=True):
+        response = client.delete(url)
+    assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
+
+
+def test_a_deleted_audit_filter_preset_is_named(
+    admin_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
+):
+    preset = AuditFilterPreset.objects.create(
+        org=acme, created_by=admin_acme, name="Failed runs", filter_body={"query": "x"}
+    )
+
+    _delete(admin_client, f"/api/audit-filter-presets/{preset.pk}/", django_capture_on_commit_callbacks)
+
+    assert not AuditFilterPreset.objects.filter(pk=preset.pk).exists()
+    assert _deleted_event(sent_events) == (
+        "deleted", "audit filter preset", str(preset.pk), "Failed runs", None, None
+    )
+
+
+def test_a_deleted_label_is_named(admin_client, acme, sent_events, django_capture_on_commit_callbacks):
+    label = Label.objects.create(org=acme, name="Finance", scope=Label.Scope.FLOW)
+
+    _delete(admin_client, f"/api/labels/{label.pk}/", django_capture_on_commit_callbacks)
+
+    assert _deleted_event(sent_events)[:4] == ("deleted", "label", str(label.pk), "Finance")
+
+
+def test_deleted_voice_settings_are_named_after_their_agent(
+    admin_client, voice_agent, sent_events, django_capture_on_commit_callbacks
+):
+    RealtimeAgentDefinition.objects.create(agent_definition=voice_agent)
+
+    _delete(
+        admin_client,
+        f"/api/realtime-agent-definitions/{voice_agent.id}/",
+        django_capture_on_commit_callbacks,
+    )
+
+    assert _deleted_event(sent_events) == (
+        "deleted", "voice settings", str(voice_agent.id), "Support agent", "agent", "Support agent"
+    )
+
+
+def test_a_deleted_session_is_named_under_its_flow(
+    admin_client, flow, sent_events, django_capture_on_commit_callbacks
+):
+    session = Session.objects.create(graph=flow, status=Session.SessionStatus.END)
+
+    _delete(admin_client, f"/api/sessions/{session.pk}/", django_capture_on_commit_callbacks)
+
+    assert _deleted_event(sent_events) == (
+        "deleted", "session", str(session.pk), None, "flow", "Billing flow"
+    )
+
+
+def test_a_delete_of_another_orgs_row_records_nothing(
+    admin_client, admin_acme, beta, sent_events, django_capture_on_commit_callbacks
+):
+    preset = AuditFilterPreset.objects.create(
+        org=beta, created_by=admin_acme, name="Beta secret", filter_body={"query": "x"}
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.delete(f"/api/audit-filter-presets/{preset.pk}/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert AuditFilterPreset.objects.filter(pk=preset.pk).exists()
+    assert sent_events == []

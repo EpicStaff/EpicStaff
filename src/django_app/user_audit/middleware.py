@@ -13,6 +13,7 @@ import io
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.handlers.asgi import ASGIRequest
+from django.db import transaction
 from django.db.models import Model
 from rbac.views.auth import (
     ApiKeyValidateView,
@@ -37,12 +38,13 @@ from utils.request_target import (
     id_from_response,
     id_from_url,
     model_of,
+    org_path_of,
     org_row,
     url_path_pattern,
 )
 
 from user_audit.actor import actor_from_request
-from user_audit.context import UserActionContext, user_action_context
+from user_audit.context import UserActionContext, current_context, user_action_context
 from user_audit.read_only import handler_reads_only
 from user_audit.recorder import record_user_action
 from user_audit.targets import TargetDescription, target_type
@@ -123,6 +125,17 @@ class UserActionMiddleware:
                 response_data=response.data if isinstance(response, Response) else None,
             )
         return response
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        """Load the row a DELETE names before the view deletes it, for the fallback to name.
+
+        One query per DELETE while the switch is on, none otherwise. Read in no org: the
+        org is checked inside the view, so the fallback uses the row only when the org it
+        then checked owns it.
+        """
+        context = current_context()
+        if context is not None and request.method == "DELETE":
+            context.row_before_delete = _row_before_delete(view_func, request.resolver_match)
 
 
 class UserActionASGI:
@@ -219,7 +232,9 @@ def _record_unhandled_change(
         route_text = f"{request.method} {url_path_pattern(route)}" if route is not None else None
         org_id = getattr(request, "_rbac_active_org_id", None)
         if org_id is not None:
-            target, target_description = _fallback_target(view_class, match, org_id, created_data)
+            target, target_description = _fallback_target(
+                view_class, match, org_id, created_data, context.row_before_delete
+            )
             record_user_action(
                 action=action,
                 org_id=org_id,
@@ -233,11 +248,12 @@ def _record_unhandled_change(
 
 
 def _fallback_target(
-    view_class, match, org_id: int, created_data
+    view_class, match, org_id: int, created_data, row_before_delete: Model | None = None
 ) -> tuple[Model | None, TargetDescription | None]:
     """The changed row, loaded only when `org_id` owns it (see `org_row`), so it is named
-    and given its parent like a hook's target. Failing that, the bare type and id the URL
-    names; a create's response id that does not resolve names nothing."""
+    and given its parent like a hook's target; a row the request deleted is the copy
+    `row_before_delete` loaded before. Failing that, the bare type and id the URL names; a
+    create's response id that does not resolve names nothing."""
     model = model_of(view_class)
     if model is None:
         return None, None
@@ -245,9 +261,49 @@ def _fallback_target(
     value = url_id if url_id is not None else id_from_response(model, created_data)
     if value is None:
         return None, None
-    row = org_row(view_class, value, org_id)
+    row = org_row(view_class, value, org_id) or _deleted_row_of_org(
+        row_before_delete, view_class, model, url_id, org_id
+    )
     if row is not None:
         return row, None
     if url_id is None:
         return None, None
     return None, TargetDescription(type=target_type(model), id=str(url_id), name=None)
+
+
+def _row_before_delete(view_func, match) -> Model | None:
+    """The row the URL of a DELETE names, whatever org owns it; None while the switch is off,
+    for a custom action (a purge records itself) and for a URL that names no row."""
+    try:
+        if not settings.USER_AUDIT_TRAIL_ENABLED:
+            return None
+        if getattr(view_func, "actions", {}).get("delete") not in (None, "destroy"):
+            return None
+        model = model_of(getattr(view_func, "cls", None))
+        url_id = id_from_url(match)
+        if model is None or url_id is None:
+            return None
+        # A savepoint, so a failed read caught below leaves the request's transaction usable.
+        with transaction.atomic():
+            return model._base_manager.filter(pk=url_id).first()
+    except Exception:
+        logger.exception("Failed to load the row a DELETE names for its user-action record")
+        return None
+
+
+def _deleted_row_of_org(
+    row: Model | None, view_class, model: type[Model], url_id, org_id: int
+) -> Model | None:
+    """`row`, loaded before the request deleted it, when it is the row the URL names and
+    `org_id` owned it; else None."""
+    if row is None or url_id is None or not isinstance(row, model) or str(row.pk) != str(url_id):
+        return None
+    org_path = org_path_of(view_class, model)
+    if org_path is None:
+        return None
+    owner = row
+    for field_name in org_path.split("__"):
+        owner = getattr(owner, field_name, None)
+        if owner is None:
+            return None
+    return row if owner == org_id else None

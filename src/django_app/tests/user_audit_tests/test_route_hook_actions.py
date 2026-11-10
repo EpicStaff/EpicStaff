@@ -216,6 +216,7 @@ def test_document_copy_records_the_copy_under_the_target_collection(
     copy = collection.documents.get()
     [event] = _hook_events(sent_events)
     assert _target(event) == ("copied", "collection file", str(copy.pk), "guide.txt")
+    assert event.previous_name == "guide.txt"
     assert _parent(event) == ("knowledge collection", str(collection.pk), "Manuals")
 
 

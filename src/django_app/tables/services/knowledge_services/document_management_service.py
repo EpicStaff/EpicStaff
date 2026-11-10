@@ -614,8 +614,9 @@ class DocumentManagementService:
 
         Documents already present (by content), duplicate ids and copies into the source
         collection are skipped; `user` last edits the collection when anything was copied.
-        Each copy is recorded as a `copied` user action under the target collection; a copy
-        that skipped everything records nothing.
+        Each new copy is recorded as a `copied` user action under the target collection,
+        its source's name as the previous name; a copy that skipped everything records
+        nothing.
         The target collection and every source document must belong to ``org_id``.
         Returns (copied, skipped).
 
@@ -640,6 +641,7 @@ class DocumentManagementService:
 
         copied_documents: list[DocumentMetadata] = []
         skipped_documents: list[DocumentMetadata] = []
+        source_names: list[str] = []
         for source_doc in source_documents:
             if source_doc.document_content_id in existing_content_ids:
                 skipped_documents.append(source_doc)
@@ -654,6 +656,7 @@ class DocumentManagementService:
                     file_size=source_doc.file_size,
                 )
             )
+            source_names.append(source_doc.file_name)
             existing_content_ids.add(source_doc.document_content_id)
 
         logger.info(
@@ -662,8 +665,10 @@ class DocumentManagementService:
         )
         if copied_documents:
             record_collection_edits([collection_id], user)
-        for copied in copied_documents:
-            record_user_action(action=UserAction.COPIED, org_id=org_id, target=copied)
+        for copied, source_name in zip(copied_documents, source_names, strict=True):
+            record_user_action(
+                action=UserAction.COPIED, org_id=org_id, target=copied, previous_name=source_name
+            )
         if not copied_documents:
             mark_request_handled()
 

@@ -137,6 +137,48 @@ class UpdateEnvFileTest(unittest.TestCase):
         text = self.env_file.read_text(encoding="utf-8")
         self.assertEqual(envtool.read_env_values(text)["DB_PASSWORD"], "generated")
 
+    def test_old_audit_switch_carries_into_the_missing_new_switches(self):
+        schema = {
+            "groups": {
+                "auditor": {
+                    "vars": {
+                        name: {"description": "Switch.", "default": {"prod": False, "dev": True}}
+                        for name in envtool.SPLIT_AUDIT_SWITCHES
+                    }
+                }
+            }
+        }
+        self.env_file.write_text(
+            "AUDIT_TRAIL_ENABLED=true\nUSER_AUDIT_TRAIL_ENABLED=false\n", encoding="utf-8"
+        )
+
+        added, _ = envtool.update_env_file(schema, "prod", self.env_file, TODAY)
+
+        self.assertEqual(added, ["SESSION_AUDIT_TRAIL_ENABLED"])
+        values = envtool.read_env_values(self.env_file.read_text(encoding="utf-8"))
+        self.assertEqual(values["SESSION_AUDIT_TRAIL_ENABLED"], "true")
+        self.assertEqual(values["USER_AUDIT_TRAIL_ENABLED"], "false")
+
+    def test_without_the_old_audit_switch_the_new_ones_get_their_default(self):
+        schema = {
+            "groups": {
+                "auditor": {
+                    "vars": {
+                        "USER_AUDIT_TRAIL_ENABLED": {
+                            "description": "Switch.",
+                            "default": {"prod": False, "dev": True},
+                        }
+                    }
+                }
+            }
+        }
+        self.env_file.write_text("# AUDIT_TRAIL_ENABLED=true\n", encoding="utf-8")
+
+        envtool.update_env_file(schema, "prod", self.env_file, TODAY)
+
+        values = envtool.read_env_values(self.env_file.read_text(encoding="utf-8"))
+        self.assertEqual(values["USER_AUDIT_TRAIL_ENABLED"], "False")
+
     def test_summary(self):
         self.assertEqual(envtool.update_summary([], []), "nothing to add")
         self.assertEqual(
@@ -527,7 +569,8 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_production_new_file(self):
         values, output = self.run_setup(
-            "prod", ["https://es.example.com", "1", "y", "n", "n", "n", "latest", "v1.3.0", "3", "n"]
+            "prod",
+            ["https://es.example.com", "1", "y", "n", "n", "n", "latest", "v1.3.0", "3", "n"],
         )
         self.assertNotRegex(
             self.env_file.read_text(encoding="utf-8"), r"(?m)^# \w+=<enter your value>$"
@@ -570,7 +613,8 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_production_advanced_settings(self):
         values, _ = self.run_setup(
-            "prod", ["https://es.example.com", "1", "y", "n", "n", "n", "v1", "1", "y", "3", "3", "1"]
+            "prod",
+            ["https://es.example.com", "1", "y", "n", "n", "n", "v1", "1", "y", "3", "3", "1"],
         )
         self.assertEqual(values["DJANGO_SGI_WORKERS"], "6")
         self.assertEqual(values["DJANGO_DB_POOL_MAX_SIZE"], "15")
@@ -640,7 +684,8 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_verbose_logging_reminds_to_switch_back(self):
         _, created = self.run_setup(
-            "prod", ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "y", "1", "2", "1"]
+            "prod",
+            ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "y", "1", "2", "1"],
         )
         self.assertIn("back to INFO", created)
         # Tune lists "Keep current" first, so DEBUG is 2 and WARNING is 4.
@@ -712,7 +757,8 @@ class SetupWizardTest(unittest.TestCase):
             encoding="utf-8",
         )
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"]
+            "prod",
+            ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"],
         )
         self.assertEqual(values["REDIS_PASSWORD"], "keepme123")
         self.assertEqual(values["CHAT_DB_USER"], "chat")
@@ -723,7 +769,8 @@ class SetupWizardTest(unittest.TestCase):
     def test_start_over_drops_a_quoted_dev_value(self):
         self.env_file.write_text('DB_PASSWORD="root_password"  # dev\n', encoding="utf-8")
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"]
+            "prod",
+            ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"],
         )
         self.assertNotIn("root_password", values["DB_PASSWORD"])
         self.assertIn("DB_PASSWORD", output)
@@ -788,7 +835,8 @@ class SetupWizardTest(unittest.TestCase):
             encoding="utf-8",
         )
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"]
+            "prod",
+            ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"],
         )
         self.assertNotEqual(values["DJANGO_API_KEY"], "epicstaff_realtime_api_key")
         self.assertNotEqual(values["AUDIT_JWT_SECRET"], "keepme123")

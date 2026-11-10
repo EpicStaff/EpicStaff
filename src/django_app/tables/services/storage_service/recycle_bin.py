@@ -42,8 +42,7 @@ from tables.services.storage_service.dataclasses import PurgedBinEntry
 from tables.services.storage_service.db_sync import _ancestor_paths, _name_of, _parent_of
 from tables.services.storage_service.naming import ensure_unique_file_name, split_file_name
 from user_audit.context import mark_request_handled
-from user_audit.recorder import record_user_action
-from user_audit.targets import describe
+from user_audit.recorder import describe_for_record, record_user_action
 from utils.logger import logger
 
 if TYPE_CHECKING:
@@ -422,7 +421,7 @@ class StorageRecycleBinService:
         with transaction.atomic():
             batch_rows, root = self._lock_batch_of(org_id, row_id)
             batch = root.soft_delete_batch
-            target = describe(root)
+            target = describe_for_record(root)
             doomed = (
                 [row.pk for row in batch_rows if row.path.startswith(root.path)]
                 if root.item_type == "folder"

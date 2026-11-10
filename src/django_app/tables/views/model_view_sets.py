@@ -424,7 +424,7 @@ from tables.views.secret_use import (
 )
 from user_audit.context import mark_request_handled
 from user_audit.read_only import not_a_user_change, reads_only
-from user_audit.recorder import record_user_action
+from user_audit.recorder import record_copy, record_user_action
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -3144,6 +3144,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             created_by=request.user,
             is_shared=serializer.validated_data["is_shared"],
         )
+        record_copy(preset, clone)
         return Response(self.get_serializer(clone).data, status=201)
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ONE)

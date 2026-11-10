@@ -1,6 +1,8 @@
 from contextlib import contextmanager
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -9,7 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rbac.identity.passwords.token_repository import PasswordResetTokenRepository
 from rbac.models import ApiKey, OrganizationConfig, OrganizationUser
 
-from user_audit import middleware
+from user_audit import background, middleware
 from user_audit.context import user_action_context
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -89,6 +91,50 @@ def test_login_wrong_password_records_sign_in_failed(
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert _summary(sent_events) == [("sign_in_failed", acme.id, admin_acme.email)]
     assert "not-the-password" not in repr(sent_events)
+
+
+class _HeldJobs:
+    """An executor that keeps each job, so a test can see the request did none of its work."""
+
+    def __init__(self):
+        self.jobs = []
+
+    def submit(self, fn, /, *args, **kwargs):
+        self.jobs.append((fn, args, kwargs))
+
+    def run_all(self):
+        for fn, args, kwargs in self.jobs:
+            fn(*args, **kwargs)
+
+
+def _queries_of_failed_login(api_client, email):
+    with CaptureQueriesContext(connection) as queries:
+        response = _login(api_client, email, "not-the-password")
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    return len(queries)
+
+
+def test_a_failed_login_does_the_same_work_whether_or_not_the_account_exists(
+    api_client, admin_in_two_orgs, acme, beta, monkeypatch, sent_events,
+    django_capture_on_commit_callbacks,
+):
+    held = _HeldJobs()
+    monkeypatch.setattr(background, "executor", held)
+
+    unknown = _queries_of_failed_login(api_client, "nobody@example.com")
+    known = _queries_of_failed_login(api_client, admin_in_two_orgs.email)
+
+    # The account's lookup and its per-org records wait for the job, after the response.
+    assert known == unknown
+    assert sent_events == []
+    with django_capture_on_commit_callbacks(execute=True):
+        held.run_all()
+    assert _summary(sent_events) == sorted(
+        [
+            ("sign_in_failed", acme.id, admin_in_two_orgs.email),
+            ("sign_in_failed", beta.id, admin_in_two_orgs.email),
+        ]
+    )
 
 
 def test_login_unknown_email_records_nothing(

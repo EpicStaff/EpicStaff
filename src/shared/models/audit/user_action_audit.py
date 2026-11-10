@@ -9,8 +9,11 @@ class UserAction(StrEnum):
     `MOVED_TO_RECYCLE_BIN` is a delete the user can undo (`RESTORED`); `DELETED` is gone
     for good, whether at once or purged from the recycle bin. A purge is told apart by the
     earlier `MOVED_TO_RECYCLE_BIN` record of the same target. `MOVED` and `COPIED` are
-    storage entries put at a new path. `PAUSED`, `RESUMED` and `KEY_ROTATED` are a chat
-    desk stopped answering, answering again, and given a new public key.
+    storage entries put at a new path, or a new copy of any resource. `PAUSED`, `RESUMED`
+    and `KEY_ROTATED` are a chat desk stopped answering, answering again, and given a new
+    public key. `DEACTIVATED` and `REACTIVATED` are a user account or an organization
+    switched off and on again; `SUPERADMIN_GRANTED` and `SUPERADMIN_REVOKED` change a
+    user's superadmin role.
     """
 
     CREATED = "created"
@@ -28,6 +31,10 @@ class UserAction(StrEnum):
     PAUSED = "paused"
     RESUMED = "resumed"
     KEY_ROTATED = "key_rotated"
+    DEACTIVATED = "deactivated"
+    REACTIVATED = "reactivated"
+    SUPERADMIN_GRANTED = "superadmin_granted"
+    SUPERADMIN_REVOKED = "superadmin_revoked"
 
 
 class UserActionEvent(BaseAuditEvent):
@@ -40,8 +47,9 @@ class UserActionEvent(BaseAuditEvent):
         actor_email: Email at the time of the action; empty for the system API key.
         action: A UserAction value, or a custom DRF action name ("copy") for fallback records.
         target_type: Display label such as "python node", "flow" or "member".
-        previous_name: The name a "renamed" target had, or the path a "moved" storage
-            entry had.
+        previous_name: What the target was known by before the action: the name a
+            "renamed" target had, the path a "moved" storage entry had, the name of the
+            source a "copied" target was copied from, or the role an "updated" member held.
         route: Fallback records only, e.g. "POST api/graphs/<pk>/copy/".
     """
 

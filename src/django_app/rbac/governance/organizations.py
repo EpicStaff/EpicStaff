@@ -137,6 +137,8 @@ class OrganizationManagementService(CrossOrgResourceService):
             raise OrganizationNameConflictError() from exc
         org_storage_provisioning_service.provision_for_organization(org)
         OrganizationConfig.objects.create(org=org, audit_retention_days=audit_retention_days)
+        # After the config: the record reads the new org's audit retention.
+        record_user_action(action=UserAction.CREATED, org_id=org.pk, target=org)
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
@@ -192,6 +194,7 @@ class OrganizationManagementService(CrossOrgResourceService):
         self._assert_can_deactivate()
         org.is_active = False
         org.save(update_fields=["is_active", "updated_at"])
+        record_user_action(action=UserAction.DEACTIVATED, org_id=org.pk, target=org)
         # `is_active` must reflect the caller's intent regardless of MinIO's
         # availability -- an org that should be deactivated (a
         # security-relevant action) must not stay active just because MinIO
@@ -230,6 +233,7 @@ class OrganizationManagementService(CrossOrgResourceService):
             return self._get_organization_with_member_count(org.pk)
         org.is_active = True
         org.save(update_fields=["is_active", "updated_at"])
+        record_user_action(action=UserAction.REACTIVATED, org_id=org.pk, target=org)
         # Same reasoning as deactivate_organization(): is_active always
         # commits regardless of MinIO's availability.
         try:
@@ -327,6 +331,10 @@ class OrganizationManagementService(CrossOrgResourceService):
         # Narrower, lock-scoped re-check of the same last-active-org invariant `_assert_deletable_org` enforces unlocked above -- not a full re-implementation, so don't assume edits to one mirror the other.
         if instance.pk in locked and not set(locked) - {instance.pk}:
             raise LastOrganizationError()
+        # Recorded in the deleted org's own trail, while its row and retention still exist.
+        # The auditor keeps the record until that retention ends, but no one can read it
+        # there: an audit token is issued only for an existing organization.
+        record_user_action(action=UserAction.DELETED, org_id=instance.pk, target=instance)
 
         # Each participant counts non-destructively immediately before its
         # sweep, under the same locks, so this agrees with the preview. The

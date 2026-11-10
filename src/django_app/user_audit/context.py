@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 
+from django.db.models import Model
 from django.http import HttpRequest
 
 
@@ -15,11 +16,14 @@ class UserActionContext:
             request itself only while it is still False.
         retention_days_by_org: Each org's audit retention, read once per request however
             many actions it records.
+        row_before_delete: The row a DELETE request's URL names, loaded before the view
+            deletes it, so the fallback can still name it afterwards.
     """
 
     request: HttpRequest
     recorded: bool = False
     retention_days_by_org: dict[int, int] = field(default_factory=dict)
+    row_before_delete: Model | None = None
 
 
 _current_context: ContextVar[UserActionContext | None] = ContextVar(

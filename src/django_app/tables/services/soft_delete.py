@@ -17,8 +17,7 @@ from src.shared.models import UserAction
 from tables.models.base_models import SoftDeleteFields
 from tables.services.cascade_org_guard import CascadeOrgGuard
 from user_audit.context import mark_request_handled
-from user_audit.recorder import record_user_action
-from user_audit.targets import describe
+from user_audit.recorder import describe_for_record, record_user_action
 
 
 def keeps_references(model: type[models.Model]) -> bool:
@@ -157,10 +156,10 @@ class DeleteService:
                     obj.active = stored_active
             context = _DeleteContext(org_guard=CascadeOrgGuard.for_root(obj, using), using=using)
             # Described before the delete: a hard-deleted `obj` has no primary key after it.
-            target_description = describe(obj)
+            target_description = describe_for_record(obj)
             context.delete(obj)
             context.finish()
-            if context.org_guard.org_id is not None:
+            if context.org_guard.org_id is not None and target_description is not None:
                 action = (
                     UserAction.MOVED_TO_RECYCLE_BIN
                     if isinstance(obj, SoftDeleteFields)

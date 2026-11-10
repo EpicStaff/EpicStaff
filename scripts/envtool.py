@@ -472,6 +472,7 @@ def update_env_file(
     # utf-8-sig: a byte order mark (Windows editors) would glue onto the first variable name.
     original = env_file.read_bytes().decode("utf-8-sig")
     already_set = set(SET_VARIABLE.findall(original))
+    overrides = {**_split_audit_switch(original), **(overrides or {})}
     added, needs_value, content = [], [], []
     for variables in schema["groups"].values():
         for name, declaration in variables["vars"].items():
@@ -494,6 +495,20 @@ def update_env_file(
         with env_file.open("a", encoding="utf-8", newline=newline) as file:
             file.write(appended + "".join(content))
     return added, needs_value
+
+
+# The single audit switch released before the session and user trails got one each.
+LEGACY_AUDIT_SWITCH = "AUDIT_TRAIL_ENABLED"
+SPLIT_AUDIT_SWITCHES = ("SESSION_AUDIT_TRAIL_ENABLED", "USER_AUDIT_TRAIL_ENABLED")
+
+
+def _split_audit_switch(env_text: str) -> dict[str, str]:
+    """The old audit switch's value for each new one, so an upgrade that had auditing on keeps
+    it on instead of getting the new switches' `false` default."""
+    legacy_value = read_env_values(env_text).get(LEGACY_AUDIT_SWITCH)
+    if legacy_value is None:
+        return {}
+    return dict.fromkeys(SPLIT_AUDIT_SWITCHES, legacy_value)
 
 
 def read_env_values(text: str) -> dict[str, str]:

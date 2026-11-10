@@ -14,7 +14,8 @@ from tables.models import StorageFile, User
 from tables.services.recycle_bin.deleting import record_deleter
 from tables.services.storage_service.path_utils import is_trash_path
 from tables.signals import rows_bulk_created
-from user_audit.recorder import record_user_action
+from user_audit.recorder import record_user_action, user_audit_hook
+from user_audit.targets import TargetDescription, describe
 
 
 def _name_of(path: str) -> str:
@@ -381,6 +382,7 @@ class StorageFileSync:
                 _record_move(org_id, src_prefix, dst_prefix, user=user)
 
     @staticmethod
+    @user_audit_hook
     def record_transfer(
         action: UserAction,
         org_id: int,
@@ -391,8 +393,10 @@ class StorageFileSync:
     ) -> None:
         """Record the move, copy or upload that put a storage entry at `entry_path` as a user action.
 
-        Keeps a move's `source_path` as its previous name. Records nothing for a `user`
-        None, or when no live row sits at `entry_path` (a folder with no row of its own).
+        Keeps a move's or copy's `source_path` as its previous name. Records nothing for a
+        `user` None, or when no live row sits at `entry_path` (a folder with no row of its
+        own). Best-effort and free with the switch off (`user_audit_hook`): it runs after
+        the object store has committed, so it must never fail the request.
         """
         if user is None or entry_path is None:
             return
@@ -401,7 +405,20 @@ class StorageFileSync:
             return
         record_user_action(action=action, org_id=org_id, target=entry, previous_name=source_path)
 
+    @staticmethod
+    @user_audit_hook
+    def describe_entry(org_id: int, path: str) -> TargetDescription | None:
+        """Describe the live entry at `path` for a record written once it is gone, or None
+        when no row sits there. Best-effort and free with the switch off (`user_audit_hook`)."""
+        entry = (
+            StorageFile.objects.filter(org_id=org_id, path=path)
+            .only("pk", "path", "item_type")
+            .first()
+        )
+        return describe(entry) if entry is not None else None
 
+
+@user_audit_hook
 def _record_move(org_id: int, source_path: str, entry_path: str, *, user: object | None) -> None:
     """Record a move within one org: renamed when the entry kept its folder, else moved."""
     if _parent_of(source_path) != _parent_of(entry_path):
@@ -411,7 +428,11 @@ def _record_move(org_id: int, source_path: str, entry_path: str, *, user: object
         return
     if user is None:
         return
-    entry = StorageFile.objects.filter(org_id=org_id, path=entry_path).only("pk", "name").first()
+    entry = (
+        StorageFile.objects.filter(org_id=org_id, path=entry_path)
+        .only("pk", "path", "item_type")
+        .first()
+    )
     if entry is not None:
         record_user_action(
             action=UserAction.RENAMED,
@@ -457,8 +478,8 @@ def _bin_entries_of(batch_rows: QuerySet) -> list[StorageFile]:
     file or folder; more only when the folder had no row of its own.
     """
     deleted_with_its_folder = batch_rows.filter(path=OuterRef("parent_path"))
-    # name and path: what describes the entry as a user action.
-    return list(batch_rows.exclude(Exists(deleted_with_its_folder)).only("pk", "name", "path"))
+    # path and item_type: what describes the entry as a user action (see `describe`).
+    return list(batch_rows.exclude(Exists(deleted_with_its_folder)).only("pk", "path", "item_type"))
 
 
 def _delete_links_to(rows: QuerySet) -> None:

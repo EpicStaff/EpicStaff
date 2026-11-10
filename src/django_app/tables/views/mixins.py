@@ -21,7 +21,7 @@ from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usa
 from tables.services.trigger_nodes import trigger_node_access
 from user_audit.context import mark_request_handled
 from user_audit.read_only import reads_only
-from user_audit.recorder import record_user_action
+from user_audit.recorder import record_copy, record_user_action
 from utils.logger import logger
 
 
@@ -31,6 +31,9 @@ class CopyActionMixin:
     Requires two class attributes:
         copy_service_class: Copy service to instantiate.
         copy_serializer_class: Serializer for the response.
+
+    Records the new copy as `copied`, the source's name as its previous name, like a
+    storage or document copy.
     """
 
     copy_service_class = None
@@ -54,6 +57,7 @@ class CopyActionMixin:
                 new_instance = self.copy_service_class().copy(
                     instance, name=name, user=request.user, **extra
                 )
+                record_copy(instance, new_instance)
         except IntegrityError:
             logger.warning(
                 "Copy of %s#%s raced on a unique constraint; client should retry.",

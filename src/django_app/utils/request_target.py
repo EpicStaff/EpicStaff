@@ -97,15 +97,21 @@ def org_row(view_class, value, org_id: int) -> Model | None:
     model = model_of(view_class)
     if model is None:
         return None
-    org_path = getattr(view_class, "org_filter_path", None) or (
-        "org_id" if "org" in _field_names(model) else None
-    )
+    org_path = org_path_of(view_class, model)
     if org_path is None:
         return None
     try:
         return model._base_manager.filter(pk=value, **{org_path: org_id}).first()
     except (TypeError, ValueError, ValidationError):
         return None
+
+
+def org_path_of(view_class, model: type[Model]) -> str | None:
+    """The lookup path from a row of `model` to its org id, the way the view scopes it: its
+    `org_filter_path`, else the model's own `org`; None when the row reaches neither."""
+    return getattr(view_class, "org_filter_path", None) or (
+        "org_id" if "org" in _field_names(model) else None
+    )
 
 
 def _field_names(model) -> set[str]:

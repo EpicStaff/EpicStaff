@@ -403,3 +403,53 @@ def test_storage_purge_by_retention_job_records_nothing(
 
     assert not StorageFile.all_objects.filter(pk=binned.pk).exists()
     assert sent_events == []
+
+
+# ---- a capture that fails never fails the delete it describes ----
+
+
+@pytest.fixture
+def failing_describe(monkeypatch, sent_events):
+    from user_audit import recorder
+
+    def describe(instance):
+        raise RuntimeError("describe failed")
+
+    monkeypatch.setattr(recorder, "describe", describe)
+
+
+@pytest.mark.usefixtures("failing_describe")
+def test_binning_a_flow_succeeds_when_describing_it_fails(
+    admin_client, flow, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.delete(f"{FLOWS_URL}{flow.id}/")
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
+    assert not Graph.objects.filter(pk=flow.pk).exists()
+
+
+@pytest.mark.usefixtures("failing_describe")
+def test_a_rest_node_delete_succeeds_when_describing_it_fails(
+    admin_client, flow, django_capture_on_commit_callbacks
+):
+    node = _python_node(flow, "Fetch invoices")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.delete(reverse("pythonnode-detail", args=[node.id]))
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
+    assert not PythonNode.all_objects.filter(pk=node.pk).exists()
+
+
+@pytest.mark.usefixtures("failing_describe")
+def test_a_purge_succeeds_when_describing_it_fails(
+    superadmin_in_acme, acme, django_capture_on_commit_callbacks
+):
+    flow = _binned_flow(acme, "Orders")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = superadmin_in_acme.delete(f"{FLOWS_URL}{flow.id}/purge/")
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
+    assert not Graph.all_objects.filter(pk=flow.pk).exists()

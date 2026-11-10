@@ -27,6 +27,7 @@ from user_audit.middleware import (
     GENERIC_ACTIONS,
     UserActionMiddleware,
 )
+from rbac.views.cross_org_base import CrossOrgAdminViewSet
 from user_audit.read_only import handler_reads_only
 from utils.request_target import model_of, url_path_pattern
 
@@ -41,16 +42,11 @@ WRITE_METHODS = ("post", "put", "patch", "delete")
 #
 # Routes the middleware's fallback may record: their URL names the changed object by
 # `<pk>` or `<id>`, which the fallback resolves to a type and name. Many are recorded by a
-# hook first; the fallback covers the rest, provided the request has a checked org.
+# hook first; the fallback covers the rest, provided the request has a checked org. A
+# CrossOrgAdminViewSet route never has one, so none is listed here (see
+# test_cross_org_admin_routes_record_themselves).
 FALLBACK_RECORDED_ROUTES = frozenset(
     {
-        "POST api/admin/api-keys/<pk>/revoke/",
-        "POST api/admin/organizations/<pk>/deactivate/",
-        "POST api/admin/organizations/<pk>/reactivate/",
-        "POST api/admin/users/<pk>/deactivate/",
-        "POST api/admin/users/<pk>/grant-superadmin/",
-        "POST api/admin/users/<pk>/reactivate/",
-        "POST api/admin/users/<pk>/revoke-superadmin/",
         "DELETE api/agent-definitions/<pk>/purge/",
         "POST api/agent-definitions/<pk>/restore/",
         "POST api/audit-filter-presets/<pk>/copy/",
@@ -187,6 +183,31 @@ HOOK_RECORDED_ROUTES = frozenset(
         "POST api/auth/password-reset/confirm/",
         # Records the chat service's desk changes itself, under the user who made them.
         "POST api/internal/user-actions/",
+        # CrossOrgAdminViewSet routes, generic actions included: the request has no checked
+        # org, so the fallback never records them. Their governance services record each
+        # change in the org it belongs to, a user's in each org the user belongs to. The
+        # plugin role-permission update is one too, but is mounted only with plugins on, so
+        # this test never sees it; PluginRolePermissionService records it.
+        "DELETE api/admin/api-keys/<pk>/",
+        "POST api/admin/api-keys/<pk>/revoke/",
+        "POST api/admin/memberships/",
+        "DELETE api/admin/memberships/<pk>/",
+        "PATCH api/admin/memberships/<pk>/",
+        "POST api/admin/organizations/",
+        "DELETE api/admin/organizations/<pk>/",
+        "PATCH api/admin/organizations/<pk>/",
+        "POST api/admin/organizations/<pk>/deactivate/",
+        "POST api/admin/organizations/<pk>/reactivate/",
+        "PATCH api/admin/organizations/<pk>/retention/",
+        "POST api/admin/roles/",
+        "DELETE api/admin/roles/<pk>/",
+        "PATCH api/admin/roles/<pk>/",
+        "POST api/admin/users/",
+        "DELETE api/admin/users/<pk>/",
+        "POST api/admin/users/<pk>/deactivate/",
+        "POST api/admin/users/<pk>/grant-superadmin/",
+        "POST api/admin/users/<pk>/reactivate/",
+        "POST api/admin/users/<pk>/revoke-superadmin/",
     }
 )
 
@@ -287,10 +308,31 @@ def test_every_view_the_fallback_records_names_its_model():
     )
 
 
+def test_cross_org_admin_routes_record_themselves():
+    relying_on_the_fallback = sorted(
+        key
+        for key, view_class, name, _route, _actions in _write_handlers(
+            include_generic_actions=True
+        )
+        if issubclass(view_class, CrossOrgAdminViewSet)
+        and not handler_reads_only(view_class, name)
+        and not _excluded(view_class, name)
+        and key not in HOOK_RECORDED_ROUTES
+    )
+
+    assert relying_on_the_fallback == [], (
+        "A CrossOrgAdminViewSet request has no checked org, so the fallback never records "
+        "it. Record each change with user_audit.recorder.record_user_action (or "
+        "record_for_user_orgs for a user), then add the route to HOOK_RECORDED_ROUTES."
+    )
+
+
 def test_classified_routes_list_only_live_unmarked_routes():
     live = {
         key
-        for key, view_class, name, _route, _actions in _write_handlers()
+        for key, view_class, name, _route, _actions in _write_handlers(
+            include_generic_actions=True
+        )
         if not handler_reads_only(view_class, name) and not _excluded(view_class, name)
     }
 

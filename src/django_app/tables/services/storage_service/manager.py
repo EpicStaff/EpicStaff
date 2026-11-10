@@ -37,6 +37,7 @@ from tables.services.storage_service.quota import (
     record_files_within_quota,
 )
 from tables.services.storage_service.recycle_bin import StorageRecycleBinService
+from user_audit.recorder import record_user_action
 from utils.logger import logger
 
 # Digits capped: int() refuses strings past 4300 digits, which would surface as a 500.
@@ -105,6 +106,12 @@ def _copied_entry_path(destination_folder: str, copied_paths: list[str]) -> str 
         entry_name, separator, _ = path[len(prefix) :].partition("/")
         return f"{prefix}{entry_name}{separator}"
     return None
+
+
+def _stored_source_path(source_path: str, entry_path: str | None) -> str:
+    """`source_path` in the form its rows were stored: a folder's path ends in "/"."""
+    is_folder = entry_path is not None and entry_path.endswith("/")
+    return source_path.rstrip("/") + ("/" if is_folder else "")
 
 
 def _with_last_edit(rows: QuerySet[StorageFile]) -> QuerySet[StorageFile]:
@@ -452,11 +459,18 @@ class StorageManager:
     ) -> list[PurgedBinEntry]:
         """Copy within the org's quota; returns the bin entries purged to make room.
         Only a `bin_purge` grant lets the copy purge the org's storage bin to fit.
-        The copy is recorded as a user action (see `StorageFileSync.record_transfer`)."""
+        The new copy is recorded as a user action, the source's path as its previous name
+        (see `StorageFileSync.record_transfer`)."""
         purged, entry_path = self._copy_within_quota(
             org_id, source_path, org_id, destination_path, user=user, bin_purge=bin_purge
         )
-        StorageFileSync.record_transfer(UserAction.COPIED, org_id, entry_path, user=user)
+        StorageFileSync.record_transfer(
+            UserAction.COPIED,
+            org_id,
+            entry_path,
+            source_path=_stored_source_path(source_path, entry_path),
+            user=user,
+        )
         return purged
 
     def _copy_within_quota(
@@ -878,7 +892,13 @@ class StorageManager:
         purged, entry_path = self._copy_within_quota(
             src_org_id, src_path, dst_org_id, dst_path, user=user, bin_purge=bin_purge
         )
-        StorageFileSync.record_transfer(UserAction.COPIED, dst_org_id, entry_path, user=user)
+        StorageFileSync.record_transfer(
+            UserAction.COPIED,
+            dst_org_id,
+            entry_path,
+            source_path=_stored_source_path(src_path, entry_path),
+            user=user,
+        )
         return purged
 
     def move_cross_org(
@@ -903,7 +923,8 @@ class StorageManager:
         member of the destination org, and otherwise has none; `user` only authors the
         ancestor folders the move creates there. An existing destination file keeps its
         own author. Every moved row gets `user` as its last editor: the move is an edit in
-        the destination org, where the move is recorded as a user action.
+        the destination org, where the move is recorded as a user action. The source org
+        records it too, naming only the entry that left: never where it went.
         """
         purged, entry_path = self._copy_within_quota(
             src_org_id,
@@ -916,11 +937,17 @@ class StorageManager:
             ),
             bin_purge=bin_purge,
         )
+        source_path = _stored_source_path(src_path, entry_path)
+        # Read before the delete below removes the source row.
+        departed = (
+            StorageFileSync.describe_entry(src_org_id, source_path) if user is not None else None
+        )
         self._backend.delete(self._build_storage_key(src_org_id, src_path))
         StorageFileSync.on_delete(src_org_id, src_path.rstrip("/"))
-        # The source in the form its rows were stored: a folder's path ends in "/".
-        is_folder = entry_path is not None and entry_path.endswith("/")
-        source_path = src_path.rstrip("/") + ("/" if is_folder else "")
+        if departed is not None:
+            record_user_action(
+                action=UserAction.MOVED, org_id=src_org_id, target_description=departed
+            )
         StorageFileSync.record_transfer(
             UserAction.MOVED, dst_org_id, entry_path, source_path=source_path, user=user
         )

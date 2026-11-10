@@ -38,6 +38,7 @@ from tables.models import (
     WebhookTrigger,
 )
 from tables.models.knowledge_models import NaiveRagDocumentConfig
+from tables.models.realtime_models import RealtimeAgentDefinition
 from user_audit import recorder
 from user_audit.actor import Actor, actor_from_request
 from user_audit.context import user_action_context
@@ -469,3 +470,80 @@ def test_a_sign_in_action_is_recorded_with_no_target(
     (event,) = sent_events
     assert event.action == action
     assert event.target_type is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("in_a_request", [False, True])
+def test_record_for_user_orgs_with_no_actor_records_nothing_and_never_raises(
+    in_a_request, acme, sent_events, django_capture_on_commit_callbacks
+):
+    # A request no user made (a plugin's service account, an anonymous caller) has no actor.
+    request = RequestFactory().post("/api/profile/")
+    request.user = AnonymousUser()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        if in_a_request:
+            with user_action_context(request):
+                record_for_user_orgs(action=UserAction.UPDATED, actor=None)
+        else:
+            record_for_user_orgs(action=UserAction.UPDATED, actor=None)
+
+    assert sent_events == []
+
+
+@pytest.mark.django_db
+def test_record_for_user_orgs_takes_the_actor_of_the_request(
+    acme, admin_acme, member_only, sent_events, django_capture_on_commit_callbacks
+):
+    with user_action_context(request_as(admin_acme)):
+        with django_capture_on_commit_callbacks(execute=True):
+            record_for_user_orgs(
+                action=UserAction.DEACTIVATED,
+                target_description=TargetDescription("user", str(member_only.id), member_only.email),
+                org_user_id=member_only.id,
+            )
+
+    [event] = sent_events
+    assert (event.actor_user_id, event.org_id, event.target_name) == (
+        admin_acme.id,
+        acme.id,
+        member_only.email,
+    )
+
+
+@pytest.mark.django_db
+def test_a_record_in_a_transaction_that_rolls_back_is_never_sent(
+    acme, admin_acme, flow, sent_events, django_capture_on_commit_callbacks
+):
+    with user_action_context(request_as(admin_acme)), django_capture_on_commit_callbacks(execute=True):
+        with pytest.raises(RuntimeError), transaction.atomic():
+            record_user_action(action=UserAction.DELETED, org_id=acme.id, target=flow)
+            raise RuntimeError("the change failed after it was recorded")
+        # A later record in the same request is still sent.
+        record_user_action(action=UserAction.UPDATED, org_id=acme.id, target=flow)
+
+    assert [event.action for event in sent_events] == ["updated"]
+
+
+@pytest.mark.django_db
+def test_describe_for_record_logs_a_failure_instead_of_raising(flow, sent_events, monkeypatch):
+    def failing_describe(instance):
+        raise RuntimeError("describe failed")
+
+    monkeypatch.setattr(recorder, "describe", failing_describe)
+
+    assert recorder.describe_for_record(flow) is None
+
+
+@pytest.mark.django_db
+def test_describe_for_record_reads_nothing_with_the_switch_off(
+    acme, settings, django_assert_num_queries
+):
+    # Voice settings are named after their agent, which describing them loads.
+    agent = AgentDefinition.objects.create(name="Support agent", org=acme)
+    voice_settings = RealtimeAgentDefinition.objects.create(agent_definition=agent)
+    voice_settings = RealtimeAgentDefinition.objects.get(pk=voice_settings.pk)
+    settings.USER_AUDIT_TRAIL_ENABLED = False
+
+    with django_assert_num_queries(0):
+        assert recorder.describe_for_record(voice_settings) is None

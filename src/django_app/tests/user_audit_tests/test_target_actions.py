@@ -1,14 +1,18 @@
 """Changes the middleware's fallback could not name, because their URL carries no id,
 recorded by layer-2 hooks with their target. Presentation tests: each goes through its
-endpoint; only the object store is replaced, by the in-memory backend."""
+endpoint; only the object store is replaced, by the in-memory backend. The last tests call
+the storage capture directly, for the failures no endpoint can provoke."""
 
 from unittest.mock import patch
 
 import pytest
+from django.db import transaction
 from django.urls import reverse
 from rest_framework import status
 
 from tables.models import Graph, GraphStorageFile, GraphVersion, SourceCollection, StorageFile
+from src.shared.models import UserAction
+from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
@@ -192,18 +196,19 @@ def test_storage_move_records_moved_with_both_paths(
 
 
 @pytest.mark.parametrize(
-    "seeded_path, from_path, entry_path, entry_type",
+    "seeded_path, from_path, entry_path, entry_type, source_path",
     [
-        ("a.txt", "a.txt", "archive/a.txt", "storage file"),
-        ("docs/a.txt", "docs", "archive/docs/", "storage folder"),
+        ("a.txt", "a.txt", "archive/a.txt", "storage file", "a.txt"),
+        ("docs/a.txt", "docs", "archive/docs/", "storage folder", "docs/"),
     ],
     ids=["file", "folder"],
 )
-def test_storage_copy_records_copied_naming_the_copy(
+def test_storage_copy_records_copied_naming_the_copy_and_its_source(
     seeded_path,
     from_path,
     entry_path,
     entry_type,
+    source_path,
     admin_client,
     acme,
     storage_manager,
@@ -223,28 +228,12 @@ def test_storage_copy_records_copied_naming_the_copy(
     copy = StorageFile.objects.get(org=acme, path=entry_path)
     event = _only_event(sent_events)
     assert _target(event) == ("copied", entry_type, str(copy.id), entry_path)
-    assert (event.org_id, event.previous_name) == (acme.id, None)
+    assert (event.org_id, event.previous_name) == (acme.id, source_path)
 
 
-@pytest.mark.parametrize(
-    "transfer, expected_action, expected_previous_name",
-    [("move", "moved", "a.txt"), ("copy", "copied", None)],
-)
-def test_storage_cross_org_transfer_is_recorded_in_the_destination_org(
-    transfer,
-    expected_action,
-    expected_previous_name,
-    superadmin_in_acme,
-    acme,
-    beta,
-    storage_manager,
-    sent_events,
-    django_capture_on_commit_callbacks,
-):
-    seed_file(storage_manager._backend, acme.id, "a.txt", b"x")
-
+def _cross_org_transfer(client, transfer, acme, beta, capture):
     _post(
-        superadmin_in_acme,
+        client,
         f"{STORAGE_URL}{transfer}/",
         {
             "from_path": "a.txt",
@@ -252,13 +241,39 @@ def test_storage_cross_org_transfer_is_recorded_in_the_destination_org(
             "source_org_id": acme.id,
             "destination_org_id": beta.id,
         },
-        django_capture_on_commit_callbacks,
+        capture,
     )
+
+
+def test_storage_cross_org_copy_is_recorded_in_the_destination_org_only(
+    superadmin_in_acme, acme, beta, storage_manager, sent_events, django_capture_on_commit_callbacks
+):
+    seed_file(storage_manager._backend, acme.id, "a.txt", b"x")
+
+    _cross_org_transfer(superadmin_in_acme, "copy", acme, beta, django_capture_on_commit_callbacks)
 
     landed = StorageFile.objects.get(org=beta, path="inbox/a.txt")
     event = _only_event(sent_events)
-    assert _target(event) == (expected_action, "storage file", str(landed.id), "inbox/a.txt")
-    assert (event.org_id, event.previous_name) == (beta.id, expected_previous_name)
+    assert _target(event) == ("copied", "storage file", str(landed.id), "inbox/a.txt")
+    assert (event.org_id, event.previous_name) == (beta.id, "a.txt")
+
+
+def test_storage_cross_org_move_is_recorded_in_both_orgs_naming_only_their_own_paths(
+    superadmin_in_acme, acme, beta, storage_manager, sent_events, django_capture_on_commit_callbacks
+):
+    seed_file(storage_manager._backend, acme.id, "a.txt", b"x")
+    source_row_id = StorageFile.objects.get(org=acme, path="a.txt").id
+
+    _cross_org_transfer(superadmin_in_acme, "move", acme, beta, django_capture_on_commit_callbacks)
+
+    landed = StorageFile.objects.get(org=beta, path="inbox/a.txt")
+    by_org = {event.org_id: event for event in sent_events}
+    assert len(sent_events) == 2
+    # The source org learns what left, never where it went.
+    assert _target(by_org[acme.id]) == ("moved", "storage file", str(source_row_id), "a.txt")
+    assert by_org[acme.id].previous_name is None
+    assert _target(by_org[beta.id]) == ("moved", "storage file", str(landed.id), "inbox/a.txt")
+    assert by_org[beta.id].previous_name == "a.txt"
 
 
 def test_storage_add_to_flow_records_the_flow_updated_once(
@@ -350,3 +365,29 @@ def test_admin_user_create_with_no_org_records_nothing(
     )
 
     assert sent_events == []
+
+
+# ---- storage capture runs after the object store committed, so it must never fail ----
+
+
+def test_a_failing_storage_capture_never_raises_and_leaves_the_transaction_usable(
+    acme, admin_acme, sent_events, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True), transaction.atomic():
+        # A path the database refuses makes the lookup itself fail.
+        StorageFileSync.record_transfer(
+            UserAction.CREATED, acme.id, "bad\x00name.txt", user=admin_acme
+        )
+        assert not StorageFile.objects.filter(org=acme).exists()
+
+    assert sent_events == []
+
+
+def test_storage_capture_reads_nothing_with_the_switch_off(
+    acme, admin_acme, settings, django_assert_num_queries
+):
+    StorageFile.objects.create(org=acme, path="a.txt", name="a.txt", item_type="file")
+    settings.USER_AUDIT_TRAIL_ENABLED = False
+
+    with django_assert_num_queries(0):
+        StorageFileSync.record_transfer(UserAction.CREATED, acme.id, "a.txt", user=admin_acme)

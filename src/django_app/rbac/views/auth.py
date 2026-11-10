@@ -1,3 +1,5 @@
+from functools import partial
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -13,6 +15,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from src.shared.models import UserAction
 from user_audit.actor import Actor, actor_from_request
+from user_audit.background import run_off_request
 from user_audit.recorder import record_for_user_orgs
 from user_audit.targets import describe_user
 
@@ -123,17 +126,26 @@ class LoginView(TokenObtainPairView):
     @staticmethod
     def _record_sign_in(login: str, action: str) -> None:
         # Best-effort, and skipped with the switch off: it must never change the login's
-        # response. The login is read only to find the account, the way the serializer's
-        # backend does; an unknown login records nothing, and the password is never read.
+        # response.
         if not settings.USER_AUDIT_TRAIL_ENABLED:
             return
-        try:
-            user_model = get_user_model()
-            user = user_model.objects.filter(**{user_model.USERNAME_FIELD: login}).first()
-            if user is not None:
-                record_for_user_orgs(action=action, actor=_user_actor(user))
-        except Exception:
-            logger.exception("Failed to record user action {} for a login", action)
+        if action == UserAction.SIGN_IN_FAILED:
+            # After the 401 is sent: the work below takes time only for an existing account.
+            run_off_request(partial(_record_sign_in_for_account, login, action))
+        else:
+            _record_sign_in_for_account(login, action)
+
+
+def _record_sign_in_for_account(login: str, action: str) -> None:
+    # The login is read only to find the account, the way the serializer's backend does; an
+    # unknown login records nothing, and the password is never read.
+    try:
+        user_model = get_user_model()
+        user = user_model.objects.filter(**{user_model.USERNAME_FIELD: login}).first()
+        if user is not None:
+            record_for_user_orgs(action=action, actor=_user_actor(user))
+    except Exception:
+        logger.exception("Failed to record user action {} for a login", action)
 
 
 class LogoutView(APIView):
