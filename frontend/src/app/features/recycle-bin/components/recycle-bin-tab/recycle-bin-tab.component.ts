@@ -9,18 +9,7 @@ import {
 } from '@shared/components';
 import { ActionCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import {
-    debounceTime,
-    defer,
-    distinctUntilChanged,
-    filter,
-    finalize,
-    Observable,
-    skip,
-    Subject,
-    Subscription,
-    switchMap,
-} from 'rxjs';
+import { debounceTime, defer, filter, finalize, Observable, skip, Subject, Subscription, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -178,7 +167,7 @@ export class RecycleBinTabComponent implements OnInit {
 
     constructor() {
         this.serverSearches
-            .pipe(debounceTime(SERVER_SEARCH_DEBOUNCE_MS), distinctUntilChanged(), takeUntilDestroyed())
+            .pipe(debounceTime(SERVER_SEARCH_DEBOUNCE_MS), takeUntilDestroyed())
             .subscribe(() => this.reload(1));
         // A link to the tab already open keeps this instance and only changes these inputs; the first value is the
         // one ngOnInit loads.
