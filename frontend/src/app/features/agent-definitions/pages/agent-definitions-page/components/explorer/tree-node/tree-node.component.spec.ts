@@ -5,6 +5,7 @@ import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
 import { StorageDragService } from '../../../../../../files/services/storage-drag.service';
+import { Surface } from '../../../../../models/surface.model';
 import { BranchTreeNode } from '../../../../../models/tree-node.model';
 import { AgentsPageStore } from '../../../../../services/agents-page-store.service';
 import { SurfaceDragService } from '../../../../../services/surface-drag.service';
@@ -17,16 +18,19 @@ type PermissionCheck = (resource: ResourceCode, action: ActionCode) => boolean;
 const FULL_ACCESS: PermissionCheck = () => true;
 const READ_ONLY: PermissionCheck = (_resource, action) => action === ActionCode.Read;
 
-interface ExportSelectionStore {
+/** The parts of the store a row reads: the surfaces (who owns what) and the export selection. */
+interface TreeNodeStore {
+    surfaces: WritableSignal<Surface[]>;
     agentExportMode: WritableSignal<boolean>;
     selectedAgentIds: WritableSignal<Set<number>>;
     toggleAgentSelection(id: number): void;
 }
 
-/** The store's export selection, toggling like the real one. */
-function exportSelectionStore(exportMode = false): ExportSelectionStore {
+/** The store with no surfaces and its export selection, toggling like the real one. */
+function exportSelectionStore(exportMode = false): TreeNodeStore {
     const selectedAgentIds = signal(new Set<number>());
     return {
+        surfaces: signal<Surface[]>([]),
         agentExportMode: signal(exportMode),
         selectedAgentIds,
         toggleAgentSelection: (id) =>
@@ -42,7 +46,7 @@ function exportSelectionStore(exportMode = false): ExportSelectionStore {
 function render(
     node: BranchTreeNode,
     can: PermissionCheck,
-    store: ExportSelectionStore = exportSelectionStore()
+    store: TreeNodeStore = exportSelectionStore()
 ): { fixture: ComponentFixture<TreeNodeComponent>; host: HTMLElement; opened: ExplorerTreeMenuOpenEvent[] } {
     TestBed.configureTestingModule({
         providers: [
@@ -84,6 +88,17 @@ describe('TreeNodeComponent row menu "View Details"', () => {
 
         expect(moreButton(host)).not.toBeNull();
         expect(openMenuLabels(host, opened)).toEqual(['View Details']);
+    });
+
+    it('leaves out Duplicate on an agent owning a surface when the user cannot create surfaces', () => {
+        const store = exportSelectionStore();
+        store.surfaces.set([{ id: 20, name: 'Reader inbox', owner_agent: 3 } as Partial<Surface> as Surface]);
+        const cannotCreateSurfaces: PermissionCheck = (resource, action) =>
+            !(resource === ResourceCode.Surfaces && action === ActionCode.Create);
+
+        const { host, opened } = render(AGENT_NODE, cannotCreateSurfaces, store);
+
+        expect(openMenuLabels(host, opened)).toEqual(['View Details', 'Export', 'Delete']);
     });
 
     it('opens the menu for that agent with the ⋮ button as the trigger', () => {
