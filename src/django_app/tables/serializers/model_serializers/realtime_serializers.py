@@ -400,7 +400,7 @@ class RealtimeChannelInternalSerializer(RealtimeChannelSerializer):
 def _has_wav_header(file) -> bool:
     file.seek(0)
     prefix = file.read(12)
-    # Rewound so the storage backend saves the file from its first byte.
+    # Left at its start, as the upload handler hands it over, for whatever reads it next.
     file.seek(0)
     # A WAV file opens with b"RIFF", a 4-byte chunk size, then b"WAVE".
     return prefix[:4] == b"RIFF" and prefix[8:12] == b"WAVE"

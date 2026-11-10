@@ -30,6 +30,7 @@ class VoiceRecordingRetentionService:
             expired.order_by("pk").values_list("pk", flat=True)[:_DELETE_CHUNK_SIZE]
         ):
             with transaction.atomic():
-                count, _per_model = ConversationRecording.objects.filter(pk__in=chunk).delete()
-            deleted += count
+                _total, per_model = ConversationRecording.objects.filter(pk__in=chunk).delete()
+            # Recordings only, not rows a future cascade from them would add to the total.
+            deleted += per_model.get(ConversationRecording._meta.label, 0)
         return deleted
