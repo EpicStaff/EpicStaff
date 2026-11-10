@@ -19,6 +19,10 @@ export const USER_ACTION_OPTIONS: AuditEnumOption[] = [
     { value: 'paused', label: 'Paused' },
     { value: 'resumed', label: 'Resumed' },
     { value: 'key_rotated', label: 'Key rotated' },
+    { value: 'deactivated', label: 'Deactivated' },
+    { value: 'reactivated', label: 'Reactivated' },
+    { value: 'superadmin_granted', label: 'Superadmin granted' },
+    { value: 'superadmin_revoked', label: 'Superadmin revoked' },
     { value: 'import_entity', label: 'Import entity' },
 ];
 

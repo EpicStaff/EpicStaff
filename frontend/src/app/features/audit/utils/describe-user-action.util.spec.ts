@@ -37,6 +37,10 @@ describe('userActionLabel', () => {
         ['paused', 'Paused'],
         ['resumed', 'Resumed'],
         ['key_rotated', 'Key rotated'],
+        ['deactivated', 'Deactivated'],
+        ['reactivated', 'Reactivated'],
+        ['superadmin_granted', 'Superadmin granted'],
+        ['superadmin_revoked', 'Superadmin revoked'],
         ['upload_stream', 'Upload stream'],
         ['register_webhook', 'Register webhook'],
     ])('labels %s as %s', (action, expected) => {
@@ -65,6 +69,16 @@ describe('userActionTargetName', () => {
                 previous_name: 'inbox/q3.pdf',
             },
             'inbox/q3.pdf → reports/q3.pdf',
+        ],
+        [
+            'a copy, from its source to the new copy',
+            { action: 'copied', target_type: 'flow', target_name: 'Billing (copy)', previous_name: 'Billing' },
+            'Billing → Billing (copy)',
+        ],
+        [
+            'a member update that kept the old role',
+            { action: 'updated', target_type: 'member', target_name: 'ann@example.com', previous_name: 'Viewer' },
+            'ann@example.com',
         ],
         [
             'a rename that kept no old name',
@@ -113,6 +127,10 @@ describe('userActionTone', () => {
         ['resumed', 'added'],
         ['key_rotated', 'changed'],
         ['paused', 'alert'],
+        ['deactivated', 'alert'],
+        ['reactivated', 'added'],
+        ['superadmin_granted', 'alert'],
+        ['superadmin_revoked', 'changed'],
         ['moved_to_recycle_bin', 'removed'],
         ['deleted', 'destroyed'],
         ['sign_in_failed', 'destroyed'],

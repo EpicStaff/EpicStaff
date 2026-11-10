@@ -16,10 +16,12 @@ const ACTION_TONES: Record<string, UserActionTone> = {
     restored: 'added',
     copied: 'added',
     resumed: 'added',
+    reactivated: 'added',
     updated: 'changed',
     renamed: 'changed',
     moved: 'changed',
     key_rotated: 'changed',
+    superadmin_revoked: 'changed',
     // still in the recycle bin, so recoverable
     moved_to_recycle_bin: 'removed',
     // gone for good: at once (a member, a role, an API key) or emptied from the recycle bin
@@ -27,6 +29,10 @@ const ACTION_TONES: Record<string, UserActionTone> = {
     sign_in_failed: 'destroyed',
     password_reset: 'alert',
     paused: 'alert',
+    // a user or an organization switched off, which can be undone like a pause
+    deactivated: 'alert',
+    // the most powerful role there is, worth an auditor's eye
+    superadmin_granted: 'alert',
 };
 
 export function userActionTone(action: string): UserActionTone {
@@ -47,10 +53,14 @@ export function userActionTypeLabel(type: string | null): string {
     return type ? capitalized(type) : '';
 }
 
-// `Parse invoice`, `Old → New` for a rename, `#12`, or empty when the action has no target
+// Actions whose previous name is where the target came from, so `Old → New` reads like a rename:
+// a move keeps its source path, a copy targets the new copy and keeps the source's name.
+// A member's `updated` keeps the old role there, which is not a name of the member, so it is left out.
+const FROM_TO_ACTIONS = new Set(['renamed', 'moved', 'copied']);
+
+// `Parse invoice`, `Old → New` for a rename, move or copy, `#12`, or empty when the action has no target
 export function userActionTargetName(event: AuditUserAction): string {
-    // a move keeps its source path as the previous name, so it reads like a rename
-    if ((event.action === 'renamed' || event.action === 'moved') && event.previous_name && event.target_name) {
+    if (FROM_TO_ACTIONS.has(event.action) && event.previous_name && event.target_name) {
         return `${event.previous_name} → ${event.target_name}`;
     }
     return nameOrId(event.target_name, event.target_id);
