@@ -26,6 +26,8 @@ export class EnterSubmitDirective implements OnInit {
                 if (tag === 'textarea') return;
                 if (tag === 'button' || tag === 'a' || tag === 'select') return;
                 if (target.isContentEditable) return;
+                // Code editors (Monaco) take text through the EditContext API on a plain element, where Enter is a newline.
+                if ('editContext' in target && target.editContext) return;
             }
 
             event.preventDefault();
