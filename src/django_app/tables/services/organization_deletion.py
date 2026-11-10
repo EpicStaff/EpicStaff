@@ -1,4 +1,3 @@
-from django.core.files.storage import default_storage
 from django.db.models import Count, Q, QuerySet
 from loguru import logger
 from rbac.governance.delete_collector import ModelCount
@@ -311,14 +310,6 @@ class TablesOrganizationDeletion:
         # Captured now: the Collector delete that follows clears organization.pk.
         storage_prefix = StorageManager.organization_prefix(organization.pk)
 
-        recording_files = [
-            name
-            for name in ConversationRecording.objects.filter(
-                rt_agent_chat__in=targets["realtime_agent_chats"]
-            ).values_list("file", flat=True)
-            if name
-        ]
-
         collection_ids = list(targets["collections"].values_list("pk", flat=True))
         content_ids = list(
             DocumentMetadata.all_objects.filter(source_collection_id__in=collection_ids)
@@ -339,10 +330,12 @@ class TablesOrganizationDeletion:
 
         targets["tasks"].delete()
         targets["template_agents"].delete()
+        # A Collector delete, so each cascaded ConversationRecording sends post_delete and
+        # its receiver removes the audio file after commit.
         targets["realtime_agent_chats"].delete()
 
         def clean_up_external_artifacts() -> None:
-            self._clean_up_external_artifacts(storage_prefix, recording_files)
+            self._clean_up_external_artifacts(storage_prefix)
 
         return clean_up_external_artifacts
 
@@ -364,8 +357,8 @@ class TablesOrganizationDeletion:
         }
 
     @staticmethod
-    def _clean_up_external_artifacts(storage_prefix: str, recording_files: list[str]) -> None:
-        """Reset the platform default cache and purge the organization's MinIO prefix and swept recording files, logging rather than raising on failure."""
+    def _clean_up_external_artifacts(storage_prefix: str) -> None:
+        """Reset the platform default cache and purge the organization's MinIO prefix, logging rather than raising on failure."""
         try:
             # The cascade nulls Default* singleton FKs with a raw UPDATE, which
             # the process-level cache in DefaultBaseModel.save() never sees.
@@ -378,12 +371,3 @@ class TablesOrganizationDeletion:
                 prefix=storage_prefix,
                 error=exc,
             )
-        for name in recording_files:
-            try:
-                default_storage.delete(name)
-            except Exception as exc:
-                logger.error(
-                    "TablesOrganizationDeletion recording_cleanup_failed name={name} error={error}",
-                    name=name,
-                    error=exc,
-                )
