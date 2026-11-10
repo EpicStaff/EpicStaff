@@ -245,13 +245,24 @@ async def test_submitted_task_gets_a_fresh_execution_id_and_its_result(client, s
 
 
 async def test_storage_credentials_reach_the_intake(client, sandbox):
-    credentials = StorageCredentials(access_key="AK-TEMP", secret_key="SK-TEMP")
+    credentials = StorageCredentials(
+        access_key="AK-TEMP",
+        secret_key="SK-TEMP",
+        shared_actions=["read"],
+        own_paths=["sessions/42/"],
+        free_bytes=1000,
+        purgeable_bytes=0,
+    )
 
     await asyncio.wait_for(client.submit(_storage_task(credentials)), timeout=2)
 
     assert sandbox.submitted["storage_credentials"] == {
         "access_key": "AK-TEMP",
         "secret_key": "SK-TEMP",
+        "shared_actions": ["read"],
+        "own_paths": ["sessions/42/"],
+        "free_bytes": 1000,
+        "purgeable_bytes": 0,
     }
     assert sandbox.submitted["use_storage"] is True
     assert sandbox.submitted["storage_allowed_paths"] == ["org_7/session_42/"]
