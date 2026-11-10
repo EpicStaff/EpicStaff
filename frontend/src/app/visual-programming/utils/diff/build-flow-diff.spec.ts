@@ -18,6 +18,7 @@ import {
     buildVersionWarningReferences,
     FieldChange,
     FlowDiff,
+    jsonChangeFor,
     NodeDiffEntry,
 } from './index';
 
@@ -895,6 +896,63 @@ describe('buildFlowDiff', () => {
         }));
 
         expect(diffVersion(snapshot, { liveFlow }).summary.changed).toBe(0);
+    });
+
+    describe('Start variables never set', () => {
+        // What the Start dialog shows for empty variables and writes into the node when it closes.
+        const template = {
+            variables: { context: null },
+            persistent_variables: { user: [], organization: [] },
+        };
+        const editedTemplate = { ...template, variables: { context: 'news' } };
+
+        const startDiff = (versionVariables: unknown, liveVariables: Record<string, unknown>) =>
+            entryOf(
+                diffVersion(withSnapshotNode(snapshot, ID.start, { variables: versionVariables }), {
+                    liveFlow: updateNode(loadLive(), NodeType.START, (node) => ({
+                        ...node,
+                        data: { initialState: liveVariables },
+                    })),
+                }),
+                UUID.start
+            );
+
+        it.each<[string, unknown, Record<string, unknown>]>([
+            ['empty in the version, the template on the canvas', {}, template],
+            ['missing in the version, the template on the canvas', null, template],
+            ['the template in the version, empty on the canvas', template, {}],
+            ['empty on both sides', {}, {}],
+        ])('counts as the template: %s', (_case, versionVariables, liveVariables) => {
+            expect(startDiff(versionVariables, liveVariables).status).toBe('unchanged');
+        });
+
+        it('compares the template with an edited template, the code diff showing the template as the version', () => {
+            const entry = startDiff({}, editedTemplate);
+
+            expect(entry.fields).toEqual([
+                expect.objectContaining({ path: 'variables', current: editedTemplate, version: template }),
+            ]);
+            expect(jsonChangeFor(entry, 'variables')).toEqual({
+                current: JSON.stringify(editedTemplate, null, 2),
+                version: JSON.stringify(template, null, 2),
+            });
+        });
+
+        it('compares a partial template with empty variables as a change', () => {
+            const partialTemplate = { variables: { context: null } };
+
+            expect(startDiff(partialTemplate, {}).fields).toEqual([
+                expect.objectContaining({ path: 'variables', current: template, version: partialTemplate }),
+            ]);
+        });
+
+        it('compares variables that are set as they are', () => {
+            const entry = startDiff({ context: null }, { topic: 'news' });
+
+            expect(entry.fields).toEqual([
+                expect.objectContaining({ path: 'variables', current: { topic: 'news' }, version: { context: null } }),
+            ]);
+        });
     });
 
     describe('note linked region', () => {
