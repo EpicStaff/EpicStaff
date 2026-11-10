@@ -1,6 +1,6 @@
 # plugins_egress: Squid for plugin backends' outbound HTTPS, behind a start-up firewall against
 # private destinations. Build context: src/plugins_egress (see docker-compose.yaml).
-FROM alpine:3.23.8@sha256:469c9ea410b9215eaee7976ba6c0639039b444be8e5d638f7abbada189971eb2
+FROM alpine:3.23@sha256:469c9ea410b9215eaee7976ba6c0639039b444be8e5d638f7abbada189971eb2
 
 # Any 7.6 revision: Alpine drops a superseded revision from its mirrors, so an exact one would
 # stop building at the next security rebuild. python3 runs the host helper; iptables, ip6tables
