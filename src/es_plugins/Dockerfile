@@ -5,8 +5,8 @@
 # like the runtime base below, so they find the same glibc (2.36, enough for manylinux_2_28
 # wheels) and system libraries; each binary's rpath ($ORIGIN/../lib) lets it run from
 # /opt/plugin-python/<version>. No compiler is installed anywhere: plugins bring wheels only.
-FROM python:3.13.16-slim-bookworm@sha256:a1165e272e578941b84abc79e4ab38a0305cd12803a5c4247979ac7655f4d641 AS plugin-python-3-13
-FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS plugin-python-3-12
+FROM python:3.13.16-slim-bookworm@sha256:73aa5faee130c60da030e105ec971ccf57473fbd22ce73bd6fc9ba99a40b838d AS plugin-python-3-13
+FROM python:3.12.15-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704 AS plugin-python-3-12
 
 # pg_dump and pg_restore of plugins_db's major version (17), with their libpq, for the backups
 # taken before upgrades. From the official image's bookworm build: the node's base is bookworm, so
@@ -19,7 +19,7 @@ RUN mkdir -p /opt/postgresql-client/17/bin /opt/postgresql-client/17/lib \
         /opt/postgresql-client/17/lib/libpq.so.5
 
 # --- Builder: the agent's venv ---
-FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
+FROM python:3.12.15-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704 AS builder
 
 # Wheels only (UV_NO_BUILD=1): no sdist build backend runs. epicstaff-plugin (src/plugin_sdk) is
 # the first-party path dependency without a wheel, the one audited exception, as in
@@ -51,7 +51,7 @@ COPY ./es_plugins/es_plugins /app/src/es_plugins/es_plugins
 COPY ./shared /app/src/shared
 
 # --- Runtime ---
-FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
+FROM python:3.12.15-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704 AS runtime
 
 # Before the COPYs, so a change of the code reuses this layer. nftables for the per-plugin
 # connection caps the entrypoint installs; setpriv (util-linux, in the base image) starts the
