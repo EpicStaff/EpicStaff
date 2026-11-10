@@ -683,6 +683,11 @@
                                                                         ></textarea>
                                                                     </div>
                                                                 </app-diff-field-mark>
+                                                                <app-node-save-errors
+                                                                    [messages]="
+                                                                        promptTextSaveErrors().get(prompt.id) ?? []
+                                                                    "
+                                                                />
                                                             </div>
                                                         }
 
@@ -850,6 +855,9 @@
                                                     ></textarea>
                                                 </div>
                                             </app-diff-field-mark>
+                                            <app-node-save-errors
+                                                [messages]="promptTextSaveErrors().get(prompt.id) ?? []"
+                                            />
                                         </div>
                                     }
                                 </div>

@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
-        run: pip install google-api-python-client google-auth requests
+        run: python -m pip install --require-hashes -r .github/requirements/google-drive.txt
 
       - name: "CLA Assistant"
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'

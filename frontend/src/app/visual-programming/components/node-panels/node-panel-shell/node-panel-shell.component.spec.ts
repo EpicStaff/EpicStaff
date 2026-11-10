@@ -22,6 +22,7 @@ import { FlowService } from '../../../services/flow.service';
 import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { TRIGGER_NODES_NEED_USE_MESSAGE } from '../../../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
+import { NodeSaveErrorsStore } from '../../../services/node-save-errors.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { VersionPreviewNodeAuthorshipStore } from '../../../services/version-preview-node-authorship.store';
 import { MissingReference, NodeDiffStatus } from '../../../utils/diff';
@@ -878,6 +879,47 @@ describe('NodePanelShellComponent', () => {
 
             expect(icon.className).toBe(NODE_ICONS[NodeType.END]);
             expect(icon.style.color).toBe(normalizedCssColor(NODE_COLORS[NodeType.END]));
+        });
+    });
+
+    describe('errors of a refused save', () => {
+        function shownSaveErrors(fixture: ComponentFixture<NodePanelShellComponent>): string[] {
+            return Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll('.node-level-save-errors li')
+            ).map((item) => item.textContent!.trim());
+        }
+
+        it("lists the open node's errors above its fields, each with the field it is about", async () => {
+            const fixture = await mount(false);
+            const saveErrors = TestBed.inject(NodeSaveErrorsStore);
+
+            saveErrors.setAll(
+                new Map([
+                    [
+                        endNode.id,
+                        [
+                            {
+                                field: 'output_map',
+                                sentValue: endNode.data.output_map,
+                                messages: ["Path 'variables._secret' is not allowed."],
+                            },
+                            { field: null, messages: ['id=7 not found in graph 1'] },
+                        ],
+                    ],
+                    ['another-node', [{ field: 'input_map', sentValue: {}, messages: ['Not this one.'] }]],
+                ])
+            );
+            fixture.detectChanges();
+
+            expect(shownSaveErrors(fixture)).toEqual([
+                "Output map: Path 'variables._secret' is not allowed.",
+                'id=7 not found in graph 1',
+            ]);
+
+            saveErrors.clear();
+            fixture.detectChanges();
+
+            expect(shownSaveErrors(fixture)).toEqual([]);
         });
     });
 });

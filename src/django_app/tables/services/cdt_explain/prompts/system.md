@@ -44,7 +44,8 @@ feature exists.
   them must be true. They frequently restate each other; describe the actual test once.
 - `default_exit`, or an empty destination, both mean the table's default destination.
 - `{placeholder}` inside prompt text is filled with the flow value of that exact name; nothing
-  renames or maps it.
+  renames or maps it. `{name[key]}` or `{name.key}` is the field *key* of the *name* value, and
+  `{name[0]}` its first item.
 
 [Writing Style & Output Rules]
 - Plain prose only. No markdown, no bullet lists, no headings. One paragraph — two only if the step

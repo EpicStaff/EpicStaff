@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 from collections.abc import Sequence
 from pathlib import Path
@@ -28,6 +29,17 @@ SPECIFICATION_RE = r"(?P<specification>[<>=!~]\S*)"
 
 PARSED_COMMANDS = frozenset({("pip", "compile"), ("pip", "sync")})
 
+# What `uv build` reports a failure through: one `error:` line naming the package,
+# then a chain of `cause:` lines. Those only say that the build backend failed, so the
+# line that says why is taken from the backend's own traceback, which uv passes through.
+BUILD_CAUSE_PATTERN = re.compile(r"^\s*cause:\s*(?P<cause>.+)$", re.MULTILINE)
+BUILD_EXCEPTION_PATTERN = re.compile(
+    r"^[A-Za-z_][\w.]*(?:Error|Exception|Exit):\s.+$", re.MULTILINE
+)
+# A build backend is arbitrary code and writes stderr of any length; the message
+# ends up on the wheel row and in every answer about it.
+MAX_BUILD_FAILURE_LENGTH = 2000
+
 RESOLUTION_FAILURE = "No solution found when resolving dependencies"
 
 PACKAGE_NOT_FOUND_PATTERN = re.compile(
@@ -56,10 +68,21 @@ def _normalize(stderr: str) -> str:
 def _parse_stderr(args: Sequence[str], stderr: str) -> BaseError:
     """Turn the stderr of a failed uv command into a domain error.
 
-    Only dependency resolution (`uv pip compile` and `uv pip sync`) reports failures a
-    user can act on; every other command and every unrecognised cause falls back to the
-    generic build error.
+    Only dependency resolution (`uv pip compile` and `uv pip sync`) and `uv build`
+    report failures a user can act on; every other command and every unrecognised
+    cause falls back to the generic build error.
+
+    A build failure is passed on rather than recognised: its cause belongs to the
+    source's own build backend, so there is no fixed set of causes to match against.
     """
+    if tuple(args[:1]) == ("build",):
+        parts = [match.group(0).strip() for match in BUILD_EXCEPTION_PATTERN.finditer(stderr)][-1:]
+        parts += [cause.strip() for cause in BUILD_CAUSE_PATTERN.findall(stderr)]
+        if not parts:
+            return UVBuildError("Could not build a wheel from this source.")
+        detail = "; ".join(parts)[:MAX_BUILD_FAILURE_LENGTH]
+        return UVBuildError(f"Could not build a wheel from this source: {detail}")
+
     if tuple(args[:2]) not in PARSED_COMMANDS:
         return UVBuildError()
 
@@ -93,6 +116,7 @@ class UVProvider(AbstractUVProvider):
     async def run(
         *args: str,
         input=None,
+        env=None,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -103,6 +127,7 @@ class UVProvider(AbstractUVProvider):
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
+            env=env,
         )
         if input is not None:
             input = input.encode()
@@ -127,11 +152,14 @@ class UVProvider(AbstractUVProvider):
         )
 
     @classmethod
-    async def apply(cls, venv_path: Path, *libs: LibraryString):
+    async def apply(cls, venv_path: Path, *libs: LibraryString, wheelhouse: Path | None = None):
         if not venv_path.exists():
-            raise ValueError(f"Venv is not initialized yet. Paht: {venv_path}")
+            raise ValueError(f"Venv is not initialized yet. Path: {venv_path}")
         python_binary = cls.get_python_binary(venv_path)
         lock_file = cls.get_lock_file(venv_path)
+        # On both commands below, not only the compile: the lock pins a version that
+        # only this directory holds, so the sync reading that lock needs it as well.
+        find_links = () if wheelhouse is None else ("--find-links", str(wheelhouse))
 
         await cls.run(
             "pip",
@@ -141,6 +169,7 @@ class UVProvider(AbstractUVProvider):
             "--generate-hashes",
             "--no-header",
             "--no-annotate",
+            *find_links,
             "--python",
             str(python_binary),
             "--output-file",
@@ -153,6 +182,7 @@ class UVProvider(AbstractUVProvider):
             "sync",
             "--no-config",
             "--no-progress",
+            *find_links,
             "--python",
             str(python_binary),
             str(lock_file),
@@ -185,3 +215,47 @@ class UVProvider(AbstractUVProvider):
             str(python_binary),
             *(str(package) for package in packages),
         )
+
+    @classmethod
+    async def build_wheel(cls, source_dir: Path, output_dir: Path) -> Path:
+        await cls.run(
+            "build",
+            "--wheel",
+            "--no-config",
+            "--no-progress",
+            "--out-dir",
+            str(output_dir),
+            str(source_dir),
+            env=cls._build_env(),
+        )
+        # The build backend decides what it writes; a source declaring several
+        # distributions would leave this ambiguous, so take only an unambiguous result.
+        wheels = list(output_dir.glob("*.whl"))
+        if len(wheels) != 1:
+            raise UVBuildError(f"The build produced {len(wheels)} wheels, expected exactly one.")
+        return wheels[0]
+
+    @staticmethod
+    def _build_env() -> dict[str, str]:
+        """The environment a wheel build runs in: what uv needs, and nothing else.
+
+        A source distribution's build backend is arbitrary code that inherits this
+        mapping, so the manager's own environment is not passed on. Absent above all
+        are the object-store credentials, which would otherwise hand a crafted source
+        the key to every bucket, and PYTHONPATH, which would put this service's code
+        on the backend's import path.
+        """
+        env = {
+            # uv is resolved through it, and so is whatever toolchain a build shells out to.
+            "PATH": os.environ.get("PATH", os.defpath),
+            "LANG": "C.UTF-8",
+            "PYTHONUTF8": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+        # Carried over so a wheel build uses the same cache and interpreter policy the
+        # image pins for venv builds, rather than downloading or caching elsewhere.
+        for name in ("UV_CACHE_DIR", "UV_PYTHON_DOWNLOADS"):
+            value = os.environ.get(name)
+            if value is not None:
+                env[name] = value
+        return env

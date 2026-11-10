@@ -273,11 +273,12 @@
                                         formControlName="instructions"
                                         placeholder="Enter task instructions..."
                                         [rows]="8"
-                                        [invalid]="instructionsInvalid()"
+                                        [invalid]="instructionsInvalid() || instructionsSaveErrors().length > 0"
                                         [variables]="inputMapKeys()"
                                     ></app-variable-highlight-textarea>
                                 </app-diff-field-mark>
                                 <app-validation-errors [control]="form.get('instructions')!" />
+                                <app-node-save-errors [messages]="instructionsSaveErrors()" />
                             </div>
                         }
                     </div>
@@ -358,7 +359,7 @@
                                             formControlName="instructions"
                                             placeholder="Enter task instructions..."
                                             [rows]="20"
-                                            [invalid]="instructionsInvalid()"
+                                            [invalid]="instructionsInvalid() || instructionsSaveErrors().length > 0"
                                             [variables]="inputMapKeys()"
                                         ></app-variable-highlight-textarea>
                                     }
@@ -368,6 +369,7 @@
                                             [control]="form.get('instructions')!"
                                         />
                                     }
+                                    <app-node-save-errors [messages]="instructionsSaveErrors()" />
                                 </div>
                             </app-diff-field-mark>
                         } @else if (outputSchemaDiff(); as outputSchema) {
@@ -581,7 +583,7 @@
                             formControlName="instructions"
                             placeholder="Enter task instructions..."
                             [rows]="5"
-                            [invalid]="instructionsInvalid()"
+                            [invalid]="instructionsInvalid() || instructionsSaveErrors().length > 0"
                             [variables]="inputMapKeys()"
                         ></app-variable-highlight-textarea>
                     </app-diff-field-mark>
@@ -589,6 +591,7 @@
                         class="instructions-collapsed-validation"
                         [control]="form.get('instructions')!"
                     />
+                    <app-node-save-errors [messages]="instructionsSaveErrors()" />
 
                     <div class="output-schema-section">
                         <button
