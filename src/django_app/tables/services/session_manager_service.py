@@ -20,7 +20,11 @@ from src.shared.models import (
 )
 from src.shared.retention import DataType
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
-from tables.exceptions import GraphEntryPointException, SubGraphValidationError
+from tables.exceptions import (
+    GraphEntryPointException,
+    SubflowEntryPointException,
+    SubGraphValidationError,
+)
 from tables.models import (
     AudioTranscriptionNode,
     Edge,
@@ -81,6 +85,7 @@ from tables.validators.subgraph_validator import SubGraphValidator
 from utils.graph_utils import (
     NodeNameResolver,
     generate_node_name,
+    node_label,
     resolve_node_names,
     runtime_node_name,
 )
@@ -301,7 +306,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         callback sender; validated by the caller.
 
         Once crew has received the session, nothing raises: the run is live, and a caller
-        retrying the error (the fanout tool retries a 5xx) would start it a second time.
+        retrying the error would start it a second time.
 
         Raises:
             RunAdmissionRefusedError: The run is refused. Before the session is created,
@@ -472,6 +477,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         start_node: StartNode | None,
         visiting_graph_ids: set[int] | None = None,
         parent_graph: Graph | None = None,
+        subflow_node: SubGraphNode | None = None,
     ) -> GraphData:
         """Recursively build GraphData for a graph to handle subgraphs
 
@@ -484,6 +490,8 @@ class SessionManagerService(metaclass=SingletonMeta):
                 Used to detect cycles that bypass the validator.
             parent_graph: The graph whose subgraph reference led to this call, used only to
                 name the offending edge if the re-entry guard below fires.
+            subflow_node: The Subflow node that uses this graph, named in the error when
+                nothing is connected to the graph's Start; None for the flow that was run.
         """
         if visiting_graph_ids is None:
             visiting_graph_ids = set()
@@ -789,9 +797,13 @@ class SessionManagerService(metaclass=SingletonMeta):
             edge_data_list.append(edge_data)
 
         if entrypoint is None:
-            raise GraphEntryPointException()
-
-        if start_node is None and entrypoint is None:
+            if subflow_node is not None:
+                raise SubflowEntryPointException(
+                    flow_name=graph.name,
+                    subflow_node_label=node_label(
+                        node_name=subflow_node.node_name, node_number=subflow_node.node_number
+                    ),
+                )
             raise GraphEntryPointException()
 
         decision_table_node_data_list = [
@@ -812,6 +824,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                     start_node=subgraph_start_node,
                     visiting_graph_ids=visiting_graph_ids_for_recursion,
                     parent_graph=graph,
+                    subflow_node=item,
                 )
                 # Not None here: _build_graph_data raises GraphEntryPointException without one.
                 variables = self._get_actual_variables(subgraph_start_node.variables or {})

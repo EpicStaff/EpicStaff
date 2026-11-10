@@ -55,7 +55,11 @@ import { DetailCrumb, DetailHeaderComponent } from './components/detail-header/d
 import { EmptyDetailComponent } from './components/empty-detail/empty-detail.component';
 import { ExplorerComponent } from './components/explorer/explorer.component';
 import { ExplorerMenuSubject } from './components/explorer/explorer-context-menu/explorer-menu.model';
-import { AGENTS_SECTION_MENU_ACTION, GROUP_MENU_ACTION } from './components/explorer/explorer-menu.util';
+import {
+    AGENTS_SECTION_MENU_ACTION,
+    canDuplicateAgent,
+    GROUP_MENU_ACTION,
+} from './components/explorer/explorer-menu.util';
 import {
     ExplorerTreeAttachSurfaceEvent,
     ExplorerTreeMenuEvent,
@@ -126,7 +130,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     /** Can the selected item (agent or surface) be duplicated in the active org? */
     protected readonly canDuplicateSelected = computed<boolean>(() => {
         this.permissions.active();
-        if (this.store.selectedAgent()) return this.permissions.can(ResourceCode.Agents, ActionCode.Create);
+        const agent = this.store.selectedAgent();
+        if (agent) return canDuplicateAgent(agent.id, this.store.surfaces(), this.permissions);
         if (this.store.selectedSurface()) return this.permissions.can(ResourceCode.Surfaces, ActionCode.Create);
         return false;
     });

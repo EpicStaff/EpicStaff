@@ -355,9 +355,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /** The version shown instead of the live canvas; null while editing the live flow. */
     public readonly previewedVersion = signal<GraphVersionDto | null>(null);
     public readonly isPreviewing = computed(() => this.previewedVersion() !== null);
-    /** The header's save status chip; none while previewing a version. */
+    /** The header's save status chip; none while previewing a version or for a user who cannot edit the flow. */
     protected readonly saveStatus = computed<FlowSaveStatus | null>(() => {
-        if (this.isPreviewing()) return null;
+        if (this.isPreviewing() || this.flowReadOnly.isReadOnly()) return null;
         if (this.isSaving() || this.sidePanelService.savingNodeId() !== null) return 'saving';
         const connection = this.wsService.connectionStatus();
         if (connection === 'lost') return 'connection-lost';

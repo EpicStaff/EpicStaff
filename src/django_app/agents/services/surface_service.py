@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.core import exceptions as dj_exceptions
 from django.db import transaction
+from rbac.authorship import resolve_author
 
 from agents.exceptions import SurfaceValidationError
 from agents.models.agent_models import AgentDefaultSurface, SurfacePlace
@@ -115,6 +116,27 @@ class SurfaceService:
             SurfaceService._replace_knowledge(instance, knowledge_data or [])
 
         return instance
+
+    @staticmethod
+    def clone_surface(source: Surface, *, name: str, owner_agent, user) -> Surface:
+        """Create a copy of `source` named `name` and owned by `owner_agent`, with its content.
+
+        Tools, storage files and knowledge collections are re-linked, not cloned, so
+        no code is copied. The clone is never grouped: only shared surfaces may be.
+        The caller picks a free `name` and records the last edit.
+        """
+        clone = Surface.objects.create(
+            org_id=source.org_id,
+            name=name,
+            instructions=source.instructions,
+            owner_agent=owner_agent,
+            group=None,
+            created_by=resolve_author(user),
+        )
+        SurfaceContentService.copy_content(
+            source, clone, CATALOG_SURFACE_CONTENT, org_id=source.org_id
+        )
+        return clone
 
     @staticmethod
     def _enforce_group_only_when_shared(attrs, *, current_owner_agent_id):
