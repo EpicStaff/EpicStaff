@@ -23,6 +23,9 @@ const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>([
     // A copy, version restore or new flow from a version holding code that reads secrets, without Secrets:Use;
     // UsePermissionRefusalService shows it (tool copy shows it in its own error banner or toast).
     'code_with_secrets_requires_secrets_use_permission',
+    // An agent copy that would clone the surfaces the agent owns, without Surfaces:Create; the duplicate's own
+    // error handling shows it.
+    'agent_with_owned_surfaces_requires_surfaces_create_permission',
 ]);
 
 /**
