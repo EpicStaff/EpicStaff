@@ -427,6 +427,8 @@ class SessionViewSet(
                 .select_for_update(of=("self",))
                 .filter(id__in=ids)
                 .select_related("graph")
+                # Only what the record names: a session's JSON columns can be large.
+                .only("id", "graph__name")
                 .order_by("id")
             )
             for session in owned_sessions:

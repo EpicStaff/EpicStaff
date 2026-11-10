@@ -11,6 +11,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.http import HttpResponse
 from django.test import RequestFactory
 from django.urls import ResolverMatch
@@ -629,6 +631,40 @@ def test_session_bulk_delete_records_each_session_deleted_under_its_flow(
     [event] = _hook_events(sent_events)
     assert _target(event) == ("deleted", "session", str(session_id), None)
     assert _parent(event) == ("flow", str(flow.pk), "Billing flow")
+
+
+def test_session_bulk_delete_costs_the_same_queries_for_one_session_as_for_many(
+    admin_client, flow, sent_events, django_capture_on_commit_callbacks
+):
+    def bulk_delete_queries(count: int) -> list[str]:
+        sessions = [
+            Session.objects.create(
+                graph=flow,
+                status=Session.SessionStatus.END,
+                variables={"transcript": "x" * 1000},
+            )
+            for _ in range(count)
+        ]
+        with CaptureQueriesContext(connection) as queries:
+            response = _send(
+                admin_client,
+                "post",
+                "/api/sessions/bulk_delete/",
+                django_capture_on_commit_callbacks,
+                {"ids": [session.id for session in sessions]},
+            )
+        assert response.status_code == status.HTTP_200_OK, response.content
+        return [query["sql"] for query in queries.captured_queries]
+
+    one = bulk_delete_queries(1)
+    many = bulk_delete_queries(5)
+
+    assert len(many) == len(one)
+    assert len(sent_events) == 6
+    [locking_select] = [sql for sql in many if "FOR UPDATE" in sql]
+    # Names come from the flow; the session's own JSON stays unread.
+    assert '"tables_session"."variables"' not in locking_select
+    assert '"tables_graph"."metadata"' not in locking_select
 
 
 def test_bulk_delete_of_a_config_deleted_for_good_records_it_by_name(

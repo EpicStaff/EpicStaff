@@ -14,7 +14,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.handlers.asgi import ASGIRequest
 from django.db import transaction
-from django.db.models import Model
+from django.db.models import F, Model
 from rbac.views.auth import (
     ApiKeyValidateView,
     CookieTokenRefreshView,
@@ -47,7 +47,7 @@ from user_audit.actor import actor_from_request
 from user_audit.context import UserActionContext, current_context, user_action_context
 from user_audit.read_only import handler_reads_only
 from user_audit.recorder import record_user_action
-from user_audit.targets import TargetDescription, target_type
+from user_audit.targets import TargetDescription, fields_to_describe, target_type
 
 # A request answered with a status at or above this changed nothing worth recording.
 FIRST_FAILURE_STATUS = 400
@@ -94,6 +94,11 @@ GENERIC_ACTIONS = {
 # Custom DRF actions recorded under a recorder verb: a flow, tool or collection copy reads
 # like a storage copy.
 CUSTOM_ACTION_VERBS = {"copy": UserAction.COPIED}
+# Where every authentication class reads its credentials (JWT, API key, plugin keys). A
+# request with neither is anonymous, and an anonymous request is never recorded.
+CREDENTIAL_HEADERS = ("HTTP_AUTHORIZATION", "HTTP_X_API_KEY")
+# The org that owned a row loaded before its DELETE, read in the same query.
+ORG_BEFORE_DELETE_ATTRIBUTE = "_user_audit_org_id"
 
 
 class UserActionMiddleware:
@@ -129,12 +134,17 @@ class UserActionMiddleware:
     def process_view(self, request, view_func, view_args, view_kwargs):
         """Load the row a DELETE names before the view deletes it, for the fallback to name.
 
-        One query per DELETE while the switch is on, none otherwise. Read in no org: the
-        org is checked inside the view, so the fallback uses the row only when the org it
-        then checked owns it.
+        One query per DELETE that carries credentials while the switch is on, none
+        otherwise. It runs before authentication, so it reads in no org: the org is checked
+        inside the view, and the fallback uses the row only when the org it then checked
+        owned it.
         """
         context = current_context()
-        if context is not None and request.method == "DELETE":
+        if (
+            context is not None
+            and request.method == "DELETE"
+            and any(request.META.get(header) for header in CREDENTIAL_HEADERS)
+        ):
             context.row_before_delete = _row_before_delete(view_func, request.resolver_match)
 
 
@@ -261,9 +271,9 @@ def _fallback_target(
     value = url_id if url_id is not None else id_from_response(model, created_data)
     if value is None:
         return None, None
-    row = org_row(view_class, value, org_id) or _deleted_row_of_org(
-        row_before_delete, view_class, model, url_id, org_id
-    )
+    row = org_row(
+        view_class, value, org_id, fields=fields_to_describe(model)
+    ) or _deleted_row_of_org(row_before_delete, model, url_id, org_id)
     if row is not None:
         return row, None
     if url_id is None:
@@ -272,38 +282,41 @@ def _fallback_target(
 
 
 def _row_before_delete(view_func, match) -> Model | None:
-    """The row the URL of a DELETE names, whatever org owns it; None while the switch is off,
-    for a custom action (a purge records itself) and for a URL that names no row."""
+    """The row the URL of a DELETE names, whatever org owns it, with that org's id; None
+    while the switch is off, for a custom action (a purge records itself), for a URL that
+    names no row and for a view whose rows reach no org.
+
+    Loads only what naming it takes (`fields_to_describe`).
+    """
     try:
         if not settings.USER_AUDIT_TRAIL_ENABLED:
             return None
         if getattr(view_func, "actions", {}).get("delete") not in (None, "destroy"):
             return None
-        model = model_of(getattr(view_func, "cls", None))
+        view_class = getattr(view_func, "cls", None)
+        model = model_of(view_class)
         url_id = id_from_url(match)
         if model is None or url_id is None:
             return None
+        org_path = org_path_of(view_class, model)
+        if org_path is None:
+            return None
         # A savepoint, so a failed read caught below leaves the request's transaction usable.
         with transaction.atomic():
-            return model._base_manager.filter(pk=url_id).first()
+            return (
+                model._base_manager.filter(pk=url_id)
+                .only(*fields_to_describe(model))
+                .annotate(**{ORG_BEFORE_DELETE_ATTRIBUTE: F(org_path)})
+                .first()
+            )
     except Exception:
         logger.exception("Failed to load the row a DELETE names for its user-action record")
         return None
 
 
-def _deleted_row_of_org(
-    row: Model | None, view_class, model: type[Model], url_id, org_id: int
-) -> Model | None:
+def _deleted_row_of_org(row: Model | None, model: type[Model], url_id, org_id: int) -> Model | None:
     """`row`, loaded before the request deleted it, when it is the row the URL names and
     `org_id` owned it; else None."""
     if row is None or url_id is None or not isinstance(row, model) or str(row.pk) != str(url_id):
         return None
-    org_path = org_path_of(view_class, model)
-    if org_path is None:
-        return None
-    owner = row
-    for field_name in org_path.split("__"):
-        owner = getattr(owner, field_name, None)
-        if owner is None:
-            return None
-    return row if owner == org_id else None
+    return row if getattr(row, ORG_BEFORE_DELETE_ATTRIBUTE, None) == org_id else None

@@ -6,7 +6,7 @@ fallback), which know the request only by its route and URL kwargs, never by its
 """
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 from django.core.exceptions import ValidationError
 from django.db.models import Model
@@ -87,12 +87,16 @@ def id_from_response(model: type[Model], data):
     return next((data[key] for key in keys if key in data), None)
 
 
-def org_row(view_class, value, org_id: int) -> Model | None:
+def org_row(view_class, value, org_id: int, *, fields: Iterable[str]) -> Model | None:
     """The row of the view's model whose primary key is `value`, only when `org_id` owns it.
 
     Scoped the way the view scopes it: through its `org_filter_path` (a child resource
     such as `agent_definition__org_id`), else the model's own `org`. A row reachable by
     neither, and an id of another organization's row, give None.
+
+    Args:
+        fields: The only columns loaded besides the primary key; reading another one
+            costs a query of its own.
     """
     model = model_of(view_class)
     if model is None:
@@ -101,7 +105,7 @@ def org_row(view_class, value, org_id: int) -> Model | None:
     if org_path is None:
         return None
     try:
-        return model._base_manager.filter(pk=value, **{org_path: org_id}).first()
+        return model._base_manager.filter(pk=value, **{org_path: org_id}).only(*fields).first()
     except (TypeError, ValueError, ValidationError):
         return None
 
@@ -121,12 +125,15 @@ def _field_names(model) -> set[str]:
 def _label_of_row(view_class, value, org_id: int, label_fields: tuple[str, ...]) -> str | None:
     """The row's label, read in `org_id` only (see `org_row`), so a label never comes from
     another organization's row."""
-    row = org_row(view_class, value, org_id)
-    if row is None:
+    model = model_of(view_class)
+    if model is None:
         return None
-    field_names = _field_names(type(row))
+    field_names = _field_names(model)
     label_field = next((name for name in label_fields if name in field_names), None)
-    label = getattr(row, label_field) if label_field is not None else None
+    if label_field is None:
+        return None
+    row = org_row(view_class, value, org_id, fields=(label_field,))
+    label = getattr(row, label_field) if row is not None else None
     return label if isinstance(label, str) and label else None
 
 

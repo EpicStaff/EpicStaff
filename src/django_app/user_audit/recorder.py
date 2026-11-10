@@ -1,4 +1,5 @@
 import functools
+import threading
 from uuid import uuid4
 
 from django.conf import settings
@@ -14,6 +15,11 @@ from user_audit.actor import Actor, actor_from_request
 from user_audit.context import UserActionContext, current_context
 from user_audit.sender import get_user_audit_sender
 from user_audit.targets import TargetDescription, describe, target_parent
+
+# Records made on this thread and not numbered yet, in record order. Django gives a thread
+# one connection, so one transaction at a time: these are its records, plus any a rolled-back
+# transaction left behind, which are numbered with the next batch (a gap) and never sent.
+_unnumbered = threading.local()
 
 # The only actions recorded without a target: the user themselves is the subject. Every
 # other action must name what it changed, or it is not recorded at all.
@@ -33,7 +39,7 @@ def record_user_action(
     route: str | None = None,
     actor: Actor | None = None,
 ) -> None:
-    """Record one user action, sent to the auditor once the transaction commits.
+    """Record one user action, numbered and sent to the auditor once the transaction commits.
 
     Best-effort: never raises into the caller. Records nothing while the switch is off,
     or when there is no actor: none was passed and the current request (if any) was not
@@ -72,12 +78,11 @@ def record_user_action(
         if parent is None and target is not None:
             parent = target_parent(target)
         parent_description = describe(parent) if parent is not None else None
+        # Number and retention are set on commit, outside the caller's transaction.
         event = UserActionEvent(
             id=str(uuid4()),
-            number=_next_record_number(),
             org_id=org_id,
             event_time=timezone.now(),
-            retention_days=_retention_days(org_id, context),
             actor_user_id=actor.user_id,
             actor_email=actor.email,
             actor_api_key_name=actor.api_key_name,
@@ -91,19 +96,52 @@ def record_user_action(
             parent_name=parent_description.name if parent_description else None,
             route=route,
         )
+        _unnumbered_events().append(event)
         # robust: the write has committed, so a failing callback must not turn it into a 500.
-        transaction.on_commit(lambda: get_user_audit_sender().send([event]), robust=True)
+        transaction.on_commit(lambda: _send_committed(event, context), robust=True)
     except Exception:
         logger.exception("Failed to record user action {} in org {}", action, org_id)
 
 
-def _next_record_number() -> int:
-    # Gaps are expected: nextval is not transactional, so a rolled-back transaction
-    # burns its number. A savepoint, so a failed read caught by the caller leaves its
-    # transaction usable.
+def _unnumbered_events() -> list[UserActionEvent]:
+    if not hasattr(_unnumbered, "events"):
+        _unnumbered.events = []
+    return _unnumbered.events
+
+
+def _send_committed(event: UserActionEvent, context: UserActionContext | None) -> None:
+    # Runs after the commit, so a bulk change holding row locks waits on no audit query,
+    # and the first record of a commit numbers the whole batch in one query.
+    try:
+        if event.number is None:
+            _number_unnumbered_events()
+        if event.number is None:
+            # Its batch failed to be numbered, which the batch's first record logged.
+            return
+        event.retention_days = _retention_days(event.org_id, context)
+        get_user_audit_sender().send([event])
+    except Exception:
+        logger.exception("Failed to record user action {} in org {}", event.action, event.org_id)
+
+
+def _number_unnumbered_events() -> None:
+    # Taken off the list first, so a failed read drops this batch rather than retrying it
+    # for every record. Gaps are expected: nextval is not transactional, and a rolled-back
+    # record's number is burnt. Sorted, so the numbers follow record order. A savepoint, so
+    # a failed read leaves an enclosing transaction usable.
+    events = _unnumbered_events()
+    batch = list(events)
+    events.clear()
+    if not batch:
+        return
     with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute("SELECT nextval('user_action_record_number_seq')")
-        return cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT nextval('user_action_record_number_seq') FROM generate_series(1, %s)",
+            [len(batch)],
+        )
+        numbers = sorted(row[0] for row in cursor.fetchall())
+    for event, number in zip(batch, numbers, strict=True):
+        event.number = number
 
 
 def _retention_days(org_id: int, context: UserActionContext | None) -> int:

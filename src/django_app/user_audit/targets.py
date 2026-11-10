@@ -108,6 +108,24 @@ def describe(instance: models.Model) -> TargetDescription:
     return TargetDescription(type=_instance_type(instance), id=str(instance.pk), name=name)
 
 
+def fields_to_describe(model: type[models.Model]) -> list[str]:
+    """The columns `describe` and `target_parent` read from a row of `model`.
+
+    For `QuerySet.only()`, so a row loaded just to be named leaves its other columns, such
+    as a flow's metadata JSON, unread. The parent itself is loaded when it is read.
+    """
+    label = model._meta.label_lower
+    override = TARGET_NAME_FIELD_OVERRIDES.get(label)
+    wanted = [override] if override else list(TARGET_NAME_FIELDS)
+    if label == "tables.storagefile":
+        wanted.append("item_type")
+    parent_path = TARGET_PARENT_FIELDS.get(label)
+    if parent_path is not None:
+        wanted.append(parent_path.split("__")[0])
+    field_names = {field.name for field in model._meta.concrete_fields}
+    return [name for name in wanted if name in field_names]
+
+
 def _instance_type(instance: models.Model) -> str:
     # One storage model holds both files and folders; a reader tells them apart.
     if instance._meta.label_lower == "tables.storagefile" and instance.item_type == "folder":

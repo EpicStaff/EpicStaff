@@ -2,6 +2,7 @@ import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.db import connection, transaction
 from django.test import RequestFactory
+from django.test.utils import CaptureQueriesContext
 from loguru import logger
 from rest_framework.request import Request
 
@@ -363,7 +364,7 @@ def test_record_for_user_orgs_skips_inactive_orgs(
 
 @pytest.mark.django_db
 def test_failed_retention_read_leaves_the_callers_transaction_usable(
-    acme, admin_acme, flow, sent_events, monkeypatch
+    acme, admin_acme, flow, sent_events, monkeypatch, django_capture_on_commit_callbacks
 ):
     def failing_retention_read(org_id, data_type):
         with connection.cursor() as cursor:
@@ -372,8 +373,11 @@ def test_failed_retention_read_leaves_the_callers_transaction_usable(
     monkeypatch.setattr(recorder, "effective_retention_days_for_org", failing_retention_read)
 
     with user_action_context(request_as(admin_acme)), transaction.atomic():
-        record_user_action(action=UserAction.UPDATED, org_id=acme.id, target=flow)
+        with django_capture_on_commit_callbacks(execute=True):
+            record_user_action(action=UserAction.UPDATED, org_id=acme.id, target=flow)
         assert Graph.objects.filter(pk=flow.pk).exists()
+
+    assert sent_events == []
 
 
 @pytest.mark.django_db
@@ -410,6 +414,46 @@ def test_records_get_increasing_numbers(
     first, second = sent_events
     assert isinstance(first.number, int)
     assert second.number > first.number
+
+
+@pytest.mark.django_db
+def test_records_read_nothing_before_commit_and_are_numbered_in_one_query_after(
+    acme, admin_acme, flow, sent_events, django_capture_on_commit_callbacks
+):
+    with user_action_context(request_as(admin_acme)):
+        with django_capture_on_commit_callbacks() as callbacks:
+            with CaptureQueriesContext(connection) as before_commit:
+                for _ in range(5):
+                    record_user_action(action=UserAction.UPDATED, org_id=acme.id, target=flow)
+        with CaptureQueriesContext(connection) as after_commit:
+            for callback in callbacks:
+                callback()
+
+    # A bulk change holding row locks waits on no audit query.
+    assert before_commit.captured_queries == []
+    assert len([q for q in after_commit.captured_queries if "nextval" in q["sql"]]) == 1
+    numbers = [event.number for event in sent_events]
+    assert len(numbers) == 5
+    assert numbers == sorted(set(numbers))
+
+
+@pytest.mark.django_db
+def test_a_record_rolled_back_with_its_savepoint_is_never_sent(
+    acme, admin_acme, flow, sent_events, django_capture_on_commit_callbacks
+):
+    with user_action_context(request_as(admin_acme)):
+        with django_capture_on_commit_callbacks(execute=True):
+            record_user_action(action=UserAction.CREATED, org_id=acme.id, target=flow)
+            try:
+                with transaction.atomic():
+                    record_user_action(action=UserAction.DELETED, org_id=acme.id, target=flow)
+                    raise RuntimeError("the delete failed")
+            except RuntimeError:
+                pass
+            record_user_action(action=UserAction.UPDATED, org_id=acme.id, target=flow)
+
+    assert [event.action for event in sent_events] == ["created", "updated"]
+    assert sent_events[0].number < sent_events[1].number
 
 
 @pytest.mark.django_db

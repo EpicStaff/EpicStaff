@@ -2,12 +2,16 @@ import io
 import zipfile
 
 import pytest
+from django.db import connection
 from django.http import HttpResponse
+from django.test.utils import CaptureQueriesContext
 from django.test import RequestFactory
 from django.urls import ResolverMatch, reverse
 from rest_framework import status, viewsets
 from rest_framework.response import Response
+from rest_framework.test import APIClient
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from agents.models import AgentDefinition
 from rbac.models import OrganizationUser
@@ -456,6 +460,25 @@ def test_fallback_never_labels_a_target_from_another_org(
     )
 
 
+def test_fallback_names_its_target_without_reading_the_rows_json(
+    admin_acme, acme, flow, sent_events, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        with CaptureQueriesContext(connection) as queries:
+            _serve(
+                _checked_request(admin_acme, acme.id),
+                view_class=GraphViewSet,
+                actions={"post": "copy"},
+                route="api/^graphs/(?P<pk>[^/.]+)/copy/$",
+                kwargs={"pk": str(flow.pk)},
+            )
+
+    [event] = sent_events
+    assert (event.target_type, event.target_name) == ("flow", "Billing flow")
+    [flow_read] = [query["sql"] for query in queries.captured_queries if '"tables_graph"' in query["sql"]]
+    assert '"tables_graph"."metadata"' not in flow_read
+
+
 def test_profile_change_with_a_foreign_org_header_reaches_only_own_orgs(
     client_as, admin_acme, acme, beta, sent_events, django_capture_on_commit_callbacks
 ):
@@ -553,6 +576,19 @@ async def test_a_streamed_archive_records_the_folder_it_unpacked_into(
 # ---- a hard delete the fallback records still names the row it deleted ----
 
 
+@pytest.fixture
+def token_client(admin_acme, acme):
+    """A client sending a real bearer token: the row a DELETE names is loaded before
+    authentication only for a request that carries credentials, which force_authenticate
+    does not send."""
+    client = APIClient()
+    client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(admin_acme).access_token}",
+        HTTP_X_ORGANIZATION_ID=str(acme.id),
+    )
+    return client
+
+
 def _deleted_event(sent_events) -> tuple:
     [event] = sent_events
     assert event.route is not None  # recorded by the fallback, not a hook
@@ -573,13 +609,13 @@ def _delete(client, url, capture):
 
 
 def test_a_deleted_audit_filter_preset_is_named(
-    admin_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
+    token_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
 ):
     preset = AuditFilterPreset.objects.create(
         org=acme, created_by=admin_acme, name="Failed runs", filter_body={"query": "x"}
     )
 
-    _delete(admin_client, f"/api/audit-filter-presets/{preset.pk}/", django_capture_on_commit_callbacks)
+    _delete(token_client, f"/api/audit-filter-presets/{preset.pk}/", django_capture_on_commit_callbacks)
 
     assert not AuditFilterPreset.objects.filter(pk=preset.pk).exists()
     assert _deleted_event(sent_events) == (
@@ -587,21 +623,21 @@ def test_a_deleted_audit_filter_preset_is_named(
     )
 
 
-def test_a_deleted_label_is_named(admin_client, acme, sent_events, django_capture_on_commit_callbacks):
+def test_a_deleted_label_is_named(token_client, acme, sent_events, django_capture_on_commit_callbacks):
     label = Label.objects.create(org=acme, name="Finance", scope=Label.Scope.FLOW)
 
-    _delete(admin_client, f"/api/labels/{label.pk}/", django_capture_on_commit_callbacks)
+    _delete(token_client, f"/api/labels/{label.pk}/", django_capture_on_commit_callbacks)
 
     assert _deleted_event(sent_events)[:4] == ("deleted", "label", str(label.pk), "Finance")
 
 
 def test_deleted_voice_settings_are_named_after_their_agent(
-    admin_client, voice_agent, sent_events, django_capture_on_commit_callbacks
+    token_client, voice_agent, sent_events, django_capture_on_commit_callbacks
 ):
     RealtimeAgentDefinition.objects.create(agent_definition=voice_agent)
 
     _delete(
-        admin_client,
+        token_client,
         f"/api/realtime-agent-definitions/{voice_agent.id}/",
         django_capture_on_commit_callbacks,
     )
@@ -612,11 +648,11 @@ def test_deleted_voice_settings_are_named_after_their_agent(
 
 
 def test_a_deleted_session_is_named_under_its_flow(
-    admin_client, flow, sent_events, django_capture_on_commit_callbacks
+    token_client, flow, sent_events, django_capture_on_commit_callbacks
 ):
     session = Session.objects.create(graph=flow, status=Session.SessionStatus.END)
 
-    _delete(admin_client, f"/api/sessions/{session.pk}/", django_capture_on_commit_callbacks)
+    _delete(token_client, f"/api/sessions/{session.pk}/", django_capture_on_commit_callbacks)
 
     assert _deleted_event(sent_events) == (
         "deleted", "session", str(session.pk), None, "flow", "Billing flow"
@@ -624,15 +660,45 @@ def test_a_deleted_session_is_named_under_its_flow(
 
 
 def test_a_delete_of_another_orgs_row_records_nothing(
-    admin_client, admin_acme, beta, sent_events, django_capture_on_commit_callbacks
+    token_client, admin_acme, beta, sent_events, django_capture_on_commit_callbacks
 ):
     preset = AuditFilterPreset.objects.create(
         org=beta, created_by=admin_acme, name="Beta secret", filter_body={"query": "x"}
     )
 
     with django_capture_on_commit_callbacks(execute=True):
-        response = admin_client.delete(f"/api/audit-filter-presets/{preset.pk}/")
+        response = token_client.delete(f"/api/audit-filter-presets/{preset.pk}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert AuditFilterPreset.objects.filter(pk=preset.pk).exists()
     assert sent_events == []
+
+
+def test_a_delete_without_credentials_loads_no_row(
+    flow, sent_events, django_capture_on_commit_callbacks
+):
+    session = Session.objects.create(graph=flow, status=Session.SessionStatus.END)
+
+    with CaptureQueriesContext(connection) as queries:
+        response = APIClient().delete(f"/api/sessions/{session.pk}/")
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert not any('"tables_session"' in query["sql"] for query in queries.captured_queries)
+    assert sent_events == []
+
+
+def test_the_row_a_delete_names_is_loaded_without_its_json(
+    token_client, flow, sent_events, django_capture_on_commit_callbacks
+):
+    session = Session.objects.create(
+        graph=flow, status=Session.SessionStatus.END, variables={"transcript": "x" * 1000}
+    )
+
+    with CaptureQueriesContext(connection) as queries:
+        _delete(token_client, f"/api/sessions/{session.pk}/", django_capture_on_commit_callbacks)
+
+    [preload] = [
+        query["sql"] for query in queries.captured_queries if "_user_audit_org_id" in query["sql"]
+    ]
+    assert '"tables_session"."variables"' not in preload
+    assert _deleted_event(sent_events)[:3] == ("deleted", "session", str(session.pk))
