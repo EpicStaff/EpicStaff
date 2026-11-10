@@ -24,7 +24,7 @@
                 label="Identity secret (shown once)"
                 [value]="secret"
                 [hidden]="true"
-                info="Store it now; it is never shown again."
+                info="Store it now; it is never shown again. Editing identity back to signed issues a new one."
             />
         </div>
         <div class="bindings-dialog__actions">
@@ -76,9 +76,9 @@
                 [hidden]="activeTab() !== 'general'"
             >
                 <div class="bindings-dialog__field">
-                    <!-- A new desk's dialog opens with the focus here, its first field; the settings never show it. -->
+                    <!-- The dialog opens with the focus here, its first field, for a new desk and its settings alike. -->
                     <app-custom-input
-                        [attr.cdkFocusInitial]="isCreating() ? '' : null"
+                        cdkFocusInitial
                         label="Name"
                         formControlName="name"
                         [required]="true"
@@ -165,6 +165,13 @@
                         </label>
                     }
                 </fieldset>
+                <!-- The Inactivity tab's copy carries the id Save points at; this one is for the user switching here. -->
+                @if (isSwitchingToSupport() && backlogEffects().length) {
+                    <ng-container
+                        [ngTemplateOutlet]="backlogWarning"
+                        [ngTemplateOutletContext]="{ id: null }"
+                    />
+                }
                 <app-chips-input
                     label="Allowed origins"
                     formControlName="allowed_origins"

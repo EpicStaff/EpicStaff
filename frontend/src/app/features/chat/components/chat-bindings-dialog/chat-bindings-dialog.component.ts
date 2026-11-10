@@ -146,20 +146,11 @@ let nextDialogId = 0;
 
 type BindingTab = 'general' | 'limits' | 'handoff' | 'inactivity';
 type BindingControl = keyof ChatBindingsDialogComponent['form']['controls'];
-// What a new desk is set up with; fixed once it exists.
-const GENERAL_CONTROLS: BindingControl[] = [
-    'name',
-    'bot_display_name',
-    'graph_id',
-    'style',
-    'allowed_origins',
-    'identity_mode',
-];
 const BINDING_TABS: { id: BindingTab; label: string; controls: BindingControl[] }[] = [
     {
         id: 'general',
         label: 'General',
-        controls: GENERAL_CONTROLS,
+        controls: ['name', 'bot_display_name', 'graph_id', 'style', 'allowed_origins', 'identity_mode'],
     },
     {
         id: 'limits',
@@ -238,8 +229,8 @@ export class ChatBindingsDialogComponent {
         inject<ChatBindingsDialogData | null>(DIALOG_DATA, { optional: true })?.binding ?? null
     );
     readonly isSubmitting = signal(false);
-    // A new desk is set up on General alone; an existing one opens on the first of its settings tabs.
-    readonly activeTab = signal<BindingTab>(this.binding() === null ? 'general' : 'limits');
+    // A new desk and its settings both open on General, the first tab: the desk's name and flow.
+    readonly activeTab = signal<BindingTab>('general');
     readonly errorMessage = signal<string | null>(null);
     /** The server's refusals of named fields, said once for screen readers; each also shows under its field. */
     readonly fieldRefusalAnnouncement = signal('');
@@ -304,8 +295,11 @@ export class ChatBindingsDialogComponent {
 
     readonly canUpdate = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Update));
 
-    // Creating shows General alone (with no tab row); the settings show the other tabs.
-    protected readonly tabs = computed(() => BINDING_TABS.filter(({ id }) => (id === 'general') === this.isCreating()));
+    // Creating shows General alone (with no tab row): the rest starts from the server's defaults. The settings show
+    // every tab, General first.
+    protected readonly tabs = computed(() =>
+        this.isCreating() ? BINDING_TABS.filter(({ id }) => id === 'general') : BINDING_TABS
+    );
     // Delete desk: only an existing desk, and only when the opener offers it (it checked chats:delete).
     protected readonly canRequestDelete =
         !this.isCreating() && !!inject<ChatBindingsDialogData | null>(DIALOG_DATA, { optional: true })?.canDelete;
@@ -371,10 +365,9 @@ export class ChatBindingsDialogComponent {
     /**
      * What saving the edited rules does to the desk's existing conversations, said before the save: the chat service
      * applies changed rules to them on its next timer passes. Only a change that acts on them counts, so only on a
-     * desk's settings (where the style is fixed): a shorter close after on a Support desk closes the conversations
-     * silent for longer; switching to hand back, or a shorter response time with hand back, hands back visitors who
-     * have waited longer. A shorter response time with mark overdue only marks rows in this UI, and keep waiting does
-     * nothing.
+     * desk's settings: switching to Support or a shorter close after closes the conversations silent for longer;
+     * switching to hand back, or a shorter response time with hand back, hands back visitors who have waited longer.
+     * A shorter response time with mark overdue only marks rows in this UI, and keep waiting does nothing.
      */
     readonly backlogEffects = computed((): string[] => {
         const values = this.formValue();
@@ -382,9 +375,11 @@ export class ChatBindingsDialogComponent {
         if (!saved) return [];
         const effects: string[] = [];
         const closeAfter = this.durationSeconds('close_after_seconds');
-        if (values.style === 'support' && closeAfter !== null && closeAfter < saved.close_after_seconds) {
-            const silence = this.durationText('close_after_seconds', closeAfter);
-            effects.push(`Conversations with no message for more than ${silence} close.`);
+        if (values.style === 'support' && closeAfter !== null) {
+            if (saved.style !== 'support' || closeAfter < saved.close_after_seconds) {
+                const silence = this.durationText('close_after_seconds', closeAfter);
+                effects.push(`Conversations with no message for more than ${silence} close.`);
+            }
         }
         const responseTime = this.durationSeconds('response_time_seconds');
         if (values.on_response_timeout === 'handback' && responseTime !== null) {
@@ -400,6 +395,10 @@ export class ChatBindingsDialogComponent {
         }
         return effects;
     });
+    /** Said on General too: the style is switched there, and the Inactivity tab may never be opened. */
+    readonly isSwitchingToSupport = computed(
+        () => this.binding()?.style === 'ongoing' && this.formValue().style === 'support'
+    );
 
     private readonly chatApi = inject(ChatApiService);
     private readonly permissionsService = inject(PermissionsService);
@@ -462,11 +461,9 @@ export class ChatBindingsDialogComponent {
             if (style === 'ongoing') closeAfter.disable({ emitEvent: false });
             else closeAfter.enable({ emitEvent: false });
         });
-        // The contract of the picked flow, checked live; a newer pick or a cleared flow cancels the pending check. Only
-        // a new desk picks its flow: the settings never show it, so they ask nothing.
+        // The contract of the picked flow, checked live; a newer pick or a cleared flow cancels the pending check.
         this.form.controls.graph_id.valueChanges
             .pipe(
-                filter(() => this.isCreating()),
                 // The fix belongs to the flow it was checked for. A check of the same flow again (after a fix) keeps
                 // it, so a failed check leaves the errors and the fix of the last one that answered, together.
                 tap((graphId) => {
@@ -659,13 +656,12 @@ export class ChatBindingsDialogComponent {
     }
 
     private fillFrom(binding: ChatBinding): void {
+        // Stored errors first: the reset re-checks the flow live and replaces them with the current ones.
+        this.contractErrors.set(binding.contract_errors);
         // reset() reads only the keys the form has; id, public_key and the rest are ignored. The durations are typed
         // in other units than the binding's seconds.
         this.form.reset(binding);
         for (const field of DURATION_FIELDS) this.fillDuration(field, binding[field]);
-        // Set on create and not shown in the settings: out of the checks, so a value saved before a validator was
-        // tightened cannot block a save the user has no field to fix. Still read by the backlog rules and the diff.
-        for (const name of GENERAL_CONTROLS) this.form.controls[name].disable({ emitEvent: false });
     }
 
     // On create, what the user has not filled in yet takes the server's default.

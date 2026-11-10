@@ -50,9 +50,10 @@ const binding = (overrides: Partial<ChatBinding>): ChatBinding => ({
     ...overrides,
 });
 
-// Each displayed name where the user can type it: the bot's only on create (General), the operator's in the settings.
+// Each displayed name where the user can type it: the bot's on create and in the settings, the operator's in the settings.
 const NAME_FIELDS_BY_MODE: [ChatBinding | null, 'bot_display_name' | 'operator_display_name'][] = [
     [null, 'bot_display_name'],
+    [binding({}), 'bot_display_name'],
     [binding({}), 'operator_display_name'],
 ];
 
@@ -202,19 +203,40 @@ describe('ChatBindingsDialogComponent', () => {
         expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { operator_display_name: 'Helpers' });
     });
 
-    it('leaves the General fields out of the settings: fixed, unchecked, and no live check of the flow', () => {
+    it("sends the General fields edited in the settings, the bot name not following the desk's name", () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({ name: 'Sales', graph_id: 6 })));
+        const component = open(binding({ bot_display_name: 'Ava' }));
+        component.form.controls.name.setValue('Sales');
+        expect(component.form.controls.bot_display_name.value).toBe('Ava');
+        component.form.controls.graph_id.setValue(6);
+        component.form.controls.identity_mode.setValue('signed');
+        component.submit();
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', {
+            name: 'Sales',
+            graph_id: 6,
+            identity_mode: 'signed',
+        });
+    });
+
+    it('checks the stored flow again on opening the settings, showing the stored errors until it answers', () => {
+        const check$ = new Subject<ChatContractCheck>();
+        chatApi.checkContract.mockReturnValueOnce(check$);
+        open(binding({ is_active: false, contract_errors: ['end node lacks reply'] }));
+        expect(chatApi.checkContract).toHaveBeenCalledWith(5);
+        expect(text('.bindings-dialog__contract-error')).toEqual(['end node lacks reply']);
+
+        check$.next(contractCheck());
+        fixture.detectChanges();
+        expect(text('.bindings-dialog__contract-error')).toEqual([]);
+    });
+
+    it('checks the contract of a flow picked in the settings live', () => {
         const component = open(binding({}));
-        for (const name of [
-            'name',
-            'bot_display_name',
-            'graph_id',
-            'style',
-            'allowed_origins',
-            'identity_mode',
-        ] as const) {
-            expect(component.form.controls[name].disabled).toBe(true);
-        }
-        expect(chatApi.checkContract).not.toHaveBeenCalled();
+        chatApi.checkContract.mockReturnValueOnce(of(contractCheck(['start node lacks chat_history'])));
+        component.form.controls.graph_id.setValue(6);
+        fixture.detectChanges();
+        expect(chatApi.checkContract).toHaveBeenLastCalledWith(6);
+        expect(text('.bindings-dialog__contract-error')).toEqual(['start node lacks chat_history']);
     });
 
     it('checks the contract of a picked flow live and shows a missing flow as an error', () => {
@@ -412,18 +434,19 @@ describe('ChatBindingsDialogComponent', () => {
         it('lets other edits through when names stored before the rules break them, until such a name is typed in', () => {
             chatApi.updateBinding.mockReturnValue(of(binding({ max_turns: 100 })));
             const stored = around(0x200b);
-            // The bot name has no field in the settings: out of the checks altogether.
             const component = open(binding({ bot_display_name: stored, operator_display_name: stored }));
-            expect(component.form.controls.bot_display_name.disabled).toBe(true);
+            expect(component.form.controls.bot_display_name.valid).toBe(true);
             expect(component.form.controls.operator_display_name.valid).toBe(true);
             component.form.controls.max_turns.setValue(100);
             component.submit();
             expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { max_turns: 100 });
 
-            const control = component.form.controls.operator_display_name;
-            control.markAsDirty();
-            control.setValue(`${stored}!`);
-            expect(control.hasError('publicName')).toBe(true);
+            for (const field of ['bot_display_name', 'operator_display_name'] as const) {
+                const control = component.form.controls[field];
+                control.markAsDirty();
+                control.setValue(`${stored}!`);
+                expect(control.hasError('publicName')).toBe(true);
+            }
         });
 
         it("checks a new desk's names from the start, the bot name taken from the desk name included", () => {
@@ -519,7 +542,7 @@ describe('ChatBindingsDialogComponent', () => {
         );
     });
 
-    it('creates on General alone, without tabs; the settings split into Limits, Handoff and Inactivity', () => {
+    it('creates on General alone, without tabs; the settings open on General, the first of four tabs', () => {
         const host = (): HTMLElement => fixture.nativeElement;
         const visibleTabs = () =>
             Array.from(host().querySelectorAll<HTMLElement>('.bindings-dialog__tab')).map((tab) => !tab.hidden);
@@ -528,14 +551,14 @@ describe('ChatBindingsDialogComponent', () => {
         expect(visibleTabs()).toEqual([true, false, false, false]);
 
         open(binding({}));
-        expect(text('app-tab-button')).toEqual(['Limits', 'Handoff', 'Inactivity']);
-        expect(visibleTabs()).toEqual([false, true, false, false]);
-        (host().querySelectorAll('app-tab-button button')[1] as HTMLButtonElement).click();
+        expect(text('app-tab-button')).toEqual(['General', 'Limits', 'Handoff', 'Inactivity']);
+        expect(visibleTabs()).toEqual([true, false, false, false]);
+        (host().querySelectorAll('app-tab-button button')[2] as HTMLButtonElement).click();
         fixture.detectChanges();
         expect(visibleTabs()).toEqual([false, false, true, false]);
     });
 
-    it('opens the first settings tab with an invalid field on Save', () => {
+    it('opens the first settings tab with an invalid field on Save, General included', () => {
         const component = open(binding({}));
         component.activeTab.set('handoff');
         component.form.controls.daily_token_budget.setValue(null);
@@ -551,6 +574,12 @@ describe('ChatBindingsDialogComponent', () => {
         fixture.detectChanges();
         expect(chatApi.updateBinding).not.toHaveBeenCalled();
         expect(component.activeTab()).toBe('limits');
+
+        component.form.controls.name.setValue('   ');
+        save.click();
+        fixture.detectChanges();
+        expect(chatApi.updateBinding).not.toHaveBeenCalled();
+        expect(component.activeTab()).toBe('general');
     });
 
     describe('style and inactivity rules', () => {
@@ -827,23 +856,47 @@ describe('ChatBindingsDialogComponent', () => {
                 expect(shownEffects()).toEqual([]);
             });
 
+            it('warns that switching to Support closes the conversations silent for longer, on General too', () => {
+                const component = open(binding({ style: 'ongoing', on_response_timeout: 'wait' }));
+                edit(() => radios()[0].click());
+                expect(component.activeTab()).toBe('general');
+                expect(shownEffects()).toEqual(['Conversations with no message for more than 24 hours close.']);
+                expect(
+                    (fixture.nativeElement as HTMLElement)
+                        .querySelector('.bindings-dialog__tab:not([hidden]) .bindings-dialog__backlog .hint-message')
+                        ?.classList.contains('hint-message--warning')
+                ).toBe(true);
+
+                showInactivity(component);
+                expect(shownEffects()).toEqual(['Conversations with no message for more than 24 hours close.']);
+
+                // Back to Ongoing before saving: nothing to warn about.
+                component.activeTab.set('general');
+                edit(() => radios()[1].click());
+                expect(shownEffects()).toEqual([]);
+            });
+
             it('describes Save by the warning while it applies, so it is read before saving from any tab', () => {
                 const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
                 const saveButton = (): HTMLButtonElement =>
                     Array.from(host().querySelectorAll<HTMLButtonElement>('.bindings-dialog__actions button')).find(
                         (button) => button.textContent?.trim() === 'Save'
                     )!;
-                const component = open(binding({}));
+                const component = open(binding({ style: 'ongoing', on_response_timeout: 'wait' }));
                 expect(saveButton().hasAttribute('aria-describedby')).toBe(false);
 
-                edit(() => type(component.form.controls.close_after_hours, 1));
-                // On Limits, where the settings open; the copy it points at is the Inactivity tab's, hidden here.
-                expect(component.activeTab()).toBe('limits');
+                edit(() => component.form.controls.style.setValue('support'));
+                // On General, where the switch was made; the copy it points at is the Inactivity tab's, hidden here.
+                expect(component.activeTab()).toBe('general');
                 const description = document.getElementById(saveButton().getAttribute('aria-describedby')!);
                 expect(description?.textContent).toContain('Applies to this desk');
-                expect(description?.textContent).toContain('Conversations with no message for more than 1 hour close.');
+                expect(description?.textContent).toContain(
+                    'Conversations with no message for more than 24 hours close.'
+                );
+                // One id only, though the warning shows on both tabs.
+                expect(host().querySelectorAll(`[id="${description?.id}"]`)).toHaveLength(1);
 
-                edit(() => type(component.form.controls.close_after_hours, 24));
+                edit(() => component.form.controls.style.setValue('ongoing'));
                 expect(saveButton().hasAttribute('aria-describedby')).toBe(false);
             });
 
@@ -1066,7 +1119,7 @@ describe('ChatBindingsDialogComponent', () => {
         const announcement = (): string | undefined =>
             text('.bindings-dialog__form > [role="alert"]').find((message) => message !== '');
 
-        /** Creates a desk with a bot name, which the server refuses with `body`: only a new desk names its bot. */
+        /** Creates a desk with both names, which the server refuses with `body`. */
         function saveRefused(body: unknown): ChatBindingsDialogComponent {
             chatApi.createBinding.mockReturnValue(refused(body));
             const component = open(null);
