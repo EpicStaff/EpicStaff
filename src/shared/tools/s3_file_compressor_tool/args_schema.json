@@ -1,0 +1,23 @@
+{
+  "title": "S3FileCompressorArgs",
+  "type": "object",
+  "properties": {
+    "input_path": {
+      "type": "string",
+      "description": "S3 file or folder to compress. A folder is archived recursively: zip members are relative to it, tar members sit under a top-level directory named after it."
+    },
+    "output_path": {
+      "type": "string",
+      "description": "S3 path of the archive to write. Must end with the format's extension. Defaults to next to the input, named <base name><extension>."
+    },
+    "overwrite": {
+      "type": "boolean",
+      "description": "Replace the archive if output_path already exists. Defaults to false."
+    },
+    "format": {
+      "type": "string",
+      "description": "Archive format: 'zip' (default), 'tar', 'tar.gz', 'tar.bz2' or 'tar.xz'."
+    }
+  },
+  "required": ["input_path"]
+}

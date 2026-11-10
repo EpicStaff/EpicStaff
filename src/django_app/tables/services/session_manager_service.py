@@ -306,7 +306,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         callback sender; validated by the caller.
 
         Once crew has received the session, nothing raises: the run is live, and a caller
-        retrying the error (the fanout tool retries a 5xx) would start it a second time.
+        retrying the error would start it a second time.
 
         Raises:
             RunAdmissionRefusedError: The run is refused. Before the session is created,
