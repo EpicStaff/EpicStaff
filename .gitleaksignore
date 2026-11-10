@@ -1,0 +1,13 @@
+# Findings of the gitleaks scan that are not secrets. One fingerprint per line, as
+# `<file>:<rule>:<line>`, without the commit sha, so an entry still matches after a
+# rebase or squash merge. Say why each one is not a secret.
+
+# A made-up key the sandbox tests pass as a job secret, to check that the sandbox
+# masks it in what the user's code prints and in the failure it reports.
+src/sandbox_new/tests/integration/test_submit_to_result.py:generic-api-key:430
+src/sandbox_new/tests/worker/application/test_execution_orchestrator.py:generic-api-key:109
+src/sandbox_new/tests/worker/infrastructure/test_code_wrapper.py:generic-api-key:1016
+
+# `key_type=ApiKey.KeyType.SYSTEM` in a Django query: an enum member, not a key.
+src/django_app/rbac/identity/api_keys/system_key.py:generic-api-key:56
+src/django_app/tests/api_tests/test_api_keys.py:generic-api-key:176
