@@ -17,11 +17,11 @@ except ImportError:
 from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
 from infrastructure.providers.factory import RealtimeAgentClientFactory
 from src.shared.models import RealtimeAgentChatData
+from src.shared.voice_recording import WAV_HEADER_FORMAT
 
 from application.tool_manager_service import ToolManagerService
 
 MIN_CHUNK_SIZE = 2000
-DEFAULT_MAX_CALL_DURATION_SECONDS = 1800  # 30 min metering ceiling
 
 
 def _build_ulaw_wav(raw_ulaw: bytes, sample_rate: int = 8000) -> bytes:
@@ -35,7 +35,7 @@ def _build_ulaw_wav(raw_ulaw: bytes, sample_rate: int = 8000) -> bytes:
     chunk_size = 36 + data_size
 
     header = struct.pack(
-        "<4sI4s4sIHHIIHH4sI",
+        WAV_HEADER_FORMAT,
         b"RIFF",
         chunk_size,
         b"WAVE",
@@ -51,6 +51,40 @@ def _build_ulaw_wav(raw_ulaw: bytes, sample_rate: int = 8000) -> bytes:
         data_size,
     )
     return header + raw_ulaw
+
+
+class _RecordingBuffer:
+    """One call direction's raw audio, capped so its WAV file stays within the recording limit.
+
+    django_app refuses a recording above that limit, which would lose the whole recording;
+    past the cap the rest of the direction's audio is dropped instead, with one warning.
+    """
+
+    def __init__(self, recording_type: str, max_audio_bytes: int):
+        self.recording_type = recording_type
+        self._max_audio_bytes = max_audio_bytes
+        self._chunks: list[bytes] = []
+        self._size = 0
+        self._truncated = False
+
+    def append(self, audio: bytes) -> None:
+        room = self._max_audio_bytes - self._size
+        if len(audio) > room:
+            if not self._truncated:
+                self._truncated = True
+                logger.warning(
+                    "{} recording reached {} bytes of audio; the rest of the call is not recorded",
+                    self.recording_type,
+                    self._max_audio_bytes,
+                )
+            # µ-law is one byte per sample, so any cut lands on a sample boundary.
+            audio = audio[:room]
+        if audio:
+            self._chunks.append(audio)
+            self._size += len(audio)
+
+    def audio(self) -> bytes:
+        return b"".join(self._chunks)
 
 
 class VoiceCallService:
@@ -71,7 +105,9 @@ class VoiceCallService:
         django_api_base_url: str,
         django_api_key: str = "",
         initial_message: dict | None = None,
-        max_call_duration_seconds: int = DEFAULT_MAX_CALL_DURATION_SECONDS,
+        *,
+        max_call_duration_seconds: float,
+        max_recording_audio_bytes: int,
     ):
         self.twilio_ws = twilio_ws
         self.realtime_agent_chat_data = realtime_agent_chat_data
@@ -89,8 +125,10 @@ class VoiceCallService:
 
         self._start_time: float = time.monotonic()
         self._end_reason: str = "completed"
-        self._inbound_chunks: list[bytes] = []  # user audio (µ-law 8kHz from Twilio)
-        self._outbound_chunks: list[bytes] = []  # agent audio (µ-law 8kHz to Twilio)
+        # User audio, µ-law 8 kHz from Twilio.
+        self._inbound_recording = _RecordingBuffer("inbound", max_recording_audio_bytes)
+        # Agent audio, µ-law 8 kHz to Twilio.
+        self._outbound_recording = _RecordingBuffer("outbound", max_recording_audio_bytes)
 
     async def execute(self):
         self.tool_manager_service.register_tools_from_rt_agent_chat_data(
@@ -192,7 +230,7 @@ class VoiceCallService:
         elif event == "media":
             payload = data["media"]["payload"]
             chunk = base64.b64decode(payload)
-            self._inbound_chunks.append(chunk)
+            self._inbound_recording.append(chunk)
             self.audio_accumulator.extend(chunk)
 
             if len(self.audio_accumulator) >= MIN_CHUNK_SIZE:
@@ -220,7 +258,7 @@ class VoiceCallService:
         if event_type == "response.audio.delta":
             try:
                 audio_bytes = base64.b64decode(data["delta"])
-                self._outbound_chunks.append(audio_bytes)
+                self._outbound_recording.append(audio_bytes)
                 await self._send_audio_to_twilio(audio_bytes)
             except Exception as e:
                 logger.error(f"Error processing audio delta: {e}")
@@ -258,18 +296,14 @@ class VoiceCallService:
         """Write WAV files and POST metadata to the Django API."""
         connection_key = self.realtime_agent_chat_data.connection_key
 
-        for recording_type, chunks in [
-            ("inbound", self._inbound_chunks),
-            ("outbound", self._outbound_chunks),
-        ]:
-            if not chunks:
+        for recording in (self._inbound_recording, self._outbound_recording):
+            raw = recording.audio()
+            if not raw:
                 continue
-            raw = b"".join(chunks)
-            wav_bytes = _build_ulaw_wav(raw)
             await self._post_recording(
                 connection_key=connection_key,
-                recording_type=recording_type,
-                wav_bytes=wav_bytes,
+                recording_type=recording.recording_type,
+                wav_bytes=_build_ulaw_wav(raw),
                 duration=duration,
             )
 
@@ -307,8 +341,12 @@ class VoiceCallService:
                     timeout=30.0,
                 )
                 if not resp.is_success:
-                    logger.warning(
-                        f"Failed to save {recording_type} recording: {resp.status_code} {resp.text}"
+                    # Nothing retries the upload: a refused recording is lost.
+                    logger.error(
+                        "Failed to save {} recording: {} {}",
+                        recording_type,
+                        resp.status_code,
+                        resp.text,
                     )
                 else:
                     logger.info(f"Saved {recording_type} recording for {connection_key}")

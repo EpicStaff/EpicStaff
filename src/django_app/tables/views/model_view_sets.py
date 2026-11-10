@@ -2129,6 +2129,8 @@ class ConversationRecordingViewSet(
       SYSTEM key itself is the authorization check); a self-issued USER key
       still goes through the normal org check, so it cannot attach a
       recording to another org's chat by guessing a `connection_key`.
+
+    Every caller's file is checked by `ConversationRecordingSerializer.validate_file`.
     """
 
     queryset = ConversationRecording.objects.all()

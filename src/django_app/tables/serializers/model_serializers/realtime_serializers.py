@@ -1,4 +1,5 @@
 from agents.models.agent_models import AgentDefinition
+from django.conf import settings
 from django.core.validators import RegexValidator
 from rbac.authorship import (
     OMIT_AUTHORSHIP_CONTEXT_KEY,
@@ -396,6 +397,15 @@ class RealtimeChannelInternalSerializer(RealtimeChannelSerializer):
         super().__init__(*args, **kwargs)
 
 
+def _has_wav_header(file) -> bool:
+    file.seek(0)
+    prefix = file.read(12)
+    # Rewound so the storage backend saves the file from its first byte.
+    file.seek(0)
+    # A WAV file opens with b"RIFF", a 4-byte chunk size, then b"WAVE".
+    return prefix[:4] == b"RIFF" and prefix[8:12] == b"WAVE"
+
+
 class ConversationRecordingSerializer(serializers.ModelSerializer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -413,6 +423,16 @@ class ConversationRecordingSerializer(serializers.ModelSerializer):
         model = ConversationRecording
         fields = "__all__"
         read_only_fields = ["file_size", "audio_format", "created_at"]
+
+    def validate_file(self, file):
+        """Accept only a WAV file no larger than a recording of the longest allowed call."""
+        if file.size > settings.MAX_RECORDING_BYTES:
+            raise serializers.ValidationError(
+                f"A recording may be at most {settings.MAX_RECORDING_BYTES} bytes."
+            )
+        if not _has_wav_header(file):
+            raise serializers.ValidationError("A recording must be a WAV file.")
+        return file
 
 
 class RealtimeAgentReadSerializer(serializers.ModelSerializer):
