@@ -1,13 +1,22 @@
-"""The migrations build exactly the models' schema on an empty database, and tear it down again.
+"""The migrations build exactly the models' schema on an empty database, tear it down again, and fill
+what they add to the rows already there.
 
 Sync on purpose: alembic's env.py runs its own event loop.
 """
+
+from dataclasses import fields
+from datetime import timedelta
+from enum import StrEnum
 
 import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
+from common.utils import new_id, utcnow
+from domain.enums import CloseReason
+from psycopg.types.json import Jsonb
 from tests.conftest import SERVICE_ROOT
+from tests.factories import make_binding, make_closed, make_conversation
 
 
 @pytest.fixture
@@ -130,3 +139,88 @@ def test_head_builds_the_models_schema_from_empty_and_base_removes_it(database):
         with psycopg.connect(url) as connection:
             assert _tables(connection) == {"alembic_version"}, attempt
             assert _statistics(connection) == {}, attempt
+
+
+# ---- 0003: when the current holder took the conversation ---------------------------------------
+
+def _insert(connection, table: str, record, *, exclude: tuple[str, ...] = ()) -> None:
+    """Insert a domain object as a row, as raw SQL: the models describe the head schema, not this revision's."""
+    values = {
+        field.name: Jsonb(value) if isinstance(value, (list, dict)) else str(value) if isinstance(value, StrEnum) else value
+        for field in fields(record)
+        if field.name not in exclude
+        for value in (getattr(record, field.name),)
+    }
+    columns = ", ".join(values)
+    placeholders = ", ".join(f"%({name})s" for name in values)
+    connection.execute(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", values)
+
+
+def _event(connection, conversation, type: str, payload: dict, at, stream: str = "conversation") -> None:
+    connection.execute(
+        "INSERT INTO conversation_event (id, stream, conversation_id, org_id, type, payload, created_at)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (new_id(), stream, conversation.id, conversation.org_id, type, Jsonb(payload), at),
+    )
+
+
+def _mode_changed(connection, conversation, mode: str, at, stream: str = "conversation") -> None:
+    _event(connection, conversation, "mode.changed", {"mode": mode}, at, stream)
+
+
+def _claimed_at(url) -> dict:
+    with psycopg.connect(url) as connection:
+        return dict(connection.execute("SELECT id, claimed_at FROM conversation").fetchall())
+
+
+def test_0003_backfills_the_claim_of_every_held_conversation_and_no_other(database):
+    config, url = database
+    command.upgrade(config, "0002")
+    handed_off_at = utcnow() - timedelta(hours=3)
+    first_claim_at, last_claim_at = handed_off_at + timedelta(hours=1), handed_off_at + timedelta(hours=2)
+    binding = make_binding()
+    with_claim_event = make_conversation(binding, mode="human", handoff_at=handed_off_at)
+    events_pruned = make_closed(binding, CloseReason.RESOLVED, mode="human", handoff_at=handed_off_at)
+    queued = make_conversation(binding, mode="awaiting_human", handoff_at=handed_off_at)
+    with_bot = make_conversation(binding)
+    with psycopg.connect(url) as connection:
+        _insert(connection, "binding", binding)
+        for conversation in (with_claim_event, events_pruned, queued, with_bot):
+            _insert(connection, "conversation", conversation, exclude=("claimed_at",))
+        _mode_changed(connection, with_claim_event, "awaiting_human", handed_off_at)
+        _mode_changed(connection, with_claim_event, "human", first_claim_at)
+        _mode_changed(connection, with_claim_event, "human", last_claim_at)
+        # The operator's reply after the claim is the conversation's latest event, not a claim.
+        replied_at = last_claim_at + timedelta(minutes=5)
+        reply = {"id": str(new_id()), "role": "operator", "content": "Hi", "actions": None, "action": None, "visible_name": "Support", "created_at": replied_at.isoformat()}
+        _event(connection, with_claim_event, "message.created", reply, replied_at)
+        # Only the conversation stream counts.
+        _mode_changed(connection, events_pruned, "human", last_claim_at, stream="inbox")
+    command.upgrade(config, "head")
+    assert _claimed_at(url) == {
+        with_claim_event.id: last_claim_at,  # the latest claim the events still record
+        events_pruned.id: handed_off_at,  # no claim event left: the hand-off
+        queued.id: None,
+        with_bot.id: None,
+    }
+
+
+def test_0003_rerun_after_a_failed_backfill_fills_only_the_claims_still_missing(database):
+    config, url = database
+    command.upgrade(config, "0002")
+    handed_off_at = utcnow() - timedelta(hours=3)
+    binding = make_binding()
+    already_filled, still_missing = (make_conversation(binding, mode="human", handoff_at=handed_off_at) for _ in range(2))
+    with psycopg.connect(url) as connection:
+        _insert(connection, "binding", binding)
+        for conversation in (already_filled, still_missing):
+            _insert(connection, "conversation", conversation, exclude=("claimed_at",))
+    command.upgrade(config, "head")
+    # A backfill that stopped part way: the column is there, one claim set, and no version stamp.
+    filled_at = handed_off_at + timedelta(minutes=30)
+    with psycopg.connect(url) as connection:
+        connection.execute("UPDATE conversation SET claimed_at = %s WHERE id = %s", (filled_at, already_filled.id))
+        connection.execute("UPDATE conversation SET claimed_at = NULL WHERE id = %s", (still_missing.id,))
+    command.stamp(config, "0002")
+    command.upgrade(config, "head")
+    assert _claimed_at(url) == {already_filled.id: filled_at, still_missing.id: handed_off_at}

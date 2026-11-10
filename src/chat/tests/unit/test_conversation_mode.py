@@ -163,3 +163,37 @@ def test_operator_ids_are_the_holder_and_the_last_author():
     assert make_conversation(BINDING).operator_ids == set()
     assert make_conversation(BINDING, mode="human", assigned_operator_id=2, last_message_author_user_id=7).operator_ids == {2, 7}
     assert make_conversation(BINDING, mode="human", assigned_operator_id=2, last_message_author_user_id=2).operator_ids == {2}
+
+
+# ---- who holds it, and since when ---------------------------------------------------------------
+
+def test_a_claim_straight_from_the_bot_is_claimed_and_handed_off_now():
+    conversation = make_conversation(BINDING)
+    conversation.claim(7, NOW)
+    assert (conversation.mode, conversation.assigned_operator_id, conversation.claimed_at, conversation.handoff_at) == (Mode.HUMAN, 7, NOW, NOW)
+
+
+def test_a_claim_from_the_queue_is_claimed_now_and_keeps_the_hand_off():
+    conversation = make_conversation(BINDING, mode="awaiting_human", handoff_at=EARLIER)
+    conversation.claim(7, NOW)
+    assert (conversation.mode, conversation.assigned_operator_id, conversation.claimed_at, conversation.handoff_at) == (Mode.HUMAN, 7, NOW, EARLIER)
+
+
+@pytest.mark.parametrize(("operator_id", "claimed_at"), [(8, NOW), (7, EARLIER)], ids=["another operator takes it over", "the holder claims again"])
+def test_only_a_new_holder_restarts_the_claim(operator_id, claimed_at):
+    conversation = make_conversation(BINDING, mode="human", assigned_operator_id=7, handoff_at=EARLIER, claimed_at=EARLIER)
+    conversation.claim(operator_id, NOW)
+    assert (conversation.assigned_operator_id, conversation.claimed_at, conversation.handoff_at) == (operator_id, claimed_at, EARLIER)
+
+
+def test_a_claim_drops_the_late_reply_of_a_released_run():
+    conversation = make_conversation(BINDING, mode="awaiting_human", late_reply_run_id=new_id())
+    conversation.claim(7, NOW)
+    assert conversation.late_reply_run_id is None
+
+
+@pytest.mark.parametrize("source", ["awaiting_human", "human"])
+def test_returning_to_the_bot_clears_the_claim(source):
+    conversation = make_conversation(BINDING, mode=source)
+    conversation.return_to_bot(NOW)
+    assert (conversation.assigned_operator_id, conversation.claimed_at) == (None, None)

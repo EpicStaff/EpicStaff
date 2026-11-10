@@ -68,6 +68,7 @@ def conversation_summary(conversation: Conversation, names: Mapping[int, str]) -
         "last_message_author_name": names.get(conversation.last_message_author_user_id),
         "handoff_reason": conversation.handoff_reason,
         "handoff_at": _isoformat(conversation.handoff_at),
+        "claimed_at": _isoformat(conversation.claimed_at),
         "visitor_waiting_since": _isoformat(conversation.visitor_waiting_since),
         "status": conversation.status.value,
         "close_reason": conversation.close_reason.value if conversation.close_reason else None,

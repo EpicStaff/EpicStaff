@@ -281,6 +281,9 @@ async def test_claim_stops_run_release_and_reply(client, people, django, uow_fac
     assert claimed.status_code == 200 and claimed.json()["mode"] == "human" and claimed.json()["assigned_operator_id"] == 2
     taken_over_at = await _stored_handoff_at(uow_factory, conversation_id)
     assert taken_over_at is not None and datetime.fromisoformat(claimed.json()["handoff_at"]) == taken_over_at
+    # Taken straight from the bot: joined at the hand-off.
+    assert await _stored_claim(uow_factory, conversation_id) == (2, taken_over_at)
+    assert datetime.fromisoformat(claimed.json()["claimed_at"]) == taken_over_at
     assert django.stopped == [100]
     state = (await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=visitor)).json()
     # The conversation part of the state; the desk's features and limits are covered by the public API tests.
@@ -293,6 +296,10 @@ async def test_claim_stops_run_release_and_reply(client, people, django, uow_fac
     forced = await client.post(f"{BASE}/conversations/{conversation_id}/claim", json={"force": True}, headers=h("admin"))
     assert forced.status_code == 200 and forced.json()["assigned_operator_id"] == 1
     assert await _stored_handoff_at(uow_factory, conversation_id) == taken_over_at
+    # The new holder joined now; the hand-off stays.
+    holder, taken_from_agent_at = await _stored_claim(uow_factory, conversation_id)
+    assert holder == 1 and taken_from_agent_at > taken_over_at
+    assert datetime.fromisoformat(forced.json()["claimed_at"]) == taken_from_agent_at
 
     reply = await client.post(f"{BASE}/conversations/{conversation_id}/messages", json={"content": "Hi, admin here"}, headers=h("admin"))
     assert reply.status_code == 201 and reply.json()["role"] == "operator"
@@ -304,6 +311,7 @@ async def test_claim_stops_run_release_and_reply(client, people, django, uow_fac
     released = await client.post(f"{BASE}/conversations/{conversation_id}/release", headers=h("admin"))
     assert released.status_code == 200 and released.json()["mode"] == "bot" and released.json()["assigned_operator_id"] is None
     assert released.json()["handoff_at"] is None and await _stored_handoff_at(uow_factory, conversation_id) is None
+    assert released.json()["claimed_at"] is None and await _stored_claim(uow_factory, conversation_id) == (None, None)
     again = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "bot?"}, headers=visitor)
     assert again.json()["state"] == "processing"
     async with uow_factory() as uow:
@@ -315,10 +323,13 @@ async def test_claim_stops_run_release_and_reply(client, people, django, uow_fac
     updates = [e.payload for e in inbox if e.type == "conversation.updated" and e.conversation_id == UUID(conversation_id)]
     assert 2 in [u["assigned_operator_id"] for u in updates]  # the first claim, by the caller
     # The inbox row is a full conversation row: the frontend upserts it without a refetch.
-    assert {"tokens_used", "turns", "tokens_today", "turns_today", "handoff_reason", "is_test", "handoff_at"} <= updates[-1].keys()
-    assert updates[-1]["handoff_at"] is None  # released back to the bot
+    assert {"tokens_used", "turns", "tokens_today", "turns_today", "handoff_reason", "is_test", "handoff_at", "claimed_at"} <= updates[-1].keys()
+    assert updates[-1]["handoff_at"] is None and updates[-1]["claimed_at"] is None  # released back to the bot
     first_claim = next(u for u in updates if u["assigned_operator_id"] == 2)
     assert datetime.fromisoformat(first_claim["handoff_at"]) == taken_over_at
+    assert datetime.fromisoformat(first_claim["claimed_at"]) == taken_over_at
+    forced_claim = next(u for u in updates if u["assigned_operator_id"] == 1)
+    assert datetime.fromisoformat(forced_claim["claimed_at"]) == taken_from_agent_at
     run_body = [r for r in django.requests if r.url.path == "/api/run-session/"][-1]
     import json as json_module
 
@@ -578,12 +589,23 @@ async def test_claiming_an_awaiting_conversation_keeps_its_place(client, people,
     claimed = await client.post(f"{BASE}/conversations/{waiting.id}/claim", json={}, headers=h("agent"))
     assert claimed.status_code == 200 and claimed.json()["mode"] == "human"
     async with uow_factory() as uow:
-        assert (await uow.conversations.get(waiting.id)).handoff_at == waiting.handoff_at
+        stored = await uow.conversations.get(waiting.id)
+    assert stored.handoff_at == waiting.handoff_at
+    # Joined at the claim, not at the hand-off it queued by.
+    assert stored.claimed_at > waiting.handoff_at
+    assert datetime.fromisoformat(claimed.json()["claimed_at"]) == stored.claimed_at
 
 
 async def _stored_handoff_at(uow_factory, conversation_id):
     async with uow_factory() as uow:
         return (await uow.conversations.get(UUID(conversation_id))).handoff_at
+
+
+async def _stored_claim(uow_factory, conversation_id):
+    """The stored (holder, claimed_at)."""
+    async with uow_factory() as uow:
+        stored = await uow.conversations.get(UUID(conversation_id))
+    return stored.assigned_operator_id, stored.claimed_at
 
 
 # ---- binding limits ----------------------------------------------------------------------------
@@ -1680,6 +1702,7 @@ async def test_closing_one_another_operator_holds_takes_force_and_keeps_the_hold
     assert (await client.get(f"{BASE}/conversations/{theirs.id}", headers=h("admin"))).json()["status"] == "open"
     forced = (await client.post(_close(theirs.id), json={"force": True}, headers=h("admin"))).json()
     assert (forced["status"], forced["closed_by_user_id"], forced["assigned_operator_id"], forced["mode"]) == ("closed", 1, 2, "human")
+    assert datetime.fromisoformat(forced["claimed_at"]) == theirs.claimed_at  # a close keeps when the holder joined
     own = await client.post(_close(mine.id), json={}, headers=h("admin"))  # one's own needs no force
     assert (own.status_code, own.json()["closed_by_user_id"]) == (200, 1)
 

@@ -329,6 +329,12 @@ class ConversationOutput(BaseSchema):
     handoff_at: datetime | None = Field(
         description="When it last left bot mode; null in bot mode. The human section queues by it."
     )
+    claimed_at: datetime | None = Field(
+        description="When the current holder took it; null while nobody holds it. A take over by "
+        "another operator restarts it, a return to the bot clears it and a close keeps it. A "
+        "conversation the previous release claimed or released during an upgrade may have it "
+        "null while held, or still set while nobody holds it."
+    )
     visitor_waiting_since: datetime | None = Field(
         description="Since when the visitor has waited for a person: set by a hand-off or by a "
         "visitor message after the last operator reply, cleared by an operator reply, a return "
