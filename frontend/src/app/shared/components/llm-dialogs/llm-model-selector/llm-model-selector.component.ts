@@ -1,36 +1,31 @@
-import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
-import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
-import { ComponentType, TemplatePortal } from '@angular/cdk/portal';
-import { UpperCasePipe } from '@angular/common';
+import { ComponentType } from '@angular/cdk/portal';
 import {
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
-    ElementRef,
     forwardRef,
     inject,
     input,
     model,
     output,
     signal,
-    TemplateRef,
-    ViewChild,
-    ViewContainerRef,
 } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
 import { LLMLibraryService, ProviderWithModels } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
-import { filter } from 'rxjs';
 
-import { TooltipOnOverflowDirective } from '../../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
-import { TooltipComponent } from '../../tooltip/tooltip.component';
+import {
+    GroupedPickerComponent,
+    GroupedPickerGroup,
+    GroupedPickerItem,
+    GroupedPickerKey,
+} from '../../grouped-picker/grouped-picker.component';
 import { CreateEmbeddingModelModalComponent } from '../create-embedding-model-modal/create-embedding-model-modal.component';
 import { CreateLlmModelModalComponent } from '../create-llm-model-modal/create-llm-model-modal.component';
 import { CreateRealtimeModelModalComponent } from '../create-realtime-model-modal/create-realtime-model-modal.component';
@@ -49,20 +44,18 @@ const TOP_PROVIDERS = [
     'huggingface',
 ];
 
+interface ModelItem extends GroupedPickerItem {
+    model: LLMModel;
+    provider: LLMProvider;
+}
+
+interface ModelGroup extends GroupedPickerGroup<ModelItem> {
+    provider: LLMProvider;
+}
+
 @Component({
     selector: 'app-llm-model-selector',
-    imports: [
-        CdkTrapFocus,
-        MatTooltip,
-        FormsModule,
-        OverlayModule,
-        AppSvgIconComponent,
-        TooltipComponent,
-        UpperCasePipe,
-        ButtonComponent,
-        IconButtonComponent,
-        TooltipOnOverflowDirective,
-    ],
+    imports: [AppSvgIconComponent, ButtonComponent, IconButtonComponent, GroupedPickerComponent],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -78,12 +71,6 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
     private llmLibraryService = inject(LLMLibraryService);
     private dialog = inject(Dialog);
     private readonly destroyRef = inject(DestroyRef);
-    private overlayRef!: OverlayRef;
-    private overlay = inject(Overlay);
-    private overlayPositionBuilder = inject(OverlayPositionBuilder);
-    private vcr = inject(ViewContainerRef);
-    // Disposing the overlay also completes its event streams; the subscriptions end with the component too.
-    private readonly disposeOverlayOnDestroy = this.destroyRef.onDestroy(() => this.overlayRef?.dispose());
 
     placeholder = input<string>('Select LLM model');
     icon = input<string>('help_outline');
@@ -92,15 +79,10 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
     tooltipText = input<string>('');
     provider = input.required<ModelTypes>();
 
-    searchQuery = signal('');
     selectedValue = model<number | null>(null);
     modelChanged = output<{ model: LLMModel; provider: LLMProvider }>();
 
-    readonly COLLAPSED_COUNT = 3;
-
-    open = signal(false);
     isDisabled = signal(false);
-    expandedProviders = signal<Set<number>>(new Set());
 
     modelsResource = rxResource({
         params: () => ({
@@ -142,123 +124,35 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
         return !!model?.predefined && !model?.is_visible;
     });
 
-    filteredProviders = computed(() => {
-        const query = this.searchQuery().toLowerCase().trim();
-        const providers = this.sortedProvidersWithModels();
+    protected readonly groups = computed<ModelGroup[]>(() =>
+        this.sortedProvidersWithModels().map(({ provider, models }) => ({
+            id: provider.id,
+            name: provider.name,
+            icon: getProviderIconPath(provider.name),
+            provider,
+            items: models.map((model) => ({
+                id: model.id,
+                name: model.name,
+                disabled: model.predefined && !model.is_visible,
+                dimmed: model.is_visible === false,
+                model,
+                provider,
+            })),
+        }))
+    );
 
-        if (!query) {
-            return providers;
-        }
-
-        return providers
-            .map((p) => {
-                const providerMatches = p.provider.name.toLowerCase().includes(query);
-                if (providerMatches) return p;
-
-                const matchingModels = p.models.filter((m) => m.name.toLowerCase().includes(query));
-                if (matchingModels.length > 0) {
-                    return { ...p, models: matchingModels };
-                }
-
-                return null;
-            })
-            .filter((p): p is ProviderWithModels<LLMModel> => p !== null);
+    protected readonly selectedKey = computed<GroupedPickerKey | null>(() => {
+        const info = this.selectedModelInfo();
+        return info ? { groupId: info.provider.id, itemId: info.model.id } : null;
     });
 
-    @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLButtonElement>;
-    @ViewChild('dropdownTemplate') dropdownTemplate!: TemplateRef<unknown>;
-
     private onChange: (value: number | null) => void = () => {};
-    private onTouched: () => void = () => {};
-
-    toggle(): void {
-        this.open() ? this.close() : this.openDropdown();
-    }
-
-    openDropdown(): void {
-        if (!this.overlayRef) {
-            const positionStrategy = this.overlayPositionBuilder
-                .flexibleConnectedTo(this.triggerBtn)
-                .withPositions([
-                    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
-                ])
-                .withPush(true);
-
-            this.overlayRef = this.overlay.create({
-                positionStrategy,
-                scrollStrategy: this.overlay.scrollStrategies.reposition(),
-                hasBackdrop: true,
-                backdropClass: 'transparent-backdrop',
-                width: this.triggerBtn.nativeElement.offsetWidth,
-            });
-
-            this.overlayRef
-                .backdropClick()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe(() => this.close());
-            this.overlayRef
-                .keydownEvents()
-                .pipe(
-                    filter((event) => event.key === 'Escape'),
-                    takeUntilDestroyed(this.destroyRef)
-                )
-                .subscribe(() => this.close());
-        }
-
-        const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
-        this.overlayRef.attach(portal);
-        this.open.set(true);
-    }
-
-    close(): void {
-        if (this.overlayRef) this.overlayRef.detach();
-        this.onTouched();
-        this.open.set(false);
-    }
-
-    getProviderIcon(providerName: string): string {
-        return getProviderIconPath(providerName);
-    }
-
-    onSearchChange(event: Event): void {
-        const target = event.target as HTMLInputElement;
-        this.searchQuery.set(target.value);
-    }
+    protected onTouched: () => void = () => {};
 
     selectModel(model: LLMModel, provider: LLMProvider): void {
         this.selectedValue.set(model.id);
         this.onChange(model.id);
         this.modelChanged.emit({ model, provider });
-        this.close();
-    }
-
-    isModelSelected(modelId: number): boolean {
-        return this.selectedValue() === modelId;
-    }
-
-    getVisibleModels(group: ProviderWithModels<LLMModel>): LLMModel[] {
-        const models = group.models as LLMModel[];
-        if (this.searchQuery().trim() || this.expandedProviders().has(group.provider.id)) {
-            return models;
-        }
-        return models.slice(0, this.COLLAPSED_COUNT);
-    }
-
-    isCollapsible(group: ProviderWithModels<LLMModel>): boolean {
-        return group.models.length > this.COLLAPSED_COUNT && !this.searchQuery().trim();
-    }
-
-    hiddenCount(group: ProviderWithModels<LLMModel>): number {
-        return group.models.length - this.COLLAPSED_COUNT;
-    }
-
-    toggleExpand(providerId: number): void {
-        this.expandedProviders.update((set) => {
-            const next = new Set(set);
-            next.has(providerId) ? next.delete(providerId) : next.add(providerId);
-            return next;
-        });
     }
 
     openEditModal(model: LLMModel, provider: LLMProvider): void {

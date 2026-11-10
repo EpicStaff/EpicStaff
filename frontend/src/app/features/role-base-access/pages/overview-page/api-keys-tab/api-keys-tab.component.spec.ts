@@ -159,7 +159,11 @@ describe('ApiKeysTabComponent', () => {
             requestedOrgIds(null);
             fixture.detectChanges();
 
-            expect(fixture.nativeElement.querySelector('.toolbar app-multi-select')).toBeNull();
+            // The column picker is a multi-select too, but lists columns, not organizations.
+            const dropDowns = Array.from<HTMLElement>(
+                fixture.nativeElement.querySelectorAll('.toolbar app-multi-select')
+            ).filter((dropDown) => !dropDown.closest('app-table-column-picker'));
+            expect(dropDowns).toEqual([]);
         });
     });
 });

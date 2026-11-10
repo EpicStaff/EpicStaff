@@ -1,6 +1,19 @@
 from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
 
 
+def _submitted_account(request, view) -> str:
+    """Return the account a login request names, normalized, or "" for none.
+
+    Read from the body field named by the view's `throttle_account_field`:
+    the field whose password the view checks. Any other field would let a
+    caller name the target in one field and rotate the counted value in
+    another.
+    """
+    account_field = getattr(view, "throttle_account_field", None)
+    raw = request.data.get(account_field) if account_field else None
+    return raw.lower().strip() if isinstance(raw, str) else ""
+
+
 class LoginThrottle(SimpleRateThrottle):
     """
     Throttle for credential-accepting endpoints (LoginView, SwaggerTokenView,
@@ -14,15 +27,17 @@ class LoginThrottle(SimpleRateThrottle):
 
     It does not limit an IP that rotates emails (password spraying): every new
     email is a fresh bucket. `LoginIpThrottle` covers that, and both login
-    views apply both. `PasswordChangeRequestView`'s body has no email, so
-    there the key is the IP alone.
+    views apply both.
+
+    The email comes from `_submitted_account`. A view without
+    `throttle_account_field` (`PasswordChangeRequestView`, whose account is
+    the caller) is keyed on the IP alone, whatever the body holds.
     """
 
     scope = "login"
 
     def get_cache_key(self, request, view):
-        raw = request.data.get("email") or request.data.get("username") or ""
-        email = raw.lower().strip() if isinstance(raw, str) else ""
+        email = _submitted_account(request, view)
         ip = self.get_ident(request)
         ident = f"{ip}|{email}" if email else ip
         return self.cache_format % {"scope": self.scope, "ident": ident}
@@ -48,11 +63,38 @@ class LoginIpThrottle(AnonRateThrottle):
     since the refresh cookie keeps the session alive, so 20/min leaves an
     office behind one NAT room for a morning burst of logins and the odd
     mistyped password, while a single IP is held to four accounts' worth of
-    the per-account budget per minute instead of an unbounded number. It also
+    the `ip|email` budget per minute instead of an unbounded number. It also
     bounds the password-hashing work one IP can make the server do.
     """
 
     scope = "login_ip"
+
+
+class LoginAccountThrottle(SimpleRateThrottle):
+    """
+    Per-account throttle for LoginView and SwaggerTokenView, applied alongside
+    `LoginThrottle` and `LoginIpThrottle`.
+
+    Both of those include the caller's IP, so many addresses together could
+    guess one account's password without limit. Keyed on the email alone, this
+    caps the guesses against one account from everywhere. The email is counted
+    as submitted, registered or not, so its 429 says nothing about which
+    accounts exist. A request naming no account is left to the other two.
+
+    Trade-off: anyone can use the bucket up and keep that account from logging
+    in until the window passes; a password-reset link still works. Hence a
+    budget per hour (`login_account` scope, default 30/hour, env var
+    `DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE`) rather than a lockout that needs an
+    administrator to lift.
+    """
+
+    scope = "login_account"
+
+    def get_cache_key(self, request, view):
+        email = _submitted_account(request, view)
+        if not email:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": email}
 
 
 class PasswordResetRequestThrottle(SimpleRateThrottle):

@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from utils.logger import logger
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.access.principals import user_api_key_org_id
@@ -54,6 +55,7 @@ from rbac.serializers.auth import (
     TokenIntrospectRequestSerializer,
 )
 from rbac.throttles import (
+    LoginAccountThrottle,
     LoginIpThrottle,
     LoginThrottle,
     PasswordResetConfirmThrottle,
@@ -83,9 +85,36 @@ def _require_json_body(request) -> None:
         raise UnsupportedMediaType(request.content_type)
 
 
+# The longest valid email address; anything longer is cut so one request
+# cannot write megabytes into the log.
+_LOGGED_ACCOUNT_MAX_LENGTH = 254
+
+
+def _log_failed_login(request, email) -> None:
+    """Record a refused login with the account it named and the caller's address.
+
+    The address is resolved the way the login throttles resolve it, so the log
+    line matches the bucket that counts the attempt. `!r` keeps a submitted
+    value with line breaks on one log line.
+
+    The account is logged as typed, so a password typed into the email field
+    lands in the log. Accepted: naming the targeted account is the point of
+    the line, and the log is operator-only.
+    """
+    account = email[:_LOGGED_ACCOUNT_MAX_LENGTH] if isinstance(email, str) else None
+    # Bound above, so exempt from the logger's 200-character cut, which would
+    # otherwise drop the address after a long account.
+    logger.bind(audit=True).warning(
+        "login_failed account={account!r} address={address!r}",
+        account=account,
+        address=LoginIpThrottle().get_ident(request),
+    )
+
+
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
-    throttle_classes = [LoginThrottle, LoginIpThrottle]
+    throttle_classes = [LoginThrottle, LoginIpThrottle, LoginAccountThrottle]
+    throttle_account_field = "email"
     parser_classes = [JSONParser]
 
     _validator = AuthValidationService()
@@ -97,7 +126,11 @@ class LoginView(TokenObtainPairView):
         # before delegating to simplejwt. Wrong-credential errors stay a
         # flat 401 to avoid user-enumeration leaks.
         self._validator.validate_login(request.data)
-        response = super().post(request, *args, **kwargs)
+        try:
+            response = super().post(request, *args, **kwargs)
+        except AuthenticationFailed:
+            _log_failed_login(request, request.data.get("email"))
+            raise
         if response.status_code == 200:
             refresh_token = response.data.pop("refresh", None)
             if refresh_token:
@@ -258,8 +291,12 @@ class TokenIntrospectView(APIView):
         except (InvalidToken, AuthenticationFailed, TokenError):
             return Response({"active": False}, status=status.HTTP_200_OK)
 
+        # A deactivated organization grants its members nothing, so realtime,
+        # which admits a connection only to a listed org, must not see it.
         org_ids = list(
-            OrganizationUser.objects.filter(user_id=user.pk).values_list("org_id", flat=True)
+            OrganizationUser.objects.filter(user_id=user.pk, org__is_active=True).values_list(
+                "org_id", flat=True
+            )
         )
 
         return Response(
@@ -303,7 +340,8 @@ class ApiKeyValidateView(APIView):
 class SwaggerTokenView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [LoginThrottle, LoginIpThrottle]
+    throttle_classes = [LoginThrottle, LoginIpThrottle, LoginAccountThrottle]
+    throttle_account_field = "username"
 
     @extend_schema(**SWAGGER_TOKEN_POST)
     def post(self, request):
@@ -313,7 +351,13 @@ class SwaggerTokenView(APIView):
                 "password": request.data.get("password"),
             }
         )
-        if not serializer.is_valid():
+        try:
+            is_valid = serializer.is_valid()
+        except AuthenticationFailed:
+            _log_failed_login(request, request.data.get("username"))
+            raise
+        if not is_valid:
+            _log_failed_login(request, request.data.get("username"))
             return Response(
                 {"error": "Invalid credentials"},
                 status=status.HTTP_401_UNAUTHORIZED,
@@ -494,6 +538,7 @@ class ResetUserView(APIView):
             email=cleaned["email"],
             password=cleaned["password"],
             display_name=cleaned["display_name"],
+            actor=request.user,
         )
         tokens = TokenPair.for_user(user)
 

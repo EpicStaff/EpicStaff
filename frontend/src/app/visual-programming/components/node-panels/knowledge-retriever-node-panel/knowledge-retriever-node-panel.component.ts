@@ -29,12 +29,14 @@ import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editab
 import { KnowledgeRetrieverNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
+import { NodeSaveErrorsStore } from '../../../services/node-save-errors.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { fieldGroupChange, linkedEntityFormat, mapFieldRowChanges } from '../../../utils/diff';
 import { DiffFieldMarkChange, DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
+import { NodeSaveErrorsComponent } from '../shared/node-save-errors/node-save-errors.component';
 import { buildGraphSearchConfig } from './knowledge-retriever-search-configs.util';
 
 type RagKind = 'naive' | 'graph';
@@ -61,6 +63,7 @@ interface RagChoice {
         ValidationErrorsComponent,
         IfFlowEditableDirective,
         DiffFieldMarkComponent,
+        NodeSaveErrorsComponent,
     ],
     templateUrl: './knowledge-retriever-node-panel.component.html',
     styleUrls: ['./knowledge-retriever-node-panel.component.scss'],
@@ -73,6 +76,7 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
     private readonly collectionsService = inject(CollectionsApiService);
     private readonly sidePanelService = inject(SidePanelService);
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
 
     readonly collections = signal<GetCollectionRequest[]>([]);
     readonly loadingCollections = signal<boolean>(false);
@@ -91,6 +95,12 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
     private readonly currentRagChoice = signal<RagChoice | null>(null);
 
     private readonly formSignal = signal<FormGroup | null>(null);
+    /** Why the last save refused the query, until it is edited. */
+    protected readonly querySaveErrors = computed(() => {
+        this.dirtyCheckTick();
+        const query: unknown = this.formSignal()?.get('query')?.value ?? '';
+        return this.nodeSaveErrors.fieldMessages(this.node().id, 'query', query);
+    });
     readonly ragTabFormList = computed<FormGroup[]>(() => {
         const f = this.formSignal();
         return f ? [f] : [];

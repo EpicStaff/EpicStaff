@@ -1,7 +1,7 @@
-import { LabelDto } from '@shared/models';
+import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 
 import { ExplorerMenuItem, ExplorerMenuSubject } from './explorer-context-menu/explorer-menu.model';
-import { groupMenuItems } from './explorer-menu.util';
+import { AGENTS_SECTION_MENU_ACTION, agentsSectionMenuItems, groupMenuItems } from './explorer-menu.util';
 
 const SALES = 1;
 const SUPPORT = 2;
@@ -70,5 +70,24 @@ describe('groupMenuItems', () => {
         ],
     ])('%s', (_description, subject, groups, expected) => {
         expect(outline(groupMenuItems(subject, groups))).toEqual(expected);
+    });
+});
+
+describe('agentsSectionMenuItems', () => {
+    it('offers Import to whoever can create agents and Export… to whoever can export them', () => {
+        expect(agentsSectionMenuItems()).toEqual([
+            {
+                id: AGENTS_SECTION_MENU_ACTION.import,
+                label: 'Import',
+                resource: ResourceCode.Agents,
+                action: ActionCode.Create,
+            },
+            {
+                id: AGENTS_SECTION_MENU_ACTION.export,
+                label: 'Export…',
+                resource: ResourceCode.Agents,
+                action: ActionCode.Export,
+            },
+        ]);
     });
 });

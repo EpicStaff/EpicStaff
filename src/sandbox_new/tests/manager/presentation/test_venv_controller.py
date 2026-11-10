@@ -176,6 +176,7 @@ def test_create_carries_the_library_description_and_pinned_version(client, venv_
             "description": "dataframes",
             "specification": ">=2.0",
             "version": "2.1.0",
+            "is_custom": False,
         }
     ]
 
@@ -185,7 +186,13 @@ def test_create_defaults_the_optional_library_fields(client, venv_repository):
 
     assert response.status_code == status_codes.HTTP_201_CREATED
     assert response.json()["libs"] == [
-        {"name": "pandas", "description": None, "specification": "", "version": None}
+        {
+            "name": "pandas",
+            "description": None,
+            "specification": "",
+            "version": None,
+            "is_custom": False,
+        }
     ]
 
 
@@ -268,3 +275,21 @@ def test_create_rejects_the_same_library_declared_twice(client, venv_repository)
     assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
     assert "pydantic" in response.json()["errors"][0]["detail"]
     assert venv_repository.rows == {}
+
+
+def test_create_stores_and_returns_whether_a_library_is_custom(client, venv_repository):
+    response = client.post(
+        "/venvs",
+        json={
+            "name": "data",
+            "libs": [
+                {"name": "requests", "specification": ">=2.0"},
+                {"name": "acme-core", "specification": ">=1", "is_custom": True},
+            ],
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+    body = response.json()
+    assert [lib["is_custom"] for lib in body["libs"]] == [False, True]
+    assert [lib.is_custom for lib in venv_repository.rows[body["id"]].libs] == [False, True]

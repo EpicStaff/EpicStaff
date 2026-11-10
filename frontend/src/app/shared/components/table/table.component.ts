@@ -1,14 +1,19 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
+    afterRenderEffect,
     ChangeDetectionStrategy,
     Component,
     computed,
     contentChildren,
     effect,
+    ElementRef,
     input,
+    linkedSignal,
     output,
     signal,
     untracked,
+    viewChild,
+    viewChildren,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 
@@ -20,6 +25,41 @@ import { SelectComponent } from '../select/select.component';
 import { SelectTriggerDirective } from '../select/select-trigger.directive';
 import { AppTableActionVariant, AppTableColumnDef, AppTableRowAction, TableRow } from './table.model';
 import { AppTableCellDirective } from './table-cell.directive';
+import { fitColumnWidths } from './table-fit-columns';
+import {
+    clampColumnWidth,
+    MAX_COLUMN_WIDTH,
+    MIN_COLUMN_WIDTH,
+    readTableLayout,
+    TableLayout,
+    writeTableLayout,
+} from './table-layout-storage';
+
+const CHECKBOX_COLUMN_WIDTH = '2rem';
+const RESIZE_KEYBOARD_STEP = 16;
+/** An end-pinned column with this width is as wide as its widest cell. */
+const CONTENT_SIZED_WIDTH = 'max-content';
+/** A width that neither grows nor shrinks with the table, e.g. '200px' or '2rem'. */
+const FIXED_LENGTH = /^\d*\.?\d+(px|rem|em)$/;
+
+/** Horizontal scroll state of the wrapper, measured only when the table has pinned columns. */
+interface HorizontalScroll {
+    scrollLeft: number;
+    /** How far the wrapper scrolls horizontally: scrollWidth - clientWidth. */
+    overflow: number;
+    /** The wrapper's clientWidth. */
+    viewport: number;
+    /** px between the wrapper's outer edge and its scrollport: the border, and on the end side the vertical scrollbar. */
+    insetStart: number;
+    insetEnd: number;
+}
+
+interface HeaderGroupSpan {
+    label: string;
+    /** 1-based grid column line the group starts at. */
+    start: number;
+    span: number;
+}
 
 @Component({
     selector: 'app-table',
@@ -64,6 +104,13 @@ export class AppTableComponent {
      * while `data` is non-empty.
      */
     hasExternalFilter = input<boolean>(false);
+    /**
+     * Opts in to user-customized columns: every column that isn't `pinned` can be hidden (through an
+     * `<app-table-column-picker>`), and every column but an end-pinned one resized by dragging its header edge. The
+     * choices are kept in localStorage under this key, so give each table its own. `null` (default) keeps the columns
+     * as defined.
+     */
+    layoutKey = input<string | null>(null);
 
     selectionChange = output<TableRow[]>();
     filterChange = output<{ key: string; values: unknown[] }>();
@@ -72,13 +119,199 @@ export class AppTableComponent {
     headerIconClick = output<{ key: string; target: HTMLElement }>();
 
     readonly cellTemplates = contentChildren(AppTableCellDirective);
+    /** Header cells of `displayedColumns()`, in the same order. */
+    private readonly headerCells = viewChildren<ElementRef<HTMLElement>>('headerCell');
+    private readonly wrapper = viewChild<ElementRef<HTMLElement>>('wrapper');
+    private readonly tableHeader = viewChild<ElementRef<HTMLElement>>('tableHeader');
+
+    protected readonly minColumnWidth = MIN_COLUMN_WIDTH;
+    protected readonly maxColumnWidth = MAX_COLUMN_WIDTH;
+    protected readonly resizeHandleTooltip = 'Drag to resize. Double-click to fit all columns to the screen.';
 
     private readonly selectedIds = signal<Set<unknown>>(new Set());
     private readonly activeFilters = signal<Record<string, unknown[]>>({});
     /** Last `defaultValues` applied per column key — used to detect actual changes and avoid re-applying on unrelated column def updates. */
     private readonly lastAppliedDefaults = signal<Record<string, unknown[]>>({});
+    /** Column visibility and widths; re-read from storage when the key changes. */
+    private readonly layout = linkedSignal<TableLayout>(() => readTableLayout(this.layoutKey()));
+    /** Rendered px width of each resizable column, kept current by a ResizeObserver. */
+    private readonly renderedWidths = signal<Record<string, number>>({});
+    private readonly horizontalScroll = signal<HorizontalScroll>({
+        scrollLeft: 0,
+        overflow: 0,
+        viewport: 0,
+        insetStart: 0,
+        insetEnd: 0,
+    });
+    /** Measured px width of each content-sized end-pinned column, the same in every row. */
+    private readonly contentSizedWidths = signal<Record<string, number>>({});
+    private resizing: { key: string; startX: number; startWidth: number } | null = null;
+    /** The column whose resize handle is hovered, focused or dragged: its right edge is highlighted in every row. */
+    protected readonly activeResizeKey = signal<string | null>(null);
+    protected readonly resizeDragging = signal(false);
+    /** Scroll px per pointer px while the scrollbar thumb is dragged. */
+    private scrollbarDrag: { startX: number; startScrollLeft: number; scrollPerPixel: number } | null = null;
+    protected readonly scrollbarDragging = signal(false);
+
+    readonly customizable = computed(() => this.layoutKey() !== null);
+
+    readonly displayedColumns = computed<AppTableColumnDef[]>(() => {
+        const visibility = this.layout().visibility;
+        const hiddenByDefaultApplies = this.customizable();
+        return this.columns().filter(
+            (col) => !this.isHideable(col) || (visibility[col.key] ?? !(hiddenByDefaultApplies && col.hiddenByDefault))
+        );
+    });
+
+    /**
+     * The columns a column picker lists: all but the pinned and the `hideable: false` ones, and none unless the table
+     * is customizable.
+     */
+    readonly hideableColumns = computed<AppTableColumnDef[]>(() =>
+        this.customizable() ? this.columns().filter((col) => this.isHideable(col)) : []
+    );
+
+    readonly visibleHideableKeys = computed<string[]>(() =>
+        this.displayedColumns()
+            .filter((col) => this.isHideable(col))
+            .map((col) => col.key)
+    );
+
+    /**
+     * The column that takes up the space the others leave, so the end-pinned ones stay at the end: the last
+     * start-pinned one (no pinned column follows it, so the sticky offsets stay right), else the first scrolling one.
+     */
+    private readonly fillerColumn = computed<AppTableColumnDef | undefined>(() => {
+        const columns = this.displayedColumns();
+        return columns.filter((col) => col.pinned === 'start').at(-1) ?? columns.find((col) => !col.pinned);
+    });
+
+    readonly hasPinnedStart = computed(() => this.displayedColumns().some((col) => col.pinned === 'start'));
+
+    /**
+     * With pinned columns the wrapper hides its own horizontal scrollbar, which would run under them, and the table
+     * shows one under the scrolling columns only.
+     */
+    readonly hasPinnedColumns = computed(() => this.displayedColumns().some((col) => col.pinned));
+
+    /** The last start-pinned and the first end-pinned column: their inner edges cast the "more content" shadow. */
+    protected readonly pinnedEdgeKeys = computed(() => {
+        const columns = this.displayedColumns();
+        return {
+            start: columns.filter((col) => col.pinned === 'start').at(-1)?.key ?? null,
+            end: columns.find((col) => col.pinned === 'end')?.key ?? null,
+        };
+    });
+
+    /** Columns are scrolled under the start-pinned ones. */
+    protected readonly shadowStart = computed(() => this.horizontalScroll().scrollLeft > 0);
+    /** Columns are hidden under the end-pinned ones; 1px of slack for fractional scroll positions. */
+    protected readonly shadowEnd = computed(() => {
+        const { scrollLeft, overflow } = this.horizontalScroll();
+        return scrollLeft < overflow - 1;
+    });
+
+    protected readonly scrollbarOverflow = computed(() => this.horizontalScroll().overflow);
+
+    /** Thumb size and position as % of the track; the thumb shows the visible share of the table's width. */
+    protected readonly scrollbarThumb = computed(() => {
+        const { scrollLeft, overflow, viewport } = this.horizontalScroll();
+        const width = overflow > 0 ? (viewport / (viewport + overflow)) * 100 : 100;
+        const left = overflow > 0 ? (Math.min(scrollLeft, overflow) / overflow) * (100 - width) : 0;
+        return { width, left };
+    });
+
+    /** Margins that line the scrollbar up with the scrolling columns, between the pinned ones. */
+    protected readonly scrollbarInset = computed(() => {
+        const { startWidths, endWidths } = this.pinnedLayout();
+        const { insetStart, insetEnd } = this.horizontalScroll();
+        const sum = (widths: string[], inset: number) => `calc(${[...widths, `${inset}px`].join(' + ')})`;
+        return { start: sum(startWidths, insetStart), end: sum(endWidths, insetEnd) };
+    });
+
+    readonly headerGroups = computed<HeaderGroupSpan[]>(() => {
+        const firstColumnLine = this.selectable() ? 2 : 1;
+        const spans: HeaderGroupSpan[] = [];
+        this.displayedColumns().forEach((col, index) => {
+            if (!col.headerGroup) return;
+            const line = index + firstColumnLine;
+            const previous = spans.at(-1);
+            if (previous?.label === col.headerGroup && previous.start + previous.span === line) {
+                previous.span++;
+            } else {
+                spans.push({ label: col.headerGroup, start: line, span: 1 });
+            }
+        });
+        return spans;
+    });
+
+    /**
+     * CSS `left` / `right` of each pinned column — the summed widths of the pinned columns before it — and the widths
+     * of the sticky columns on each side (the checkbox column counts only while it sticks).
+     */
+    private readonly pinnedLayout = computed(() => {
+        const offsets = new Map<string, string>();
+        const columns = this.displayedColumns();
+        const accumulate = (pinnedColumns: AppTableColumnDef[], widths: string[]): string[] => {
+            for (const col of pinnedColumns) {
+                offsets.set(col.key, widths.length ? `calc(${widths.join(' + ')})` : '0px');
+                widths.push(this.pinnedWidth(col));
+            }
+            return pinnedColumns.length ? widths : [];
+        };
+        const startWidths = accumulate(
+            columns.filter((col) => col.pinned === 'start'),
+            this.selectable() ? [CHECKBOX_COLUMN_WIDTH] : []
+        );
+        const endWidths = accumulate(columns.filter((col) => col.pinned === 'end').reverse(), []);
+        return { offsets, startWidths, endWidths };
+    });
 
     constructor() {
+        effect((onCleanup) => {
+            const cells = this.headerCells();
+            const columns = this.displayedColumns();
+            // jsdom has no ResizeObserver; without one the separators report a width only once resized.
+            if (!this.customizable() || typeof ResizeObserver === 'undefined') return;
+            const keyByCell = new Map<Element, string>();
+            cells.forEach((cell, index) => {
+                if (columns[index] && this.isResizable(columns[index])) {
+                    keyByCell.set(cell.nativeElement, columns[index].key);
+                }
+            });
+            const observer = new ResizeObserver((entries) =>
+                this.renderedWidths.update((widths) => {
+                    const next = { ...widths };
+                    for (const entry of entries) {
+                        const key = keyByCell.get(entry.target);
+                        if (key) next[key] = Math.round(entry.borderBoxSize[0].inlineSize);
+                    }
+                    return next;
+                })
+            );
+            keyByCell.forEach((_key, cell) => observer.observe(cell));
+            onCleanup(() => observer.disconnect());
+        });
+
+        // Column resizes, visibility changes and a vertical scrollbar coming or going all change the horizontal
+        // overflow without a scroll event.
+        effect((onCleanup) => {
+            const wrapper = this.wrapper()?.nativeElement;
+            const header = this.tableHeader()?.nativeElement;
+            if (!wrapper || !header || !this.hasPinnedColumns() || typeof ResizeObserver === 'undefined') return;
+            const observer = new ResizeObserver(() => this.measureHorizontalScroll());
+            observer.observe(wrapper);
+            observer.observe(header);
+            onCleanup(() => observer.disconnect());
+        });
+
+        // Each row is a grid of its own, so a content-sized column gets one px width measured over all its cells.
+        afterRenderEffect(() => {
+            this.filteredData();
+            this.displayedColumns();
+            untracked(() => this.measureContentSizedColumns());
+        });
+
         effect(() => {
             const currentIds = this.selectedIds();
             if (!currentIds.size) return;
@@ -187,12 +420,199 @@ export class AppTableComponent {
 
     readonly gridTemplateColumns = computed<string>(() => {
         const cols: string[] = [];
-        if (this.selectable()) cols.push('2rem');
-        for (const col of this.columns()) {
-            cols.push(col.width ?? '1fr');
-        }
+        if (this.selectable()) cols.push(CHECKBOX_COLUMN_WIDTH);
+        const columns = this.displayedColumns();
+        const filler = this.fillerColumn();
+        const tracks = columns.map((col) =>
+            col.pinned === 'end' ? this.endPinnedWidth(col) : (this.resizedWidth(col) ?? col.width ?? '1fr')
+        );
+        // Only once the user has sized the other columns: until then the space is shared out as defined.
+        const othersFixed = columns.every(
+            (col) =>
+                col === filler ||
+                col.pinned === 'end' ||
+                this.resizedWidth(col) !== undefined ||
+                (col.pinned === 'start' && FIXED_LENGTH.test(col.width ?? ''))
+        );
+        columns.forEach((col, index) => {
+            const track = tracks[index];
+            cols.push(col === filler && othersFixed && FIXED_LENGTH.test(track) ? `minmax(${track}, 1fr)` : track);
+        });
         return cols.join(' ');
     });
+
+    /**
+     * Shows exactly the given hideable columns and stores the choice; unknown keys and `hideable: false` columns are
+     * ignored. The shown columns keep their current widths: a removed column's space goes to the filler column, an
+     * added one takes the filler's extra space first, then the table scrolls.
+     */
+    setVisibleColumns(keys: readonly string[]): void {
+        this.freezeColumnWidths(false);
+        const visible = new Set(keys);
+        const visibility = Object.fromEntries(this.hideableColumns().map((col) => [col.key, visible.has(col.key)]));
+        this.layout.update((layout) => ({ ...layout, visibility }));
+        this.persistLayout();
+    }
+
+    /** Grid placement of a header cell when a header group adds a second header row; null otherwise. */
+    headerGridArea(col: AppTableColumnDef, index: number): string | null {
+        if (!this.headerGroups().length) return null;
+        const line = index + (this.selectable() ? 2 : 1);
+        return col.headerGroup ? `2 / ${line}` : `1 / ${line} / span 2`;
+    }
+
+    pinnedLeft(col: AppTableColumnDef): string | null {
+        return col.pinned === 'start' ? (this.pinnedLayout().offsets.get(col.key) ?? null) : null;
+    }
+
+    pinnedRight(col: AppTableColumnDef): string | null {
+        return col.pinned === 'end' ? (this.pinnedLayout().offsets.get(col.key) ?? null) : null;
+    }
+
+    /** A start-pinned column stays sticky while resized; an end-pinned one keeps its width. */
+    isResizable(col: AppTableColumnDef): boolean {
+        return this.customizable() && col.pinned !== 'end';
+    }
+
+    onWrapperScroll(): void {
+        if (this.hasPinnedColumns()) this.measureHorizontalScroll();
+    }
+
+    /**
+     * Starts dragging the scrollbar thumb. A press on the track outside the thumb first centres the thumb under the
+     * pointer, so the drag continues from there.
+     */
+    onScrollbarPointerDown(event: PointerEvent): void {
+        const wrapper = this.wrapper()?.nativeElement;
+        const track = event.currentTarget as HTMLElement;
+        if (event.button !== 0 || !wrapper) return;
+        event.preventDefault();
+        track.setPointerCapture(event.pointerId);
+        const { overflow } = this.horizontalScroll();
+        const trackRect = track.getBoundingClientRect();
+        const thumbWidth = (trackRect.width * this.scrollbarThumb().width) / 100;
+        const scrollPerPixel = trackRect.width > thumbWidth ? overflow / (trackRect.width - thumbWidth) : 0;
+        if (!(event.target as HTMLElement).classList.contains('table-scrollbar__thumb')) {
+            wrapper.scrollLeft = (event.clientX - trackRect.left - thumbWidth / 2) * scrollPerPixel;
+        }
+        this.scrollbarDrag = { startX: event.clientX, startScrollLeft: wrapper.scrollLeft, scrollPerPixel };
+        this.scrollbarDragging.set(true);
+    }
+
+    onScrollbarPointerMove(event: PointerEvent): void {
+        const wrapper = this.wrapper()?.nativeElement;
+        if (!this.scrollbarDrag || !wrapper) return;
+        const { startX, startScrollLeft, scrollPerPixel } = this.scrollbarDrag;
+        wrapper.scrollLeft = startScrollLeft + (event.clientX - startX) * scrollPerPixel;
+    }
+
+    onScrollbarPointerEnd(): void {
+        this.scrollbarDrag = null;
+        this.scrollbarDragging.set(false);
+    }
+
+    /**
+     * The wrapper hides its horizontal overflow when columns are pinned, so the browser no longer scrolls it sideways
+     * on a wheel or trackpad: the horizontal delta (or a shift+wheel's vertical one) is applied here.
+     */
+    onWrapperWheel(event: WheelEvent): void {
+        const wrapper = this.wrapper()?.nativeElement;
+        if (!wrapper || !this.hasPinnedColumns()) return;
+        const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+        if (!delta) return;
+        wrapper.scrollLeft += delta;
+        // A diagonal trackpad swipe keeps its vertical part; a purely sideways one must not reach the page.
+        if (!event.deltaX || !event.deltaY) event.preventDefault();
+    }
+
+    /**
+     * The px width a column's resize separator reports: the stored one, else the rendered one; null until known. The
+     * filler column may render wider than stored, so its rendered width comes first.
+     */
+    columnWidth(key: string): number | null {
+        const stored = this.layout().widths[key];
+        const rendered = this.renderedWidths()[key];
+        return (this.fillerColumn()?.key === key ? (rendered ?? stored) : (stored ?? rendered)) ?? null;
+    }
+
+    onResizeHandleEnter(key: string): void {
+        this.activeResizeKey.set(key);
+    }
+
+    /** Leaving or blurring the handle mid-drag keeps the line: the drag end clears it. */
+    onResizeHandleLeave(): void {
+        if (!this.resizing) this.activeResizeKey.set(null);
+    }
+
+    onResizeStart(key: string, event: PointerEvent): void {
+        if (event.button !== 0 || this.resizing) return;
+        // Keeps the drag from selecting header text.
+        event.preventDefault();
+        // Captured, the handle keeps getting the moves while the pointer is over other cells.
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+        this.freezeColumnWidths(true);
+        this.resizing = { key, startX: event.clientX, startWidth: this.columnWidth(key) ?? MIN_COLUMN_WIDTH };
+        this.activeResizeKey.set(key);
+        this.resizeDragging.set(true);
+    }
+
+    onResizeMove(event: PointerEvent): void {
+        if (!this.resizing) return;
+        const { key, startX, startWidth } = this.resizing;
+        this.setColumnWidth(key, startWidth + event.clientX - startX);
+    }
+
+    onResizeEnd(): void {
+        if (!this.resizing) return;
+        this.resizing = null;
+        this.activeResizeKey.set(null);
+        this.resizeDragging.set(false);
+        this.persistLayout();
+    }
+
+    onResizeKeydown(key: string, event: KeyboardEvent): void {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            this.fitColumnsToTable();
+            return;
+        }
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        this.freezeColumnWidths(true);
+        const currentWidth = this.columnWidth(key) ?? MIN_COLUMN_WIDTH;
+        this.setColumnWidth(
+            key,
+            currentWidth + (event.key === 'ArrowLeft' ? -RESIZE_KEYBOARD_STEP : RESIZE_KEYBOARD_STEP)
+        );
+        this.persistLayout();
+    }
+
+    /**
+     * Sizes every resizable column to its widest cell's full content, then shares the table's width out among them
+     * (see `fitColumnWidths`), and stores the result like a manual resize.
+     */
+    fitColumnsToTable(): void {
+        const wrapper = this.wrapper()?.nativeElement;
+        if (!wrapper) return;
+        const columns = this.displayedColumns();
+        const resizableIndexes = columns.flatMap((col, index) => (this.isResizable(col) ? [index] : []));
+        const rows = this.cellRows(wrapper);
+        const header = rows[0];
+        const fixedWidth = [
+            wrapper.querySelector<HTMLElement>('.table-header > .table-cell.checkbox'),
+            ...columns.map((col, index) => (col.pinned === 'end' ? header[index] : null)),
+        ].reduce((sum, cell) => sum + (cell?.getBoundingClientRect().width ?? 0), 0);
+        const contentWidths = this.measureContentWidths(rows, resizableIndexes);
+        const fitted = fitColumnWidths(contentWidths, wrapper.clientWidth - fixedWidth);
+        const widths = Object.fromEntries(
+            resizableIndexes.map((columnIndex, position) => [
+                columns[columnIndex].key,
+                clampColumnWidth(fitted[position]),
+            ])
+        );
+        this.layout.update((layout) => ({ ...layout, widths: { ...layout.widths, ...widths } }));
+        this.persistLayout();
+    }
 
     getRowId(item: TableRow): unknown {
         return item[this.rowId()];
@@ -279,5 +699,116 @@ export class AppTableComponent {
         const variant = action.variant;
         if (typeof variant === 'function') return variant(row);
         return variant ?? 'default';
+    }
+
+    private isHideable(col: AppTableColumnDef): boolean {
+        return !col.pinned && col.hideable !== false;
+    }
+
+    /** The grid track of an end-pinned column: its measured px width if content-sized, else its defined width. */
+    private endPinnedWidth(col: AppTableColumnDef): string {
+        const measured = this.contentSizedWidths()[col.key];
+        return measured ? `${measured}px` : (col.width ?? '1fr');
+    }
+
+    /** A pinned column's width as a `calc()` term; a content-sized one counts as 0 until measured. */
+    private pinnedWidth(col: AppTableColumnDef): string {
+        const measured = col.pinned === 'end' ? this.contentSizedWidths()[col.key] : undefined;
+        const width = measured ? `${measured}px` : (this.resizedWidth(col) ?? col.width);
+        return width && width !== CONTENT_SIZED_WIDTH ? width : '0px';
+    }
+
+    /** Header and body rows, each holding its cells in `displayedColumns()` order, after the checkbox cell. */
+    private cellRows(wrapper: HTMLElement): HTMLElement[][] {
+        return [...wrapper.querySelectorAll<HTMLElement>('.table-header, .table-row')].map((row) => [
+            ...row.querySelectorAll<HTMLElement>(':scope > .table-cell:not(.checkbox)'),
+        ]);
+    }
+
+    private measureContentSizedColumns(): void {
+        const wrapper = this.wrapper()?.nativeElement;
+        const columns = this.displayedColumns();
+        const indexes = columns.flatMap((col, index) =>
+            col.pinned === 'end' && col.width === CONTENT_SIZED_WIDTH ? [index] : []
+        );
+        if (!wrapper || !indexes.length) return;
+        const measured = this.measureContentWidths(this.cellRows(wrapper), indexes);
+        const current = this.contentSizedWidths();
+        const next = { ...current };
+        indexes.forEach((columnIndex, position) => {
+            // Nothing laid out (e.g. no layout engine): keep the column sized by `max-content`.
+            if (measured[position] > 0) next[columns[columnIndex].key] = Math.ceil(measured[position]);
+        });
+        if (Object.keys(next).some((key) => next[key] !== current[key])) this.contentSizedWidths.set(next);
+    }
+
+    /** The stored px width of a resized column, as a grid track; end-pinned columns are never resized. */
+    private resizedWidth(col: AppTableColumnDef): string | undefined {
+        const width = col.pinned === 'end' ? undefined : this.layout().widths[col.key];
+        return width ? `${width}px` : undefined;
+    }
+
+    private measureHorizontalScroll(): void {
+        const wrapper = this.wrapper()?.nativeElement;
+        if (!wrapper) return;
+        this.horizontalScroll.set({
+            scrollLeft: wrapper.scrollLeft,
+            overflow: Math.max(0, wrapper.scrollWidth - wrapper.clientWidth),
+            viewport: wrapper.clientWidth,
+            insetStart: wrapper.clientLeft,
+            insetEnd: wrapper.offsetWidth - wrapper.clientWidth - wrapper.clientLeft,
+        });
+    }
+
+    /**
+     * The full width of each column's widest cell, header included. Cells clip their content with an ellipsis, so
+     * each is sized to `max-content` for the reading: all at once, so the browser lays the table out only once.
+     */
+    private measureContentWidths(rows: HTMLElement[][], columnIndexes: number[]): number[] {
+        const cells = rows.flatMap((row) => columnIndexes.map((index) => row[index]).filter(Boolean));
+        cells.forEach((cell) => cell.style.setProperty('width', 'max-content'));
+        const widths = columnIndexes.map((index) =>
+            Math.max(0, ...rows.map((row) => row[index]?.getBoundingClientRect().width ?? 0))
+        );
+        cells.forEach((cell) => cell.style.removeProperty('width'));
+        return widths;
+    }
+
+    private setColumnWidth(key: string, width: number): void {
+        const clamped = clampColumnWidth(width);
+        this.layout.update((layout) => ({ ...layout, widths: { ...layout.widths, [key]: clamped } }));
+    }
+
+    /**
+     * Fixes the scrolling columns at their rendered px width (a stored width wins) before a resize or a visibility
+     * change. Otherwise the `fr` columns share out the space that change gives or takes: a resized edge drifts away
+     * from the pointer, and the other columns jump. The frozen widths are stored: the layout restores as the user left
+     * it.
+     *
+     * The filler column is left at its base width, so it shrinks back to it when columns are added — unless
+     * `fixFiller`: before a resize it is fixed at its rendered width too, as it sits before the resized edge and
+     * would otherwise give or take space, moving that edge away from the pointer.
+     */
+    private freezeColumnWidths(fixFiller: boolean): void {
+        const rendered = this.renderedWidths();
+        const fillerKey = this.fillerColumn()?.key;
+        const frozenKeys = this.displayedColumns()
+            .filter((col) => !col.pinned && col.key !== fillerKey && rendered[col.key] !== undefined)
+            .map((col) => col.key);
+        const frozen = Object.fromEntries(frozenKeys.map((key) => [key, clampColumnWidth(rendered[key])]));
+        const filler =
+            fixFiller && fillerKey && rendered[fillerKey] !== undefined
+                ? { [fillerKey]: clampColumnWidth(rendered[fillerKey]) }
+                : {};
+        this.layout.update((layout) => ({ ...layout, widths: { ...frozen, ...layout.widths, ...filler } }));
+    }
+
+    /** Stores only entries of columns the table still has, so renamed or removed columns don't pile up. */
+    private persistLayout(): void {
+        const keys = new Set(this.columns().map((col) => col.key));
+        const known = <T>(entries: Record<string, T>): Record<string, T> =>
+            Object.fromEntries(Object.entries(entries).filter(([key]) => keys.has(key)));
+        const { visibility, widths } = this.layout();
+        writeTableLayout(this.layoutKey(), { visibility: known(visibility), widths: known(widths) });
     }
 }
