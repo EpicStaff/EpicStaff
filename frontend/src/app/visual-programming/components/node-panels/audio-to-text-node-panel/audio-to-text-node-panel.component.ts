@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
+import { CustomInputComponent, HintMessageComponent, ValidationErrorsComponent } from '@shared/components';
 
 import { AudioToTextNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -8,6 +8,7 @@ import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { mapFieldRowChanges } from '../../../utils/diff';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 interface InputMapPair {
     key: string;
     value: string;
@@ -17,7 +18,9 @@ interface InputMapPair {
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
+        HintMessageComponent,
         InputMapComponent,
+        StorageGrantsFieldComponent,
         ValidationErrorsComponent,
         DiffFieldMarkComponent,
     ],
@@ -62,6 +65,19 @@ interface InputMapPair {
                             [activeColor]="activeColor"
                             [readonly]="isReadOnly()"
                         ></app-custom-input>
+                    </app-diff-field-mark>
+
+                    @if (storageGrantLock(); as lock) {
+                        <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                    }
+                    <app-diff-field-mark
+                        [diffField]="'storage_grants'"
+                        [diffGroup]="true"
+                    >
+                        <app-storage-grants-field
+                            formControlName="storage_grants"
+                            [readonly]="isReadOnly()"
+                        />
                     </app-diff-field-mark>
                 </form>
             </div>
@@ -135,6 +151,7 @@ export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNode
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
+            storage_grants: [this.node().storageGrants],
         });
 
         this.initializeInputMap(form);
@@ -151,6 +168,7 @@ export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNode
             node_name: this.form.value.node_name,
             input_map: inputMapValue,
             output_variable_path: this.form.value.output_variable_path || null,
+            storageGrants: this.form.get('storage_grants')?.value ?? undefined,
         };
     }
 

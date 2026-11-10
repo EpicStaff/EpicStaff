@@ -40,12 +40,14 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
+from src.shared.models.storage_scope import StorageGrant
 from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SystemOneConfigData
 from storage_credentials.exceptions import (
     CredentialScopeValidationError,
     TemporaryCredentialIssueError,
 )
 from storage_credentials.resource_names import org_storage_prefix
+from storage_credentials.services.acting_identity import ActingIdentity
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.exceptions import ConfigProviderMissingError
 from tables.models import PythonCode, PythonCodeTool, Secret
@@ -89,6 +91,7 @@ from tables.services.rag_registry import resolve_rag_in_collection
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from tables.services.secrets.declaration_validator import binned_secret_names
+from tables.services.storage_grants.flags import storage_grant_of
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
@@ -303,7 +306,10 @@ class ConverterService(metaclass=SingletonMeta):
         return BaseToolData(unique_name=unique_name, data=data)
 
     def convert_rt_agent_definition_chat_to_pydantic(
-        self, rt_agent_chat: RealtimeAgentChat, user_id: int | None = None
+        self,
+        rt_agent_chat: RealtimeAgentChat,
+        acting_identity: ActingIdentity,
+        user_id: int | None = None,
     ) -> RealtimeAgentChatData:
         ad = rt_agent_chat.rt_agent_definition.agent_definition.fill_with_defaults()
 
@@ -399,20 +405,22 @@ class ConverterService(metaclass=SingletonMeta):
                     if tool_data.python_code.storage_allowed_paths:
                         union_allowed_paths.update(tool_data.python_code.storage_allowed_paths)
 
-            if needs_storage:
-                if not union_allowed_paths:
-                    # Resolved before any mint attempt -- same class of
-                    # problem as RealtimeSurfaceService's fail-closed check,
-                    # same exception type and status code (400, not 500).
-                    raise CredentialScopeValidationError(
-                        "This agent's tools need file storage access, but no files are "
-                        "attached. Attach the required files or folders."
-                    )
+            if needs_storage and not union_allowed_paths:
+                # A realtime chat has no folder of its own, so nothing can be
+                # granted: start the chat without an account. The realtime
+                # service answers a storage tool call with a clear error.
+                logger.warning(
+                    "Realtime chat {} has storage tools but no attached files; "
+                    "starting without storage credentials",
+                    rt_agent_chat.id,
+                )
+            elif needs_storage:
                 rt_agent_chat_data.storage_credentials = (
                     session_credential_service.issue_for_realtime_chat(
                         realtime_agent_chat=rt_agent_chat,
                         storage_allowed_paths=list(union_allowed_paths),
                         org_id=ad.org_id,
+                        acting_identity=acting_identity,
                     )
                 )
         except (TemporaryCredentialIssueError, CredentialScopeValidationError):
@@ -435,8 +443,10 @@ class ConverterService(metaclass=SingletonMeta):
         storage_org_prefix: str | None = None,
         session_id: int | None = None,
         org_id: int | None = None,
+        storage_grant: StorageGrant | None = None,
     ):
         return PythonCodeData(
+            storage_grant=storage_grant,
             venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
             code=python_code.code,
             entrypoint=python_code.entrypoint,
@@ -708,6 +718,7 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None,
         extra_storage_paths: list[str] | None,
         org_id: int | None,
+        storage_grant: StorageGrant | None = None,
     ) -> PythonCodeData:
         org_id = self._org_id_for_graph(graph_id, org_id)
         writable_paths = list(extra_storage_paths or [])
@@ -727,6 +738,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            storage_grant=storage_grant,
         )
 
     def convert_python_node_to_pydantic(
@@ -755,6 +767,7 @@ class ConverterService(metaclass=SingletonMeta):
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
             org_id=org_id,
+            storage_grant=storage_grant_of(python_node),
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),
@@ -872,6 +885,7 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_org_prefix=pre_storage_org_prefix,
                 session_id=session_id,
                 org_id=org_id,
+                storage_grant=storage_grant_of(node, prefix="pre_"),
             )
 
         post_python_code_data = None
@@ -883,6 +897,7 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_org_prefix=post_storage_org_prefix,
                 session_id=session_id,
                 org_id=org_id,
+                storage_grant=storage_grant_of(node, prefix="post_"),
             )
 
         return ClassificationDecisionTableNodeData(
@@ -968,6 +983,7 @@ class ConverterService(metaclass=SingletonMeta):
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
             org_id=org_id,
+            storage_grant=storage_grant_of(webhook_trigger_node),
         )
         return WebhookTriggerNodeData(
             node_name=resolver(webhook_trigger_node.id),
@@ -1048,6 +1064,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            storage_grant=storage_grant_of(file_extractor_node),
         )
 
     def convert_key_value_node_to_pydantic(
@@ -1089,6 +1106,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            storage_grant=storage_grant_of(audio_transcription_node),
         )
 
     def convert_subgraph_node_to_pydantic(

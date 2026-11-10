@@ -3,14 +3,22 @@ from rbac.models import Organization
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.db_sync import (
+    StorageFileSync,
     _ancestor_paths,
     _name_of,
     _parent_of,
 )
-from tables.services.storage_service.path_utils import TRASH_DIRECTORY, is_trash_path
+from tables.services.storage_service.path_utils import (
+    TRASH_DIRECTORY,
+    is_trash_path,
+    storage_key,
+)
+from tables.validators.file_upload_validator import FileValidator
+from utils.logger import logger
 
 _SYNCED_FIELDS = ["name", "item_type", "size", "s3_modified", "parent_path"]
 _BATCH_SIZE = 1000
+_SKIPPED_SAMPLE_SIZE = 5
 
 
 class StorageReconciler:
@@ -24,8 +32,46 @@ class StorageReconciler:
     def __init__(self, backend: AbstractStorageBackend):
         self._backend = backend
 
-    def reconcile_tree(self, org_id: int, prefix: str = "") -> None:
+    def reconcile_file(self, org_id: int, path: str, *, sweep_stale_rows: bool = True) -> None:
+        """Make the org's live StorageFile row for the one object at `path` match the backend.
+
+        `reconcile_tree` takes a folder: it lists `<prefix>/`, so given a file path it would
+        see nothing and sweep that file's row as stale. A file is read directly instead. An
+        executable is never indexed (and a live row for one is dropped), as in
+        `reconcile_tree`. With `sweep_stale_rows=False` the row is only added or updated: a
+        missing object or an executable leaves a row alone.
+
+        Raises:
+            ValueError: `path` is inside the reserved recycle-bin folder.
+        """
+        if is_trash_path(path):
+            raise ValueError(f"'{TRASH_DIRECTORY}' is not reconciled.")
+        stored = self._backend.head_file(storage_key(org_id, path))
+        if stored is not None and FileValidator().is_executable_filename(path):
+            logger.warning("Not indexing executable object {} in org {}", path, org_id)
+            stored = None
+        if stored is None:
+            if sweep_stale_rows:
+                StorageFile.objects.filter(org_id=org_id, path=path).delete()
+            return
+        StorageFileSync.on_upload(
+            org_id, path, size=stored.size, s3_modified=parse_datetime(stored.modified)
+        )
+
+    def reconcile_tree(
+        self, org_id: int, prefix: str = "", *, sweep_stale_rows: bool = True
+    ) -> None:
         """Make the org's live StorageFile rows match the backend's objects under `prefix`.
+
+        With `sweep_stale_rows=False` rows are only added and updated, never deleted: the
+        listing is a snapshot, so a row for a file uploaded after it was taken would be
+        mistaken for stale. A caller running concurrently with uploads (the end of a run)
+        must use it; the price is that rows of objects deleted behind django's back stay
+        until a full reconcile, overcounting the org's bytes.
+
+        Objects with a blocked executable extension are never indexed (and any live row
+        for one is swept as stale); they are logged, not deleted, because deleting is
+        the mutation handler's job.
 
         Recycle-bin rows are left alone: their objects live under the reserved
         trash folder, which is skipped here, so they are neither re-created as
@@ -42,14 +88,19 @@ class StorageReconciler:
 
         raw_objects = self._backend.list_all_objects(full_prefix)
 
+        file_validator = FileValidator()
         desired: dict[str, StorageFile] = {}
         ancestor_paths: set[str] = set()
+        skipped_executables: list[str] = []
 
         for key, size, modified_iso in raw_objects:
             if not key.startswith(org_prefix):
                 continue
             rel_path = key[len(org_prefix) :]
             if is_trash_path(rel_path):
+                continue
+            if file_validator.is_executable_filename(rel_path):
+                skipped_executables.append(rel_path)
                 continue
 
             desired[rel_path] = StorageFile(
@@ -62,6 +113,14 @@ class StorageReconciler:
                 parent_path=_parent_of(rel_path),
             )
             ancestor_paths.update(_ancestor_paths(rel_path))
+
+        if skipped_executables:
+            logger.warning(
+                "Not indexing {} executable object(s) in org {}, e.g. {}",
+                len(skipped_executables),
+                org_id,
+                skipped_executables[:_SKIPPED_SAMPLE_SIZE],
+            )
 
         for folder_path in ancestor_paths:
             if folder_path not in desired:
@@ -101,5 +160,7 @@ class StorageReconciler:
         StorageFile.objects.bulk_create(to_create, batch_size=_BATCH_SIZE, ignore_conflicts=True)
         # NOTE: never add created_by to _SYNCED_FIELDS: the update would erase authors.
         StorageFile.objects.bulk_update(to_update, _SYNCED_FIELDS, batch_size=_BATCH_SIZE)
+        if not sweep_stale_rows:
+            return
         for start in range(0, len(stale_ids), _BATCH_SIZE):
             StorageFile.objects.filter(id__in=stale_ids[start : start + _BATCH_SIZE]).delete()

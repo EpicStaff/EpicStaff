@@ -1,9 +1,26 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    inject,
+    input,
+    signal,
+    untracked,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
 import { notWhitespaceValidator } from '@shared/form-validators';
 
+import { PermissionsService } from '../../../services/auth/permissions.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
+import {
+    getNodeStorageGrants,
+    slotInvolvesStorage,
+    storageGrantLockOf,
+    storageToggleLockOf,
+} from '../helpers/storage-grants.util';
 import { NodeModel } from './node.model';
 
 /** The backend's `node_name` column length. */
@@ -18,8 +35,36 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     protected fb = inject(FormBuilder);
     protected destroyRef = inject(DestroyRef);
     protected readonly flowReadOnly = inject(FlowReadOnlyService);
-    /** Nothing here can be changed: a read-only editor, or a trigger node for a user without Flows:Use. */
-    public readonly isReadOnly = computed(() => this.flowReadOnly.isNodeTypeReadOnly(this.node().type));
+    private readonly grantPermissions = inject(PermissionsService);
+    /**
+     * Why the node's code and the fields that steer it may not be edited: the node's saved storage grants
+     * include a permission the user's own role lacks. `null` when nothing locks the node. A classification
+     * decision table has two slots and locks each itself.
+     */
+    public readonly storageGrantLock = computed<string | null>(() =>
+        storageGrantLockOf(
+            getNodeStorageGrants(this.node()),
+            (resource, action) => this.grantPermissions.can(resource, action),
+            () => this.grantPermissions.isActivePermissionsLoaded(),
+            slotInvolvesStorage(this.node())
+        )
+    );
+    /**
+     * Why the storage switch may not be turned on: the code has no grants configured, storage is off, and the user
+     * lacks a Files action storage would give it. `null` otherwise. The rest of the panel stays editable.
+     */
+    public readonly storageToggleLock = computed<string | null>(() =>
+        storageToggleLockOf(
+            getNodeStorageGrants(this.node()),
+            (resource, action) => this.grantPermissions.can(resource, action),
+            () => this.grantPermissions.isActivePermissionsLoaded(),
+            slotInvolvesStorage(this.node())
+        )
+    );
+    /** Nothing here can be changed: a read-only editor, a trigger node for a user without Flows:Use, or a storage grant lock. */
+    public readonly isReadOnly = computed(
+        () => this.flowReadOnly.isNodeTypeReadOnly(this.node().type) || this.storageGrantLock() !== null
+    );
     private lastInitializedNodeId: string | null = null;
 
     node = input.required<T>();
@@ -46,6 +91,21 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     });
 
     constructor() {
+        // A lock can appear or go after the panel opened (the permissions load late): follow it.
+        effect(() => {
+            const isLocked = this.storageGrantLock() !== null;
+            untracked(() => {
+                if (!this.form) return;
+                if (isLocked && this.form.enabled) {
+                    this.form.disable({ emitEvent: false });
+                    this.resetBaseline();
+                } else if (!isLocked && !this.isReadOnly() && this.form.disabled) {
+                    this.form.enable({ emitEvent: false });
+                    this.resetBaseline();
+                }
+            });
+        });
+
         effect(() => {
             const node = this.node();
             if (!node) {

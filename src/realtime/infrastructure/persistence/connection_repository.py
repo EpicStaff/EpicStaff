@@ -1,5 +1,5 @@
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 from loguru import logger
 from src.shared.models import RealtimeAgentChatData
@@ -24,6 +24,11 @@ class ConnectionRepository(metaclass=SingletonMeta):
     organizations together fill the store. Expired entries are purged before
     anything live is evicted.
 
+    An entry dropped without ever being consumed (expired or evicted) has a chat that
+    will never start. Its key is remembered until `take_dropped_keys` hands it to the
+    caller, so the chat can be reported as ended. Consuming a key with
+    `delete_connection`, or replacing it by saving the same key again, is not a drop.
+
     Used from a single event loop; it does no locking.
     """
 
@@ -40,6 +45,9 @@ class ConnectionRepository(metaclass=SingletonMeta):
         self._store: OrderedDict[str, tuple[RealtimeAgentChatData, float, int]] = OrderedDict()
         # Same order, per organization; the values are unused.
         self._keys_by_org: dict[int, OrderedDict[str, None]] = {}
+        # Bounded like the store itself, so a sweeper that never runs cannot grow it forever;
+        # a key pushed out here is left to its account's TTL.
+        self._dropped_keys: deque[str] = deque(maxlen=max_connections)
         self.max_connections_per_org = max_connections_per_org
         self.max_connections = max_connections
         self.ttl_seconds = ttl_seconds
@@ -47,7 +55,10 @@ class ConnectionRepository(metaclass=SingletonMeta):
     def save_connection(self, connection_key: str, data: RealtimeAgentChatData):
         """Save connection data, making room in its organization's share first."""
         self._remove(connection_key)
-        self._purge_expired()
+        # The chat is pending again, so a drop of the same key not yet reported must not end it.
+        if connection_key in self._dropped_keys:
+            self._dropped_keys.remove(connection_key)
+        self.purge_expired()
 
         org_id = data.org_id
         org_keys = self._keys_by_org.get(org_id)
@@ -57,14 +68,14 @@ class ConnectionRepository(metaclass=SingletonMeta):
                 org_id,
                 self.max_connections_per_org,
             )
-            self._remove(next(iter(org_keys)))
+            self._drop(next(iter(org_keys)))
 
         if len(self._store) >= self.max_connections:
             logger.warning(
                 "Pending realtime sessions at the global capacity ({}), evicting the oldest",
                 self.max_connections,
             )
-            self._remove(next(iter(self._store)))
+            self._drop(next(iter(self._store)))
 
         self._store[connection_key] = (data, time.monotonic() + self.ttl_seconds, org_id)
         self._keys_by_org.setdefault(org_id, OrderedDict())[connection_key] = None
@@ -76,7 +87,7 @@ class ConnectionRepository(metaclass=SingletonMeta):
             return None
         data, expires_at, _ = entry
         if time.monotonic() >= expires_at:
-            self._remove(connection_key)
+            self._drop(connection_key)
             return None
         return data
 
@@ -89,13 +100,25 @@ class ConnectionRepository(metaclass=SingletonMeta):
         now = time.monotonic()
         return [data for data, expires_at, _ in self._store.values() if expires_at > now]
 
-    def _purge_expired(self) -> None:
+    def purge_expired(self) -> None:
+        """Drop every expired entry, so one that nobody asks for is still noticed."""
         now = time.monotonic()
         while self._store:
             oldest_key, (_, expires_at, _) = next(iter(self._store.items()))
             if expires_at > now:
                 return
-            self._remove(oldest_key)
+            self._drop(oldest_key)
+
+    def take_dropped_keys(self) -> list[str]:
+        """Return and forget the keys dropped unconsumed since the last call."""
+        dropped_keys = list(self._dropped_keys)
+        self._dropped_keys.clear()
+        return dropped_keys
+
+    def _drop(self, connection_key: str) -> None:
+        if connection_key in self._store:
+            self._dropped_keys.append(connection_key)
+        self._remove(connection_key)
 
     def _remove(self, connection_key: str) -> None:
         entry = self._store.pop(connection_key, None)

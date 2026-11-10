@@ -9,6 +9,7 @@ import { isNumberedNodeType } from '../core/helpers/node-number.util';
 import { findNearestFreePosition, getCollisionBounds, snapPointToGrid } from '../core/helpers/node-placement.utils';
 import { getDefaultNodeSize } from '../core/helpers/node-size.util';
 import { defaultScheduleStartDateTime, generateScheduleName } from '../core/helpers/schedule-trigger-defaults.util';
+import { newNodeStorageGrants } from '../core/helpers/storage-grants.util';
 import { NodeModel } from '../core/models/node.model';
 import { ViewPort } from '../core/models/port.model';
 import { ScheduleTriggerNodeData } from '../core/models/schedule-trigger.model';
@@ -47,6 +48,7 @@ export class NodeFactoryService {
             input_map: {},
             output_variable_path: null,
             size,
+            ...newNodeStorageGrants(type),
             ...overrides,
             // A created node is always a new identity, whatever the overrides carry.
             nodeUuid: generateUuid(),

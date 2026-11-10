@@ -37,6 +37,7 @@ import {
     TextareaComponent,
     ToggleSwitchComponent,
     ValidationErrorsComponent,
+    WarningNoteComponent,
 } from '@shared/components';
 import { EnterSubmitDirective, HasPermissionDirective } from '@shared/directives';
 import { executionTimeoutMinimumRule } from '@shared/form-validators';
@@ -53,8 +54,10 @@ import {
     extractHttpErrorMessage,
     isClientError,
     isSecretCodeLocked,
+    missingStorageGrantActions,
     SECRET_CODE_COPY_NEEDS_USE_MESSAGE,
     SECRET_CODE_NEEDS_USE_MESSAGE,
+    storageGrantLockMessage,
 } from '@shared/utils';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY, Observable, of, timer } from 'rxjs';
@@ -171,6 +174,7 @@ let nextDialogId = 0;
         HasPermissionDirective,
         NodeSecretsFieldComponent,
         ValidationErrorsComponent,
+        WarningNoteComponent,
     ],
     templateUrl: './create-custom-tool-dialog.component.html',
     styleUrls: ['./create-custom-tool-dialog.component.scss'],
@@ -194,6 +198,27 @@ export class CreateCustomToolDialogComponent {
     public readonly selectedTool = signal<GetPythonCodeToolRequest | null>(this.dialogData?.selectedTool ?? null);
     public readonly isEditMode = computed(() => this.selectedTool() !== null);
     public readonly isBuiltIn = computed(() => this.selectedTool()?.built_in === true);
+    /** Files actions that flows using this tool need its editor to hold and this user lacks. */
+    private readonly missingStorageGrantActions = computed(() => {
+        const lock = this.selectedTool()?.storage_grant_lock;
+        // Until the permissions are known, the server decides.
+        if (!lock || !this.permissionsService.isActivePermissionsLoaded()) return [];
+        return missingStorageGrantActions(lock.required_grants, (action) =>
+            this.permissionsService.can(ResourceCode.Files, action)
+        );
+    });
+    public readonly isStorageGrantLocked = computed(() => this.missingStorageGrantActions().length > 0);
+    public readonly storageGrantLockMessage = computed(() =>
+        this.isStorageGrantLocked()
+            ? storageGrantLockMessage(
+                  'tool',
+                  this.missingStorageGrantActions(),
+                  this.selectedTool()?.storage_grant_lock?.flow_names ?? []
+              )
+            : null
+    );
+    /** Built-in tools and tools locked by storage grants cannot be edited in place. */
+    public readonly isReadOnly = computed(() => this.isBuiltIn() || this.isStorageGrantLocked());
     public readonly dialogTitle = computed(() => {
         if (this.isBuiltIn()) {
             return 'Built-in Tool';
@@ -260,7 +285,7 @@ export class CreateCustomToolDialogComponent {
         )
     );
     /** The code, its venv and the tool's variables (the values the code runs with) share one lock. */
-    protected readonly isCodeReadOnly = computed(() => this.isBuiltIn() || this.isSecretCodeLocked());
+    protected readonly isCodeReadOnly = computed(() => this.isReadOnly() || this.isSecretCodeLocked());
     protected readonly copyBlockedReason = computed(() =>
         this.isSecretCodeLocked() ? SECRET_CODE_COPY_NEEDS_USE_MESSAGE : null
     );
@@ -640,7 +665,7 @@ export class CreateCustomToolDialogComponent {
 
     public submit(): void {
         // A built-in tool's save is a copy: Enter must not start one the copy button refuses.
-        if (this.isSaving() || (this.isBuiltIn() && this.copyBlockedReason())) {
+        if (this.isSaving() || this.isStorageGrantLocked() || (this.isBuiltIn() && this.copyBlockedReason())) {
             return;
         }
 
@@ -812,7 +837,7 @@ export class CreateCustomToolDialogComponent {
         }
         // A built-in tool's save forks it unchanged: its read-only timeout is neither sent nor fixable here.
         const executionTimeout = this.executionTimeout();
-        if (!this.isBuiltIn() && executionTimeout?.control.invalid) {
+        if (!this.isReadOnly() && executionTimeout?.control.invalid) {
             return `Execution timeout must be ${executionTimeoutMinimumRule(executionTimeout.limits.minSeconds)}`;
         }
         return null;

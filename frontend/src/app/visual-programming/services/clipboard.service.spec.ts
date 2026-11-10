@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { ICurrentSelection } from '@foblex/flow';
-import { NodeType } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { ConnectionModel } from '../core/models/connection.model';
 import { AgentNodeModel, NodeModel } from '../core/models/node.model';
 import { mapPythonNodeToModel } from '../utils/load/nodes/python-node.mapper';
@@ -211,6 +212,69 @@ describe('ClipboardService paste', () => {
                     targetPortId: `${targetCopy.id}_python-in`,
                 }),
             ]);
+        });
+    });
+});
+
+describe('ClipboardService paste storage grants', () => {
+    function pasteAs(files: ActionCode[], ...nodes: NodeModel[]): NodeModel[] {
+        TestBed.configureTestingModule({
+            providers: [
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            resource === ResourceCode.Files ? files.includes(action) : true,
+                    },
+                },
+            ],
+        });
+        const flowService = TestBed.inject(FlowService);
+        const clipboard = TestBed.inject(ClipboardService);
+        flowService.setFlow({ nodes, connections: [] });
+        clipboard.copy({ fNodeIds: nodes.map((node) => node.id), fConnectionIds: [], fGroupIds: [] });
+        return clipboard.paste({ x: 400, y: 400 }).newNodes;
+    }
+
+    it('turns off the flags of a copy that the user lacks the permissions for', () => {
+        const python = canvasNode('python-1', NodeType.PYTHON, {
+            storageGrants: { read: true, write: true, delete: true },
+        });
+
+        const [copy] = pasteAs([ActionCode.Read, ActionCode.Delete], python);
+
+        expect(copy.storageGrants).toEqual({ read: true, write: false, delete: true });
+    });
+
+    it('makes a not-configured copy explicit, with what the user holds, unless they hold all three', () => {
+        const stored = { read: null, write: null, delete: null };
+        const python = canvasNode('python-1', NodeType.PYTHON, { storageGrants: stored });
+
+        const [limited] = pasteAs([ActionCode.Read], python);
+
+        expect(limited.storageGrants).toEqual({ read: true, write: false, delete: false });
+    });
+
+    it('keeps a not-configured copy not configured for a user who holds all three', () => {
+        const stored = { read: null, write: null, delete: null };
+        const python = canvasNode('python-1', NodeType.PYTHON, { storageGrants: stored });
+
+        const [copy] = pasteAs([ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete], python);
+
+        expect(copy.storageGrants).toEqual(stored);
+    });
+
+    it('caps each slot of a classification table copy', () => {
+        const table = canvasNode('cdt-1', NodeType.CLASSIFICATION_TABLE, {
+            preStorageGrants: { read: true, write: false, delete: true },
+            postStorageGrants: { read: false, write: true, delete: false },
+        } as Partial<NodeModel>);
+
+        const [copy] = pasteAs([ActionCode.Read], table);
+
+        expect(copy).toMatchObject({
+            preStorageGrants: { read: true, write: false, delete: false },
+            postStorageGrants: { read: false, write: false, delete: false },
         });
     });
 });

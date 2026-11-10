@@ -21,7 +21,7 @@ import { AgentTasksTableComponent } from './agent-tasks-table/agent-tasks-table.
 
 // Stands in for the form-bound shared controls so the real template renders without their dependencies.
 @Component({
-    selector: 'app-custom-input',
+    selector: 'app-custom-input, app-storage-grants-field',
     template: '',
     providers: [{ provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => FormControlStubComponent), multi: true }],
 })

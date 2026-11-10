@@ -18,6 +18,7 @@ from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
 from infrastructure.providers.factory import RealtimeAgentClientFactory
 from src.shared.models import RealtimeAgentChatData
 
+from application.agent_chat_end_client import AgentChatEndClient
 from application.tool_manager_service import ToolManagerService
 
 MIN_CHUNK_SIZE = 2000
@@ -81,6 +82,7 @@ class VoiceCallService:
         self.factory = factory
         self.django_api_base_url = django_api_base_url
         self.django_api_key = django_api_key
+        self._chat_end_client = AgentChatEndClient(django_api_base_url, django_api_key)
         self.initial_message = initial_message
         self.max_call_duration_seconds = max_call_duration_seconds
 
@@ -129,7 +131,7 @@ class VoiceCallService:
                         f"Voice call exceeded max duration "
                         f"({self.max_call_duration_seconds}s) — ending session"
                     )
-                    self._end_reason = "max_duration_exceeded"
+                    self._end_reason = "timeout"
                     break
                 await self._handle_twilio_message(json.loads(raw), rt_agent_client)
         except WebSocketDisconnect as e:
@@ -162,7 +164,7 @@ class VoiceCallService:
             execute_cancelled = asyncio.current_task().cancelling() > 0
             await rt_agent_client.close()
 
-            if self._end_reason in ("max_duration_exceeded", "error"):
+            if self._end_reason in ("timeout", "error"):
                 # We stopped reading ourselves (Twilio didn't hang up) —
                 # actively close so the call actually ends instead of hanging
                 # open with nobody reading Twilio's media frames, and before
@@ -273,7 +275,7 @@ class VoiceCallService:
                 duration=duration,
             )
 
-        await self._patch_agent_chat(
+        await self._chat_end_client.end_chat(
             connection_key=connection_key,
             duration=duration,
             end_reason=self._end_reason,
@@ -314,26 +316,3 @@ class VoiceCallService:
                     logger.info(f"Saved {recording_type} recording for {connection_key}")
         except Exception as e:
             logger.error(f"Error posting {recording_type} recording: {e}")
-
-    async def _patch_agent_chat(
-        self, connection_key: str, duration: float, end_reason: str
-    ) -> None:
-        url = f"{self.django_api_base_url}/realtime-agent-chats/end/"
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    url,
-                    headers={"Host": "localhost", "X-API-Key": self.django_api_key},
-                    json={
-                        "connection_key": connection_key,
-                        "duration_seconds": round(duration, 2),
-                        "end_reason": end_reason,
-                    },
-                    timeout=10.0,
-                )
-                if not resp.is_success:
-                    logger.warning(
-                        f"Failed to update agent chat metadata: {resp.status_code} {resp.text}"
-                    )
-        except Exception as e:
-            logger.error(f"Error updating agent chat metadata: {e}")

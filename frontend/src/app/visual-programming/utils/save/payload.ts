@@ -1,6 +1,7 @@
 import { DEFAULT_KEY_VALUE_MODE, MISSING_END_OUTPUT_MAP } from '../../core/constants/default-node-data';
 import { slugifyPortName } from '../../core/helpers/helpers';
 import { isNumberedNodeType } from '../../core/helpers/node-number.util';
+import { storageGrantsToPayload } from '../../core/helpers/storage-grants.util';
 import { AgentNodeTaskUi, AgentNodeTaskWrite } from '../../core/models/agent-node.model';
 import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import {
@@ -215,6 +216,7 @@ function buildCdtNodePayload(
         pre_input_map: preComp?.input_map ?? tableData.pre_input_map ?? {},
         pre_output_variable_path: preComp?.output_variable_path || tableData.pre_output_variable_path || null,
         pre_use_storage: tableData.pre_use_storage ?? false,
+        ...storageGrantsToPayload(node.preStorageGrants, 'pre'),
         post_python_code: isPythonCodeBlockSaved(postCodeValue, postSecretIds)
             ? {
                   code: postCodeValue,
@@ -227,6 +229,7 @@ function buildCdtNodePayload(
         post_input_map: postComp?.input_map ?? tableData.post_input_map ?? {},
         post_output_variable_path: postComp?.output_variable_path || tableData.post_output_variable_path || null,
         post_use_storage: tableData.post_use_storage ?? false,
+        ...storageGrantsToPayload(node.postStorageGrants, 'post'),
         prompt_configs: Object.entries(tableData.prompts ?? {}).map(
             ([key, cfg]) =>
                 ({
@@ -391,6 +394,7 @@ export function buildBulkSavePayload(
                 output_variable_path: n.output_variable_path || null,
                 use_storage: use_storage ?? false,
                 test_input: n.test_input ?? {},
+                ...storageGrantsToPayload(n.storageGrants),
                 metadata: toNodeMetadata(n),
             };
         }),
@@ -405,6 +409,7 @@ export function buildBulkSavePayload(
             output_variable_path: n.output_variable_path || null,
             surface_list: n.data.surface_list ?? [],
             inline_surface: n.data.inline_surface ?? null,
+            ...storageGrantsToPayload(n.storageGrants),
             metadata: toNodeMetadata(n),
         })),
         agent_node_list: nodeItems(nodeDiff.agentNodes, (n) => ({
@@ -416,6 +421,7 @@ export function buildBulkSavePayload(
             surface_list: n.data.surface_list ?? [],
             inline_surface: n.data.inline_surface ?? null,
             tasks: buildAgentTasksPayload(n.data.tasks ?? []),
+            ...storageGrantsToPayload(n.storageGrants),
             metadata: toNodeMetadata(n),
         })),
         file_extractor_node_list: nodeItems(nodeDiff.fileExtractorNodes, (n) => ({
@@ -423,6 +429,7 @@ export function buildBulkSavePayload(
             graph: graphId,
             input_map: n.input_map || {},
             output_variable_path: n.output_variable_path || null,
+            ...storageGrantsToPayload(n.storageGrants),
             metadata: toNodeMetadata(n),
         })),
         audio_transcription_node_list: nodeItems(nodeDiff.audioToTextNodes, (n) => ({
@@ -430,6 +437,7 @@ export function buildBulkSavePayload(
             graph: graphId,
             input_map: n.input_map || {},
             output_variable_path: n.output_variable_path || null,
+            ...storageGrantsToPayload(n.storageGrants),
             metadata: toNodeMetadata(n),
         })),
         end_node_list: nodeItems(nodeDiff.endNodes, (n) => ({
@@ -455,6 +463,7 @@ export function buildBulkSavePayload(
             webhook_trigger: n.data.webhook_trigger,
             test_payload: n.data.test_payload ?? {},
             use_storage: n.data.use_storage ?? false,
+            ...storageGrantsToPayload(n.storageGrants),
             metadata: toNodeMetadata(n),
         })),
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({

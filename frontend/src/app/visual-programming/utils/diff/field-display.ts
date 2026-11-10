@@ -1,5 +1,12 @@
 import { formatClockDuration } from '@shared/utils';
 
+import {
+    hasNoStorageAccess,
+    isStorageGrantConfigured,
+    STORAGE_GRANT_KINDS,
+    STORAGE_GRANT_LABELS,
+} from '../../core/helpers/storage-grants.util';
+import { StorageGrants } from '../../core/models/storage-grants.model';
 import { FieldKind } from './types';
 
 /**
@@ -32,6 +39,19 @@ function scheduleDateTime(value: unknown): string {
     return `${day}.${month}.${year} at ${hour}:${minute}`;
 }
 
+/**
+ * A slot's storage grants as the panel field shows them: the granted actions (`Read, Write`), `No access` when all
+ * three are off, `Not configured` when none was ever set (a trigger-started run then keeps its full access).
+ */
+function storageGrantsText(value: unknown): string {
+    const grants = value as StorageGrants;
+    if (!isStorageGrantConfigured(grants)) return 'Not configured';
+    if (hasNoStorageAccess(grants)) return 'No access';
+    return STORAGE_GRANT_KINDS.filter((kind) => grants[kind] === true)
+        .map((kind) => STORAGE_GRANT_LABELS[kind])
+        .join(', ');
+}
+
 export const FIELD_DISPLAY = {
     node_name: { label: 'Name' },
     input_map: { label: 'Input map' },
@@ -47,6 +67,7 @@ export const FIELD_DISPLAY = {
     'python_code.secret_names': { label: 'Secrets' },
     'python_code.execution_timeout': { label: 'Execution timeout', format: clockDuration },
     use_storage: { label: 'Use storage' },
+    storage_grants: { label: 'Access when started by a trigger', format: storageGrantsText },
     webhook_trigger: { label: 'Webhook trigger', kind: 'entityRef' },
     telegram_bot_api_key_secret_id: { label: 'Bot API key secret', kind: 'entityRef' },
     fields: { label: 'Telegram fields' },
@@ -109,6 +130,10 @@ export const FIELD_DISPLAY = {
     'pre_computation.secret_names': { label: 'Pre-computation secrets' },
     'pre_computation.execution_timeout': { label: 'Pre-computation execution timeout', format: clockDuration },
     pre_use_storage: { label: 'Pre-computation uses storage' },
+    pre_storage_grants: {
+        label: 'Pre-computation access when started by a trigger',
+        format: storageGrantsText,
+    },
     post_computation: { label: 'Post-computation' },
     'post_computation.code': { label: 'Post-computation code', kind: 'text' },
     'post_computation.input_map': { label: 'Post-computation input map' },
@@ -116,6 +141,10 @@ export const FIELD_DISPLAY = {
     'post_computation.secret_names': { label: 'Post-computation secrets' },
     'post_computation.execution_timeout': { label: 'Post-computation execution timeout', format: clockDuration },
     post_use_storage: { label: 'Post-computation uses storage' },
+    post_storage_grants: {
+        label: 'Post-computation access when started by a trigger',
+        format: storageGrantsText,
+    },
     default_llm_config: { label: 'Default LLM', kind: 'entityRef' },
     prompts: { label: 'Prompts' },
     'prompts[]': { label: 'Prompt' },

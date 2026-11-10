@@ -42,6 +42,14 @@ class StorageCredentials(ValueObject):
 
     access_key: str
     secret_key: str
+    # Actions allowed on the allowed paths outside `own_paths`; None means not narrowed.
+    shared_actions: list[str] | None = None
+    # The run's own folders, where every action is allowed.
+    own_paths: list[str] = Field(default_factory=list)
+    # Bytes the org may still add, and bytes purging its recycle bin would free beyond
+    # that; None means no limit is known.
+    free_bytes: int | None = None
+    purgeable_bytes: int | None = None
 
 
 class Job(ValueObject):
@@ -106,6 +114,8 @@ class StorageMutations(ValueObject):
     execution_id: str
     org_prefix: str
     session_id: int | None = None
+    # Access key of the run's temporary storage account, taken from the job's credentials.
+    access_key: str | None = None
     mutations: list[dict] = Field(default_factory=list)
 
 

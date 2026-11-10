@@ -96,15 +96,43 @@
             }
         }
 
-        .blocked-badge {
+        .node-badge {
+            flex-shrink: 0;
+            min-width: 0;
+            max-width: 60%;
             margin-left: auto;
-            font-size: 0.6875rem;
+            box-sizing: border-box;
             padding: 2px 6px;
             border-radius: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-access-badge {
+            font-weight: var(--text-caption-weight);
+            font-size: var(--text-caption-size);
+            line-height: var(--text-caption-line-height);
+            background: color-mix(in srgb, var(--color-error) 15%, transparent);
+            color: var(--color-error);
+            border: 1px solid color-mix(in srgb, var(--color-error) 60%, transparent);
+        }
+
+        // Amber: file access that was never set, something to review rather than a fault.
+        .caution-badge {
+            font-weight: var(--text-caption-weight);
+            font-size: var(--text-caption-size);
+            line-height: var(--text-caption-line-height);
+            background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+            color: var(--color-warning);
+            border: 1px solid color-mix(in srgb, var(--color-warning) 60%, transparent);
+        }
+
+        .blocked-badge {
+            font-size: 0.6875rem;
             background: var(--red-400-alpha-15);
             color: var(--red-405);
             border: 1px solid var(--red-400-alpha-60);
-            white-space: nowrap;
         }
     }
 

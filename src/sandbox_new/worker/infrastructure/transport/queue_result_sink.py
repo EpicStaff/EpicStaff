@@ -27,6 +27,7 @@ class QueueResultSink(AbstractResultSink):
             mutations_message = StorageMutationsMessage(
                 org_prefix=mutations.org_prefix,
                 session_id=mutations.session_id,
+                access_key=mutations.access_key,
                 mutations=mutations.mutations,
             )
         message = ExecutionResultMessage(

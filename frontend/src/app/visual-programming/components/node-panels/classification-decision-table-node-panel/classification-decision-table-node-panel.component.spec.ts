@@ -10,8 +10,9 @@ import {
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
     JsonEditorComponent,
+    ToggleSwitchComponent,
 } from '@shared/components';
-import { NodeType, ResourceCode } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
 import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { Observable, of } from 'rxjs';
@@ -776,6 +777,185 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
 
         expect(fields().preExecutionTimeout.control.disabled).toBe(true);
         expect(fields().postExecutionTimeout.control.disabled).toBe(true);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — storage grant lock per slot', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    /** A user holding exactly these Files actions (and everything outside Files). */
+    function open(files: ActionCode[]): void {
+        configurePanelTestBed({
+            providers: [
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            resource === ResourceCode.Files ? files.includes(action) : true,
+                        canEditSecrets: () => true,
+                        isActivePermissionsLoaded: () => true,
+                    },
+                },
+            ],
+        });
+        const node = {
+            ...tableNode(),
+            // Pre-code runs with Write; post-code with Read only.
+            preStorageGrants: { read: false, write: true, delete: false },
+            postStorageGrants: { read: true, write: false, delete: false },
+        };
+        TestBed.inject(FlowService).setFlow({ nodes: [node], connections: [] });
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+    }
+
+    function showTab(tab: 'precomputation' | 'postcomputation'): void {
+        fixture.componentInstance.setActiveTab(tab);
+        fixture.detectChanges();
+    }
+
+    function banner(): string | null {
+        const element = (fixture.nativeElement as HTMLElement).querySelector('app-hint-message');
+        return element ? (element.textContent ?? '').trim() : null;
+    }
+
+    function editorReadOnly(): boolean {
+        return fixture.debugElement.query(By.directive(CodeEditorStubComponent)).componentInstance.readOnly();
+    }
+
+    function storageSwitchReadOnly(): boolean {
+        return fixture.debugElement.query(By.directive(NodeStorageSectionComponent)).componentInstance.readonly();
+    }
+
+    it('locks the pre-code slot, its code editor and its storage switch when the user lacks Write', () => {
+        open([ActionCode.Read]);
+        showTab('precomputation');
+
+        expect(banner()).toBe(
+            "This code runs with Files: Create, Files: Update, which you don't have. Contact an admin to change it."
+        );
+        expect(editorReadOnly()).toBe(true);
+        expect(storageSwitchReadOnly()).toBe(true);
+    });
+
+    it('leaves the post-code slot editable when only the pre-code slot exceeds the permissions', () => {
+        open([ActionCode.Read]);
+        showTab('postcomputation');
+
+        expect(banner()).toBeNull();
+        expect(editorReadOnly()).toBe(false);
+        expect(storageSwitchReadOnly()).toBe(false);
+    });
+
+    it('locks neither slot for a user who holds every permission', () => {
+        open([ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete]);
+        showTab('precomputation');
+
+        expect(banner()).toBeNull();
+        expect(editorReadOnly()).toBe(false);
+        expect(storageSwitchReadOnly()).toBe(false);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — not-configured slots and storage', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+    const NOT_CONFIGURED = { read: null, write: null, delete: null };
+    const ALL_FILES = [ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete];
+
+    /** Both slots not configured; the pre-code reaches storage, the post-code does not. */
+    function open(files: ActionCode[]): void {
+        configurePanelTestBed({
+            providers: [
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            resource === ResourceCode.Files ? files.includes(action) : true,
+                        canEditSecrets: () => true,
+                        isActivePermissionsLoaded: () => true,
+                    },
+                },
+            ],
+        });
+        const base = tableNode();
+        const node = {
+            ...base,
+            data: {
+                ...base.data,
+                table: { ...base.data.table, pre_use_storage: true, post_use_storage: false },
+            },
+            preStorageGrants: NOT_CONFIGURED,
+            postStorageGrants: NOT_CONFIGURED,
+        };
+        TestBed.inject(FlowService).setFlow({ nodes: [node], connections: [] });
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+    }
+
+    function showTab(tab: 'precomputation' | 'postcomputation'): void {
+        fixture.componentInstance.setActiveTab(tab);
+        fixture.detectChanges();
+    }
+
+    function banners(): string[] {
+        return fixture.debugElement
+            .queryAll(By.css('app-hint-message'))
+            .map((element) => (element.nativeElement.textContent ?? '').trim());
+    }
+
+    function editorReadOnly(): boolean {
+        return fixture.debugElement.query(By.directive(CodeEditorStubComponent)).componentInstance.readOnly();
+    }
+
+    function storageSwitchDisabled(): boolean {
+        return fixture.debugElement.query(By.directive(ToggleSwitchComponent)).componentInstance.disabled();
+    }
+
+    it('locks the pre-code slot whose storage is on, for a user lacking a Files action', () => {
+        open([ActionCode.Read]);
+        showTab('precomputation');
+
+        expect(banners()).toContain(
+            "This code runs with Files: Create, Files: Update, Files: Delete, which you don't have. Contact an admin to change it."
+        );
+        expect(editorReadOnly()).toBe(true);
+    });
+
+    it('keeps the post-code slot with storage off editable but its storage switch off', () => {
+        open([ActionCode.Read]);
+        showTab('postcomputation');
+
+        expect(editorReadOnly()).toBe(false);
+        expect(storageSwitchDisabled()).toBe(true);
+        expect(banners()).toEqual([
+            "Storage gives this code Files: Create, Files: Update, Files: Delete, which you don't have. Contact an admin to turn it on.",
+        ]);
+    });
+
+    it('locks each slot by its own storage flag: pre holds the grant lock, post holds the toggle lock', () => {
+        open([ActionCode.Read]);
+
+        const panel = fixture.componentInstance as unknown as Record<string, () => string | null>;
+        expect(panel['preStorageGrantLock']()).toContain('Files: Create, Files: Update, Files: Delete');
+        expect(panel['preStorageToggleLock']()).toBeNull();
+        expect(panel['postStorageGrantLock']()).toBeNull();
+        expect(panel['postStorageToggleLock']()).toBe(
+            "Storage gives this code Files: Create, Files: Update, Files: Delete, which you don't have. Contact an admin to turn it on."
+        );
+    });
+
+    it('locks neither slot for a user holding every Files action', () => {
+        open(ALL_FILES);
+
+        showTab('precomputation');
+        expect(editorReadOnly()).toBe(false);
+        expect(banners()).toEqual([]);
+
+        showTab('postcomputation');
+        expect(storageSwitchDisabled()).toBe(false);
+        expect(banners()).toEqual([]);
     });
 });
 

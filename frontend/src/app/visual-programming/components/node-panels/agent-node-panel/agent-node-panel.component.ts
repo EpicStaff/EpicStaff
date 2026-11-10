@@ -21,6 +21,7 @@ import {
     createColumnWidthState,
     CustomInputComponent,
     HelpTooltipComponent,
+    HintMessageComponent,
     JsonEditorComponent,
     MultiSelectComponent,
     SelectDropdownComponent,
@@ -79,6 +80,7 @@ import {
     InstructionsViewToggleComponent,
 } from '../shared/instructions-view-toggle/instructions-view-toggle.component';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
+import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 import { VariableHighlightTextareaComponent } from '../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 import { agentTaskRowChanges } from './agent-tasks-table/agent-task-row-changes';
 import { AgentTasksTableComponent } from './agent-tasks-table/agent-tasks-table.component';
@@ -97,6 +99,8 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         SelectDropdownTriggerDirective,
         MultiSelectComponent,
         HelpTooltipComponent,
+        HintMessageComponent,
+        StorageGrantsFieldComponent,
         AppSvgIconComponent,
         JsonEditorComponent,
         AgentTasksTableComponent,
@@ -422,6 +426,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     }
 
     onCreateLocalSurface(): void {
+        if (this.isReadOnly()) return;
         this.localSurfaceDialog
             .open({ mode: 'create', inlineSurface: null, llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -434,6 +439,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     }
 
     onEditLocalSurface(): void {
+        if (this.isReadOnly()) return;
         this.localSurfaceDialog
             .open({ mode: 'edit', inlineSurface: this.inlineSurface(), llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -636,6 +642,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
+            storage_grants: [this.node().storageGrants],
             agent_definition: [data.agent_definition ?? null, Validators.required],
             tasksValidity: [true, this.tasksValidator()],
         });
@@ -654,6 +661,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             node_name: this.form.value.node_name,
             input_map: inputMapValue,
             output_variable_path: this.form.value.output_variable_path || null,
+            storageGrants: this.form.get('storage_grants')?.value ?? undefined,
             data: {
                 ...this.node().data,
                 name: this.form.value.node_name || 'Agent Node',

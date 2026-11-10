@@ -39,6 +39,19 @@
                     [readonly]="isReadOnly()"
                 ></app-custom-input>
             </app-diff-field-mark>
+
+            @if (storageGrantLock(); as lock) {
+                <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+            }
+            <app-diff-field-mark
+                [diffField]="'storage_grants'"
+                [diffGroup]="true"
+            >
+                <app-storage-grants-field
+                    formControlName="storage_grants"
+                    [readonly]="isReadOnly()"
+                />
+            </app-diff-field-mark>
         </form>
     </div>
 </div>

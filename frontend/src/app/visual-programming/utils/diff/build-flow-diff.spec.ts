@@ -324,6 +324,87 @@ describe('buildFlowDiff', () => {
         ]);
     });
 
+    describe('storage grants', () => {
+        const READ_WRITE = { read: true, write: true, delete: false };
+        const NOT_CONFIGURED = { read: null, write: null, delete: null };
+
+        // The fixture's version holds no grants, which reads as not configured.
+        it.each([
+            fieldCase(NodeType.PYTHON, UUID.python, (node) => ({ ...node, storageGrants: READ_WRITE }), {
+                path: 'storage_grants',
+                current: READ_WRITE,
+                version: NOT_CONFIGURED,
+            }),
+            fieldCase(NodeType.WEBHOOK_TRIGGER, UUID.webhook, (node) => ({ ...node, storageGrants: READ_WRITE }), {
+                path: 'storage_grants',
+                current: READ_WRITE,
+                version: NOT_CONFIGURED,
+            }),
+            fieldCase(NodeType.TASK, UUID.task, (node) => ({ ...node, storageGrants: READ_WRITE }), {
+                path: 'storage_grants',
+                current: READ_WRITE,
+                version: NOT_CONFIGURED,
+            }),
+            fieldCase(NodeType.AGENT, UUID.agent, (node) => ({ ...node, storageGrants: READ_WRITE }), {
+                path: 'storage_grants',
+                current: READ_WRITE,
+                version: NOT_CONFIGURED,
+            }),
+            fieldCase(NodeType.FILE_EXTRACTOR, UUID.fileExtractor, (node) => ({ ...node, storageGrants: READ_WRITE }), {
+                path: 'storage_grants',
+                current: READ_WRITE,
+                version: NOT_CONFIGURED,
+            }),
+            fieldCase(NodeType.AUDIO_TO_TEXT, UUID.audio, (node) => ({ ...node, storageGrants: READ_WRITE }), {
+                path: 'storage_grants',
+                current: READ_WRITE,
+                version: NOT_CONFIGURED,
+            }),
+            fieldCase(
+                NodeType.CLASSIFICATION_TABLE,
+                UUID.classificationTable,
+                (node) => ({ ...node, preStorageGrants: READ_WRITE }),
+                { path: 'pre_storage_grants', current: READ_WRITE, version: NOT_CONFIGURED }
+            ),
+            fieldCase(
+                NodeType.CLASSIFICATION_TABLE,
+                UUID.classificationTable,
+                (node) => ({ ...node, postStorageGrants: READ_WRITE }),
+                { path: 'post_storage_grants', current: READ_WRITE, version: NOT_CONFIGURED }
+            ),
+        ])('$type: granting access on the canvas is a change ($path)', (testCase) => {
+            const diff = diffVersion(snapshot, { liveFlow: testCase.edit(loadLive()) });
+
+            expect(entryOf(diff, testCase.nodeUuid).fields).toEqual([
+                expect.objectContaining({ path: testCase.path, current: testCase.current, version: testCase.version }),
+            ]);
+        });
+
+        it('treats a node with no grants and one with all three not configured as the same', () => {
+            const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({
+                ...node,
+                storageGrants: NOT_CONFIGURED,
+            }));
+
+            expect(entryOf(diffVersion(snapshot, { liveFlow }), UUID.python).fields).toEqual([]);
+        });
+
+        it('tells explicit no access from not configured', () => {
+            const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({
+                ...node,
+                storageGrants: { read: false, write: false, delete: false },
+            }));
+
+            expect(entryOf(diffVersion(snapshot, { liveFlow }), UUID.python).fields).toEqual([
+                expect.objectContaining({
+                    path: 'storage_grants',
+                    current: { read: false, write: false, delete: false },
+                    version: NOT_CONFIGURED,
+                }),
+            ]);
+        });
+    });
+
     // The canvas keeps a node it saved as it sent it: the text as typed and no timeout of its own. The backend stores
     // text without its surrounding whitespace (a DRF CharField trims it) and gives code saved without a timeout the
     // deployment default, and a version is taken from what it stores. A restore of that version changes nothing.

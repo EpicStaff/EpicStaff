@@ -124,6 +124,16 @@ const FIELD_CASES: FieldCase[] = [
         },
         {
             panel,
+            change: fieldChange(
+                'storage_grants',
+                { read: false, write: false, delete: false },
+                { read: true, write: null, delete: null }
+            ),
+            marked: 'storage_grants',
+            tooltip: '[No access]',
+        },
+        {
+            panel,
             change: fieldChange('agent_definition', 7, 41),
             marked: 'app-select-dropdown',
             tooltip: '[Old agent]',

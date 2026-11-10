@@ -10,6 +10,10 @@ import {
     generatePortsForDecisionTableNode,
     parsePortId,
 } from '../core/helpers/helpers';
+import {
+    nodeIdsWithFullFileAccessWhenTriggered,
+    nodeIdsWithoutFileAccessWhenTriggered,
+} from '../core/helpers/storage-grants.util';
 import { ConnectionModel } from '../core/models/connection.model';
 import { ConditionGroup, DecisionTableNode } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
@@ -62,6 +66,18 @@ export class FlowService {
 
     public readonly nodes = computed(() => this.flowSignal().nodes);
     public readonly connections = computed(() => this.flowSignal().connections);
+
+    /**
+     * The nodes that get no access to the flow's attached files when a trigger starts the flow (their grants are
+     * explicitly all off). Empty while the flow has no trigger node.
+     */
+    public readonly nodeIdsWithoutFileAccess = computed(() => nodeIdsWithoutFileAccessWhenTriggered(this.nodes()));
+
+    /**
+     * The nodes whose file access was never configured (all grants null), so they keep full access when a trigger
+     * starts the flow. Empty while the flow has no trigger node.
+     */
+    public readonly nodeIdsWithFullFileAccess = computed(() => nodeIdsWithFullFileAccessWhenTriggered(this.nodes()));
 
     public readonly noteNodes = computed(() => this.nodes().filter((node) => node.type === NodeType.NOTE));
 

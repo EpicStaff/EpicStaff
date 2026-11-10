@@ -33,8 +33,9 @@ SECRET_NAME = "query-count-key"
 # query; if it lowers it, update the number. It includes run admission, asked
 # before anything is written and again just before the publish: one query each
 # while no plugin grant of the organization is inactive. It also includes the
-# savepoint (SAVEPOINT, RELEASE) the warnings are saved in after the publish.
-RUN_SESSION_QUERY_COUNT = 67
+# savepoint (SAVEPOINT, RELEASE) the warnings are saved in after the publish, and
+# the read of the organization's stored size for the storage quota.
+RUN_SESSION_QUERY_COUNT = 68
 
 
 def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -> PythonNode:
@@ -118,7 +119,7 @@ def published(monkeypatch):
     monkeypatch.setattr(
         SessionManagerService().redis_service,
         "publish_session_data",
-        lambda *, session_data, org_id, storage_credentials=None: (
+        lambda *, session_data, org_id, storage_credentials=None, storage_credentials_by_grant=None: (
             published.append((session_data, org_id)) or 1
         ),
     )

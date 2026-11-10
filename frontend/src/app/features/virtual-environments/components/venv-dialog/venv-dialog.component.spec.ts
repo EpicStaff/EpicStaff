@@ -277,6 +277,26 @@ describe('VenvDialogComponent library rows', () => {
         expect(close).not.toHaveBeenCalled();
     });
 
+    it("toasts the server's message when the edit is refused for missing Files permissions", () => {
+        const message = "This venv is used by code that runs with Files: Write, which you don't have.";
+        open({
+            venv: storedVenv([
+                { name: 'requests', version: '1.5', specification: '>=1.0', description: null, is_custom: false },
+            ]),
+        });
+
+        save();
+        httpMock
+            .expectOne(`${VENVS_URL}7/`)
+            .flush(
+                { status_code: 403, code: 'storage_grant_denied', message, missing_grants: ['write'] },
+                { status: 403, statusText: '' }
+            );
+
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledExactlyOnceWith(message);
+        expect(close).not.toHaveBeenCalled();
+    });
+
     it('toasts why a library change was refused for a venv that code reading secrets runs in', () => {
         const message =
             'libs: Changing code that reads secrets, or what it runs with, requires the "Use" permission on Secrets. ' +

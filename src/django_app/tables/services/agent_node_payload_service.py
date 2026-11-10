@@ -4,6 +4,7 @@ from agents.services.node_surface_service import NodeSurfaceService
 from src.shared.models import AgentNodeData, AgentNodeTaskData, CombinedSurfaceData
 from tables.models.graph_models import AgentNode
 from tables.services.base_node_payload_service import BaseNodePayloadService
+from tables.services.storage_grants.flags import storage_grant_of
 
 
 class AgentNodePayloadService(BaseNodePayloadService):
@@ -33,6 +34,7 @@ class AgentNodePayloadService(BaseNodePayloadService):
             agent_definition=self._build_agent_definition_data(agent_node.agent_definition),
             input_map=agent_node.input_map or {},
             output_variable_path=agent_node.output_variable_path,
+            storage_grant=storage_grant_of(agent_node),
             surface=combined_surface,
             tools=self._build_tool_pool(
                 combined_surface, graph_id, session_id, s3_files, org_id=org_id

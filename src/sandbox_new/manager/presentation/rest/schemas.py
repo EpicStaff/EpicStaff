@@ -123,7 +123,18 @@ class StorageCredentialsSchema(ExecutionStorageCredentials):
     """Object-store credentials the caller issued for this execution."""
 
     def to_domain(self) -> StorageCredentials:
-        return StorageCredentials(access_key=self.access_key, secret_key=self.secret_key)
+        return StorageCredentials(
+            access_key=self.access_key,
+            secret_key=self.secret_key,
+            shared_actions=(
+                None
+                if self.shared_actions is None
+                else [str(action) for action in self.shared_actions]
+            ),
+            own_paths=self.own_paths,
+            free_bytes=self.free_bytes,
+            purgeable_bytes=self.purgeable_bytes,
+        )
 
 
 class ExecutionSubmitSchema(ExecutionRequest):

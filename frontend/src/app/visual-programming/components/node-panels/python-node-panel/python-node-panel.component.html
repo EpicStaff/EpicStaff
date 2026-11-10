@@ -112,11 +112,22 @@
                     <app-diff-field-mark [diffField]="'use_storage'">
                         <app-node-storage-section
                             [readonly]="isCodeReadOnly()"
+                            [lockReason]="storageToggleLock()"
                             [useStorage]="useStorage()"
                             (onToggleChange)="onStorageToggle($event)"
                             (onInsertCode)="insertStorageCode($event)"
                             (onRemoveCode)="removeStorageCode($event)"
                         ></app-node-storage-section>
+                    </app-diff-field-mark>
+
+                    <app-diff-field-mark
+                        [diffField]="'storage_grants'"
+                        [diffGroup]="true"
+                    >
+                        <app-storage-grants-field
+                            formControlName="storage_grants"
+                            [readonly]="isReadOnly()"
+                        />
                     </app-diff-field-mark>
                 </div>
 
@@ -138,6 +149,9 @@
                     class="code-editor-wrapper"
                 >
                     <div class="code-editor-column">
+                        @if (storageGrantLock(); as lock) {
+                            <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                        }
                         @if (codeDiff(); as code) {
                             <app-code-diff-view
                                 class="code-editor-section"

@@ -2,6 +2,7 @@ import { AuthorshipFields, DeclaredSecretRef, SystemOnePromptKind, SystemOneQues
 
 import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
+import { CdtStorageGrantFields } from './storage-grants.model';
 
 export interface PromptConfigBackend {
     id: number;
@@ -82,7 +83,8 @@ export interface CDTPythonCodeBlock {
     execution_timeout?: number;
 }
 
-export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
+export interface GetClassificationDecisionTableNodeRequest
+    extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto, CdtStorageGrantFields {
     id: number;
     created_at: string;
     graph: number;
@@ -104,7 +106,7 @@ export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFie
     metadata?: unknown;
 }
 
-export interface CreateClassificationDecisionTableNodeRequest {
+export interface CreateClassificationDecisionTableNodeRequest extends CdtStorageGrantFields {
     graph: number;
     node_name: string;
     pre_python_code: CDTPythonCodeBlock | null;

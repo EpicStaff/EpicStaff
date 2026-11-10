@@ -6,7 +6,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from .agent_service import CollectionSpec, S3FileSpec
 from .ai_providers import LLMData
 from .knowledge import RagSearchConfig
-from .storage_scope import StorageScopedData
+from .storage_scope import StorageGrant, StorageScopedData
 from .surfaces import CombinedSurfaceData
 from .system_one import PromptKind, SystemOneConfigData, SystemOneQuestion
 from .tools import BaseToolData, PythonCodeData
@@ -182,6 +182,7 @@ class TaskNodeData(BaseModel):
     tools: list[BaseToolData] = []
     collections: list[CollectionSpec] = []
     s3_files: list[S3FileSpec] = []
+    storage_grant: StorageGrant | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -206,6 +207,7 @@ class AgentNodeData(BaseModel):
     collections: list[CollectionSpec] = []
     s3_files: list[S3FileSpec] = []
     tasks: list[AgentNodeTaskData] = []
+    storage_grant: StorageGrant | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

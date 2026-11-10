@@ -133,7 +133,15 @@
                         @if (isScheduleTriggerActive) {
                             <span class="active-dot"></span>
                         }
-                        {{ getNodeTitle() }}
+                        <span
+                            #titleText
+                            #titleTooltip="matTooltip"
+                            class="title__text"
+                            [matTooltip]="getNodeTitle()"
+                            matTooltipPosition="above"
+                            (mouseover)="onTitleHover(titleTooltip, titleText)"
+                            >{{ getNodeTitle() }}</span
+                        >
                     </div>
                     @if (isNumberedNode) {
                         <div class="node-number-line">#{{ node.nodeNumber }}</div>
@@ -152,52 +160,24 @@
                         ></app-go-to-button>
                     </div>
                 }
-                @if (isBlockedSubgraph) {
+                @if (headerWarning; as warning) {
                     <div
-                        class="blocked-badge"
-                        matTooltip="Referenced subgraph was deleted"
+                        class="node-badge"
+                        [class.blocked-badge]="warning.kind === 'blocked'"
+                        [class.llm-warning-badge]="warning.kind === 'warning'"
+                        [class.caution-badge]="warning.kind === 'caution'"
+                        tabindex="0"
+                        [matTooltip]="warning.tooltip"
+                        [matTooltipClass]="warning.tooltipClass"
                         matTooltipPosition="above"
                     >
-                        Missing flow
-                    </div>
-                }
-                @if (hasMissingAgent) {
-                    <div
-                        class="llm-warning-badge"
-                        [matTooltip]="missingAgentTooltip"
-                        matTooltipPosition="above"
-                    >
-                        <app-svg-icon
-                            icon="alert-triangle"
-                            size="0.875rem"
-                        ></app-svg-icon>
-                        <span>No agent assigned</span>
-                    </div>
-                }
-                @if (hasMissingAgentLlm) {
-                    <div
-                        class="llm-warning-badge"
-                        [matTooltip]="agentLlmWarningTooltip"
-                        matTooltipPosition="above"
-                    >
-                        <app-svg-icon
-                            icon="alert-triangle"
-                            size="0.875rem"
-                        ></app-svg-icon>
-                        <span>No LLM</span>
-                    </div>
-                }
-                @if (hasMissingKeyValueTable) {
-                    <div
-                        class="llm-warning-badge"
-                        [matTooltip]="isReadOnly() ? 'No table selected' : 'Select a table in the node panel'"
-                        matTooltipPosition="above"
-                    >
-                        <app-svg-icon
-                            icon="alert-triangle"
-                            size="0.875rem"
-                        ></app-svg-icon>
-                        <span>No table</span>
+                        @if (warning.kind !== 'blocked') {
+                            <app-svg-icon
+                                icon="alert-triangle"
+                                size="0.875rem"
+                            ></app-svg-icon>
+                        }
+                        <span>{{ warning.label }}</span>
                     </div>
                 }
             </div>

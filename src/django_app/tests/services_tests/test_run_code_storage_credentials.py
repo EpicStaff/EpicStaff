@@ -88,14 +88,22 @@ def _temporary_accounts(execution_id):
 
 @pytest.mark.django_db
 def test_storage_tool_run_gets_credentials_scoped_to_its_own_folder(
-    gateway, org, user, python_code, sandbox_intake
+    gateway, org, user, python_code, sandbox_intake, settings
 ):
     PythonCodeTool.objects.create(python_code=python_code, org_id=org.id, use_storage=True)
 
     execution_id, submitted = _run(python_code, org, user, sandbox_intake)
 
     (task,) = submitted
-    assert task["storage_credentials"] == {"access_key": "temp-access-1", "secret_key": "temp-secret-1"}
+    assert task["storage_credentials"] == {
+        "access_key": "temp-access-1",
+        "secret_key": "temp-secret-1",
+        "shared_actions": [],
+        "own_paths": [f"test-runs/{execution_id}/"],
+        # An empty org: every byte of its quota is free, and it has no bin to purge.
+        "free_bytes": settings.ORG_STORAGE_QUOTA,
+        "purgeable_bytes": 0,
+    }
     assert list(_temporary_accounts(execution_id).values_list("access_key", flat=True)) == ["temp-access-1"]
     (minted,) = gateway.created
     assert f"/org_{org.id}/test-runs/{execution_id}/*" in json.dumps(minted["policy"])

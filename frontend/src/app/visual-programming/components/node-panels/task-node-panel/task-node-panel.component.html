@@ -69,7 +69,7 @@
                                             {{ selectedAgentName() || 'Select agent' }}
                                         </span>
                                         <app-svg-icon
-                                            *appIfFlowEditable
+                                            *appIfFlowEditable="!isReadOnly()"
                                             icon="chevron-down-filled"
                                             size="8px"
                                         />
@@ -141,7 +141,7 @@
                         </div>
 
                         <app-inputs-you-can-use
-                            *appIfFlowEditable
+                            *appIfFlowEditable="!isReadOnly()"
                             [names]="inputMapKeys()"
                             (insert)="insertInputToInstructions($event)"
                         />
@@ -155,6 +155,19 @@
                                 [activeColor]="activeColor"
                                 [readonly]="isReadOnly()"
                             ></app-custom-input>
+                        </app-diff-field-mark>
+
+                        @if (storageGrantLock(); as lock) {
+                            <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                        }
+                        <app-diff-field-mark
+                            [diffField]="'storage_grants'"
+                            [diffGroup]="true"
+                        >
+                            <app-storage-grants-field
+                                formControlName="storage_grants"
+                                [readonly]="isReadOnly()"
+                            />
                         </app-diff-field-mark>
 
                         <app-diff-field-mark
@@ -297,7 +310,7 @@
                                 </span>
                                 <div class="main-editor-pane__actions">
                                     <app-instructions-view-toggle
-                                        *appIfFlowEditable
+                                        *appIfFlowEditable="!isReadOnly()"
                                         [view]="instructionsView()"
                                         (viewChange)="setInstructionsView($event)"
                                     />
@@ -440,7 +453,7 @@
                                         {{ selectedAgentName() || 'Select agent' }}
                                     </span>
                                     <app-svg-icon
-                                        *appIfFlowEditable
+                                        *appIfFlowEditable="!isReadOnly()"
                                         icon="chevron-down-filled"
                                         size="8px"
                                     />
@@ -512,7 +525,7 @@
                     </div>
 
                     <app-inputs-you-can-use
-                        *appIfFlowEditable
+                        *appIfFlowEditable="!isReadOnly()"
                         [names]="inputMapKeys()"
                         (insert)="insertInputToInstructions($event)"
                     />
@@ -526,6 +539,19 @@
                             [activeColor]="activeColor"
                             [readonly]="isReadOnly()"
                         ></app-custom-input>
+                    </app-diff-field-mark>
+
+                    @if (storageGrantLock(); as lock) {
+                        <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                    }
+                    <app-diff-field-mark
+                        [diffField]="'storage_grants'"
+                        [diffGroup]="true"
+                    >
+                        <app-storage-grants-field
+                            formControlName="storage_grants"
+                            [readonly]="isReadOnly()"
+                        />
                     </app-diff-field-mark>
 
                     <app-diff-field-mark

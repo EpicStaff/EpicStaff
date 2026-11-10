@@ -2,6 +2,7 @@ import uuid
 
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
+from storage_credentials.services.acting_identity import ActingIdentity
 from tables.models.realtime_models import (
     RealtimeAgentChat,
     RealtimeAgentDefinition,
@@ -118,13 +119,14 @@ class RealtimeService(metaclass=SingletonMeta):
         agent_definition_id: int,
         config: dict,
         org_id: int,
+        acting_identity: ActingIdentity,
         user_id: int | None = None,
     ) -> str:
         rt_agent_definition = self.get_rt_agent_definition(agent_definition_id=agent_definition_id)
         rt_agent_chat = self.create_rt_agent_definition_chat(rt_agent_definition)
 
         rt_agent_chat_data = self.converter_service.convert_rt_agent_definition_chat_to_pydantic(
-            rt_agent_chat=rt_agent_chat, user_id=user_id
+            rt_agent_chat=rt_agent_chat, user_id=user_id, acting_identity=acting_identity
         )
         # Override with provided config (whitelisted keys only, see
         # _apply_config_overrides)

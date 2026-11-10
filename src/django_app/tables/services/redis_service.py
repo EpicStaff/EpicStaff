@@ -83,6 +83,7 @@ class RedisService(metaclass=SingletonMeta):
         session_data: SessionData,
         org_id: int,
         storage_credentials: StorageCredentials | None = None,
+        storage_credentials_by_grant: dict[str, StorageCredentials] | None = None,
     ) -> int:
         """Publish session data to crew, with every secret resolved on a copy.
 
@@ -90,12 +91,14 @@ class RedisService(metaclass=SingletonMeta):
         `storage_credentials` may touch it. `resolve_payload` returns a deep copy and
         both exist only on that copy, which is the payload published to Redis.
 
-        `storage_credentials` is authoritative and unconditionally overwrites
-        whatever the copy carries -- `session_data.storage_credentials` is never
-        read here, by design (it must never reach the original object at all).
+        `storage_credentials` and `storage_credentials_by_grant` are authoritative and
+        unconditionally overwrite whatever the copy carries -- the same fields of
+        `session_data` are never read here, by design (they must never reach the
+        original object at all).
         """
         resolved = secret_resolver.resolve_payload(payload=session_data, org_id=org_id)
         resolved.storage_credentials = storage_credentials
+        resolved.storage_credentials_by_grant = dict(storage_credentials_by_grant or {})
 
         return self.redis_client.publish(
             settings.SESSION_SCHEMA_CHANNEL,

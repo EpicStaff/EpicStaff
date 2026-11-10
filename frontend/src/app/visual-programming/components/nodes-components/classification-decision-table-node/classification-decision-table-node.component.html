@@ -46,18 +46,30 @@
             [class.is-number-pinned]="isNodeNumberPinned"
         >
             <div class="title">
-                <span class="title__label">{{ title }}</span>
+                <span
+                    #titleLabel
+                    #titleTooltip="matTooltip"
+                    class="title__label"
+                    [matTooltip]="title"
+                    (mouseover)="onTitleHover(titleTooltip, titleLabel)"
+                    >{{ title }}</span
+                >
             </div>
             @if (isNumberedNode) {
                 <div class="node-number-line">#{{ node.nodeNumber }}</div>
             }
         </div>
-        @if (errorMessages.length > 0) {
+        @if (headerBadge; as badge) {
             <div
-                class="blocked-badge"
-                [matTooltip]="errorsTooltip"
+                class="node-badge"
+                [class.blocked-badge]="badge.kind === 'errors'"
+                [class.file-access-badge]="badge.kind === 'file-access'"
+                [class.caution-badge]="badge.kind === 'caution'"
+                tabindex="0"
+                [matTooltip]="badge.tooltip"
+                [matTooltipClass]="badge.tooltipClass"
             >
-                ⚠ {{ errorsBadgeLabel }}
+                ⚠ {{ badge.label }}
             </div>
         }
     </div>

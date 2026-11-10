@@ -1,4 +1,5 @@
 import json
+import math
 import uuid
 from dataclasses import asdict
 
@@ -327,6 +328,11 @@ from tables.services.secrets.secret_use_checks import (
     check_webhook_trigger_node_write,
     check_webhook_trigger_write,
 )
+from tables.services.storage_grants.actor import GrantActor
+from tables.services.storage_grants.tool_lock import (
+    check_agent_node_task_write,
+    check_python_tool_write,
+)
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.tools_usage_service import (
     get_mcp_tool_usage_detail,
@@ -420,6 +426,7 @@ from tables.views.secret_use import (
     ModelEndpointsGuardedViewSetMixin,
     SecretUseCheckedViewSetMixin,
 )
+from tables.views.storage_grants import StorageGrantCheckedViewSetMixin
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -728,6 +735,15 @@ class PythonCodeToolViewSet(
         if self.request.query_params.get("ordering") == "favorite":
             ordering = ["-is_favorite", "-id"]
         return queryset.order_by(*ordering)
+
+    def perform_update(self, serializer):
+        check_python_tool_write(
+            GrantActor.for_request(self.request),
+            serializer.instance,
+            serializer.validated_data,
+            org_id=self.get_active_org_id(),
+        )
+        super().perform_update(serializer)
 
     def get_permissions(self):
         permissions = super().get_permissions()
@@ -1490,6 +1506,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
 
 class PythonNodeViewSet(
     SecretUseCheckedViewSetMixin,
+    StorageGrantCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
     ContentHashPreconditionMixin,
@@ -1504,6 +1521,7 @@ class PythonNodeViewSet(
 
 
 class FileExtractorNodeViewSet(
+    StorageGrantCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
     ContentHashPreconditionMixin,
@@ -1549,6 +1567,7 @@ class KnowledgeNodeViewSet(
 
 
 class AudioTranscriptionNodeViewSet(
+    StorageGrantCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
     ContentHashPreconditionMixin,
@@ -1562,6 +1581,7 @@ class AudioTranscriptionNodeViewSet(
 
 
 class TaskNodeViewSet(
+    StorageGrantCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
     ContentHashPreconditionMixin,
@@ -1608,6 +1628,7 @@ class TaskNodeViewSet(
 
 
 class AgentNodeViewSet(
+    StorageGrantCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
     ContentHashPreconditionMixin,
@@ -1686,6 +1707,7 @@ class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         agent_node = serializer.validated_data.get("agent_node")
         if agent_node is not None and (agent_node.graph.org_id != self.get_active_org_id()):
             raise NotFound()
+        self._check_storage_grant(agent_node)
         self._clean_and_save(serializer)
 
     @transaction.atomic
@@ -1696,7 +1718,19 @@ class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         agent_node = serializer.validated_data.get("agent_node")
         if agent_node is not None and (agent_node.graph.org_id != self.get_active_org_id()):
             raise NotFound()
+        # Moving a task between nodes writes both: the one it leaves and the one it joins.
+        self._check_storage_grant(serializer.instance.agent_node)
+        self._check_storage_grant(agent_node)
         self._clean_and_save(serializer)
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        self._check_storage_grant(instance.agent_node)
+        super().perform_destroy(instance)
+
+    def _check_storage_grant(self, agent_node) -> None:
+        if agent_node is not None:
+            check_agent_node_task_write(GrantActor.for_request(self.request), agent_node)
 
 
 class EdgeViewSet(
@@ -1872,7 +1906,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         """Mark a RealtimeAgentChat as ended.
 
         Called server-to-server by the `realtime` service
-        (`voice_call_service._patch_agent_chat`) once a call ends. That caller
+        (`AgentChatEndClient.end_chat`) once a call or browser chat ends. That caller
         has no logged-in user/org context and identifies the target chat by
         its opaque `connection_key` alone, so this action cannot be scoped
         through `self.get_queryset()` (which requires an active org via
@@ -1893,12 +1927,37 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         except RealtimeAgentChat.DoesNotExist:
             return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        chat.ended_at = timezone.now()
-        chat.duration_seconds = request.data.get("duration_seconds")
-        chat.end_reason = request.data.get("end_reason", "completed")
-        chat.save(update_fields=["ended_at", "duration_seconds", "end_reason"])
+        # The first end wins: a repeated call must not overwrite the earlier, more
+        # accurate duration and reason. Revoking again stays harmless and retries an
+        # account whose first revocation failed.
+        # The conditional UPDATE makes the check atomic across concurrent calls.
+        end_reason = request.data.get("end_reason", RealtimeAgentChat.EndReason.COMPLETED)
+        if end_reason not in RealtimeAgentChat.EndReason.values:
+            logger.warning(
+                "Unknown end_reason {!r} for realtime chat {}; storing 'error'",
+                end_reason,
+                chat.id,
+            )
+            end_reason = RealtimeAgentChat.EndReason.ERROR
 
-        session_credential_service.revoke_for_realtime_chat(chat.id)
+        try:
+            duration_seconds = float(request.data.get("duration_seconds"))
+            if not math.isfinite(duration_seconds):
+                duration_seconds = None
+        except (TypeError, ValueError):
+            duration_seconds = None
+
+        try:
+            RealtimeAgentChat.objects.filter(pk=chat.pk, ended_at__isnull=True).update(
+                ended_at=timezone.now(),
+                duration_seconds=duration_seconds,
+                end_reason=end_reason,
+            )
+        except Exception:
+            # Revoking the storage account matters more than the metadata.
+            logger.exception("Failed to record the end of realtime chat {}", chat.id)
+        finally:
+            session_credential_service.revoke_for_realtime_chat(chat.id)
 
         return Response({"detail": "Updated"})
 
@@ -2695,6 +2754,7 @@ class GraphOrganizationUserViewSet(OrgScopedChildViewSetMixin, viewsets.ReadOnly
 )
 class WebhookTriggerNodeViewSet(
     SecretUseCheckedViewSetMixin,
+    StorageGrantCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,

@@ -81,12 +81,12 @@ def test_ending_a_chat_records_it_and_revokes_its_storage_account(
     if access_key:
         TemporaryStorageAccount.objects.create(realtime_agent_chat=chat, access_key=access_key)
 
-    response = _end(realtime_service, chat.connection_key, duration_seconds=123, end_reason="user_disconnected")
+    response = _end(realtime_service, chat.connection_key, duration_seconds=123, end_reason="cancelled")
 
     assert response.status_code == status.HTTP_200_OK
     chat.refresh_from_db()
     assert chat.ended_at is not None
-    assert (chat.duration_seconds, chat.end_reason) == (123, "user_disconnected")
+    assert (chat.duration_seconds, chat.end_reason) == (123, "cancelled")
     assert gateway.deleted == revoked
     assert TemporaryStorageAccount.objects.filter(realtime_agent_chat=chat).exists() is row_left
 

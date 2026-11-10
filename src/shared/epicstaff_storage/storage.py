@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
+from .blocked_extensions import BLOCKED_EXTENSIONS
 from .path_safety import sanitize_storage_path
 
 
@@ -16,6 +18,15 @@ class StoragePermissionError(PermissionError):
 
 class StorageSizeLimitError(RuntimeError):
     pass
+
+
+class StorageQuotaExceededError(RuntimeError):
+    """Raised before a write that would not fit the organization's storage quota.
+
+    A RuntimeError of its own rather than a StorageSizeLimitError: that one says a single
+    file is too big to read, whereas this depends on how full the whole organization is,
+    so code handling an oversized file must not catch it by accident.
+    """
 
 
 class StorageLineEditMismatchError(ValueError):
@@ -28,6 +39,38 @@ MAX_LINE_READ_BYTES = 50 * 1024 * 1024
 # path_utils.TRASH_DIRECTORY: this library can't import django_app). Runtime
 # code never reads, writes or lists it, whatever its allowed paths say.
 RESERVED_DIRECTORY = ".recycle-bin"
+
+# Operation names passed to `check_storage_permission`, mapped to the actions they
+# need on a path outside the run's own folders. Values are `StorageAction` values
+# (a copy: this library can't import shared.models). Edit/append/insert have no entry
+# of their own: they read first and then write, so they hit "read" and "write".
+# A move needs READ on its source as well, because it copies before it deletes.
+_REQUIRED_ACTIONS: dict[str, tuple[str, ...]] = {
+    "read": ("read",),
+    "read_bytes": ("read",),
+    "list": ("read",),
+    "walk": ("read",),
+    "exists": ("read",),
+    "info": ("read",),
+    "as_local": ("read",),
+    "copy": ("read",),
+    "write": ("write",),
+    "write_bytes": ("write",),
+    "mkdir": ("write",),
+    "copy_dst": ("write",),
+    "move_dst": ("write",),
+    "delete": ("delete",),
+    "move": ("delete", "read"),
+}
+
+# Operations whose path is created or overwritten, so an executable name is refused.
+_WRITE_TARGET_OPERATIONS = frozenset({"write", "write_bytes", "copy_dst", "move_dst"})
+
+_MISSING_PERMISSION_HINTS = {
+    "read": "reading files needs the Files: Read permission",
+    "write": "writing files needs the Files: Create and Files: Update permissions",
+    "delete": "deleting files needs the Files: Delete permission",
+}
 
 
 def split_lines(content: str) -> list[str]:
@@ -54,12 +97,48 @@ __cache: dict[str, list[str] | None] = {}
 
 _mutations: list[dict] = []
 
+# Bytes this process has added to storage, counted against STORAGE_FREE_BYTES.
+_bytes_added = 0
+
 
 def __get_allowed_paths() -> list[str] | None:
     if "allowed" not in __cache:
         raw = os.environ.get("STORAGE_ALLOWED_PATHS")
         __cache["allowed"] = json.loads(raw) if raw is not None else None
     return __cache["allowed"]
+
+
+def __get_allowed_actions() -> list[str] | None:
+    if "actions" not in __cache:
+        raw = os.environ.get("STORAGE_ALLOWED_ACTIONS")
+        __cache["actions"] = json.loads(raw) if raw is not None else None
+    return __cache["actions"]
+
+
+def __get_own_paths() -> list[str]:
+    if "own" not in __cache:
+        raw = os.environ.get("STORAGE_OWN_PATHS")
+        __cache["own"] = json.loads(raw) if raw is not None else None
+    return __cache["own"] or []
+
+
+def _optional_int_env(name: str) -> int | None:
+    raw = os.environ.get(name)
+    return int(raw) if raw else None
+
+
+def _format_size(size_bytes: int) -> str:
+    """Human-readable size like the web UI shows: whole units, one decimal from MB up."""
+    units = ["B", "KB", "MB", "GB", "TB"]
+    if size_bytes <= 0:
+        return "0 B"
+    unit_index = 0
+    value = float(size_bytes)
+    while value >= 1024 and unit_index < len(units) - 1:
+        value /= 1024
+        unit_index += 1
+    shown = f"{value:.1f}" if unit_index >= 2 else str(round(value))
+    return f"{shown} {units[unit_index]}"
 
 
 def _safe_relative_path(path: str) -> str:
@@ -104,6 +183,34 @@ def is_reserved_path(relative_path: str) -> bool:
     return relative_path.lstrip("/").split("/", 1)[0] == RESERVED_DIRECTORY
 
 
+def __check_allowed_actions(operation: str, path: str, normalized_path: str) -> None:
+    """Refuse an operation whose action the run's FILES permissions don't grant.
+
+    Skipped when the issuer did not narrow the actions (env var absent) and for paths
+    inside the run's own folders, where every action is allowed. An operation missing
+    from `_REQUIRED_ACTIONS` is refused whenever the actions are narrowed.
+    """
+    allowed_actions = __get_allowed_actions()
+    if allowed_actions is None:
+        return
+    # An operation without an entry would otherwise need no action and always pass, so
+    # a new operation added without one fails closed instead of bypassing the narrowing.
+    required_actions = _REQUIRED_ACTIONS.get(operation)
+    if required_actions is None:
+        raise StoragePermissionError(
+            f"Access denied: {operation} on '{path}' has no permission mapping, so it "
+            "is refused for this run."
+        )
+    if __is_path_allowed(normalized_path, __get_own_paths()):
+        return
+    for action in required_actions:
+        if action not in allowed_actions:
+            raise StoragePermissionError(
+                f"Access denied: {operation} on '{path}' is not allowed for this run: "
+                f"{_MISSING_PERMISSION_HINTS[action]}."
+            )
+
+
 def check_storage_permission(operation: str, path: str) -> None:
     normalized = _safe_relative_path(path)
     if is_reserved_path(normalized):
@@ -111,9 +218,14 @@ def check_storage_permission(operation: str, path: str) -> None:
             f"Access denied: '{RESERVED_DIRECTORY}' holds deleted files and is not available to flows."
         )
     allowed = __get_allowed_paths()
-    if allowed is None:
-        return
-    if not __is_path_allowed(normalized, allowed):
+    # The run's own folders come with its credentials, whose storage policy grants them
+    # whatever the node's allowed files say: a sub-flow's nodes are converted without
+    # the session, so their allowed files never list the session folder.
+    if (
+        allowed is not None
+        and not __is_path_allowed(normalized, allowed)
+        and not __is_path_allowed(normalized, __get_own_paths())
+    ):
         if allowed:
             allowed_hint = (
                 f" Allowed paths: [{__format_allowed_paths(allowed)}]. "
@@ -125,6 +237,19 @@ def check_storage_permission(operation: str, path: str) -> None:
             f"Access denied: {operation} on '{path}' is not within this flow's "
             f"allowed files.{allowed_hint}"
         )
+    __check_allowed_actions(operation, path, normalized)
+    if operation in _WRITE_TARGET_OPERATIONS:
+        extension = os.path.splitext(normalized)[1].lower()
+        if extension in BLOCKED_EXTENSIONS:
+            raise StoragePermissionError(
+                f"Access denied: {operation} on '{path}' is refused: files with the "
+                f"'{extension}' extension are executable and cannot be stored."
+            )
+
+
+def _record_added_bytes(added_bytes: int) -> None:
+    global _bytes_added
+    _bytes_added += added_bytes
 
 
 def get_mutations() -> list[dict]:
@@ -194,9 +319,94 @@ class EpicStaffStorage:
                 code = error.response["Error"]["Code"]  # type: ignore[attr-defined]
                 if code in ("NoSuchKey", "404"):
                     raise FileNotFoundError(f"Not found in storage: {path}") from error
+                if code in ("AccessDenied", "403"):
+                    storage_operation = error.operation_name  # type: ignore[attr-defined]
+                    raise StoragePermissionError(
+                        f"Access denied: storage refused {storage_operation} on '{path}'. "
+                        "The storage account of this run is not allowed to do this; "
+                        "check the Files permissions of the user who started it."
+                    ) from error
         except ImportError:
             pass
         raise RuntimeError(f"Storage error for '{path}': {error}") from error
+
+    def _stored_size(self, key: str) -> int | None:
+        """Size of the object at `key`, or None when there is none or storage cannot say."""
+        try:
+            response = self._get_client().head_object(  # type: ignore[attr-defined]
+                Bucket=self._bucket_name(), Key=key
+            )
+        except Exception:
+            return None
+        return response.get("ContentLength", 0)
+
+    def _admit_write(self, path: str, key: str, size_of_write: Callable[[], int | None]) -> int:
+        """Decide whether a write fits the organization's quota; return the bytes it adds.
+
+        Django hands the run `STORAGE_FREE_BYTES` and `STORAGE_PURGEABLE_BYTES` when it
+        issues the credentials; without them nothing is checked. A write that fits the
+        free bytes left, minus what this process already wrote, goes ahead. One that only
+        fits once the oldest recycle-bin items are purged goes ahead after a warning on
+        stderr, since django purges them when it learns of the write. One that does not fit even
+        then is refused, with nothing written.
+
+        The destination's current size is only looked up when the write would otherwise be
+        warned about or refused, because overwriting frees those bytes: a write of content
+        in hand pays no extra storage call, and counts the whole of its size. A copy has to
+        look up its source to know its size. When that lookup fails the size is unknown:
+        the copy is refused only if no free byte is left, otherwise it goes ahead, uncounted,
+        and django's enforcement after the run catches what the library could not.
+
+        Raises:
+            StorageQuotaExceededError: the write does not fit even after purging the bin.
+        """
+        free_bytes = _optional_int_env("STORAGE_FREE_BYTES")
+        if free_bytes is None:
+            return 0
+        purgeable_bytes = _optional_int_env("STORAGE_PURGEABLE_BYTES") or 0
+        remaining_bytes = free_bytes - _bytes_added
+        # Nothing can be added or purged: django issued the account without any write
+        # access, so even an empty file would only fail later as a permission error.
+        if free_bytes + purgeable_bytes <= 0:
+            raise self._quota_error(path, 0, 0)
+        size = size_of_write()
+        if size is None:
+            if remaining_bytes <= 0:
+                raise self._quota_error(path, 0, max(0, purgeable_bytes + remaining_bytes))
+            return 0
+        if size == 0 or size <= remaining_bytes:
+            return size
+        added_bytes = max(0, size - (self._stored_size(key) or 0))
+        if added_bytes <= remaining_bytes:
+            return added_bytes
+        if added_bytes <= remaining_bytes + purgeable_bytes:
+            print(
+                "This file may not fit in the remaining storage "
+                f"({_format_size(remaining_bytes)} free); the oldest recycle-bin items may be "
+                "permanently deleted to make room.",
+                file=sys.stderr,
+            )
+            return added_bytes
+        raise self._quota_error(path, added_bytes, max(0, remaining_bytes + purgeable_bytes))
+
+    @staticmethod
+    def _quota_error(
+        path: str, needed_bytes: int, available_bytes: int
+    ) -> StorageQuotaExceededError:
+        if available_bytes == 0:
+            return StorageQuotaExceededError(
+                f"Organization storage quota reached: no storage is left, so '{path}' was not "
+                "written. Delete files to free space."
+            )
+        needed, available = _format_size(needed_bytes), _format_size(available_bytes)
+        # A write that misses by a few bytes would otherwise read "needs 5.7 MB but only
+        # 5.7 MB can be made available".
+        if needed == available:
+            needed, available = f"{needed_bytes:,} bytes", f"{available_bytes:,} bytes"
+        return StorageQuotaExceededError(
+            f"Organization storage quota reached: writing '{path}' needs {needed} but only "
+            f"{available} can be made available. Nothing was written. Delete files to free space."
+        )
 
     def read(self, path: str) -> str:
         check_storage_permission("read", path)
@@ -221,11 +431,13 @@ class EpicStaffStorage:
         check_storage_permission("write_bytes", path)
         client = self._get_client()
         key = self._normalize_key(path)
+        added_bytes = self._admit_write(path, key, lambda: len(content))
         try:
             client.put_object(Bucket=self._bucket_name(), Key=key, Body=content)  # type: ignore[attr-defined]
         except Exception as error:
             self._handle_client_error(error, path)
 
+        _record_added_bytes(added_bytes)
         _mutations.append({"op": "write", "path": key})
 
     def list(self, path: str) -> list[dict]:
@@ -350,7 +562,8 @@ class EpicStaffStorage:
                             return False
             except ImportError:
                 pass
-            raise RuntimeError(f"Storage error for '{path}': {error}") from error
+            self._handle_client_error(error, path)
+            raise  # unreachable, satisfies type checker
 
     def delete(self, path: str) -> None:
         check_storage_permission("delete", path)
@@ -465,6 +678,7 @@ class EpicStaffStorage:
         client = self._get_client()
         normalized = self._normalize_key(path).rstrip("/")
         keep_key = normalized + "/.keep"
+        added_bytes = self._admit_write(path, keep_key, lambda: 0)
         try:
             client.put_object(Bucket=self._bucket_name(), Key=keep_key, Body=b"")  # type: ignore[attr-defined]
         except Exception as error:
@@ -489,6 +703,7 @@ class EpicStaffStorage:
         # convention, since django never creates one, nor a "no row"
         # outcome). walk() skips ".keep" objects so tool-facing listings
         # never show it.
+        _record_added_bytes(added_bytes)
         _mutations.append({"op": "write", "path": keep_key})
 
     def move(self, src: str, dst: str) -> None:
@@ -504,6 +719,7 @@ class EpicStaffStorage:
         src_key = self._normalize_key(src)
         dst_key = self._normalize_key(dst)
         bucket = self._bucket_name()
+        added_bytes = self._admit_write(dst, dst_key, lambda: self._stored_size(src_key))
         try:
             client.copy_object(  # type: ignore[attr-defined]
                 Bucket=bucket,
@@ -513,6 +729,7 @@ class EpicStaffStorage:
         except Exception as error:
             self._handle_client_error(error, src)
 
+        _record_added_bytes(added_bytes)
         _mutations.append({"op": "write", "path": dst_key})
 
     def info(self, path: str) -> dict:

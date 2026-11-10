@@ -12,6 +12,7 @@ import { ComputationConfig, PromptConfig } from '../../core/models/classificatio
 import { ConditionGroup } from '../../core/models/decision-table.model';
 import { AgentNodeModel, BaseNodeModel, NodeModel, NoteLinkedRegion } from '../../core/models/node.model';
 import { ScheduleTriggerNodeData } from '../../core/models/schedule-trigger.model';
+import { StorageGrants } from '../../core/models/storage-grants.model';
 import { InlineSurface } from '../../core/models/task-node.model';
 import { FieldName } from './field-display';
 import {
@@ -148,6 +149,7 @@ export const SEMANTIC_PROJECTIONS = {
             // Only here: the webhook and table load mappers drop the venv, so their models never hold one.
             python_code: { ...pythonCode(node.data, context), venv_id: node.data.venv_id ?? null },
             use_storage: node.data.use_storage ?? false,
+            storage_grants: storageGrants(node.storageGrants),
             ...inputOutput(node),
         }),
         ignored: { test_input: TEST_AID, ...prefixKeys('data.', PYTHON_CODE_IGNORED) },
@@ -157,6 +159,7 @@ export const SEMANTIC_PROJECTIONS = {
             node_name: nodeName(node),
             python_code: pythonCode(node.data.python_code, context),
             use_storage: node.data.use_storage ?? false,
+            storage_grants: storageGrants(node.storageGrants),
             webhook_trigger: node.data.webhook_trigger,
         }),
         ignored: {
@@ -198,6 +201,7 @@ export const SEMANTIC_PROJECTIONS = {
             instructions: storedText(node.data.instructions ?? ''),
             output_schema: node.data.output_schema ?? {},
             remember_output: node.data.remember_output ?? false,
+            storage_grants: storageGrants(node.storageGrants),
             agent_definition: node.data.agent_definition,
             ...inputOutput(node),
             surface_list: sortedNumbers(node.data.surface_list),
@@ -208,6 +212,7 @@ export const SEMANTIC_PROJECTIONS = {
     [NodeType.AGENT]: {
         project: (node) => ({
             node_name: nodeName(node),
+            storage_grants: storageGrants(node.storageGrants),
             agent_definition: node.data.agent_definition,
             ...inputOutput(node),
             surface_list: sortedNumbers(node.data.surface_list),
@@ -217,11 +222,19 @@ export const SEMANTIC_PROJECTIONS = {
         ignored: INLINE_SURFACE_IGNORED,
     },
     [NodeType.FILE_EXTRACTOR]: {
-        project: (node) => ({ node_name: nodeName(node), ...inputOutput(node) }),
+        project: (node) => ({
+            node_name: nodeName(node),
+            storage_grants: storageGrants(node.storageGrants),
+            ...inputOutput(node),
+        }),
         ignored: {},
     },
     [NodeType.AUDIO_TO_TEXT]: {
-        project: (node) => ({ node_name: nodeName(node), ...inputOutput(node) }),
+        project: (node) => ({
+            node_name: nodeName(node),
+            storage_grants: storageGrants(node.storageGrants),
+            ...inputOutput(node),
+        }),
         ignored: {},
     },
     [NodeType.SUBGRAPH]: {
@@ -297,6 +310,7 @@ export const SEMANTIC_PROJECTIONS = {
                     context
                 ),
                 pre_use_storage: table.pre_use_storage ?? false,
+                pre_storage_grants: storageGrants(node.preStorageGrants),
                 post_computation: computation(
                     table.post_computation,
                     {
@@ -307,6 +321,7 @@ export const SEMANTIC_PROJECTIONS = {
                     context
                 ),
                 post_use_storage: table.post_use_storage ?? false,
+                post_storage_grants: storageGrants(node.postStorageGrants),
                 condition_groups: keyedBy(
                     comparedConditionGroups(NodeType.CLASSIFICATION_TABLE, table.condition_groups ?? []),
                     ({ key }) => key,
@@ -362,6 +377,14 @@ function prefixKeys(prefix: string, record: Readonly<Record<string, string>>): R
 /** Restore and import renumber nodes, so the ` #N` suffix is not part of the name. Stored trimmed. */
 function nodeName(node: BaseNodeModel): string {
     return stripNodeNumberSuffix(storedText(node.node_name ?? ''));
+}
+
+/**
+ * What code may do with the flow's files when a trigger starts the run. A node the server stored no grants for (a
+ * version snapshot, an older server) reads as not configured: all three `null`, as a node saved before grants existed.
+ */
+function storageGrants(grants: StorageGrants | undefined): Projection {
+    return { read: grants?.read ?? null, write: grants?.write ?? null, delete: grants?.delete ?? null };
 }
 
 function inputOutput(node: BaseNodeModel): Projection {

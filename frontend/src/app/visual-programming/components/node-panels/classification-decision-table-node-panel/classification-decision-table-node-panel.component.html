@@ -213,7 +213,7 @@
                                 <div class="cdt-input-map-wrapper">
                                     <app-input-map
                                         [activeColor]="activeColor"
-                                        [readonly]="isReadOnly()"
+                                        [readonly]="isPreReadOnly()"
                                         [rowChanges]="preInputMapRowChanges()"
                                     ></app-input-map>
                                 </div>
@@ -222,7 +222,7 @@
                                 <app-node-secrets-field
                                     [activeColor]="activeColor"
                                     [value]="preSelectedSecretIds()"
-                                    [readonly]="!canEditSecrets()"
+                                    [readonly]="!canEditSecrets() || preStorageGrantLock() !== null"
                                     [names]="preSecretNames()"
                                     [tooltipText]="preSecretsTooltip()"
                                     panelWidth="346px"
@@ -240,24 +240,35 @@
                                     formControlName="pre_output_variable_path"
                                     placeholder="Enter output variable path (leave empty for null)"
                                     [activeColor]="activeColor"
-                                    [readonly]="isReadOnly()"
+                                    [readonly]="isPreReadOnly()"
                                 ></app-custom-input>
                             </app-diff-field-mark>
                             <app-diff-field-mark [diffField]="'pre_computation.execution_timeout'">
                                 <app-execution-timeout-field
                                     [field]="preExecutionTimeout"
-                                    [readonly]="isReadOnly()"
+                                    [readonly]="isPreReadOnly()"
                                     label="Pre-computation execution timeout"
                                 />
                             </app-diff-field-mark>
                             <app-diff-field-mark [diffField]="'pre_use_storage'">
                                 <app-node-storage-section
-                                    [readonly]="isReadOnly() || isPreCodeLocked()"
+                                    [readonly]="isPreReadOnly() || isPreCodeLocked()"
+                                    [lockReason]="preStorageToggleLock()"
                                     [useStorage]="preUseStorage()"
                                     (onToggleChange)="onPreStorageToggle($event)"
                                     (onInsertCode)="insertPreStorageCode($event)"
                                     (onRemoveCode)="removePreStorageCode($event)"
                                 ></app-node-storage-section>
+                            </app-diff-field-mark>
+                            <app-diff-field-mark
+                                [diffField]="'pre_storage_grants'"
+                                [diffGroup]="true"
+                            >
+                                <app-storage-grants-field
+                                    formControlName="pre_storage_grants"
+                                    legend="Access when started by a trigger"
+                                    [readonly]="isPreReadOnly()"
+                                />
                             </app-diff-field-mark>
                         </div>
                         <app-column-resize-divider
@@ -277,6 +288,9 @@
                             [diffHint]="codeDiffHint"
                             [diffDrawsBadge]="true"
                         >
+                            @if (preStorageGrantLock(); as lock) {
+                                <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                            }
                             <div
                                 #preCodeColumn
                                 class="code-editor-section"
@@ -291,7 +305,7 @@
                                         [pythonCode]="preCode"
                                         [secretNames]="preSecretNames()"
                                         [inputMapKeys]="preInputMapKeys()"
-                                        [readOnly]="isReadOnly() || isPreCodeLocked()"
+                                        [readOnly]="isPreReadOnly() || isPreCodeLocked()"
                                         (pythonCodeChange)="onPreCodeChange($event)"
                                     ></app-code-editor>
                                 }
@@ -315,7 +329,7 @@
                                 <div class="cdt-input-map-wrapper">
                                     <app-input-map
                                         [activeColor]="activeColor"
-                                        [readonly]="isReadOnly()"
+                                        [readonly]="isPostReadOnly()"
                                         [rowChanges]="postInputMapRowChanges()"
                                     ></app-input-map>
                                 </div>
@@ -324,7 +338,7 @@
                                 <app-node-secrets-field
                                     [activeColor]="activeColor"
                                     [value]="postSelectedSecretIds()"
-                                    [readonly]="!canEditSecrets()"
+                                    [readonly]="!canEditSecrets() || postStorageGrantLock() !== null"
                                     [names]="postSecretNames()"
                                     [tooltipText]="postSecretsTooltip()"
                                     panelWidth="346px"
@@ -342,24 +356,35 @@
                                     formControlName="post_output_variable_path"
                                     placeholder="Enter output variable path (leave empty for null)"
                                     [activeColor]="activeColor"
-                                    [readonly]="isReadOnly()"
+                                    [readonly]="isPostReadOnly()"
                                 ></app-custom-input>
                             </app-diff-field-mark>
                             <app-diff-field-mark [diffField]="'post_computation.execution_timeout'">
                                 <app-execution-timeout-field
                                     [field]="postExecutionTimeout"
-                                    [readonly]="isReadOnly()"
+                                    [readonly]="isPostReadOnly()"
                                     label="Post-computation execution timeout"
                                 />
                             </app-diff-field-mark>
                             <app-diff-field-mark [diffField]="'post_use_storage'">
                                 <app-node-storage-section
-                                    [readonly]="isReadOnly() || isPostCodeLocked()"
+                                    [readonly]="isPostReadOnly() || isPostCodeLocked()"
+                                    [lockReason]="postStorageToggleLock()"
                                     [useStorage]="postUseStorage()"
                                     (onToggleChange)="onPostStorageToggle($event)"
                                     (onInsertCode)="insertPostStorageCode($event)"
                                     (onRemoveCode)="removePostStorageCode($event)"
                                 ></app-node-storage-section>
+                            </app-diff-field-mark>
+                            <app-diff-field-mark
+                                [diffField]="'post_storage_grants'"
+                                [diffGroup]="true"
+                            >
+                                <app-storage-grants-field
+                                    formControlName="post_storage_grants"
+                                    legend="Access when started by a trigger"
+                                    [readonly]="isPostReadOnly()"
+                                />
                             </app-diff-field-mark>
                         </div>
                         <app-column-resize-divider
@@ -379,6 +404,9 @@
                             [diffHint]="codeDiffHint"
                             [diffDrawsBadge]="true"
                         >
+                            @if (postStorageGrantLock(); as lock) {
+                                <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                            }
                             <div
                                 #postCodeColumn
                                 class="code-editor-section"
@@ -393,7 +421,7 @@
                                         [pythonCode]="postCode"
                                         [secretNames]="postSecretNames()"
                                         [inputMapKeys]="postInputMapKeys()"
-                                        [readOnly]="isReadOnly() || isPostCodeLocked()"
+                                        [readOnly]="isPostReadOnly() || isPostCodeLocked()"
                                         (pythonCodeChange)="onPostCodeChange($event)"
                                     ></app-code-editor>
                                 }

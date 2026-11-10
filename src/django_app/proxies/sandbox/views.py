@@ -15,6 +15,10 @@ from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from tables.services.secrets.request_actor import actor_from_request
 from tables.services.secrets.secret_use_checks import check_venv_write
+from tables.services.storage_grants.actor import GrantActor
+from tables.services.storage_grants.tool_lock import (
+    check_venv_write as check_venv_storage_grant_write,
+)
 
 from proxies.models import AbstractBinding
 from proxies.sandbox.models import SandboxCustomLibraryBinding, SandboxVenvBinding
@@ -112,6 +116,10 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             binding,
             request.data,
             read_current_libs=lambda: service.retrieve(binding).get("libs"),
+        )
+        # The libraries of a venv are part of what code run with a storage grant executes.
+        check_venv_storage_grant_write(
+            GrantActor.for_request(request), binding, org_id=self.get_active_org_id()
         )
         venv = service.update(binding, request.data)
         return Response(self._as_response(venv, binding))

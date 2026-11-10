@@ -30,13 +30,19 @@ def _reset_module_state():
     (not a class attribute), so it is not name-mangled and is reachable
     with plain attribute access from this non-class scope.
 
-    ``_mutations`` is also module-level and must not leak between tests.
+    ``STORAGE_ALLOWED_ACTIONS`` and ``STORAGE_OWN_PATHS`` are cached in the same
+    dict, so ``restrict_actions`` clears it too.
+
+    ``_mutations`` is also module-level and must not leak between tests, and neither
+    must ``_bytes_added``, the bytes counted against ``STORAGE_FREE_BYTES``.
     """
     storage_module.__cache.clear()
     clear_mutations()
+    storage_module._bytes_added = 0
     yield
     storage_module.__cache.clear()
     clear_mutations()
+    storage_module._bytes_added = 0
 
 
 @pytest.fixture
@@ -60,4 +66,14 @@ def allow_paths(monkeypatch, paths: list[str]) -> None:
     new value is actually read on the next check_storage_permission call.
     """
     monkeypatch.setenv("STORAGE_ALLOWED_PATHS", json.dumps(paths))
+    storage_module.__cache.clear()
+
+
+def restrict_actions(monkeypatch, actions: list[str], own_paths: list[str] | None = None) -> None:
+    """Set STORAGE_ALLOWED_ACTIONS (and STORAGE_OWN_PATHS) the way the sandbox does,
+    and clear the module-level cache so the new values are read on the next check.
+    """
+    monkeypatch.setenv("STORAGE_ALLOWED_ACTIONS", json.dumps(actions))
+    if own_paths is not None:
+        monkeypatch.setenv("STORAGE_OWN_PATHS", json.dumps(own_paths))
     storage_module.__cache.clear()

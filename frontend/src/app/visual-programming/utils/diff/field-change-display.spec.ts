@@ -318,6 +318,45 @@ describe('fieldValueSegments with a display format of its own', () => {
     });
 });
 
+describe('fieldValueSegments of storage grants', () => {
+    const NOT_CONFIGURED = { read: null, write: null, delete: null };
+
+    it.each<{ case: string; current: unknown; version: unknown; segments: DisplaySegment[] }>([
+        {
+            case: 'the granted actions in Read, Write, Delete order',
+            current: { read: true, write: false, delete: true },
+            version: NOT_CONFIGURED,
+            segments: [struck('Read, Delete')],
+        },
+        {
+            case: 'no access when all three are off',
+            current: { read: false, write: false, delete: false },
+            version: NOT_CONFIGURED,
+            segments: [struck('No access')],
+        },
+        {
+            case: 'not configured when none is set',
+            current: NOT_CONFIGURED,
+            version: { read: true, write: true, delete: true },
+            segments: [struck('Not configured')],
+        },
+        {
+            case: 'the same grants on both sides',
+            current: { read: true, write: true, delete: true },
+            version: { read: true, write: true, delete: true },
+            segments: [kept('Read, Write, Delete')],
+        },
+    ])('shows $case', ({ current, version, segments }) => {
+        expect(fieldValueSegments('storage_grants', current, version)).toEqual(segments);
+    });
+
+    it.each(['pre_storage_grants', 'post_storage_grants'] as const)('formats %s the same way', (field) => {
+        expect(fieldValueSegments(field, { read: false, write: true, delete: false }, NOT_CONFIGURED)).toEqual([
+            struck('Write'),
+        ]);
+    });
+});
+
 describe('jsonChangeFor', () => {
     const diffOf = (status: NodeDiffStatus, fields: FieldChange[]) => ({ status, fields, missingReferences: [] });
     const outputMapChange: FieldChange = {

@@ -12,6 +12,9 @@
 
 <ng-template #codeEditorCard>
     <div class="code-card-group">
+        @if (storageGrantLock(); as lock) {
+            <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+        }
         <app-diff-field-mark
             [diffField]="'python_code.code'"
             [diffHint]="codeDiffHint"
@@ -162,11 +165,22 @@
                     <app-diff-field-mark [diffField]="'use_storage'">
                         <app-node-storage-section
                             [readonly]="isCodeReadOnly()"
+                            [lockReason]="storageToggleLock()"
                             [useStorage]="useStorage()"
                             (onToggleChange)="onStorageToggle($event)"
                             (onInsertCode)="insertStorageCode($event)"
                             (onRemoveCode)="removeStorageCode($event)"
                         ></app-node-storage-section>
+                    </app-diff-field-mark>
+
+                    <app-diff-field-mark
+                        [diffField]="'storage_grants'"
+                        [diffGroup]="true"
+                    >
+                        <app-storage-grants-field
+                            formControlName="storage_grants"
+                            [readonly]="isReadOnly()"
+                        />
                     </app-diff-field-mark>
 
                     <!-- Expanded: the editor not shown in the big pane sits at the bottom of this column. -->
@@ -201,6 +215,9 @@
                         <ng-container [ngTemplateOutlet]="testPayloadCard" />
                     } @else if (expandedPane() === 'code') {
                         <div class="code-editor-column">
+                            @if (storageGrantLock(); as lock) {
+                                <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                            }
                             <!-- The diff has no header: the test payload card's expand icon still swaps the panes. -->
                             @if (codeDiff(); as code) {
                                 <app-code-diff-view

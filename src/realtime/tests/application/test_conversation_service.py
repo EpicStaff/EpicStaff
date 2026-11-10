@@ -9,6 +9,7 @@ from src.shared.models import RealtimeAgentChatData
 from domain.models.chat_mode import ChatMode
 from domain.ports.i_summarization_client import ISummarizationClient
 from domain.ports.i_transcription_client_factory import ITranscriptionClientFactory
+from application.agent_chat_end_client import AgentChatEndClient
 from application.conversation_service import ConversationService
 from application.tool_manager_service import ToolManagerService
 from infrastructure.providers.factory import RealtimeAgentClientFactory
@@ -55,8 +56,26 @@ def mock_tool_manager():
     return tm
 
 
+class RecordingChatEndClient(AgentChatEndClient):
+    """Records the end report instead of sending it to Django."""
+
+    def __init__(self):
+        super().__init__(django_api_base_url="http://django_app:8000/api", django_api_key="test-key")
+        self.reports: list[dict] = []
+
+    async def end_chat(self, connection_key: str, duration: float, end_reason: str) -> None:
+        self.reports.append(
+            {"connection_key": connection_key, "duration": duration, "end_reason": end_reason}
+        )
+
+
 @pytest.fixture
-def make_service(mock_tool_manager):
+def end_client():
+    return RecordingChatEndClient()
+
+
+@pytest.fixture
+def make_service(mock_tool_manager, end_client):
     def _make(
         wake_word: str | None = "hey agent", rt_provider: str = "openai"
     ) -> ConversationService:
@@ -71,6 +90,7 @@ def make_service(mock_tool_manager):
             factory=MagicMock(spec=RealtimeAgentClientFactory),
             summ_client=MagicMock(spec=ISummarizationClient),
             transcription_client_factory=MagicMock(spec=ITranscriptionClientFactory),
+            chat_end_client=end_client,
         )
 
     return _make
@@ -357,3 +377,148 @@ async def test_missing_transcription_client_downgrades_listen_to_conversation(ma
     await service.execute()
 
     assert service.current_chat_mode == ChatMode.CONVERSATION
+
+
+# ---------------------------------------------------------------------------
+# execute — the chat is reported ended to Django when the session ends
+# ---------------------------------------------------------------------------
+
+
+def _provider_client(**overrides) -> MagicMock:
+    client = MagicMock()
+    client.connect = AsyncMock()
+    client.close = AsyncMock()
+    client.process_message = AsyncMock(return_value=None)
+    client.handle_messages = _idle_loop
+    for name, value in overrides.items():
+        setattr(client, name, value)
+    return client
+
+
+def _prepare_session(service, provider_client, receive_json) -> None:
+    service.factory.create.return_value = provider_client
+    service.transcription_client_factory.create.return_value = None
+    service.client_websocket.scope = {"subprotocols": []}
+    service.client_websocket.receive_json = receive_json
+
+
+@pytest.mark.asyncio
+async def test_client_disconnect_reports_the_chat_completed(make_service, end_client):
+    service = make_service(wake_word=None)
+    _prepare_session(
+        service,
+        _provider_client(),
+        AsyncMock(side_effect=[{"type": "input_audio_buffer.append"}, WebSocketDisconnect()]),
+    )
+
+    await service.execute()
+
+    (report,) = end_client.reports
+    assert report["connection_key"] == "test_key"
+    assert report["end_reason"] == "completed"
+    assert report["duration"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_unexpected_exception_reports_the_chat_as_error(make_service, end_client):
+    service = make_service(wake_word=None)
+    _prepare_session(
+        service,
+        _provider_client(connect=AsyncMock(side_effect=RuntimeError("provider unreachable"))),
+        AsyncMock(),
+    )
+
+    await service.execute()
+
+    assert [(r["connection_key"], r["end_reason"]) for r in end_client.reports] == [
+        ("test_key", "error")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_failed_provider_reconnect_reports_the_chat_as_error(make_service, end_client):
+    service = make_service(wake_word=None)
+
+    async def provider_loop_that_ends():
+        return
+
+    async def client_message():
+        # Yield to the event loop so the provider task can finish between messages.
+        await asyncio.sleep(0)
+        return {"type": "input_audio_buffer.append"}
+
+    _prepare_session(
+        service,
+        _provider_client(
+            connect=AsyncMock(side_effect=[None, RuntimeError("reconnect refused")]),
+            handle_messages=provider_loop_that_ends,
+        ),
+        client_message,
+    )
+
+    await service.execute()
+
+    assert [r["end_reason"] for r in end_client.reports] == ["error"]
+
+
+@pytest.mark.asyncio
+async def test_provider_close_failure_still_reports_the_chat_ended(make_service, end_client):
+    service = make_service(wake_word=None)
+    _prepare_session(
+        service,
+        _provider_client(close=AsyncMock(side_effect=RuntimeError("close failed"))),
+        AsyncMock(side_effect=WebSocketDisconnect()),
+    )
+
+    await service.execute()
+
+    assert service.connections == {}
+    assert [r["end_reason"] for r in end_client.reports] == ["completed"]
+
+
+@pytest.mark.asyncio
+async def test_failed_accept_still_reports_the_chat_ended(make_service, end_client):
+    service = make_service(wake_word=None)
+    service.client_websocket.scope = {"subprotocols": []}
+    service.client_websocket.accept = AsyncMock(side_effect=RuntimeError("handshake failed"))
+
+    await service.execute()
+
+    assert [(r["connection_key"], r["end_reason"]) for r in end_client.reports] == [
+        ("test_key", "error")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_failing_end_report_does_not_break_the_session_teardown(
+    mock_tool_manager, monkeypatch
+):
+    import httpx
+
+    def django_is_down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("django unreachable")
+
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: real_async_client(transport=httpx.MockTransport(django_is_down), **kwargs),
+    )
+    service = ConversationService(
+        client_websocket=AsyncMock(spec=WebSocket),
+        realtime_agent_chat_data=_make_chat_data(wake_word=None),
+        instructions="Be helpful.",
+        tool_manager_service=mock_tool_manager,
+        connections={},
+        factory=MagicMock(spec=RealtimeAgentClientFactory),
+        summ_client=MagicMock(spec=ISummarizationClient),
+        transcription_client_factory=MagicMock(spec=ITranscriptionClientFactory),
+        chat_end_client=AgentChatEndClient("http://django_app:8000/api", "test-key"),
+    )
+    provider_client = _provider_client()
+    _prepare_session(service, provider_client, AsyncMock(side_effect=WebSocketDisconnect()))
+
+    await service.execute()
+
+    provider_client.close.assert_awaited_once()
+    assert service.connections == {}

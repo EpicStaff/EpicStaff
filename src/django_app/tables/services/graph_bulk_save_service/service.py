@@ -34,6 +34,12 @@ from tables.services.node_number_service import NodeNumberService
 from tables.services.secrets import SecretUseDeniedError
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
 from tables.services.secrets.request_actor import actor_from_request
+from tables.services.storage_grants.actor import GrantActor
+from tables.services.storage_grants.storage_use import storage_tool_index
+from tables.services.storage_grants.write_checks import (
+    STEERING_PREFETCHES,
+    annotate_for_steering_check,
+)
 from tables.validators.run_refusal_validator import node_run_refusals
 
 
@@ -121,26 +127,33 @@ class GraphBulkSaveService:
         # reported on the decision table item that holds it.
         routing_refs_by_item: dict[str, dict[int, set[int]]] = {}
         created_uuids: dict[str, list[tuple[int, UUID]]] = {}
-        for config in NODE_TYPE_REGISTRY:
-            incoming = validated_input.get(config.list_key, [])
-            if not incoming:
-                continue
-            db_map = {
-                obj.id: obj
-                for obj in config.model_class.objects.filter(graph=graph).prefetch_related(
-                    *_stored_secret_prefetches(config.model_class)
-                )
-            }
-            result = self._validate_node_list(graph, incoming, config, db_map, payload_temp_ids)
-            if result.created_uuids:
-                created_uuids[config.list_key] = result.created_uuids
-            if result.errors:
-                all_errors[config.list_key] = result.errors
-            else:
-                node_saveables.extend(result.node_saveables)
-                edge_saveables.extend(result.deferred_saveables)
-                if result.real_routing_node_ids_by_index:
-                    routing_refs_by_item[config.list_key] = result.real_routing_node_ids_by_index
+        # Answers 'does this node reach a storage tool' once for all the nodes of the save.
+        with storage_tool_index(graph.org_id):
+            for config in NODE_TYPE_REGISTRY:
+                incoming = validated_input.get(config.list_key, [])
+                if not incoming:
+                    continue
+                db_map = {
+                    obj.id: obj
+                    for obj in annotate_for_steering_check(
+                        config.model_class.objects.filter(graph=graph)
+                    ).prefetch_related(
+                        *_stored_secret_prefetches(config.model_class),
+                        *STEERING_PREFETCHES.get(config.model_class, ()),
+                    )
+                }
+                result = self._validate_node_list(graph, incoming, config, db_map, payload_temp_ids)
+                if result.created_uuids:
+                    created_uuids[config.list_key] = result.created_uuids
+                if result.errors:
+                    all_errors[config.list_key] = result.errors
+                else:
+                    node_saveables.extend(result.node_saveables)
+                    edge_saveables.extend(result.deferred_saveables)
+                    if result.real_routing_node_ids_by_index:
+                        routing_refs_by_item[config.list_key] = (
+                            result.real_routing_node_ids_by_index
+                        )
 
         # Pass 1: validate client-sent node uuids across all node lists and tables
         uuid_errors = NodeUuidValidator().find_errors(graph, created_uuids, deleted_data)
@@ -321,6 +334,15 @@ class GraphBulkSaveService:
                 )
             except SecretUseDeniedError as denial:
                 return BuildSaveableResult(error={"index": index, "errors": denial.field_errors()})
+
+        if config.storage_grant_check is not None:
+            # Not collected into the item's errors: a refusal is a 403 for the whole save,
+            # which the transaction rolls back, so no node of it is written.
+            config.storage_grant_check(
+                GrantActor.for_request(self._request) if self._request is not None else None,
+                instance,
+                s.validated_data,
+            )
 
         inner = config.saveable_factory.build(s, extra, instance)
         deferred = config.saveable_factory.build_deferred(inner, extra)

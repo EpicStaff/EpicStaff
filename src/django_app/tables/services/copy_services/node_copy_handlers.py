@@ -43,6 +43,8 @@ from tables.services.copy_services.inline_surface_copy_helpers import (
 )
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.secrets.secret_use_service import SecretActor
+from tables.services.storage_grants.actor import grant_actor_for
+from tables.services.storage_grants.capping import copied_grant_fields
 
 
 def copy_start_node(
@@ -85,6 +87,7 @@ def copy_file_extractor_node(
         graph=graph,
         node_number=node_number,
         created_by=resolve_author(user),
+        **copied_grant_fields(node, grant_actor_for(user, graph)),
         **get_base_node_fields(node),
     )
 
@@ -122,6 +125,7 @@ def copy_audio_transcription_node(
         graph=graph,
         node_number=node_number,
         created_by=resolve_author(user),
+        **copied_grant_fields(node, grant_actor_for(user, graph)),
         **get_base_node_fields(node),
     )
 
@@ -147,6 +151,7 @@ def copy_python_node(
         node_number=node_number,
         created_by=resolve_author(user),
         python_code=new_code,
+        **copied_grant_fields(node, grant_actor_for(user, graph)),
         **get_base_node_fields(node),
     )
 
@@ -163,6 +168,7 @@ def copy_webhook_trigger_node(
         webhook_trigger=node.webhook_trigger,
         python_code=new_code,
         use_storage=node.use_storage,
+        **copied_grant_fields(node, grant_actor_for(user, graph)),
         metadata=node.metadata,
         test_payload=node.test_payload,
     )
@@ -317,6 +323,7 @@ def copy_classification_decision_table_node(
         metadata=node.metadata,
         pre_use_storage=node.pre_use_storage,
         post_use_storage=node.post_use_storage,
+        **copied_grant_fields(node, grant_actor_for(user, graph)),
     )
 
     new_prompts = ClassificationDecisionTablePrompt.objects.bulk_create(
@@ -381,6 +388,7 @@ def copy_task_node(
         instructions=node.instructions,
         output_schema=node.output_schema,
         remember_output=node.remember_output,
+        **copied_grant_fields(node, grant_actor_for(user, graph)),
         **get_base_node_fields(node),
     )
     new_node.surface_list.set(node.surface_list.all())
@@ -396,6 +404,7 @@ def copy_agent_node(
         node_number=node_number,
         created_by=resolve_author(user),
         agent_definition=node.agent_definition,
+        **copied_grant_fields(node, grant_actor_for(user, graph)),
         **get_base_node_fields(node),
     )
     new_node.surface_list.set(node.surface_list.all())

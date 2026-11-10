@@ -22,7 +22,9 @@ def first_publish_fails(monkeypatch):
     monkeypatch.setattr(session_manager, "create_session_data", _empty_session_data)
     publish_calls = []
 
-    def publish(*, session_data, org_id, storage_credentials=None):
+    def publish(
+        *, session_data, org_id, storage_credentials=None, storage_credentials_by_grant=None
+    ):
         publish_calls.append(org_id)
         if len(publish_calls) == 1:
             raise RuntimeError("redis is down")

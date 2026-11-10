@@ -2,8 +2,10 @@ import { AuthorshipFields, CreatePythonCodeRequest, GetPythonCodeRequest } from 
 
 import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
+import { StorageGrantFields } from './storage-grants.model';
 
-export interface GetWebhookTriggerNodeRequest extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
+export interface GetWebhookTriggerNodeRequest
+    extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto, StorageGrantFields {
     id: number;
     created_at: string;
     node_name: string;
@@ -21,7 +23,7 @@ export interface GetWebhookTriggerNodeRequest extends AuthorshipFields, NodeIden
     use_storage: boolean;
 }
 
-export interface CreateWebhookTriggerNodeRequest {
+export interface CreateWebhookTriggerNodeRequest extends StorageGrantFields {
     node_name: string;
     graph: number;
     python_code: CreatePythonCodeRequest;

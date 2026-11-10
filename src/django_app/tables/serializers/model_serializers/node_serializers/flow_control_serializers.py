@@ -24,6 +24,7 @@ from tables.serializers.base_serializer import (
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
+from tables.serializers.utils.storage_grant_mixin import StorageGrantFlagsMixin
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
@@ -252,6 +253,7 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 
 
 class ClassificationDecisionTableNodeSerializer(
+    StorageGrantFlagsMixin,
     CdtExplanationsSanitizingMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
@@ -266,6 +268,8 @@ class ClassificationDecisionTableNodeSerializer(
     default_llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True
     )
+
+    storage_grant_prefixes = ("pre_", "post_")
 
     class Meta:
         model = ClassificationDecisionTableNode
@@ -283,6 +287,12 @@ class ClassificationDecisionTableNodeSerializer(
             "post_output_variable_path",
             "pre_use_storage",
             "post_use_storage",
+            "pre_storage_grant_read",
+            "pre_storage_grant_write",
+            "pre_storage_grant_delete",
+            "post_storage_grant_read",
+            "post_storage_grant_write",
+            "post_storage_grant_delete",
             "default_llm_config",
             "default_next_node_id",
             "next_error_node_id",

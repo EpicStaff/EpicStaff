@@ -46,6 +46,7 @@ from tables.serializers.utils.mixins import (
     assert_node_ref_in_graph,
 )
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
+from tables.serializers.utils.storage_grant_mixin import StorageGrantFlagsMixin
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.rag_assignment_service import SearchConfigService
 from tables.validators.key_value_entries_validator import KeyValueEntriesValidator
@@ -119,6 +120,7 @@ def validate_output_schema(value):
 
 
 class PythonNodeSerializer(
+    StorageGrantFlagsMixin,
     ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
@@ -135,6 +137,7 @@ class PythonNodeSerializer(
 
 
 class FileExtractorNodeSerializer(
+    StorageGrantFlagsMixin,
     ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
@@ -287,6 +290,7 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
 
 
 class AudioTranscriptionNodeSerializer(
+    StorageGrantFlagsMixin,
     ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
@@ -367,6 +371,7 @@ class SurfaceReadGateMixin:
 
 
 class TaskNodeSerializer(
+    StorageGrantFlagsMixin,
     SurfaceReadGateMixin,
     ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
@@ -481,6 +486,7 @@ class AgentNodeTaskReadSerializer(serializers.ModelSerializer):
 
 
 class AgentNodeSerializer(
+    StorageGrantFlagsMixin,
     SurfaceReadGateMixin,
     ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,

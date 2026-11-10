@@ -1,6 +1,7 @@
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
+import { storageGrantsFromDto } from '../../../core/helpers/storage-grants.util';
 import { GetFileExtractorNodeRequest } from '../../../core/models/file-extractor.model';
 import { FileExtractorNodeModel } from '../../../core/models/node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
@@ -20,5 +21,6 @@ export function mapFileExtractorNodeToModel(n: GetFileExtractorNodeRequest): Fil
         input_map: n.input_map ?? {},
         output_variable_path: n.output_variable_path,
         size: ui.size,
+        storageGrants: storageGrantsFromDto(n),
     };
 }

@@ -1,6 +1,7 @@
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
+import { storageGrantsFromDto } from '../../../core/helpers/storage-grants.util';
 import { TaskNodeModel } from '../../../core/models/node.model';
 import { TaskNode } from '../../../core/models/task-node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
@@ -30,5 +31,6 @@ export function mapTaskNodeToModel(tn: TaskNode): TaskNodeModel {
         input_map: tn.input_map ?? {},
         output_variable_path: tn.output_variable_path,
         size: ui.size,
+        storageGrants: storageGrantsFromDto(tn),
     };
 }

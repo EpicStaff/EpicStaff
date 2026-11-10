@@ -1,5 +1,6 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { hasModifierKey } from '@angular/cdk/keycodes';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -11,6 +12,7 @@ import {
     Spinner2Component,
 } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { extractHttpErrorMessage, isClientError } from '@shared/utils';
 import { catchError, EMPTY, filter, forkJoin, map, merge, of, switchMap, tap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -454,9 +456,11 @@ export class SelectStorageFilesDialogComponent implements OnInit {
                     this.toastService.success('Files updated successfully');
                     this.dialogRef.close({ changed: true });
                 },
-                error: () => {
+                error: (error: HttpErrorResponse) => {
                     this.isSaving.set(false);
-                    this.toastService.error('Failed to update files');
+                    this.toastService.error(
+                        isClientError(error) ? extractHttpErrorMessage(error) : 'Failed to update files'
+                    );
                 },
             });
     }

@@ -1,7 +1,10 @@
 """Rules carried by the storage-scoped models; plain fields and defaults are not retested."""
 
 import pytest
-from shared.models.storage_scope import StorageCredentials
+from shared.models.graph_nodes import GraphData, PythonNodeData
+from shared.models.sessions import SessionData
+from shared.models.storage_scope import StorageAction, StorageCredentials, StorageGrant
+from shared.models.tools import PythonCodeData
 from shared.models.tools import CodeTaskData
 
 CODE_TASK = {
@@ -60,3 +63,105 @@ def test_a_complete_storage_scope_is_accepted():
     )
 
     assert task.use_storage is True
+
+
+@pytest.mark.parametrize(
+    ("grant", "expected_key"),
+    [
+        (StorageGrant(), "---"),
+        (StorageGrant(read=True), "r--"),
+        (StorageGrant(write=True), "-w-"),
+        (StorageGrant(delete=True), "--d"),
+        (StorageGrant(read=True, delete=True), "r-d"),
+        (StorageGrant(read=True, write=True, delete=True), "rwd"),
+    ],
+)
+def test_grant_key_names_the_combination(grant, expected_key):
+    assert grant.key == expected_key
+
+
+def test_grant_key_does_not_depend_on_the_order_the_flags_were_given():
+    assert (
+        StorageGrant(delete=True, read=True).key
+        == StorageGrant(read=True, delete=True).key
+        == StorageGrant.model_validate({"delete": True, "write": False, "read": True}).key
+    )
+
+
+def test_every_combination_has_its_own_key_and_survives_the_key_round_trip():
+    grants = [
+        StorageGrant(read=read, write=write, delete=delete)
+        for read in (False, True)
+        for write in (False, True)
+        for delete in (False, True)
+    ]
+
+    assert len({grant.key for grant in grants}) == 8
+    assert all(StorageGrant.from_key(grant.key) == grant for grant in grants)
+
+
+def test_grant_actions_are_the_flags_that_are_on():
+    assert StorageGrant(read=True, delete=True).actions == {
+        StorageAction.READ,
+        StorageAction.DELETE,
+    }
+    assert StorageGrant().actions == frozenset()
+
+
+def test_grant_round_trips_through_json_inside_the_session_payload():
+    session = SessionData(
+        id=1,
+        org_id=1,
+        audit_retention_days=0,
+        graph=GraphData(
+            name="g",
+            python_node_list=[
+                PythonNodeData(
+                    node_name="n",
+                    python_code=PythonCodeData(
+                        code="x", entrypoint="main", storage_grant=StorageGrant(write=True)
+                    ),
+                    input_map={},
+                )
+            ],
+            entrypoint="n",
+            end_node=None,
+        ),
+        storage_credentials_by_grant={
+            "-w-": StorageCredentials(access_key="ak", secret_key="sk"),
+        },
+    )
+
+    restored = SessionData.model_validate_json(session.model_dump_json())
+
+    assert restored.graph.python_node_list[0].python_code.storage_grant == StorageGrant(write=True)
+    assert restored.storage_credentials_by_grant["-w-"].access_key == "ak"
+
+
+def test_a_payload_published_before_grants_existed_is_still_valid():
+    old_payload = {
+        "id": 1,
+        "org_id": 1,
+        "audit_retention_days": 0,
+        "graph": {
+            "name": "g",
+            "python_node_list": [
+                {
+                    "node_name": "n",
+                    "python_code": {"code": "x", "entrypoint": "main"},
+                    "input_map": {},
+                }
+            ],
+            "agent_node_list": [{"node_name": "agent"}],
+            "task_node_list": [{"node_name": "task"}],
+            "entrypoint": "n",
+            "end_node": None,
+        },
+    }
+
+    session = SessionData.model_validate(old_payload)
+
+    assert session.storage_credentials_by_grant == {}
+    assert session.graph.python_node_list[0].python_code.storage_grant is None
+    assert session.graph.agent_node_list[0].storage_grant is None
+    assert session.graph.task_node_list[0].storage_grant is None
