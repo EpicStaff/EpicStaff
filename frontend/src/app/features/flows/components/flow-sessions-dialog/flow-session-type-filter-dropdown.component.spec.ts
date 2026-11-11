@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ClickOutsideDirective } from '@shared/directives';
@@ -42,7 +43,7 @@ describe('FlowSessionTypeFilterDropdownComponent', () => {
     beforeEach(() => {
         // The checkbox and icon are presentational; the option list and footer are under test.
         TestBed.overrideComponent(FlowSessionTypeFilterDropdownComponent, {
-            set: { imports: [ClickOutsideDirective], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+            set: { imports: [CdkTrapFocus, ClickOutsideDirective], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
         });
     });
 

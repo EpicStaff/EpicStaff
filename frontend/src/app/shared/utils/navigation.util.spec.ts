@@ -8,7 +8,7 @@ import { afterNavigationRender, isPlainPrimaryClick } from './navigation.util';
 @Component({ template: '' })
 class OwnerComponent {}
 
-@Component({ template: '' })
+@Component({ selector: 'app-page', template: '' })
 class PageComponent {}
 
 describe('afterNavigationRender', () => {
