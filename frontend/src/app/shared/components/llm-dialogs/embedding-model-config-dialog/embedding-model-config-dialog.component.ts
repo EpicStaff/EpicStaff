@@ -117,21 +117,9 @@ export class EmbeddingModelConfigDialogComponent {
             this.form.markAllAsTouched();
             return;
         }
-        // Cleared before the duplicate-name check, so an old refusal does not sit beside its toast.
         this.errorMessage.set(null);
 
         const formValue = this.form.value;
-        const trimmedName = (formValue.custom_name as string).trim();
-        const isDuplicate = this.embeddingConfigsService
-            .configs()
-            .some((c) => c.custom_name.toLowerCase() === trimmedName.toLowerCase() && c.id !== this.data?.configId);
-        if (isDuplicate) {
-            this.toast.error(
-                'An embedding configuration with this name already exists. Please choose a different name.'
-            );
-            return;
-        }
-
         this.isSaving.set(true);
 
         const request$ = this.isEditMode()

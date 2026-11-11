@@ -226,6 +226,28 @@ describe('EmbeddingModelConfigDialogComponent save errors', () => {
         expect(bannerText(fixture)).toBe(SHOWN_REFUSAL);
     });
 
+    it.each([
+        ['creating', {}],
+        ['saving changes', { configId: EDITED_CONFIG.id }],
+    ])('shows a duplicate name from the server in the banner, not in a toast, when %s', (_action, dialogData) => {
+        const message = 'custom_name: An embedding config with this name already exists.';
+        const duplicateName = new HttpErrorResponse({
+            status: 400,
+            error: { status_code: 400, code: 'invalid', message },
+        });
+        const { fixture, toastError } = render(
+            dialogData,
+            () => throwError(() => duplicateName),
+            () => throwError(() => duplicateName)
+        );
+        fillNewConfig(fixture);
+
+        save(fixture);
+
+        expect(bannerText(fixture)).toBe('Custom name: An embedding config with this name already exists.');
+        expect(toastError).not.toHaveBeenCalled();
+    });
+
     it('clears the banner when the form is submitted again', () => {
         const updateConfig = vi
             .fn<Save>()

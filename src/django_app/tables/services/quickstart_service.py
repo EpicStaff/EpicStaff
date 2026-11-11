@@ -464,6 +464,8 @@ class QuickstartService(metaclass=SingletonMeta):
             LLMConfig,
             EmbeddingConfig,
             SystemOneConfig,
+            OpenAIRealtimeConfig,
+            GeminiRealtimeConfig,
         ]
 
         for model in config_models:

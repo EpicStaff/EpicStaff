@@ -27,6 +27,12 @@ class OpenAIRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "openai_realtime_config"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "custom_name"],
+                name="unique_openairealtimeconfig_name_per_org",
+            ),
+        ]
 
     custom_name = models.CharField(max_length=250)
     api_key_secret = models.ForeignKey(
@@ -62,6 +68,12 @@ class ElevenLabsRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Mode
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "elevenlabs_realtime_config"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "custom_name"],
+                name="unique_elevenlabsrealtimeconfig_name_per_org",
+            ),
+        ]
 
     custom_name = models.CharField(max_length=250)
     api_key_secret = models.ForeignKey(
@@ -91,6 +103,12 @@ class GeminiRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "gemini_realtime_config"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "custom_name"],
+                name="unique_geminirealtimeconfig_name_per_org",
+            ),
+        ]
 
     custom_name = models.CharField(max_length=250)
     api_key_secret = models.ForeignKey(

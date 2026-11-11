@@ -413,3 +413,22 @@ def test_quickstart_get_allowed_for_system_api_key(
 
     assert response.status_code == 200, response.content
     assert response.data["last_config"]["config_name"] == "quickstart_openai"
+
+
+@pytest.mark.django_db
+def test_quickstart_avoids_a_name_taken_only_by_a_realtime_config(db, django_user_model):
+    org = Organization.objects.create(name="Org A")
+    user = _org_admin(django_user_model, org, "qa-taken@example.com")
+    Provider.objects.create(name="openai")
+    OpenAIRealtimeConfig.objects.create(custom_name="quickstart_openai", org=org)
+
+    resp = _client(user, org).post(
+        "/api/quickstart/", {"provider": "openai", "api_key": "sk-test"}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert resp.data["config_name"] == "quickstart_openai_1"
+    assert LLMConfig.objects.filter(custom_name="quickstart_openai_1", org=org).exists()
+    assert OpenAIRealtimeConfig.objects.filter(
+        custom_name="quickstart_openai_1", org=org
+    ).exists()

@@ -44,3 +44,34 @@ def assign_default_org(apps, model_label, org, *, batch_size=1000, extra_filter=
     logger.info(
         f"Backfilled org_id={org.id} on {model_label} (NULL rows, filter={extra_filter})"
     )
+
+
+def plan_duplicate_renames(rows, *, max_length):
+    """Plan renames that make the names in one scope unique.
+
+    `rows` is an iterable of (pk, name) for every row sharing one uniqueness
+    scope (e.g. one organization of one table). The row with the lowest pk keeps
+    its name; each later row with the same name becomes "<name> (2)", "<name> (3)"…,
+    skipping any name already taken in the scope. The base name is truncated so
+    the result fits `max_length`.
+
+    Returns {pk: new_name} for the rows that must change.
+    """
+    ordered_rows = sorted(rows)
+    taken_names = {name for _, name in ordered_rows}
+    seen_names = set()
+    renames = {}
+    for pk, name in ordered_rows:
+        if name not in seen_names:
+            seen_names.add(name)
+            continue
+        counter = 2
+        while True:
+            suffix = f" ({counter})"
+            candidate = f"{name[: max_length - len(suffix)]}{suffix}"
+            if candidate not in taken_names:
+                break
+            counter += 1
+        taken_names.add(candidate)
+        renames[pk] = candidate
+    return renames

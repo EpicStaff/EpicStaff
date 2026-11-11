@@ -6,7 +6,7 @@ from rbac.authorship import (
     AuthorSummarySerializerMixin,
     LastEditFieldsSerializerMixin,
 )
-from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField, OrgScopedUniqueValidator
 from rest_framework import serializers
 from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.realtime_models import (
@@ -142,6 +142,16 @@ class OpenAIRealtimeConfigSerializer(
         allow_null=True,
     )
 
+    custom_name = serializers.CharField(
+        max_length=250,
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=OpenAIRealtimeConfig.objects.all(),
+                message="An OpenAI realtime config with this name already exists.",
+            )
+        ],
+    )
+
     class Meta:
         model = OpenAIRealtimeConfig
         fields = [
@@ -172,6 +182,16 @@ class ElevenLabsRealtimeConfigSerializer(
         allow_null=True,
     )
 
+    custom_name = serializers.CharField(
+        max_length=250,
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=ElevenLabsRealtimeConfig.objects.all(),
+                message="An ElevenLabs realtime config with this name already exists.",
+            )
+        ],
+    )
+
     class Meta:
         model = ElevenLabsRealtimeConfig
         fields = [
@@ -197,6 +217,16 @@ class GeminiRealtimeConfigSerializer(
         source="api_key_secret",
         required=False,
         allow_null=True,
+    )
+
+    custom_name = serializers.CharField(
+        max_length=250,
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=GeminiRealtimeConfig.objects.all(),
+                message="A Gemini realtime config with this name already exists.",
+            )
+        ],
     )
 
     class Meta:
