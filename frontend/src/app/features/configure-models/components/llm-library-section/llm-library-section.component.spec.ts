@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { DebugElement, signal } from '@angular/core';
+import { DebugElement, NgZone, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { AuthorshipDetailsDialogService } from '@shared/components';
@@ -574,7 +574,7 @@ describe('LlmLibrarySectionComponent select mode', () => {
             .querySelector<HTMLButtonElement>('.header-right > app-button button')!
             .click();
         // A full tick: the focus moves in an after-render hook.
-        TestBed.tick();
+        TestBed.inject(NgZone).run(() => TestBed.tick());
 
         expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
         expect(document.activeElement).toBe(
