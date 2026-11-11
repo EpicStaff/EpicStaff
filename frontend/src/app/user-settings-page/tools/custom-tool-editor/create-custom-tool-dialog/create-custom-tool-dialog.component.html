@@ -16,7 +16,9 @@
                         type="outline-primary"
                         mod="default"
                         [disabled]="isSaving()"
-                        [matTooltip]="builtInSaveTooltip"
+                        [ariaDisabled]="!!copyBlockedReason()"
+                        [ariaDescribedby]="copyBlockedReason() ? copyBlockedReasonId : null"
+                        [matTooltip]="copyBlockedReason() ?? builtInSaveTooltip"
                         matTooltipClass="builtin-copy-tooltip"
                         matTooltipPosition="below"
                         (click)="submit()"
@@ -28,8 +30,19 @@
                         type="outline-primary"
                         mod="default"
                         [disabled]="isCopying()"
+                        [ariaDisabled]="!!copyBlockedReason()"
+                        [ariaDescribedby]="copyBlockedReason() ? copyBlockedReasonId : null"
+                        [matTooltip]="copyBlockedReason() ?? ''"
+                        matTooltipPosition="below"
                         (click)="makeCopy()"
                         >{{ isCopying() ? 'Copying...' : 'Make Copy' }}</app-button
+                    >
+                }
+                @if (copyBlockedReason(); as reason) {
+                    <span
+                        class="visually-hidden"
+                        [id]="copyBlockedReasonId"
+                        >{{ reason }}</span
                     >
                 }
                 <button
@@ -37,7 +50,6 @@
                     type="button"
                     [attr.aria-label]="isEditMode() ? 'Discard changes' : 'Cancel'"
                     matTooltip="Cancel"
-                    matTooltipPosition="above"
                     (click)="close()"
                 >
                     <app-svg-icon
@@ -53,7 +65,6 @@
                         [disabled]="isSaving()"
                         [attr.aria-label]="isEditMode() ? 'Save changes' : 'Create tool'"
                         matTooltip="Save"
-                        matTooltipPosition="above"
                         (click)="submit()"
                     >
                         <app-svg-icon
@@ -85,7 +96,9 @@
                             <p class="readonly-field__value">{{ form.controls.name.value }}</p>
                         </div>
                     } @else {
+                        <!-- A new tool's dialog opens with the focus here, its first field. -->
                         <app-custom-input
+                            cdkFocusInitial
                             label="Name"
                             [required]="true"
                             tooltipText="A unique, descriptive name for your custom tool."
@@ -142,6 +155,9 @@
                             [tooltipText]="secretsTooltip()"
                             (valueChange)="onSecretsChange($event)"
                         />
+                        @if (isSecretCodeLocked()) {
+                            <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                        }
                     </div>
                 }
 
@@ -157,7 +173,7 @@
                         [showSearch]="true"
                         searchPlaceholder="Search by venv name..."
                         [loading]="loadingVenvs()"
-                        [readonly]="isBuiltIn()"
+                        [readonly]="isCodeReadOnly()"
                         (opened)="onVenvDropdownOpened()"
                         (changed)="onVenvChanged($event)"
                     />
@@ -181,8 +197,7 @@
                                 <button
                                     type="button"
                                     aria-label="Copy Python code"
-                                    matTooltip="Copy"
-                                    matTooltipPosition="above"
+                                    matTooltip="Copy Python code"
                                     (click)="copyPythonCode()"
                                 >
                                     <app-svg-icon
@@ -192,11 +207,13 @@
                                 </button>
                                 <button
                                     type="button"
+                                    [attr.aria-expanded]="pythonSectionExpanded()"
                                     [attr.aria-label]="
                                         pythonSectionExpanded() ? 'Collapse Python section' : 'Expand Python section'
                                     "
-                                    matTooltip="View"
-                                    matTooltipPosition="above"
+                                    [matTooltip]="
+                                        pythonSectionExpanded() ? 'Collapse Python section' : 'Expand Python section'
+                                    "
                                     (click)="togglePythonSection()"
                                 >
                                     <app-svg-icon
@@ -207,8 +224,7 @@
                                 <button
                                     type="button"
                                     aria-label="Show Python editor on the right"
-                                    matTooltip="Expand"
-                                    matTooltipPosition="above"
+                                    matTooltip="Show Python editor on the right"
                                     (click)="toggleEditor(ActiveEditor.Python)"
                                 >
                                     <app-svg-icon
@@ -224,7 +240,7 @@
                                     [pythonCode]="form.controls.pythonCode.value"
                                     [showHeader]="false"
                                     [secretNames]="secretNames()"
-                                    [readOnly]="isBuiltIn()"
+                                    [readOnly]="isCodeReadOnly()"
                                     (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onPythonErrorChange($event)"
                                 ></app-code-editor>
@@ -249,24 +265,32 @@
                         <div class="parameters-mode-switch">
                             <span>Table mode</span>
                             <app-toggle-switch
+                                ariaLabel="Table mode"
                                 [checked]="parametersSwitchOn()"
                                 (checkedChange)="setParametersTableMode($event)"
                             ></app-toggle-switch>
                         </div>
                     </div>
 
+                    @if (isSecretCodeLocked()) {
+                        <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                    }
+
                     <div class="storage-mode-switch">
                         <span>Enable Storage</span>
                         <app-help-tooltip
                             text="Allow this tool to read and write files in EpicStaff storage."
                         ></app-help-tooltip>
-                        <app-toggle-switch formControlName="useStorage"></app-toggle-switch>
+                        <app-toggle-switch
+                            ariaLabel="Enable Storage"
+                            formControlName="useStorage"
+                        ></app-toggle-switch>
                     </div>
 
                     @if (parametersTableMode()) {
                         <app-parameters-table-view
                             [variables]="tableVariables()"
-                            [readOnly]="isBuiltIn()"
+                            [readOnly]="isCodeReadOnly()"
                             [initialDrillStack]="tableDrillStack()"
                             (variablesChange)="onVariablesChange($event)"
                             (drillStackChange)="onDrillStackChange($event)"
@@ -306,8 +330,7 @@
                                     <button
                                         type="button"
                                         aria-label="Copy JSON configuration"
-                                        matTooltip="Copy"
-                                        matTooltipPosition="above"
+                                        matTooltip="Copy JSON configuration"
                                         (click)="copyJsonConfiguration()"
                                     >
                                         <app-svg-icon
@@ -317,11 +340,13 @@
                                     </button>
                                     <button
                                         type="button"
+                                        [attr.aria-expanded]="jsonSectionExpanded()"
                                         [attr.aria-label]="
                                             jsonSectionExpanded() ? 'Collapse JSON section' : 'Expand JSON section'
                                         "
-                                        [matTooltip]="jsonSectionExpanded() ? 'Collapse' : 'Expand'"
-                                        matTooltipPosition="above"
+                                        [matTooltip]="
+                                            jsonSectionExpanded() ? 'Collapse JSON section' : 'Expand JSON section'
+                                        "
                                         (click)="toggleJsonSection()"
                                     >
                                         <app-svg-icon
@@ -332,8 +357,7 @@
                                     <button
                                         type="button"
                                         aria-label="Show JSON editor on the right"
-                                        matTooltip="Expand"
-                                        matTooltipPosition="above"
+                                        matTooltip="Show JSON editor on the right"
                                         (click)="toggleEditor(ActiveEditor.Json)"
                                     >
                                         <app-svg-icon
@@ -407,8 +431,11 @@
                                         ? 'Copy Python code'
                                         : 'Copy JSON configuration'
                                 "
-                                matTooltip="Copy"
-                                matTooltipPosition="above"
+                                [matTooltip]="
+                                    activeEditor() === ActiveEditor.Python
+                                        ? 'Copy Python code'
+                                        : 'Copy JSON configuration'
+                                "
                                 (click)="
                                     activeEditor() === ActiveEditor.Python ? copyPythonCode() : copyJsonConfiguration()
                                 "
@@ -421,8 +448,7 @@
                             <button
                                 type="button"
                                 aria-label="Collapse editor panel"
-                                matTooltip="Collapse"
-                                matTooltipPosition="above"
+                                matTooltip="Collapse editor panel"
                                 (click)="closeEditorPane()"
                             >
                                 <app-svg-icon
@@ -438,7 +464,7 @@
                                 [pythonCode]="form.controls.pythonCode.value"
                                 [showHeader]="false"
                                 [secretNames]="secretNames()"
-                                [readOnly]="isBuiltIn()"
+                                [readOnly]="isCodeReadOnly()"
                                 (pythonCodeChange)="onPythonCodeChange($event)"
                                 (errorChange)="onPythonErrorChange($event)"
                             ></app-code-editor>

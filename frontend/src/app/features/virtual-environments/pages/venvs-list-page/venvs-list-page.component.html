@@ -14,127 +14,222 @@
                 </h1>
             </div>
             <div class="header-actions">
-                <app-button
-                    *appHasPermission="[ResourceCode.Venvs, ActionCode.Create]"
-                    type="primary"
-                    leftIcon="plus"
-                    (click)="onCreate()"
-                >
-                    Create venv
-                </app-button>
+                @if (activeTab() === 'venvs') {
+                    <app-button
+                        #createButton
+                        *appHasPermission="[ResourceCode.Venvs, ActionCode.Create]"
+                        type="primary"
+                        leftIcon="plus"
+                        (click)="onCreate()"
+                    >
+                        Create venv
+                    </app-button>
+                } @else {
+                    <app-button
+                        *appHasPermission="[ResourceCode.CustomLibraries, ActionCode.Create]"
+                        type="primary"
+                        leftIcon="plus"
+                        (click)="openCreateCustomLibrary()"
+                    >
+                        Create custom library
+                    </app-button>
+                }
             </div>
         </header>
         <nav class="tabs">
             <div class="tabs-left">
                 <app-tab-button
                     mod="sm"
-                    [active]="true"
+                    [active]="activeTab() === 'venvs'"
+                    (action)="selectTab('venvs')"
                 >
                     Venvs
                 </app-tab-button>
+                @if (canReadCustomLibraries()) {
+                    <span class="tab-sep">/</span>
+                    <app-tab-button
+                        mod="sm"
+                        [active]="activeTab() === 'custom-libraries'"
+                        (action)="selectTab('custom-libraries')"
+                    >
+                        Custom Libraries
+                    </app-tab-button>
+                }
             </div>
-            <div class="tabs-right">
-                <button
-                    #filterTrigger="cdkOverlayOrigin"
-                    cdkOverlayOrigin
-                    type="button"
-                    class="menu-trigger filter-trigger"
-                    [class.active]="filterMenuOpen() || activeFilterCount() > 0"
-                    (click)="toggleFilterMenu()"
-                >
-                    <app-svg-icon
-                        icon="filter-outline"
-                        size="0.875rem"
-                    />
-                    <span>
-                        Filter
-                        @if (activeFilterCount() > 0) {
-                            <span class="filter-count">({{ activeFilterCount() }})</span>
-                        }
-                    </span>
-                    @if (activeFilterCount() > 0) {
-                        <span
-                            class="filter-clear-inline"
-                            role="button"
-                            matTooltip="Clear all filters"
-                            matTooltipPosition="above"
-                            (click)="clearAllFilters($event)"
+            @if (activeTab() === 'venvs') {
+                <div class="tabs-right">
+                    <!-- Two buttons drawn as one: the clear button cannot sit inside the toggle. -->
+                    <div
+                        #filterTrigger="cdkOverlayOrigin"
+                        cdkOverlayOrigin
+                        class="menu-trigger filter-trigger"
+                        [class.active]="filterMenuOpen() || activeFilterCount() > 0"
+                    >
+                        <button
+                            #filterToggle
+                            type="button"
+                            class="filter-trigger__toggle"
+                            aria-haspopup="dialog"
+                            [attr.aria-expanded]="filterMenuOpen()"
+                            (click)="toggleFilterMenu()"
                         >
                             <app-svg-icon
-                                icon="x"
+                                icon="filter-outline"
                                 size="0.875rem"
                             />
-                        </span>
-                    }
-                </button>
-                <ng-template
-                    cdkConnectedOverlay
-                    [cdkConnectedOverlayOrigin]="filterTrigger"
-                    [cdkConnectedOverlayOpen]="filterMenuOpen()"
-                    [cdkConnectedOverlayHasBackdrop]="true"
-                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
-                    [cdkConnectedOverlayOffsetY]="6"
-                    [cdkConnectedOverlayPositions]="menuPositions"
-                    (backdropClick)="closeFilterMenu()"
-                    (detach)="closeFilterMenu()"
-                >
-                    <app-venvs-filter-menu
-                        [initial]="filterState()"
-                        (save)="onFilterSave($event)"
-                        (cancel)="closeFilterMenu()"
-                        (clear)="onFilterClear()"
-                    />
-                </ng-template>
+                            <span>
+                                Filter
+                                @if (activeFilterCount() > 0) {
+                                    <span class="filter-count">({{ activeFilterCount() }})</span>
+                                }
+                            </span>
+                        </button>
+                        @if (activeFilterCount() > 0) {
+                            <!-- Goes away once the filters are cleared: the focus moves to the Filter button. -->
+                            <button
+                                type="button"
+                                class="filter-clear-inline"
+                                aria-label="Clear all filters"
+                                matTooltip="Clear all filters"
+                                (click)="clearAllFilters($event); filterToggle.focus()"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="0.875rem"
+                                />
+                            </button>
+                        }
+                    </div>
+                    <!-- Escape detaches the overlay, which closes the panel; its focus trap returns the focus to the Filter button. -->
+                    <ng-template
+                        cdkConnectedOverlay
+                        [cdkConnectedOverlayOrigin]="filterTrigger"
+                        [cdkConnectedOverlayOpen]="filterMenuOpen()"
+                        [cdkConnectedOverlayHasBackdrop]="true"
+                        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                        [cdkConnectedOverlayOffsetY]="6"
+                        [cdkConnectedOverlayPositions]="menuPositions"
+                        (backdropClick)="closeFilterMenu()"
+                        (detach)="closeFilterMenu()"
+                    >
+                        <app-venvs-filter-menu
+                            [initial]="filterState()"
+                            (save)="onFilterSave($event)"
+                            (cancel)="closeFilterMenu()"
+                            (clear)="onFilterClear()"
+                        />
+                    </ng-template>
 
-                <button
-                    #sortTrigger="cdkOverlayOrigin"
-                    cdkOverlayOrigin
-                    type="button"
-                    class="menu-trigger"
-                    [class.active]="sortMenuOpen() || sortOrder() !== 'default'"
-                    (click)="toggleSortMenu()"
-                >
-                    <app-svg-icon
-                        icon="arrow-up-down"
-                        size="0.875rem"
-                    />
-                    <span>{{ sortTriggerLabel() }}</span>
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="0.875rem"
-                        class="menu-chevron"
-                        [class.open]="sortMenuOpen()"
-                    />
-                </button>
-                <ng-template
-                    cdkConnectedOverlay
-                    [cdkConnectedOverlayOrigin]="sortTrigger"
-                    [cdkConnectedOverlayOpen]="sortMenuOpen()"
-                    [cdkConnectedOverlayHasBackdrop]="true"
-                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
-                    [cdkConnectedOverlayOffsetY]="6"
-                    [cdkConnectedOverlayPositions]="menuPositions"
-                    (backdropClick)="closeSortMenu()"
-                    (detach)="closeSortMenu()"
-                >
-                    <app-venvs-sort-menu
-                        [activeSort]="sortOrder()"
-                        (sortSelected)="onSortSelected($event)"
-                    />
-                </ng-template>
+                    <button
+                        #sortTrigger="cdkOverlayOrigin"
+                        cdkOverlayOrigin
+                        type="button"
+                        class="menu-trigger"
+                        [class.active]="sortMenuOpen() || sortOrder() !== 'default'"
+                        aria-haspopup="menu"
+                        [attr.aria-expanded]="sortMenuOpen()"
+                        (click)="toggleSortMenu()"
+                    >
+                        <app-svg-icon
+                            icon="arrow-up-down"
+                            size="0.875rem"
+                        />
+                        <span>{{ sortTriggerLabel() }}</span>
+                        <app-svg-icon
+                            icon="chevron-down"
+                            size="0.875rem"
+                            class="menu-chevron"
+                            [class.open]="sortMenuOpen()"
+                        />
+                    </button>
+                    <!-- Escape detaches the overlay, which closes the menu; its focus trap returns the focus here. -->
+                    <ng-template
+                        cdkConnectedOverlay
+                        [cdkConnectedOverlayOrigin]="sortTrigger"
+                        [cdkConnectedOverlayOpen]="sortMenuOpen()"
+                        [cdkConnectedOverlayHasBackdrop]="true"
+                        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                        [cdkConnectedOverlayOffsetY]="6"
+                        [cdkConnectedOverlayPositions]="menuPositions"
+                        (backdropClick)="closeSortMenu()"
+                        (detach)="closeSortMenu()"
+                    >
+                        <app-venvs-sort-menu
+                            [activeSort]="sortOrder()"
+                            (sortSelected)="onSortSelected($event)"
+                        />
+                    </ng-template>
 
-                <app-search
-                    class="search"
-                    mod="small"
-                    placeholder="Search by name..."
-                    [(searchTerm)]="searchTerm"
-                />
-            </div>
+                    <app-search
+                        class="search"
+                        mod="small"
+                        placeholder="Search by name..."
+                        [(searchTerm)]="searchTerm"
+                    />
+                </div>
+            } @else {
+                <div class="tabs-right">
+                    <button
+                        #librarySortTrigger="cdkOverlayOrigin"
+                        cdkOverlayOrigin
+                        type="button"
+                        class="menu-trigger"
+                        [class.active]="librarySortMenuOpen() || librarySortOrder() !== 'default'"
+                        (click)="toggleLibrarySortMenu()"
+                    >
+                        <app-svg-icon
+                            icon="arrow-up-down"
+                            size="0.875rem"
+                        />
+                        <span>{{ librarySortTriggerLabel() }}</span>
+                        <app-svg-icon
+                            icon="chevron-down"
+                            size="0.875rem"
+                            class="menu-chevron"
+                            [class.open]="librarySortMenuOpen()"
+                        />
+                    </button>
+                    <ng-template
+                        cdkConnectedOverlay
+                        [cdkConnectedOverlayOrigin]="librarySortTrigger"
+                        [cdkConnectedOverlayOpen]="librarySortMenuOpen()"
+                        [cdkConnectedOverlayHasBackdrop]="true"
+                        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                        [cdkConnectedOverlayOffsetY]="6"
+                        [cdkConnectedOverlayPositions]="menuPositions"
+                        (backdropClick)="closeLibrarySortMenu()"
+                        (detach)="closeLibrarySortMenu()"
+                    >
+                        <app-venvs-sort-menu
+                            [activeSort]="librarySortOrder()"
+                            (sortSelected)="onLibrarySortSelected($event)"
+                        />
+                    </ng-template>
+
+                    <app-search
+                        class="search"
+                        mod="small"
+                        placeholder="Search by name..."
+                        [(searchTerm)]="librarySearchTerm"
+                    />
+                </div>
+            }
         </nav>
     </div>
 
     <section class="venvs-page__body">
-        @if (isLoading()) {
+        <!-- Mounted with the page, not with its tab: the list is then loaded by the time the tab is
+             opened, the way the venv list already is. -->
+        @if (canReadCustomLibraries()) {
+            <app-custom-libraries-list-page
+                [class.venvs-page__tab--hidden]="activeTab() !== 'custom-libraries'"
+                [searchTerm]="librarySearchTerm()"
+                [sortOrder]="librarySortOrder()"
+            />
+        }
+        @if (activeTab() === 'custom-libraries') {
+            <!-- The venv list belongs to the other tab. -->
+        } @else if (isLoading()) {
             <div class="venvs-page__list">
                 @for (placeholder of [0, 1, 2, 3]; track placeholder) {
                     <div class="venvs-page__skeleton">

@@ -44,9 +44,12 @@ import {
     ScheduleTriggerNodeData,
     WeekdayCode,
 } from '../../../core/models/schedule-trigger.model';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { ScheduleTriggerRuntimeService } from '../../../services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { fieldChangeFor, showsFieldMarks } from '../../../utils/diff';
 import { toScheduleTriggerRuntimeState } from '../../../utils/save/schedule-trigger-runtime-state';
+import { DiffFieldMarkChange, DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 
 const MIN_INTERVAL_SECONDS = 60;
 
@@ -65,6 +68,7 @@ const MIN_INTERVAL_SECONDS = 60;
         TimezoneSelectorComponent,
         ToggleSwitchComponent,
         ValidationErrorsComponent,
+        DiffFieldMarkComponent,
     ],
     templateUrl: 'schedule-trigger-node-panel.component.html',
     styleUrls: ['schedule-trigger-node-panel.component.scss'],
@@ -84,6 +88,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     private readonly flowsApiService = inject(FlowsApiService);
     private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
     private readonly sidePanelService = inject(SidePanelService);
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
 
     constructor() {
         super();
@@ -130,7 +135,13 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     minRepeatEvery = computed(() => (this.repeatUnit() === 'seconds' ? MIN_INTERVAL_SECONDS : 1));
 
     showRepeatFields = computed(() => this.runMode() === 'repeat');
-    showWeekdays = computed(() => this.runMode() === 'repeat' && this.repeatUnit() === 'weeks');
+    /**
+     * "Repeat on" shows for a weekly run, and on the Changes tab also whenever a restore changes the weekdays: the
+     * scheduler reads them on a daily run too, and a restore to another unit drops them, so they must be seen there.
+     */
+    showWeekdays = computed(
+        () => this.runMode() === 'repeat' && (this.repeatUnit() === 'weeks' || this.weekdaysChange() !== null)
+    );
     showEndDateTime = computed(() => this.endMode() === 'on_date');
     showMaxRuns = computed(() => this.endMode() === 'after_n_runs');
 
@@ -187,6 +198,25 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         { label: 'F', value: 'fri', tooltip: 'Friday' },
         { label: 'S', value: 'sat', tooltip: 'Saturday' },
     ];
+
+    /** The run mode, end condition and repeat unit as the panel names them, for the tooltip of a changed one. */
+    protected readonly runModeFormat = (mode: unknown): string =>
+        this.runModeOptions.find((option) => option.value === mode)?.label ?? String(mode);
+    protected readonly endModeFormat = (endType: unknown): string =>
+        this.endModeOptions.find((option) => option.value === endType)?.label ?? String(endType);
+    protected readonly repeatUnitFormat = (unit: unknown): string =>
+        this.repeatUnitItems.find((item) => item.value === unit)?.name ?? String(unit);
+    /**
+     * Changes tab of a version preview: the days a schedule repeats on, by name, on the canvas and in the version, so
+     * the tooltip strikes the days a restore removes; `null` anywhere else or when a restore keeps the days.
+     */
+    protected readonly weekdaysChange = computed<DiffFieldMarkChange | null>(() => {
+        const diff = this.panelDiff();
+        const change = showsFieldMarks(diff) ? fieldChangeFor(diff, 'weekdays') : null;
+        return change
+            ? { current: this.weekdayNames(change.current), version: this.weekdayNames(change.version) }
+            : null;
+    });
 
     repeatDays = signal<WeekdayCode[]>([]);
     hasStartDateTime = signal(false);
@@ -686,6 +716,12 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
             node_name: resolvedName,
             data,
         };
+    }
+
+    private weekdayNames(days: unknown): string[] {
+        return (Array.isArray(days) ? days : []).map(
+            (day) => this.weekdays.find((weekday) => weekday.value === day)?.tooltip ?? String(day)
+        );
     }
 
     private normalizeTimezone(iana: string): string {

@@ -28,6 +28,7 @@ import { ScheduleTriggerNodePanelComponent } from './schedule-trigger-node-panel
 const unsavedScheduleNode: ScheduleTriggerNodeModel = {
     id: 'schedule-1',
     backendId: null,
+    nodeUuid: 'node-uuid-schedule-1',
     type: NodeType.SCHEDULE_TRIGGER,
     node_name: 'Schedule #1',
     data: {
@@ -45,8 +46,6 @@ const unsavedScheduleNode: ScheduleTriggerNodeModel = {
     },
     position: { x: 0, y: 0 },
     ports: null,
-    color: '',
-    icon: '',
     size: { width: 200, height: 100 },
     input_map: {},
     output_variable_path: null,
@@ -239,8 +238,10 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
 
         expect(element(fixture, 'app-custom-input input')).not.toBeNull();
         expect(element(fixture, 'app-radio-button')).not.toBeNull();
+        expect((element(fixture, '[aria-label="Monday"]') as HTMLButtonElement).disabled).toBe(false);
         clickMonday(fixture);
         expect(mondayButton(fixture).classList).toContain('round-btn--active');
+        expect(mondayButton(fixture).getAttribute('aria-pressed')).toBe('true');
         fixture.destroy();
     });
 
@@ -250,8 +251,13 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
         expect(element(fixture, 'app-custom-input input')).toBeNull();
         expect(element(fixture, 'app-custom-input .readonly-value')!.textContent).toContain('Schedule #1');
         expect(element(fixture, 'app-radio-button')).toBeNull();
+        // The day buttons are disabled and faded like the Active toggle, so they read as not interactive.
+        const monday = element(fixture, '[aria-label="Monday"]') as HTMLButtonElement;
+        expect(monday.disabled).toBe(true);
+        expect(monday.classList).toContain('round-btn--disabled');
         clickMonday(fixture);
         expect(mondayButton(fixture).classList).not.toContain('round-btn--active');
+        expect(mondayButton(fixture).getAttribute('aria-pressed')).toBe('false');
         // What the panel shell and the canvas take on close, Ctrl+S and a full save.
         expect(fixture.componentInstance.onSave()).toBeNull();
         expect(fixture.componentInstance.captureForValidation()).toBeNull();

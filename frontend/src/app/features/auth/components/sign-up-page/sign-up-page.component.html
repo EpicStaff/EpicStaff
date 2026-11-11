@@ -41,7 +41,10 @@
             </form>
 
             <div class="terms-row">
-                <app-checkbox [formControl]="termsControl" />
+                <app-checkbox
+                    ariaLabel="I agree to the Privacy Policy"
+                    [formControl]="termsControl"
+                />
                 <p class="terms-text">
                     I agree to the
                     <a
@@ -71,7 +74,10 @@
             </app-button>
         </div>
 
-        <p class="prompt">Already have an account? <span (click)="navToLogin()">Log in</span></p>
+        <p class="prompt">
+            Already have an account?
+            <a routerLink="/login">Log in</a>
+        </p>
     } @else {
         <div class="card status">
             <app-svg-icon

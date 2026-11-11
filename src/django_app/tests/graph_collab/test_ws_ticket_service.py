@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 
 from tables.graph_collab.ws_auth import TicketAuthMiddleware
-from rbac.identity.tickets import TicketService
+from rbac.identity.tickets import TicketService, sse_ticket_service, ws_ticket_service
 
 
 def make_ws_service():
@@ -42,7 +42,7 @@ def test_issue_returns_token_and_stores_user(fake_redis):
 
 
 @pytest.mark.django_db
-def test_consume_valid_ticket_returns_user(fake_redis):
+def test_consume_valid_ticket_returns_user_without_key_org(fake_redis):
     service = make_ws_service()
     User = get_user_model()
     user = User.objects.create_user(email="ticket2@example.com", password="Pass123!")
@@ -51,7 +51,29 @@ def test_consume_valid_ticket_returns_user(fake_redis):
     result = service.consume(token)
 
     assert result is not None
-    assert result.pk == user.pk
+    assert result.user.pk == user.pk
+    assert result.api_key_org_id is None
+
+
+@pytest.mark.django_db
+def test_consume_ticket_issued_with_a_key_org_returns_that_org(fake_redis):
+    service = make_ws_service()
+    user = get_user_model().objects.create_user(email="ticket-key@example.com", password="Pass123!")
+
+    token, _ = service.issue(user, api_key_org_id=42)
+    result = service.consume(token)
+
+    assert (result.user.pk, result.api_key_org_id) == (user.pk, 42)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", [b"7:", b"7:x", b":3", b"7:3:1"])
+def test_consume_malformed_key_org_value_returns_none(fake_redis, value):
+    service = make_ws_service()
+
+    fake_redis.set(service._key("bad-org"), value)
+
+    assert service.consume("bad-org") is None
 
 
 @pytest.mark.django_db
@@ -111,6 +133,20 @@ def test_consume_deleted_user_returns_none(fake_redis):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("service", [ws_ticket_service, sse_ticket_service], ids=["ws", "sse"])
+def test_consume_refuses_user_deactivated_after_issue(fake_redis, service):
+    User = get_user_model()
+    user = User.objects.create_user(email="ticket-inactive@example.com", password="Pass123!")
+    token, _ = service.issue(user)
+
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+
+    assert service.consume(token) is None
+    assert fake_redis.get(service._key(token)) is None
+
+
+@pytest.mark.django_db
 def test_ttl_matches_setting(fake_redis):
     service = make_ws_service()
     User = get_user_model()
@@ -162,6 +198,7 @@ async def test_middleware_sets_user_for_valid_ticket(fake_redis):
 
     async def inner(scope, receive, send):
         captured["user"] = scope["user"]
+        captured["api_key_org_id"] = scope["api_key_org_id"]
 
     middleware = TicketAuthMiddleware(inner)
     scope = {
@@ -172,6 +209,7 @@ async def test_middleware_sets_user_for_valid_ticket(fake_redis):
 
     assert "user" in captured
     assert captured["user"].pk == user.pk
+    assert captured["api_key_org_id"] is None
 
 
 @pytest.mark.asyncio

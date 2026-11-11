@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -119,6 +120,7 @@ function modeLabel(state: AuditFilterState | null): string {
         NgTemplateOutlet,
         OverlayModule,
         SearchComponent,
+        CdkTrapFocus,
         TooltipOnOverflowDirective,
     ],
     templateUrl: './audit-presets.component.html',
@@ -135,6 +137,12 @@ export class AuditPresetsComponent implements OnInit {
 
     private readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('nameInput');
     private readonly menuItems = viewChildren<ElementRef<HTMLButtonElement>>('menuItem');
+    // Where the focus goes when the control that had it leaves: a closed menu, an ended edit, a deleted card.
+    private readonly menuTriggers = viewChildren('menuTrigger', { read: ElementRef<HTMLButtonElement> });
+    private readonly newPresetButton = viewChild<ElementRef<HTMLButtonElement>>('newPresetButton');
+    private readonly startSelectingButton = viewChild<ElementRef<HTMLButtonElement>>('startSelectingButton');
+    private readonly cancelSelectingButton = viewChild<ElementRef<HTMLButtonElement>>('cancelSelectingButton');
+    private readonly editorChipRemoveButtons = viewChildren<ElementRef<HTMLButtonElement>>('editorChipRemove');
 
     protected readonly searchTerm = signal('');
     protected readonly openMenuId = signal<number | null>(null);
@@ -233,7 +241,9 @@ export class AuditPresetsComponent implements OnInit {
 
     protected cancelEdit(): void {
         if (!this.isSaving()) {
+            const presetId = this.editor()?.presetId ?? null;
             this.editor.set(null);
+            this.focusAfterEditor(presetId);
         }
     }
 
@@ -254,10 +264,15 @@ export class AuditPresetsComponent implements OnInit {
     }
 
     // same clearing the toolbar chips use, applied to the preset being edited
-    protected removeEditorFilter(key: string): void {
+    protected removeEditorFilter(key: string, index: number): void {
         this.editor.update((editor) =>
             editor === null ? null : { ...editor, state: clearAuditFilterField(editor.state, key) }
         );
+        // the remove button goes with its chip: the focus moves to the chip now in its place, or to the name field
+        this.focusAfterRender(() => {
+            const buttons = this.editorChipRemoveButtons();
+            return (buttons[Math.min(index, buttons.length - 1)] ?? this.nameInput())?.nativeElement;
+        });
     }
 
     protected save(): void {
@@ -277,7 +292,10 @@ export class AuditPresetsComponent implements OnInit {
             next: () => {
                 this.editor.set(null);
                 if (editor.applyOnSave) {
+                    // the panel closes and hands the focus to its Filters button
                     this.presetApplied.emit(editor.state);
+                } else {
+                    this.focusAfterEditor(editor.presetId);
                 }
             },
             error: (error: HttpErrorResponse) =>
@@ -297,8 +315,16 @@ export class AuditPresetsComponent implements OnInit {
         this.openMenuId.update((current) => (current === presetId ? null : presetId));
     }
 
-    protected closeMenu(presetId: number): void {
-        this.openMenuId.update((current) => (current === presetId ? null : current));
+    // An outside click leaves the focus where it went; any other close hands it back to the menu's trigger, also
+    // before an item opens a dialog, so the dialog hands it back there and not to the item that went.
+    protected closeMenu(presetId: number, restoreFocus = true): void {
+        if (this.openMenuId() !== presetId) {
+            return;
+        }
+        this.openMenuId.set(null);
+        if (restoreFocus) {
+            this.menuTrigger(presetId)?.nativeElement.focus();
+        }
     }
 
     protected focusFirstMenuItem(): void {
@@ -345,17 +371,21 @@ export class AuditPresetsComponent implements OnInit {
             if (this.editor()?.presetId === preset.id) {
                 this.editor.set(null);
             }
+            this.focusAfterRender(() => this.newPresetButton()?.nativeElement);
         });
     }
 
+    // Each switch replaces the toolbar button that made it, so the focus moves to the other mode's first button.
     protected startSelecting(): void {
         this.openMenuId.set(null);
         this.isSelecting.set(true);
+        this.focusAfterRender(() => this.cancelSelectingButton()?.nativeElement);
     }
 
     protected stopSelecting(): void {
         this.isSelecting.set(false);
         this.selectedIds.set(new Set());
+        this.focusAfterRender(() => this.startSelectingButton()?.nativeElement);
     }
 
     protected isSelected(presetId: number): boolean {
@@ -371,6 +401,9 @@ export class AuditPresetsComponent implements OnInit {
     }
 
     protected exportSelected(): void {
+        if (!this.canExportSelected()) {
+            return;
+        }
         this.isExporting.set(true);
         this.download(this.presetsApi.exportPresets(this.selectedInScope()), `audit-presets-export-${Date.now()}.json`)
             .pipe(finalize(() => this.isExporting.set(false)))
@@ -380,6 +413,12 @@ export class AuditPresetsComponent implements OnInit {
     protected exportPreset(preset: AuditPreset): void {
         this.closeMenu(preset.id);
         this.download(this.presetsApi.exportPreset(preset.id), `${preset.name}.json`).subscribe();
+    }
+
+    protected openImport(fileInput: HTMLInputElement): void {
+        if (!this.isImporting()) {
+            fileInput.click();
+        }
     }
 
     protected importFile(event: Event): void {
@@ -416,7 +455,9 @@ export class AuditPresetsComponent implements OnInit {
             "It will be visible to all users of your organization and can't be made private again. Only you can change it.",
             'Move to Shared Presets',
             () => this.presetsStorage.updatePreset(preset.id, { is_shared: true }),
-            'Moved to Shared Presets'
+            'Moved to Shared Presets',
+            // the card leaves this tab with its menu button
+            () => this.focusAfterRender(() => this.newPresetButton()?.nativeElement)
         );
     }
 
@@ -436,10 +477,14 @@ export class AuditPresetsComponent implements OnInit {
         caution: string,
         confirmText: string,
         request: () => Observable<AuditPreset>,
-        successMessage: string
+        successMessage: string,
+        onShared?: () => void
     ): void {
         this.confirmThen({ title, message: SHARE_DIALOG_MESSAGE, caution, confirmText }, request).subscribe({
-            next: () => this.toastService.success(successMessage),
+            next: () => {
+                this.toastService.success(successMessage);
+                onShared?.();
+            },
             error: (error: HttpErrorResponse) => this.toastError(error, 'Could not share the preset.'),
         });
     }
@@ -493,6 +538,19 @@ export class AuditPresetsComponent implements OnInit {
     private openEditor(fields: Pick<AuditPresetEditor, 'presetId' | 'name' | 'state' | 'applyOnSave'>): void {
         this.editor.set({ ...fields, error: null, isSaving: false });
         this.focusAfterRender(() => this.nameInput()?.nativeElement);
+    }
+
+    private menuTrigger(presetId: number): ElementRef<HTMLButtonElement> | undefined {
+        return this.menuTriggers().find((trigger) => trigger.nativeElement.dataset['presetId'] === String(presetId));
+    }
+
+    // An ended edit goes with its form: the focus moves to the edited card's menu button, or to New Preset.
+    private focusAfterEditor(presetId: number | null): void {
+        this.focusAfterRender(
+            () =>
+                (presetId === null ? undefined : this.menuTrigger(presetId))?.nativeElement ??
+                this.newPresetButton()?.nativeElement
+        );
     }
 
     private focusAfterRender(target: () => HTMLElement | undefined): void {

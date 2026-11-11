@@ -51,6 +51,7 @@ from rbac.identity.passwords.token_repository import (
     hash_token,
 )
 from rbac.identity.superadmin_bootstrap import SuperadminBootstrap
+from rbac.throttles import LoginAccountThrottle, LoginIpThrottle, LoginThrottle
 from utils.logger import logger
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
@@ -413,6 +414,61 @@ def test_login_throttle_is_per_email(api_client, regular_user):
     assert r.status_code != 429
 
 
+@pytest.mark.django_db
+@pytest.mark.urls("tests.urls_with_api_docs")
+# Pinned so the 429 can only come from the `ip|email` bucket, not the IP or account caps.
+@patch.object(LoginThrottle, "rate", "5/min", create=True)
+@patch.object(LoginIpThrottle, "rate", "1000/min", create=True)
+@patch.object(LoginAccountThrottle, "rate", "1000/hour", create=True)
+def test_swagger_token_throttle_counts_the_username_whatever_email_is_sent(
+    api_client, regular_user
+):
+    cache.clear()
+    url = reverse("swagger_token")
+
+    def guess(index):
+        return api_client.post(
+            url,
+            data={
+                "username": regular_user.email,
+                "email": f"decoy{index}@example.com",
+                "password": "wrong",
+            },
+            format="json",
+        )
+
+    for index in range(5):
+        assert guess(index).status_code != 429
+
+    assert guess(5).status_code == 429
+
+
+@pytest.mark.django_db
+# Pinned so the 429 can only come from the `ip|email` bucket, not the IP or account caps.
+@patch.object(LoginThrottle, "rate", "5/min", create=True)
+@patch.object(LoginIpThrottle, "rate", "1000/min", create=True)
+@patch.object(LoginAccountThrottle, "rate", "1000/hour", create=True)
+def test_login_throttle_counts_the_email_whatever_username_is_sent(api_client, regular_user):
+    cache.clear()
+    url = reverse("login")
+
+    def guess(index):
+        return api_client.post(
+            url,
+            data={
+                "email": regular_user.email,
+                "username": f"decoy{index}@example.com",
+                "password": "wrong",
+            },
+            format="json",
+        )
+
+    for index in range(5):
+        assert guess(index).status_code != 429
+
+    assert guess(5).status_code == 429
+
+
 # The per-IP throttles on token-refresh and password-reset-confirm live in
 # tests/api_tests/test_auth_throttles.py.
 
@@ -428,9 +484,10 @@ def test_sse_ticket_is_single_use(auth_client, regular_user):
     ticket = r.json()["ticket"]
     assert r.json()["expires_in"] == settings.SSE_TICKET_TTL
 
-    user = sse_ticket_service.consume(ticket)
-    assert user is not None
-    assert user.pk == regular_user.pk
+    holder = sse_ticket_service.consume(ticket)
+    assert holder is not None
+    assert holder.user.pk == regular_user.pk
+    assert holder.api_key_org_id is None
 
     # Second consume fails — GETDEL already removed the ticket atomically.
     assert sse_ticket_service.consume(ticket) is None
@@ -469,7 +526,7 @@ def test_redis_never_holds_the_raw_ticket(regular_user, service, prefix: str):
     assert ticket not in keys[0]
 
     # The raw ticket still resolves; only its storage form changed.
-    assert service.consume(ticket).pk == regular_user.pk
+    assert service.consume(ticket).user.pk == regular_user.pk
 
 
 @pytest.mark.django_db

@@ -21,13 +21,18 @@
                 class="chunk__id-wrapper"
                 [style.height.px]="chunkHeights().get(chunk.chunkIndex) ?? 20"
             >
-                <span
+                <!-- Copies a link to the chunk. -->
+                <button
+                    type="button"
                     class="chunk__id-item chunk__id-item--clickable"
                     [style.z-index]="$count - $index"
                     [ngClass]="$odd ? 'chunk__id-item--odd' : 'chunk__id-item--even'"
+                    [attr.aria-label]="'Copy link to chunk ' + chunk.chunkIndex"
+                    [matTooltip]="'Copy link to chunk ' + chunk.chunkIndex"
                     (click)="onChunkIdClick(chunk.chunkIndex)"
-                    >{{ chunk.chunkIndex }}</span
                 >
+                    {{ chunk.chunkIndex }}
+                </button>
             </div>
         }
         @if (loading() === 'down') {
@@ -58,11 +63,7 @@
                     class="chunk__item chunk__item--overlap"
                     [class.chunk__item--last]="$last && !loading() && !chunk.text"
                     [matTooltip]="'Overlap for chunks ' + (chunk.chunkIndex - 1) + ' and ' + chunk.chunkIndex"
-                    [innerHTML]="
-                        searchState()?.textQuery
-                            ? (chunk.overlapSegments | highlightSegments: activeMatchIndex())
-                            : chunk.overlap
-                    "
+                    [innerHTML]="chunk.overlapSegments | highlightSegments: activeMatchIndex()"
                 ></span>
             }
             @if (chunk.text) {
@@ -79,11 +80,7 @@
                         'chunk__item--last': $last && !loading(),
                         'chunk__item--single': $count === 1,
                     }"
-                    [innerHTML]="
-                        searchState()?.textQuery
-                            ? (chunk.textSegments | highlightSegments: activeMatchIndex())
-                            : chunk.text
-                    "
+                    [innerHTML]="chunk.textSegments | highlightSegments: activeMatchIndex()"
                 ></span>
             }
         }

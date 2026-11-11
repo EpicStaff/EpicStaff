@@ -1,5 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 
 import { ButtonComponent } from './button.component';
 
@@ -22,6 +24,14 @@ class ResizeObserverStub {
 class ButtonHostComponent {
     readonly isAriaDisabled = signal(false);
     readonly hostClicks = signal(0);
+}
+
+@Component({
+    imports: [ButtonComponent],
+    template: `<app-button>{{ label() }}</app-button>`,
+})
+class LabelHostComponent {
+    readonly label = signal('Save');
 }
 
 describe('ButtonComponent', () => {
@@ -105,5 +115,22 @@ describe('ButtonComponent', () => {
         expect(button.classList).toContain('btn--only-icon');
         expect(getComputedStyle(label).display).not.toBe('none');
         expect(getComputedStyle(label).position).toBe('absolute');
+    });
+
+    // A visible label needs no tooltip repeating it; once the button collapses to its icon the label is the tooltip,
+    // and it follows a label that changes meanwhile (Save → Saving…).
+    it('shows its label as the tooltip only while collapsed to its icon', async () => {
+        const fixture = TestBed.createComponent(LabelHostComponent);
+        fixture.autoDetectChanges();
+        await fixture.whenStable();
+        const tooltip = (): MatTooltip => fixture.debugElement.query(By.css('button')).injector.get(MatTooltip);
+        expect(tooltip().disabled).toBe(true);
+
+        fixture.debugElement.query(By.directive(ButtonComponent)).componentInstance.onCollapseChange(true);
+        fixture.componentInstance.label.set('Saving…');
+        await fixture.whenStable();
+
+        expect(tooltip().disabled).toBe(false);
+        expect(tooltip().message).toBe('Saving…');
     });
 });

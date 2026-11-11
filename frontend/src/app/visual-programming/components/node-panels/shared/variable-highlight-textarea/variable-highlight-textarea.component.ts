@@ -79,6 +79,9 @@ export class VariableHighlightTextareaComponent implements ControlValueAccessor,
     public readonly tooltipText = input<string>('');
     public readonly icon = input<string>('help_outline');
     public readonly required = input<boolean>(false);
+    /** The field's name for screen readers, where no label names it. */
+    public readonly ariaLabel = input<string>('');
+    protected readonly fieldName = computed(() => this.ariaLabel() || this.label());
 
     @ViewChild('backdrop', { static: true })
     private backdropRef!: ElementRef<HTMLDivElement>;

@@ -16,6 +16,7 @@
         [class.wts__trigger--placeholder]="triggerText() === placeholder()"
         [class.wts__trigger--readonly]="isReadonlyView()"
         [disabled]="controlDisabled()"
+        [attr.aria-expanded]="open()"
         (click)="toggle()"
     >
         <span class="wts__trigger-value">
@@ -60,12 +61,17 @@
 </div>
 
 <ng-template #dropdownTemplate>
-    <div class="wts__dropdown">
+    <div
+        class="wts__dropdown"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
         <div class="wts__search-row">
             <input
                 type="text"
                 class="wts__search-input"
                 placeholder="Search a trigger..."
+                aria-label="Search a trigger"
                 [ngModel]="searchTerm()"
                 (ngModelChange)="onSearchInput($event)"
                 (click)="$event.stopPropagation()"
@@ -74,6 +80,7 @@
                 type="button"
                 class="wts__add-btn"
                 aria-label="Create webhook trigger"
+                matTooltip="Create webhook trigger"
                 (click)="onCreate()"
             >
                 +
@@ -82,15 +89,20 @@
 
         <ul class="wts__list">
             @for (t of filteredTriggers(); track t.id) {
-                <li
-                    class="wts__item"
-                    [class.wts__item--selected]="t.id === selectedId()"
-                    [class.wts__item--disabled]="isTriggerDisallowed(t)"
-                    [attr.aria-disabled]="isTriggerDisallowed(t) ? 'true' : null"
-                    [matTooltip]="isTriggerDisallowed(t) ? disallowedProviderMessage() : ''"
-                    (click)="onSelect(t)"
-                >
-                    {{ displayLabel(t) }}
+                <li>
+                    <!-- aria-disabled, not disabled: it keeps the focus, so its tooltip tells why it can't be picked. -->
+                    <button
+                        type="button"
+                        class="wts__item"
+                        [class.wts__item--selected]="t.id === selectedId()"
+                        [class.wts__item--disabled]="isTriggerDisallowed(t)"
+                        [attr.aria-pressed]="t.id === selectedId()"
+                        [attr.aria-disabled]="isTriggerDisallowed(t) ? 'true' : null"
+                        [matTooltip]="isTriggerDisallowed(t) ? disallowedProviderMessage() : ''"
+                        (click)="onSelect(t)"
+                    >
+                        {{ displayLabel(t) }}
+                    </button>
                 </li>
             } @empty {
                 <li class="wts__empty">No triggers found.</li>

@@ -1,11 +1,15 @@
 import { OverlayModule } from '@angular/cdk/overlay';
+import { NgTemplateOutlet } from '@angular/common';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
+    ElementRef,
     EventEmitter,
     inject,
+    Injector,
     Input,
     input,
     OnChanges,
@@ -13,6 +17,8 @@ import {
     Output,
     signal,
     SimpleChanges,
+    viewChild,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
@@ -36,8 +42,18 @@ import { RunSessionSSEService } from '../../../pages/running-graph/services/grap
 import { FlowService } from '../../services/flow.service';
 import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
+import { MapKeyChange } from '../../utils/diff';
+import { DiffFieldMarkComponent } from '../diff-field-mark/diff-field-mark.component';
+import { DiffTooltipSide, sideAwayFrom } from '../diff-field-mark/diff-mark-tooltip.component';
 import { PickerItem } from './var-picker-flat.component';
-import { buildVariablePickerItems, isPlainEnter, VariablePathPicker, withoutUsedPaths } from './variable-path-picker';
+import {
+    buildVariablePickerItems,
+    isPlainEnter,
+    VariablePathPicker,
+    variablesDisplayToFormValue,
+    variablesFormValueToDisplay,
+    withoutUsedPaths,
+} from './variable-path-picker';
 
 /** Keys to rename, add and remove in the visible rows, e.g. after an owner's code changed its parameter names. */
 export interface InputMapKeyChanges {
@@ -45,6 +61,9 @@ export interface InputMapKeyChanges {
     added: string[];
     removed: string[];
 }
+
+const DEFAULT_TOOLTIP =
+    "Maps function arguments to domain variables using key-value pairs. For example, 'project_id' = 'current_project' maps the function parameter 'project_id' to the flow variable 'current_project'.";
 
 @Component({
     selector: 'app-input-map',
@@ -55,6 +74,8 @@ export interface InputMapKeyChanges {
         AppSvgIconComponent,
         MatTooltipModule,
         OverlayModule,
+        NgTemplateOutlet,
+        DiffFieldMarkComponent,
     ],
     viewProviders: [
         {
@@ -62,477 +83,12 @@ export interface InputMapKeyChanges {
             useExisting: FormGroupDirective,
         },
     ],
-    template: `
-        <div class="input-map-container">
-            <div class="input-map-header">
-                <label>Input List</label>
-                <app-help-tooltip
-                    position="right"
-                    text="Maps function arguments to domain variables using key-value pairs. For example, 'project_id' = 'current_project' maps the function parameter 'project_id' to the flow variable 'current_project'."
-                ></app-help-tooltip>
-                @if (showTestMode && !readonly()) {
-                    <div class="test-mode-header">
-                        <span>Test mode</span>
-                        <app-toggle-switch
-                            [checked]="testMode"
-                            (checkedChange)="onTestModeToggle($event)"
-                        />
-                    </div>
-                }
-            </div>
-
-            @if (readonly()) {
-                @if (hasNoMeaningfulPairs()) {
-                    <span class="readonly-empty">—</span>
-                } @else {
-                    <div
-                        class="readonly-table"
-                        role="table"
-                        aria-label="Input list"
-                    >
-                        @for (pair of pairs.controls; track pair) {
-                            <div
-                                class="readonly-row"
-                                role="row"
-                            >
-                                <div
-                                    class="readonly-cell"
-                                    role="cell"
-                                >
-                                    {{ pair.value.key || '—' }}
-                                </div>
-                                <div
-                                    class="readonly-cell"
-                                    role="cell"
-                                >
-                                    {{ pair.value.value || '—' }}
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            } @else if (!testMode) {
-                <!-- Normal mode: input map list -->
-                <div
-                    formArrayName="input_map"
-                    class="input-map-list"
-                >
-                    @for (pair of pairs.controls; let i = $index; track pair) {
-                        <div
-                            class="input-map-item"
-                            [formGroupName]="i"
-                        >
-                            <div class="input-map-fields">
-                                <div class="input-wrapper">
-                                    <input
-                                        type="text"
-                                        formControlName="key"
-                                        placeholder="Function Argument Name"
-                                        [style.--active-color]="activeColor"
-                                        autocomplete="off"
-                                        (keydown.enter)="onEnterKey($event, i)"
-                                    />
-                                </div>
-                                <div class="equals-sign">=</div>
-                                <div class="input-wrapper">
-                                    <input
-                                        type="text"
-                                        formControlName="value"
-                                        placeholder="Domain Variable Name"
-                                        [style.--active-color]="activeColor"
-                                        autocomplete="off"
-                                        role="combobox"
-                                        aria-autocomplete="list"
-                                        [attr.aria-expanded]="variablePicker.isOpenFor(i)"
-                                        [attr.aria-controls]="variablePicker.listboxIdFor(i)"
-                                        [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
-                                        (keydown)="onValueKeydown(i, $event)"
-                                        (focus)="onValueFocus(i, $event)"
-                                        (input)="onValueInput(i, $event)"
-                                        (blur)="variablePicker.onBlur(i, $event)"
-                                    />
-                                </div>
-                                @if (!parentForm.disabled) {
-                                    <app-svg-icon
-                                        icon="trash"
-                                        size="1rem"
-                                        class="delete-icon"
-                                        matTooltip="Remove"
-                                        matTooltipPosition="above"
-                                        (click)="removePair(i)"
-                                    ></app-svg-icon>
-                                }
-                            </div>
-                        </div>
-                    }
-                </div>
-                @if (!parentForm.disabled) {
-                    <button
-                        type="button"
-                        class="add-pair-btn"
-                        (click)="addPair()"
-                    >
-                        <app-svg-icon
-                            icon="plus"
-                            size="16px"
-                        ></app-svg-icon>
-                        Add Input
-                    </button>
-                }
-            } @else {
-                <!-- Test mode: editable test variables backed by parent form 'test_input' FormArray -->
-                <div
-                    formArrayName="test_input"
-                    class="input-map-list"
-                >
-                    @for (pair of testPairs.controls; let i = $index; track pair) {
-                        <div
-                            class="input-map-item"
-                            [formGroupName]="i"
-                        >
-                            <div class="input-map-fields">
-                                <div class="input-wrapper">
-                                    <input
-                                        type="text"
-                                        formControlName="key"
-                                        placeholder="Function Argument Name"
-                                        [style.--active-color]="activeColor"
-                                        autocomplete="off"
-                                    />
-                                </div>
-                                <div class="equals-sign">=</div>
-                                <div class="input-wrapper">
-                                    <input
-                                        type="text"
-                                        formControlName="value"
-                                        placeholder="Test value"
-                                        [style.--active-color]="activeColor"
-                                        autocomplete="off"
-                                    />
-                                </div>
-                                <app-svg-icon
-                                    icon="trash"
-                                    size="1rem"
-                                    class="delete-icon"
-                                    matTooltip="Remove"
-                                    matTooltipPosition="above"
-                                    (click)="removeTestVariable(i)"
-                                ></app-svg-icon>
-                            </div>
-                        </div>
-                    }
-                </div>
-                <button
-                    type="button"
-                    class="add-pair-btn"
-                    (click)="addTestVariable()"
-                >
-                    <i class="ti ti-plus"></i> Add Input
-                </button>
-                <div
-                    class="test-input-dirty-warning"
-                    [class.visible]="testInputDirty"
-                >
-                    <div class="test-input-dirty-warning__inner">Click "Save node" to save test variables.</div>
-                </div>
-                <div class="test-mode-actions">
-                    <button
-                        type="button"
-                        class="btn-secondary"
-                        (click)="onClearAll()"
-                    >
-                        Clear Variables
-                    </button>
-                    <button
-                        type="button"
-                        class="btn-secondary"
-                        [disabled]="fillLoading() || !pythonNodeId || !hasSuccessfulSession()"
-                        [matTooltip]="getButtonTooltip()"
-                        matTooltipPosition="above"
-                        (click)="onFillVariables()"
-                    >
-                        {{ fillLoading() ? 'Loading...' : 'Fill Variables' }}
-                    </button>
-                    <button
-                        type="button"
-                        class="btn-primary"
-                        [disabled]="testRunning || !canRunTest() || !pythonNodeId || runTestBlocker() !== null"
-                        [matTooltip]="getRunTestButtonTooltip()"
-                        matTooltipPosition="above"
-                        (click)="onRunTest()"
-                    >
-                        Run Test
-                    </button>
-                </div>
-            }
-        </div>
-    `,
+    templateUrl: './input-map.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
-    styles: [
-        `
-            @use '../../styles/node-panel-controls.scss' as controls;
-
-            .input-map-container {
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
-                width: 100%;
-            }
-
-            .input-map-header {
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-            }
-
-            .input-map-header label {
-                font-size: var(--text-body-size);
-                font-weight: var(--text-body-weight);
-                color: var(--color-text-secondary);
-                margin: 0;
-            }
-
-            .test-mode-header {
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                margin-left: auto;
-            }
-
-            .test-mode-header span {
-                font-size: 0.875rem;
-                color: var(--color-text-secondary, #999);
-            }
-
-            .function-arg {
-                flex: 1;
-            }
-
-            .domain-var {
-                flex: 1;
-            }
-
-            .equals {
-                width: 20px;
-                text-align: center;
-            }
-
-            .input-map-list {
-                display: flex;
-                flex-direction: column;
-                gap: 0.75rem;
-                width: 100%;
-                min-width: 0;
-            }
-
-            .input-map-item {
-                width: 100%;
-            }
-
-            .input-map-fields {
-                display: flex;
-                gap: 0.5rem;
-                align-items: center;
-                width: 100%;
-            }
-
-            .input-wrapper {
-                flex: 1;
-                min-width: 0;
-            }
-            .equals-sign {
-                @include controls.equals-sign;
-            }
-
-            .input-wrapper input {
-                width: 100%;
-                padding: 0.5rem 0.75rem;
-                background-color: var(--color-input-background);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 4px;
-                color: #fff;
-                font-size: 0.875rem;
-                outline: none;
-                transition: border-color 0.2s ease;
-
-                &:focus {
-                    border-color: var(--active-color);
-                }
-
-                &::placeholder {
-                    color: rgba(255, 255, 255, 0.3);
-                }
-            }
-
-            .delete-icon {
-                font-size: 1rem;
-                cursor: pointer;
-                color: #ccc;
-                padding: 0.2rem;
-                border-radius: 4px;
-                transition: all 0.2s ease;
-                flex-shrink: 0;
-                width: 24px;
-                height: 24px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-
-                &:hover {
-                    color: red;
-                    background-color: rgba(255, 0, 0, 0.1);
-                }
-            }
-
-            .add-pair-btn {
-                @include controls.add-row-button;
-
-                i {
-                    font-size: 1rem;
-                }
-            }
-
-            .test-mode-actions {
-                display: flex;
-                gap: 0.5rem;
-                width: 100%;
-            }
-
-            .btn-secondary,
-            .btn-primary {
-                flex: 1;
-                padding: 8px 12px;
-                border: 1px solid var(--color-divider-subtle);
-                border-radius: 4px;
-                font-size: var(--text-body-medium-size);
-                font-weight: var(--text-body-medium-weight);
-                cursor: pointer;
-                transition: all 0.2s ease;
-                text-align: center;
-            }
-
-            .btn-secondary {
-                background: var(--color-action-btn-background);
-                color: var(--color-text-primary);
-
-                &:hover:not(:disabled) {
-                    background: var(--color-action-btn-background-hover);
-                }
-
-                &:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                }
-            }
-
-            .btn-primary {
-                background: #685fff;
-                color: white;
-                border-color: #685fff;
-
-                &:hover:not(:disabled) {
-                    background: #5a4ade;
-                    border-color: #5a4ade;
-                }
-
-                &:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                }
-            }
-
-            .warning-banner {
-                border-left: 1px solid rgba(255, 207, 0, 1);
-                border-radius: 10px;
-                padding: 10px 12px;
-                font-size: 0.8125rem;
-                color: inherit;
-                margin-top: 8px;
-            }
-
-            .readonly-empty {
-                font-size: 0.875rem;
-                color: var(--color-text-secondary);
-            }
-
-            .readonly-table {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                border: 1px solid var(--color-divider-subtle);
-                border-radius: 4px;
-                overflow: hidden;
-            }
-
-            .readonly-row {
-                display: contents;
-            }
-
-            .readonly-cell {
-                padding: 9px 8px;
-                font-size: 0.875rem;
-                color: var(--color-text-primary);
-                border-bottom: 1px solid var(--color-divider-subtle);
-                border-right: 1px solid var(--color-divider-subtle);
-                text-overflow: ellipsis;
-                white-space: nowrap;
-                min-width: 0;
-                overflow: hidden;
-            }
-
-            .readonly-row:last-child .readonly-cell {
-                border-bottom: none;
-            }
-
-            .readonly-row .readonly-cell:last-child {
-                border-right: none;
-            }
-
-            .test-input-dirty-warning {
-                display: grid;
-                grid-template-rows: 0fr;
-                transition: grid-template-rows 0.15s cubic-bezier(0.22, 1, 0.36, 1);
-
-                &.visible {
-                    grid-template-rows: 1fr;
-
-                    .test-input-dirty-warning__inner {
-                        transform: translateY(0);
-                        opacity: 1;
-                    }
-                }
-
-                &__inner {
-                    display: flex;
-                    align-items: center;
-                    overflow: hidden;
-                    min-height: 0;
-                    font-size: 0.75rem;
-                    border-radius: 5px;
-                    border-left: 3px solid #efd616;
-                    background-color: rgba(239, 214, 22, 0.08);
-                    color: #efd616;
-                    padding: 0.25rem 0.5rem;
-                    transform: translateY(-100%);
-                    opacity: 0;
-                    transition:
-                        transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-                        opacity 0.25s ease;
-                }
-
-                .save-node-svg {
-                    color: var(--accent-color);
-                    background: var(--color-nodes-sidepanel-bg);
-                    border: none;
-                    padding: 0.25rem;
-                    border-radius: 4px;
-                    margin: 0 3px;
-                }
-            }
-        `,
-    ],
+    styleUrls: ['./input-map.component.scss'],
 })
 export class InputMapComponent implements OnInit, OnChanges {
-    @Input() activeColor: string = '#685fff';
+    @Input() activeColor: string = 'var(--accent-color)';
     @Input() testMode: boolean = false;
     @Input() showTestMode: boolean = false;
     @Input() pythonNodeId: number | null = null;
@@ -541,9 +97,20 @@ export class InputMapComponent implements OnInit, OnChanges {
     @Input() testRunning: boolean = false;
     @Input() testInputDirty: boolean = false;
     readonly = input<boolean>(false);
+    /** The header above the rows; an empty string hides it (and its tooltip). */
+    readonly label = input<string>('Input List');
+    readonly tooltipText = input<string>(DEFAULT_TOOLTIP);
+    readonly keyPlaceholder = input<string>('Function Argument Name');
+    readonly valuePlaceholder = input<string>('Domain Variable Name');
     readonly nodeNumber = input<number | undefined>();
     /** Why the owning panel cannot run the test now (e.g. its stored code is not the panel's), or null. */
     readonly runTestBlocker = input<string | null>(null);
+    /**
+     * Version preview, Changes tab only: what a restore does to each row of the read-only list (the rows show the
+     * version). Changed rows get the field mark, rows only in the version a green border, and rows only on the
+     * canvas are listed after the others, struck through. `null` (the default) everywhere else.
+     */
+    readonly rowChanges = input<readonly MapKeyChange[] | null>(null);
     @Output() testModeChange = new EventEmitter<boolean>();
     @Output() runTest = new EventEmitter<Record<string, string>>();
 
@@ -552,7 +119,21 @@ export class InputMapComponent implements OnInit, OnChanges {
     hasSuccessfulSession = signal(false);
     private normalModeSnapshot: { key: string; value: string }[] = [];
 
+    private readonly rowChangeByKey = computed(
+        () => new Map((this.rowChanges() ?? []).map((change) => [change.key, change]))
+    );
+    protected readonly removedRows = computed(() =>
+        (this.rowChanges() ?? []).filter((change) => change.status === 'deleted')
+    );
+    /**
+     * The side of its row the diff tooltip of a changed row last opened on. Only one is open at a time, and it opens
+     * at once while a cell's own tooltip waits for its delay, so the cell's tooltip can take the other side.
+     */
+    private readonly diffTooltipSide = signal<DiffTooltipSide>('above');
+
     private readonly destroyRef = inject(DestroyRef);
+    private readonly removeButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeButton');
+    private readonly addButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
     private readonly keySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly testKeySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly lastKnownKeys = new WeakMap<AbstractControl, string>();
@@ -561,6 +142,8 @@ export class InputMapComponent implements OnInit, OnChanges {
     /** Per rows array, the values of the rows `applyKeyChanges` removed, by key, to give back if the key returns. */
     private readonly removedValuesByRows = new WeakMap<FormArray, Map<string, string>>();
 
+    private readonly elementRef = inject(ElementRef);
+    private readonly injector = inject(Injector);
     private readonly pythonCodeRunService = inject(PythonCodeRunService);
     private readonly graphSessionService = inject(GraphSessionService);
     private readonly runSessionSSEService = inject(RunSessionSSEService);
@@ -577,6 +160,11 @@ export class InputMapComponent implements OnInit, OnChanges {
             const valueCtrl = this.pairs.at(rowIndex).get('value');
             valueCtrl?.setValue(path);
             valueCtrl?.markAsDirty();
+        },
+        pathOf: (displayValue: string) => {
+            if (!displayValue) return 'variables.';
+            if (displayValue.startsWith('.')) return 'variables' + displayValue;
+            return 'variables.' + displayValue;
         },
     });
 
@@ -647,6 +235,22 @@ export class InputMapComponent implements OnInit, OnChanges {
         changes.added.forEach((key) => this.addVisibleKey(key));
     }
 
+    protected rowChangeFor(key: string): MapKeyChange | null {
+        return this.rowChangeByKey().get(key) ?? null;
+    }
+
+    protected onDiffTooltipSide(side: DiffTooltipSide): void {
+        this.diffTooltipSide.set(side);
+    }
+
+    /**
+     * Where a read-only cell shows its own tooltip: above it, and on a changed row (Changes tab) on the other side of
+     * the row from the row's diff tooltip, so the two never cover each other.
+     */
+    protected cellTooltipPosition(onChangedRow = false): DiffTooltipSide {
+        return onChangedRow ? sideAwayFrom(this.diffTooltipSide()) : 'above';
+    }
+
     hasNoMeaningfulPairs(): boolean {
         return this.pairs.controls.length === 0 || !this.pairs.controls.some((p) => p.value.key?.trim());
     }
@@ -688,15 +292,16 @@ export class InputMapComponent implements OnInit, OnChanges {
 
         this.addPair();
 
-        setTimeout(() => {
-            const newIndex = currentIndex + 1;
-            const newPairElement = document.querySelector(
-                `[formGroupName="${newIndex}"] input[formControlName="key"]`
-            ) as HTMLInputElement;
-            if (newPairElement) {
-                newPairElement.focus();
-            }
-        }, 0);
+        afterNextRender(
+            () => {
+                const newIndex = currentIndex + 1;
+                const newPairElement = this.elementRef.nativeElement.querySelector(
+                    `[formGroupName="${newIndex}"] input[formControlName="key"]`
+                ) as HTMLInputElement;
+                newPairElement?.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     onTestModeToggle(value: boolean): void {
@@ -807,6 +412,23 @@ export class InputMapComponent implements OnInit, OnChanges {
             })
         );
         this.mirrorTestPairKey(this.testPairs.at(this.testPairs.length - 1));
+    }
+
+    /** The pressed Remove button is gone: the focus goes to the row now in its place, else to Add Input. */
+    protected onRemoveButtonClick(index: number, testRow: boolean): void {
+        if (testRow) {
+            this.removeTestVariable(index);
+        } else {
+            this.removePair(index);
+        }
+        afterNextRender(
+            () => {
+                const buttons = this.removeButtons();
+                const target = buttons[Math.min(index, buttons.length - 1)] ?? this.addButton();
+                target?.nativeElement.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     removeTestVariable(index: number): void {
@@ -1074,7 +696,16 @@ export class InputMapComponent implements OnInit, OnChanges {
     }
 
     onValueInput(rowIndex: number, event: Event): void {
+        const input = event.target as HTMLInputElement;
+        const valueCtrl = this.pairs.at(rowIndex).get('value');
+        valueCtrl?.setValue(variablesDisplayToFormValue(input.value), { emitEvent: true });
+        valueCtrl?.markAsDirty();
         this.variablePicker.onInput(rowIndex, event);
+    }
+
+    /** Returns the portion of the form value to display in the value input (strips the `variables` prefix). */
+    getValueDisplayText(pair: AbstractControl): string {
+        return variablesFormValueToDisplay((pair.get('value')?.value ?? '') as string);
     }
 
     /** Enter picks the highlighted variable; with none highlighted, e.g. on the untouched prefill, it adds a row as in the key input. */
@@ -1091,13 +722,6 @@ export class InputMapComponent implements OnInit, OnChanges {
             if (value) used.add(value);
         });
         return used;
-    }
-
-    private getValidInputPairs(): AbstractControl[] {
-        return this.pairs.controls.filter((control) => {
-            const value = control.value;
-            return value.key?.trim() !== '';
-        });
     }
 
     private checkSuccessfulSessions(): void {

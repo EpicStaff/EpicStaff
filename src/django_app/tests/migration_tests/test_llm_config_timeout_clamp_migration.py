@@ -1,4 +1,4 @@
-"""tables 0287 bounds LLMConfig.timeout and moves every stored timeout into the bounds.
+"""tables 0291 bounds LLMConfig.timeout and moves every stored timeout into the bounds.
 
 Invariant: after the migration every LLM config's timeout is null or a finite number from
 1 to 3600 seconds. A NaN timeout becomes the field default (120), not the maximum, even
@@ -13,8 +13,8 @@ import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
-BEFORE = [("tables", "0286_rename_filter_preset_org_indexes")]
-AFTER = [("tables", "0287_alter_llmconfig_timeout")]
+BEFORE = [("tables", "0290_systemoneconfig_openai_provider")]
+AFTER = [("tables", "0291_alter_llmconfig_timeout")]
 
 # (stored before the migration, expected after it)
 TIMEOUTS = [

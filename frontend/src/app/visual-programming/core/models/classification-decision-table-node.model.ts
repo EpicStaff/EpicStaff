@@ -1,5 +1,6 @@
-import { AuthorshipFields, DeclaredSecretRef } from '@shared/models';
+import { AuthorshipFields, DeclaredSecretRef, SystemOnePromptKind, SystemOneQuestion } from '@shared/models';
 
+import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
 
 export interface PromptConfigBackend {
@@ -10,6 +11,10 @@ export interface PromptConfigBackend {
     output_schema: Record<string, unknown> | string | null;
     result_variable: string;
     variable_mappings: Record<string, string>;
+    kind: SystemOnePromptKind;
+    system_one_config: number | null;
+    questions: Record<string, SystemOneQuestion>;
+    input_map: Record<string, string>;
 }
 
 export interface CreatePromptConfigRequest {
@@ -19,6 +24,10 @@ export interface CreatePromptConfigRequest {
     output_schema: Record<string, unknown> | string | null;
     result_variable: string;
     variable_mappings: Record<string, string>;
+    kind: SystemOnePromptKind;
+    system_one_config: number | null;
+    questions: Record<string, SystemOneQuestion>;
+    input_map: Record<string, string>;
 }
 
 export interface ClassificationDecisionTableSectionBackend {
@@ -73,7 +82,7 @@ export interface CDTPythonCodeBlock {
     execution_timeout?: number;
 }
 
-export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields, NumberedNodeDto {
+export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
     id: number;
     created_at: string;
     graph: number;

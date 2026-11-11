@@ -160,7 +160,6 @@
 
         &:focus-visible {
             color: var(--color-text-primary);
-            outline: 1px solid var(--accent-color);
         }
     }
 
@@ -192,7 +191,6 @@
     // Inset, so the panel's overflow clipping cannot cut the ring off.
     &__item:focus-visible {
         background-color: var(--color-ghost-btn-hover);
-        outline: 1px solid var(--accent-color);
-        outline-offset: -1px;
+        outline-offset: -2px;
     }
 }

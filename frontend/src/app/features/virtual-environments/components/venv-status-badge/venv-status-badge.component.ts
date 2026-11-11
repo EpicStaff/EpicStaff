@@ -9,13 +9,14 @@ import { VENV_STATUS_VIEWS, VenvStatus, VenvStatusView } from '../../models/venv
     imports: [MatTooltipModule, AppSvgIconComponent],
     template: `
         @if (view(); as view) {
+            <!-- A failed build's error is only in the tooltip, so the badge takes the focus to show it. -->
             <span
                 class="venv-status text-body-small-large"
                 [class]="view.cssClass"
                 [style.color]="view.color"
+                [attr.tabindex]="error() ? 0 : null"
                 [matTooltip]="error() ?? ''"
                 [matTooltipDisabled]="!error()"
-                matTooltipPosition="above"
             >
                 <app-svg-icon
                     class="venv-status__icon"

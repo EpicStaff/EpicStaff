@@ -22,6 +22,23 @@ class GraphEntryPointException(CustomAPIExeption):
     default_detail = "No node connected to start node"
 
 
+class SubflowEntryPointException(GraphEntryPointException):
+    """Raised on run when a flow a Subflow node uses has no node connected to its Start.
+
+    Names that flow and the node, since the flow the user ran may well be fine.
+    """
+
+    default_code = "subflow_entry_point_missing"
+
+    def __init__(self, *, flow_name: str, subflow_node_label: str):
+        super().__init__(
+            detail=(
+                f'Flow "{flow_name}" (used by Subflow node "{subflow_node_label}") '
+                "has no node connected to its Start."
+            )
+        )
+
+
 class GraphNotFoundError(CustomAPIExeption):
     """Raised for a graph id that is missing or owned by an org the caller is not in."""
 
@@ -77,6 +94,23 @@ class FlowWithTriggerNodesRequiresUsePermissionError(CustomAPIExeption):
         "importing or restoring it requires the Use permission on flows."
     )
     default_code = "flow_with_trigger_nodes_requires_use_permission"
+
+
+class CodeWithSecretsRequiresSecretsUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on secrets would copy or restore code that reads secrets.
+
+    Covers copying a flow or tool, restoring a flow version or creating a flow from
+    one, and restoring a recycle-bin item that brings such code back: the result is the
+    caller's own code, which reads the secrets for them. The message names no action,
+    as the bulk recycle-bin restore shows it verbatim. Editing such code is a 400 field
+    error of the save instead, so a client can tell the two apart.
+    """
+
+    status_code = 403
+    default_detail = (
+        "This contains code that reads secrets. This action requires the Use permission on secrets."
+    )
+    default_code = "code_with_secrets_requires_secrets_use_permission"
 
 
 class CodeRunTargetNotFoundError(Exception):

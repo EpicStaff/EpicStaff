@@ -44,6 +44,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "plugins.gateway.origin_policy_middleware.PluginOriginPolicyMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    "django_app.admission.RequestAdmissionMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -103,6 +104,10 @@ SESSION_CALLBACK_ALLOWED_HOSTS = parse_callback_hosts(
 # separate container behind the same flag.
 CHAT_ENABLED = env.bool("CHAT_ENABLED")
 
+# Off: litellm's model map is the one bundled with the pinned litellm release, and the web
+# server makes no request to GitHub (tables/utils/litellm_model_info.py).
+LITELLM_MODEL_COST_REFRESH_ENABLED = env.bool("LITELLM_MODEL_COST_REFRESH_ENABLED")
+
 SSE_TICKET_TTL = 30
 
 PASSWORD_RESET_TOKEN_TTL = env.time("DJANGO_PASSWORD_RESET_TOKEN_TTL")
@@ -137,6 +142,34 @@ if _llm_config_max_timeout is None or not 1 <= _llm_config_max_timeout < math.in
     )
 # Whole seconds, rounded down, so the limits endpoint reports exactly what is enforced.
 LLM_CONFIG_TIMEOUT_MAX_SECONDS = int(_llm_config_max_timeout)
+
+
+def read_request_admission(environment: Env) -> tuple[int, float | None]:
+    """Read the request cap and the wait for a slot that RequestAdmissionMiddleware applies.
+
+    DJANGO_SGI_MAX_CONCURRENT_REQUESTS must be at least 1 and DJANGO_SGI_ADMISSION_TIMEOUT
+    `none` (wait without limit) or not negative. The cap is not compared with the pool here:
+    every manage.py process loads these settings, and the Redis workers run with a smaller
+    pool and serve no HTTP. The middleware checks it when a request handler builds it.
+
+    Returns:
+        The cap, and the timeout in seconds (None: no limit).
+    """
+    max_concurrent_requests = environment.int("DJANGO_SGI_MAX_CONCURRENT_REQUESTS")
+    if max_concurrent_requests is None or max_concurrent_requests < 1:
+        raise ImproperlyConfigured(
+            f"DJANGO_SGI_MAX_CONCURRENT_REQUESTS must be at least 1; got {max_concurrent_requests}."
+        )
+    timeout = environment.time("DJANGO_SGI_ADMISSION_TIMEOUT")
+    if timeout is not None and timeout < 0:
+        raise ImproperlyConfigured(
+            f"DJANGO_SGI_ADMISSION_TIMEOUT must not be negative; got {timeout}s. "
+            "Use none to wait without limit."
+        )
+    return max_concurrent_requests, timeout
+
+
+MAX_CONCURRENT_REQUESTS, REQUEST_ADMISSION_TIMEOUT = read_request_admission(env)
 
 TUNNEL_URLS_HASH_KEY = "tunnel_urls"
 

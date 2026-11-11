@@ -18,15 +18,17 @@
                         [style.flex-basis.px]="leftColumnWidth.width()"
                     >
                         <div class="field-isolated">
-                            <app-custom-input
-                                label="Node Name"
-                                [required]="true"
-                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                                formControlName="node_name"
-                                placeholder="Enter node name"
-                                [activeColor]="activeColor"
-                                [readonly]="isReadOnly()"
-                            ></app-custom-input>
+                            <app-diff-field-mark [diffField]="'node_name'">
+                                <app-custom-input
+                                    label="Node Name"
+                                    [required]="true"
+                                    tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                    formControlName="node_name"
+                                    placeholder="Enter node name"
+                                    [activeColor]="activeColor"
+                                    [readonly]="isReadOnly()"
+                                ></app-custom-input>
+                            </app-diff-field-mark>
                             <app-validation-errors [control]="form.get('node_name')!" />
                         </div>
 
@@ -39,37 +41,43 @@
                                     size="18px"
                                 />
                             </div>
-                            <app-select-dropdown
-                                mode="list"
-                                selectionMode="single"
-                                searchPlaceholder="Search agent..."
-                                emptyText="No agents available"
-                                [items]="agentItems()"
-                                [selected]="selectedAgentValue()"
-                                [readonly]="isReadOnly()"
-                                (selectionChange)="onAgentSelectionChange($event)"
+                            <app-diff-field-mark
+                                [diffField]="'agent_definition'"
+                                [diffFormat]="agentNameFormat"
                             >
-                                <button
-                                    type="button"
-                                    appSelectDropdownTrigger
-                                    class="dropdown-trigger"
-                                    [class.dropdown-trigger--readonly]="isReadOnly()"
-                                    [class.dropdown-trigger--invalid]="agentInvalid()"
+                                <app-select-dropdown
+                                    mode="list"
+                                    selectionMode="single"
+                                    searchPlaceholder="Search agent..."
+                                    emptyText="No agents available"
+                                    [items]="agentItems()"
+                                    [selected]="selectedAgentValue()"
+                                    [readonly]="isReadOnly()"
+                                    (selectionChange)="onAgentSelectionChange($event)"
                                 >
-                                    <span
-                                        class="dropdown-trigger__label"
-                                        [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                    <button
+                                        type="button"
+                                        appSelectDropdownTrigger
+                                        class="dropdown-trigger"
+                                        [class.dropdown-trigger--readonly]="isReadOnly()"
+                                        [class.dropdown-trigger--invalid]="agentInvalid()"
                                     >
-                                        {{ selectedAgentName() || 'Select agent' }}
-                                    </span>
-                                    <app-svg-icon
-                                        *appIfFlowEditable
-                                        icon="chevron-down-filled"
-                                        size="8px"
-                                    />
-                                </button>
-                            </app-select-dropdown>
+                                        <span
+                                            class="dropdown-trigger__label"
+                                            [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                        >
+                                            {{ selectedAgentName() || 'Select agent' }}
+                                        </span>
+                                        <app-svg-icon
+                                            *appIfFlowEditable
+                                            icon="chevron-down-filled"
+                                            size="8px"
+                                        />
+                                    </button>
+                                </app-select-dropdown>
+                            </app-diff-field-mark>
                             <app-validation-errors [control]="form.get('agent_definition')!" />
+                            <app-missing-reference-note [fields]="['agent_definition']" />
                         </div>
 
                         <div class="field">
@@ -82,31 +90,35 @@
                                 />
                             </div>
                             <div class="surface-row">
-                                <app-multi-select
+                                <app-diff-field-mark
                                     class="surface-row__select"
-                                    color="white"
-                                    [grouped]="true"
-                                    [label]="surfaceSummaryLabel()"
-                                    [readonlyView]="isReadOnly()"
-                                    searchPlaceholder="Search item..."
-                                    emptyText="No surfaces available"
-                                    checkboxPosition="left"
-                                    [items]="surfaceMultiSelectItems()"
-                                    [selectedValues]="surfaceSelectedValues()"
-                                    (selectionChange)="onSurfacesChange($event)"
-                                    [groupIcons]="surfaceGroupIcons"
-                                    [groupActionIcon]="surfaceGroupActionIcon()"
-                                    (groupAction)="onCreateLocalSurface()"
-                                    (itemAction)="onEditLocalSurface()"
-                                    [showGroupCounts]="true"
-                                    [uppercaseGroupLabels]="false"
-                                    [showClearFilter]="true"
-                                    saveLabel="Save"
-                                ></app-multi-select>
+                                    [diffChange]="surfaceChange()"
+                                >
+                                    <app-multi-select
+                                        class="surface-row__select"
+                                        color="white"
+                                        [grouped]="true"
+                                        [label]="surfaceSummaryLabel()"
+                                        [readonlyView]="isReadOnly()"
+                                        searchPlaceholder="Search item..."
+                                        emptyText="No surfaces available"
+                                        checkboxPosition="left"
+                                        [items]="surfaceMultiSelectItems()"
+                                        [selectedValues]="surfaceSelectedValues()"
+                                        (selectionChange)="onSurfacesChange($event)"
+                                        [groupIcons]="surfaceGroupIcons"
+                                        [groupActionIcon]="surfaceGroupActionIcon()"
+                                        (groupAction)="onCreateLocalSurface()"
+                                        (itemAction)="onEditLocalSurface()"
+                                        [showGroupCounts]="true"
+                                        [uppercaseGroupLabels]="false"
+                                        [showClearFilter]="true"
+                                        saveLabel="Save"
+                                    ></app-multi-select>
+                                </app-diff-field-mark>
                                 <button
                                     type="button"
                                     class="view-summary-btn"
-                                    aria-label="View combined surface summary"
                                     matTooltip="View combined surface summary"
                                     (click)="onViewSummary()"
                                 >
@@ -117,12 +129,14 @@
                                     View Summary
                                 </button>
                             </div>
+                            <app-missing-reference-note [fields]="['surface_list', 'inline_surface']" />
                         </div>
 
                         <div class="input-map">
                             <app-input-map
                                 [activeColor]="activeColor"
                                 [readonly]="isReadOnly()"
+                                [rowChanges]="inputMapRowChanges()"
                             ></app-input-map>
                         </div>
 
@@ -132,32 +146,43 @@
                             (insert)="insertInputToInstructions($event)"
                         />
 
-                        <app-custom-input
-                            label="Output Variable Path"
-                            tooltipText="Path where the Task node output will be stored in flow variables."
-                            formControlName="output_variable_path"
-                            placeholder="e.g. task_reply"
-                            [activeColor]="activeColor"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'output_variable_path'">
+                            <app-custom-input
+                                label="Output Variable Path"
+                                tooltipText="Path where the Task node output will be stored in flow variables."
+                                formControlName="output_variable_path"
+                                placeholder="e.g. task_reply"
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
 
-                        <div class="field field--row">
-                            <div class="field__label-row">
-                                <label class="field__label">Remember output</label>
-                                <app-help-tooltip
-                                    text="When enabled, this task's output is remembered for the run and passed as context to task nodes that run later in the same session."
-                                    position="right"
-                                    size="18px"
+                        <app-diff-field-mark
+                            [diffField]="'remember_output'"
+                            [diffGroup]="true"
+                        >
+                            <div class="field field--row">
+                                <div class="field__label-row">
+                                    <label class="field__label">Remember output</label>
+                                    <app-help-tooltip
+                                        text="When enabled, this task's output is remembered for the run and passed as context to task nodes that run later in the same session."
+                                        position="right"
+                                        size="18px"
+                                    />
+                                </div>
+                                <app-toggle-switch
+                                    formControlName="remember_output"
+                                    ariaLabel="Remember output"
                                 />
                             </div>
-                            <app-toggle-switch formControlName="remember_output" />
-                        </div>
+                        </app-diff-field-mark>
 
                         @if (mainView() === 'instructions') {
                             <div class="output-schema-section">
                                 <button
                                     type="button"
                                     class="output-schema-toggle"
+                                    [attr.aria-expanded]="outputSchemaExpanded()"
                                     (click)="toggleOutputSchema()"
                                 >
                                     <app-svg-icon
@@ -169,17 +194,23 @@
                                     <span>Output Schema</span>
                                 </button>
                                 @if (outputSchemaExpanded()) {
-                                    <app-json-editor
-                                        [jsonData]="outputSchemaText"
-                                        (jsonChange)="onSchemaEditorChange($event)"
-                                        (validationChange)="onSchemaValidChange($event)"
-                                        [showHeader]="true"
-                                        [allowCopy]="true"
-                                        [allowExpand]="true"
-                                        (expand)="toggleMainView()"
-                                        [editorHeight]="220"
-                                        [readonly]="isReadOnly()"
-                                    ></app-json-editor>
+                                    <app-diff-field-mark
+                                        [diffField]="'output_schema'"
+                                        [diffHint]="outputSchemaDiffHint"
+                                        [diffDrawsBadge]="true"
+                                    >
+                                        <app-json-editor
+                                            [jsonData]="outputSchemaText"
+                                            (jsonChange)="onSchemaEditorChange($event)"
+                                            (validationChange)="onSchemaValidChange($event)"
+                                            [showHeader]="true"
+                                            [allowCopy]="true"
+                                            [allowExpand]="true"
+                                            (expand)="toggleMainView()"
+                                            [editorHeight]="220"
+                                            [readonly]="isReadOnly()"
+                                        ></app-json-editor>
+                                    </app-diff-field-mark>
                                     @if (outputSchemaError) {
                                         <div class="task-error">{{ outputSchemaError }}</div>
                                     }
@@ -192,35 +223,49 @@
                                         class="editor-block__title"
                                         label="Instructions"
                                         [required]="true"
-                                        tooltipText="Instructions given to the agent describing what this task should accomplish."
+                                        tooltipText="Instructions given to the agent describing what this task should accomplish. Use variables carefully."
                                     ></app-tooltip>
                                     <div class="editor-block__actions">
-                                        <app-svg-icon
+                                        <button
+                                            type="button"
                                             class="editor-block__action"
-                                            icon="copy"
-                                            size="1rem"
+                                            aria-label="Copy instructions"
                                             matTooltip="Copy"
                                             (click)="copyInstructions()"
-                                        />
-                                        <app-svg-icon
+                                        >
+                                            <app-svg-icon
+                                                icon="copy"
+                                                size="1rem"
+                                            />
+                                        </button>
+                                        <button
+                                            type="button"
                                             class="editor-block__action"
-                                            icon="editor-expand"
-                                            size="0.875rem"
+                                            aria-label="Expand instructions"
                                             matTooltip="Expand"
                                             (click)="toggleMainView()"
-                                        />
+                                        >
+                                            <app-svg-icon
+                                                icon="editor-expand"
+                                                size="0.875rem"
+                                            />
+                                        </button>
                                     </div>
                                 </div>
-                                <app-variable-highlight-textarea
-                                    #instructionsTextareaSchemaView
-                                    class="editor-block__textarea"
-                                    formControlName="instructions"
-                                    placeholder="Enter task instructions..."
-                                    [rows]="8"
-                                    [invalid]="instructionsInvalid()"
-                                    [variables]="inputMapKeys()"
-                                ></app-variable-highlight-textarea>
+                                <app-diff-field-mark [diffField]="'instructions'">
+                                    <app-variable-highlight-textarea
+                                        #instructionsTextareaSchemaView
+                                        ariaLabel="Instructions"
+                                        class="editor-block__textarea"
+                                        formControlName="instructions"
+                                        placeholder="Enter task instructions..."
+                                        [rows]="8"
+                                        [invalid]="instructionsInvalid() || instructionsSaveErrors().length > 0"
+                                        [variables]="inputMapKeys()"
+                                    ></app-variable-highlight-textarea>
+                                </app-diff-field-mark>
                                 <app-validation-errors [control]="form.get('instructions')!" />
+                                <app-node-save-errors [messages]="instructionsSaveErrors()" />
                             </div>
                         }
                     </div>
@@ -249,6 +294,12 @@
                                         size="1.2rem"
                                     />
                                     Instructions
+                                    <app-help-tooltip
+                                        text="Instructions given to the agent describing what this task should accomplish. Use variables carefully."
+                                        ariaLabel="Instructions help"
+                                        position="right"
+                                        size="18px"
+                                    />
                                 </span>
                                 <div class="main-editor-pane__actions">
                                     <app-instructions-view-toggle
@@ -282,30 +333,46 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="main-editor-pane__body">
-                                @if (instructionsView() === 'preview') {
-                                    <markdown
-                                        class="markdown-content markdown-content--pane"
-                                        [data]="instructionsValue()"
-                                    ></markdown>
-                                } @else {
-                                    <app-variable-highlight-textarea
-                                        #instructionsTextareaMainPane
-                                        class="main-editor-pane__textarea"
-                                        formControlName="instructions"
-                                        placeholder="Enter task instructions..."
-                                        [rows]="20"
-                                        [invalid]="instructionsInvalid()"
-                                        [variables]="inputMapKeys()"
-                                    ></app-variable-highlight-textarea>
-                                }
-                                @if (instructionsInvalid()) {
-                                    <app-validation-errors
-                                        class="main-editor-pane__validation"
-                                        [control]="form.get('instructions')!"
-                                    />
-                                }
-                            </div>
+                            <app-diff-field-mark
+                                class="instructions-mark"
+                                [diffField]="'instructions'"
+                                [diffGroup]="true"
+                            >
+                                <div class="main-editor-pane__body">
+                                    @if (instructionsView() === 'preview') {
+                                        <markdown
+                                            class="markdown-content markdown-content--pane"
+                                            [data]="instructionsValue()"
+                                        ></markdown>
+                                    } @else {
+                                        <app-variable-highlight-textarea
+                                            #instructionsTextareaMainPane
+                                            ariaLabel="Instructions"
+                                            class="main-editor-pane__textarea"
+                                            formControlName="instructions"
+                                            placeholder="Enter task instructions..."
+                                            [rows]="20"
+                                            [invalid]="instructionsInvalid() || instructionsSaveErrors().length > 0"
+                                            [variables]="inputMapKeys()"
+                                        ></app-variable-highlight-textarea>
+                                    }
+                                    @if (instructionsInvalid()) {
+                                        <app-validation-errors
+                                            class="main-editor-pane__validation"
+                                            [control]="form.get('instructions')!"
+                                        />
+                                    }
+                                    <app-node-save-errors [messages]="instructionsSaveErrors()" />
+                                </div>
+                            </app-diff-field-mark>
+                        } @else if (outputSchemaDiff(); as outputSchema) {
+                            <!-- Version diff (Changes tab): the changed schema, as a diff of its JSON. -->
+                            <app-code-diff-view
+                                class="output-schema-diff"
+                                language="json"
+                                [current]="outputSchema.current"
+                                [version]="outputSchema.version"
+                            />
                         } @else {
                             <app-json-editor
                                 [jsonData]="outputSchemaText"
@@ -328,15 +395,17 @@
             } @else {
                 <div class="form-layout collapsed">
                     <div class="field-isolated">
-                        <app-custom-input
-                            label="Node Name"
-                            [required]="true"
-                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'node_name'">
+                            <app-custom-input
+                                label="Node Name"
+                                [required]="true"
+                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
 
@@ -349,37 +418,43 @@
                                 size="18px"
                             />
                         </div>
-                        <app-select-dropdown
-                            mode="list"
-                            selectionMode="single"
-                            searchPlaceholder="Search agent..."
-                            emptyText="No agents available"
-                            [items]="agentItems()"
-                            [readonly]="isReadOnly()"
-                            [selected]="selectedAgentValue()"
-                            (selectionChange)="onAgentSelectionChange($event)"
+                        <app-diff-field-mark
+                            [diffField]="'agent_definition'"
+                            [diffFormat]="agentNameFormat"
                         >
-                            <button
-                                type="button"
-                                appSelectDropdownTrigger
-                                class="dropdown-trigger"
-                                [class.dropdown-trigger--invalid]="agentInvalid()"
-                                [class.dropdown-trigger--readonly]="isReadOnly()"
+                            <app-select-dropdown
+                                mode="list"
+                                selectionMode="single"
+                                searchPlaceholder="Search agent..."
+                                emptyText="No agents available"
+                                [items]="agentItems()"
+                                [readonly]="isReadOnly()"
+                                [selected]="selectedAgentValue()"
+                                (selectionChange)="onAgentSelectionChange($event)"
                             >
-                                <span
-                                    class="dropdown-trigger__label"
-                                    [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                <button
+                                    type="button"
+                                    appSelectDropdownTrigger
+                                    class="dropdown-trigger"
+                                    [class.dropdown-trigger--invalid]="agentInvalid()"
+                                    [class.dropdown-trigger--readonly]="isReadOnly()"
                                 >
-                                    {{ selectedAgentName() || 'Select agent' }}
-                                </span>
-                                <app-svg-icon
-                                    *appIfFlowEditable
-                                    icon="chevron-down-filled"
-                                    size="8px"
-                                />
-                            </button>
-                        </app-select-dropdown>
+                                    <span
+                                        class="dropdown-trigger__label"
+                                        [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                    >
+                                        {{ selectedAgentName() || 'Select agent' }}
+                                    </span>
+                                    <app-svg-icon
+                                        *appIfFlowEditable
+                                        icon="chevron-down-filled"
+                                        size="8px"
+                                    />
+                                </button>
+                            </app-select-dropdown>
+                        </app-diff-field-mark>
                         <app-validation-errors [control]="form.get('agent_definition')!" />
+                        <app-missing-reference-note [fields]="['agent_definition']" />
                     </div>
 
                     <div class="field">
@@ -392,31 +467,35 @@
                             />
                         </div>
                         <div class="surface-row">
-                            <app-multi-select
+                            <app-diff-field-mark
                                 class="surface-row__select"
-                                color="white"
-                                [grouped]="true"
-                                [label]="surfaceSummaryLabel()"
-                                searchPlaceholder="Search item..."
-                                emptyText="No surfaces available"
-                                checkboxPosition="left"
-                                [items]="surfaceMultiSelectItems()"
-                                [selectedValues]="surfaceSelectedValues()"
-                                (selectionChange)="onSurfacesChange($event)"
-                                [groupIcons]="surfaceGroupIcons"
-                                [groupActionIcon]="surfaceGroupActionIcon()"
-                                (groupAction)="onCreateLocalSurface()"
-                                (itemAction)="onEditLocalSurface()"
-                                [showGroupCounts]="true"
-                                [uppercaseGroupLabels]="false"
-                                [showClearFilter]="true"
-                                [readonlyView]="isReadOnly()"
-                                saveLabel="Save"
-                            ></app-multi-select>
+                                [diffChange]="surfaceChange()"
+                            >
+                                <app-multi-select
+                                    class="surface-row__select"
+                                    color="white"
+                                    [grouped]="true"
+                                    [label]="surfaceSummaryLabel()"
+                                    searchPlaceholder="Search item..."
+                                    emptyText="No surfaces available"
+                                    checkboxPosition="left"
+                                    [items]="surfaceMultiSelectItems()"
+                                    [selectedValues]="surfaceSelectedValues()"
+                                    (selectionChange)="onSurfacesChange($event)"
+                                    [groupIcons]="surfaceGroupIcons"
+                                    [groupActionIcon]="surfaceGroupActionIcon()"
+                                    (groupAction)="onCreateLocalSurface()"
+                                    (itemAction)="onEditLocalSurface()"
+                                    [showGroupCounts]="true"
+                                    [uppercaseGroupLabels]="false"
+                                    [showClearFilter]="true"
+                                    [readonlyView]="isReadOnly()"
+                                    saveLabel="Save"
+                                ></app-multi-select>
+                            </app-diff-field-mark>
                             <button
                                 type="button"
                                 class="view-summary-btn"
-                                aria-label="View combined surface summary"
                                 matTooltip="View combined surface summary"
                                 (click)="onViewSummary()"
                             >
@@ -427,12 +506,14 @@
                                 View Summary
                             </button>
                         </div>
+                        <app-missing-reference-note [fields]="['surface_list', 'inline_surface']" />
                     </div>
 
                     <div class="input-map">
                         <app-input-map
                             [activeColor]="activeColor"
                             [readonly]="isReadOnly()"
+                            [rowChanges]="inputMapRowChanges()"
                         ></app-input-map>
                     </div>
 
@@ -442,47 +523,61 @@
                         (insert)="insertInputToInstructions($event)"
                     />
 
-                    <app-custom-input
-                        label="Output Variable Path"
-                        tooltipText="Path where the Task node output will be stored in flow variables."
-                        formControlName="output_variable_path"
-                        placeholder="e.g. task_reply"
-                        [activeColor]="activeColor"
-                        [readonly]="isReadOnly()"
-                    ></app-custom-input>
+                    <app-diff-field-mark [diffField]="'output_variable_path'">
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="Path where the Task node output will be stored in flow variables."
+                            formControlName="output_variable_path"
+                            placeholder="e.g. task_reply"
+                            [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
+                        ></app-custom-input>
+                    </app-diff-field-mark>
 
-                    <div class="field field--row">
-                        <div class="field__label-row">
-                            <label class="field__label">Remember output</label>
-                            <app-help-tooltip
-                                text="When enabled, this task's output is remembered for the run and passed as context to task nodes that run later in the same session."
-                                position="right"
-                                size="18px"
+                    <app-diff-field-mark
+                        [diffField]="'remember_output'"
+                        [diffGroup]="true"
+                    >
+                        <div class="field field--row">
+                            <div class="field__label-row">
+                                <label class="field__label">Remember output</label>
+                                <app-help-tooltip
+                                    text="When enabled, this task's output is remembered for the run and passed as context to task nodes that run later in the same session."
+                                    position="right"
+                                    size="18px"
+                                />
+                            </div>
+                            <app-toggle-switch
+                                formControlName="remember_output"
+                                ariaLabel="Remember output"
                             />
                         </div>
-                        <app-toggle-switch formControlName="remember_output" />
-                    </div>
+                    </app-diff-field-mark>
 
-                    <app-variable-highlight-textarea
-                        #instructionsTextareaCollapsed
-                        label="Instructions"
-                        [required]="true"
-                        tooltipText="Instructions given to the agent describing what this task should accomplish."
-                        formControlName="instructions"
-                        placeholder="Enter task instructions..."
-                        [rows]="5"
-                        [invalid]="instructionsInvalid()"
-                        [variables]="inputMapKeys()"
-                    ></app-variable-highlight-textarea>
+                    <app-diff-field-mark [diffField]="'instructions'">
+                        <app-variable-highlight-textarea
+                            #instructionsTextareaCollapsed
+                            label="Instructions"
+                            [required]="true"
+                            tooltipText="Instructions given to the agent describing what this task should accomplish. Use variables carefully."
+                            formControlName="instructions"
+                            placeholder="Enter task instructions..."
+                            [rows]="5"
+                            [invalid]="instructionsInvalid() || instructionsSaveErrors().length > 0"
+                            [variables]="inputMapKeys()"
+                        ></app-variable-highlight-textarea>
+                    </app-diff-field-mark>
                     <app-validation-errors
                         class="instructions-collapsed-validation"
                         [control]="form.get('instructions')!"
                     />
+                    <app-node-save-errors [messages]="instructionsSaveErrors()" />
 
                     <div class="output-schema-section">
                         <button
                             type="button"
                             class="output-schema-toggle"
+                            [attr.aria-expanded]="outputSchemaExpanded()"
                             (click)="toggleOutputSchema()"
                         >
                             <app-svg-icon
@@ -494,17 +589,23 @@
                             <span>Output Schema</span>
                         </button>
                         @if (outputSchemaExpanded()) {
-                            <app-json-editor
-                                [jsonData]="outputSchemaText"
-                                (jsonChange)="onSchemaEditorChange($event)"
-                                (validationChange)="onSchemaValidChange($event)"
-                                [editorHeight]="220"
-                                [showHeader]="true"
-                                [allowCopy]="true"
-                                [allowExpand]="true"
-                                [readonly]="isReadOnly()"
-                                (expand)="expandPanel()"
-                            ></app-json-editor>
+                            <app-diff-field-mark
+                                [diffField]="'output_schema'"
+                                [diffHint]="outputSchemaDiffHint"
+                                [diffDrawsBadge]="true"
+                            >
+                                <app-json-editor
+                                    [jsonData]="outputSchemaText"
+                                    (jsonChange)="onSchemaEditorChange($event)"
+                                    (validationChange)="onSchemaValidChange($event)"
+                                    [editorHeight]="220"
+                                    [showHeader]="true"
+                                    [allowCopy]="true"
+                                    [allowExpand]="true"
+                                    [readonly]="isReadOnly()"
+                                    (expand)="expandPanel()"
+                                ></app-json-editor>
+                            </app-diff-field-mark>
                             @if (outputSchemaError) {
                                 <div class="task-error">{{ outputSchemaError }}</div>
                             }

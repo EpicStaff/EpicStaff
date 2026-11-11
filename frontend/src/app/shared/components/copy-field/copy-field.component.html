@@ -14,6 +14,7 @@
                 type="button"
                 class="icon-btn"
                 [attr.aria-label]="isMasked() ? 'Show value' : 'Hide value'"
+                [matTooltip]="isMasked() ? 'Show value' : 'Hide value'"
                 (click)="toggleVisibility()"
             >
                 <app-svg-icon

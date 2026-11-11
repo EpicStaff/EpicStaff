@@ -1,12 +1,17 @@
+<!-- Takes the focus when it opens and hands it back to the Filter button when it closes. -->
 <div
     class="filter-menu"
-    role="menu"
+    role="dialog"
+    aria-label="Filter"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
     (click)="$event.stopPropagation()"
 >
     <div class="filter-menu__list">
         <div class="filter-menu__group-header">
             <label class="filter-menu__group-label">Status</label>
         </div>
+        <!-- The checkbox is the keyboard control; the row widens the mouse target, and the box's own click bubbles here. -->
         <div
             class="filter-menu__item"
             [class.filter-menu__item--selected]="draftFavoritesOnly()"
@@ -14,6 +19,7 @@
         >
             <app-checkbox
                 color="secondary"
+                ariaLabel="Favorite"
                 [checked]="draftFavoritesOnly()"
             />
             <span class="filter-menu__item-name">Favorite</span>

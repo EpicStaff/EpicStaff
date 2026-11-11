@@ -14,6 +14,7 @@ from tables.import_export.serializers.configs import (
     OpenAIRealtimeConfigImportSerializer,
     RealtimeConfigImportSerializer,
     RealtimeTranscriptionConfigImportSerializer,
+    SystemOneConfigImportSerializer,
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import create_filters, ensure_unique_identifier
@@ -22,6 +23,7 @@ from tables.models import (
     LLMConfig,
     RealtimeConfig,
     RealtimeTranscriptionConfig,
+    SystemOneConfig,
 )
 from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
@@ -128,6 +130,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
         data_copy.pop("tags", None)
+        data_copy.pop("org", None)
 
         fk_filters = self.resolve_fk_filters(data_copy, id_mapper)
         filters, null_filters = create_filters(self._known_fields_only(data_copy))
@@ -271,7 +274,7 @@ class BaseProviderRealtimeConfigStrategy(EntityImportExportStrategy):
             base_name=data["custom_name"],
             existing_names=existing_names,
         )
-        serializer = self.serializer_class(data={**data, "org": org_id})
+        serializer = self.serializer_class(data={**data, "org": org_id}, context={"org_id": org_id})
         serializer.is_valid(raise_exception=True)
         return serializer.save(created_by=resolve_author(kwargs.get("user")))
 
@@ -303,3 +306,32 @@ class GeminiRealtimeConfigStrategy(BaseProviderRealtimeConfigStrategy):
     entity_type = EntityType.GEMINI_REALTIME_CONFIG
     config_model = GeminiRealtimeConfig
     serializer_class = GeminiRealtimeConfigImportSerializer
+
+
+class SystemOneConfigStrategy(BaseProviderRealtimeConfigStrategy):
+    # No check_config_import: the entity carries no secret and no header markers to gate.
+    entity_type = EntityType.SYSTEM_ONE_CONFIG
+    config_model = SystemOneConfig
+    serializer_class = SystemOneConfigImportSerializer
+
+    def extract_dependencies_from_instance(self, instance) -> dict:
+        if instance.llm_config_id is None:
+            return {}
+        return {EntityType.LLM_CONFIG: [instance.llm_config_id]}
+
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs):
+        # The file is untrusted: only an id mapped into the active org may land.
+        data["llm_config"] = id_mapper.get_or_none(EntityType.LLM_CONFIG, data.get("llm_config"))
+        return super().create_entity(data, id_mapper, **kwargs)
+
+    def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None):
+        return (
+            self.config_model.objects.filter(
+                custom_name=data.get("custom_name"),
+                provider=data.get("provider"),
+                model_name=data.get("model_name"),
+                llm_config_id=id_mapper.get_or_none(EntityType.LLM_CONFIG, data.get("llm_config")),
+            )
+            .filter(self.get_org_scope_q(org_id))
+            .first()
+        )

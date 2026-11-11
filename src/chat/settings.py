@@ -133,9 +133,28 @@ def _widget_url(value: str) -> str:
     return value
 
 
+# One Subresource Integrity hash: the algorithm, then the standard base64 digest at its exact
+# length. Its alphabet has no quote, angle bracket or whitespace, so it cannot leave the attribute.
+_SRI_HASH = re.compile(
+    r"sha256-[A-Za-z0-9+/]{43}=|sha384-[A-Za-z0-9+/]{64}|sha512-[A-Za-z0-9+/]{86}=="
+)
+
+
+def _widget_integrity(value: str | None) -> str | None:
+    """Accept the space-separated SRI hashes of the widget script; empty or none turns SRI off."""
+    hashes = (value or "").split()
+    if not all(_SRI_HASH.fullmatch(token) for token in hashes):
+        raise ValueError(
+            "must be space-separated sha256-, sha384- or sha512- hashes in standard base64, "
+            "e.g. sha384-<64 base64 characters>"
+        )
+    return " ".join(hashes) or None
+
+
 # scheme://host[:port], no path: the client appends the /api/... paths itself.
 Origin = Annotated[str, AfterValidator(_origin)]
 WidgetUrl = Annotated[str, AfterValidator(_widget_url)]
+WidgetIntegrity = Annotated[str | None, AfterValidator(_widget_integrity)]
 
 
 class Settings(BaseModel):
@@ -172,6 +191,8 @@ class Settings(BaseModel):
 
     CHAT_PUBLIC_BASE_URL: str
     CHAT_WIDGET_URL: WidgetUrl
+    # Only a pinned CHAT_WIDGET_URL can carry it: the rolling one changes with every release.
+    CHAT_WIDGET_INTEGRITY: WidgetIntegrity
     CHAT_CALLBACK_URL: str
     CHAT_TRUSTED_PROXIES: Networks
     CHAT_IP_MESSAGE_RATE: RateLimit

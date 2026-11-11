@@ -111,8 +111,9 @@ docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /
 ```
 
 It asks for the public URL, how HTTPS is handled, which features to turn on, which release
-tag to pull and how long to keep sessions, conversations and audit events, and generates every password and key into `src/.env` (keep that file private). It can
-also size the server and set the longest a code node may run. Run it again later to turn
+tag to pull and how long to keep sessions, conversations and audit events, and generates every password and key into `src/.env` (keep that file private). It sizes
+the server from the CPUs of the machine it runs on (change that, and the longest a code node may
+run, under advanced settings). Run it again later to turn
 features on or off, tune those limits, add settings a newer release introduced, or start over; it
 keeps the existing credentials, because the databases were created with them.
 
@@ -209,7 +210,7 @@ Repeat with `.env.example` and `.env.example.sigstore.json`. A modified file, in
 
 ### Running a verified release
 
-The release's `docker-compose.yaml` is not a standalone install: it still mounts `nginx/templates` and `nginx/certs` from the checkout next to it. Use it as an overlay on a clone of the same tag, so `docker compose up` pulls the digest-pinned images you just verified instead of building from source:
+The two files attached to a release, `docker-compose.yaml` and `.env.example`, are for verifying its digests and signatures only. They are not a standalone install: the compose file mounts configuration from the source tree next to it (`redis.conf`, the `nginx/` templates, start-up scripts and certificates, and more for the optional profiles), none of it is in the download, and unpacked into an empty folder the stack does not start. Running a release requires the source at that tag. Use the compose file as an overlay on a clone of the same tag, so `docker compose up` pulls the digest-pinned images you just verified instead of building from source:
 
 ```bash
 git clone -b vX.Y.Z https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff
@@ -219,6 +220,8 @@ cp /path/to/downloaded/docker-compose.yaml src/docker-compose.yaml
 ```
 
 Prepare a production `src/.env` with `envtool.py --setup` as described under the Quick Start, create the volumes and network as in the Quick Start block for your OS, and finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
+
+Each container keeps at most 50 MB of logs (five rotated 10 MB files, set by `x-bounded-logs` in `src/docker-compose.yaml`); older lines are dropped. To keep a longer history, raise `max-size` / `max-file` there or ship the logs to your own collector.
 
 ---
 

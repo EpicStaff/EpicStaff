@@ -17,8 +17,11 @@
         padding: 10px 12px;
         border: 1px solid var(--white-alpha-10);
         border-radius: 4px;
+        background: transparent;
         color: var(--gray-110);
+        font-family: inherit;
         font-size: 0.875rem;
+        text-align: left;
         cursor: pointer;
         transition: all 0.2s ease;
 
@@ -58,6 +61,11 @@
 
         .dropdown-item {
             display: flex;
+            width: 100%;
+            border: none;
+            background: transparent;
+            font-family: inherit;
+            text-align: left;
             align-items: baseline;
             gap: 8px;
             padding: 10px 12px;
@@ -66,8 +74,13 @@
             cursor: pointer;
             transition: background-color 0.2s ease;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--graphite-640);
+            }
+
+            // Inside the scrolling menu, which clips anything drawn outside it.
+            &:focus-visible {
+                outline-offset: -2px;
             }
 
             &.selected {

@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -70,6 +71,7 @@ import { explainErrorMessage } from './cdt-explain-error.util';
 @Component({
     selector: 'app-cdt-decision-tree-dialog',
     imports: [
+        CdkTrapFocus,
         FFlowModule,
         FZoomDirective,
         AppSvgIconComponent,
@@ -98,8 +100,10 @@ export class CdtDecisionTreeDialogComponent {
     private readonly fZoom = viewChild(FZoomDirective);
     private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
     private readonly searchToggle = viewChild<ElementRef<HTMLButtonElement>>('searchToggle');
+    private readonly explainAllRun = viewChild<ElementRef<HTMLButtonElement>>('explainAllRun');
     /** The box, so the dropdown under it lines up with its edges. */
     private readonly searchBox = viewChild<ElementRef<HTMLElement>>('searchBox');
+    private readonly searchPanel = viewChild(CdtDecisionTreeSearchComponent);
     private readonly searchTpl = viewChild.required<TemplateRef<unknown>>('searchTpl');
     private readonly explainMenuTpl = viewChild.required<TemplateRef<unknown>>('explainMenuTpl');
 
@@ -493,6 +497,27 @@ export class CdtDecisionTreeDialogComponent {
     protected onSearchPick(blockId: string): void {
         this.searchCtrl.close();
         this.revealBlock(blockId);
+        this.focusSearchInput();
+    }
+
+    /**
+     * The panel is a sibling overlay outside the dialog's focus trap, so Tab would
+     * never reach it on its own: from the box it moves into the panel.
+     */
+    protected onSearchInputTab(event: Event): void {
+        const panel = this.searchPanel();
+        if ((event as KeyboardEvent).shiftKey || !this.searchCtrl.isOpen() || !panel) return;
+        event.preventDefault();
+        panel.focusFirst();
+    }
+
+    /**
+     * Shift+Tab off the panel's first control goes back to the box; Tab off Save
+     * closes the panel, keeping what is typed, so the next Tab goes on from the box.
+     */
+    protected onSearchPanelTabbedOut(direction: 'backward' | 'forward'): void {
+        if (direction === 'forward') this.searchCtrl.close();
+        this.focusSearchInput();
     }
 
     /** Save: what is typed becomes the filter the canvas is drawn with. */
@@ -500,6 +525,7 @@ export class CdtDecisionTreeDialogComponent {
         this.query.set(this.draftQuery());
         this.activeMatch.set(0);
         this.searchCtrl.close();
+        this.focusSearchInput();
         // Otherwise the toolbar reads `1 / N` over a canvas that never moved, and
         // the first `›` steps to the second match.
         this.revealActiveMatch();
@@ -509,6 +535,7 @@ export class CdtDecisionTreeDialogComponent {
     protected cancelSearch(): void {
         this.draftQuery.set(this.query());
         this.searchCtrl.close();
+        this.focusSearchInput();
     }
 
     /**
@@ -521,7 +548,7 @@ export class CdtDecisionTreeDialogComponent {
         this.draftQuery.set('');
         this.query.set('');
         this.activeMatch.set(0);
-        this.searchInput()?.nativeElement.focus();
+        this.focusSearchInput();
     }
 
     protected stepMatch(delta: number): void {
@@ -581,6 +608,7 @@ export class CdtDecisionTreeDialogComponent {
             // Keeps the window and canvas behind it clickable.
             hasBackdrop: false,
             ignoreOutsideFor: [anchor],
+            closeOnEscape: true,
         });
     }
 
@@ -711,6 +739,12 @@ export class CdtDecisionTreeDialogComponent {
 
     protected toggleExplainOutdatedOnly(): void {
         this.explainOutdatedOnly.update((only) => !only);
+    }
+
+    /** Stop goes away with the run it stops: the focus it had goes back to Explain All. */
+    protected onStopExplainAllClick(): void {
+        this.stopExplainAll();
+        afterNextRender(() => this.explainAllRun()?.nativeElement.focus(), { injector: this.injector });
     }
 
     protected stopExplainAll(): void {
@@ -964,8 +998,13 @@ export class CdtDecisionTreeDialogComponent {
     }
 
     private focusAndOpenSearch(): void {
-        this.searchInput()?.nativeElement.focus();
+        this.focusSearchInput();
         this.openSearch();
+    }
+
+    /** Where the focus goes when the panel closes under it; otherwise it falls to `<body>`, outside the dialog. */
+    private focusSearchInput(): void {
+        this.searchInput()?.nativeElement.focus();
     }
 
     private revealActiveMatch(): void {

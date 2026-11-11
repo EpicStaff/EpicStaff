@@ -8,7 +8,8 @@
     },
     "api_key": {
       "type": "string",
-      "description": "OpenAI API key to authenticate the request."
+      "description": "OpenAI API key used to generate the image. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "input_type": "user_input"
     }
   },
   "required": ["image_description", "api_key"]

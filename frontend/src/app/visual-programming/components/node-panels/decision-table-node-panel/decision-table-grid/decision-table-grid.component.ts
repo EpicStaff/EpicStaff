@@ -3,11 +3,13 @@ import {
     ChangeDetectorRef,
     Component,
     computed,
+    effect,
     inject,
     input,
     OnInit,
     output,
     signal,
+    untracked,
 } from '@angular/core';
 import { MAT_TOOLTIP_DEFAULT_OPTIONS } from '@angular/material/tooltip';
 import { ButtonComponent, HelpTooltipComponent } from '@shared/components';
@@ -17,6 +19,7 @@ import { AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
     CellClickedEvent,
+    CellKeyDownEvent,
     CellValueChangedEvent,
     ColDef,
     GridApi,
@@ -24,10 +27,26 @@ import {
     GridReadyEvent,
     ModuleRegistry,
     themeQuartz,
+    ValueGetterParams,
 } from 'ag-grid-community';
 
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { FlowService } from '../../../../services/flow.service';
+import { ConditionGroupRowMark } from '../../../../utils/diff';
+import {
+    ConditionGroupNameCellParams,
+    ConditionGroupNameCellRendererComponent,
+} from '../../shared/condition-group-row-marks/condition-group-name-cell-renderer.component';
+import {
+    ConditionGroupGridRowChanges,
+    isRemovedGroupRow,
+    lockRemovedRows,
+    rowMarkClass,
+    rowStatusText,
+    showsRowTooltip,
+    withoutGridTooltipUnderRowTooltip,
+} from '../../shared/condition-group-row-marks/condition-group-row-marks';
+import { ConditionGroupRowTooltipsDirective } from '../../shared/condition-group-row-marks/condition-group-row-tooltips.directive';
 import { ExpressionEditorComponent } from './cell-editors/expression-editor/expression-editor.component';
 import { NextNodeEditorComponent } from './cell-editors/next-node-editor/next-node-editor.component';
 import { DeleteCellRendererComponent } from './cell-renderers/delete-cell-renderer/delete-cell-renderer.component';
@@ -37,16 +56,22 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 @Component({
     selector: 'app-decision-table-grid',
-    imports: [AgGridModule, ButtonComponent, HelpTooltipComponent],
+    imports: [AgGridModule, ButtonComponent, HelpTooltipComponent, ConditionGroupRowTooltipsDirective],
     templateUrl: './decision-table-grid.component.html',
     styleUrls: ['./decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: { '[class.decision-grid--diff-rows]': 'rowChanges() !== null' },
 })
 export class DecisionTableGridComponent implements OnInit {
     public conditionGroups = input.required<ConditionGroup[]>();
     public activeColor = input<string>('var(--accent-color)');
     public currentNodeId = input.required<string>();
     public readonly = input<boolean>(false);
+    /**
+     * Changes tab of a version preview: what a restore does to each row, and the groups it removes, shown as extra
+     * rows after the table's own. `null` anywhere else.
+     */
+    public readonly rowChanges = input<ConditionGroupGridRowChanges | null>(null);
 
     public conditionGroupsChange = output<ConditionGroup[]>();
 
@@ -55,8 +80,32 @@ export class DecisionTableGridComponent implements OnInit {
 
     private gridApi!: GridApi;
     public rowData = signal<ConditionGroup[]>([]);
+    /** The group each row was loaded from; an edited row (live editor only) has none. */
+    private readonly sourceGroupOfRow = new WeakMap<ConditionGroup, ConditionGroup>();
 
-    public isEmpty = computed(() => this.rowData().length === 0);
+    /**
+     * The row changes by the grid's own rows: the rows are copies of the groups the grid was given (names trimmed),
+     * and `rowChanges` holds its marks by those groups.
+     */
+    protected readonly rowChangesOfRows = computed<ConditionGroupGridRowChanges | null>(() => {
+        const changes = this.rowChanges();
+        if (changes === null) return null;
+        const marks = new Map<ConditionGroup, ConditionGroupRowMark>();
+        for (const row of this.rowData()) {
+            const source = this.sourceGroupOfRow.get(row);
+            const mark = source && changes.marks.get(source);
+            if (mark) marks.set(row, mark);
+        }
+        return { marks, removed: changes.removed };
+    });
+
+    /** The table's rows, then the groups a restore removes; never edited, emitted or saved. */
+    protected readonly shownRows = computed<ConditionGroup[]>(() => {
+        const removed = this.rowChanges()?.removed ?? [];
+        return removed.length > 0 ? [...this.rowData(), ...removed] : this.rowData();
+    });
+
+    public isEmpty = computed(() => this.shownRows().length === 0);
 
     public availableNodes = computed(() => {
         const nodes = this.flowService.nodes();
@@ -123,6 +172,7 @@ export class DecisionTableGridComponent implements OnInit {
                         next_node: findNodeId(group.next_node, trimmedName),
                     };
                     this.updateGroupValidFlag(normalizedGroup, index);
+                    this.sourceGroupOfRow.set(normalizedGroup, group);
                     return normalizedGroup;
                 });
             this.rowData.set(normalizedGroups);
@@ -267,7 +317,7 @@ export class DecisionTableGridComponent implements OnInit {
         if (!readOnly) {
             cols.push(this.actionsColumnDef);
         }
-        return cols;
+        return this.isDiffShown() ? lockRemovedRows(cols.map((col) => this.withRowMarks(col))) : cols;
     });
 
     public readonly defaultColDef = computed<ColDef>(() => ({
@@ -279,6 +329,7 @@ export class DecisionTableGridComponent implements OnInit {
     }));
 
     public gridOptions: GridOptions = {
+        getRowClass: (params) => rowMarkClass(this.rowChangesOfRows(), params.data),
         rowHeight: 60,
         headerHeight: 50,
         theme: this.myTheme,
@@ -289,7 +340,19 @@ export class DecisionTableGridComponent implements OnInit {
         tooltipShowDelay: inject(MAT_TOOLTIP_DEFAULT_OPTIONS).showDelay,
         onCellValueChanged: (event: CellValueChangedEvent) => this.onCellValueChanged(event),
         onCellClicked: (event: CellClickedEvent) => this.onCellClicked(event),
+        onCellKeyDown: (event: CellKeyDownEvent) => this.onCellKeyDown(event),
     };
+
+    /** Whether the row marks are on: the columns change with it, the marks themselves only redraw the rows. */
+    private readonly isDiffShown = computed(() => this.rowChanges() !== null);
+
+    constructor() {
+        effect(() => {
+            this.rowChangesOfRows();
+            // Row classes and the name cells' status are drawn with the rows.
+            untracked(() => this.gridApi?.redrawRows());
+        });
+    }
 
     public onGridReady(params: GridReadyEvent): void {
         this.gridApi = params.api;
@@ -297,7 +360,7 @@ export class DecisionTableGridComponent implements OnInit {
     }
 
     public onCellValueChanged(event: CellValueChangedEvent): void {
-        if (this.readonly()) return;
+        if (this.readonly() || isRemovedGroupRow(event.data)) return;
         const colId = event.column.getColId();
         const rowIndex = event.rowIndex!;
 
@@ -362,13 +425,54 @@ export class DecisionTableGridComponent implements OnInit {
     }
 
     public onCellClicked(event: CellClickedEvent): void {
-        if (this.readonly()) return;
+        if (this.readonly() || isRemovedGroupRow(event.data)) return;
         if (event.colDef.field === 'actions') {
             const rowIndex = event.rowIndex;
             if (rowIndex !== null && rowIndex !== undefined) {
                 this.removeConditionGroup(rowIndex);
             }
         }
+    }
+
+    /**
+     * The delete icon is not a control of its own: the actions cell takes the click, so
+     * Enter or Space on the focused cell must delete the row the same way.
+     */
+    public onCellKeyDown(event: CellKeyDownEvent): void {
+        if (this.readonly() || event.colDef.field !== 'actions') return;
+        const keyboardEvent = event.event as KeyboardEvent | null | undefined;
+        if (!keyboardEvent || (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ')) return;
+        // Modified keys are not a press of the icon; a held key would delete row after row.
+        if (
+            keyboardEvent.ctrlKey ||
+            keyboardEvent.metaKey ||
+            keyboardEvent.altKey ||
+            keyboardEvent.shiftKey ||
+            keyboardEvent.repeat
+        ) {
+            return;
+        }
+        const rowIndex = event.rowIndex;
+        if (rowIndex === null || rowIndex === undefined) return;
+        // Space would scroll the panel; neither key may reach the flow editor's own shortcuts.
+        keyboardEvent.preventDefault();
+        keyboardEvent.stopPropagation();
+        this.removeConditionGroup(rowIndex);
+        this.refocusAfterRowDeletion(rowIndex);
+    }
+
+    /**
+     * The deleted row's cell had the focus; without this it would fall to `<body>`,
+     * where Delete deletes the selected flow node.
+     */
+    private refocusAfterRowDeletion(deletedRowIndex: number): void {
+        if (!this.gridApi) return;
+        const remainingRowCount = this.rowData().length;
+        if (remainingRowCount === 0) {
+            this.gridApi.setFocusedHeader('group_name');
+            return;
+        }
+        this.gridApi.setFocusedCell(Math.min(deletedRowIndex, remainingRowCount - 1), 'actions');
     }
 
     public addConditionGroup(): void {
@@ -401,6 +505,27 @@ export class DecisionTableGridComponent implements OnInit {
         }
 
         this.emitChanges();
+    }
+
+    /**
+     * A column as the Changes tab shows it: the Condition Name tells screen readers what a restore does to the row
+     * before the name, a removed row is numbered by its place on the canvas, and a cell under the row tooltip shows
+     * no tooltip of its own.
+     */
+    private withRowMarks(col: ColDef): ColDef {
+        if (col.colId === 'index') {
+            return {
+                ...col,
+                valueGetter: (params: ValueGetterParams<ConditionGroup>) =>
+                    isRemovedGroupRow(params.data) ? params.data.order : (params.node?.rowIndex ?? 0) + 1,
+            };
+        }
+        if (col.field !== 'group_name') return withoutGridTooltipUnderRowTooltip(col, () => this.rowChangesOfRows());
+        const params: ConditionGroupNameCellParams = {
+            statusOf: (data) => rowStatusText(this.rowChangesOfRows(), data),
+            showsRowTooltip: (data) => showsRowTooltip(this.rowChangesOfRows(), data, 'group_name'),
+        };
+        return { ...col, cellRenderer: ConditionGroupNameCellRendererComponent, cellRendererParams: params };
     }
 
     private emitChanges(): void {

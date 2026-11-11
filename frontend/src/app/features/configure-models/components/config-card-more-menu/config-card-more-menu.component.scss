@@ -1,38 +1,20 @@
+@use '../../../../../styles/row-more-menu';
+
 :host {
     display: flex;
 }
 
-// Same round button as the card's edit and delete actions, plus the open-menu state.
+// The app's plain (borderless) 28px row button, as the card's edit and delete actions, plus the open-menu state.
 .more-menu__trigger {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    border: 1px solid var(--purple-alpha-40);
-    background: transparent;
-    color: var(--accent-color);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding: 0;
-    transition:
-        background 0.2s ease,
-        border-color 0.2s ease;
+    @include row-more-menu.trigger-button;
 
     i {
-        font-size: 0.875rem;
+        font-size: 1rem;
         line-height: 1;
     }
 
-    &:hover {
-        background: var(--purple-alpha-12);
-        border-color: var(--purple-alpha-70);
-    }
-
-    &--active,
-    &--active:hover {
-        background: var(--accent-color);
-        border-color: var(--accent-color);
+    &:focus-visible,
+    &--active {
         color: var(--color-text-primary);
     }
 }
@@ -71,8 +53,7 @@
 
         // Inset, so the menu's overflow clipping cannot cut the ring off.
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -1px;
+            outline-offset: -2px;
         }
 
         & + & {

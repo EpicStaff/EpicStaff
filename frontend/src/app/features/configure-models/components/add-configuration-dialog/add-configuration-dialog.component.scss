@@ -46,7 +46,7 @@
             color 0.15s,
             border-color 0.15s;
 
-        &:hover:not(.active) {
+        &:is(:hover, :focus-visible):not(.active) {
             color: var(--color-text-primary);
         }
 

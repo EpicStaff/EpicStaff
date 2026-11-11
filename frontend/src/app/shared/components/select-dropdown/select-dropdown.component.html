@@ -1,21 +1,27 @@
 <ng-content />
 
 @if (!triggerDir()) {
-    <div
+    <button
         #defaultTrigger
+        type="button"
         class="select-dropdown__default-trigger"
+        aria-label="Show options"
+        matTooltip="Show options"
+        [attr.aria-expanded]="isOpen()"
         (click)="toggle()"
     >
         <app-svg-icon
             icon="chevron-down-filled"
             size="8px"
         />
-    </div>
+    </button>
 }
 
 <ng-template #panelTemplate>
     <div
         class="select-dropdown__panel"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
         [style.max-height]="panelMaxHeight()"
         [style.min-height.px]="panelMinHeight()"
     >
@@ -30,6 +36,7 @@
                         <input
                             type="search"
                             [placeholder]="searchPlaceholder()"
+                            [attr.aria-label]="searchPlaceholder()"
                             [value]="search()"
                             (input)="onSearchInput($any($event.target).value)"
                         />
@@ -82,12 +89,17 @@
         >
             @if (mode() === 'list') {
                 @for (item of filteredItems(); track itemTrackBy($index, item)) {
+                    @if (sectionTitleAt($index); as sectionTitle) {
+                        <div class="select-dropdown__section-title">{{ sectionTitle }}</div>
+                    }
                     <button
                         type="button"
                         class="select-dropdown__row"
                         [class.select-dropdown__row--selected]="isItemSelected(item)"
                         [class.select-dropdown__row--disabled]="item.disabled"
                         [attr.aria-pressed]="selectionMode() === 'single' ? isItemSelected(item) : null"
+                        appTooltipOnOverflow=".select-dropdown__row-name"
+                        [matTooltip]="item.name"
                         (click)="selectItem(item)"
                     >
                         @if (selectionMode() === 'multiple') {
@@ -126,6 +138,9 @@
                                 type="button"
                                 class="select-dropdown__chevron"
                                 [class.select-dropdown__chevron--open]="row.node.isExpanded"
+                                [attr.aria-expanded]="row.node.isExpanded"
+                                [attr.aria-label]="(row.node.isExpanded ? 'Collapse ' : 'Expand ') + row.node.name"
+                                [matTooltip]="row.node.isExpanded ? 'Collapse' : 'Expand'"
                                 (click)="toggleExpand($event, row.node)"
                             >
                                 <app-svg-icon
@@ -141,6 +156,7 @@
                             <app-checkbox
                                 mod="multiselect"
                                 [checked]="isNodeChecked(row.node)"
+                                [ariaLabel]="row.node.name"
                             />
                         }
 
@@ -149,7 +165,21 @@
                             [icon]="row.node.icon ?? (row.node.type === 'folder' ? 'folder' : 'file')"
                             size="12px"
                         />
-                        <span class="select-dropdown__row-name">{{ row.node.name }}</span>
+                        @if (selectionMode() === 'single') {
+                            <!-- Picks the row, from the keyboard too; its click reaches the row's handler. Multiple
+                                 selection has the checkbox for that. -->
+                            <button
+                                type="button"
+                                class="select-dropdown__row-name"
+                                [attr.aria-disabled]="row.node.disabled || null"
+                                appTooltipOnOverflow
+                                [matTooltip]="row.node.name"
+                            >
+                                {{ row.node.name }}
+                            </button>
+                        } @else {
+                            <span class="select-dropdown__row-name">{{ row.node.name }}</span>
+                        }
                         @if (row.node.isLoading) {
                             <span class="select-dropdown__row-tip">…</span>
                         }

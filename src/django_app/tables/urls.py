@@ -42,6 +42,7 @@ from tables.views.knowledge_views.search_config_views import (
 )
 from tables.views.llm_config_timeout_limits_views import LLMConfigTimeoutLimitsAPIView
 from tables.views.model_view_sets import (
+    AgentLabelViewSet,
     AgentNodeTaskViewSet,
     AgentNodeViewSet,
     AudioTranscriptionNodeViewSet,
@@ -90,6 +91,7 @@ from tables.views.model_view_sets import (
     SecretViewSet,
     StartNodeModelViewSet,
     SubGraphNodeModelViewSet,
+    SystemOneConfigReadWriteViewSet,
     TaskNodeViewSet,
     TelegramTriggerNodeViewSet,
     ToolFilterPresetViewSet,
@@ -100,10 +102,7 @@ from tables.views.model_view_sets import (
     WebhookTriggerViewSet,
 )
 from tables.views.recycle_bin_views import RecycleBinEmptyView, RecycleBinSettingsView
-from tables.views.sse_views import (
-    RunSessionSSEView,
-    RunSessionSSEViewSwagger,
-)
+from tables.views.sse_views import RunSessionSSEView
 from tables.views.storage_views import StorageAPIView
 from tables.views.views import (
     CancelRagIndexingView,
@@ -127,6 +126,7 @@ router = DefaultRouter()
 router.register(r"providers", ProviderReadWriteViewSet)
 router.register(r"llm-models", LLMModelReadWriteViewSet)
 router.register(r"llm-configs", LLMConfigReadWriteViewSet)
+router.register(r"system-one-configs", SystemOneConfigReadWriteViewSet)
 router.register(r"embedding-models", EmbeddingModelReadWriteViewSet)
 router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
 # DEPRECATED: agents/crews/tasks routes are deprecated. Use agentnodes/tasknodes instead.
@@ -191,6 +191,7 @@ router.register(r"audit-filter-presets", AuditFilterPresetViewSet)
 router.register(r"flow-filter-presets", FlowFilterPresetViewSet)
 router.register(r"tool-filter-presets", ToolFilterPresetViewSet)
 router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
+router.register(r"agent-labels", AgentLabelViewSet, basename="agent-label")
 router.register(r"secrets", SecretViewSet)
 router.register(r"key-value-tables", KeyValueTableViewSet, basename="key-value-tables")
 router.register(
@@ -261,11 +262,6 @@ urlpatterns = [
         "run-session/subscribe/<int:session_id>/",
         RunSessionSSEView.as_view(),
         name="run-session-subscribe",
-    ),
-    path(
-        "run-session/subscribe/<int:session_id>/swagger/",
-        RunSessionSSEViewSwagger.as_view(),
-        name="run-session-subscribe-swagger",
     ),
     # Chunking preview endpoints
     path(

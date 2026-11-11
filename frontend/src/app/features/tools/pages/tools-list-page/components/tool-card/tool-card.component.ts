@@ -14,7 +14,7 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
-import { LabelDropDirective } from '@shared/directives';
+import { LabelDropDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { getLabelColorOption, LabelDto, ResourceCode } from '@shared/models';
 
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
@@ -31,6 +31,7 @@ import { ToolCardMenuComponent } from './tool-card-menu.component';
         OverlayModule,
         ToolCardMenuComponent,
         LabelDropDirective,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './tool-card.component.html',
     styleUrls: ['./tool-card.component.scss'],
@@ -50,6 +51,8 @@ export class ToolCardComponent implements OnDestroy {
     private readonly menuTriggerButton = viewChild.required<string, ElementRef<HTMLButtonElement>>('menuTrigger', {
         read: ElementRef,
     });
+
+    private readonly nameButton = viewChild.required<ElementRef<HTMLButtonElement>>('nameButton');
 
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
 
@@ -163,7 +166,14 @@ export class ToolCardComponent implements OnDestroy {
         this.cancelCloseTimeout();
     }
 
+    /** Focuses the card's name button, which opens the tool. */
+    public focus(): void {
+        this.nameButton().nativeElement.focus();
+    }
+
     public onMenuAction(action: ToolCardMenuAction): void {
+        // Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away.
+        this.menuTriggerButton().nativeElement.focus();
         this.closeMenu();
         this.menuAction.emit({ tool: this.tool(), action, trigger: this.menuTriggerButton().nativeElement });
     }

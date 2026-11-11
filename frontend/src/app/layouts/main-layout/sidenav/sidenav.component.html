@@ -40,7 +40,8 @@
         />
     </div>
 
-    <!-- EpicStaff's pages, or the open app's navigation: the context follows the address. Scrolls on its own. -->
+    <!-- EpicStaff's pages, or the open app's navigation: the context follows the address. Scrolls on its own.
+         Every row names itself in a tooltip on its right, on hover and on keyboard focus. -->
     <ul
         class="sidenav-nav main-nav"
         cdkScrollable
@@ -71,6 +72,7 @@
                 cdkOverlayOrigin
                 #switcherOrigin="cdkOverlayOrigin"
             >
+                <!-- No tooltip while its list is open: it would cover the list. -->
                 <button
                     #switcherRow
                     type="button"
@@ -107,12 +109,13 @@
                     [cdkConnectedOverlayPositions]="popoverPositions"
                     [cdkConnectedOverlayPush]="true"
                     (attach)="focusOpenedPopover()"
-                    (detach)="closeLists()"
+                    (detach)="onPopoverDetach('switcher')"
                     (overlayOutsideClick)="closeLists()"
                     (overlayKeydown)="onPopoverKeydown($event, switcherRow)"
                 >
                     <div
-                        class="apps-popover"
+                        #appsListTrap
+                        class="sidenav-popover"
                         role="dialog"
                         aria-label="Switch app"
                         cdkTrapFocus
@@ -175,7 +178,10 @@
                             role="separator"
                         ></li>
                     }
-                    <li class="sidenav-nav-item">
+                    <li
+                        class="sidenav-nav-item"
+                        [attr.data-tour]="item.id === 'agents' ? createAgentTourAnchors.sidenavAgents : null"
+                    >
                         <a
                             class="sidenav-nav-link"
                             [routerLink]="resolveRouteLink(item)"
@@ -207,6 +213,8 @@
                                 class="sidenav-badge-link"
                                 [routerLink]="item.badgeLink"
                                 [attr.aria-label]="item.badgeLabel?.(count) ?? null"
+                                [matTooltip]="item.badgeLabel?.(count) ?? ''"
+                                matTooltipPosition="right"
                             >
                                 <span class="sidenav-badge">{{ count > 99 ? '99+' : count }}</span>
                             </a>
@@ -225,6 +233,7 @@
                     cdkOverlayOrigin
                     #appsOrigin="cdkOverlayOrigin"
                 >
+                    <!-- No tooltip while its list is open: it would cover the list. -->
                     <button
                         #appsRow
                         type="button"
@@ -267,12 +276,13 @@
                         [cdkConnectedOverlayPositions]="popoverPositions"
                         [cdkConnectedOverlayPush]="true"
                         (attach)="focusOpenedPopover()"
-                        (detach)="closeLists()"
+                        (detach)="onPopoverDetach('apps')"
                         (overlayOutsideClick)="closeLists()"
                         (overlayKeydown)="onPopoverKeydown($event, appsRow)"
                     >
                         <div
-                            class="apps-popover"
+                            #appsListTrap
+                            class="sidenav-popover"
                             role="dialog"
                             aria-label="Apps"
                             cdkTrapFocus
@@ -329,7 +339,7 @@
             @if (!appContext() && item.isPermitted()) {
                 <li
                     class="sidenav-nav-item"
-                    [attr.data-tour]="item.id === 'settings' ? tourAnchors.sidenavSettings : null"
+                    [attr.data-tour]="item.id === 'settings' ? quickStartTourAnchors.sidenavSettings : null"
                 >
                     <a
                         class="sidenav-nav-link"
@@ -358,6 +368,79 @@
             }
         }
 
+        @if (showsHelp()) {
+            <li
+                class="sidenav-nav-item"
+                cdkOverlayOrigin
+                #helpOrigin="cdkOverlayOrigin"
+            >
+                <button
+                    #helpRow
+                    type="button"
+                    class="sidenav-nav-link sidenav-nav-button"
+                    [class.active]="openList() === 'help'"
+                    [attr.aria-expanded]="openList() === 'help'"
+                    [attr.aria-haspopup]="listsInline() ? null : 'dialog'"
+                    [attr.aria-controls]="listsInline() && openList() === 'help' ? 'sidenav-help-list' : null"
+                    [attr.aria-label]="isExpanded() ? null : 'Help'"
+                    matTooltip="Help"
+                    matTooltipPosition="right"
+                    [matTooltipDisabled]="isExpanded() || openList() === 'help'"
+                    (click)="toggleList('help')"
+                >
+                    <div class="sidenav-link-icon">
+                        <app-svg-icon
+                            icon="help"
+                            size="1.125rem"
+                        />
+                    </div>
+                    @if (isExpanded()) {
+                        <span class="sidenav-row-label text-body-medium">Help</span>
+                        <app-svg-icon
+                            class="sidenav-row-trail"
+                            [icon]="listsInline() && openList() === 'help' ? 'chevron-down' : 'chevron-right'"
+                            size="1rem"
+                        />
+                    }
+                </button>
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="helpOrigin"
+                    [cdkConnectedOverlayOpen]="openList() === 'help' && !listsInline()"
+                    [cdkConnectedOverlayPositions]="popoverPositions"
+                    [cdkConnectedOverlayPush]="true"
+                    (attach)="focusOpenedPopover()"
+                    (detach)="onPopoverDetach('help')"
+                    (overlayOutsideClick)="closeLists()"
+                    (overlayKeydown)="onPopoverKeydown($event, helpRow)"
+                >
+                    <div
+                        #appsListTrap
+                        class="sidenav-popover"
+                        role="dialog"
+                        aria-label="Guides"
+                        cdkTrapFocus
+                    >
+                        <app-help-menu
+                            variant="popover"
+                            (tourChosen)="onTourChosen($event, helpRow)"
+                        />
+                    </div>
+                </ng-template>
+            </li>
+            @if (listsInline() && openList() === 'help') {
+                <li
+                    id="sidenav-help-list"
+                    class="sidenav-inline-list"
+                >
+                    <app-help-menu
+                        variant="inline"
+                        (tourChosen)="onTourChosen($event, helpRow)"
+                    />
+                </li>
+            }
+        }
+
         @if (user(); as user) {
             <li
                 class="sidenav-divider"
@@ -367,12 +450,17 @@
                 class="sidenav-nav-item user-menu-item"
                 appClickOutside
                 (appClickOutside)="closeUserMenu()"
+                (keydown.escape)="closeUserMenuOnEscape($event)"
             >
-                <div
+                <!-- No tooltip while its menu is open: it would cover the menu. -->
+                <button
+                    type="button"
                     class="user-avatar-btn"
                     [class.opened]="isUserMenuOpen()"
                     [class.active]="isAccountRoute()"
-                    matTooltip="Account"
+                    [attr.aria-expanded]="isUserMenuOpen()"
+                    [attr.aria-label]="isExpanded() ? null : accountTooltip"
+                    [matTooltip]="accountTooltip"
                     matTooltipPosition="right"
                     [matTooltipDisabled]="isExpanded() || isUserMenuOpen()"
                     (click)="toggleUserMenu($event)"
@@ -410,9 +498,12 @@
                             >
                         }
                     }
-                </div>
+                </button>
                 @if (isUserMenuOpen()) {
+                    <!-- Takes the focus when it opens and hands it back to the account row when it closes. -->
                     <app-user-menu
+                        cdkTrapFocus
+                        [cdkTrapFocusAutoCapture]="true"
                         [user]="user"
                         [(isUserMenuOpen)]="isUserMenuOpen"
                     />

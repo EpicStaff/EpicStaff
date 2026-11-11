@@ -9,7 +9,7 @@ import pytest
 
 from helpers.api import BASE_URL, ApiClient, assert_error, describe_response, page_results
 from helpers.bootstrap import Bootstrap, unique_suffix
-from helpers.redaction import protect, register_secret
+from helpers.redaction import Secret, protect, register_secret
 
 # An id no row will reach in a fresh test database.
 NON_EXISTENT_ID = 2_000_000_000
@@ -36,7 +36,8 @@ def test_superadmin_api_key_cannot_write_admin_roles(
     """Even the superadmin's own key is refused: the gate is the key, not the role."""
     key = protect(
         superadmin_client.post(
-            "/api/profile/api-keys/", json={"name": "e2e-superadmin-key", "expires_in_days": 1}, expect=201
+            "/api/profile/api-keys/", json={"name": "e2e-superadmin-key", "expires_in_days": 1, "org_id": org_id},
+            expect=201,
         ).json()
     )
     superadmin_with_key = ApiClient.with_api_key(BASE_URL, key["api_key"], org_id)
@@ -52,13 +53,36 @@ def test_superadmin_api_key_cannot_write_admin_roles(
     assert_error(response, 403, "permission_denied")
 
 
-def test_org_header_is_required(bootstrap: Bootstrap) -> None:
-    without_org = ApiClient.with_api_key(BASE_URL, bootstrap.user_api_key, None)
+def test_jwt_without_org_header_needs_org_context(viewer_access_token: Secret) -> None:
+    without_org = ApiClient.with_jwt(BASE_URL, viewer_access_token)
     try:
         response = without_org.get("/api/graphs/", expect=None)
     finally:
         without_org.close()
     assert_error(response, 400, "org_context_required")
+
+
+def test_jwt_with_another_orgs_header_requires_membership(
+    viewer_access_token: Secret, other_org: dict
+) -> None:
+    in_other_org = ApiClient.with_jwt(BASE_URL, viewer_access_token, other_org["id"])
+    try:
+        response = in_other_org.get("/api/graphs/", expect=None)
+    finally:
+        in_other_org.close()
+    assert_error(response, 403, "org_membership_required")
+
+
+def test_api_key_acts_in_its_org_without_org_header(
+    bootstrap: Bootstrap, own_org_graph: dict
+) -> None:
+    """A personal key belongs to one org, so it needs no `X-Organization-Id`."""
+    without_org = ApiClient.with_api_key(BASE_URL, bootstrap.user_api_key, None)
+    try:
+        graphs = page_results(without_org.get("/api/graphs/", params={"limit": 1000}).json())
+    finally:
+        without_org.close()
+    assert own_org_graph["id"] in {graph["id"] for graph in graphs}
 
 
 def test_graph_of_another_org_is_not_found_from_own_org(
@@ -68,13 +92,18 @@ def test_graph_of_another_org_is_not_found_from_own_org(
     assert_error(response, 404, "not_found")
 
 
-def test_other_org_header_requires_membership(bootstrap: Bootstrap, other_org: dict) -> None:
+def test_api_key_ignores_org_header_of_another_org(
+    bootstrap: Bootstrap, other_org: dict, other_org_graph: dict, own_org_graph: dict
+) -> None:
+    """The header cannot move a key out of its org: it still lists its own org's graphs only."""
     in_other_org = ApiClient.with_api_key(BASE_URL, bootstrap.user_api_key, other_org["id"])
     try:
-        response = in_other_org.get("/api/graphs/", expect=None)
+        graphs = page_results(in_other_org.get("/api/graphs/", params={"limit": 1000}).json())
     finally:
         in_other_org.close()
-    assert_error(response, 403, "org_membership_required")
+    graph_ids = {graph["id"] for graph in graphs}
+    assert own_org_graph["id"] in graph_ids
+    assert other_org_graph["id"] not in graph_ids
 
 
 def test_run_session_for_another_orgs_graph_is_not_found(

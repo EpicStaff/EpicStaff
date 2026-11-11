@@ -20,9 +20,12 @@
         <div class="panel-header-actions">
             <button
                 #kebabOrigin
+                type="button"
                 class="header-btn"
                 aria-label="Menu"
+                aria-haspopup="menu"
                 matTooltip="Menu"
+                [attr.aria-expanded]="kebabMenuOpen()"
                 (click)="onKebabClick()"
             >
                 <app-svg-icon
@@ -33,6 +36,7 @@
 
             @if (mode() === 'floating') {
                 <button
+                    type="button"
                     class="header-btn"
                     [attr.aria-label]="isFullHeight() ? 'Restore height' : 'Full height'"
                     [matTooltip]="isFullHeight() ? 'Restore height' : 'Full height'"
@@ -46,6 +50,7 @@
             }
 
             <button
+                type="button"
                 class="header-btn"
                 [attr.aria-label]="mode() === 'docked' ? 'Float' : 'Dock'"
                 [matTooltip]="mode() === 'docked' ? 'Float' : 'Dock'"
@@ -58,6 +63,7 @@
             </button>
 
             <button
+                type="button"
                 class="header-btn"
                 aria-label="Minimize"
                 matTooltip="Minimize"
@@ -79,12 +85,17 @@
         [cdkConnectedOverlayHasBackdrop]="true"
         cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
         (backdropClick)="closeKebabMenu()"
+        (detach)="closeKebabMenu()"
     >
+        <!-- Takes the focus on opening and hands it back to the ⋮ button when it closes (Escape closes the overlay). -->
         <div
             class="header-menu"
             role="menu"
+            cdkTrapFocus
+            [cdkTrapFocusAutoCapture]="true"
         >
             <button
+                type="button"
                 class="header-menu__item"
                 role="menuitem"
                 (click)="onMenuItemClick('sessions')"
@@ -92,6 +103,7 @@
                 Sessions
             </button>
             <button
+                type="button"
                 class="header-menu__item"
                 role="menuitem"
                 (click)="onMenuItemClick('settings')"
@@ -100,6 +112,7 @@
             </button>
             <div class="header-menu__divider"></div>
             <button
+                type="button"
                 class="header-menu__item"
                 role="menuitem"
                 (click)="onMenuItemClick('clear-history')"
@@ -108,6 +121,7 @@
             </button>
             @if (mode() === 'floating') {
                 <button
+                    type="button"
                     class="header-menu__item"
                     role="menuitem"
                     (click)="onMenuItemClick('reset-position')"
@@ -119,14 +133,15 @@
     </ng-template>
 
     @if (showSettings()) {
-        <app-flow-assistant-settings (closed)="showSettings.set(false)" />
+        <app-flow-assistant-settings (closed)="onSettingsClosed()" />
     }
 
     <div class="panel-body">
         @if (sidebarOpen()) {
             <app-flow-assistant-sidebar
                 class="sidebar-overlay"
-                (selected)="closeSidebar()"
+                (selected)="onSessionSelected()"
+                (keydown.escape)="onSidebarEscape($event)"
             />
         }
 
@@ -237,6 +252,7 @@
                     <div class="prompt-chips">
                         @for (chip of displayChips(); track $index) {
                             <button
+                                type="button"
                                 class="prompt-chip"
                                 (click)="assistantService.executeAction(chip)"
                             >
@@ -250,6 +266,7 @@
                         #messageInput
                         class="input-area__textarea"
                         placeholder="Ask about this flow..."
+                        aria-label="Ask about this flow"
                         rows="1"
                         [value]="inputText()"
                         (input)="onInputChange($event)"
@@ -271,11 +288,12 @@
                             </button>
                         } @else {
                             <button
+                                type="button"
                                 class="input-area__send-btn"
-                                [disabled]="sendDisabled()"
-                                (click)="sendMessage()"
                                 aria-label="Send"
                                 matTooltip="Send (Enter)"
+                                [disabled]="sendDisabled()"
+                                (click)="sendMessage()"
                             >
                                 <app-svg-icon
                                     icon="send"

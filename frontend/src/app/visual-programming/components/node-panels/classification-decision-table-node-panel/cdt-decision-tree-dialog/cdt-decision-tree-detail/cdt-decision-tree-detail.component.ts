@@ -122,6 +122,7 @@ export class CdtDecisionTreeDetailComponent {
 
     /** Unpacked into three narrow reads, so the narrowing stays in TypeScript. */
     protected readonly explanationLoading = computed(() => this.explanation()?.status === 'loading');
+    protected readonly explainDisabled = computed(() => !this.explainAvailable() || this.explanationLoading());
 
     protected readonly explanationReady = computed(() => {
         const state = this.explanation();
@@ -179,6 +180,11 @@ export class CdtDecisionTreeDetailComponent {
 
     protected onMenuClick(event: MouseEvent): void {
         this.explainMenuRequested.emit(event.currentTarget as HTMLElement);
+    }
+
+    protected onExplainClick(): void {
+        if (this.explainDisabled()) return;
+        this.explainRequested.emit();
     }
 
     protected toggleExplanation(): void {

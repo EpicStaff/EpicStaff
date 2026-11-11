@@ -97,8 +97,8 @@ describe('VoiceSettingsSectionComponent "View Details"', () => {
 
         expect(Array.from(actions, (action) => action.getAttribute('aria-label'))).toEqual([
             'More actions',
-            'Edit',
-            'Delete',
+            'Edit Support line 8',
+            'Delete Support line 8',
         ]);
     });
 

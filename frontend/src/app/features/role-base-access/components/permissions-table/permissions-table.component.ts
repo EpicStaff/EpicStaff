@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, input, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    ElementRef,
+    inject,
+    input,
+    output,
+    signal,
+    viewChildren,
+} from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent, SearchComponent } from '@shared/components';
 import { ActionCode, CatalogAction, CatalogResponse } from '@shared/models';
@@ -39,6 +49,9 @@ export class PermissionsTableComponent {
     clearAllClick = output<void>();
     /** Adds the missing recommended keys triggered by a specific resource to the selection. */
     enableRecommendedForResource = output<{ resourceCode: string; keys: string[] }>();
+
+    /** Not Tab stops: a row takes the focus when its recommendation banner, and the button that had it, goes. */
+    private readonly resourceRows = viewChildren<ElementRef<HTMLElement>>('resourceRow');
 
     private readonly hostEl = inject<ElementRef<HTMLElement>>(ElementRef);
 
@@ -441,6 +454,7 @@ export class PermissionsTableComponent {
         const entry = this.recommendedByResource().get(resourceCode);
         if (!entry || entry.missingKeys.length === 0) return;
         this.enableRecommendedForResource.emit({ resourceCode, keys: entry.missingKeys });
+        this.focusResourceRow(resourceCode);
     }
 
     onDismissResourceRecommended(resourceCode: string): void {
@@ -452,6 +466,7 @@ export class PermissionsTableComponent {
             next.add(signature);
             return next;
         });
+        this.focusResourceRow(resourceCode);
     }
 
     onShowNextPending(): void {
@@ -469,6 +484,12 @@ export class PermissionsTableComponent {
             });
         }
         this.scrollToResourceWhenSettled(resourceCode);
+    }
+
+    private focusResourceRow(resourceCode: string): void {
+        this.resourceRows()
+            .find((row) => row.nativeElement.dataset['resourceCode'] === resourceCode)
+            ?.nativeElement.focus();
     }
 
     private scrollRequestId = 0;

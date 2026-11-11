@@ -1,34 +1,80 @@
 from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
 from rbac.authorship import authorship_prefetches
-from rbac.models.enums import ResourceType
+from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedViewSetMixin
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tables.import_export.enums import EntityType
+from tables.import_export.services.import_service import ImportSettings
+from tables.serializers.serializers import BulkExportSerializer, ImportRequestSerializer
+from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.recycle_bin.sources import RecycleBinSource
+from tables.swagger_schemas.tools_schemas import (
+    AGENT_DEFINITION_BULK_EXPORT_POST,
+    AGENT_DEFINITION_COPY_POST,
+    AGENT_DEFINITION_EXPORT_GET,
+    AGENT_DEFINITION_IMPORT_POST,
+)
+from tables.views.mixins import CopyActionMixin, InspectActionMixin
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 
 from agents.models import AgentDefinition
 from agents.serializers.agent_definition_serializers import (
+    AgentDefinitionCopyRequestSerializer,
     AgentDefinitionReadSerializer,
     AgentDefinitionWriteSerializer,
 )
+from agents.services.agent_definition_copy_service import AgentDefinitionCopyService
 
 
-class AgentDefinitionViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
+@extend_schema_view(copy=extend_schema(**AGENT_DEFINITION_COPY_POST))
+class AgentDefinitionViewSet(
+    OrgScopedViewSetMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    RecycleBinActionsMixin,
+    viewsets.ModelViewSet,
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "import_entity": Permission.CREATE,
+        "inspect_import": Permission.CREATE,
+        # Copying an agent that owns surfaces also needs surfaces CREATE, checked
+        # by AgentDefinitionCopyService inside the copy's transaction.
+        "copy": Permission.CREATE,
+    }
     recycle_bin_resource_key = RecycleBinSource.AGENT
+    copy_service_class = AgentDefinitionCopyService
+    copy_serializer_class = AgentDefinitionReadSerializer
     queryset = AgentDefinition.objects.select_related(
-        "org", "llm_config", "fcm_llm_config", "realtime_agent"
+        "org", "llm_config", "fallback_llm_config", "fcm_llm_config", "realtime_agent"
     ).prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["llm_config", "fcm_llm_config"]
+    filterset_fields = ["llm_config", "fallback_llm_config", "fcm_llm_config"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.AGENT_DEFINITION,
+            export_prefix="agent",
+            filename_attr="name",
+        )
+
+    def check_copy_allowed(self, request, instance) -> None:
+        # CopyActionMixin passes the raw `name` on; refuse a malformed body here,
+        # after the org-scoped 404 and before anything is written.
+        AgentDefinitionCopyRequestSerializer(data=request.data).is_valid(raise_exception=True)
 
     def get_serializer_class(self):
         if self.action in ["list", "retrieve"]:
@@ -74,3 +120,44 @@ class AgentDefinitionViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
             instance, context=self.get_serializer_context()
         )
         return Response(read_serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(**AGENT_DEFINITION_EXPORT_GET)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
+        )
+
+    @extend_schema(**AGENT_DEFINITION_BULK_EXPORT_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-export")
+    def bulk_export(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity_ids = serializer.validated_data["ids"]
+
+        existing_ids = AgentDefinition.objects.filter(
+            id__in=entity_ids, org_id=self.get_active_org_id()
+        ).values_list("id", flat=True)
+        if len(existing_ids) != len(entity_ids):
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id(), user=request.user
+        )
+
+    @extend_schema(**AGENT_DEFINITION_IMPORT_POST)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        vd = file_serializer.validated_data
+        data = self.import_export_service.import_entity(
+            vd["file"],
+            user=request.user,
+            settings=ImportSettings(import_labels=vd["import_labels"]),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(data, status=status.HTTP_200_OK)

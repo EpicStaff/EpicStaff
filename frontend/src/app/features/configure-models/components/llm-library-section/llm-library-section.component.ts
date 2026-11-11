@@ -1,14 +1,22 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { ComponentType } from '@angular/cdk/portal';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
+    DOCUMENT,
+    effect,
+    ElementRef,
     inject,
+    Injector,
     OnInit,
-    Signal,
     signal,
+    untracked,
+    viewChild,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -16,38 +24,45 @@ import {
     AppSvgIconComponent,
     AuthorshipDetailsDialogService,
     AuthorshipDetailsSource,
-    BulkSelectDropdownComponent,
-    ButtonComponent,
+    CheckboxComponent,
     EmbeddingModelConfigDialogComponent,
     FetchErrorStateComponent,
     LlmModelConfigDialogComponent,
     LoadingSpinnerComponent,
-    SearchComponent,
-    SelectComponent,
-    SelectItem,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { PROVIDER_ICON_PATHS } from '@shared/constants';
 import {
-    ActionCode,
     BulkDeleteGroup,
     BulkDeleteLabel,
     BulkDeleteOutcome,
-    BulkDeleteTarget,
     LlmLibraryModel,
     LlmLibraryProviderGroup,
     ModelTypes,
-    ResourceCode,
+    SystemOneConfig,
 } from '@shared/models';
 import {
     BulkDeleteService,
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
     LLMLibraryService,
+    SystemOneConfigStorageService,
 } from '@shared/services';
+import { getProviderHeadingIcon, getProviderIconPath, providerDisplayName } from '@shared/utils';
 import { forkJoin, Observable, of } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
+import { SYSTEM_ONE_LABEL } from '../../constants/llm-library-capabilities.constant';
+import { SYSTEM_ONE_PROVIDERS } from '../../constants/system-one-providers.constant';
+import {
+    LibraryCard,
+    LibraryLoadKey,
+    LibraryProviderGroup,
+    LibrarySection,
+    LibrarySectionError,
+    LibrarySectionKey,
+    VoiceProvider,
+} from '../../models/llm-library.model';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
@@ -58,18 +73,30 @@ import {
     llmLibrarySelectionKey,
     LlmLibrarySelectionKind,
 } from '../../utils/llm-library-bulk-delete.util';
+import {
+    compareProviderCreationOrder,
+    LLM_LIBRARY_CARD_GAP,
+    llmLibraryCardsPerRow,
+    packLlmLibraryRows,
+    providerCreationOrder,
+} from '../../utils/llm-library-layout.util';
 import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
 import {
     LlmLibraryCardComponent,
     LlmLibraryCardViewDetailsEvent,
 } from '../llm-library-card/llm-library-card.component';
+import { LlmLibraryHeaderComponent } from '../llm-library-header/llm-library-header.component';
 import {
     RealtimeConfigDialogComponent,
     RealtimeConfigDialogData,
 } from '../realtime-config-dialog/realtime-config-dialog.component';
 import { RealtimeConfig, RealtimeProvider } from '../realtime-config-form/realtime-config-form.component';
+import {
+    SystemOneConfigDialogComponent,
+    SystemOneConfigDialogData,
+} from '../system-one-config-dialog/system-one-config-dialog.component';
 
-/** Voice configs have no tags, temperature or deprecation, so the shared card shows only their names. */
+/** Realtime (voice) configs have no tags, temperature or deprecation, so the shared card shows only their names. */
 function toVoiceCardModel(config: RealtimeConfig): LlmLibraryModel {
     return {
         id: config.id,
@@ -83,79 +110,23 @@ function toVoiceCardModel(config: RealtimeConfig): LlmLibraryModel {
     };
 }
 
-interface VoiceProvider {
-    key: RealtimeProvider;
-    label: string;
-    deleteLabel: BulkDeleteLabel;
-    storage: {
-        configs: Signal<RealtimeConfig[]>;
-        getAllConfigs(force?: boolean): Observable<unknown[]>;
-    } & BulkDeleteTarget;
+/** `llmConfigName` is the LLM config an LLM-provider config answers with; the card does not show `configType`. */
+function toSystemOneCardModel(config: SystemOneConfig, llmConfigName: string | undefined): LlmLibraryModel {
+    return {
+        id: config.id,
+        customName: config.custom_name,
+        modelName: config.provider === 'llm' ? `LLM: ${llmConfigName ?? 'not set'}` : (config.model_name ?? ''),
+        tags: [],
+        temperature: null,
+        usedByCount: null,
+        configType: ModelTypes.LLM,
+        isDeprecated: false,
+    };
 }
 
-type SectionKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | RealtimeProvider;
-
-const LLM_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'LLM config', plural: 'LLM configs' };
-const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding config', plural: 'embedding configs' };
-
-@Component({
-    selector: 'app-llm-library-section',
-    imports: [
-        FormsModule,
-        LlmLibraryCardComponent,
-        AppSvgIconComponent,
-        LoadingSpinnerComponent,
-        SelectComponent,
-        HasPermissionDirective,
-        ButtonComponent,
-        BulkSelectDropdownComponent,
-        SearchComponent,
-        FetchErrorStateComponent,
-    ],
-    templateUrl: './llm-library-section.component.html',
-    styleUrls: ['./llm-library-section.component.scss'],
-    changeDetection: ChangeDetectionStrategy.OnPush,
-})
-export class LlmLibrarySectionComponent implements OnInit {
-    private readonly llmLibraryService = inject(LLMLibraryService);
-    private readonly llmConfigStorageService = inject(LlmConfigStorageService);
-    private readonly embeddingConfigStorage = inject(EmbeddingConfigStorageService);
-    private readonly openaiRealtimeStorage = inject(OpenAIRealtimeConfigStorageService);
-    private readonly elevenLabsRealtimeStorage = inject(ElevenLabsRealtimeConfigStorageService);
-    private readonly geminiRealtimeStorage = inject(GeminiRealtimeConfigStorageService);
-    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
-    private readonly defaultModelsStorageService = inject(DefaultModelsStorageService);
-    private readonly bulkDeleteService = inject(BulkDeleteService);
-    private readonly destroyRef = inject(DestroyRef);
-    private readonly dialog = inject(Dialog);
-
-    readonly voiceProviders: VoiceProvider[] = [
-        {
-            key: 'openai',
-            label: 'OpenAI Voice Configs',
-            deleteLabel: { singular: 'OpenAI voice config', plural: 'OpenAI voice configs' },
-            storage: this.openaiRealtimeStorage,
-        },
-        {
-            key: 'elevenlabs',
-            label: 'ElevenLabs Voice Configs',
-            deleteLabel: { singular: 'ElevenLabs voice config', plural: 'ElevenLabs voice configs' },
-            storage: this.elevenLabsRealtimeStorage,
-        },
-        {
-            key: 'gemini',
-            label: 'Gemini Voice Configs',
-            deleteLabel: { singular: 'Gemini voice config', plural: 'Gemini voice configs' },
-            storage: this.geminiRealtimeStorage,
-        },
-    ];
-
-    public providerGroups = this.llmLibraryService.providerGroups;
-    public configs = this.llmConfigStorageService.configs;
-    public searchQuery = signal('');
-    public selectedCapability = signal<unknown>(null);
-    public status = signal<LoadingState>(LoadingState.IDLE);
-    public sectionErrors = signal<Record<SectionKey, boolean>>({
+/** No load has failed: a fresh record each time, since a load fills its own in as its sources fail. */
+function noLoadErrors(): Record<LibraryLoadKey, boolean> {
+    return {
         llm: false,
         embedding: false,
         realtime: false,
@@ -163,7 +134,83 @@ export class LlmLibrarySectionComponent implements OnInit {
         openai: false,
         elevenlabs: false,
         gemini: false,
-    });
+        system_one: false,
+    };
+}
+
+const LLM_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'LLM config', plural: 'LLM configs' };
+const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding config', plural: 'embedding configs' };
+const SYSTEM_ONE_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'System One config', plural: 'System One configs' };
+
+@Component({
+    selector: 'app-llm-library-section',
+    imports: [
+        FormsModule,
+        LlmLibraryCardComponent,
+        LlmLibraryHeaderComponent,
+        AppSvgIconComponent,
+        LoadingSpinnerComponent,
+        FetchErrorStateComponent,
+        CheckboxComponent,
+    ],
+    templateUrl: './llm-library-section.component.html',
+    styleUrls: ['./llm-library-section.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '(document:click)': 'onDocumentClick($event)',
+        '(document:keydown.escape)': 'onDocumentEscape($event)',
+    },
+})
+export class LlmLibrarySectionComponent implements OnInit {
+    private readonly header = viewChild.required(LlmLibraryHeaderComponent);
+    private readonly libraryElement = viewChild<ElementRef<HTMLElement>>('library');
+    private readonly sectionsElement = viewChild<ElementRef<HTMLElement>>('sectionList');
+    private readonly cardElements = viewChildren(LlmLibraryCardComponent, { read: ElementRef });
+    private readonly sectionHeaders = viewChildren<ElementRef<HTMLElement>>('sectionHeader');
+
+    private readonly llmLibraryService = inject(LLMLibraryService);
+    private readonly llmConfigStorageService = inject(LlmConfigStorageService);
+    private readonly embeddingConfigStorage = inject(EmbeddingConfigStorageService);
+    private readonly openaiRealtimeStorage = inject(OpenAIRealtimeConfigStorageService);
+    private readonly elevenLabsRealtimeStorage = inject(ElevenLabsRealtimeConfigStorageService);
+    private readonly geminiRealtimeStorage = inject(GeminiRealtimeConfigStorageService);
+    private readonly systemOneStorage = inject(SystemOneConfigStorageService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
+    private readonly defaultModelsStorageService = inject(DefaultModelsStorageService);
+    private readonly bulkDeleteService = inject(BulkDeleteService);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly dialog = inject(Dialog);
+    private readonly injector = inject(Injector);
+    private readonly overlayContainer = inject(OverlayContainer);
+    private readonly document = inject(DOCUMENT);
+
+    readonly voiceProviders: VoiceProvider[] = [
+        {
+            key: 'openai',
+            name: 'OpenAI',
+            deleteLabel: { singular: 'OpenAI realtime config', plural: 'OpenAI realtime configs' },
+            storage: this.openaiRealtimeStorage,
+        },
+        {
+            key: 'elevenlabs',
+            name: 'ElevenLabs',
+            deleteLabel: { singular: 'ElevenLabs realtime config', plural: 'ElevenLabs realtime configs' },
+            storage: this.elevenLabsRealtimeStorage,
+        },
+        {
+            key: 'gemini',
+            name: 'Gemini',
+            deleteLabel: { singular: 'Gemini realtime config', plural: 'Gemini realtime configs' },
+            storage: this.geminiRealtimeStorage,
+        },
+    ];
+
+    public providerGroups = this.llmLibraryService.providerGroups;
+    public searchQuery = signal('');
+    /** The section the Capabilities filter shows; null shows all of them. */
+    public readonly selectedSectionFilter = signal<LibrarySectionKey | null>(null);
+    public status = signal<LoadingState>(LoadingState.IDLE);
+    public sectionErrors = signal<Record<LibraryLoadKey, boolean>>(noLoadErrors());
 
     public readonly selectMode = signal(false);
     public readonly selectedKeys = signal<ReadonlySet<string>>(new Set());
@@ -175,97 +222,45 @@ export class LlmLibrarySectionComponent implements OnInit {
         const groups = llmLibraryBulkDeleteGroups(this.selectedKeys(), this.bulkDeleteSources());
         return groups.reduce((sum, group) => sum + group.items.length, 0);
     });
+    public readonly hasSelection = computed(() => this.selectedCount() > 0);
+    /** Select mode with nothing ticked yet: a click outside the cards or Escape leaves it. */
+    private readonly isSelectModeEmpty = computed(() => this.selectMode() && !this.hasSelection());
+    /**
+     * Null until measured. The page's own width, which the sections span: measured on the page rather than on the
+     * section list, which is not there while loading, so the first cards already get the right count per row.
+     */
+    private readonly libraryWidth = signal<number | null>(null);
 
-    readonly configTypeSections: { type: ModelTypes; label: string; key: SectionKey }[] = [
-        { type: ModelTypes.LLM, label: 'LLM', key: 'llm' },
-        { type: ModelTypes.EMBEDDING, label: 'Embedding', key: 'embedding' },
+    readonly configTypeSections: { type: ModelTypes; title: string; errorLabel: string; key: 'llm' | 'embedding' }[] = [
+        { type: ModelTypes.LLM, title: 'LLM', errorLabel: 'LLM', key: 'llm' },
+        { type: ModelTypes.EMBEDDING, title: 'Embeddings', errorLabel: 'Embedding', key: 'embedding' },
     ];
 
-    filteredGroups = computed<LlmLibraryProviderGroup[]>(() => {
-        const query = this.searchQuery().toLowerCase();
-        const cap = this.selectedCapability() as string;
+    /** Cards a row holds at the sections' width. */
+    protected readonly cardsPerRow = computed(() => llmLibraryCardsPerRow(this.libraryWidth()));
 
-        return this.providerGroups()
-            .map((group) => {
-                const filteredModels = group.models.filter((model) => {
-                    const matchesSearch =
-                        !query ||
-                        model.customName.toLowerCase().includes(query) ||
-                        model.modelName.toLowerCase().includes(query) ||
-                        group.providerName.toLowerCase().includes(query);
+    /** Every section with a card or an error to show, before the Capabilities filter and the search. */
+    private readonly unfilteredSections = computed(() => this.buildSections(''));
 
-                    const matchesCap = cap === null || model.tags.some((t) => t.name.includes(cap));
-
-                    return matchesSearch && matchesCap;
-                });
-
-                return { ...group, models: filteredModels };
-            })
-            .filter((group) => group.models.length > 0);
+    /** The sections the search and the Capabilities filter leave. */
+    protected readonly sections = computed<LibrarySection[]>(() => {
+        const shown = this.selectedSectionFilter();
+        return this.buildSections(this.searchQuery().toLowerCase()).filter(
+            (section) => shown === null || section.key === shown
+        );
     });
 
-    filteredVoiceProviders = computed(() => {
-        const query = this.searchQuery().toLowerCase();
-        const errors = this.sectionErrors();
-        return this.voiceProviders
-            .map((provider) => ({
-                ...provider,
-                hasError: errors[provider.key],
-                cards: provider.storage
-                    .configs()
-                    .filter((c) => {
-                        if (!query) return true;
-                        return (
-                            c.custom_name.toLowerCase().includes(query) ||
-                            c.model_name.toLowerCase().includes(query) ||
-                            provider.label.toLowerCase().includes(query)
-                        );
-                    })
-                    .map((config) => ({ config, model: toVoiceCardModel(config) })),
-            }))
-            .filter((provider) => provider.hasError || provider.cards.length > 0);
-    });
+    /** Sections collapsed by the user; all start open, and the state lasts as long as the page. */
+    protected readonly collapsedSections = signal<ReadonlySet<LibrarySectionKey>>(new Set());
 
-    groupedByType = computed(() => {
-        const all = this.filteredGroups();
-        const errors = this.sectionErrors();
-        return this.configTypeSections
-            .map((section) => ({
-                ...section,
-                hasError: errors[section.key],
-                groups: all
-                    .filter((g) => g.configType === section.type)
-                    .sort((a, b) => a.providerName.localeCompare(b.providerName)),
-            }))
-            .filter((section) => section.hasError || section.groups.length > 0);
-    });
+    /** Nothing to show at all; the search or the filter hiding every section is `hasNoMatches`. */
+    protected readonly hasNoConfigs = computed(() => this.unfilteredSections().length === 0);
+    protected readonly hasNoMatches = computed(() => !this.hasNoConfigs() && this.sections().length === 0);
 
-    hasNoConfigs = computed(() => this.groupedByType().length === 0 && this.filteredVoiceProviders().length === 0);
-
-    public capabilities = computed<SelectItem[]>(() => [
-        { name: 'All Capabilities', value: null },
-        ...this.configs().flatMap((config) => config.tags.map((tag) => ({ name: tag.name, value: tag.name }))),
-    ]);
-
-    /** Keys of every card currently rendered (not hidden behind a section/provider error). */
-    private readonly visibleSelectionKeys = computed<ReadonlySet<string>>(() => {
-        const keys = new Set<string>();
-        for (const section of this.groupedByType()) {
-            if (section.hasError) continue;
-            for (const group of section.groups) {
-                for (const model of group.models) {
-                    keys.add(llmLibrarySelectionKey(this.kindForModel(model), model.id));
-                }
-            }
-        }
-        for (const provider of this.filteredVoiceProviders()) {
-            if (provider.hasError) continue;
-            for (const card of provider.cards) {
-                keys.add(llmLibrarySelectionKey(provider.key, card.config.id));
-            }
-        }
-        return keys;
-    });
+    /** Keys of every card currently rendered (not hidden behind a section/provider error), collapsed or not. */
+    private readonly visibleSelectionKeys = computed<ReadonlySet<string>>(
+        () => new Set(this.sections().flatMap((section) => section.selectionKeys))
+    );
 
     public readonly allVisibleSelected = computed(() => {
         const visible = this.visibleSelectionKeys();
@@ -289,15 +284,51 @@ export class LlmLibrarySectionComponent implements OnInit {
             openai: this.voiceProviderSource('openai'),
             elevenlabs: this.voiceProviderSource('elevenlabs'),
             gemini: this.voiceProviderSource('gemini'),
+            system_one: {
+                label: SYSTEM_ONE_BULK_DELETE_LABEL,
+                target: this.systemOneStorage,
+                configs: this.systemOneStorage.configs(),
+            },
         };
         return sources;
     });
+
+    private readonly resizeObserver =
+        typeof ResizeObserver === 'undefined'
+            ? null
+            : new ResizeObserver((entries) => this.libraryWidth.set(entries[entries.length - 1].contentRect.width));
+    /**
+     * A selection never outlives its cards' visibility: a card the filter, the search or a load error hides is
+     * neither counted nor deleted. Collapsed sections still count as shown. Dropping the last ticked card ends
+     * select mode, as unticking it does.
+     */
+    private readonly pruneHiddenSelection = effect(() => {
+        const visible = this.visibleSelectionKeys();
+        untracked(() => {
+            const selected = this.selectedKeys();
+            const kept = new Set([...selected].filter((key) => visible.has(key)));
+            if (kept.size === selected.size) return;
+            this.selectedKeys.set(kept);
+            if (this.selectedCount() === 0) this.exitSelectMode();
+        });
+    });
+    /** The page's width, for the cards per row: its element is there from the first render on. */
+    private readonly observeLibrary = effect(() => {
+        const element = this.libraryElement()?.nativeElement;
+        if (element) untracked(() => this.resizeObserver?.observe(element));
+    });
+
+    protected readonly cardGap = LLM_LIBRARY_CARD_GAP;
+
+    constructor() {
+        this.destroyRef.onDestroy(() => this.resizeObserver?.disconnect());
+    }
 
     ngOnInit() {
         this.loadAll();
     }
 
-    public retrySection(key: SectionKey): void {
+    protected retrySection(key: LibraryLoadKey): void {
         this.sourceFor(key)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
@@ -306,7 +337,7 @@ export class LlmLibrarySectionComponent implements OnInit {
             });
     }
 
-    private sourceFor(key: SectionKey): Observable<unknown> {
+    private sourceFor(key: LibraryLoadKey): Observable<unknown> {
         switch (key) {
             case 'llm':
                 return this.llmLibraryService.loadLlmData();
@@ -316,6 +347,8 @@ export class LlmLibrarySectionComponent implements OnInit {
                 return this.llmLibraryService.loadRealtimeData();
             case 'transcription':
                 return this.llmLibraryService.loadTranscriptionData();
+            case 'system_one':
+                return this.systemOneStorage.getAllConfigs();
             default:
                 return this.voiceProviders.find((p) => p.key === key)!.storage.getAllConfigs();
         }
@@ -324,22 +357,15 @@ export class LlmLibrarySectionComponent implements OnInit {
     private loadAll(): void {
         this.status.set(LoadingState.LOADING);
 
-        const keys: SectionKey[] = [
+        const keys: LibraryLoadKey[] = [
             'llm',
             'embedding',
             'realtime',
             'transcription',
             ...this.voiceProviders.map((p) => p.key),
+            'system_one',
         ];
-        const errors: Record<SectionKey, boolean> = {
-            llm: false,
-            embedding: false,
-            realtime: false,
-            transcription: false,
-            openai: false,
-            elevenlabs: false,
-            gemini: false,
-        };
+        const errors = noLoadErrors();
 
         const tracked = keys.map((key) =>
             this.sourceFor(key).pipe(
@@ -384,25 +410,80 @@ export class LlmLibrarySectionComponent implements OnInit {
             .run([group])
             .pipe(
                 tap((outcomes) => this.applyDefaultModelsOutdated(outcomes)),
+                tap(() => this.focusAddAfterDelete()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe();
     }
 
-    public isVoiceSelected(provider: VoiceProvider, config: RealtimeConfig): boolean {
-        return this.selectedKeys().has(llmLibrarySelectionKey(provider.key, config.id));
+    onEditSystemOne(config: SystemOneConfig): void {
+        const data: SystemOneConfigDialogData = { config };
+        this.dialog.open(SystemOneConfigDialogComponent, {
+            height: '90vh',
+            width: '600px',
+            disableClose: true,
+            data,
+        });
     }
 
-    public onVoiceSelectedChange(provider: VoiceProvider, config: RealtimeConfig, selected: boolean): void {
+    onViewSystemOneDetails(config: SystemOneConfig, trigger: HTMLElement): void {
+        this.authorshipDetailsDialog.open('Configuration Details', config, trigger);
+    }
+
+    onDeleteSystemOne(config: SystemOneConfig): void {
+        const group: BulkDeleteGroup = {
+            target: this.systemOneStorage,
+            label: SYSTEM_ONE_BULK_DELETE_LABEL,
+            items: [{ id: config.id, name: config.custom_name }],
+        };
+        this.bulkDeleteService.run([group]).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+    }
+
+    protected toggleSection(key: LibrarySectionKey): void {
+        this.collapsedSections.update((collapsed) => {
+            const next = new Set(collapsed);
+            if (!next.delete(key)) next.add(key);
+            return next;
+        });
+    }
+
+    /** How many of the section's cards are ticked. */
+    protected tickedCount(section: LibrarySection): number {
+        const selected = this.selectedKeys();
+        return section.selectionKeys.filter((key) => selected.has(key)).length;
+    }
+
+    /**
+     * The section's box ticks all its cards when none is ticked, and unticks them all otherwise. The box is set to
+     * match, since a click on a "-" box ticks it in the browser while it should clear.
+     */
+    protected onSectionCheckboxChange(section: LibrarySection, checkbox: CheckboxComponent): void {
         if (this.isDeleting()) return;
-        this.setSelected(provider.key, config.id, selected);
+        const tickAll = this.tickedCount(section) === 0;
+        checkbox.checked.set(tickAll);
+        const next = new Set(this.selectedKeys());
+        for (const key of section.selectionKeys) {
+            if (tickAll) {
+                next.add(key);
+            } else {
+                next.delete(key);
+            }
+        }
+        this.selectedKeys.set(next);
+        if (!tickAll && this.selectedCount() === 0) {
+            this.exitSelectMode();
+        }
     }
 
-    public onSearchChange(value: string): void {
+    protected onSearchChange(value: string): void {
         this.searchQuery.set(value);
     }
 
-    public onAddModel(): void {
+    protected onSectionFilterChange(value: LibrarySectionKey | null): void {
+        this.selectedSectionFilter.set(value);
+    }
+
+    protected onAddModel(): void {
         this.dialog.open(AddConfigurationDialogComponent, { autoFocus: false });
     }
 
@@ -436,34 +517,75 @@ export class LlmLibrarySectionComponent implements OnInit {
             .run([this.buildModelGroup(model)])
             .pipe(
                 tap((outcomes) => this.applyDefaultModelsOutdated(outcomes)),
+                tap(() => this.focusAddAfterDelete()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe();
     }
 
-    public enterSelectMode(): void {
+    protected enterSelectMode(): void {
         this.selectMode.set(true);
     }
 
-    public exitSelectMode(): void {
+    protected exitSelectMode(): void {
         this.selectMode.set(false);
         this.selectedKeys.set(new Set());
     }
 
-    public toggleSelectAll(): void {
+    /** Clears the selection and stays in select mode; the × (`exitSelectMode`) leaves it too. */
+    protected clearSelection(): void {
+        this.selectedKeys.set(new Set());
+    }
+
+    /**
+     * Leaves an empty select mode on a click outside the cards and the Select control. Clicks in overlays (the
+     * capabilities panel, a card menu, dialogs, tooltips) leave it alone: they belong to what is open above the page.
+     * A target already gone from the page (a control the click itself swapped) says nothing about where it landed.
+     */
+    protected onDocumentClick(event: MouseEvent): void {
+        if (!this.isSelectModeEmpty()) return;
+        const target = event.target;
+        if (!(target instanceof Node) || !target.isConnected) return;
+        if (this.overlayContainer.getContainerElement().contains(target)) return;
+        if (this.header().containsSelectControl(target)) return;
+        if (this.cardElements().some((card) => card.nativeElement.contains(target))) return;
+        // A section's box ticks its cards, and its heading only collapses it: neither is a click away.
+        if (this.sectionHeaders().some((header) => header.nativeElement.contains(target))) return;
+        this.exitSelectMode();
+    }
+
+    /**
+     * Escape leaves an empty select mode, unless something above the page (a menu, a dialog) takes it. The focus
+     * moves to Select only when it had none (on the body) or sat in the sections, whose checkboxes go with select
+     * mode; pressed in the search or elsewhere in the toolbar, Escape leaves the focus where it is.
+     */
+    protected onDocumentEscape(event: Event): void {
+        if (!this.isSelectModeEmpty() || event.defaultPrevented) return;
+        const target = event.target;
+        if (target instanceof Node && this.overlayContainer.getContainerElement().contains(target)) return;
+        const focused = this.document.activeElement;
+        const focusGoesAway =
+            focused === null ||
+            focused === this.document.body ||
+            !!this.sectionsElement()?.nativeElement.contains(focused);
+        this.exitSelectMode();
+        if (focusGoesAway) this.header().focusSelect();
+    }
+
+    protected toggleSelectAll(): void {
         this.selectedKeys.set(this.allVisibleSelected() ? new Set() : new Set(this.visibleSelectionKeys()));
     }
 
-    public isModelSelected(model: LlmLibraryModel): boolean {
-        return this.selectedKeys().has(llmLibrarySelectionKey(this.kindForModel(model), model.id));
+    protected isCardSelected(card: LibraryCard): boolean {
+        return this.selectedKeys().has(card.selectionKey);
     }
 
-    public onCardSelectedChange(model: LlmLibraryModel, selected: boolean): void {
+    protected onCardSelectedChange(card: LibraryCard, selected: boolean): void {
         if (this.isDeleting()) return;
-        this.setSelected(this.kindForModel(model), model.id, selected);
+        this.setSelected(card.kind, card.id, selected);
     }
 
-    public deleteSelected(): void {
+    protected deleteSelected(): void {
         const groups = llmLibraryBulkDeleteGroups(this.selectedKeys(), this.bulkDeleteSources());
         if (groups.length === 0) return;
 
@@ -474,6 +596,7 @@ export class LlmLibrarySectionComponent implements OnInit {
                 tap((outcomes) => {
                     this.applyDefaultModelsOutdated(outcomes);
                     this.exitSelectMode();
+                    this.focusAddAfterDelete();
                 }),
                 finalize(() => this.isDeleting.set(false)),
                 takeUntilDestroyed(this.destroyRef)
@@ -481,8 +604,222 @@ export class LlmLibrarySectionComponent implements OnInit {
             .subscribe();
     }
 
-    protected readonly ResourceCode = ResourceCode;
-    protected readonly ActionCode = ActionCode;
+    /** The deleted card (or the bulk Delete button, gone with select mode) had the focus: it goes to Add Configuration. */
+    private focusAddAfterDelete(): void {
+        afterNextRender(() => this.header().focusAddButton(), { injector: this.injector });
+    }
+
+    /**
+     * LLM, Embeddings, Realtime and System One, each left out when it has no card and no error to show. `query`
+     * (lower case, empty for all) narrows the cards by name, model or provider.
+     */
+    private buildSections(query: string): LibrarySection[] {
+        const errors = this.sectionErrors();
+        const cardsPerRow = this.cardsPerRow();
+        const modelGroups = this.searchedModelGroups(query);
+        const sections = this.configTypeSections.map(({ type, title, errorLabel, key }) => {
+            if (errors[key]) {
+                return this.buildSection(
+                    key,
+                    title,
+                    [{ key, title: `Failed to load ${errorLabel} configurations` }],
+                    [],
+                    cardsPerRow
+                );
+            }
+            const createdAt = this.configCreationTimes(type);
+            const groups = modelGroups
+                .filter((group) => group.configType === type)
+                .map((group) => this.toModelGroup(group, createdAt));
+            return this.buildSection(key, title, [], groups, cardsPerRow);
+        });
+
+        const voice = this.searchedVoiceProviders(query);
+        sections.push(
+            this.buildSection(
+                'voice',
+                'Realtime',
+                voice
+                    .filter(({ hasError }) => hasError)
+                    .map(({ provider }) => ({
+                        key: provider.key,
+                        title: `Failed to load ${provider.name} realtime configurations`,
+                    })),
+                voice
+                    .filter(({ hasError, configs }) => !hasError && configs.length > 0)
+                    .map(({ provider, configs }) => this.toVoiceGroup(provider, configs)),
+                cardsPerRow
+            )
+        );
+
+        const systemOneHasError = errors.system_one;
+        sections.push(
+            this.buildSection(
+                'system_one',
+                SYSTEM_ONE_LABEL,
+                systemOneHasError ? [{ key: 'system_one', title: 'Failed to load System One configurations' }] : [],
+                systemOneHasError ? [] : this.toSystemOneGroups(this.searchedSystemOneCards(query)),
+                cardsPerRow
+            )
+        );
+
+        return sections.filter((section) => section.errors.length > 0 || section.selectionKeys.length > 0);
+    }
+
+    private searchedModelGroups(query: string): LlmLibraryProviderGroup[] {
+        return this.providerGroups()
+            .map((group) => ({
+                ...group,
+                models: group.models.filter(
+                    (model) =>
+                        !query ||
+                        model.customName.toLowerCase().includes(query) ||
+                        model.modelName.toLowerCase().includes(query) ||
+                        group.providerName.toLowerCase().includes(query) ||
+                        providerDisplayName(group.providerName).toLowerCase().includes(query)
+                ),
+            }))
+            .filter((group) => group.models.length > 0);
+    }
+
+    private searchedVoiceProviders(
+        query: string
+    ): { provider: VoiceProvider; hasError: boolean; configs: RealtimeConfig[] }[] {
+        const errors = this.sectionErrors();
+        return this.voiceProviders.map((provider) => ({
+            provider,
+            hasError: errors[provider.key],
+            configs: provider.storage
+                .configs()
+                .filter(
+                    (config) =>
+                        !query ||
+                        config.custom_name.toLowerCase().includes(query) ||
+                        config.model_name.toLowerCase().includes(query) ||
+                        `${provider.name} realtime`.toLowerCase().includes(query)
+                ),
+        }));
+    }
+
+    private searchedSystemOneCards(query: string): { config: SystemOneConfig; model: LlmLibraryModel }[] {
+        const llmConfigNames = new Map(
+            this.llmConfigStorageService.configs().map((config) => [config.id, config.custom_name])
+        );
+        return this.systemOneStorage
+            .configs()
+            .map((config) => ({
+                config,
+                model: toSystemOneCardModel(
+                    config,
+                    config.llm_config === null ? undefined : llmConfigNames.get(config.llm_config)
+                ),
+            }))
+            .filter(
+                ({ model }) =>
+                    !query ||
+                    model.customName.toLowerCase().includes(query) ||
+                    model.modelName.toLowerCase().includes(query) ||
+                    SYSTEM_ONE_LABEL.toLowerCase().includes(query)
+            );
+    }
+
+    /** Groups in the order their providers were added, packed into rows. */
+    private buildSection(
+        key: LibrarySectionKey,
+        title: string,
+        errors: LibrarySectionError[],
+        groups: LibraryProviderGroup[],
+        cardsPerRow: number
+    ): LibrarySection {
+        const ordered = [...groups].sort((first, second) => compareProviderCreationOrder(first.order, second.order));
+        return {
+            key,
+            title,
+            errors,
+            rows: packLlmLibraryRows(ordered, (group) => group.cards.length, cardsPerRow),
+            providerList: ordered.flatMap((group) => (group.name === null ? [] : [group.name])).join(', '),
+            selectionKeys: ordered.flatMap((group) => group.cards.map((card) => card.selectionKey)),
+        };
+    }
+
+    /** Creation time of each config of the type, by id (the library models do not carry it). */
+    private configCreationTimes(type: ModelTypes): Map<number, string | null> {
+        const configs: { id: number; created_at: string | null }[] =
+            type === ModelTypes.EMBEDDING
+                ? this.embeddingConfigStorage.configs()
+                : this.llmConfigStorageService.configs();
+        return new Map(configs.map((config) => [config.id, config.created_at]));
+    }
+
+    private toModelGroup(group: LlmLibraryProviderGroup, createdAt: Map<number, string | null>): LibraryProviderGroup {
+        return {
+            id: group.id,
+            name: providerDisplayName(group.providerName),
+            ...getProviderHeadingIcon(group.providerName, group.providerIconPath),
+            order: providerCreationOrder(
+                group.models.map((model) => ({ id: model.id, createdAt: createdAt.get(model.id) ?? null }))
+            ),
+            cards: group.models.map((model) => {
+                const kind = this.kindForModel(model);
+                return {
+                    selectionKey: llmLibrarySelectionKey(kind, model.id),
+                    kind,
+                    id: model.id,
+                    model,
+                    edit: () => this.onEdit(model),
+                    remove: () => this.onDelete(model),
+                    viewDetails: (trigger: HTMLElement) => this.onViewDetails({ model, trigger }),
+                };
+            }),
+        };
+    }
+
+    private toVoiceGroup(provider: VoiceProvider, configs: RealtimeConfig[]): LibraryProviderGroup {
+        return {
+            id: `voice-${provider.key}`,
+            name: provider.name,
+            ...getProviderHeadingIcon(
+                provider.name,
+                PROVIDER_ICON_PATHS[provider.key] ?? PROVIDER_ICON_PATHS['default']
+            ),
+            order: providerCreationOrder(configs.map((config) => ({ id: config.id, createdAt: config.created_at }))),
+            cards: configs.map((config) => ({
+                selectionKey: llmLibrarySelectionKey(provider.key, config.id),
+                kind: provider.key,
+                id: config.id,
+                model: toVoiceCardModel(config),
+                edit: () => this.onEditConfig(provider, config),
+                remove: () => this.onDeleteConfig(provider, config),
+                viewDetails: (trigger: HTMLElement) => this.onViewConfigDetails(config, trigger),
+            })),
+        };
+    }
+
+    /** One group per System One provider that has cards (TypeSafe, OpenAI, LLM), in the order they were added. */
+    private toSystemOneGroups(cards: { config: SystemOneConfig; model: LlmLibraryModel }[]): LibraryProviderGroup[] {
+        return SYSTEM_ONE_PROVIDERS.map((provider) => ({
+            provider,
+            providerCards: cards.filter(({ config }) => config.provider === provider.key),
+        }))
+            .filter(({ providerCards }) => providerCards.length > 0)
+            .map(({ provider, providerCards }) => ({
+                id: `system_one-${provider.key}`,
+                name: provider.label,
+                ...getProviderHeadingIcon(provider.key, getProviderIconPath(provider.key)),
+                order: providerCreationOrder(
+                    providerCards.map(({ config }) => ({ id: config.id, createdAt: config.created_at }))
+                ),
+                cards: providerCards.map(({ config, model }) => ({
+                    selectionKey: llmLibrarySelectionKey('system_one', config.id),
+                    kind: 'system_one',
+                    id: config.id,
+                    model,
+                    edit: () => this.onEditSystemOne(config),
+                    remove: () => this.onDeleteSystemOne(config),
+                    viewDetails: (trigger: HTMLElement) => this.onViewSystemOneDetails(config, trigger),
+                })),
+            }));
+    }
 
     private kindForModel(model: LlmLibraryModel): LlmLibrarySelectionKind {
         return model.configType === ModelTypes.EMBEDDING ? 'embedding' : 'llm';
@@ -498,6 +835,7 @@ export class LlmLibrarySectionComponent implements OnInit {
         return { target: source.target, label: source.label, items: [{ id: model.id, name: model.customName }] };
     }
 
+    /** Unticking the last selected card ends select mode; entering it from the Select menu starts at 0 and stays. */
     private setSelected(kind: LlmLibrarySelectionKind, id: number, selected: boolean): void {
         const key = llmLibrarySelectionKey(kind, id);
         const next = new Set(this.selectedKeys());
@@ -507,6 +845,9 @@ export class LlmLibrarySectionComponent implements OnInit {
             next.delete(key);
         }
         this.selectedKeys.set(next);
+        if (!selected && this.selectedCount() === 0) {
+            this.exitSelectMode();
+        }
     }
 
     private applyDefaultModelsOutdated(outcomes: BulkDeleteOutcome[]): void {
@@ -518,6 +859,19 @@ export class LlmLibrarySectionComponent implements OnInit {
         );
         if (hasDefaultModelChange) {
             this.defaultModelsStorageService.markDefaultModelsOutdated();
+        }
+        // The server clears the LLM link of a System One config whose LLM config was deleted.
+        const deletedLlmConfig = outcomes.some(
+            (outcome) =>
+                outcome.group.target === this.llmConfigStorageService && (outcome.response?.deleted_count ?? 0) > 0
+        );
+        if (deletedLlmConfig) {
+            this.systemOneStorage
+                .getAllConfigs(true)
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe({
+                    error: () => {},
+                });
         }
     }
 }
