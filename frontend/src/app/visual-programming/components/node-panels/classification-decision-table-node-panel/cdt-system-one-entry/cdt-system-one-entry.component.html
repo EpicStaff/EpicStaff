@@ -172,17 +172,14 @@
         type="outline-secondary"
         mod="small"
         leftIcon="plus"
-        [disabled]="readOnly()"
+        [disabled]="readOnly() || atQuestionLimit()"
         (click)="addQuestion()"
         >Add question</app-button
     >
 </div>
 
-@if (isLlmBacked()) {
-    <app-hint-message tone="warning">
-        This config uses an LLM. Its probabilities are the LLM's own estimate, so thresholds tuned on Jev may behave
-        differently.
-    </app-hint-message>
+@if (calibrationNote(); as note) {
+    <app-hint-message tone="warning">{{ note }}</app-hint-message>
 }
 
 <app-hint-message>

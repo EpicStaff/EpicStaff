@@ -1,0 +1,169 @@
+@if (label()) {
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+        [icon]="icon()"
+    />
+}
+
+<button
+    #triggerButton
+    type="button"
+    class="grouped-picker__trigger"
+    [class.grouped-picker__trigger--open]="isOpen()"
+    [class.grouped-picker__trigger--placeholder]="!selectedEntry()"
+    [class.grouped-picker__trigger--disabled]="disabled()"
+    [disabled]="disabled()"
+    [attr.aria-expanded]="isOpen()"
+    (click)="toggle()"
+>
+    @if (selectedEntry(); as entry) {
+        <app-svg-icon
+            [icon]="entry.group.icon"
+            size="18px"
+        />
+        <span class="grouped-picker__trigger-label">
+            <span class="grouped-picker__trigger-group">{{ entry.group.name }}:</span>
+            <span class="grouped-picker__trigger-item">{{ entry.item.name }}</span>
+        </span>
+    } @else {
+        <span>{{ placeholder() }}</span>
+    }
+
+    @if (triggerSuffixTemplate(); as suffix) {
+        <ng-container *ngTemplateOutlet="suffix" />
+    }
+
+    <svg
+        class="grouped-picker__chevron"
+        [class.grouped-picker__chevron--open]="isOpen()"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+    >
+        <path
+            d="M6 9l6 6 6-6"
+            stroke="currentColor"
+            stroke-width="2"
+            fill="none"
+            stroke-linecap="round"
+        />
+    </svg>
+</button>
+
+<ng-template #dropdownTemplate>
+    <div
+        class="grouped-picker__panel"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
+        <div class="grouped-picker__search">
+            <input
+                type="text"
+                class="grouped-picker__search-input"
+                placeholder="Search provider or model..."
+                aria-label="Search provider or model"
+                autocomplete="off"
+                [value]="searchQuery()"
+                (input)="onSearchChange($event)"
+            />
+        </div>
+
+        <div class="grouped-picker__content">
+            @if (loading()) {
+                <div class="grouped-picker__loading">
+                    <div class="grouped-picker__spinner"></div>
+                    <p>{{ loadingText() }}</p>
+                </div>
+            } @else if (filteredGroups().length === 0) {
+                <div class="grouped-picker__empty">
+                    <app-svg-icon
+                        icon="ui/search"
+                        size="2rem"
+                    />
+                    <p class="grouped-picker__empty-title">{{ emptyTitle() }}</p>
+                    @if (emptyText()) {
+                        <p class="grouped-picker__empty-text">{{ emptyText() }}</p>
+                    }
+                </div>
+            } @else {
+                @for (group of filteredGroups(); track group.id) {
+                    <div class="grouped-picker__group">
+                        <div class="grouped-picker__group-header">
+                            <div class="grouped-picker__group-info">
+                                <app-svg-icon
+                                    [icon]="group.icon"
+                                    size="1.125rem"
+                                />
+                                <span class="grouped-picker__group-name">{{ group.name | uppercase }}</span>
+                            </div>
+                            @if (groupActionTemplate(); as action) {
+                                <ng-container *ngTemplateOutlet="action; context: { $implicit: group }" />
+                            }
+                        </div>
+
+                        @if (group.items.length > 0) {
+                            <div class="grouped-picker__items">
+                                @for (item of visibleItems(group); track item.id) {
+                                    <div
+                                        class="grouped-picker__item"
+                                        [class.grouped-picker__item--selected]="isSelected(group, item)"
+                                        [class.grouped-picker__item--dimmed]="item.dimmed"
+                                        [class.grouped-picker__item--disabled]="item.disabled"
+                                    >
+                                        <button
+                                            type="button"
+                                            class="grouped-picker__item-select"
+                                            [disabled]="item.disabled"
+                                            [attr.aria-pressed]="isSelected(group, item)"
+                                            appTooltipOnOverflow=".grouped-picker__item-name"
+                                            [matTooltip]="item.name"
+                                            (click)="pick(item)"
+                                        >
+                                            <span class="grouped-picker__item-name">{{ item.name }}</span>
+                                        </button>
+                                        @if (itemSuffixTemplate(); as suffix) {
+                                            <ng-container *ngTemplateOutlet="suffix; context: { $implicit: item }" />
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            @if (isCollapsible(group)) {
+                                <button
+                                    type="button"
+                                    class="grouped-picker__expand-btn"
+                                    [matTooltip]="isExpanded(group) ? 'Show less' : 'Show more'"
+                                    (click)="toggleExpand(group); $event.stopPropagation()"
+                                >
+                                    <svg
+                                        width="12"
+                                        height="12"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            [attr.d]="isExpanded(group) ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            fill="none"
+                                            stroke-linecap="round"
+                                        />
+                                    </svg>
+                                    @if (isExpanded(group)) {
+                                        Show less
+                                    } @else {
+                                        {{ hiddenCount(group) }} more
+                                    }
+                                </button>
+                            }
+                        } @else if (emptyGroupText()) {
+                            <div class="grouped-picker__group-empty">
+                                <p>{{ emptyGroupText() }}</p>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</ng-template>

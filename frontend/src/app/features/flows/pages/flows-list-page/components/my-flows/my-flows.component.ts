@@ -23,7 +23,7 @@ import {
 } from '@shared/components';
 import { DragScrollDirective } from '@shared/directives';
 import { BulkDeleteService, LABELS_STORE } from '@shared/services';
-import { showExportExclusionWarning } from '@shared/utils';
+import { extractHttpErrorMessage, showExportExclusionWarning } from '@shared/utils';
 import { filter, switchMap } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
@@ -390,9 +390,9 @@ export class MyFlowsComponent implements AfterViewChecked {
 
                 showExportExclusionWarning(this.toastService, excluded);
             },
-            error: (error) => {
+            error: (error: HttpErrorResponse) => {
                 console.error('Export failed:', error);
-                this.toastService.error(`Failed to export flow "${flow.name}"`);
+                this.toastService.error(extractHttpErrorMessage(error, `Failed to export flow "${flow.name}"`));
             },
         });
     }

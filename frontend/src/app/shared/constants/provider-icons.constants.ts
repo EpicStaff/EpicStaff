@@ -8,6 +8,7 @@ export const PROVIDER_ICON_PATHS: Record<string, string> = {
     gemini: 'llm-gemini',
     cohere: 'llm-cohere',
     mistral: 'llm-mistral',
+    typesafe: 'llm-typesafe',
 
     // Default icon
     default: 'logo',

@@ -306,12 +306,15 @@ describe('FlowGraphComponent', () => {
             expect(dialogOpen.mock.calls.map(([, config]) => config.data.authorship)).toEqual([recorded, recorded]);
         });
 
-        it('does not open the note dialog', () => {
+        it('opens the note dialog in readonly mode', () => {
+            dialogOpen.mockReturnValue({ closed: of(null) });
             const [, note] = flowService.nodes();
 
             component.onOpenNodePanel(note);
 
-            expect(dialogOpen).not.toHaveBeenCalled();
+            expect(dialogOpen).toHaveBeenCalledTimes(1);
+            const [, config] = dialogOpen.mock.calls[0];
+            expect(config.data.readonly).toBe(true);
         });
 
         it('ignores panel saves and a full-save request', () => {

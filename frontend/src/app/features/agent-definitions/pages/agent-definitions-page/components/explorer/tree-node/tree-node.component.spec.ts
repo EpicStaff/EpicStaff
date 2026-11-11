@@ -1,11 +1,13 @@
-import { signal } from '@angular/core';
+import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
 import { StorageDragService } from '../../../../../../files/services/storage-drag.service';
+import { Surface } from '../../../../../models/surface.model';
 import { BranchTreeNode } from '../../../../../models/tree-node.model';
+import { AgentsPageStore } from '../../../../../services/agents-page-store.service';
 import { SurfaceDragService } from '../../../../../services/surface-drag.service';
 import { ExplorerTreeMenuOpenEvent, TreeNodeComponent } from './tree-node.component';
 
@@ -16,15 +18,42 @@ type PermissionCheck = (resource: ResourceCode, action: ActionCode) => boolean;
 const FULL_ACCESS: PermissionCheck = () => true;
 const READ_ONLY: PermissionCheck = (_resource, action) => action === ActionCode.Read;
 
+/** The parts of the store a row reads: the surfaces (who owns what) and the export selection. */
+interface TreeNodeStore {
+    surfaces: WritableSignal<Surface[]>;
+    agentExportMode: WritableSignal<boolean>;
+    selectedAgentIds: WritableSignal<Set<number>>;
+    toggleAgentSelection(id: number): void;
+}
+
+/** The store with no surfaces and its export selection, toggling like the real one. */
+function exportSelectionStore(exportMode = false): TreeNodeStore {
+    const selectedAgentIds = signal(new Set<number>());
+    return {
+        surfaces: signal<Surface[]>([]),
+        agentExportMode: signal(exportMode),
+        selectedAgentIds,
+        toggleAgentSelection: (id) =>
+            selectedAgentIds.update((ids) => {
+                const next = new Set(ids);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+            }),
+    };
+}
+
 function render(
     node: BranchTreeNode,
-    can: PermissionCheck
+    can: PermissionCheck,
+    store: TreeNodeStore = exportSelectionStore()
 ): { fixture: ComponentFixture<TreeNodeComponent>; host: HTMLElement; opened: ExplorerTreeMenuOpenEvent[] } {
     TestBed.configureTestingModule({
         providers: [
             { provide: PermissionsService, useValue: { can } },
             { provide: StorageDragService, useValue: { isDragging: signal(false) } },
             { provide: SurfaceDragService, useValue: { isDragging: signal(false) } },
+            { provide: AgentsPageStore, useValue: store },
         ],
     });
     // The overflow tooltip needs ResizeObserver, which jsdom lacks; it plays no part in the row menu.
@@ -48,10 +77,10 @@ function openMenuLabels(host: HTMLElement, opened: ExplorerTreeMenuOpenEvent[]):
 }
 
 describe('TreeNodeComponent row menu "View Details"', () => {
-    it('sits between Duplicate and Delete on an agent row', () => {
+    it('sits between Duplicate and Export on an agent row', () => {
         const { host, opened } = render(AGENT_NODE, FULL_ACCESS);
 
-        expect(openMenuLabels(host, opened)).toEqual(['Duplicate', 'View Details', 'Delete']);
+        expect(openMenuLabels(host, opened)).toEqual(['Duplicate', 'View Details', 'Export', 'Delete']);
     });
 
     it('is offered to a user who can only read agents, as the only item', () => {
@@ -59,6 +88,17 @@ describe('TreeNodeComponent row menu "View Details"', () => {
 
         expect(moreButton(host)).not.toBeNull();
         expect(openMenuLabels(host, opened)).toEqual(['View Details']);
+    });
+
+    it('leaves out Duplicate on an agent owning a surface when the user cannot create surfaces', () => {
+        const store = exportSelectionStore();
+        store.surfaces.set([{ id: 20, name: 'Reader inbox', owner_agent: 3 } as Partial<Surface> as Surface]);
+        const cannotCreateSurfaces: PermissionCheck = (resource, action) =>
+            !(resource === ResourceCode.Surfaces && action === ActionCode.Create);
+
+        const { host, opened } = render(AGENT_NODE, cannotCreateSurfaces, store);
+
+        expect(openMenuLabels(host, opened)).toEqual(['View Details', 'Export', 'Delete']);
     });
 
     it('opens the menu for that agent with the ⋮ button as the trigger', () => {
@@ -153,5 +193,79 @@ describe('TreeNodeComponent row name', () => {
         pressOnName(host, 'ArrowLeft');
         fixture.detectChanges();
         expect(host.querySelector('.children')).toBeNull();
+    });
+});
+
+describe('TreeNodeComponent agent export selection', () => {
+    function checkbox(host: HTMLElement): HTMLInputElement | null {
+        return host.querySelector<HTMLInputElement>('.row__check input[type="checkbox"]');
+    }
+
+    it('shows no checkbox outside export mode', () => {
+        const { host } = render(AGENT_NODE, FULL_ACCESS);
+
+        expect(checkbox(host)).toBeNull();
+    });
+
+    it('shows an unticked checkbox on an agent row in export mode', () => {
+        const { host } = render(AGENT_NODE, FULL_ACCESS, exportSelectionStore(true));
+
+        expect(checkbox(host)).not.toBeNull();
+        expect(checkbox(host)!.checked).toBe(false);
+    });
+
+    it('shows no checkbox on a surface row in export mode', () => {
+        const { host } = render(
+            { kind: 'surface', surfaceId: 5, label: 'Surface_1', shared: true },
+            FULL_ACCESS,
+            exportSelectionStore(true)
+        );
+
+        expect(checkbox(host)).toBeNull();
+    });
+
+    it('ticks the agent once when its checkbox is clicked', () => {
+        const store = exportSelectionStore(true);
+        const { fixture, host } = render(AGENT_NODE, FULL_ACCESS, store);
+
+        checkbox(host)!.click();
+        fixture.detectChanges();
+
+        expect([...store.selectedAgentIds()]).toEqual([3]);
+        expect(checkbox(host)!.checked).toBe(true);
+    });
+
+    it('ticks the agent instead of selecting it on a click anywhere on the row', () => {
+        const store = exportSelectionStore(true);
+        const { fixture, host } = render(AGENT_NODE, FULL_ACCESS, store);
+        const selected: BranchTreeNode[] = [];
+        fixture.componentInstance.selectNode.subscribe((node) => selected.push(node));
+
+        host.querySelector<HTMLElement>('.row__icon')!.click();
+
+        expect([...store.selectedAgentIds()]).toEqual([3]);
+        expect(selected).toEqual([]);
+    });
+
+    it('unticks an agent that is already ticked', () => {
+        const store = exportSelectionStore(true);
+        store.selectedAgentIds.set(new Set([3]));
+        const { host } = render(AGENT_NODE, FULL_ACCESS, store);
+
+        host.querySelector<HTMLElement>('.row__icon')!.click();
+
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('stops the agent row from being dragged while in export mode', () => {
+        const store = exportSelectionStore();
+        const { fixture, host } = render(AGENT_NODE, FULL_ACCESS, store);
+        const row = (): HTMLElement => host.querySelector<HTMLElement>('.row--agent')!;
+        expect(row().getAttribute('draggable')).toBe('true');
+
+        store.agentExportMode.set(true);
+        fixture.detectChanges();
+
+        expect(row().hasAttribute('draggable')).toBe(false);
     });
 });

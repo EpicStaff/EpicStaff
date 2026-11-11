@@ -46,7 +46,13 @@ import {
     SecretsStorageService,
     SystemOneConfigStorageService,
 } from '@shared/services';
-import { downloadBlob, formatNodeLabel, getProviderIconPath, SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
+import {
+    downloadBlob,
+    escapeHtml,
+    formatNodeLabel,
+    getProviderIconPath,
+    SECRET_CODE_NEEDS_USE_MESSAGE,
+} from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -71,6 +77,7 @@ import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
 import { FlowService } from '../../../services/flow.service';
 import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
+import { NodeSaveErrorsStore } from '../../../services/node-save-errors.store';
 import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
@@ -99,6 +106,7 @@ import {
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { routeTargetFormat } from '../shared/diff/route-target-format';
+import { NodeSaveErrorsComponent } from '../shared/node-save-errors/node-save-errors.component';
 import {
     CDT_HEADER_COLLAPSE_AT,
     CDT_HEADER_COLLAPSE_MIN_SCROLLABLE,
@@ -151,6 +159,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         MissingReferenceNoteComponent,
         DiffFieldMarkComponent,
         CodeDiffViewComponent,
+        NodeSaveErrorsComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: [
@@ -232,6 +241,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private readonly diffState = inject(FlowDiffStateService);
+    private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
     private flowService = inject(FlowService);
     private undoRedoService = inject(UndoRedoService);
 
@@ -385,6 +395,20 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public promptEntries = computed(() => {
         const p = this.prompts();
         return Object.entries(p).map(([id, config]) => ({ id, ...config }));
+    });
+
+    /** Per prompt key, why the last save refused its text, until it is edited. */
+    protected readonly promptTextSaveErrors = computed<ReadonlyMap<string, readonly string[]>>(() => {
+        const nodeId = this.node().id;
+        return new Map(
+            Object.entries(this.prompts()).map(([key, prompt]) => [
+                key,
+                this.nodeSaveErrors.fieldMessages(nodeId, 'prompt_text', prompt.prompt_text ?? '', {
+                    list: 'prompt_configs',
+                    key,
+                }),
+            ])
+        );
     });
 
     public sideEditorPrompt = computed(() => {
@@ -917,7 +941,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.confirmationDialogService
             .confirm({
                 title: 'Delete Prompt',
-                message: `Are you sure you want to delete <strong>${id}</strong> prompt?`,
+                message: `Are you sure you want to delete <strong>${escapeHtml(id)}</strong> prompt?`,
                 confirmText: 'Delete',
                 cancelText: 'Cancel',
                 type: 'danger',

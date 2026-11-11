@@ -6,6 +6,7 @@ import pytest
 from services.graph.events import StopEvent
 from services.graph.nodes.knowledge_node import KnowledgeNode
 from services.knowledge_search_service import KnowledgeSearchService
+from src.shared.flow_templates import RefusedPlaceholderError
 from src.shared.models import (
     FoundChunk,
     GraphRagBasicSearchParams,
@@ -227,3 +228,70 @@ def test_search_usage_with_unknown_llm_cost_counts_it_as_zero():
 
 def test_empty_search_usage_has_no_token_usage():
     assert SearchUsage().to_token_usage() == {}
+
+
+def search_query(monkeypatch, query_template: str, input_: dict) -> str:
+    """Run the node with `query_template` and return the query sent to the knowledge service."""
+    received = {}
+
+    class CapturingKnowledgeClient(FakeKnowledgeClient):
+        def search_with_usage(self, **kwargs):
+            received.update(kwargs)
+            return SearchOutcome(result=[])
+
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", CapturingKnowledgeClient
+    )
+    node = make_node(KnowledgeSearchService(redis_service=MagicMock()))
+    node.query_template = query_template
+
+    asyncio.run(node.execute(state={}, writer=MagicMock(), execution_order=1, input_=input_))
+
+    return received["query"]
+
+
+@pytest.mark.parametrize(
+    ("query_template", "expected_query"),
+    [
+        ("Docs about {topic}", "Docs about cats"),
+        ("Docs about {topic} and {missing}", "Docs about cats and {missing}"),
+        ("Docs {{literal}} about {topic}", "Docs {literal} about cats"),
+        ('Docs like {"a": 1} about {topic}', 'Docs like {"a": 1} about {topic}'),
+        ("Docs about {topic.upper}", "Docs about {topic.upper}"),
+        ("Docs about {q[text]}", "Docs about dogs"),
+    ],
+    ids=[
+        "plain",
+        "missing-left-as-written",
+        "escaped-braces",
+        "json-example-verbatim",
+        "attribute-of-text-left-as-written",
+        "key-path",
+    ],
+)
+def test_query_is_rendered_from_the_input(monkeypatch, query_template, expected_query):
+    query = search_query(monkeypatch, query_template, {"topic": "cats", "q": {"text": "dogs"}})
+
+    assert query == expected_query
+
+
+class RecordingKnowledgeSearchService:
+    def __init__(self):
+        self.searches = []
+
+    def search_knowledges(self, **kwargs):
+        self.searches.append(kwargs)
+        return []
+
+
+def test_refused_query_placeholder_fails_before_any_search():
+    service = RecordingKnowledgeSearchService()
+    node = make_node(service)
+    node.query_template = "Docs about {q._x}"
+
+    with pytest.raises(RefusedPlaceholderError):
+        asyncio.run(
+            node.execute(state={}, writer=MagicMock(), execution_order=1, input_={"q": {"_x": "x"}})
+        )
+
+    assert service.searches == []

@@ -73,7 +73,8 @@ class TablesConfig(AppConfig):
             logger.info(f"{settings.DEBUG=}")
 
         # Elect a single owner across web-server workers to run the daily
-        # litellm model-cost refresh; skip during migrate/makemigrations/tests.
+        # litellm model-cost refresh when LITELLM_MODEL_COST_REFRESH_ENABLED is on;
+        # skip during migrate/makemigrations/tests.
         argv0 = sys.argv[0] if sys.argv else ""
         is_web_server = (
             "runserver" in sys.argv

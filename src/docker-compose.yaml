@@ -51,9 +51,10 @@ x-communication-env: &communication-env
   REALTIME_CHANNELS_INVALIDATE_CHANNEL: ${REALTIME_CHANNELS_INVALIDATE_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
-# Bounded container logs (50 MB at most), for services a plugin can make log at will: a plugin's
-# flood of requests writes a line per request to plugins_egress's log, and its failing queries
-# to plugins_db's.
+# Bounded container logs (50 MB per container at most), set on every service: Docker's default
+# json-file log never rotates, so anything that makes a service log at will fills the host disk.
+# epicstaff-nginx writes a line per public request; a plugin's flood of requests does the same
+# to plugins_egress's log, and its failing queries to plugins_db's.
 x-bounded-logs: &bounded-logs
   driver: json-file
   options:
@@ -75,6 +76,7 @@ x-bounded-logs: &bounded-logs
 
 services:
   django_app:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
     build:
@@ -132,6 +134,7 @@ services:
       DJANGO_NOTIFY_EMAIL_THROTTLE_RATE: ${DJANGO_NOTIFY_EMAIL_THROTTLE_RATE:?}
       DJANGO_LOGIN_THROTTLE_RATE: ${DJANGO_LOGIN_THROTTLE_RATE:?}
       DJANGO_LOGIN_IP_THROTTLE_RATE: ${DJANGO_LOGIN_IP_THROTTLE_RATE:?}
+      DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE: ${DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE:?}
       DJANGO_TOKEN_REFRESH_THROTTLE_RATE: ${DJANGO_TOKEN_REFRESH_THROTTLE_RATE:?}
       DJANGO_NUM_PROXIES: ${DJANGO_NUM_PROXIES:?}
       DJANGO_FIRST_SETUP_MODE: ${DJANGO_FIRST_SETUP_MODE:?}
@@ -159,6 +162,7 @@ services:
       MALLOC_ARENA_MAX: ${DJANGO_MALLOC_ARENA_MAX:?}
       DJANGO_MALLOC_TRIM_INTERVAL: ${DJANGO_MALLOC_TRIM_INTERVAL:?}
       DJANGO_GRAPH_MESSAGE_BATCH_SIZE: ${DJANGO_GRAPH_MESSAGE_BATCH_SIZE:?}
+      LITELLM_MODEL_COST_REFRESH_ENABLED: ${LITELLM_MODEL_COST_REFRESH_ENABLED:?}
 
       SANDBOX_MAX_EXECUTION_TIMEOUT: ${SANDBOX_MAX_EXECUTION_TIMEOUT:?}
       SANDBOX_DEFAULT_EXECUTION_TIMEOUT: ${SANDBOX_DEFAULT_EXECUTION_TIMEOUT:?}
@@ -226,6 +230,7 @@ services:
       retries: 100
 
   realtime:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/realtime:${IMAGE_TAG:?}
     container_name: realtime
@@ -270,6 +275,7 @@ services:
         condition: service_started
 
   manager:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/manager:${IMAGE_TAG:?}
     build:
@@ -309,6 +315,7 @@ services:
         condition: service_healthy
 
   crewdb:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/crewdb:${IMAGE_TAG:?}
     build:
@@ -355,8 +362,9 @@ services:
       start_period: 15s
 
   redis:
-    image: redis
+    image: redis:8.10.3@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
     container_name: redis
+    logging: *bounded-logs
     restart: unless-stopped
     networks:
       - backend-network
@@ -389,6 +397,7 @@ services:
       start_period: 5s
 
   crew:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/crew:${IMAGE_TAG:?}
     build:
@@ -497,7 +506,7 @@ services:
   #       condition: service_started
 
   storage:
-    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
+    image: rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
     container_name: storage
     environment:
       RUSTFS_ACCESS_KEY: ${STORAGE_USER:?}
@@ -515,10 +524,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging: *bounded-logs
     restart: unless-stopped
 
   storage-init:
-    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+    image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
     container_name: storage-init
     networks:
       - backend-network
@@ -548,9 +558,11 @@ services:
       'http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}?policy') &&
       case $$status in 2??) echo 'Avatars are readable without credentials.' ;; *) echo \"Bucket policy failed: HTTP $$status\" && exit 1 ;; esac
       "
+    logging: *bounded-logs
     restart: on-failure
 
   frontend:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/frontend:${IMAGE_TAG:?}
     build:
@@ -570,6 +582,7 @@ services:
       - frontend-network
 
   webhook:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?}
     container_name: webhook
@@ -577,7 +590,7 @@ services:
       context: .
       dockerfile: ./webhook/Dockerfile
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env]
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
 
@@ -729,6 +742,7 @@ services:
       # catches a crash-looping nginx (restarting), not one that runs but stops answering.
       retries: 3
       start_period: 10s
+    logging: *bounded-logs
     restart: always
 
 
@@ -739,13 +753,14 @@ services:
   # not remove this gate or give DJANGO_EMAIL_HOST a live prod default.
   mailpit:
     container_name: mailpit
-    image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
+    image: axllent/mailpit:v1.33.1@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
     profiles: ["dev"]
     ports:
       - "1025:1025"   # SMTP
       - "8025:8025"   # web UI: http://localhost:8025/
     networks:
       - backend-network
+    logging: *bounded-logs
 
   agent:
     image: ghcr.io/epicstaff/agent:${IMAGE_TAG:?}
@@ -753,6 +768,7 @@ services:
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
+    logging: *bounded-logs
     restart: unless-stopped
     # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
     stop_grace_period: 5m
@@ -791,8 +807,9 @@ services:
   # COMPOSE_PROFILES includes "auditor"; AUDIT_TRAIL_ENABLED=true then makes them do work.
   # Nothing outside the profile may depend_on them, or a stack without the audit trail would not start.
   opensearch:
+    logging: *bounded-logs
     restart: unless-stopped
-    image: opensearchproject/opensearch:2.19.1
+    image: opensearchproject/opensearch:2.19.1@sha256:72fe2fc84be8295906b8efca020b46c58ed45c8da60cd9b8b49e1991e38e89a4
     container_name: opensearch
     profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
@@ -824,6 +841,7 @@ services:
       start_period: 30s
 
   auditor:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:?}
     container_name: auditor
@@ -868,6 +886,7 @@ services:
       start_period: 5s
 
   knowledge_new:
+    logging: *bounded-logs
     restart: unless-stopped
     container_name: knowledge_new
     image: ghcr.io/epicstaff/knowledge_new:${IMAGE_TAG:?}
@@ -967,6 +986,7 @@ services:
       timeout: 10s
       retries: 20
       start_period: 20s
+    logging: *bounded-logs
     restart: unless-stopped
 
   chatdb:
@@ -987,6 +1007,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+    logging: *bounded-logs
     restart: unless-stopped
 
   # The plugin node. Gated behind profiles: ["plugins"]: it starts only when COMPOSE_PROFILES
@@ -1171,6 +1192,7 @@ services:
 
   sandbox_new:
     image: ghcr.io/epicstaff/sandbox_new:${IMAGE_TAG:?}
+    logging: *bounded-logs
     restart: unless-stopped
     container_name: sandbox_new
     build:
@@ -1200,11 +1222,8 @@ services:
       retries: 20
       start_period: 30s
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
-      STORAGE_HOST: ${STORAGE_HOST:?}
-      STORAGE_PORT: ${STORAGE_PORT:?}
-      STORAGE_SSL: ${STORAGE_SSL:?}
-      STORAGE_BUCKET: ${STORAGE_BUCKET:?}
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
+      SANDBOX_CUSTOM_LIBRARY_BUCKET: ${SANDBOX_CUSTOM_LIBRARY_BUCKET:?}
       SANDBOX_HOST: ${SANDBOX_HOST:?}
       SANDBOX_PORT: ${SANDBOX_PORT:?}
       SANDBOX_DEBUG: ${SANDBOX_DEBUG:?}

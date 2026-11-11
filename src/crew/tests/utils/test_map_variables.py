@@ -1,8 +1,11 @@
+import re
 import string
 import time
 
+import pytest
 from dotdict import DotDict
 
+from services.graph.exceptions import InvalidStatePathError
 from utils.map_variables import map_variables_to_input
 
 
@@ -53,3 +56,59 @@ def test_map_variables_to_input_with_deeply_nested_missing_path_uses_default():
         f"map_variables_to_input took too long for a missing deep path: {elapsed:.3f}s"
     )
     assert mapped == {"output_key": "fallback"}
+
+
+@pytest.mark.parametrize(
+    ("input_key", "rejected_path"),
+    [
+        ("variables.__class__.__init__.__globals__", "variables.__class__.__init__.__globals__"),
+        ("variables._properties", "variables._properties"),
+        ("variables.orders[0].__dict__", "variables.orders[0].__dict__"),
+        # A default does not turn the rejection into a silent fallback.
+        ("variables.user._secret|fallback", "variables.user._secret"),
+    ],
+)
+def test_map_variables_to_input_rejects_path_segment_starting_with_underscore(
+    input_key, rejected_path
+):
+    variables = DotDict({"user": {"name": "Ann"}, "orders": [{"id": 1}]})
+
+    with pytest.raises(InvalidStatePathError, match=re.escape(f"'{rejected_path}'")):
+        map_variables_to_input(variables, {"output_key": input_key})
+
+
+def test_map_variables_to_input_reads_segment_with_underscore_inside_its_name():
+    variables = DotDict({"user_profile": {"first_name": "Ann"}})
+
+    mapped = map_variables_to_input(variables, {"name": "variables.user_profile.first_name"})
+
+    assert mapped == {"name": "Ann"}
+
+
+@pytest.mark.parametrize(
+    "input_key",
+    [
+        "variables.update",
+        "variables.user.items",
+        "variables.user.name.upper",
+        "variables.orders[0].get",
+        # A default applies to a missing value, not to one that is not data.
+        "variables.update|fallback",
+    ],
+)
+def test_map_variables_to_input_rejects_path_resolving_to_a_method(input_key):
+    variables = DotDict({"user": {"name": "Ann"}, "orders": [{"id": 1}]})
+
+    with pytest.raises(InvalidStatePathError, match=re.escape(f"'{input_key.split('|')[0]}'")):
+        map_variables_to_input(variables, {"output_key": input_key})
+
+
+def test_map_variables_to_input_returns_nested_values_as_plain_data():
+    variables = DotDict({"user": {"name": "Ann", "tags": ["a", {"b": 1.5}], "active": True}})
+
+    mapped = map_variables_to_input(variables, {"user": "variables.user"})
+
+    assert mapped == {"user": {"name": "Ann", "tags": ["a", {"b": 1.5}], "active": True}}
+    assert type(mapped["user"]) is dict
+    assert type(mapped["user"]["tags"]) is list
+    assert type(mapped["user"]["tags"][1]) is dict

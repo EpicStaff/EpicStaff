@@ -795,7 +795,7 @@ export class LlmLibrarySectionComponent implements OnInit {
         };
     }
 
-    /** One group per System One provider that has cards (TypeSafe, LLM), in the order they were added. */
+    /** One group per System One provider that has cards (TypeSafe, OpenAI, LLM), in the order they were added. */
     private toSystemOneGroups(cards: { config: SystemOneConfig; model: LlmLibraryModel }[]): LibraryProviderGroup[] {
         return SYSTEM_ONE_PROVIDERS.map((provider) => ({
             provider,

@@ -1,3 +1,7 @@
+from agents.serializers.agent_definition_serializers import (
+    AgentDefinitionCopyRequestSerializer,
+    AgentDefinitionReadSerializer,
+)
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -104,6 +108,7 @@ def _copy_post_schema(
     error_400_description: str,
     error_400_example: dict | None,
     error_403: OpenApiResponse | None = None,
+    error_404: OpenApiResponse | None = None,
 ) -> dict:
     responses = {
         201: OpenApiResponse(
@@ -114,6 +119,8 @@ def _copy_post_schema(
     }
     if error_403 is not None:
         responses[403] = error_403
+    if error_404 is not None:
+        responses[404] = error_404
     if error_400_example is not None:
         responses[400] = OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -348,3 +355,44 @@ PYTHON_CODE_TOOL_IMPORT_POST = _import_post_schema(model_name="PythonCodeTool")
 MCP_TOOL_EXPORT_GET = _export_get_schema(model_name="McpTool")
 MCP_TOOL_BULK_EXPORT_POST = _bulk_export_post_schema(model_name="McpTool")
 MCP_TOOL_IMPORT_POST = _import_post_schema(model_name="McpTool")
+
+AGENT_DEFINITION_EXPORT_GET = _export_get_schema(model_name="AgentDefinition")
+AGENT_DEFINITION_BULK_EXPORT_POST = _bulk_export_post_schema(model_name="AgentDefinition")
+AGENT_DEFINITION_IMPORT_POST = _import_post_schema(model_name="AgentDefinition")
+
+AGENT_DEFINITION_COPY_POST = {
+    **_copy_post_schema(
+        model_name="AgentDefinition",
+        response_serializer=AgentDefinitionReadSerializer,
+        built_in_note=(
+            "Requires CREATE on agents, and also CREATE on surfaces when the agent owns "
+            "surfaces. Settings, LLM configs, the group and the realtime settings are "
+            "copied. Shared default surfaces are linked to the copy as they are; every "
+            "surface the agent owns is cloned for the copy with its tools, storage items "
+            "and knowledge, and gets its own numbered name. The realtime wake word is "
+            "copied unchanged."
+        ),
+        error_400_description=(
+            "`name` is not a string, blank, or longer than the agent name column "
+            "(`name` errors); or a concurrent copy took the picked name: retry the "
+            "request (`message`)."
+        ),
+        error_400_example={"message": "A copy with that name was just created; please retry."},
+        error_403=OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description=(
+                "The caller lacks CREATE on agents (`permission_denied`), or the agent owns "
+                "surfaces and the caller lacks CREATE on surfaces "
+                "(`agent_with_owned_surfaces_requires_surfaces_create_permission`). Nothing "
+                "is written."
+            ),
+        ),
+        error_404=OpenApiResponse(
+            description=(
+                "No such agent in the active organization: missing, in the recycle bin, or "
+                "another organization's."
+            )
+        ),
+    ),
+    "request": AgentDefinitionCopyRequestSerializer,
+}

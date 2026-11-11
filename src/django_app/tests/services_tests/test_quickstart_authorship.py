@@ -5,6 +5,7 @@ from rest_framework import status
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from tables.models import LLMConfig, LLMModel, Provider
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
+from tables.models.llm_models import SystemOneConfig
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from tables.models.secret_models import Secret
 from tables.services.quickstart_service import QuickstartService
@@ -24,6 +25,7 @@ def _authors_of_rows_created_in(org) -> dict[str, set[int | None]]:
             LLMModel,
             EmbeddingModel,
             OpenAIRealtimeConfig,
+            SystemOneConfig,
         )
     }
 
@@ -49,6 +51,7 @@ def test_quickstart_authors_every_created_row_with_acting_user(
         "LLMModel": {admin_acme.id},
         "EmbeddingModel": {admin_acme.id},
         "OpenAIRealtimeConfig": {admin_acme.id},
+        "SystemOneConfig": {admin_acme.id},
     }
 
 
@@ -115,3 +118,80 @@ def test_quickstart_endpoint_authors_configs_with_requesting_user(
     assert response.status_code == status.HTTP_200_OK, response.content
     assert LLMConfig.objects.get(org=acme).created_by_id == admin_acme.id
     assert EmbeddingConfig.objects.get(org=acme).created_by_id == admin_acme.id
+
+
+@pytest.mark.django_db
+def test_openai_quickstart_creates_one_system_one_config_sharing_the_bundle_secret(
+    openai_provider, acme, admin_acme
+):
+    result = QuickstartService().quickstart(
+        provider="openai", api_key="sk-test", org_id=acme.id, user=admin_acme
+    )
+
+    assert result["success"], result
+    system_one_config = SystemOneConfig.objects.get(org=acme)
+    assert system_one_config.provider == "openai"
+    assert system_one_config.model_name == "gpt-6-luna"
+    assert system_one_config.llm_config_id is None
+    assert system_one_config.custom_name == result["config_name"]
+    assert system_one_config.api_key_secret_id == result["llm_config"].api_key_secret_id
+
+
+@pytest.mark.django_db
+def test_non_openai_quickstart_creates_no_system_one_config(acme, admin_acme):
+    Provider.objects.create(name="gemini")
+
+    result = QuickstartService().quickstart(
+        provider="gemini", api_key="sk-test", org_id=acme.id, user=admin_acme
+    )
+
+    assert result["success"], result
+    assert not SystemOneConfig.objects.filter(org=acme).exists()
+
+
+@pytest.mark.django_db
+def test_openai_quickstart_reusing_a_secret_points_system_one_config_at_it(
+    openai_provider, acme, admin_acme
+):
+    secret = secret_service.create(text="sk-shared", name="shared-key", org=acme)
+
+    result = QuickstartService().quickstart(
+        provider="openai", secret=secret, org_id=acme.id, user=admin_acme
+    )
+
+    assert result["success"], result
+    assert SystemOneConfig.objects.get(org=acme).api_key_secret_id == secret.id
+
+
+@pytest.mark.django_db
+def test_second_openai_quickstart_creates_a_second_system_one_config(
+    openai_provider, acme, admin_acme
+):
+    service = QuickstartService()
+    service.quickstart(provider="openai", api_key="sk-1", org_id=acme.id, user=admin_acme)
+
+    result = service.quickstart(
+        provider="openai", api_key="sk-2", org_id=acme.id, user=admin_acme
+    )
+
+    assert result["success"], result
+    assert set(
+        SystemOneConfig.objects.filter(org=acme).values_list("custom_name", flat=True)
+    ) == {"quickstart_openai", "quickstart_openai_1"}
+
+
+@pytest.mark.django_db
+def test_existing_system_one_config_name_is_skipped_by_quickstart(
+    openai_provider, acme, admin_acme
+):
+    SystemOneConfig.objects.create(
+        custom_name="quickstart_openai", provider="openai", model_name="gpt-6-luna", org=acme
+    )
+
+    result = QuickstartService().quickstart(
+        provider="openai", api_key="sk-test", org_id=acme.id, user=admin_acme
+    )
+
+    assert result["success"], result
+    assert result["config_name"] == "quickstart_openai_1"
+    assert SystemOneConfig.objects.filter(org=acme).count() == 2

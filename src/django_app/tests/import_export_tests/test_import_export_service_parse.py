@@ -90,6 +90,32 @@ class TestParseAndValidateGuards:
             service.inspect_entity(_file(payload))
         assert expected_message in str(exc_info.value.detail)
 
+    @pytest.mark.parametrize(
+        ("version", "shown_as"),
+        [
+            (None, "null"),
+            ("5", '"5"'),
+            ("abc", '"abc"'),
+            ([1], "[1]"),
+            ({"major": 5}, '{"major": 5}'),
+            (True, "true"),
+            (4.5, "4.5"),
+        ],
+    )
+    def test_non_integer_version_raises_validation_error(self, service, version, shown_as):
+        payload = json.dumps(
+            {"main_entity": "PythonCodeTool", "version": version, "PythonCodeTool": []}
+        ).encode()
+        with pytest.raises(ValidationError) as exc_info:
+            service.inspect_entity(_file(payload))
+        assert f"File version must be a whole number, got {shown_as}" in str(
+            exc_info.value.detail
+        )
+
+    def test_missing_version_imports_as_version_one(self, service):
+        payload = b'{"main_entity": "PythonCodeTool", "PythonCodeTool": []}'
+        assert service.inspect_entity(_file(payload)) == {"review_items": []}
+
     def test_valid_payload_returns_review_items(self, service):
         payload = (
             b'{"main_entity": "PythonCodeTool", "version": 2, "PythonCodeTool": []}'

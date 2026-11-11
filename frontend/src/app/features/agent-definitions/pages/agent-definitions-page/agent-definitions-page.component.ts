@@ -55,7 +55,11 @@ import { DetailCrumb, DetailHeaderComponent } from './components/detail-header/d
 import { EmptyDetailComponent } from './components/empty-detail/empty-detail.component';
 import { ExplorerComponent } from './components/explorer/explorer.component';
 import { ExplorerMenuSubject } from './components/explorer/explorer-context-menu/explorer-menu.model';
-import { GROUP_MENU_ACTION } from './components/explorer/explorer-menu.util';
+import {
+    AGENTS_SECTION_MENU_ACTION,
+    canDuplicateAgent,
+    GROUP_MENU_ACTION,
+} from './components/explorer/explorer-menu.util';
 import {
     ExplorerTreeAttachSurfaceEvent,
     ExplorerTreeMenuEvent,
@@ -126,7 +130,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     /** Can the selected item (agent or surface) be duplicated in the active org? */
     protected readonly canDuplicateSelected = computed<boolean>(() => {
         this.permissions.active();
-        if (this.store.selectedAgent()) return this.permissions.can(ResourceCode.Agents, ActionCode.Create);
+        const agent = this.store.selectedAgent();
+        if (agent) return canDuplicateAgent(agent.id, this.store.surfaces(), this.permissions);
         if (this.store.selectedSurface()) return this.permissions.can(ResourceCode.Surfaces, ActionCode.Create);
         return false;
     });
@@ -532,6 +537,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             this.openExplorerAgentDetails(event);
             return;
         }
+        if (event.action === 'export' && event.node.kind === 'agent') {
+            this.store.exportAgent(event.node.agentId);
+            return;
+        }
         if (this.applyGroupMenuAction(event)) return;
         this.guardUnsaved(() => this.applyExplorerTreeMenu(event));
     }
@@ -622,6 +631,12 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     private applyExplorerTreeMenu({ node, action }: ExplorerTreeMenuEvent): void {
+        if (node.kind === 'section-header') {
+            if (action === AGENTS_SECTION_MENU_ACTION.import) this.store.importAgents();
+            else if (action === AGENTS_SECTION_MENU_ACTION.export) this.store.startAgentExport();
+            return;
+        }
+
         if (node.kind === 'agent') {
             if (action === 'delete') this.onDeleteAgentById(node.agentId);
             else if (action === 'duplicate') this.store.duplicateAgent(node.agentId);
