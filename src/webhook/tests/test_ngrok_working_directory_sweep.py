@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from transport_secrets import opener, seal
+from transport_secrets import sealing_cryptographer, seal
 
 from app.core.settings import settings
 from app.main import lifespan
@@ -113,7 +113,7 @@ def _started_working_directory(environment) -> str:
 
 def _make_provider() -> NgrokTunnel:
     return NgrokTunnel(
-        port=settings.WEBHOOK_PORT, auth_token=seal("test-token"), cryptographer=opener()
+        port=settings.WEBHOOK_PORT, auth_token=seal("test-token"), cryptographer=sealing_cryptographer()
     )
 
 
@@ -509,7 +509,7 @@ def test_module_imports_when_fcntl_is_missing(monkeypatch):
 
 
 async def _enter_lifespan(while_running=None):
-    with patch("app.main.TunnelRegistry", return_value=TunnelRegistry(opener())):
+    with patch("app.main.TunnelRegistry", return_value=TunnelRegistry(sealing_cryptographer())):
         async with lifespan(MagicMock()):
             if while_running is not None:
                 await while_running()

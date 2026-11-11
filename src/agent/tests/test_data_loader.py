@@ -106,7 +106,7 @@ async def test_data_loader_redacts_agent_instructions():
 
 @pytest.mark.asyncio
 async def test_data_loader_redacts_python_code_tool_secrets():
-    """A Python-code tool's resolved secrets are plaintext credentials; a key-name
+    """A Python-code tool's secrets dict holds secret values; a key-name
     denylist does not know the key `secrets`, so they must be digested by default
     along with the rest of `tools` rather than passed through unmasked."""
     secret_value = "SENSITIVE_STRIPE_SECRET_KEY_24680"
@@ -163,7 +163,7 @@ async def test_data_loader_redacts_python_code_tool_secrets():
 
 
 @pytest.mark.asyncio
-async def test_data_loader_redacts_agent_llm_credentials():
+async def test_data_loader_redacts_agent_llm_secrets():
     """An agent's resolved LLM config carries a plaintext provider api_key and any
     auth extra_headers; a blanket passthrough of `llm`/`fcm_llm` would leak both —
     on either field, since `fcm_llm` is the same `LLMData` shape as `llm`."""

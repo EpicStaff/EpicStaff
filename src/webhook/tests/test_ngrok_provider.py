@@ -11,7 +11,7 @@ from unittest.mock import patch, ANY
 from app.providers.tunnels import ngrok_tunnel as ngrok_tunnel_module
 from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
 from app.core.settings import settings
-from transport_secrets import opener, seal
+from transport_secrets import sealing_cryptographer, seal
 
 
 def _symlinks_supported(directory) -> bool:
@@ -30,7 +30,7 @@ def _refuse_symlink(*args, **kwargs):
 
 def _make_provider() -> NgrokTunnel:
     return NgrokTunnel(
-        port=settings.WEBHOOK_PORT, auth_token=seal("test-token"), cryptographer=opener()
+        port=settings.WEBHOOK_PORT, auth_token=seal("test-token"), cryptographer=sealing_cryptographer()
     )
 
 
@@ -310,7 +310,7 @@ async def provider_blocked_mid_reconnect(ngrok_environment):
     provider = NgrokTunnel(
         port=settings.WEBHOOK_PORT,
         auth_token=seal("test-token"),
-        cryptographer=opener(),
+        cryptographer=sealing_cryptographer(),
         reconnect_timeout=0,
     )
     await provider.connect()
@@ -380,7 +380,7 @@ async def test_hung_url_callback_does_not_block_disconnect(ngrok_environment):
     provider = NgrokTunnel(
         port=settings.WEBHOOK_PORT,
         auth_token=seal("test-token"),
-        cryptographer=opener(),
+        cryptographer=sealing_cryptographer(),
         reconnect_timeout=0,
     )
     provider._on_url_set = hung_set_url

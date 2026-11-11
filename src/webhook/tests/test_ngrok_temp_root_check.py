@@ -3,7 +3,7 @@ import stat
 import tempfile
 
 import pytest
-from transport_secrets import opener, seal
+from transport_secrets import sealing_cryptographer, seal
 
 from app.core.settings import settings
 from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
@@ -23,7 +23,7 @@ def as_current_user(monkeypatch):
 
 def _make_provider() -> NgrokTunnel:
     return NgrokTunnel(
-        port=settings.WEBHOOK_PORT, auth_token=seal("test-token"), cryptographer=opener()
+        port=settings.WEBHOOK_PORT, auth_token=seal("test-token"), cryptographer=sealing_cryptographer()
     )
 
 

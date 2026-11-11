@@ -324,7 +324,7 @@ async def test_describe_does_not_share_results_between_credentials():
     assert factory.connects == 2
 
 
-async def test_describe_shares_one_result_between_sealings_of_one_credential():
+async def test_describe_shares_one_result_between_sealings_of_one_auth_secret():
     factory = _CountingFactory([])
     gateway = McpToolGateway(
         factory, agent_cryptographer(), clock=_FakeClock(), describe_cache_ttl_s=300

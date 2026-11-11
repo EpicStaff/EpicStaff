@@ -111,8 +111,8 @@ def test_register_tools_with_storage_credentials(tool_manager, sample_chat_data)
 
 
 @pytest.mark.asyncio
-async def test_rag_credentials_reach_knowledge_still_sealed(tool_manager, sample_chat_data):
-    """knowledge_new decrypts the RAG credentials itself; realtime must not open them."""
+async def test_rag_secrets_reach_knowledge_still_sealed(tool_manager, sample_chat_data):
+    """knowledge_new decrypts the RAG secrets itself; realtime must not open them."""
     from src.shared.models import NaiveRagSearchConfig
 
     sealed_embedder_api_key = seal("sk-embedder")

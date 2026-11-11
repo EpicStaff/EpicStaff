@@ -28,6 +28,6 @@ def seal_with_foreign_key(plaintext: str) -> str:
     return _FOREIGN_SEALER.encrypt(plaintext)
 
 
-def opener() -> AbstractCryptographer:
+def sealing_cryptographer() -> AbstractCryptographer:
     """The cryptographer to hand a tunnel or registry built directly: it opens what `seal` makes."""
     return _SEALER

@@ -410,7 +410,7 @@ _EMBEDDER_HEADER = header_marker(seal("embedder-header"))
 _LLM_HEADER = header_marker(seal("llm-header"))
 
 
-async def test_knowledge_tools_naive_target_forwards_the_embedder_credentials_sealed():
+async def test_knowledge_tools_naive_target_forwards_the_embedder_secrets_sealed():
     embedder = EmbedderData(
         provider="openai",
         config=EmbedderConfigData(
@@ -436,7 +436,7 @@ async def test_knowledge_tools_naive_target_forwards_the_embedder_credentials_se
     assert targets[0].llm_extra_headers is None
 
 
-async def test_knowledge_tools_graph_target_forwards_the_embedder_and_llm_credentials_sealed():
+async def test_knowledge_tools_graph_target_forwards_the_embedder_and_llm_secrets_sealed():
     embedder = EmbedderData(
         provider="openai",
         config=EmbedderConfigData(

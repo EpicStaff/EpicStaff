@@ -33,7 +33,7 @@ from app.core.settings import settings
 from app.main import create_app
 from app.services.redis_service import RedisService, get_redis_service
 from app.services.tunnel_registry import TunnelRegistry, get_tunnel_registry
-from transport_secrets import TRANSPORT_KEY, opener
+from transport_secrets import TRANSPORT_KEY, sealing_cryptographer
 
 
 @pytest.fixture(autouse=True)
@@ -82,7 +82,7 @@ async def received_events(redis_service):
 
 @pytest.fixture
 def tunnel_registry(redis_service):
-    return TunnelRegistry(opener(), redis_service=redis_service)
+    return TunnelRegistry(sealing_cryptographer(), redis_service=redis_service)
 
 
 @pytest.fixture

@@ -97,7 +97,7 @@ def _safe_context_window(model_str: str) -> int | None:
         return None
 
 
-def _open_sealed_credentials(
+def _open_sealed_secrets(
     config: dict, llm_name: str, cryptographer: AbstractCryptographer
 ) -> None:
     """Replace the transport-sealed ``api_key`` and ``extra_headers`` markers in ``config``.
@@ -130,7 +130,7 @@ def _build_model_config(context: AgentContext, cryptographer: AbstractCryptograp
     already present in the model string (e.g. ``openai/gpt-4o`` vs a model
     that already carries a provider prefix like ``azure/gpt-4o``).
 
-    The only place the agent's own LLM credentials are decrypted: ``api_key`` and the
+    The only place the agent's own LLM secrets are decrypted: ``api_key`` and the
     ``extra_headers`` secret markers arrive sealed with the transport key and leave
     here as plaintext. The ``LLMData`` itself keeps the sealed values.
 
@@ -151,7 +151,7 @@ def _build_model_config(context: AgentContext, cryptographer: AbstractCryptograp
         if value is not None:
             config[field_name] = value
 
-    _open_sealed_credentials(config, _llm_name(context.active_llm), cryptographer)
+    _open_sealed_secrets(config, _llm_name(context.active_llm), cryptographer)
 
     if provider in _STORE_OPT_OUT_PROVIDERS:
         config["store"] = False

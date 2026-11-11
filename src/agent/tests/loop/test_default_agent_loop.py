@@ -317,7 +317,7 @@ async def test_llm_call_receives_no_unset_config_field():
     assert config == {"model": "anthropic/claude-sonnet-4-5"}
 
 
-async def test_every_llm_call_receives_the_sealed_credentials_decrypted():
+async def test_every_llm_call_receives_the_sealed_secrets_decrypted():
     llm_config = LLMConfigData(
         model="fake-model",
         api_key=seal("sk-live-key"),
@@ -373,7 +373,7 @@ async def test_every_llm_call_receives_the_sealed_credentials_decrypted():
     ],
     ids=["api-key-under-another-key", "api-key-not-a-token", "header-marker-under-another-key"],
 )
-async def test_undecryptable_llm_credential_fails_the_run_without_the_value(
+async def test_undecryptable_llm_secret_fails_the_run_without_the_value(
     llm_config, expected_error
 ):
     agent = AgentSpec(

@@ -9,7 +9,7 @@ from app.core.settings import settings
 from app.main import lifespan
 from app.services.tunnel_registry import TunnelRegistry, UnregisteredWebhookPathError
 from src.shared.models import LocalhostConfigData, NgrokConfigData
-from transport_secrets import opener, seal
+from transport_secrets import sealing_cryptographer, seal
 
 
 class _FakeTunnel:
@@ -68,7 +68,7 @@ async def _register_fake(registry, tunnel, name):
 
 
 async def _registry_with(*tunnels, redis_service=None):
-    registry = TunnelRegistry(opener(), redis_service=redis_service)
+    registry = TunnelRegistry(sealing_cryptographer(), redis_service=redis_service)
     for index, tunnel in enumerate(tunnels):
         await _register_fake(registry, tunnel, f"hook-{index}")
     return registry
@@ -167,7 +167,7 @@ async def test_lifespan_shutdown_deletes_every_tunnel_url_before_closing_redis(
 async def test_lifespan_shutdown_disconnects_every_tunnel_and_removes_working_directories(
     ngrok_environment, lifespan_dependencies
 ):
-    registry = TunnelRegistry(opener())
+    registry = TunnelRegistry(sealing_cryptographer())
     for index in range(2):
         await registry.register(
             NgrokConfigData(
@@ -192,7 +192,7 @@ async def test_lifespan_shutdown_kills_a_start_blocked_mid_reconnect(
 ):
     monkeypatch.setattr(settings, "WEBHOOK_TUNNEL_RECONNECT_TIMEOUT", 0)
     blocked_connect = _ConnectBlockedUntilKilled(ngrok_environment, fail_first=True)
-    registry = TunnelRegistry(opener())
+    registry = TunnelRegistry(sealing_cryptographer())
     # The first start fails, so the tunnel is registered and its monitor retries.
     await registry.register(NgrokConfigData(name="hook", org_id=1, auth_token=seal("test-token")))
     assert await asyncio.to_thread(blocked_connect.started.wait, 5)
@@ -220,7 +220,7 @@ async def test_lifespan_shutdown_is_bounded_when_the_listener_is_stuck_in_regist
         raise RuntimeError("ngrok process ended")
 
     ngrok_environment.ngrok.connect.side_effect = connect_ignoring_kill
-    registry = TunnelRegistry(opener())
+    registry = TunnelRegistry(sealing_cryptographer())
     config = NgrokConfigData(name="hook", org_id=1, auth_token=seal("test-token"))
     listener_finished = asyncio.Event()
 
@@ -248,7 +248,7 @@ async def test_lifespan_shutdown_is_bounded_when_the_listener_is_stuck_in_regist
 
 async def test_register_cancelled_mid_connect_leaves_no_live_tunnel(ngrok_environment):
     blocked_connect = _ConnectBlockedUntilKilled(ngrok_environment)
-    registry = TunnelRegistry(opener())
+    registry = TunnelRegistry(sealing_cryptographer())
     config = NgrokConfigData(name="hook", org_id=1, auth_token=seal("test-token"))
     register_task = asyncio.create_task(registry.register(config))
     assert await asyncio.to_thread(blocked_connect.started.wait, 5)
@@ -271,7 +271,7 @@ async def test_register_cancelled_while_replacing_still_disconnects_the_old_tunn
     release = asyncio.Event()
     old_tunnel = _FakeTunnel(url="http://old", release=release)
     new_tunnel = _FakeTunnel(url="http://new")
-    registry = TunnelRegistry(opener(), redis_service=redis_service)
+    registry = TunnelRegistry(sealing_cryptographer(), redis_service=redis_service)
     config = await _register_fake(registry, old_tunnel, "hook")
 
     with patch("app.services.tunnel_registry.get_provider", return_value=new_tunnel):
