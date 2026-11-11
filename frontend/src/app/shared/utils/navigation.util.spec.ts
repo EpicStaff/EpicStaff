@@ -10,7 +10,7 @@ import { afterNavigationRender, isPlainPrimaryClick, takeQueryParams } from './n
 @Component({ template: '' })
 class OwnerComponent {}
 
-@Component({ template: '' })
+@Component({ selector: 'app-page', template: '' })
 class PageComponent {}
 
 describe('afterNavigationRender', () => {
