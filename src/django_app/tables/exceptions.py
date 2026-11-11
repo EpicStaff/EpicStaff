@@ -22,6 +22,23 @@ class GraphEntryPointException(CustomAPIExeption):
     default_detail = "No node connected to start node"
 
 
+class SubflowEntryPointException(GraphEntryPointException):
+    """Raised on run when a flow a Subflow node uses has no node connected to its Start.
+
+    Names that flow and the node, since the flow the user ran may well be fine.
+    """
+
+    default_code = "subflow_entry_point_missing"
+
+    def __init__(self, *, flow_name: str, subflow_node_label: str):
+        super().__init__(
+            detail=(
+                f'Flow "{flow_name}" (used by Subflow node "{subflow_node_label}") '
+                "has no node connected to its Start."
+            )
+        )
+
+
 class GraphNotFoundError(CustomAPIExeption):
     """Raised for a graph id that is missing or owned by an org the caller is not in."""
 

@@ -8,7 +8,16 @@
             <div class="att-row att-row--header">
                 <div class="att-cell att-cell--index"></div>
                 <div class="att-cell att-cell--name">Name<span class="required">*</span></div>
-                <div class="att-cell att-cell--instructions">Instructions<span class="required">*</span></div>
+                <div class="att-cell att-cell--instructions">
+                    Instructions<span class="required">*</span>
+                    <app-help-tooltip
+                        class="att-header-help"
+                        text="Instructions given to the agent describing what this task should accomplish. Use variables carefully."
+                        ariaLabel="Instructions help"
+                        position="right"
+                        size="18px"
+                    />
+                </div>
                 <div class="att-cell att-cell--schema">Output Schema</div>
                 <div class="att-cell att-cell--context">Task Context</div>
                 <div class="att-cell att-cell--delete">
@@ -88,7 +97,10 @@
                         >
                             <app-variable-highlight-textarea
                                 class="att-textarea-highlight"
-                                [class.att-textarea-highlight--invalid]="isInstructionsInvalid(task) && !readonly()"
+                                [class.att-textarea-highlight--invalid]="
+                                    (isInstructionsInvalid(task) || instructionsSaveErrors()[i].length > 0) &&
+                                    !readonly()
+                                "
                                 placeholder="Describe what this task should do..."
                                 ariaLabel="Task instructions"
                                 [value]="task.instructions"
@@ -229,6 +241,8 @@
         </div>
     </div>
 </div>
+
+<app-node-save-errors [messages]="instructionsSaveErrorList()" />
 
 <app-multi-select
     #contextMultiSelect

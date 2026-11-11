@@ -11,6 +11,7 @@ import {
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap, tap } from 'rxjs/operators';
 
+import { wasHandledByForbiddenInterceptor } from '../../../core/interceptors/forbidden-interceptor-handled.util';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ToastService } from '../../../services/notifications';
@@ -812,7 +813,7 @@ export class AgentsPageStore {
             });
     }
 
-    retrySurfaces(): void {
+    reloadSurfaces(): void {
         this.surfacesError.set(null);
         this.surfacesApi
             .getSurfaces()
@@ -1223,20 +1224,26 @@ export class AgentsPageStore {
     duplicateAgent(id: number): void {
         const src = this.agents().find((a) => a.id === id);
         if (!src) return;
-        const existingNames = this.agents().map((a) => a.name);
         this.saving.set(true);
-        this.agentsApi.copy(src, computeUniqueCopyName(src.name, existingNames)).subscribe({
-            next: (created) => {
-                this.agents.update((list) => [...list, created]);
-                this.selectAgent(created.id);
-                this.saving.set(false);
-                this.toast.success('Agent duplicated');
-            },
-            error: (err) => {
-                this.saving.set(false);
-                this.toast.error(this.extractError(err, 'Failed to duplicate agent'));
-            },
-        });
+        this.agentsApi
+            .copy(src.id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (created) => {
+                    this.agents.update((list) => [...list, created]);
+                    // The server clones the owned surfaces too. Reload always: our list may miss surfaces
+                    // the source gained elsewhere, so it cannot tell whether there is anything to show.
+                    this.reloadSurfaces();
+                    this.selectAgent(created.id);
+                    this.saving.set(false);
+                    this.toast.success('Agent duplicated');
+                },
+                error: (err) => {
+                    this.saving.set(false);
+                    if (wasHandledByForbiddenInterceptor(err)) return;
+                    this.toast.error(this.extractError(err, 'Failed to duplicate agent'));
+                },
+            });
     }
 
     deleteAgent(id: number): void {

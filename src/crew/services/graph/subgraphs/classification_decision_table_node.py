@@ -17,6 +17,7 @@ from src.crew.models.state import State
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
+from src.shared.flow_templates import RefusedPlaceholderError, render_template
 from src.shared.models import PythonCodeData
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
@@ -29,7 +30,6 @@ from src.shared.system_one.adapter import SystemOneError, evaluate
 from src.shared.system_one.json_llm import run_json_llm
 from utils.set_output_variables import set_output_variables
 from utils.state_path import split_state_path
-from utils.template_render import render_template
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -413,9 +413,19 @@ def main(**kwargs) -> dict:
         variables = json.loads(result["result_data"])
         state["variables"].update(variables)
 
-    def _render_prompt(self, prompt_text: str, variables: dict) -> str:
-        """Render `{var_name}` placeholders; a prompt naming a missing variable is sent as written."""
-        rendered = render_template(prompt_text, variables)
+    def _render_prompt(self, prompt_id: str, prompt_text: str, variables: dict) -> str:
+        """Fill `{var_name}` and data-path placeholders (`{a.b}`, `{a[0]}`) from `variables`.
+
+        The prompt is sent as written, nothing filled, when a placeholder names a missing
+        variable, key or index, or when `render_template` leaves the whole template unrendered.
+
+        Raises:
+            ClassificationDecisionTableNodeError: The prompt holds a refused placeholder.
+        """
+        try:
+            rendered = render_template(prompt_text, variables)
+        except RefusedPlaceholderError as error:
+            raise ClassificationDecisionTableNodeError(f"Prompt '{prompt_id}': {error}") from error
         if rendered.unrendered_reason:
             logger.warning(
                 "Classification node '{}' prompt sent as written, no placeholder filled: {}",
@@ -515,7 +525,7 @@ def main(**kwargs) -> dict:
         # Render prompt with current variables
         # Plain data: the prompt is the flow author's text and must not reach live DotDict objects.
         variables_dict = state["variables"].deep_dump()
-        rendered_prompt = self._render_prompt(prompt_config.prompt_text, variables_dict)
+        rendered_prompt = self._render_prompt(prompt_id, prompt_config.prompt_text, variables_dict)
 
         logger.debug(
             "Executing prompt '{}', result_variable='{}'",

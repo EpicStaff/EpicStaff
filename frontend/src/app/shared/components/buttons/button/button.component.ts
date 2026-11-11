@@ -58,6 +58,13 @@ export class ButtonComponent {
      * waits for something.
      */
     readonly ariaDisabled = input<boolean>(false);
+    /**
+     * `toolbar`: the list-page toolbar look: 10px radius, the icon in line with the label
+     * (16px in, 8px gap), and a 40px square when it shows only its icon.
+     */
+    readonly appearance = input<'default' | 'toolbar'>('default');
+    /** Shows only the icon, as a collapse on overflow does: the label stays the name and becomes the tooltip. */
+    readonly iconOnly = input<boolean>(false);
 
     private readonly button = viewChild.required<ElementRef<HTMLButtonElement>>('button');
     private readonly buttonTooltip = viewChild.required('button', { read: MatTooltip });
@@ -65,10 +72,11 @@ export class ButtonComponent {
 
     private readonly labelText = computed(() => this.label()?.text() ?? '');
     protected readonly collapsedToIcon = signal(false);
+    protected readonly showsOnlyIcon = computed(() => this.iconOnly() || this.collapsedToIcon());
     protected readonly tooltipText = computed(() => {
         const tooltip = this.tooltip();
         if (tooltip !== undefined) return tooltip;
-        if (this.labelText() && !this.collapsedToIcon()) return '';
+        if (this.labelText() && !this.showsOnlyIcon()) return '';
         return this.ariaLabel() || this.labelText();
     });
     protected readonly showsOwnTooltip = computed(() => !this.hostTooltip && !!this.tooltipText());
@@ -93,12 +101,12 @@ export class ButtonComponent {
 
     public get showRightIcon(): boolean {
         if (!this.rightIcon) return false;
-        if (!this.collapsedToIcon()) return true;
+        if (!this.showsOnlyIcon()) return true;
         return !this.leftIcon;
     }
 
     public get collapseEnabled(): boolean {
-        return this.type !== 'icon' && this.hasAnyIcon;
+        return this.type !== 'icon' && this.hasAnyIcon && !this.iconOnly();
     }
 
     public onCollapseChange(collapsed: boolean): void {

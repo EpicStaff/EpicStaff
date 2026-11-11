@@ -175,6 +175,7 @@
                                 [variableNames]="inputMapKeys()"
                                 [readonly]="isReadOnly()"
                                 [rowChanges]="taskRowChanges()"
+                                [nodeId]="node().id"
                                 (tasksChange)="onTasksChange($event)"
                                 (cellSelect)="onCellSelect($event)"
                                 (instructionsFocus)="onInstructionsFocus($event)"
@@ -250,6 +251,12 @@
                                             size="1.2rem"
                                         />
                                         Instructions
+                                        <app-help-tooltip
+                                            text="Instructions given to the agent describing what this task should accomplish. Use variables carefully."
+                                            ariaLabel="Instructions help"
+                                            position="right"
+                                            size="18px"
+                                        />
                                     </span>
                                     <span class="main-editor-pane__subtitle">Task {{ selectedTaskNumber() }}</span>
                                 </div>
@@ -466,6 +473,7 @@
                             [variableNames]="inputMapKeys()"
                             [readonly]="isReadOnly()"
                             [rowChanges]="taskRowChanges()"
+                            [nodeId]="node().id"
                             (tasksChange)="onTasksChange($event)"
                             (cellSelect)="onCellSelect($event)"
                             (instructionsFocus)="onInstructionsFocus($event)"

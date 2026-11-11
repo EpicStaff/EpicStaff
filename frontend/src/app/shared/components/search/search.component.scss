@@ -81,4 +81,29 @@
             color: var(--color-text-primary);
         }
     }
+
+    // The search sprite draws its glyph 2px inside a 16px box: the glyph sits 16px in, the text 16px after it.
+    &--toolbar {
+        .search__icon {
+            left: 14px;
+            color: var(--fog-alpha-60);
+        }
+
+        .search__input {
+            padding-left: 44px;
+            border-color: var(--graphite-750);
+            border-radius: var(--radius-xl);
+            font-size: var(--text-body-size);
+            font-weight: var(--text-body-weight);
+            line-height: var(--text-body-line-height);
+
+            &:focus {
+                border-color: var(--accent-color);
+            }
+
+            &::placeholder {
+                color: var(--fog-alpha-80);
+            }
+        }
+    }
 }

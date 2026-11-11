@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from http import HTTPStatus
-from typing import TYPE_CHECKING
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse, urlsplit, urlunsplit
 
+import httpx2
 from fastmcp import Client
 from fastmcp.client.transports import SSETransport, StreamableHttpTransport
 from fastmcp.mcp_config import infer_transport_type_from_url
@@ -11,10 +10,8 @@ from foundation.cryptographer import AbstractCryptographer, CryptographerError
 from mcp.shared._httpx_utils import create_mcp_http_client
 
 from app.exceptions import McpToolError
+from app.logging_utils import http_status_text
 from shared.models.tools import McpToolData
-
-if TYPE_CHECKING:
-    import httpx2
 
 _ALLOWED_TRANSPORT_PREFIXES = ("http://", "https://")
 
@@ -61,8 +58,7 @@ def http_error_status(client: Client) -> str | None:
     """Name the HTTP status of the client's latest failed POST, e.g. "HTTP 401 Unauthorized".
 
     Returns None when the latest POST succeeded or the transport records no status
-    (SSE, whose own errors already name it). The reason phrase is the standard one
-    for the code, never the server's own text.
+    (SSE, whose failures raise an httpx2.HTTPStatusError that carries it).
     """
     transport = client.transport
     if not isinstance(transport, _StatusRecordingHttpTransport):
@@ -70,10 +66,7 @@ def http_error_status(client: Client) -> str | None:
     code = transport.last_post_error_code
     if code is None:
         return None
-    try:
-        return f"HTTP {code} {HTTPStatus(code).phrase}"
-    except ValueError:
-        return f"HTTP {code}"
+    return http_status_text(code)
 
 
 def open_mcp_auth(data: McpToolData, cryptographer: AbstractCryptographer) -> str | None:
@@ -123,12 +116,12 @@ class FastMCPClientFactory:
         # information (e.g. a path letting one org's config affect another org's
         # request). Separate from, and does not close, the risk of trusting the
         # connected server's own description/inputSchema -- see McpToolGateway.
-        url = data.transport
-        if not self._is_http_url(url):
+        if not self._is_http_url(data.transport):
             raise McpToolError(
                 f"MCP tool '{data.tool_name}' has an invalid transport: "
                 "it must be an http:// or https:// URL with a host."
             )
+        url, userinfo_auth = self._split_userinfo(data.transport)
 
         transport_class = (
             SSETransport
@@ -138,9 +131,24 @@ class FastMCPClientFactory:
         return Client(
             transport=transport_class(url),
             timeout=data.timeout,
-            auth=open_mcp_auth(data, self._cryptographer) or None,
+            auth=open_mcp_auth(data, self._cryptographer) or userinfo_auth,
             init_timeout=data.init_timeout,
         )
+
+    @staticmethod
+    def _split_userinfo(url: str) -> tuple[str, httpx2.BasicAuth | None]:
+        # Credentials left in the URL are quoted wherever the SDK or httpx2 renders it:
+        # status errors, and the SSE message endpoint, which is joined onto this URL and
+        # shows up in the SDK's own error log. httpx2 sends URL userinfo as Basic auth
+        # when no other auth is set, and ignores it otherwise; this keeps both.
+        parts = urlsplit(url)
+        userinfo, separator, host = parts.netloc.rpartition("@")
+        if not separator:
+            return url, None
+        user, _, password = userinfo.partition(":")
+        user, password = unquote(user), unquote(password)
+        basic_auth = httpx2.BasicAuth(user, password) if user or password else None
+        return urlunsplit(parts._replace(netloc=host)), basic_auth
 
     @staticmethod
     def _is_http_url(url: str) -> bool:
