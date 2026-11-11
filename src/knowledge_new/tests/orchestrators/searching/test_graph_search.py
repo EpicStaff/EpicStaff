@@ -17,18 +17,18 @@ from application.orchestrators.searching.strategies.graph_search import (
     GraphSearchOrchestrator,
     SearchSpecification,
 )
-from application.results import SearchResult
 from domain.enums import GraphSearchMethodEnum
-from domain.errors import UnsupportedError
+from domain.errors import SecretDecryptError, UnsupportedError
 from domain.models import EmbeddingConfig, GraphPricingConfig, SearchUsage
-from infrastructure.graphrag import usage_metrics
 from graphrag.config.models.graph_rag_config import GraphRagConfig
+from infrastructure.graphrag import usage_metrics
 from src.shared.models.knowledge_new import (
     GraphBasicSearchConfig,
     GraphDriftSearchConfig,
     GraphGlobalSearchConfig,
     GraphLocalSearchConfig,
 )
+from tests.orchestrators.conftest import CRYPTOGRAPHER, seal, sealed_marker
 
 INDEX_TABLES = {
     name: pandas.DataFrame({"id": [index]})
@@ -98,7 +98,7 @@ def repo():
 
 @pytest.fixture
 def orchestrator(repo):
-    return GraphSearchOrchestrator(FakeUoW(repo))
+    return GraphSearchOrchestrator(FakeUoW(repo), CRYPTOGRAPHER)
 
 
 @pytest.fixture(autouse=True)
@@ -152,8 +152,8 @@ def _request(search_config, **overrides) -> RunSearch:
             "rag_id": 42,
             "query": "what is the meaning?",
             "search_config": search_config,
-            "embedding_api_key": "sk-emb",
-            "llm_api_key": "sk-llm",
+            "embedding_api_key": seal("sk-emb"),
+            "llm_api_key": seal("sk-llm"),
             **overrides,
         }
     )
@@ -311,8 +311,8 @@ async def test_extra_headers_injected_into_both_graphrag_models(
     await orchestrator.execute(
         _request(
             GraphBasicSearchConfig(),
-            embedding_extra_headers={"X-Emb": "emb-resolved"},
-            llm_extra_headers={"X-Llm": "llm-resolved"},
+            embedding_extra_headers={"X-Emb": sealed_marker("emb-resolved")},
+            llm_extra_headers={"X-Llm": f"Bearer {sealed_marker('llm-resolved')}"},
         )
     )
 
@@ -320,7 +320,7 @@ async def test_extra_headers_injected_into_both_graphrag_models(
     embedding_call_args = config.embedding_models["default_embedding_model"].call_args
     completion_call_args = config.completion_models["default_completion_model"].call_args
     assert embedding_call_args["extra_headers"] == {"X-Emb": "emb-resolved"}
-    assert completion_call_args["extra_headers"] == {"X-Llm": "llm-resolved"}
+    assert completion_call_args["extra_headers"] == {"X-Llm": "Bearer llm-resolved"}
 
 
 async def test_no_extra_headers_leaves_call_args_without_headers(
@@ -335,12 +335,37 @@ async def test_no_extra_headers_leaves_call_args_without_headers(
     assert "extra_headers" not in config.completion_models["default_completion_model"].call_args
 
 
+@pytest.mark.parametrize(
+    ("field", "overrides"),
+    [
+        ("embedding_api_key", {"embedding_api_key": "sk-never-sealed"}),
+        ("llm_api_key", {"llm_api_key": "sk-never-sealed"}),
+        (
+            "llm_extra_headers",
+            {"llm_extra_headers": {"X-Key": "epicstaff_secret(sk-never-sealed)"}},
+        ),
+    ],
+    ids=["embedding-api-key", "llm-api-key", "llm-header-marker"],
+)
+async def test_secret_that_cannot_be_decrypted_fails_the_search_without_its_value(
+    orchestrator, index_tables, searcher, field, overrides
+):
+    calls = searcher(GraphSearchMethodEnum.BASIC)
+
+    with pytest.raises(SecretDecryptError) as raised:
+        await orchestrator.execute(_request(GraphBasicSearchConfig(), **overrides))
+
+    assert calls == []
+    assert field in str(raised.value)
+    assert "sk-never-sealed" not in str(raised.value)
+
+
 def _pricing(**overrides) -> GraphPricingConfig:
-    values = dict(
-        embedding=EmbeddingConfig(provider="openai", model="text-embedding-3-small"),
-        llm_provider="openai",
-        llm_model="no-such-model-x",
-    )
+    values = {
+        "embedding": EmbeddingConfig(provider="openai", model="text-embedding-3-small"),
+        "llm_provider": "openai",
+        "llm_model": "no-such-model-x",
+    }
     return GraphPricingConfig(**{**values, **overrides})
 
 
@@ -375,7 +400,7 @@ async def test_search_reports_metered_embedding_and_llm_usage_with_custom_llm_pr
 ):
     _install_metered_searcher(monkeypatch, embedding=10, input_tokens=100, output_tokens=20)
     pricing = _pricing(input_cost_per_token=0.001, output_cost_per_token=0.002)
-    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(pricing)))
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(pricing)), CRYPTOGRAPHER)
 
     result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
 
@@ -399,7 +424,7 @@ async def test_search_counts_the_grounding_judge_call_in_the_usage(monkeypatch, 
         return response
 
     monkeypatch.setattr(graph_search, "apply_grounding_guard", metered_guard)
-    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(_pricing())))
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(_pricing())), CRYPTOGRAPHER)
 
     result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
 
@@ -408,7 +433,7 @@ async def test_search_counts_the_grounding_judge_call_in_the_usage(monkeypatch, 
 
 async def test_search_cost_is_unknown_for_an_unpriced_llm(monkeypatch, index_tables):
     _install_metered_searcher(monkeypatch, input_tokens=5, output_tokens=5)
-    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(_pricing())))
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(_pricing())), CRYPTOGRAPHER)
 
     result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
 
@@ -420,11 +445,8 @@ async def test_search_still_returns_tokens_when_pricing_cannot_be_resolved(
     monkeypatch, index_tables
 ):
     _install_metered_searcher(monkeypatch, embedding=3, input_tokens=5, output_tokens=2)
-    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(None)))
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(None)), CRYPTOGRAPHER)
 
     result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
 
-    assert result.usage == SearchUsage(
-        embedding_tokens=3, llm_input_tokens=5, llm_output_tokens=2
-    )
-
+    assert result.usage == SearchUsage(embedding_tokens=3, llm_input_tokens=5, llm_output_tokens=2)

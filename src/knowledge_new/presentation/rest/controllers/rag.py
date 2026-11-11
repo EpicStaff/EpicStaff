@@ -14,6 +14,7 @@ from application.ports.task_register import AbstractTaskRegister
 from common.utils import make_key
 from domain.enums import RAGStrategy
 from domain.errors import NotRunningOperationError
+from foundation.cryptographer import AbstractCryptographer
 from infrastructure.graphrag.availability import is_graphrag_available
 from litestar import Controller, delete, get, post, status_codes
 from litestar.connection import ASGIConnection
@@ -49,6 +50,7 @@ class RagController(Controller):
         data: schemas.IndexInputSchema,
         uow: AbstractUnitOfWork,
         task_register: AbstractTaskRegister,
+        cryptographer: AbstractCryptographer,
     ) -> None:
         command = commands.RunIndex(
             rag_id=rag_id,
@@ -58,7 +60,7 @@ class RagController(Controller):
             embedding_extra_headers=data.embedding_extra_headers,
             llm_extra_headers=data.llm_extra_headers,
         )
-        orchestrator = build_indexer(strategy, uow)
+        orchestrator = build_indexer(strategy, uow, cryptographer)
         task = asyncio.create_task(orchestrator.execute(command))
         key = make_key("rag", strategy, rag_id, "index")
         task_register.register(key, task)
@@ -74,6 +76,7 @@ class RagController(Controller):
         rag_id: int,
         data: schemas.SearchInputSchema,
         uow: AbstractUnitOfWork,
+        cryptographer: AbstractCryptographer,
     ) -> schemas.SearchOutputSchema:
         command = commands.RunSearch(
             rag_id=rag_id,
@@ -84,7 +87,7 @@ class RagController(Controller):
             embedding_extra_headers=data.embedding_extra_headers,
             llm_extra_headers=data.llm_extra_headers,
         )
-        orchestrator = build_search(strategy, uow)
+        orchestrator = build_search(strategy, uow, cryptographer)
         result = await orchestrator.execute(command)
         return schemas.SearchOutputSchema.model_validate(result)
 
