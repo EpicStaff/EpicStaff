@@ -5,20 +5,20 @@ import { VisualizationEntity, VisualizationRelationship } from '../../models/gra
 /** RGB tuple [0..1, 0..1, 0..1]. */
 type ColorTuple = [number, number, number];
 
-/** Stable color palette for entity types — deterministic hash maps each type to a hue. */
+/** Stable color palette for entity types — high-saturation, high-contrast hues. */
 const TYPE_COLORS: string[] = [
-    '#42a5f5', // blue
-    '#66bb6a', // green
-    '#ffa726', // orange
-    '#ab47bc', // purple
-    '#ef5350', // red
-    '#26a69a', // teal
-    '#ffee58', // yellow
-    '#ec407a', // pink
-    '#5c6bc0', // indigo
-    '#8d6e63', // brown
-    '#78909c', // blue-grey
-    '#9ccc65', // light green
+    '#2979ff', // vivid blue
+    '#00e676', // vivid green
+    '#ff9100', // vivid orange
+    '#d500f9', // vivid purple
+    '#ff1744', // vivid red
+    '#1de9b6', // vivid teal
+    '#ffea00', // vivid yellow
+    '#f50057', // vivid pink
+    '#3d5afe', // vivid indigo
+    '#ff6d00', // vivid amber
+    '#00e5ff', // vivid cyan
+    '#76ff03', // vivid lime
 ];
 
 const HIGHLIGHT_COLOR: ColorTuple = [1.0, 0.95, 0.2]; // yellow highlight
@@ -34,6 +34,25 @@ const OUTLINE_SCALE = 1.35; // how much larger the outline ring is vs the node
 const DOTS_PER_EDGE = 3;
 const DOT_RADIUS = 1.5;
 const DOT_SPEED = 0.4; // 0..1 per second
+
+/** Node opacity in 3D mode (0..1). Lower = more see-through between overlapping nodes. */
+const NODE_3D_OPACITY = 0.75;
+
+/** Edge opacity (0..1). Lower = more transparent connections. */
+const EDGE_OPACITY = 0.6;
+
+/** 3D edge width as a fraction of the smallest node's diameter. 0.1 = 1/10. */
+const EDGE_3D_WIDTH_RATIO = 0.1;
+
+/** 3D lighting intensities. Ambient lights all faces equally; directional creates the 3D gradient. */
+const AMBIENT_LIGHT_INTENSITY = 0.4; // shadow-side base brightness
+const DIRECTIONAL_LIGHT_INTENSITY = 1.6; // strong lit-vs-shadow contrast across the sphere
+
+/**
+ * 3D instance color multiplier — compensates for brightness lost to alpha blending
+ * against the dark background. 1.0 = unmodified, 2.0 = 100 % brighter (GPU clamps to 1.0).
+ */
+const NODE_3D_BRIGHTNESS = 2.0;
 
 /** Computes a stable index from a string — used for type-to-color mapping. */
 function stableHash(value: string): number {
@@ -135,9 +154,13 @@ export class GraphSceneService {
     private connectedNodeIndices: Set<number> = new Set();
     private wheelHandler: ((event: WheelEvent) => void) | null = null;
     private outlineMesh: InstancedMesh | null = null;
+    private depthNodesMesh: InstancedMesh | null = null;
+    private edgesMesh3D: InstancedMesh | null = null;
+    private edgeRadius3D = 1;
     private highlightLinesObj: LineSegments | null = null;
     private dotsMesh: InstancedMesh | null = null;
     private dotsData: Array<{ edgeIndex: number; t: number; speed: number }> = [];
+    private sortedToOriginal: number[] = [];
 
     /** Lazy-load Three.js and OrbitControls. */
     async loadDependencies(): Promise<void> {
@@ -214,7 +237,7 @@ export class GraphSceneService {
 
         // Scene
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1a1a1e);
+        scene.background = new THREE.Color(0x000000);
 
         // Camera
         const camera = this.createCamera(container, is3D);
@@ -235,13 +258,32 @@ export class GraphSceneService {
 
         // Nodes (InstancedMesh)
         const geometry = new THREE.SphereGeometry(1, 16, 12);
-        const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const nodesMesh = new THREE.InstancedMesh(geometry, material, Math.max(this.nodes.length, 1));
+        const nodeMaterial = is3D
+            ? new THREE.MeshPhongMaterial({
+                  color: 0xffffff,
+                  transparent: true,
+                  opacity: NODE_3D_OPACITY,
+                  shininess: 40,
+              })
+            : new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const nodesMesh = new THREE.InstancedMesh(geometry, nodeMaterial, Math.max(this.nodes.length, 1));
         nodesMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+        // Lighting for 3D shading (gradient from center to edges)
+        if (is3D) {
+            const ambientLight = new THREE.AmbientLight(0xffffff, AMBIENT_LIGHT_INTENSITY);
+            ambientLight.name = 'graphAmbient';
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, DIRECTIONAL_LIGHT_INTENSITY);
+            dirLight.name = 'graphDirectional';
+            dirLight.position.set(0, 50, 100); // relative to camera — always lights from above-front
+            camera.add(dirLight);
+            scene.add(camera);
+        }
 
         scene.add(nodesMesh);
 
-        // Edges (LineSegments) with per-vertex colors for hover highlighting
+        // Edges (LineSegments for 2D, InstancedMesh cylinders for 3D)
         const edgePositions = new Float32Array(this.edges.length * 6);
         const edgeColors = new Float32Array(this.edges.length * 6);
         const edgeGeometry = new THREE.BufferGeometry();
@@ -251,11 +293,20 @@ export class GraphSceneService {
         const edgeMaterial = new THREE.LineBasicMaterial({
             vertexColors: true,
             transparent: true,
-            opacity: 0.6,
+            opacity: EDGE_OPACITY,
         });
         const edgesLine = new THREE.LineSegments(edgeGeometry, edgeMaterial);
         edgesLine.frustumCulled = false;
-        scene.add(edgesLine);
+        if (!is3D) {
+            scene.add(edgesLine);
+        }
+
+        // 3D cylinder edges
+        if (is3D) {
+            this.createEdgesMesh3D(scene);
+        } else {
+            this.edgesMesh3D = null;
+        }
 
         // Node outline mesh (BackSide rendering creates a border ring)
         const outlineGeometry = new THREE.SphereGeometry(1, 16, 12);
@@ -265,7 +316,20 @@ export class GraphSceneService {
         scene.add(outlineMesh);
         this.outlineMesh = outlineMesh;
 
-        // Highlight lines overlay (connected edges rendered brighter on top)
+        // Depth-only node proxy for 3D multi-pass edge occlusion
+        if (is3D) {
+            const depthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
+            const depthNodesMesh = new THREE.InstancedMesh(geometry, depthMaterial, Math.max(this.nodes.length, 1));
+            depthNodesMesh.instanceMatrix = nodesMesh.instanceMatrix;
+            depthNodesMesh.frustumCulled = false;
+            depthNodesMesh.visible = false;
+            scene.add(depthNodesMesh);
+            this.depthNodesMesh = depthNodesMesh;
+        } else {
+            this.depthNodesMesh = null;
+        }
+
+        // Highlight lines overlay (connected edges rendered brighter)
         const hlPositions = new Float32Array(this.edges.length * 6);
         const hlGeometry = new THREE.BufferGeometry();
         hlGeometry.setAttribute('position', new THREE.Float32BufferAttribute(hlPositions, 3));
@@ -281,6 +345,12 @@ export class GraphSceneService {
         highlightLines.renderOrder = 1;
         scene.add(highlightLines);
         this.highlightLinesObj = highlightLines;
+
+        if (!is3D) {
+            // 2D: nodes render on top of highlight lines
+            nodesMesh.renderOrder = 2;
+            outlineMesh.renderOrder = 2;
+        }
 
         // Animated dots (small spheres that travel along highlighted edges)
         const maxDots = this.edges.length * DOTS_PER_EDGE;
@@ -356,6 +426,74 @@ export class GraphSceneService {
         if (!is3D) {
             for (const node of this.nodes) {
                 node.z = 0;
+            }
+        }
+
+        // Update node material for dimension
+        const oldNodeMat = this.resources.nodesMesh.material as Material;
+        const newNodeMat = is3D
+            ? new THREE.MeshPhongMaterial({
+                  color: 0xffffff,
+                  transparent: true,
+                  opacity: NODE_3D_OPACITY,
+                  shininess: 40,
+              })
+            : new THREE.MeshBasicMaterial({ color: 0xffffff });
+        this.resources.nodesMesh.material = newNodeMat;
+        oldNodeMat.dispose();
+
+        this.resources.nodesMesh.renderOrder = is3D ? 0 : 2;
+        if (this.outlineMesh) {
+            this.outlineMesh.renderOrder = is3D ? 0 : 2;
+        }
+
+        // Depth-only node proxy for 3D multi-pass edge occlusion
+        if (is3D && !this.depthNodesMesh) {
+            const depthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
+            const depthMesh = new THREE.InstancedMesh(
+                this.resources.nodesMesh.geometry,
+                depthMaterial,
+                Math.max(this.nodes.length, 1)
+            );
+            depthMesh.instanceMatrix = this.resources.nodesMesh.instanceMatrix;
+            depthMesh.frustumCulled = false;
+            depthMesh.visible = false;
+            this.resources.scene.add(depthMesh);
+            this.depthNodesMesh = depthMesh;
+        } else if (!is3D && this.depthNodesMesh) {
+            (this.depthNodesMesh.material as Material).dispose();
+            this.resources.scene.remove(this.depthNodesMesh);
+            this.depthNodesMesh = null;
+        }
+
+        // 3D cylinder edges
+        if (is3D && !this.edgesMesh3D) {
+            this.resources.edgesLine.removeFromParent();
+            this.createEdgesMesh3D(this.resources.scene);
+        } else if (!is3D && this.edgesMesh3D) {
+            (this.edgesMesh3D.material as Material).dispose();
+            this.edgesMesh3D.geometry.dispose();
+            this.resources.scene.remove(this.edgesMesh3D);
+            this.edgesMesh3D = null;
+            this.resources.scene.add(this.resources.edgesLine);
+        }
+
+        // Add/remove lights
+        const existingAmbient = this.resources.scene.getObjectByName('graphAmbient');
+        const existingDir = this.resources.camera.getObjectByName('graphDirectional');
+        if (is3D && !existingAmbient) {
+            const ambientLight = new THREE.AmbientLight(0xffffff, AMBIENT_LIGHT_INTENSITY);
+            ambientLight.name = 'graphAmbient';
+            this.resources.scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, DIRECTIONAL_LIGHT_INTENSITY);
+            dirLight.name = 'graphDirectional';
+            dirLight.position.set(0, 50, 100);
+            this.resources.camera.add(dirLight);
+            this.resources.scene.add(this.resources.camera);
+        } else if (!is3D) {
+            if (existingAmbient) this.resources.scene.remove(existingAmbient);
+            if (existingDir) {
+                this.resources.camera.remove(existingDir);
             }
         }
     }
@@ -434,7 +572,12 @@ export class GraphSceneService {
         this.resources.raycaster.setFromCamera(mouse, this.resources.camera);
         const intersects = this.resources.raycaster.intersectObject(this.resources.nodesMesh);
         if (intersects.length > 0 && intersects[0].instanceId !== undefined) {
-            return intersects[0].instanceId;
+            const instanceId = intersects[0].instanceId;
+            // In 3D, instances are sorted by depth — remap slot to original node index
+            if (this.is3D && this.sortedToOriginal.length > 0) {
+                return this.sortedToOriginal[instanceId] ?? -1;
+            }
+            return instanceId;
         }
         return -1;
     }
@@ -625,6 +768,13 @@ export class GraphSceneService {
                 scene.remove(sprite);
             }
 
+            // Dispose depth-only node proxy (shares geometry + instanceMatrix with nodesMesh)
+            if (this.depthNodesMesh) {
+                (this.depthNodesMesh.material as Material).dispose();
+                scene.remove(this.depthNodesMesh);
+                this.depthNodesMesh = null;
+            }
+
             // Dispose nodes
             nodesMesh.geometry.dispose();
             (nodesMesh.material as Material).dispose();
@@ -634,6 +784,13 @@ export class GraphSceneService {
             edgesLine.geometry.dispose();
             (edgesLine.material as Material).dispose();
             scene.remove(edgesLine);
+
+            if (this.edgesMesh3D) {
+                this.edgesMesh3D.geometry.dispose();
+                (this.edgesMesh3D.material as Material).dispose();
+                scene.remove(this.edgesMesh3D);
+                this.edgesMesh3D = null;
+            }
 
             // Dispose outline mesh
             if (this.outlineMesh) {
@@ -769,6 +926,7 @@ export class GraphSceneService {
         if (!this.resources || !this.three) return;
         const THREE = this.three;
         const tempColor = new THREE.Color();
+        const bright = this.is3D ? NODE_3D_BRIGHTNESS : 1;
 
         for (let i = 0; i < this.nodes.length; i++) {
             const node = this.nodes[i];
@@ -788,7 +946,7 @@ export class GraphSceneService {
                 }
             }
 
-            tempColor.setRGB(color[0], color[1], color[2]);
+            tempColor.setRGB(color[0] * bright, color[1] * bright, color[2] * bright);
             this.resources.nodesMesh.setColorAt(i, tempColor);
         }
         if (this.resources.nodesMesh.instanceColor) {
@@ -796,7 +954,35 @@ export class GraphSceneService {
         }
     }
 
+    private createEdgesMesh3D(scene: Scene): void {
+        if (!this.three) return;
+        const THREE = this.three;
+        const minRadius = this.nodes.reduce((min, n) => Math.min(min, n.radius), Infinity);
+        this.edgeRadius3D = minRadius * EDGE_3D_WIDTH_RATIO;
+        const cylGeometry = new THREE.CylinderGeometry(1, 1, 1, 6);
+        const cylMaterial = new THREE.MeshBasicMaterial({
+            transparent: true,
+            opacity: EDGE_OPACITY,
+        });
+        const edgesMesh = new THREE.InstancedMesh(cylGeometry, cylMaterial, Math.max(this.edges.length, 1));
+        edgesMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        edgesMesh.frustumCulled = false;
+        scene.add(edgesMesh);
+        this.edgesMesh3D = edgesMesh;
+    }
+
     private updateEdgePositions(): void {
+        if (!this.resources) return;
+
+        if (this.is3D && this.edgesMesh3D && this.three) {
+            this.updateEdgePositions3D();
+        } else {
+            this.updateEdgePositions2D();
+        }
+        this.updateEdgeColors();
+    }
+
+    private updateEdgePositions2D(): void {
         if (!this.resources) return;
         const posAttr = this.resources.edgesLine.geometry.getAttribute('position');
         const positions = posAttr.array as Float32Array;
@@ -807,19 +993,98 @@ export class GraphSceneService {
             const tgt = this.nodes[edge.targetIndex];
             if (!this.isNodeVisible(src) || !this.isNodeVisible(tgt)) continue;
 
+            const dx = tgt.x - src.x;
+            const dy = tgt.y - src.y;
+            const dz = tgt.z - src.z;
+            const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+            const nx = dx / len;
+            const ny = dy / len;
+            const nz = dz / len;
+
             const offset = visibleCount * 6;
-            positions[offset] = src.x;
-            positions[offset + 1] = src.y;
-            positions[offset + 2] = src.z;
-            positions[offset + 3] = tgt.x;
-            positions[offset + 4] = tgt.y;
-            positions[offset + 5] = tgt.z;
+            positions[offset] = src.x + nx * src.radius;
+            positions[offset + 1] = src.y + ny * src.radius;
+            positions[offset + 2] = src.z + nz * src.radius;
+            positions[offset + 3] = tgt.x - nx * tgt.radius;
+            positions[offset + 4] = tgt.y - ny * tgt.radius;
+            positions[offset + 5] = tgt.z - nz * tgt.radius;
             visibleCount++;
         }
 
         this.resources.edgesLine.geometry.setDrawRange(0, visibleCount * 2);
         posAttr.needsUpdate = true;
-        this.updateEdgeColors();
+    }
+
+    private updateEdgePositions3D(): void {
+        if (!this.resources || !this.three || !this.edgesMesh3D) return;
+        const THREE = this.three;
+        const edgesMesh = this.edgesMesh3D;
+        const dummy = new THREE.Object3D();
+        const up = new THREE.Vector3(0, 1, 0);
+        const dir = new THREE.Vector3();
+        const quat = new THREE.Quaternion();
+        const radius = this.edgeRadius3D;
+
+        let visibleCount = 0;
+        for (const edge of this.edges) {
+            const src = this.nodes[edge.sourceIndex];
+            const tgt = this.nodes[edge.targetIndex];
+            if (!this.isNodeVisible(src) || !this.isNodeVisible(tgt)) {
+                dummy.position.set(99999, 99999, 99999);
+                dummy.scale.setScalar(0);
+                dummy.updateMatrix();
+                edgesMesh.setMatrixAt(visibleCount, dummy.matrix);
+                visibleCount++;
+                continue;
+            }
+
+            const dx = tgt.x - src.x;
+            const dy = tgt.y - src.y;
+            const dz = tgt.z - src.z;
+            const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+            const nx = dx / len;
+            const ny = dy / len;
+            const nz = dz / len;
+
+            // Wall-to-wall endpoints
+            const x0 = src.x + nx * src.radius;
+            const y0 = src.y + ny * src.radius;
+            const z0 = src.z + nz * src.radius;
+            const x1 = tgt.x - nx * tgt.radius;
+            const y1 = tgt.y - ny * tgt.radius;
+            const z1 = tgt.z - nz * tgt.radius;
+            const segLen = Math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2 + (z1 - z0) ** 2);
+
+            if (segLen < 0.01) {
+                dummy.position.set(99999, 99999, 99999);
+                dummy.scale.setScalar(0);
+                dummy.updateMatrix();
+                edgesMesh.setMatrixAt(visibleCount, dummy.matrix);
+                visibleCount++;
+                continue;
+            }
+
+            // Midpoint, orientation, scale
+            dummy.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+            dir.set(nx, ny, nz);
+            quat.setFromUnitVectors(up, dir);
+            dummy.quaternion.copy(quat);
+            dummy.scale.set(radius, segLen, radius);
+            dummy.updateMatrix();
+            edgesMesh.setMatrixAt(visibleCount, dummy.matrix);
+            visibleCount++;
+        }
+
+        // Hide remaining slots
+        dummy.position.set(99999, 99999, 99999);
+        dummy.scale.setScalar(0);
+        dummy.updateMatrix();
+        for (let i = visibleCount; i < this.edges.length; i++) {
+            edgesMesh.setMatrixAt(i, dummy.matrix);
+        }
+
+        edgesMesh.instanceMatrix.needsUpdate = true;
+        edgesMesh.computeBoundingSphere();
     }
 
     private updateLabelPositions(): void {
@@ -925,13 +1190,20 @@ export class GraphSceneService {
                     const edge = this.edges[edgeIdx];
                     const src = this.nodes[edge.sourceIndex];
                     const tgt = this.nodes[edge.targetIndex];
+                    const dx = tgt.x - src.x;
+                    const dy = tgt.y - src.y;
+                    const dz = tgt.z - src.z;
+                    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+                    const nx = dx / len;
+                    const ny = dy / len;
+                    const nz = dz / len;
                     const offset = count * 6;
-                    positions[offset] = src.x;
-                    positions[offset + 1] = src.y;
-                    positions[offset + 2] = src.z;
-                    positions[offset + 3] = tgt.x;
-                    positions[offset + 4] = tgt.y;
-                    positions[offset + 5] = tgt.z;
+                    positions[offset] = src.x + nx * src.radius;
+                    positions[offset + 1] = src.y + ny * src.radius;
+                    positions[offset + 2] = src.z + nz * src.radius;
+                    positions[offset + 3] = tgt.x - nx * tgt.radius;
+                    positions[offset + 4] = tgt.y - ny * tgt.radius;
+                    positions[offset + 5] = tgt.z - nz * tgt.radius;
                     count++;
                 }
             }
@@ -943,31 +1215,44 @@ export class GraphSceneService {
 
     private updateEdgeColors(): void {
         if (!this.resources) return;
-        const colorAttr = this.resources.edgesLine.geometry.getAttribute('color');
-        const colors = colorAttr.array as Float32Array;
 
         const defaultColor: ColorTuple = [0.5, 0.5, 0.55];
         const highlightColor: ColorTuple = [1.0, 0.95, 0.4];
 
-        let visibleIndex = 0;
-        for (let i = 0; i < this.edges.length; i++) {
-            const edge = this.edges[i];
-            const src = this.nodes[edge.sourceIndex];
-            const tgt = this.nodes[edge.targetIndex];
-            if (!this.isNodeVisible(src) || !this.isNodeVisible(tgt)) continue;
+        if (this.is3D && this.edgesMesh3D && this.three) {
+            const tempColor = new this.three.Color();
+            for (let i = 0; i < this.edges.length; i++) {
+                const color: ColorTuple = this.connectedEdgeIndices.has(i) ? highlightColor : defaultColor;
+                tempColor.setRGB(color[0], color[1], color[2]);
+                this.edgesMesh3D.setColorAt(i, tempColor);
+            }
+            if (this.edgesMesh3D.instanceColor) {
+                this.edgesMesh3D.instanceColor.needsUpdate = true;
+            }
+        } else {
+            const colorAttr = this.resources.edgesLine.geometry.getAttribute('color');
+            const colors = colorAttr.array as Float32Array;
 
-            const color: ColorTuple = this.connectedEdgeIndices.has(i) ? highlightColor : defaultColor;
+            let visibleIndex = 0;
+            for (let i = 0; i < this.edges.length; i++) {
+                const edge = this.edges[i];
+                const src = this.nodes[edge.sourceIndex];
+                const tgt = this.nodes[edge.targetIndex];
+                if (!this.isNodeVisible(src) || !this.isNodeVisible(tgt)) continue;
 
-            const offset = visibleIndex * 6;
-            colors[offset] = color[0];
-            colors[offset + 1] = color[1];
-            colors[offset + 2] = color[2];
-            colors[offset + 3] = color[0];
-            colors[offset + 4] = color[1];
-            colors[offset + 5] = color[2];
-            visibleIndex++;
+                const color: ColorTuple = this.connectedEdgeIndices.has(i) ? highlightColor : defaultColor;
+
+                const offset = visibleIndex * 6;
+                colors[offset] = color[0];
+                colors[offset + 1] = color[1];
+                colors[offset + 2] = color[2];
+                colors[offset + 3] = color[0];
+                colors[offset + 4] = color[1];
+                colors[offset + 5] = color[2];
+                visibleIndex++;
+            }
+            colorAttr.needsUpdate = true;
         }
-        colorAttr.needsUpdate = true;
     }
 
     private handleResize(container: HTMLElement): void {
@@ -1031,9 +1316,24 @@ export class GraphSceneService {
             const edge = this.edges[dot.edgeIndex];
             const src = this.nodes[edge.sourceIndex];
             const tgt = this.nodes[edge.targetIndex];
+
+            // Wall-to-wall endpoints (same offset as edges)
+            const dx = tgt.x - src.x;
+            const dy = tgt.y - src.y;
+            const dz = tgt.z - src.z;
+            const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+            const nx = dx / len;
+            const ny = dy / len;
+            const nz = dz / len;
+            const x0 = src.x + nx * src.radius;
+            const y0 = src.y + ny * src.radius;
+            const z0 = src.z + nz * src.radius;
+            const x1 = tgt.x - nx * tgt.radius;
+            const y1 = tgt.y - ny * tgt.radius;
+            const z1 = tgt.z - nz * tgt.radius;
             const t = dot.t;
 
-            dummy.position.set(src.x + (tgt.x - src.x) * t, src.y + (tgt.y - src.y) * t, src.z + (tgt.z - src.z) * t);
+            dummy.position.set(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, z0 + (z1 - z0) * t);
             dummy.scale.setScalar(DOT_RADIUS);
             dummy.updateMatrix();
             this.dotsMesh.setMatrixAt(i, dummy.matrix);
@@ -1066,6 +1366,74 @@ export class GraphSceneService {
         this.dotsMesh.instanceMatrix.needsUpdate = true;
     }
 
+    /** Sort node instances back-to-front relative to the camera for correct transparent blending. */
+    private sortInstancesByDepth(): void {
+        if (!this.resources || !this.three) return;
+        const THREE = this.three;
+        const camPos = this.resources.camera.position;
+        const nodesMesh = this.resources.nodesMesh;
+        const count = this.nodes.length;
+
+        // Build squared-distance array and sort farthest-first (back-to-front)
+        const order: Array<{ i: number; d: number }> = new Array(count);
+        for (let i = 0; i < count; i++) {
+            const node = this.nodes[i];
+            if (this.isNodeVisible(node)) {
+                const dx = node.x - camPos.x;
+                const dy = node.y - camPos.y;
+                const dz = node.z - camPos.z;
+                order[i] = { i, d: dx * dx + dy * dy + dz * dz };
+            } else {
+                order[i] = { i, d: -1 };
+            }
+        }
+        order.sort((a, b) => b.d - a.d);
+
+        // Rewrite instance matrices and colors in sorted order
+        const dummy = new THREE.Object3D();
+        const tempColor = new THREE.Color();
+        this.sortedToOriginal.length = count;
+
+        for (let slot = 0; slot < count; slot++) {
+            const nodeIndex = order[slot].i;
+            this.sortedToOriginal[slot] = nodeIndex;
+            const node = this.nodes[nodeIndex];
+
+            if (this.isNodeVisible(node)) {
+                dummy.position.set(node.x, node.y, node.z);
+                dummy.scale.setScalar(node.radius);
+            } else {
+                dummy.position.set(99999, 99999, 99999);
+                dummy.scale.setScalar(0);
+            }
+            dummy.updateMatrix();
+            nodesMesh.setMatrixAt(slot, dummy.matrix);
+
+            // Replicate color logic from updateInstanceColors
+            let color: ColorTuple = node.color;
+            if (this.searchHighlightIndices !== null) {
+                color = this.searchHighlightIndices.has(nodeIndex)
+                    ? HIGHLIGHT_COLOR
+                    : [node.color[0] * DIMMED_ALPHA, node.color[1] * DIMMED_ALPHA, node.color[2] * DIMMED_ALPHA];
+            } else if (this.highlightedIndices !== null) {
+                color = this.highlightedIndices.has(nodeIndex)
+                    ? HIGHLIGHT_COLOR
+                    : [node.color[0] * DIMMED_ALPHA, node.color[1] * DIMMED_ALPHA, node.color[2] * DIMMED_ALPHA];
+            }
+            tempColor.setRGB(
+                color[0] * NODE_3D_BRIGHTNESS,
+                color[1] * NODE_3D_BRIGHTNESS,
+                color[2] * NODE_3D_BRIGHTNESS
+            );
+            nodesMesh.setColorAt(slot, tempColor);
+        }
+
+        nodesMesh.instanceMatrix.needsUpdate = true;
+        if (nodesMesh.instanceColor) {
+            nodesMesh.instanceColor.needsUpdate = true;
+        }
+    }
+
     private startRenderLoop(): void {
         const render = (): void => {
             if (!this.resources) return;
@@ -1073,9 +1441,73 @@ export class GraphSceneService {
             if (this.dotsData.length > 0) {
                 this.updateDots();
             }
-            this.resources.renderer.render(this.resources.scene, this.resources.camera);
+            if (this.is3D && this.depthNodesMesh) {
+                this.render3DMultiPass();
+            } else {
+                this.resources.renderer.render(this.resources.scene, this.resources.camera);
+            }
             this.animationFrameId = requestAnimationFrame(render);
         };
         this.animationFrameId = requestAnimationFrame(render);
+    }
+
+    /**
+     * 3D multi-pass rendering: edges are occluded by nodes,
+     * while nodes remain semi-transparent to each other.
+     *
+     * Pass 1 — depth-only node silhouettes write to depth buffer
+     * Pass 2 — transparent nodes + outlines + labels (depthTest off, sorted back-to-front)
+     * Pass 3 — edges + highlight lines + dots (depth-tested against Pass 1 — hidden behind nodes, on top in front)
+     */
+    private render3DMultiPass(): void {
+        const { renderer, scene, camera, nodesMesh, labelSprites } = this.resources!;
+        const depthMesh = this.depthNodesMesh!;
+        const edgesMesh = this.edgesMesh3D;
+        const nodeMat = nodesMesh.material as InstanceType<typeof import('three').MeshPhongMaterial>;
+
+        const savedLabelVis = labelSprites.map((s) => s.visible);
+        const savedBackground = scene.background;
+        const prevAutoClear = renderer.autoClear;
+        renderer.autoClear = false;
+        renderer.clear();
+
+        // Pass 1 — depth-only nodes (scene background is drawn here)
+        nodesMesh.visible = false;
+        if (edgesMesh) edgesMesh.visible = false;
+        if (this.outlineMesh) this.outlineMesh.visible = false;
+        if (this.highlightLinesObj) this.highlightLinesObj.visible = false;
+        if (this.dotsMesh) this.dotsMesh.visible = false;
+        for (const s of labelSprites) s.visible = false;
+        depthMesh.visible = true;
+        renderer.render(scene, camera);
+
+        // Suppress background for subsequent passes to preserve color buffer
+        scene.background = null;
+
+        // Sort node instances back-to-front for correct transparent blending
+        this.sortInstancesByDepth();
+
+        // Pass 2 — transparent nodes + outlines + labels (skip depth test — occlusion handled by sorting)
+        depthMesh.visible = false;
+        nodeMat.depthTest = false;
+        nodesMesh.visible = true;
+        if (this.outlineMesh) this.outlineMesh.visible = true;
+        labelSprites.forEach((s, i) => {
+            s.visible = savedLabelVis[i];
+        });
+        renderer.render(scene, camera);
+        nodeMat.depthTest = true;
+
+        // Pass 3 — edges + decorations (depth-tested against node depth from Pass 1)
+        nodesMesh.visible = false;
+        if (this.outlineMesh) this.outlineMesh.visible = false;
+        for (const s of labelSprites) s.visible = false;
+        if (edgesMesh) edgesMesh.visible = true;
+        if (this.highlightLinesObj) this.highlightLinesObj.visible = true;
+        if (this.dotsMesh) this.dotsMesh.visible = true;
+        renderer.render(scene, camera);
+
+        scene.background = savedBackground;
+        renderer.autoClear = prevAutoClear;
     }
 }
