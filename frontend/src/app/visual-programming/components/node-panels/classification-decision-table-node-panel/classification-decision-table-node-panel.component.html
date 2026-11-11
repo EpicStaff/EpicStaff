@@ -610,7 +610,15 @@
                                                         ) {
                                                             <div class="prompt-field">
                                                                 <div class="field-label-row">
-                                                                    <label class="field-label">Prompt</label>
+                                                                    <span class="field-label">
+                                                                        Prompt
+                                                                        <app-help-tooltip
+                                                                            text="Prompt sent to the classification model. Use variables carefully."
+                                                                            ariaLabel="Prompt help"
+                                                                            position="right"
+                                                                            size="18px"
+                                                                        />
+                                                                    </span>
                                                                     <button
                                                                         type="button"
                                                                         class="field-expand-icon"
@@ -756,6 +764,14 @@
                                         ></app-svg-icon>
                                         {{ sideEditorView() === 'schema' ? 'Output Schema' : 'Prompt' }}
                                         — {{ prompt.id }}
+                                        @if (sideEditorView() !== 'schema') {
+                                            <app-help-tooltip
+                                                text="Prompt sent to the classification model. Use variables carefully."
+                                                ariaLabel="Prompt help"
+                                                position="right"
+                                                size="18px"
+                                            />
+                                        }
                                     </span>
                                     <div class="side-editor-pane-actions">
                                         <button
