@@ -18,13 +18,12 @@ function makeNode(id: string, type: NodeType, overrides: Partial<NodeModel> = {}
     return {
         id,
         backendId: null,
+        nodeUuid: `node-uuid-${id}`,
         type,
         node_name: `node-${id}`,
         data: {} as NodeModel['data'],
         position: { x: 0, y: 0 },
         ports: null,
-        color: '#000',
-        icon: 'icon',
         input_map: {},
         output_variable_path: null,
         size: { width: 330, height: 60 },
@@ -36,13 +35,12 @@ function makeStartNode(id: string, overrides: Partial<StartNodeModel> = {}): Sta
     return {
         id,
         backendId: null,
+        nodeUuid: `node-uuid-${id}`,
         type: NodeType.START,
         node_name: '__start__',
         data: { initialState: {} },
         position: { x: -200, y: 0 },
         ports: null,
-        color: '#d3d3d3',
-        icon: 'start',
         input_map: {},
         output_variable_path: null,
         size: { width: 125, height: 60 },
@@ -54,13 +52,12 @@ function makeEndNode(id: string, overrides: Partial<EndNodeModel> = {}): EndNode
     return {
         id,
         backendId: null,
+        nodeUuid: `node-uuid-${id}`,
         type: NodeType.END,
         node_name: '__end__',
         data: { output_map: {} },
         position: { x: 500, y: 0 },
         ports: null,
-        color: '#d3d3d3',
-        icon: 'end',
         input_map: {},
         output_variable_path: null,
         size: { width: 125, height: 60 },
@@ -72,13 +69,12 @@ function makeSubGraphNode(id: string, overrides: Partial<SubGraphNodeModel> = {}
     return {
         id,
         backendId: null,
+        nodeUuid: `node-uuid-${id}`,
         type: NodeType.SUBGRAPH,
         node_name: 'My Subflow',
         data: { id: 42, uuid: 'abc', name: 'subflow', description: '' },
         position: { x: 200, y: 0 },
         ports: null,
-        color: '#000',
-        icon: 'subgraph',
         input_map: {},
         output_variable_path: null,
         size: { width: 330, height: 60 },
@@ -345,6 +341,8 @@ describe('unpackSubflow', () => {
             expect(node.id).not.toBe('task-a');
             expect(node.id).not.toBe('task-b');
             expect(node.backendId).toBeNull();
+            expect(node.nodeUuid).toEqual(expect.any(String));
+            expect([taskA.nodeUuid, taskB.nodeUuid]).not.toContain(node.nodeUuid);
         }
     });
 

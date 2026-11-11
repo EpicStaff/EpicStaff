@@ -8,12 +8,14 @@ import {
     CustomInputComponent,
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
+    HintMessageComponent,
     SelectComponent,
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { ResourceCode, toSecretIds } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
+import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { merge, Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -23,12 +25,18 @@ import { confirmBuildingVenv } from '../../../../features/virtual-environments/u
 import { toVenvSelectItems } from '../../../../features/virtual-environments/utils/venv-select-items';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { CODE_DIFF_HINT_EXPAND_PANEL } from '../../../core/constants/code-diff-hints';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { PythonNode } from '../../../core/models/python-node.model';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { codeChangeFor, linkedEntityFormat, mapFieldRowChanges } from '../../../utils/diff';
+import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
@@ -68,6 +76,10 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         ValidationErrorsComponent,
         SelectComponent,
         ExecutionTimeoutFieldComponent,
+        DiffFieldMarkComponent,
+        MissingReferenceNoteComponent,
+        CodeDiffViewComponent,
+        HintMessageComponent,
     ],
     templateUrl: './python-node-panel.component.html',
     styleUrls: ['./python-node-panel.component.scss'],
@@ -79,6 +91,18 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly isFormCollapsed = signal<boolean>(false);
     public readonly useStorage = signal<boolean>(false);
     protected readonly leftColumnWidth = createColumnWidthState('python-node', 406);
+    /**
+     * Changes tab of a version preview: what a restore does to each Input List row. The input map is diffed as
+     * one value, so its keys are compared here. `null` anywhere else, so the list shows no row marks.
+     */
+    protected readonly inputMapRowChanges = computed(() => mapFieldRowChanges(this.panelDiff(), 'input_map'));
+    /**
+     * Changes tab of a version preview, widened panel: the changed code, shown as a diff in the editor column. The
+     * narrow panel's small editor gets the field mark instead.
+     */
+    protected readonly codeDiff = computed(() =>
+        this.isExpanded() ? codeChangeFor(this.panelDiff(), 'python_code.code') : null
+    );
 
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
     public readonly canEditSecrets = computed(
@@ -91,6 +115,11 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
               ? 'Secrets assigned to this Python code.'
               : "Secrets already assigned to this Python code. You don't have permission to change which secrets are selected."
     );
+    /** The code reads secrets and the user lacks Secrets:Use: the code, venv and storage flag (which edits the code) are locked, the rest is not. */
+    protected readonly isSecretCodeLocked = computed(
+        () => !this.isReadOnly() && this.flowReadOnly.isSecretCodeLocked(this.node().data.secret_ids ?? [])
+    );
+    protected readonly isCodeReadOnly = computed(() => this.isReadOnly() || this.isSecretCodeLocked());
     public readonly selectedSecretIds = signal<number[]>([]);
     public readonly secretNames = computed(() =>
         this.canEditSecrets()
@@ -104,6 +133,11 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         { name: 'No venv', value: null },
         ...toVenvSelectItems(this.venvs()),
     ]);
+    /** The venvs the select lists name a changed venv in the mark's tooltip; one not listed: `venv #id`. */
+    protected readonly venvNameFormat = linkedEntityFormat(
+        'venv',
+        (id) => this.venvs().find((venv) => venv.id === id)?.name
+    );
 
     public readonly inputMapKeys = computed(() => {
         this.formDirtyTick();
@@ -116,7 +150,9 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     isOpenTestMode = signal(false);
     /** The Test mode run of the stored code and its terminal. */
     protected readonly codeTestRun = new PythonCodeTestRun();
+    protected readonly codeDiffHint = CODE_DIFF_HINT_EXPAND_PANEL;
 
+    protected readonly secretCodeLockedMessage = SECRET_CODE_NEEDS_USE_MESSAGE;
     pythonCode: string = '';
     initialPythonCode: string = '';
     protected executionTimeout!: ExecutionTimeoutFormField;
@@ -196,6 +232,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     private readonly sidePanelService = inject(SidePanelService);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private readonly permissionsService = inject(PermissionsService);
     private readonly flowService = inject(FlowService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
@@ -420,7 +457,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 ...this.node().data,
                 name: this.form.value.node_name || 'Python Code',
                 code: this.pythonCode,
-                entrypoint: 'main',
+                // A stored entrypoint is kept: the backend refuses changing it for code that reads secrets.
+                entrypoint: this.node().data.entrypoint || 'main',
                 venv_id: this.form.value.venv ?? null,
                 use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
@@ -500,7 +538,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     }
 
     private syncCodeFromInputList(): void {
-        if (this.isApplyingCodeToInputList || this.isReadOnly()) return;
+        if (this.isApplyingCodeToInputList || this.isCodeReadOnly()) return;
         const names = this.activeInputListNames();
         // A key still being typed (not a name yet, or another row's) waits, keeping the last names to diff from.
         if (haveSameNames(names, this.lastInputListNames) || !areValidParameterNames(names)) return;

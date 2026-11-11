@@ -1,3 +1,5 @@
+@use '../../../../styles/validation-message';
+
 :host {
     width: 100%;
 }
@@ -8,20 +10,8 @@
     margin: 0.5rem 0;
     row-gap: 0.5rem;
     &__item {
-        display: flex;
-        align-items: center;
-        // A minimum, not a height: a long message (a server refusal) wraps onto more lines.
-        min-height: 28px;
-        border-radius: var(--radius-sm);
-        border-left: 2px solid var(--red-500);
-        background: var(--red-alpha-8-flat);
-        color: var(--red-500);
+        @include validation-message.item;
         font-family: var(--font-family);
-        font-weight: var(--text-body-small-weight);
-        font-size: var(--text-body-small-size);
-        line-height: var(--text-body-small-line-height);
-        letter-spacing: 0;
         vertical-align: middle;
-        padding: 0.25rem 0.5rem;
     }
 }

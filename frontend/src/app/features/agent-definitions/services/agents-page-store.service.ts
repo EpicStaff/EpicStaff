@@ -1,13 +1,21 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
-import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
+import {
+    computeUniqueCopyName,
+    computeUniqueName,
+    downloadBlob,
+    movedToRecycleBinMessage,
+    showExportExclusionWarning,
+} from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap, tap } from 'rxjs/operators';
 
+import { wasHandledByForbiddenInterceptor } from '../../../core/interceptors/forbidden-interceptor-handled.util';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ToastService } from '../../../services/notifications';
+import { ImportWithReviewService } from '../../flows/components/import-review-dialog/import-with-review.service';
 import {
     AgentDefaultSurface,
     AgentDefinition,
@@ -119,6 +127,7 @@ export class AgentsPageStore {
     private readonly catalogs: SurfaceCatalogsStore = inject(SurfaceCatalogsStore);
     private readonly destroyRef = inject(DestroyRef);
     private readonly permissionService = inject(PermissionsService);
+    private readonly importWithReview = inject(ImportWithReviewService);
     private readonly groupsStore = inject(AgentGroupsStorageService);
     private readonly collapsedGroupsKey = collapsedGroupsStorageKey(inject(ProfileService).currentUserSignal()?.id);
 
@@ -159,6 +168,14 @@ export class AgentsPageStore {
     readonly visibleSections = signal<Set<ExplorerSectionId>>(loadVisibleSections());
 
     readonly storageActivated = signal<boolean>(false);
+    readonly agentExportMode = signal<boolean>(false);
+    readonly selectedAgentIds = signal<Set<number>>(new Set());
+    readonly selectedAgentCount = computed<number>(() => this.selectedAgentIds().size);
+    readonly allAgentsSelected = computed<boolean>(() => {
+        const agents = this.agents();
+        const selected = this.selectedAgentIds();
+        return agents.length > 0 && agents.every((a) => selected.has(a.id));
+    });
 
     /** The org's groups, sorted by name. */
     readonly groups = computed<LabelDto[]>(() =>
@@ -796,7 +813,7 @@ export class AgentsPageStore {
             });
     }
 
-    retrySurfaces(): void {
+    reloadSurfaces(): void {
         this.surfacesError.set(null);
         this.surfacesApi
             .getSurfaces()
@@ -1207,20 +1224,26 @@ export class AgentsPageStore {
     duplicateAgent(id: number): void {
         const src = this.agents().find((a) => a.id === id);
         if (!src) return;
-        const existingNames = this.agents().map((a) => a.name);
         this.saving.set(true);
-        this.agentsApi.copy(src, computeUniqueCopyName(src.name, existingNames)).subscribe({
-            next: (created) => {
-                this.agents.update((list) => [...list, created]);
-                this.selectAgent(created.id);
-                this.saving.set(false);
-                this.toast.success('Agent duplicated');
-            },
-            error: (err) => {
-                this.saving.set(false);
-                this.toast.error(this.extractError(err, 'Failed to duplicate agent'));
-            },
-        });
+        this.agentsApi
+            .copy(src.id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (created) => {
+                    this.agents.update((list) => [...list, created]);
+                    // The server clones the owned surfaces too. Reload always: our list may miss surfaces
+                    // the source gained elsewhere, so it cannot tell whether there is anything to show.
+                    this.reloadSurfaces();
+                    this.selectAgent(created.id);
+                    this.saving.set(false);
+                    this.toast.success('Agent duplicated');
+                },
+                error: (err) => {
+                    this.saving.set(false);
+                    if (wasHandledByForbiddenInterceptor(err)) return;
+                    this.toast.error(this.extractError(err, 'Failed to duplicate agent'));
+                },
+            });
     }
 
     deleteAgent(id: number): void {
@@ -1241,6 +1264,74 @@ export class AgentsPageStore {
                 this.toast.error(this.extractError(err, 'Failed to delete agent'));
             },
         });
+    }
+
+    startAgentExport(): void {
+        this.selectedAgentIds.set(new Set());
+        this.agentExportMode.set(true);
+    }
+
+    cancelAgentExport(): void {
+        this.agentExportMode.set(false);
+        this.selectedAgentIds.set(new Set());
+    }
+
+    toggleAgentSelection(id: number): void {
+        this.selectedAgentIds.update((ids) => {
+            const next = new Set(ids);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }
+
+    toggleSelectAllAgents(): void {
+        this.selectedAgentIds.set(this.allAgentsSelected() ? new Set() : new Set(this.agents().map((a) => a.id)));
+    }
+
+    confirmAgentExport(): void {
+        const existing = new Set(this.agents().map((a) => a.id));
+        const ids = [...this.selectedAgentIds()].filter((id) => existing.has(id));
+        if (ids.length === 0) {
+            this.toast.info('Select at least one agent to export.');
+            return;
+        }
+        this.agentsApi.bulkExportAgents(ids).subscribe({
+            next: ({ blob, excluded }) => {
+                downloadBlob(blob, `agents_export_${Date.now()}.json`);
+                this.cancelAgentExport();
+                showExportExclusionWarning(this.toast, excluded);
+            },
+            error: (err) => this.toast.error(this.extractError(err, 'Failed to export agents')),
+        });
+    }
+
+    exportAgent(id: number): void {
+        const agent = this.agents().find((a) => a.id === id);
+        if (!agent) return;
+        this.agentsApi.exportAgent(id).subscribe({
+            next: ({ blob, excluded }) => {
+                downloadBlob(blob, `agent_${agent.name}.json`);
+                showExportExclusionWarning(this.toast, excluded);
+            },
+            error: (err) => this.toast.error(this.extractError(err, `Failed to export agent "${agent.name}"`)),
+        });
+    }
+
+    importAgents(): void {
+        this.importWithReview
+            .pickAndImport({
+                entityLabel: 'agent',
+                entityLabelPlural: 'agents',
+                inspect: (file) => this.agentsApi.inspectImport(file),
+                importFile: (file) => this.agentsApi.importAgents(file),
+            })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+                this.toast.success('Agents imported successfully.');
+                this.load();
+                this.catalogs.reloadLoadedCatalogs();
+            });
     }
 
     deleteSurface(id: number): void {

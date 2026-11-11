@@ -12,7 +12,15 @@ export interface GetOrganizationResponse {
     created_at: string;
     updated_at: string;
     // left out by the backend when the org has no config row yet
-    config?: { audit_retention_days: number };
+    config?: OrganizationConfig;
+}
+
+/** Retention in days; 0 means unlimited. The `*_effective_days` values are what the purge applies. */
+export interface OrganizationConfig {
+    audit_retention_days: number;
+    sessions_effective_days: number;
+    conversations_effective_days: number;
+    audit_effective_days: number;
 }
 
 export interface UpdateOrganizationRequest {

@@ -3,7 +3,7 @@ Authoritative org_id resolution for sandbox callback tools.
 
 main's RBAC merge made org-scoped Django endpoints (e.g. GET /sessions/<id>/,
 /schedule-trigger-nodes/) require X-Organization-Id. Sandbox callback tools
-(fanout_tool, subflow_tool, schedule_manager_tool) call back into the API with
+(such as schedule_manager_tool) call back into the API with
 only X-Api-Key, so their converter-produced PythonCodeData must carry the
 running session's authoritative org_id (read from Graph.org_id — never from
 the optional GraphOrganization storage-prefix table, and never from agent

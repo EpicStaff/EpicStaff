@@ -5,7 +5,7 @@ SSRF guard and the redirect-following fetch (kept in sync by
 test_ssrf_guard_drift.py); this file checks every copy through each tool's main().
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 import pytest
@@ -23,10 +23,15 @@ class WebTool:
     same_host_target: str
     page_body: str
     expected: Callable[[str], bool]
+    # Tool configuration values, which the sandbox injects as module globals.
+    config: dict = field(default_factory=dict)
 
     @property
     def module(self):
-        return load_tool_main(self.name)
+        module = load_tool_main(self.name)
+        for name, value in self.config.items():
+            setattr(module, name, value)
+        return module
 
 
 TOOLS = [
@@ -50,9 +55,10 @@ TOOLS = [
     ),
     WebTool(
         "crewai_jina_scraper_website_tool",
-        lambda module, url: module.main(website_url=url, api_key="test-key"),
+        lambda module, url: module.main(website_url=url),
         lambda url: f"https://r.jina.ai/{url}", "https://r.jina.ai/other-path",
         "markdown content", lambda result: result == "markdown content",
+        config={"api_key": "test-key"},
     ),
 ]
 EACH_TOOL = pytest.mark.parametrize("tool", TOOLS, ids=[tool.name for tool in TOOLS])

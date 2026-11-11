@@ -302,6 +302,106 @@ describe('AgentsPageStore deleteGroup', () => {
     );
 });
 
+describe('AgentsPageStore agent export', () => {
+    let downloads: string[];
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+
+    beforeEach(() => {
+        downloads = [];
+        URL.createObjectURL = () => 'blob:agents';
+        URL.revokeObjectURL = () => undefined;
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            downloads.push(this.download);
+        });
+    });
+
+    afterEach(() => {
+        URL.createObjectURL = originalCreateObjectURL;
+        URL.revokeObjectURL = originalRevokeObjectURL;
+        vi.restoreAllMocks();
+    });
+
+    /** The store over three agents, with the export endpoints and the toast spied on. */
+    function exportStore() {
+        const store = loadStore({ agents: [agent(1, 'Alpha', null), agent(2, 'Beta', null), agent(3, 'Gamma', null)] });
+        const exported = of({ blob: new Blob(['{}']), excluded: [] });
+        const api = Object.assign(TestBed.inject(AgentDefinitionsApiService), {
+            exportAgent: vi.fn(() => exported),
+            bulkExportAgents: vi.fn(() => exported),
+        });
+        const toast = Object.assign(TestBed.inject(ToastService), { info: vi.fn() });
+        return { store, api, toast };
+    }
+
+    it('starts every export with nothing ticked', () => {
+        const { store } = exportStore();
+        store.toggleAgentSelection(1);
+
+        store.startAgentExport();
+
+        expect(store.agentExportMode()).toBe(true);
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('sends only the ticked agents that still exist, downloads one file and leaves export mode', () => {
+        const { store, api } = exportStore();
+        store.startAgentExport();
+        store.toggleAgentSelection(1);
+        store.toggleAgentSelection(3);
+        store.toggleAgentSelection(99);
+
+        store.confirmAgentExport();
+
+        expect(api.bulkExportAgents).toHaveBeenCalledExactlyOnceWith([1, 3]);
+        expect(downloads).toHaveLength(1);
+        expect(downloads[0]).toMatch(/^agents_export_\d+\.json$/);
+        expect(store.agentExportMode()).toBe(false);
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('asks for a ticked agent instead of exporting nothing, and stays in export mode', () => {
+        const { store, api, toast } = exportStore();
+        store.startAgentExport();
+
+        store.confirmAgentExport();
+
+        expect(api.bulkExportAgents).not.toHaveBeenCalled();
+        expect(toast.info).toHaveBeenCalledExactlyOnceWith('Select at least one agent to export.');
+        expect(store.agentExportMode()).toBe(true);
+    });
+
+    it('ticks every agent on Select all, and clears them on the next one', () => {
+        const { store } = exportStore();
+        store.startAgentExport();
+
+        store.toggleSelectAllAgents();
+        expect(store.allAgentsSelected()).toBe(true);
+        expect([...store.selectedAgentIds()]).toEqual([1, 2, 3]);
+
+        store.toggleSelectAllAgents();
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('exports one agent into a file named after it', () => {
+        const { store, api } = exportStore();
+
+        store.exportAgent(2);
+
+        expect(api.exportAgent).toHaveBeenCalledExactlyOnceWith(2);
+        expect(downloads).toEqual(['agent_Beta.json']);
+    });
+
+    it('exports nothing for an agent that is no longer in the list', () => {
+        const { store, api } = exportStore();
+
+        store.exportAgent(99);
+
+        expect(api.exportAgent).not.toHaveBeenCalled();
+        expect(downloads).toEqual([]);
+    });
+});
+
 const AGENTS_URL = '/api/agent-definitions/';
 const SURFACES_URL = '/api/surfaces/';
 const GROUPS_URL = '/api/agent-labels/';
@@ -339,39 +439,47 @@ function agentOf(id: number, name: string): AgentDefinition {
     };
 }
 
+/** The real store and its real API services, over a fake HTTP backend. */
+function storeOverFakeBackend(): { store: AgentsPageStore; backend: HttpTestingController } {
+    TestBed.configureTestingModule({
+        providers: [
+            provideHttpClient(),
+            provideHttpClientTesting(),
+            { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
+            AgentsPageStore,
+            // Only reloaded after a failed surface save, which these tests never make.
+            { provide: SurfaceCatalogsStore, useValue: {} },
+        ],
+    });
+    return { store: TestBed.inject(AgentsPageStore), backend: TestBed.inject(HttpTestingController) };
+}
+
+/** One page of a list endpoint, as the API answers it. */
+const page = <T>(results: T[]) => ({ count: results.length, next: null, previous: null, results });
+
+const isGet = (url: string) => (request: { method: string; url: string }) =>
+    request.method === 'GET' && request.url === url;
+
+/** Opens the page: the store loads agents, surfaces and groups; the backend answers with these rows. */
+function loadPage(
+    store: AgentsPageStore,
+    backend: HttpTestingController,
+    agents: AgentDefinition[],
+    surfaces: Surface[] = []
+): void {
+    store.load();
+    backend.expectOne(isGet(AGENTS_URL)).flush(page(agents));
+    backend.expectOne(isGet(SURFACES_URL)).flush(page(surfaces));
+    backend.expectOne(isGet(GROUPS_URL)).flush(page([]));
+}
+
 describe('AgentsPageStore: whether the agent shown is the one the latest draft was saved as', () => {
     let store: AgentsPageStore;
     let backend: HttpTestingController;
 
-    beforeEach(() => {
-        TestBed.configureTestingModule({
-            providers: [
-                provideHttpClient(),
-                provideHttpClientTesting(),
-                { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
-                AgentsPageStore,
-                // Only reloaded after a failed surface save, which these tests never make.
-                { provide: SurfaceCatalogsStore, useValue: {} },
-            ],
-        });
-        store = TestBed.inject(AgentsPageStore);
-        backend = TestBed.inject(HttpTestingController);
-    });
+    beforeEach(() => ({ store, backend } = storeOverFakeBackend()));
 
     afterEach(() => backend.verify());
-
-    function loadAgents(agents: AgentDefinition[]): void {
-        store.load();
-        backend
-            .expectOne((request) => request.method === 'GET' && request.url === AGENTS_URL)
-            .flush({ count: agents.length, next: null, previous: null, results: agents });
-        backend
-            .expectOne((request) => request.method === 'GET' && request.url === SURFACES_URL)
-            .flush({ count: 0, next: null, previous: null, results: [] });
-        backend
-            .expectOne((request) => request.method === 'GET' && request.url === GROUPS_URL)
-            .flush({ count: 0, next: null, previous: null, results: [] });
-    }
 
     /** Add Agent, then a name: the backend creates the agent. */
     function createFromDraft(agent: AgentDefinition): void {
@@ -404,7 +512,7 @@ describe('AgentsPageStore: whether the agent shown is the one the latest draft w
     });
 
     it('is false for an agent that was there before', () => {
-        loadAgents([agentOf(3, 'Invoice Reader')]);
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
         createFromDraft(agentOf(7, 'CV Processor'));
 
         store.selectAgent(3);
@@ -420,5 +528,95 @@ describe('AgentsPageStore: whether the agent shown is the one the latest draft w
         store.selectAgent(7);
 
         expect(store.isSelectedAgentFromLatestDraft()).toBe(false);
+    });
+});
+
+describe('AgentsPageStore duplicateAgent', () => {
+    const COPY_URL = `${AGENTS_URL}3/copy/`;
+    let store: AgentsPageStore;
+    let backend: HttpTestingController;
+    let toast: ToastService;
+
+    beforeEach(() => {
+        ({ store, backend } = storeOverFakeBackend());
+        toast = TestBed.inject(ToastService);
+        vi.spyOn(toast, 'error');
+    });
+
+    afterEach(() => backend.verify());
+
+    it('adds the copy the server made and selects it', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+
+        store.duplicateAgent(3);
+        backend
+            .expectOne({ method: 'POST', url: COPY_URL })
+            .flush(agentOf(8, 'Invoice Reader #2'), { status: 201, statusText: 'Created' });
+        backend.expectOne(isGet(SURFACES_URL)).flush(page([]));
+
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader', 'Invoice Reader #2']);
+        expect(store.selectedAgent()?.id).toBe(8);
+        expect(store.saving()).toBe(false);
+    });
+
+    it('reloads surfaces even when the source owned none in the list, so a surface cloned for the copy shows', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')], [surface(20, 'Web search', null)]);
+
+        store.duplicateAgent(3);
+        backend.expectOne({ method: 'POST', url: COPY_URL }).flush(agentOf(8, 'Invoice Reader #2'));
+        const clone = surface(22, 'Reader inbox', null, 8);
+        backend.expectOne(isGet(SURFACES_URL)).flush(page([surface(20, 'Web search', null), clone]));
+
+        expect(store.surfaces().filter((row) => row.owner_agent === 8)).toEqual([clone]);
+    });
+
+    it('shows the server message and adds nothing when the copy fails', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+        const message = 'A copy with that name was just created; please retry.';
+
+        store.duplicateAgent(3);
+        backend
+            .expectOne({ method: 'POST', url: COPY_URL })
+            .flush({ message }, { status: 400, statusText: 'Bad Request' });
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
+        expect(store.saving()).toBe(false);
+    });
+
+    it('shows the server message and adds nothing when the agent owns surfaces the user may not create', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+        const message =
+            'This agent owns surfaces, and copying it clones them, so it requires the Create permission on surfaces.';
+
+        store.duplicateAgent(3);
+        backend.expectOne({ method: 'POST', url: COPY_URL }).flush(
+            {
+                status_code: 403,
+                code: 'agent_with_owned_surfaces_requires_surfaces_create_permission',
+                message,
+            },
+            { status: 403, statusText: 'Forbidden' }
+        );
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
+        expect(store.saving()).toBe(false);
+    });
+
+    it('adds nothing and stays quiet on an uncoded 403, which the forbidden interceptor already reported', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+
+        store.duplicateAgent(3);
+        backend
+            .expectOne({ method: 'POST', url: COPY_URL })
+            .flush(
+                { detail: 'You do not have permission to perform this action.' },
+                { status: 403, statusText: 'Forbidden' }
+            );
+
+        expect(toast.error).not.toHaveBeenCalled();
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
+        expect(store.saving()).toBe(false);
     });
 });

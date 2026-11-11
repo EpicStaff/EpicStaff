@@ -1,5 +1,6 @@
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedServiceViewSetMixin
@@ -114,6 +115,12 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         # The collection must live in the active org (404 otherwise).
         self.get_in_active_org_or_404(SourceCollection, collection_id)
+
+        # If updating an existing GraphRag, require UPDATE permission
+        if GraphRagService.get_or_none_graph_rag_by_collection(collection_id) is not None:
+            assert_org_permission(
+                request.user, self.get_active_org_id(), self.rbac_resource_type, Permission.UPDATE
+            )
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

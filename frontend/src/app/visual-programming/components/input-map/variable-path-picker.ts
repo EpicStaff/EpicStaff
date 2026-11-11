@@ -38,7 +38,14 @@ export function buildVariablePickerItems(state: Record<string, unknown>): Picker
             const fullPath = isArray ? `${pathPrefix}[${key}]` : `${pathPrefix}.${key}`;
             const child = value[key];
             const tag = isRecord(child) ? 'obj' : 'var';
-            items.push({ tag, label: fullPath.slice(VARIABLES_PREFIX.length), displayLabel: key, depth, fullPath });
+            items.push({
+                tag,
+                label: fullPath.slice(VARIABLES_PREFIX.length),
+                displayLabel: key,
+                depth,
+                fullPath,
+                isArrayItem: isArray,
+            });
             if (isRecord(child)) collect(child, fullPath, depth + 1);
         }
     };
@@ -60,6 +67,20 @@ export function withoutUsedPaths(items: PickerItem[], usedPaths: ReadonlySet<str
                 !isUsed(item) || items.some((other) => !isUsed(other) && isPathUnder(other.fullPath, item.fullPath))
         )
         .map((item) => (isUsed(item) ? { ...item, disabled: true } : item));
+}
+
+/** Converts a display value (what the user sees after the "variables" prefix) to the stored form value. */
+export function variablesDisplayToFormValue(displayValue: string): string {
+    if (!displayValue) return 'variables.';
+    if (displayValue.startsWith('.')) return 'variables' + displayValue;
+    return 'variables.' + displayValue;
+}
+
+/** Strips the `variables` prefix from a stored form value for display (e.g. "variables.topic" → ".topic"). */
+export function variablesFormValueToDisplay(formValue: string): string {
+    if (!formValue || formValue === 'variables.' || formValue === 'variables') return '';
+    if (formValue.startsWith('variables.')) return formValue.slice(9);
+    return formValue;
 }
 
 /** Enter with no modifier key, as Angular's `keydown.enter` matches it. */

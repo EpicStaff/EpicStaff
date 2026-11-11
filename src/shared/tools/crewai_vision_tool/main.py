@@ -1,8 +1,12 @@
-import json
-import sys
+# Vision Tool (OpenAI Vision)
+#
+# `openai_api_key` is NOT a function parameter: args_schema.json declares it
+# with "input_type": "user_input", so it is set in the tool configuration and
+# the sandbox injects it as a module-level global -- the agent never sees it.
 from urllib.parse import urlparse
 
 from openai import OpenAI
+from epicstaff_common import require_setting, safe_error_message
 
 
 def validate_image_path_url(image_path_url: str) -> str:
@@ -13,13 +17,12 @@ def validate_image_path_url(image_path_url: str) -> str:
     return image_path_url
 
 
-def main(image_path_url: str, openai_api_key: str, model: str = "gpt-4o-mini") -> str:
+def main(image_path_url: str, model: str = "gpt-4o-mini", **kwargs) -> str:
     """
     Analyze an image using OpenAI Vision API.
 
     Args:
         image_path_url: Public http(s) URL of the image
-        openai_api_key: OpenAI API key
         model: OpenAI model identifier (default: gpt-4o-mini)
 
     Returns:
@@ -27,8 +30,11 @@ def main(image_path_url: str, openai_api_key: str, model: str = "gpt-4o-mini") -
     """
     try:
         image_data = validate_image_path_url(image_path_url)
+    except ValueError as error:
+        return f"An error occurred: {error}"
 
-        client = OpenAI(api_key=openai_api_key)
+    try:
+        client = OpenAI(api_key=require_setting(globals(), "openai_api_key"))
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -42,25 +48,7 @@ def main(image_path_url: str, openai_api_key: str, model: str = "gpt-4o-mini") -
             ],
         )
 
-        # Correctly access message content
         return response.choices[0].message.content
 
-    except Exception as e:
-        return f"An error occurred: {str(e)}"
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python main.py args.json")
-        sys.exit(1)
-
-    args_file = sys.argv[1]
-    with open(args_file, "r") as f:
-        args = json.load(f)
-
-    result = main(
-        image_path_url=args.get("image_path_url"),
-        openai_api_key=args.get("openai_api_key"),
-        model=args.get("model", "gpt-4o-mini")
-    )
-    print(result)
+    except Exception as error:
+        return f"An error occurred: {safe_error_message(error)}"

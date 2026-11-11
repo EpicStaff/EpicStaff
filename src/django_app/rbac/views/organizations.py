@@ -7,10 +7,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from rbac.access.gates import HasOrgPermission
+from rbac.access.gates import HasOrgPermission, RestrictApiKeyToUserKeyReads
 from rbac.access.org_context import OrgContextService
-from rbac.access.principals import limit_org_ids_to_api_key, user_api_key_org_id
-from rbac.exceptions import OrganizationNotFoundError
 from rbac.governance.organizations import (
     OrganizationManagementService,
 )
@@ -75,9 +73,7 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     @extend_schema(**ORGANIZATIONS_LIST_GET)
     def list(self, request):
         is_active = self._parse_is_active(request.query_params.get("is_active"))
-        org_ids = limit_org_ids_to_api_key(
-            request, self.parse_org_ids(request.query_params.get("org_ids"))
-        )
+        org_ids = self.requested_org_ids(request)
         scopes = getattr(request, "_rbac_org_scopes", None)
         qs = self._service.list_for_actor(
             actor=request.user,
@@ -100,10 +96,7 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     @extend_schema(**ORGANIZATIONS_RETRIEVE_GET)
     def retrieve(self, request, pk=None):
         org_id = int(pk)
-        key_org_id = user_api_key_org_id(request)
-        # A USER API key reads only its own org; any other id is as missing.
-        if key_org_id is not None and key_org_id != org_id:
-            raise OrganizationNotFoundError()
+        self.require_key_org(request, org_id)
         org = self._service.get_for_read(actor=request.user, org_id=org_id)
         return Response(OrganizationResponseSerializer(org).data)
 
@@ -194,6 +187,9 @@ class OrganizationSelfServiceViewSet(viewsets.ViewSet):
     PATCH /api/admin/organizations/settings/ (X-Organization-Id header) — an
     Org Admin managing their own org's settings, distinct from
     OrganizationAdminViewSet's superadmin-only org CRUD above.
+
+    JWT-only: `RestrictApiKeyToUserKeyReads` refuses every API key here, as on the
+    cross-org governance writes, so a key cannot change audit retention.
     """
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
@@ -203,6 +199,11 @@ class OrganizationSelfServiceViewSet(viewsets.ViewSet):
 
     _service = OrganizationManagementService()
     _org_context = OrgContextService()
+
+    def get_permissions(self):
+        # Prepended, as in CrossOrgAdminViewSet, so an action's own
+        # `permission_classes` cannot drop it.
+        return [RestrictApiKeyToUserKeyReads(), *super().get_permissions()]
 
     @extend_schema(**ORGANIZATION_SETTINGS_UPDATE)
     def partial_update(self, request):

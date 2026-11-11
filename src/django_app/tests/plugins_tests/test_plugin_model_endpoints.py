@@ -177,7 +177,7 @@ def test_an_import_by_a_plugin_cannot_create_a_model_with_an_endpoint(acme_key, 
 
 def test_quickstart_reusing_a_plugin_s_model_sends_the_key_to_the_vendor(client, client_as, admin_acme, acme, providers):
     for url, body in (
-        ("/api/llm-models/", {"name": "gpt-4o-mini", "llm_provider": providers[0].pk}),
+        ("/api/llm-models/", {"name": "gpt-6-luna", "llm_provider": providers[0].pk}),
         ("/api/embedding-models/", {"name": "text-embedding-3-small", "embedding_provider": providers[0].pk}),
     ):
         _refused(client.post(url, {**body, "base_url": ELSEWHERE}, format="json"), "base_url")
@@ -190,7 +190,7 @@ def test_quickstart_reusing_a_plugin_s_model_sends_the_key_to_the_vendor(client,
     assert response.status_code == 200, response.content
     llm_config = LLMConfig.objects.get(org=acme, custom_name=response.json()["config_name"])
     embedding_config = EmbeddingConfig.objects.get(org=acme, custom_name=response.json()["config_name"])
-    assert (llm_config.model.name, llm_config.model.base_url, llm_config.model.deployment_id) == ("gpt-4o-mini", None, None)
+    assert (llm_config.model.name, llm_config.model.base_url, llm_config.model.deployment_id) == ("gpt-6-luna", None, None)
     assert (embedding_config.model.base_url, embedding_config.model.deployment) == (None, None)
 
 

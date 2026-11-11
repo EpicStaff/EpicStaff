@@ -11,6 +11,39 @@
     border: 1px solid var(--graphite-750);
     border-radius: 0.625rem;
 
+    &--compact {
+        padding: 0;
+        border: none;
+
+        .kv-list__input {
+            background-color: var(--color-input-background);
+            border-color: var(--color-input-border);
+
+            &:focus {
+                border-color: var(--accent-color);
+            }
+
+            &--error {
+                border-color: var(--crimson-500);
+            }
+        }
+
+        .kv-list__row > .kv-list__input {
+            flex: 0 0 35%;
+        }
+
+        // Same footprint as app-delete-button, so rows line up with the card's delete column.
+        .kv-list__remove-btn {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+
+            &--hidden {
+                display: none;
+            }
+        }
+    }
+
     &__row {
         display: flex;
         align-items: center;

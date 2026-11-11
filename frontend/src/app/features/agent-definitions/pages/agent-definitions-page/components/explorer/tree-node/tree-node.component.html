@@ -154,6 +154,18 @@
             } @else {
                 <span class="row__chevron-spacer"></span>
             }
+            @if (showExportCheckbox()) {
+                <span
+                    class="row__check"
+                    (click)="$event.stopPropagation()"
+                >
+                    <app-checkbox
+                        [ariaLabel]="'Select ' + n.label"
+                        [checked]="isExportChecked()"
+                        (changed)="onExportCheckboxChange()"
+                    />
+                </span>
+            }
             <app-svg-icon
                 class="row__icon row__icon--agent"
                 icon="agents-tab"

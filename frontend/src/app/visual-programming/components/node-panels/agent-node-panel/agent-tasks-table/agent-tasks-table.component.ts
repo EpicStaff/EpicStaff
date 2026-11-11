@@ -19,8 +19,13 @@ import { AppSvgIconComponent, MultiSelectComponent, SelectItem } from '@shared/c
 
 import { ToastService } from '../../../../../services/notifications';
 import { AgentNodeTaskUi } from '../../../../core/models/agent-node.model';
+import { NodeSaveErrorsStore } from '../../../../services/node-save-errors.store';
+import { agentTaskSaveErrorKey } from '../../../../utils/save/bulk-save-errors';
 import { isValidOutputSchema } from '../../../../utils/validation/output-schema.validator';
+import { DiffFieldMarkComponent } from '../../../diff-field-mark/diff-field-mark.component';
+import { NodeSaveErrorsComponent } from '../../shared/node-save-errors/node-save-errors.component';
 import { VariableHighlightTextareaComponent } from '../../shared/variable-highlight-textarea/variable-highlight-textarea.component';
+import { AgentTaskRowChanges, AgentTaskRowMark, KEPT_AGENT_TASK_ROW, RemovedAgentTask } from './agent-task-row-changes';
 
 interface ContextRef {
     id?: number;
@@ -39,6 +44,8 @@ interface ResolvedTaskRef extends AgentNodeTaskUi {
         MatTooltipModule,
         MultiSelectComponent,
         VariableHighlightTextareaComponent,
+        DiffFieldMarkComponent,
+        NodeSaveErrorsComponent,
     ],
     templateUrl: './agent-tasks-table.component.html',
     styleUrls: ['./agent-tasks-table.component.scss'],
@@ -52,6 +59,10 @@ export class AgentTasksTableComponent {
 
     public readonly showValidation = input<boolean>(false);
     public readonly readonly = input<boolean>(false);
+    /** The canvas id of the agent node the tasks belong to, for the instructions the last save refused. */
+    public readonly nodeId = input<string | null>(null);
+    /** Changes tab of a version preview: what a restore does to each row. `null` anywhere else. */
+    public readonly rowChanges = input<AgentTaskRowChanges | null>(null);
     public readonly tasksChange = output<AgentNodeTaskUi[]>();
     public readonly cellSelect = output<{ taskIndex: number; field: 'instructions' | 'schema' }>();
     public readonly instructionsFocus = output<number>();
@@ -60,6 +71,32 @@ export class AgentTasksTableComponent {
     public readonly invalidSchemaIds = signal<Set<string>>(new Set());
 
     public readonly contextPopupRowIndex = signal<number | null>(null);
+
+    /** One per task row, in its order. */
+    protected readonly rowMarks = computed<AgentTaskRowMark[]>(() =>
+        this.tasks().map((_, index) => this.rowChanges()?.rows[index] ?? KEPT_AGENT_TASK_ROW)
+    );
+    /** The canvas tasks a restore removes, shown as extra rows after the version's. */
+    protected readonly removedTasks = computed<RemovedAgentTask[]>(() => this.rowChanges()?.removed ?? []);
+
+    /** Per task row, why the last save refused its instructions, until they are edited. */
+    protected readonly instructionsSaveErrors = computed<(readonly string[])[]>(() => {
+        const nodeId = this.nodeId();
+        return this.tasks().map((task) =>
+            nodeId === null
+                ? []
+                : this.nodeSaveErrors.fieldMessages(nodeId, 'instructions', task.instructions, {
+                      list: 'tasks',
+                      key: agentTaskSaveErrorKey(task),
+                  })
+        );
+    });
+    /** The same messages, each naming its row, listed under the table: a row has no room for them. */
+    protected readonly instructionsSaveErrorList = computed<string[]>(() =>
+        this.instructionsSaveErrors().flatMap((messages, index) =>
+            messages.map((message) => `Task ${index + 1} instructions: ${message}`)
+        )
+    );
 
     public readonly contextCandidates = computed<ResolvedTaskRef[]>(() => {
         const rowIndex = this.contextPopupRowIndex();
@@ -91,6 +128,7 @@ export class AgentTasksTableComponent {
     private readonly removeButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeButton');
     private readonly clearAllButton = viewChild<ElementRef<HTMLButtonElement>>('clearAllButton');
     private readonly toastService = inject(ToastService);
+    private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
     private readonly injector = inject(Injector);
 
     trackByTempId(_index: number, task: AgentNodeTaskUi): string {

@@ -48,6 +48,7 @@ Scope: `src/django_app`, `src/crew`, `src/knowledge_new`, `src/realtime`, `src/a
 | 3 | `realtime` chat-buffer tokenizer (`tiktoken.encoding_for_model("gpt-4o")`, `tiktoken` 0.9.0) | Every realtime/voice session that uses the summarized chat buffer | Same tiktoken BPE download as #2 | **Fixed** | `o200k_base` pre-cached at build; `TIKTOKEN_CACHE_DIR` set at runtime |
 | 4 | `litellm` model-price JSON fetch (`litellm` 1.100.5) | Every `import litellm` (module level) | GET `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json` | **Fixed in all four importing services** | `LITELLM_LOCAL_MODEL_COST_MAP=True` in the runtime `ENV` of `agent`, `crew`, `django_app`, `knowledge_new` |
 | 5 | `huggingface` embedder catalog entry (formerly a `SentenceTransformer` local download in vendored mem0) | User selecting it as an embedder | Model weights from huggingface.co | **Removed** | Entry no longer in `embedding_models.json`; mem0 is no longer a dependency |
+| 6 | NLTK stopwords in the naive-RAG HTML chunker (`langchain-text-splitters` 1.1.2, `nltk` 3.10.1) | Building an HTML chunker with `html.stopword_removal=true` | `nltk.download("stopwords")`: the NLTK index from raw.githubusercontent.com (first call per process, then hourly), plus the corpus zip when absent | **Fixed** | Corpus baked into the image from a pinned, sha256-checked nltk_data commit and read from `NLTK_DATA`; langchain's own stopword removal (the download call) is never enabled |
 
 Findings about packages that are no longer shipped are listed under
 [Removed since the original audit](#removed-since-the-original-audit), not in this table.
@@ -85,11 +86,19 @@ Findings about packages that are no longer shipped are listed under
 - `import litellm` loads the model-price map at module level. With `LITELLM_LOCAL_MODEL_COST_MAP` unset, `litellm/litellm_core_utils/get_model_cost_map.py` calls `httpx.get(url, timeout=...)` against GitHub raw before falling back to the bundled backup JSON. In `1.100.5` the env check is `os.getenv("LITELLM_LOCAL_MODEL_COST_MAP", "").lower() == "true"`, which short-circuits to the local backup.
 - Runtime trace (2026-07-03, `litellm==1.75.7`): with `socket.socket.connect` monkeypatched, `import litellm` made 3 connect attempts to `185.199.10{8,9,10}.133:443` (GitHub raw's Fastly IPs) with the variable unset and **zero** with `LITELLM_LOCAL_MODEL_COST_MAP=True`, while `litellm.model_cost` was still populated from the backup. Not re-traced on `1.100.5`.
 - Mitigation — `LITELLM_LOCAL_MODEL_COST_MAP=True` in the runtime `ENV` of all four services: `src/agent/Dockerfile.agent:61`, `src/crew/Dockerfile.crew:64`, `src/django_app/Dockerfile.dj:55`, `src/knowledge_new/Dockerfile:95`. The django_app test settings set it too (`src/django_app/tests/settings.py:7`).
+- django_app also has its own scheduled refresh of the same JSON (`src/django_app/tables/utils/litellm_model_info.py`, `start_litellm_refresh_if_owner`), which `LITELLM_LOCAL_MODEL_COST_MAP` does not cover: it GETs the file one hour after start and then daily, and merges it into `litellm.model_cost`. It is off unless `LITELLM_MODEL_COST_REFRESH_ENABLED=true` (`src/env.yaml`, default `false`); off, it schedules nothing, makes no request and ignores any snapshot left on disk.
 
 ### 5. `huggingface` embedder catalog entry
 
 - The original audit found a `huggingface/microsoft/codebert-base` embedder entry that resolved to vendored mem0's `HuggingFaceEmbedding` (`SentenceTransformer`, a local model download) — broken at the time because `sentence-transformers` was not installed, and a download path the moment it was.
 - At this commit `src/django_app/tables/provider_models/embedding_models.json` has no `huggingface` entry, and neither `mem0ai` nor `sentence-transformers` is in any `uv.lock`. The `huggingface` LLM provider in `llm_models.json` is a hosted-API carve-out, not a local download.
+
+### 6. NLTK stopwords in the HTML chunker
+
+- `HTMLSemanticPreservingSplitter(stopword_removal=True)` (`langchain_text_splitters/html.py:721-728` in 1.1.2) calls `nltk.download("stopwords")` in its constructor. nltk's `Downloader.download` resolves the package through `info()` -> `_update_index()`, which GETs `https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/index.xml` on the first call in each process and again once the cached index is an hour old, so the index is fetched even when the corpus is already on disk. With egress blocked the download fails and the following corpus lookup raises `LookupError`.
+- Reachable through the `html.stopword_removal` option of a naive-RAG chunking config.
+- Mitigation: `src/knowledge_new/infrastructure/naive/chunkers/strategies/html_chunker.py` always builds the langchain splitter with stopword removal off and applies the same filter in a subclass at the same step (`_normalize_and_clean_text`), from a list read with `nltk.data.find` (local paths only). `src/knowledge_new/Dockerfile` downloads `stopwords.zip` from nltk_data commit `98e14261` at build, checks its sha256 (the value the gh-pages NLTK index publishes; the index.xml stored at that commit lists an older hash), and extracts it to `/app/.cache/nltk_data`; the runtime `ENV` sets `NLTK_DATA` to that path.
+- Verified by `tests/services/chunkers/test_html_chunker.py` (stopword removal with `nltk.download`, outbound `connect` and DNS patched to fail).
 
 ---
 

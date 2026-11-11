@@ -18,6 +18,10 @@ interface PromptTooltipParams extends ICellRendererParams {
     onOpenInPromptLibrary: (promptId: string) => void;
 }
 
+/**
+ * The Prompt ID cell. Its "Open in Prompt Library" button carries `data-own-tooltip` (`OWN_TOOLTIP_ATTRIBUTE`): a
+ * version diff's cell tooltip stays closed over it.
+ */
 @Component({
     selector: 'app-prompt-tooltip-renderer',
     imports: [MatTooltipModule],
@@ -39,6 +43,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                         class="open-in-library-btn"
                         aria-label="Open in Prompt Library"
                         matTooltip="Open in Prompt Library"
+                        data-own-tooltip
                         (click)="onOpenLibrary($event)"
                     >
                         <i class="ti ti-arrow-up-right"></i>

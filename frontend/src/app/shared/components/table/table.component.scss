@@ -16,6 +16,41 @@
     border-radius: 8px;
 }
 
+// The table draws its own horizontal scrollbar under the scrolling columns (`.table-scrollbar`).
+.table-wrapper--pinned {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+// Drawn by the table rather than the browser, so it looks and behaves the same everywhere. The whole 12px strip is
+// the grab area; the thumb grows on hover and while dragged, and turns fainter so it doesn't compete with the rows.
+.table-scrollbar {
+    position: relative;
+    flex: none;
+    height: 12px;
+    // Keeps a touch drag from scrolling the page instead of the table.
+    touch-action: none;
+}
+
+.table-scrollbar__thumb {
+    position: absolute;
+    top: 4.5px;
+    height: 3px;
+    border-radius: 6px;
+    background: var(--color-scrollbar-thumb-hover);
+    transition:
+        top 0.15s ease,
+        height 0.15s ease,
+        background-color 0.15s ease;
+
+    .table-scrollbar:hover &,
+    .table-scrollbar--dragging & {
+        top: 1px;
+        height: 10px;
+        background: var(--color-scrollbar-thumb);
+    }
+}
+
 // ===== HEADER =====
 .table-header {
     display: grid;
@@ -23,7 +58,8 @@
     min-height: 2.25rem;
     position: sticky;
     top: 0;
-    z-index: 1;
+    // Above the pinned body cells (z-index 1) scrolling under it.
+    z-index: 2;
     width: fit-content;
     min-width: 100%;
     background: var(--color-background-body);
@@ -137,8 +173,16 @@
         border-bottom: none;
     }
 
+    // Zebra stripes in a customizable table. `:where()` keeps the specificity of `.selected` and of the hover below,
+    // which come later and so win over the stripe.
+    :where(.table-wrapper--customizable) &:nth-child(odd) {
+        background: var(--color-table-row-stripe);
+        --pinned-cell-tint: var(--color-table-row-stripe);
+    }
+
     &.selected {
         background: var(--graphite-750);
+        --pinned-cell-tint: var(--graphite-750);
     }
 
     &.selectable {
@@ -148,6 +192,155 @@
     // A row is not focused itself: a control in it is.
     &:is(:hover, :has(:focus-visible)):not(.table-row--selected) {
         background: var(--transparent-white-4);
+        --pinned-cell-tint: var(--transparent-white-4);
+    }
+}
+
+// ===== PINNED COLUMNS =====
+// Opaque, so the columns scrolling under them don't show through; the tint layer repeats the row's hover/selected
+// background.
+// Stretched to the row height, so neither the content under them nor their edge shadow stops short.
+.pinned-start,
+.pinned-end {
+    position: sticky;
+    z-index: 1;
+    align-self: stretch;
+    background:
+        linear-gradient(var(--pinned-cell-tint, transparent), var(--pinned-cell-tint, transparent)),
+        var(--color-background-body);
+}
+
+.table-cell.checkbox.pinned-start {
+    left: 0;
+}
+
+// A shadow on the inner edge of the pinned areas while columns are scrolled under them.
+.pinned-edge-start::after,
+.pinned-edge-end::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.pinned-edge-start::after {
+    left: 100%;
+    background: linear-gradient(to right, var(--black-alpha-40), transparent);
+}
+
+.pinned-edge-end::after {
+    right: 100%;
+    background: linear-gradient(to left, var(--black-alpha-40), transparent);
+}
+
+.table-wrapper--shadow-start .pinned-edge-start::after,
+.table-wrapper--shadow-end .pinned-edge-end::after {
+    opacity: 1;
+}
+
+// ===== CUSTOMIZABLE COLUMNS (layoutKey set) =====
+.table-wrapper--customizable {
+    .table-cell {
+        align-self: stretch;
+
+        + .table-cell {
+            border-left: 1px solid var(--color-divider-subtle);
+        }
+    }
+
+    .table-header-group {
+        border-left: 1px solid var(--color-divider-subtle);
+        border-bottom: 1px solid var(--color-divider-subtle);
+    }
+
+    // z-index 0 makes the cell a stacking context, so its resize handle (z-index 2) stays under the pinned cells
+    // (z-index 1) when the column scrolls beneath them. A pinned cell is sticky, and already one.
+    .table-header .table-cell.resizable:not(.pinned-start) {
+        position: relative;
+        z-index: 0;
+    }
+
+    // A column can be resized down to 80px: the label ellipsizes instead of spilling into the next header.
+    .col-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+// Spans the columns of its group above their own header cells.
+.table-header-group {
+    align-self: stretch;
+    box-sizing: border-box;
+    // 20px row: a 16px line with 2px above and below.
+    height: 1.25rem;
+    padding: 0.125rem 0.75rem;
+    font-family: Inter, sans-serif;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: 1rem;
+    color: var(--text-secondary-60);
+    text-transform: uppercase;
+    text-align: center;
+}
+
+// Inside the column's right edge (outside it would overflow the last column); the line shows on hover, keyboard
+// focus and while dragging.
+.resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 8px;
+    z-index: 2;
+    cursor: col-resize;
+    // Keeps a touch drag from scrolling the table instead of resizing.
+    touch-action: none;
+    outline: none;
+
+    // Reaches 1px below the cell, over the header's bottom border, so the line runs on into the rows unbroken.
+    &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: -1px;
+        right: 0;
+        width: 2px;
+        background: transparent;
+        transition: background-color 0.15s ease;
+    }
+
+    &:is(:hover, :focus-visible, :active)::after {
+        background: var(--accent-color);
+    }
+}
+
+// The resize line of the header handle, continued down the column's right edge in every row. It reaches 1px below the
+// cell, over the row's bottom border, so the line is solid. Not raised above other cells, so the pinned cells (z-index 1)
+// cover it when the column scrolls beneath them.
+.table-cell.resize-line {
+    &:not(.pinned-start, .pinned-end) {
+        position: relative;
+    }
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: -1px;
+        right: 0;
+        width: 2px;
+        background: var(--accent-color);
+        pointer-events: none;
+    }
+
+    // The last row has no bottom border; 1px more would overflow the table and could flash a scrollbar.
+    .table-row:last-child > &::before {
+        bottom: 0;
     }
 }
 
