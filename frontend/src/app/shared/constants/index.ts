@@ -2,6 +2,7 @@ export * from './date-format.constants';
 export * from './entity-icons.constants';
 export * from './export-warning.constants';
 export * from './languages-selector.constants';
+export * from './provider-display-names.constants';
 export * from './provider-icons.constants';
 export * from './rag.constants';
 export * from './rag-type-labels.constants';
