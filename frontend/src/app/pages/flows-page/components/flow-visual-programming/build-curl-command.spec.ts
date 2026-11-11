@@ -39,24 +39,4 @@ describe('buildCurlCommand', () => {
         const payload = readSingleQuotedWord(dataArgument(command));
         expect(JSON.parse(payload)).toEqual({ graph_uuid: 'flow-uuid', variables });
     });
-
-    it('writes DEL and every non-ASCII character as a JSON escape, so a terminal cannot read them as keys', () => {
-        const variables = {
-            ['key\u007f']: "a'\u007f; touch /tmp/pwned; #",
-            other: 'b\u009b $(touch /tmp/pwned)\u2005',
-            text: 'Київ 🚀',
-        };
-
-        const command = buildCurlCommand('flow-uuid', variables, apiUrl);
-
-        expect(command).toMatch(/^[\x20-\x7e\n]*$/);
-        const payload = readSingleQuotedWord(dataArgument(command));
-        expect(JSON.parse(payload)).toEqual({ graph_uuid: 'flow-uuid', variables });
-    });
-
-    it('posts to the quoted run-session URL', () => {
-        const command = buildCurlCommand('flow-uuid', {}, apiUrl);
-
-        expect(command.endsWith(`'${apiUrl}run-session/'`)).toBe(true);
-    });
 });

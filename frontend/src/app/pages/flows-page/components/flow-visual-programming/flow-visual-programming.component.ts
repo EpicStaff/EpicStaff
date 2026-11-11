@@ -1667,7 +1667,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (flowUuid && startNodeInitialState) {
             const curlCommand = buildCurlCommand(flowUuid, startNodeInitialState, apiUrl);
             this.copyToClipboard(curlCommand);
-            this.toastService.success('cURL (bash) command copied to clipboard!');
+            this.toastService.success('cURL command copied to clipboard!');
         } else {
             this.toastService.error('Unable to generate cURL: Missing flow ID or start node data');
         }
