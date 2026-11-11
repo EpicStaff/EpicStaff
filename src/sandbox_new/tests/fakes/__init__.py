@@ -8,6 +8,7 @@ is a plain callable.
 
 from tests.fakes.admission import FakeHostMetrics
 from tests.fakes.clock import FakeClock
+from tests.fakes.file_storage import FakeFileStorage
 from tests.fakes.isolation import FakeIsolationProbe
 from tests.fakes.process import FakeProcess
 from tests.fakes.repositories import FakeVenvRepository
@@ -23,6 +24,7 @@ from tests.fakes.uv_provider import FakeUVProvider
 
 __all__ = [
     "FakeClock",
+    "FakeFileStorage",
     "FakeHostMetrics",
     "FakeIsolationProbe",
     "FakeJobDispatcher",

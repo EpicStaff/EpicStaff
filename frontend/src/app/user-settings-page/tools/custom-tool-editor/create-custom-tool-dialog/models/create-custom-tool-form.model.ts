@@ -12,8 +12,10 @@ export interface CreateCustomToolFormValue {
 
 export const DEFAULT_ENTRYPOINT = 'main';
 
+/** Stored fields the dialog does not edit, sent back as they are: the backend replaces whatever it is given. */
 export interface PreservedToolFields {
     entrypoint?: string;
+    globalKwargs?: Record<string, unknown>;
 }
 
 /**
@@ -40,7 +42,7 @@ export function toCreatePayload(
             // Always sent, `null` included: the backend applies the keys it is given,
             // so leaving it out would keep the old venv instead of clearing it.
             venv_id: form.venvId,
-            global_kwargs: {},
+            global_kwargs: preserved.globalKwargs ?? {},
             secret_ids: secretIds,
             ...(form.executionTimeout === undefined ? {} : { execution_timeout: form.executionTimeout }),
         },

@@ -1,10 +1,37 @@
 import { NODE_COLORS, NodeType } from '@shared/models';
 
 import { AgentNodeData } from '../models/agent-node.model';
-import { KeyValueNodeData } from '../models/key-value-node.model';
+import { KeyValueMode, KeyValueNodeData } from '../models/key-value-node.model';
 import { TelegramTriggerNodeModel } from '../models/node.model';
 import { ScheduleTriggerNodeData } from '../models/schedule-trigger.model';
 import { TaskNodeData } from '../models/task-node.model';
+
+/**
+ * The End node output map assumed when a node has none (save payload, save comparable, version diff).
+ * Not the map a new End node starts with (see `DEFAULT_NODE_DATA`).
+ */
+export const MISSING_END_OUTPUT_MAP: Readonly<Record<string, string>> = Object.freeze({ context: 'variables.context' });
+
+/**
+ * The Start node variables the Start dialog shows (and writes into the node on close) when a node has none. The version
+ * diff counts empty variables as these. A new Start node starts with empty variables (`createStartNode`). Deep-frozen:
+ * consumers read it, never change it.
+ */
+export const DEFAULT_INITIAL_STATE: Readonly<Record<string, unknown>> = Object.freeze({
+    variables: Object.freeze({ context: null }),
+    persistent_variables: Object.freeze({ user: Object.freeze([]), organization: Object.freeze([]) }),
+});
+
+/**
+ * Whether Start node variables are set: a plain object with at least one key. Anything else (`{}`, `null`, an array)
+ * the Start dialog shows as `DEFAULT_INITIAL_STATE`, and the version diff counts as it.
+ */
+export function isSetInitialState(state: unknown): state is Readonly<Record<string, unknown>> {
+    return state !== null && typeof state === 'object' && !Array.isArray(state) && Object.keys(state).length > 0;
+}
+
+/** The Key-Value node mode when none is set. */
+export const DEFAULT_KEY_VALUE_MODE: KeyValueMode = 'read';
 
 export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
     [NodeType.AGENT]: (): AgentNodeData => ({
@@ -119,5 +146,9 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         search_method: null,
         search_configs: null,
     }),
-    [NodeType.KEY_VALUE]: (): KeyValueNodeData => ({ key_value_table: null, mode: 'read', entries: [] }),
+    [NodeType.KEY_VALUE]: (): KeyValueNodeData => ({
+        key_value_table: null,
+        mode: DEFAULT_KEY_VALUE_MODE,
+        entries: [],
+    }),
 };

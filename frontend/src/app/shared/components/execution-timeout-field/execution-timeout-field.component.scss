@@ -1,3 +1,5 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
 :host {
     display: block;
 }
@@ -168,3 +170,7 @@
         color: var(--color-text-secondary);
     }
 }
+
+// Version diff: the value of a changed field.
+// The control clips what sticks out, so the badge sits on the group around it (as wide as the control).
+@include diff-value-mark.marked('.execution-timeout__control', $badge-anchor: '.execution-timeout__group');

@@ -42,7 +42,7 @@ const MAC_KEY_GAP = '\u2009';
                 <div class="menu-group__title">{{ group.title }}</div>
                 <ul>
                     @for (block of group.blocks; track block.type) {
-                        <li>
+                        <li [class.note-row]="block.type === NodeType.NOTE">
                             <!-- aria-disabled, not disabled: a disabled End item would leave the Tab order. The name
                                  has a tooltip only while it is cut short. -->
                             <button
@@ -62,6 +62,21 @@ const MAC_KEY_GAP = '\u2009';
                                     aria-hidden="true"
                                 ></i>
                                 <span class="menu-group__item-label">{{ block.label }}</span>
+                                @if (block.type === NodeType.NOTE) {
+                                    <button
+                                        type="button"
+                                        class="area-draw-btn"
+                                        aria-label="Place note with selected area"
+                                        matTooltip="Place note with selected area"
+                                        matTooltipPosition="right"
+                                        (click)="$event.stopPropagation(); onAreaNoteClicked()"
+                                    >
+                                        <i
+                                            class="ti ti-capture"
+                                            aria-hidden="true"
+                                        ></i>
+                                    </button>
+                                }
                                 @if (block.keyHint; as keyHint) {
                                     <span
                                         class="key-hint"
@@ -103,7 +118,8 @@ const MAC_KEY_GAP = '\u2009';
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                width: 100%;
+                flex: 1 1 auto;
+                min-width: 0;
                 padding: 12px 16px;
                 border: none;
                 border-radius: 8px;
@@ -119,6 +135,20 @@ const MAC_KEY_GAP = '\u2009';
                 outline-offset: -2px;
             }
 
+            li {
+                display: flex;
+                align-items: center;
+                border-radius: 8px;
+            }
+
+            li:hover {
+                background: var(--graphite-780);
+            }
+
+            .menu-item:is(:hover, :focus-visible) {
+                background: #2a2a2a;
+            }
+
             .node-icon {
                 display: inline-flex;
                 align-items: center;
@@ -127,17 +157,17 @@ const MAC_KEY_GAP = '\u2009';
                 font-size: 1.125rem;
             }
 
-            .node-label {
-                color: #fff;
-            }
-
-            .menu-item:is(:hover, :focus-visible) {
-                background: #2a2a2a;
+            .menu-group__item-label {
+                flex: 1 1 auto;
+                min-width: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
             .plus-icon {
                 margin-left: auto;
-                color: #bbb;
+                color: var(--gray-475);
                 opacity: 0;
                 transition:
                     opacity 0.2s ease,
@@ -147,14 +177,6 @@ const MAC_KEY_GAP = '\u2009';
             .menu-item:is(:hover, :focus-visible) .plus-icon {
                 opacity: 1;
                 color: inherit;
-            }
-
-            .menu-group__item-label {
-                flex: 1 1 auto;
-                min-width: 0;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
             }
 
             .key-hint {
@@ -176,6 +198,32 @@ const MAC_KEY_GAP = '\u2009';
                 cursor: not-allowed;
                 pointer-events: none;
             }
+
+            /* Area-draw button shown only on the Note row */
+            .area-draw-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                width: 2.25rem;
+                height: 2.25rem;
+                margin-right: 0.5rem;
+                border-radius: 6px;
+                border: none;
+                background: transparent;
+                color: var(--color-ks-transparent-text-60);
+                cursor: pointer;
+                font-size: 1rem;
+                transition:
+                    background 0.2s ease,
+                    color 0.2s ease;
+                outline: none;
+            }
+
+            .area-draw-btn:hover {
+                background: var(--graphite-600);
+                color: var(--text);
+            }
         `,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -183,6 +231,8 @@ const MAC_KEY_GAP = '\u2009';
 export class FlowGraphCoreMenuComponent {
     public readonly searchTerm = input('');
     public readonly nodeSelected = output<CreateNodeRequest>();
+
+    readonly NodeType = NodeType;
 
     protected readonly filteredGroups = computed<FlowGraphMenuGroup[]>(() => {
         const term = this.searchTerm().toLowerCase();
@@ -215,6 +265,10 @@ export class FlowGraphCoreMenuComponent {
     protected onBlockClicked(type: NodeType): void {
         if (this.isDisabled(type)) return;
         this.nodeSelected.emit({ type });
+    }
+
+    protected onAreaNoteClicked(): void {
+        this.nodeSelected.emit({ type: NodeType.NOTE, areaSelection: true });
     }
 
     protected isDisabled(type: NodeType): boolean {

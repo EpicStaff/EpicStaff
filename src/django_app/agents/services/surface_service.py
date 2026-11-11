@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.core import exceptions as dj_exceptions
 from django.db import transaction
+from rbac.authorship import resolve_author
 
 from agents.exceptions import SurfaceValidationError
 from agents.models.agent_models import AgentDefaultSurface, SurfacePlace
@@ -16,6 +17,18 @@ from agents.validators.surface_validator import SurfaceValidator
 class SurfaceService:
     @staticmethod
     def validate_surface_data(*, instance, org_id, attrs):
+        """Validate surface attrs against the model and the shared-only group rule.
+
+        Mutates `attrs`: a surface that is or becomes owned gets `group` set to None.
+
+        Raises:
+            SurfaceValidationError: The attrs fail model validation, or name a group
+                for a surface that has an owner agent.
+        """
+        SurfaceService._enforce_group_only_when_shared(
+            attrs, current_owner_agent_id=instance.owner_agent_id if instance else None
+        )
+
         if instance is not None:
             candidate = Surface(
                 pk=instance.pk,
@@ -31,6 +44,7 @@ class SurfaceService:
             "name",
             "instructions",
             "owner_agent",
+            "group",
         ):
             if field_name in attrs:
                 setattr(candidate, field_name, attrs[field_name])
@@ -67,6 +81,11 @@ class SurfaceService:
     @transaction.atomic
     def update_surface(*, instance, validated_data, partial):
         instance = Surface.objects.select_for_update().get(pk=instance.pk)
+        # The owner may have changed since validation; re-check against the locked row
+        # so a concurrent owner change is a 400, not a constraint violation.
+        SurfaceService._enforce_group_only_when_shared(
+            validated_data, current_owner_agent_id=instance.owner_agent_id
+        )
 
         python_tools_data = validated_data.pop("python_tools", None)
         mcp_tools_data = validated_data.pop("mcp_tools", None)
@@ -97,6 +116,42 @@ class SurfaceService:
             SurfaceService._replace_knowledge(instance, knowledge_data or [])
 
         return instance
+
+    @staticmethod
+    def clone_surface(source: Surface, *, name: str, owner_agent, user) -> Surface:
+        """Create a copy of `source` named `name` and owned by `owner_agent`, with its content.
+
+        Tools, storage files and knowledge collections are re-linked, not cloned, so
+        no code is copied. The clone is never grouped: only shared surfaces may be.
+        The caller picks a free `name` and records the last edit.
+        """
+        clone = Surface.objects.create(
+            org_id=source.org_id,
+            name=name,
+            instructions=source.instructions,
+            owner_agent=owner_agent,
+            group=None,
+            created_by=resolve_author(user),
+        )
+        SurfaceContentService.copy_content(
+            source, clone, CATALOG_SURFACE_CONTENT, org_id=source.org_id
+        )
+        return clone
+
+    @staticmethod
+    def _enforce_group_only_when_shared(attrs, *, current_owner_agent_id):
+        """Allow a group only on shared surfaces; clear it on one that is or becomes owned."""
+        if "owner_agent" in attrs:
+            owner_agent = attrs["owner_agent"]
+        else:
+            owner_agent = current_owner_agent_id
+        if owner_agent is None:
+            return
+        if attrs.get("group") is not None:
+            raise SurfaceValidationError(
+                detail={"group": ["Only shared surfaces can be in a group."]}
+            )
+        attrs["group"] = None
 
     @staticmethod
     def _replace_python_tools(surface, items):

@@ -4,6 +4,8 @@
         [crumbs]="crumbs()"
         (toggleSidebar)="toggleSidebar.emit()"
         (navAgent)="openAgent.emit($event)"
+        (navAgentInstructions)="openAgentInstructions.emit($event)"
+        (groupChange)="groupChange.emit($event)"
     >
         <div
             *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"

@@ -1,11 +1,16 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Component, input, output } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { AuthorshipDetailsSource, JsonEditorComponent } from '@shared/components';
 import { Subject } from 'rxjs';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { FLOW_EDITOR_PREVIEW } from '../../core/providers/flow-editor-preview.token';
+import {
+    renderCodeDiffViewWithStubEditor,
+    shownCodeDiffLanguages,
+    shownCodeDiffs,
+} from '../code-diff-view/code-diff-view.testing';
 import { DomainDialogComponent, DomainDialogData } from './domain-dialog.component';
 
 // The real editor is Monaco, which jsdom cannot run; the footer is all this spec looks at.
@@ -27,6 +32,8 @@ const AUTHORSHIP: AuthorshipDetailsSource = {
     last_edited_at: null,
 };
 
+let fixture: ComponentFixture<DomainDialogComponent>;
+
 function render(data: DomainDialogData, isPreview: boolean): HTMLElement {
     TestBed.configureTestingModule({
         providers: [
@@ -47,7 +54,8 @@ function render(data: DomainDialogData, isPreview: boolean): HTMLElement {
         remove: { imports: [JsonEditorComponent] },
         add: { imports: [JsonEditorStubComponent] },
     });
-    const fixture = TestBed.createComponent(DomainDialogComponent);
+    renderCodeDiffViewWithStubEditor();
+    fixture = TestBed.createComponent(DomainDialogComponent);
     fixture.detectChanges();
     return fixture.nativeElement as HTMLElement;
 }
@@ -66,7 +74,7 @@ describe('DomainDialogComponent', () => {
         ['an editable flow', false],
         ['a version preview', true],
     ])('shows who created and who last edited the Start node in a footer below the editor, in %s', (_, isPreview) => {
-        const host = render({ initialData: {}, authorship: AUTHORSHIP }, isPreview);
+        const host = render({ initialData: {}, authorship: AUTHORSHIP, variablesDiff: null }, isPreview);
         const footer = host.querySelector('.dialog-container > .dialog-content + app-authorship-footer');
 
         expect(footer).not.toBeNull();
@@ -75,5 +83,32 @@ describe('DomainDialogComponent', () => {
             ['Edited by Olga Mageria', '—'],
         ]);
         expect(footer!.querySelector('app-user-avatar')).toBeNull();
+    });
+
+    it('shows the variables a restore changes as a JSON diff of the current canvas and the version, not the editor', () => {
+        const host = render(
+            {
+                initialData: { variables: { topic: 'b' } },
+                authorship: AUTHORSHIP,
+                variablesDiff: { current: '{ "topic": "a" }', version: '{ "topic": "b" }' },
+            },
+            true
+        );
+
+        expect(shownCodeDiffs(fixture.debugElement)).toEqual([
+            { current: '{ "topic": "a" }', version: '{ "topic": "b" }' },
+        ]);
+        expect(shownCodeDiffLanguages(fixture.debugElement)).toEqual(['json']);
+        expect(host.querySelector('app-json-editor')).toBeNull();
+    });
+
+    it.each([
+        { case: 'in a version preview without a diff (Preview tab, unchanged variables)', isPreview: true },
+        { case: 'in the live editor', isPreview: false },
+    ])('shows the editor $case', ({ isPreview }) => {
+        const host = render({ initialData: {}, authorship: AUTHORSHIP, variablesDiff: null }, isPreview);
+
+        expect(host.querySelector('app-json-editor')).not.toBeNull();
+        expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
     });
 });

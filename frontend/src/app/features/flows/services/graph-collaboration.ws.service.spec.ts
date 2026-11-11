@@ -84,4 +84,40 @@ describe('GraphCollaborationWsService', () => {
 
         expect(service.editors()).toEqual([{ user_id: 7, display_name: 'Ada Lovelace', avatar_url: '/media/ada.png' }]);
     });
+
+    describe('connection status', () => {
+        afterEach(() => {
+            vi.useRealTimers();
+            vi.restoreAllMocks();
+        });
+
+        it('is lost as soon as the browser goes offline', () => {
+            window.dispatchEvent(new Event('offline'));
+
+            expect(service.connectionStatus()).toBe('lost');
+        });
+
+        it('reconnects once the browser is back online', () => {
+            vi.useFakeTimers();
+            window.dispatchEvent(new Event('offline'));
+
+            window.dispatchEvent(new Event('online'));
+            expect(service.connectionStatus()).toBe('reconnecting');
+
+            vi.advanceTimersByTime(1000);
+            const reopened = FakeWebSocket.last!;
+            expect(reopened).not.toBe(socket);
+            reopened.onopen?.();
+
+            expect(service.connectionStatus()).toBe('connected');
+        });
+
+        it('gives up at once when the socket closes while offline', () => {
+            vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+
+            socket.onclose?.();
+
+            expect(service.connectionStatus()).toBe('lost');
+        });
+    });
 });

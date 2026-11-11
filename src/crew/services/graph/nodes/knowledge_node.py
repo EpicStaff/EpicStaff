@@ -9,6 +9,7 @@ from services.graph.events import StopEvent
 from services.graph.exceptions import KnowledgeSearchError
 from services.graph.nodes.base_node import BaseNode
 from services.knowledge_search_service import KnowledgeSearchService
+from src.shared.flow_templates import render_template
 from src.shared.models import RagSearchConfig
 
 
@@ -52,35 +53,35 @@ class KnowledgeNode(BaseNode):
         self.llm_extra_headers = llm_extra_headers
 
     def _build_query(self, input_: Any) -> str:
-        """Interpolate mapped variables into the template ({name}).
+        """Interpolate mapped variables into the template (`{name}`, `{name[key]}`).
 
         Partial-safe: a placeholder whose variable is absent is left intact
         instead of dropping the whole substitution; unmapped variables are logged.
         The FE composes the full query text. Empty template → empty query.
+
+        Raises:
+            RefusedPlaceholderError: The template holds a refused placeholder; raised
+                before any search is made.
         """
         if not self.query_template:
             return ""
         if not isinstance(input_, dict):
             return self.query_template
 
-        missing: set[str] = set()
-
-        class _Fillable(dict):
-            def __missing__(self, key):
-                missing.add(key)
-                return "{" + key + "}"
-
-        try:
-            result = self.query_template.format_map(_Fillable(input_))
-        except (ValueError, IndexError) as e:
-            logger.warning(f"Knowledge node '{self.node_name}' query template not formattable: {e}")
-            return self.query_template
-        if missing:
+        rendered = render_template(self.query_template, input_)
+        if rendered.unrendered_reason:
             logger.warning(
-                f"Knowledge node '{self.node_name}' query references unmapped "
-                f"variables: {sorted(missing)}"
+                "Knowledge node '{}' query template not formattable: {}",
+                self.node_name,
+                rendered.unrendered_reason,
             )
-        return result
+        if rendered.missing:
+            logger.warning(
+                "Knowledge node '{}' query references unmapped variables: {}",
+                self.node_name,
+                sorted(set(rendered.missing)),
+            )
+        return rendered.text
 
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any

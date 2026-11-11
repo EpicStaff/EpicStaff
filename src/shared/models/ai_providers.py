@@ -39,6 +39,9 @@ class LLMConfigData(BaseModel):
     """
 
     model: str
+    custom_name: str | None = None
+    """Display name of the LLMConfig this was built from. Used to label which
+    config served a run; never sent to litellm."""
     timeout: float | int | None = None
     temperature: float | None = None
     top_p: float | None = None

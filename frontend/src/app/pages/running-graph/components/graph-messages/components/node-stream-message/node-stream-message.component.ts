@@ -5,6 +5,9 @@ import {
     AgentNodeStreamMessageData,
     GraphMessage,
     MessageType,
+    NodeStreamLlmFallbackData,
+    NodeStreamLlmFallbackSkippedData,
+    NodeStreamLlmRef,
     NodeStreamTaskFinishData,
     NodeStreamToolCallData,
     NodeStreamToolResultData,
@@ -25,12 +28,21 @@ interface NodeStreamTaskGroup {
     key: string;
     taskName: string | null;
     order: number;
+    notices: string[];
     toolSteps: NodeStreamToolStep[];
     message: string | null;
     stopReason: string | null;
     iterations: number | null;
     toolInvocations: number | null;
     tokenUsage: Record<string, number> | null;
+}
+
+function describeLlm({ config_name, model }: NodeStreamLlmRef): string {
+    return config_name ? `"${config_name}" (${model})` : model;
+}
+
+function formatLlmFallback({ primary, fallback, error_type }: NodeStreamLlmFallbackData): string {
+    return `Primary LLM ${describeLlm(primary)} failed with ${error_type}. Switched to fallback ${describeLlm(fallback)}.`;
 }
 
 // Icon/color per node type, matching the conventions already used by the sibling
@@ -112,6 +124,9 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                             />
                                             {{ group.taskName }}
                                         </div>
+                                    }
+                                    @for (notice of group.notices; track $index) {
+                                        <div class="llm-notice">{{ notice }}</div>
                                     }
                                     <div class="steps-container">
                                         @for (step of group.toolSteps; track step.key) {
@@ -474,6 +489,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
             word-break: break-word;
         }
 
+        .llm-notice,
         .token-usage {
             color: var(--gray-500);
             font-size: 0.875rem;
@@ -519,7 +535,7 @@ export class NodeStreamMessageComponent {
             if (!data || data.message_type !== type || msg.name !== nodeName) continue;
 
             const streamData = data as NodeStreamMessageData;
-            const task = streamData.data.task;
+            const task = 'task' in streamData.data ? streamData.data.task : null;
             const key = task ? `task_${task.order}_${task.name}` : '__default__';
 
             let group = groups.get(key);
@@ -528,6 +544,7 @@ export class NodeStreamMessageComponent {
                     key,
                     taskName: task ? task.name : null,
                     order: task ? task.order : 0,
+                    notices: [],
                     toolSteps: [],
                     message: null,
                     stopReason: null,
@@ -557,6 +574,10 @@ export class NodeStreamMessageComponent {
                 group.iterations = finish.iterations ?? null;
                 group.toolInvocations = finish.tool_invocations ?? null;
                 group.tokenUsage = finish.token_usage ?? null;
+            } else if (streamData.event === 'llm_fallback') {
+                group.notices.push(formatLlmFallback(streamData.data as NodeStreamLlmFallbackData));
+            } else if (streamData.event === 'llm_fallback_skipped') {
+                group.notices.push((streamData.data as NodeStreamLlmFallbackSkippedData).message);
             }
             // event === 'task_start': the group lookup/creation above already ensures the
             // task shows up even when it never makes a tool call.

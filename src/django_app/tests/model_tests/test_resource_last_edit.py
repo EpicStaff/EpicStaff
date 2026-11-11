@@ -208,6 +208,7 @@ EXPECTED_TRACKED_MODEL_NAMES = {
     "PythonCodeTool",
     "McpTool",
     "LLMConfig",
+    "SystemOneConfig",
     "EmbeddingConfig",
     "OpenAIRealtimeConfig",
     "ElevenLabsRealtimeConfig",

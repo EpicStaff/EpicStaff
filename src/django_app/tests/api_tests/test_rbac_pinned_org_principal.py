@@ -153,7 +153,10 @@ def _stub_publish(monkeypatch) -> SessionManagerService:
         session_manager,
         "create_session_data",
         lambda session, **kwargs: SessionData(
-            id=1, org_id=1, graph=GraphData(name="stub", entrypoint="__end__", end_node=None)
+            id=1,
+            org_id=1,
+            graph=GraphData(name="stub", entrypoint="__end__", end_node=None),
+            audit_retention_days=30,
         ),
     )
     monkeypatch.setattr(session_manager.redis_service, "publish_session_data", lambda **kwargs: 2)

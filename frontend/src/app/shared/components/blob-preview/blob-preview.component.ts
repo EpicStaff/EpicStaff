@@ -35,6 +35,7 @@ interface SheetData {
 const MAX_SHEET_ROWS = 1000;
 // One <pre> is laid out on the main thread (~4.5 s for 5 MB).
 const MAX_TEXT_PREVIEW_CHARS = 256 * 1024;
+const SAFE_LINK_PROTOCOLS = ['http:', 'https:', 'mailto:'];
 
 function getExtension(fileName: string): string {
     return fileName.split('.').pop()?.toLowerCase() ?? '';
@@ -304,9 +305,32 @@ export class BlobPreviewComponent {
             // renderAltChunks=false: altChunk embeds raw HTML from the .docx
             // into an iframe srcdoc in the same origin — a known XSS vector.
             await renderAsync(blob, container, undefined, { renderAltChunks: false });
+            this.removeUnsafeLinks(container);
         } catch {
             this.previewError.set('Failed to render document preview');
         }
+    }
+
+    private removeUnsafeLinks(container: HTMLElement): void {
+        container.querySelectorAll('a[href]').forEach((link) => {
+            const href = link.getAttribute('href') ?? '';
+            if (href.startsWith('#')) return;
+
+            let protocol: string;
+            try {
+                protocol = new URL(href, window.location.href).protocol;
+            } catch {
+                link.removeAttribute('href');
+                return;
+            }
+
+            if (!SAFE_LINK_PROTOCOLS.includes(protocol)) {
+                link.removeAttribute('href');
+                return;
+            }
+            link.setAttribute('target', '_blank');
+            link.setAttribute('rel', 'noopener noreferrer');
+        });
     }
 
     private revokeBlobUrl(): void {

@@ -8,6 +8,7 @@ import { getNodeTitle } from '../../../core/enums/node-title.util';
 import { FlowModel } from '../../../core/models/flow.model';
 import { SubGraphNodeModel } from '../../../core/models/node.model';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
+import { MapKeyChange } from '../../../utils/diff';
 import { mapSubGraphNodeToModel } from '../../../utils/load/nodes/subgraph-node.mapper';
 import { getNodeDiff } from '../../../utils/save/diff';
 import { buildBulkSavePayload } from '../../../utils/save/payload';
@@ -23,6 +24,7 @@ const FLOWS: GetGraphLightRequest[] = [
 const BLOCKED_NODE: SubGraphNodeModel = {
     ...mapSubGraphNodeToModel({
         id: 21,
+        uuid: '00000000-0000-4000-8000-000000000021',
         created_at: '2026-01-01T00:00:00Z',
         node_number: 2,
         node_name: 'Billing',
@@ -53,6 +55,7 @@ const ATTACHED_NODE: SubGraphNodeModel = {
 class InputMapStubComponent {
     readonly activeColor = input<string>();
     readonly readonly = input<boolean>();
+    readonly rowChanges = input<readonly MapKeyChange[] | null>(null);
 }
 
 describe('SubGraphNodePanelComponent', () => {

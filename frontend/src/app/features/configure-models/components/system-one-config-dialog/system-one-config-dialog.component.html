@@ -1,0 +1,44 @@
+<div
+    class="dialog"
+    (appEnterSubmit)="onSave()"
+    [appEnterSubmitDisabled]="isSaving()"
+>
+    <div class="header">
+        <h2 class="title">Edit System One Configuration</h2>
+        <app-icon-button
+            icon="x"
+            ariaLabel="Close dialog"
+            size="2rem"
+            tooltip="Close"
+            (onClick)="onCancel()"
+        />
+    </div>
+
+    <app-error-banner
+        class="error-banner"
+        [message]="saveError()"
+    />
+
+    @if (config(); as current) {
+        <app-system-one-config-form
+            [config]="current"
+            (saved)="onSaved()"
+        />
+    }
+
+    <div class="footer">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="isSaving() || !config()"
+            (click)="onSave()"
+        >
+            {{ saveLabel() }}
+        </app-button>
+    </div>
+</div>

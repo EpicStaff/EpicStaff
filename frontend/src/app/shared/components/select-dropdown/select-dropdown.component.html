@@ -89,6 +89,9 @@
         >
             @if (mode() === 'list') {
                 @for (item of filteredItems(); track itemTrackBy($index, item)) {
+                    @if (sectionTitleAt($index); as sectionTitle) {
+                        <div class="select-dropdown__section-title">{{ sectionTitle }}</div>
+                    }
                     <button
                         type="button"
                         class="select-dropdown__row"

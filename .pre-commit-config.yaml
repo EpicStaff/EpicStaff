@@ -1,5 +1,5 @@
 # Installation
-# pip install pre-commit
+# pip install pre-commit  (CI: the pre-commit job in .github/workflows/pr.yml)
 # pre-commit install -t pre-commit
 
 exclude: |
@@ -13,7 +13,7 @@ fail_fast: true
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: check-yaml
         exclude: ^src/docker-compose\.plugins-dev\.yaml$
@@ -24,8 +24,20 @@ repos:
         args: [--unsafe]
         files: ^src/docker-compose\.plugins-dev\.yaml$
 
+  # Blocks a commit whose staged changes contain a secret. Where husky manages the
+  # git hooks (anyone who ran npm install in frontend/), frontend/.husky/pre-commit
+  # calls this hook, because pre-commit cannot install its own. The first run builds
+  # gitleaks with Go: pre-commit uses the installed go (1.21 or newer) or downloads
+  # one. The pull request workflow runs the same scanner over every commit of a pull
+  # request (secret-scan in pr.yml), so a commit made without this hook is still
+  # checked before it merges.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e  # frozen: v8.30.1
+    hooks:
+      - id: gitleaks
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.8
+    rev: 2eeb5678de71a00c0902cbda7105d328432f72cb  # frozen: v0.16.8
     hooks:
       - id: ruff
         args: [ "--fix", "--config", ".ruff.toml" ]

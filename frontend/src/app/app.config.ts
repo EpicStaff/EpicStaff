@@ -15,12 +15,14 @@ import { SAFE_MARKED_OPTIONS_PROVIDER } from './core/config/safe-markdown-option
 import { ProfileTourProgressStore, provideGuidedTours, TOUR_PROGRESS_STORE } from './core/guided-tour';
 import { activeOrgInterceptor } from './core/interceptors/active-org.interceptor';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
+import { blobErrorInterceptor } from './core/interceptors/blob-error.interceptor';
 import { forbiddenInterceptor } from './core/interceptors/forbidden.interceptor';
 import { networkConnectionInterceptor } from './core/interceptors/network-connection.interceptor';
 import { preflightPermissionInterceptor } from './core/interceptors/preflight-permission.interceptor';
 import { validationErrorsInterceptor } from './core/interceptors/validation-errors.interceptor';
 import { TooltipAriaDescriber } from './core/services/tooltip-aria-describer';
 import { TooltipLastKeyboardDispatcher } from './core/services/tooltip-last-keyboard-dispatcher';
+import { provideAgentDefinitionsStorages } from './features/agent-definitions/agent-definitions.providers';
 import { provideAuditStorages } from './features/audit/audit.providers';
 import { provideChatStorages } from './features/chat/chat.providers';
 import { provideConfigureModelsStorages } from './features/configure-models/configure-models.providers';
@@ -51,6 +53,8 @@ export const appConfig: ApplicationConfig = {
                 validationErrorsInterceptor,
                 forbiddenInterceptor,
                 networkConnectionInterceptor,
+                // Last, so every interceptor above reads a body and not a Blob.
+                blobErrorInterceptor,
             ])
         ),
         provideMarkdown({ markedOptions: SAFE_MARKED_OPTIONS_PROVIDER }),
@@ -92,6 +96,7 @@ export const appConfig: ApplicationConfig = {
         ...provideConfigureModelsStorages(),
         ...provideFlowsStorages(),
         ...provideToolsStorages(),
+        ...provideAgentDefinitionsStorages(),
         ...provideKnowledgeSourcesStorages(),
         ...provideKeyValueTablesStorages(),
         ...provideChatStorages(),

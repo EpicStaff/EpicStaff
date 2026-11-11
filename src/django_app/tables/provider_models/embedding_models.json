@@ -27,6 +27,8 @@
     { "name": "mistral/mistral-embed", "recommended": false }
   ],
   "cohere": [
+    { "name": "embed-v5.0-pro", "recommended": false },
+    { "name": "embed-v5.0-fast", "recommended": false },
     { "name": "embed-english-v3.0", "recommended": false },
     { "name": "embed-english-light-v3.0", "recommended": false },
     { "name": "embed-multilingual-v3.0", "recommended": false },

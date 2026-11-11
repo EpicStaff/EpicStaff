@@ -282,6 +282,16 @@
     white-space: nowrap;
 }
 
+// Above each run of items sharing a `group`; not focusable, so Tab moves from option to option.
+.select-dropdown__section-title {
+    flex-shrink: 0;
+    padding: 4px 4px 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+}
+
 .select-dropdown__empty {
     margin: 0;
     padding: 0.625rem 0.75rem;

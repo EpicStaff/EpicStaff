@@ -9,7 +9,7 @@ AgentLoop knows which one is active.
 
 Hooks mirror the lifecycle of a single ``AgentLoop`` execution:
 ``on_start`` → (``on_chunk`` / ``on_tool_call`` / ``on_tool_result`` /
-``on_warning``) * N → ``on_final`` | ``on_error``.
+``on_warning`` / ``on_llm_fallback``) * N → ``on_final`` | ``on_error``.
 ``on_warning`` may fire at any point between ``on_start`` and
 ``on_final`` / ``on_error``; it is advisory and must never raise.
 """
@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 
 from app.llm.client import LLMChunk
 from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
+from shared.models.ai_providers import LLMData
 
 
 class Emitter(ABC):
@@ -89,6 +90,17 @@ class Emitter(ABC):
     async def on_task_finish(self, task_name: str, task_order: int, result: LoopResult) -> None:
         """Optional hook for multi-task runs; called after each task completes
         successfully. Default is a no-op.
+        """
+        return
+
+    async def on_llm_fallback(
+        self, primary: LLMData, fallback: LLMData, error: BaseException
+    ) -> None:
+        """Optional hook: the loop switched from ``primary`` to ``fallback``
+        after ``error`` escaped the primary's retries.
+
+        Default is a no-op; ``RedisStreamToolEventEmitter`` publishes a live
+        ``agent.llm_fallback`` envelope.  Must not raise.
         """
         return
 
