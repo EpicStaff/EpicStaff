@@ -545,6 +545,8 @@
     --color-status-unread: var(--green-500); // a conversation with news the operator has not opened: the row's dot
     --color-error-background: var(--red-alpha-8); // an error colour's chip behind its text (an overdue wait)
     --color-surface-card: var(--graphite-825);
+    --color-chat-test-visitor-bubble: var(--fog-alpha-16); // the visitor's message in a test conversation
+    --color-chat-test-operator-bubble: var(--purple-alpha-8); // the operator's message in a test conversation
     --color-drag-drop-active: var(--black-alpha-28);
     // The badge of whoever holds a conversation, on the corner of the visitor's avatar; its border cuts it out of it.
     --color-holder-badge-background: var(--umber-800);

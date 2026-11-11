@@ -489,12 +489,42 @@ describe('ChatPageComponent', () => {
         expect(openSections()).toEqual(['test_open']);
         expect(component.selectedId()).toBe('c-9');
         expect(text('.thread-header .test-chip')).toEqual(['Test']);
-        expect(host.querySelector('app-tab-button button[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');
+        expect(host.querySelector('.composer__role[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');
 
         typeInComposer('hi');
         host.querySelector('.composer textarea')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
         expect(chatApi.sendAsVisitor).toHaveBeenCalledWith('c-9', 'vt-9', 'hi', {});
         expect(chatApi.reply).not.toHaveBeenCalled();
+        // Said in the thread, where the reply will appear, from the send on: before the stream reports the run.
+        fixture.detectChanges();
+        expect(text('.thread__replying')).toEqual(['Bot is replying…']);
+    });
+
+    it('shows the run a visitor message started under it on a test conversation only, on its lighter bubble', () => {
+        const visitorMessage: ChatOperatorMessage = {
+            id: 'm-1',
+            role: 'user',
+            content: 'hi',
+            actions: null,
+            action: null,
+            session_id: 41,
+            created_at: '2026-10-10T10:01:00Z',
+            author_user_id: null,
+            author_name: null,
+            visible_name: null,
+        };
+        const host: HTMLElement = fixture.nativeElement;
+        chatApi.getMessages.mockReturnValueOnce(of([visitorMessage]));
+        fixture.componentInstance.selectConversation(row({ id: 'c-1', is_test: true }));
+        fixture.detectChanges();
+        expect(text('.message--user .message__chip')).toEqual(['Run #41']);
+        expect(host.querySelector('.message--user')?.classList).toContain('message--test');
+
+        chatApi.getMessages.mockReturnValueOnce(of([visitorMessage]));
+        fixture.componentInstance.selectConversation(row({ id: 'c-2', is_test: false }));
+        fixture.detectChanges();
+        expect(text('.message--user .message__chip')).toEqual([]);
+        expect(host.querySelector('.message--user')?.classList).not.toContain('message--test');
     });
 
     // Waiting for a person only: the other sections load once opened.
@@ -1107,7 +1137,7 @@ describe('ChatPageComponent', () => {
         const host: HTMLElement = fixture.nativeElement;
         expect(host.querySelector('app-chat-thread-composer')).not.toBeNull();
         expect(host.querySelector('.composer__roles')).toBeNull();
-        expect(composerInput().placeholder).toBe('Claim the conversation to reply');
+        expect(host.querySelector('.composer__take-over-button')?.textContent?.trim()).toBe('Take over');
     });
 
     it('adds an operator reply only to the thread it was sent on', () => {
@@ -1608,8 +1638,8 @@ describe('ChatPageComponent', () => {
                 .conversationMenuItems()
                 .map(({ label }) => label)
         ).toContain('Take over');
-        expect(composerInput().disabled).toBe(true);
-        expect(composerInput().placeholder).toBe('Claim the conversation to reply');
+        // Not held any more: the call to take it over stands in place of the field.
+        expect(fixture.nativeElement.querySelector('.composer textarea')).toBeNull();
     });
 
     it('shows a started test conversation in the header even when its stream event came first', () => {
@@ -1646,7 +1676,7 @@ describe('ChatPageComponent', () => {
 
     describe('visitor token of an older test conversation', () => {
         const visitorButton = (): HTMLButtonElement =>
-            fixture.nativeElement.querySelectorAll('.composer__roles app-tab-button button')[0];
+            fixture.nativeElement.querySelectorAll('.composer__roles .composer__role')[0];
         const caption = (): string =>
             fixture.nativeElement.querySelector('.composer__caption')?.textContent?.trim() ?? '';
 
@@ -1780,7 +1810,7 @@ describe('ChatPageComponent', () => {
                     .conversationMenuItems()
                     .map(({ label }) => label)
             ).toEqual(['Copy Visitor ID']);
-            expect(text('.composer app-button')).toContain('Claim to reply');
+            expect(text('.composer__take-over-button')).toContain('Take over');
         });
 
         it('offers Take over and Hand Back to Bot in the ⋯ menu, and Resolve beside it, when another operator holds it', () => {

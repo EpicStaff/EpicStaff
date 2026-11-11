@@ -1,74 +1,131 @@
-<div class="composer">
+<div
+    class="composer"
+    [class.composer--take-over]="!!takeOverNote()"
+>
     @if (isTest()) {
-        <div
-            class="composer__roles"
-            role="group"
-            aria-label="Write as"
-        >
-            @for (item of roles; track item.id) {
-                <app-tab-button
-                    mod="sm"
-                    [active]="role() === item.id"
-                    [disabled]="item.id === 'visitor' && !canWriteAsVisitor()"
-                    [describedBy]="item.id === 'visitor' && visitorUnavailableReason() ? visitorUnavailableId : null"
-                    (action)="role.set(item.id)"
+        <!-- A test's control above the field: who to write as. -->
+        <div class="composer__toolbar">
+            <div class="composer__roles">
+                <!-- Two segments, as the Inbox / Bot Testing switch, smaller. -->
+                <div
+                    class="composer__role-switch"
+                    role="group"
+                    aria-label="Write as"
                 >
-                    {{ item.label }}
-                </app-tab-button>
-            }
-            @if (!canWriteAsVisitor() && visitorUnavailableReason(); as reason) {
-                <span
-                    class="composer__caption text-body-small"
-                    [id]="visitorUnavailableId"
-                    >{{ reason }}</span
-                >
-            }
+                    @for (item of roles; track item.id) {
+                        <button
+                            type="button"
+                            class="composer__role text-body-small-large"
+                            [class.composer__role--selected]="role() === item.id"
+                            [attr.aria-pressed]="role() === item.id"
+                            [attr.aria-describedby]="
+                                item.id === 'visitor' && visitorUnavailableReason() ? visitorUnavailableId : null
+                            "
+                            [disabled]="item.id === 'visitor' && !canWriteAsVisitor()"
+                            (click)="role.set(item.id)"
+                        >
+                            <app-svg-icon
+                                class="composer__role-icon"
+                                size="12px"
+                                [icon]="item.icon"
+                            />
+                            {{ item.label }}
+                        </button>
+                    }
+                </div>
+                @if (!canWriteAsVisitor() && visitorUnavailableReason(); as reason) {
+                    <span
+                        class="composer__caption text-body-small"
+                        [id]="visitorUnavailableId"
+                        >{{ reason }}</span
+                    >
+                }
+            </div>
         </div>
     }
-    <div class="composer__row">
-        <textarea
-            #messageField
-            class="composer__input text-body"
-            rows="1"
-            [attr.aria-label]="isVisitor() ? 'Message as the visitor' : 'Reply as operator'"
-            [formControl]="message"
-            [placeholder]="placeholder()"
-            (keydown.enter)="onEnter($event)"
-        ></textarea>
-        <!-- An operator replies once they hold the conversation; claiming it is offered here, where they write. -->
-        @if (!isVisitor() && !isClaimedByMe()) {
-            <app-button
-                type="primary-white"
+    <div
+        class="composer__notice"
+        role="status"
+        aria-live="polite"
+    >
+        @if (notice(); as text) {
+            <app-hint-message size="sm">{{ text }}</app-hint-message>
+        }
+    </div>
+    <!-- An operator replies once they hold the conversation; taking it is offered here, in place of the field. -->
+    @if (takeOverNote(); as note) {
+        <div class="composer__take-over">
+            <p class="composer__take-over-note text-body">
+                <app-svg-icon
+                    size="12px"
+                    [icon]="note.icon"
+                />
+                {{ note.text }}
+            </p>
+            <button
+                type="button"
+                class="composer__take-over-button text-body-medium"
                 [disabled]="isActionPending()"
                 (click)="claimRequested.emit()"
             >
-                {{ conversation().mode === 'human' ? 'Take over' : 'Claim to reply' }}
-            </app-button>
-        } @else {
-            <app-button
-                type="primary-white"
-                leftIcon="send"
-                [disabled]="!canSubmit() || message.invalid"
-                (click)="send()"
-            >
-                Send
-            </app-button>
-        }
-    </div>
-    @if (operatorVisibleName(); as name) {
-        <p class="composer__visible-name text-body-small">Visitors see you as {{ name }}</p>
-    }
-    @if (isVisitor()) {
-        <div class="composer__extra">
-            <button
-                type="button"
-                class="composer__extra-toggle text-body-small"
-                [attr.aria-expanded]="isExtraDataOpen()"
-                [attr.aria-controls]="extraDataId"
-                (click)="isExtraDataOpen.set(!isExtraDataOpen())"
-            >
-                Extra data (JSON)
+                <app-svg-icon
+                    icon="headset"
+                    size="12px"
+                />
+                Take over
             </button>
+        </div>
+    } @else {
+        <div class="composer__field">
+            <textarea
+                #messageField
+                class="composer__input text-body"
+                rows="1"
+                placeholder="Type a message…"
+                [attr.aria-label]="isVisitor() ? 'Message as the visitor' : 'Reply as operator'"
+                [formControl]="message"
+                (keydown.enter)="onEnter($event)"
+            ></textarea>
+            <!-- The wrapper carries the tooltip: a disabled button gets no mouse events. -->
+            <span
+                class="composer__send-host"
+                matTooltip="Send"
+            >
+                <button
+                    type="button"
+                    class="composer__send"
+                    aria-label="Send"
+                    [disabled]="!canSubmit() || message.invalid"
+                    (click)="send()"
+                >
+                    <app-svg-icon
+                        icon="send-filled"
+                        size="12px"
+                    />
+                </button>
+            </span>
+        </div>
+        <div class="composer__footer text-body-small">
+            @if (operatorVisibleName(); as name) {
+                <p class="composer__visible-name">Visitors see you as {{ name }}</p>
+            }
+            @if (isVisitor()) {
+                <button
+                    type="button"
+                    class="composer__extra-toggle text-body-small"
+                    [attr.aria-expanded]="isExtraDataOpen()"
+                    [attr.aria-controls]="extraDataId"
+                    (click)="isExtraDataOpen.set(!isExtraDataOpen())"
+                >
+                    Extra data (JSON)
+                </button>
+            }
+            <p class="composer__shortcut">
+                <kbd class="composer__key">Shift</kbd> + <kbd class="composer__key">Enter</kbd> — new line
+            </p>
+        </div>
+        @if (isVisitor()) {
+            <!-- Opens under its toggle. -->
             <div
                 class="composer__extra-field"
                 [id]="extraDataId"
@@ -100,18 +157,6 @@
                     {{ error }}
                 </p>
             }
-        </div>
+        }
     }
-    <div
-        class="composer__notice"
-        role="status"
-        aria-live="polite"
-    >
-        @if (isProcessing()) {
-            <app-hint-message>Bot is replying…</app-hint-message>
-        }
-        @if (notice(); as text) {
-            <app-hint-message>{{ text }}</app-hint-message>
-        }
-    </div>
 </div>

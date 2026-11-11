@@ -96,8 +96,13 @@ export class ConversationRowComponent {
         return this.isTimedByClose() ? conversation.closed_at : conversation.last_message_at;
     });
     protected readonly time = computed(() => conversationTime(this.shownTime(), this.now(), this.locale));
-    /** Waiting for a person (see `isWaitingForPerson`). */
-    protected readonly isWaiting = computed(() => isWaitingForPerson(this.conversation()));
+    /**
+     * Waiting for a person (see `isWaitingForPerson`). Never a test's row: the tester writes as the visitor and the
+     * operator both, so how long "the visitor" waited says nothing; it shows its last activity as any other row.
+     */
+    protected readonly isWaiting = computed(
+        () => !this.conversation().is_test && isWaitingForPerson(this.conversation())
+    );
     protected readonly waitedFor = computed(() => waitDuration(this.conversation().visitor_waiting_since, this.now()));
     /** Waited past the desk's response time on a desk that marks it; moves with the clock. Tests run no timers. */
     protected readonly isOverdue = computed(() =>

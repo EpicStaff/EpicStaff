@@ -59,7 +59,7 @@ describe('ChatThreadComposerComponent', () => {
 
     const host = (): HTMLElement => fixture.nativeElement;
     const input = (): HTMLTextAreaElement => host().querySelector('textarea') as HTMLTextAreaElement;
-    const roleButtons = () => Array.from(host().querySelectorAll<HTMLButtonElement>('app-tab-button button'));
+    const roleButtons = () => Array.from(host().querySelectorAll<HTMLButtonElement>('.composer__role'));
     const notice = (): string =>
         host().querySelector('[role="status"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 
@@ -77,10 +77,11 @@ describe('ChatThreadComposerComponent', () => {
         fixture.detectChanges();
     }
 
-    const sendButton = (): HTMLButtonElement =>
-        Array.from(host().querySelectorAll<HTMLButtonElement>('.composer__row button')).find(
-            (button) => button.textContent?.trim() === 'Send'
-        ) as HTMLButtonElement;
+    const sendButton = (): HTMLButtonElement => host().querySelector('.composer__send') as HTMLButtonElement;
+    const takeOverButton = (): HTMLButtonElement | null =>
+        host().querySelector<HTMLButtonElement>('.composer__take-over-button');
+    const takeOverNote = (): string | null =>
+        host().querySelector('.composer__take-over-note')?.textContent?.trim() ?? null;
 
     function openExtraData(): void {
         (host().querySelector('.composer__extra-toggle') as HTMLButtonElement).click();
@@ -139,7 +140,7 @@ describe('ChatThreadComposerComponent', () => {
         expect(chatApi.reply).not.toHaveBeenCalled();
     });
 
-    it('sends as the operator on the operator path once claimed, and offers Claim before that', () => {
+    it('sends as the operator on the operator path once claimed, and offers Take over in place of the field before that', () => {
         const sent = { id: 'm-2', role: 'operator', content: 'hi' } as ChatOperatorMessage;
         chatApi.reply.mockReturnValue(of(sent));
         const claimRequested = vi.fn();
@@ -150,10 +151,9 @@ describe('ChatThreadComposerComponent', () => {
 
         roleButtons()[1].click();
         fixture.detectChanges();
-        expect(input().disabled).toBe(true);
-        const claim = host().querySelector('.composer__row app-button button') as HTMLButtonElement;
-        expect(claim.textContent?.trim()).toBe('Claim to reply');
-        claim.click();
+        expect(host().querySelector('textarea')).toBeNull();
+        expect(takeOverButton()?.textContent?.trim()).toBe('Take over');
+        takeOverButton()?.click();
         expect(claimRequested).toHaveBeenCalledTimes(1);
 
         setInputs({ conversation: row({ mode: 'human', assigned_operator_id: 3 }), isClaimedByMe: true });
@@ -165,19 +165,38 @@ describe('ChatThreadComposerComponent', () => {
         expect(operatorMessageSent).toHaveBeenCalledWith({ conversationId: 'c-1', message: sent });
     });
 
+    it('fits a field that comes back after the take-over call to the draft it shows', () => {
+        // jsdom lays nothing out: a draft of several lines is a field whose content is 60px tall.
+        vi.spyOn(HTMLTextAreaElement.prototype, 'scrollHeight', 'get').mockReturnValue(60);
+        setInputs({ conversation: row(), visitorToken: 'vt-1' });
+        type('one\ntwo\nthree');
+
+        roleButtons()[1].click();
+        fixture.detectChanges();
+        expect(host().querySelector('textarea')).toBeNull();
+
+        roleButtons()[0].click();
+        // After-render hooks run on an application tick, which a fixture's own change detection does not make.
+        TestBed.tick();
+        expect(draft()).toBe('one\ntwo\nthree');
+        expect(input().style.height).toBe('60px');
+    });
+
     it('locks the visitor input while the bot replies and until the stream reports the conversation again', () => {
         chatApi.sendAsVisitor.mockReturnValue(of({ message_id: 'm-1', state: 'processing' } as ChatSendResult));
         setInputs({ conversation: row(), visitorToken: 'vt-1' });
         type('hello');
         pressEnter();
         expect(input().disabled).toBe(true);
-        expect(notice()).toBe('Bot is replying…');
+        // The thread says "Bot is replying…" from this.
+        expect(fixture.componentInstance.isProcessing()).toBe(true);
 
         setInputs({ conversation: row({ state: 'processing' }) });
         expect(input().disabled).toBe(true);
 
         setInputs({ conversation: row({ state: 'idle' }) });
         expect(input().disabled).toBe(false);
+        expect(fixture.componentInstance.isProcessing()).toBe(false);
         expect(notice()).toBe('');
     });
 
@@ -307,10 +326,13 @@ describe('ChatThreadComposerComponent', () => {
         setInputs({ visibleName: null });
         expect(visibleName()).toBeNull();
 
-        setInputs({ conversation: row(), visitorToken: 'vt-1', visibleName: 'Mike' });
+        setInputs({ conversation: row(), visitorToken: 'vt-1', visibleName: 'Mike', isClaimedByMe: false });
         expect(visibleName()).toBeNull();
         roleButtons()[1].click();
         fixture.detectChanges();
+        // Not held yet: the call to take it stands in place of the field and its hint row.
+        expect(visibleName()).toBeNull();
+        setInputs({ isClaimedByMe: true });
         expect(visibleName()).toBe('Visitors see you as Mike');
     });
 
@@ -319,10 +341,10 @@ describe('ChatThreadComposerComponent', () => {
         expect(host().querySelector('.composer__extra-toggle')).not.toBeNull();
         roleButtons()[1].click();
         fixture.detectChanges();
-        expect(host().querySelector('.composer__extra')).toBeNull();
+        expect(host().querySelector('.composer__extra-toggle')).toBeNull();
 
         setInputs({ conversation: row({ id: 'c-2', is_test: false }) });
-        expect(host().querySelector('.composer__extra')).toBeNull();
+        expect(host().querySelector('.composer__extra-toggle')).toBeNull();
     });
 
     it('names the refused field of a 400 validation_error instead of the generic message', () => {
@@ -353,7 +375,7 @@ describe('ChatThreadComposerComponent', () => {
         expect(sendButton().disabled).toBe(true);
 
         host()
-            .querySelector('.composer__extra app-json-editor')
+            .querySelector('.composer__extra-field app-json-editor')
             ?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
         fixture.detectChanges();
         expect(host().querySelector('.composer__extra-error')?.getAttribute('role')).toBe('alert');
@@ -394,35 +416,54 @@ describe('ChatThreadComposerComponent', () => {
         ).toBe('{"plan": "pro"}');
     });
 
-    it('offers Claim to reply, or Take over once handed to a human, on a real conversation the operator does not hold', () => {
+    it('offers Take over in place of the field on a real conversation the operator does not hold, saying why', () => {
         const claimRequested = vi.fn();
         fixture.componentInstance.claimRequested.subscribe(claimRequested);
-        const action = () => host().querySelector('.composer__row app-button button') as HTMLButtonElement;
-        setInputs({ conversation: row({ is_test: false, mode: 'awaiting_human' }) });
-        expect(action().textContent?.trim()).toBe('Claim to reply');
-        action().click();
+        setInputs({
+            conversation: row({
+                is_test: false,
+                mode: 'awaiting_human',
+                visitor_number: 22,
+                visitor_waiting_since: '2026-11-11T10:00:00Z',
+            }),
+        });
+        expect(host().querySelector('textarea')).toBeNull();
+        expect(takeOverNote()).toBe('Visitor 22 is waiting for a person. Take over to reply.');
+        expect(takeOverButton()?.textContent?.trim()).toBe('Take over');
+        takeOverButton()?.click();
         expect(claimRequested).toHaveBeenCalledTimes(1);
 
-        setInputs({ conversation: row({ is_test: false, mode: 'human', assigned_operator_id: 7 }) });
-        expect(action().textContent?.trim()).toBe('Take over');
+        setInputs({ conversation: row({ is_test: false, mode: 'bot', visitor_number: 22 }) });
+        expect(takeOverNote()).toBe('Visitor 22 is talking to the bot. Take over to reply.');
+
+        setInputs({
+            conversation: row({ is_test: false, mode: 'human', assigned_operator_id: 7, visitor_number: 22 }),
+        });
+        expect(takeOverNote()).toBe('Visitor 22 is with another operator. Take over to reply.');
+
+        setInputs({ isActionPending: true });
+        expect(takeOverButton()?.disabled).toBe(true);
 
         setInputs({
             conversation: row({ is_test: false, mode: 'human', assigned_operator_id: 3 }),
             isClaimedByMe: true,
+            isActionPending: false,
         });
-        expect(action().textContent?.trim()).toBe('Send');
+        expect(takeOverButton()).toBeNull();
+        expect(sendButton().getAttribute('aria-label')).toBe('Send');
         expect(input().disabled).toBe(false);
+        expect(input().placeholder).toBe('Type a message…');
     });
 
-    it('shows Bot is replying… on a real conversation while a run is in progress', () => {
+    it('reports a run in progress on a real conversation, for the thread to say Bot is replying…', () => {
         setInputs({ conversation: row({ is_test: false, state: 'processing' }) });
-        expect(notice()).toBe('Bot is replying…');
+        expect(fixture.componentInstance.isProcessing()).toBe(true);
     });
 
     it('has no switch on a real conversation, and Visitor is unavailable while a test has no token', () => {
         setInputs({ conversation: row({ is_test: false }) });
         expect(roleButtons()).toEqual([]);
-        expect(input().placeholder).toBe('Claim the conversation to reply');
+        expect(takeOverButton()).not.toBeNull();
 
         setInputs({ conversation: row({ id: 'c-2' }), visitorToken: undefined });
         expect(roleButtons()[0].disabled).toBe(true);

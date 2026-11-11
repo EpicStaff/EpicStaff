@@ -50,6 +50,7 @@
             <div
                 class="message"
                 [class]="'message--' + message.role"
+                [class.message--test]="conversation().is_test"
             >
                 @if (message.role !== 'system') {
                     <!-- Above the bubble, not in it: who, and when relative to now ("now", "6m", "2:05 PM"). -->
@@ -91,8 +92,8 @@
                 } @else {
                     <!-- Test conversations only: what the widget sent with the message, or what the bot sent to it. -->
                     @let raw = conversation().is_test ? rawData(message) : null;
-                    <!-- The run a bot or operator message belongs to; never under a visitor's. -->
-                    @let runId = message.role === 'user' ? null : message.session_id;
+                    <!-- The run a bot or operator message belongs to; under a visitor's, the run it started, on a test only. -->
+                    @let runId = message.role === 'user' && !conversation().is_test ? null : message.session_id;
                     @if (raw || runId) {
                         <!-- Below the bubble, 8px apart: Raw data, then the run. -->
                         <div class="message__actions">
@@ -162,6 +163,16 @@
                 />
             }
         }
+        <!-- Where the bot's reply will appear; always rendered, so screen readers announce it. -->
+        <div
+            class="thread__replying"
+            role="status"
+            aria-live="polite"
+        >
+            @if (isBotReplying()) {
+                Bot is replying…
+            }
+        </div>
     </div>
 </div>
 

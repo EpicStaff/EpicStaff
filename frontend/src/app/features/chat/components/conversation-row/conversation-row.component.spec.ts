@@ -195,6 +195,14 @@ describe('ConversationRowComponent', () => {
     describe('waiting for a person', () => {
         const waitChip = (): HTMLElement | null => host().querySelector('.conversation-row__wait');
 
+        it('never marks a test conversation as waiting: the tester plays both sides, so it shows its last activity', () => {
+            render(waiting({ is_test: true, last_message_at: TEN_MINUTES_AGO }));
+            expect(rowButton().classList).not.toContain('conversation-row--waiting');
+            expect(waitChip()).toBeNull();
+            expect(takeOverButton()).toBeNull();
+            expect(host().querySelector('.conversation-row__time')).not.toBeNull();
+        });
+
         it('marks a waiting conversation with a bold name and, beside the row, how long the visitor has waited', () => {
             render(waiting());
             expect(rowButton().classList).toContain('conversation-row--waiting');

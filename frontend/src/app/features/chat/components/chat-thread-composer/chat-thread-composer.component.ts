@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import {
-    afterNextRender,
+    afterRenderEffect,
     Component,
     computed,
     DestroyRef,
@@ -16,12 +16,12 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
-    ButtonComponent,
+    AppSvgIconComponent,
     HintMessageComponent,
     JSON_EDITOR_OPTIONS,
     JsonEditorComponent,
-    TabButtonComponent,
 } from '@shared/components';
 import { extractHttpErrorMessage } from '@shared/utils';
 
@@ -37,6 +37,8 @@ import { ChatApiService } from '../../services/chat-api.service';
 import { ChatConversationActionsService } from '../../services/chat-conversation-actions.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { isConversationClosed } from '../../utils/conversation-close.util';
+import { visitorName } from '../../utils/conversation-row.util';
+import { isWaitingForPerson } from '../../utils/conversation-wait.util';
 
 export type ChatComposerRole = 'visitor' | 'operator';
 
@@ -51,6 +53,12 @@ const SEND_STATE_NOTICES: Record<ChatSendState, string | null> = {
     forwarded_to_operator: 'Forwarded to an operator: no run was started.',
     budget_exhausted: 'Budget exhausted: the desk answered with its fixed message or handed off.',
 };
+
+/** What the call to take a conversation says in place of the field, and its icon. */
+interface TakeOverNote {
+    icon: string;
+    text: string;
+}
 
 let nextComposerId = 0;
 
@@ -70,9 +78,10 @@ function parseExtraData(text: string): { value: Record<string, unknown> | null; 
     return { value: null, error: EXTRA_DATA_ERROR };
 }
 
-const ROLES: { id: ChatComposerRole; label: string }[] = [
-    { id: 'visitor', label: 'Visitor' },
-    { id: 'operator', label: 'Operator' },
+// The icons of the inbox's In progress section and of Mine.
+const ROLES: { id: ChatComposerRole; label: string; icon: string }[] = [
+    { id: 'visitor', label: 'Visitor', icon: 'user-outline' },
+    { id: 'operator', label: 'Operator', icon: 'headset' },
 ];
 
 /**
@@ -82,7 +91,7 @@ const ROLES: { id: ChatComposerRole; label: string }[] = [
  */
 @Component({
     selector: 'app-chat-thread-composer',
-    imports: [ReactiveFormsModule, ButtonComponent, HintMessageComponent, TabButtonComponent, JsonEditorComponent],
+    imports: [ReactiveFormsModule, MatTooltip, AppSvgIconComponent, HintMessageComponent, JsonEditorComponent],
     templateUrl: './chat-thread-composer.component.html',
     styleUrls: ['./chat-thread-composer.component.scss'],
 })
@@ -125,6 +134,17 @@ export class ChatThreadComposerComponent {
     readonly isAwaitingRun = signal(false);
     readonly isProcessing = computed(() => this.conversation().state === 'processing' || this.isAwaitingRun());
     readonly isVisitor = computed(() => this.role() === 'visitor');
+    // Writing as the operator on a conversation the user does not hold: the field gives way to a call to take it.
+    readonly takeOverNote = computed<TakeOverNote | null>(() => {
+        if (this.isVisitor() || this.isClaimedByMe()) return null;
+        const conversation = this.conversation();
+        const name = visitorName(conversation);
+        if (isWaitingForPerson(conversation))
+            return { icon: 'waiting', text: `${name} is waiting for a person. Take over to reply.` };
+        if (conversation.mode === 'bot')
+            return { icon: 'bot', text: `${name} is talking to the bot. Take over to reply.` };
+        return { icon: 'headset', text: `${name} is with another operator. Take over to reply.` };
+    });
     // Said under the operator composer only: as the visitor, the user writes under no name.
     readonly operatorVisibleName = computed(() => (this.isVisitor() ? null : this.visibleName()));
     readonly canSend = computed(() =>
@@ -139,11 +159,6 @@ export class ChatThreadComposerComponent {
     // The message input stays usable while the JSON is wrong; only sending is blocked.
     readonly extraDataError = computed(() => (this.isExtraDataTouched() ? this.extraData().error : null));
     readonly canSubmit = computed(() => this.canSend() && !(this.isVisitor() && this.extraData().error));
-    readonly placeholder = computed(() => {
-        if (this.isVisitor())
-            return this.isProcessing() ? 'Waiting for the reply…' : 'Message as the visitor, Enter to send';
-        return this.isClaimedByMe() ? 'Reply as operator, Enter to send' : 'Claim the conversation to reply';
-    });
 
     private readonly syncInput = effect(() => {
         if (this.canSend()) this.message.enable();
@@ -191,10 +206,13 @@ export class ChatThreadComposerComponent {
         .subscribe(() => this.fitMessageField());
 
     constructor() {
-        // Wrapping depends on the width too: a pane that narrows, widens or turns visible re-fits the draft it holds.
-        afterNextRender(() => {
+        // The field comes and goes with the take-over call, so each one that appears is fitted to the draft it shows
+        // (kept by the control meanwhile) and watched: wrapping depends on the width too, as a pane narrows, widens or
+        // turns visible. The previous field's observer goes with it.
+        afterRenderEffect((onCleanup) => {
             const field = this.messageField()?.nativeElement;
             if (!field) return;
+            this.fitMessageField();
             let width = field.clientWidth;
             const observer = new ResizeObserver(() => {
                 // The field's own height changes are observed as well; only a new width changes the wrapping.
@@ -203,7 +221,7 @@ export class ChatThreadComposerComponent {
                 this.fitMessageField();
             });
             observer.observe(field);
-            this.destroyRef.onDestroy(() => observer.disconnect());
+            onCleanup(() => observer.disconnect());
         });
     }
 

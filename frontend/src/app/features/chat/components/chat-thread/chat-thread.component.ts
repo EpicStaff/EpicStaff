@@ -106,6 +106,8 @@ export class ChatThreadComponent {
     /** Messages whose raw data is open. */
     protected readonly openRawIds = signal<ReadonlySet<string>>(new Set());
     readonly isLoadingOlder = signal(false);
+    // The composer knows of a run its send just started before the stream does; none while closed (no composer).
+    protected readonly isBotReplying = computed(() => this.composer()?.isProcessing() ?? false);
 
     private readonly conversationId = computed(() => this.conversation().id);
     /** The conversation's desk; null while that desk is not known. */

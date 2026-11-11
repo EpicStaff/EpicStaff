@@ -39,6 +39,19 @@
         gap: 12px;
     }
 
+    // Plain grey text on the bot's side while it replies; empty, it takes no room.
+    &__replying {
+        align-self: flex-end;
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+
+        &:empty {
+            margin-top: -12px;
+        }
+    }
+
     &__older {
         align-self: center;
         display: flex;
@@ -241,6 +254,12 @@
             background-color: var(--color-ks-line);
             color: var(--color-text-primary);
         }
+
+        // In a test conversation (Bot Testing) the visitor's message is a lighter, squarer bubble.
+        &.message--test .message__content {
+            border-radius: 4px;
+            background-color: var(--color-chat-test-visitor-bubble);
+        }
     }
 
     // The bot and the operator who took over, on the right: the accent at 40%, then in full. A single line is 42px tall.
@@ -272,6 +291,13 @@
                 color: inherit;
                 text-decoration: underline;
             }
+        }
+
+        // In a test conversation (Bot Testing) the operator writes in the accent, on an accent tint,
+        // since accent text would vanish on the accent fill.
+        &.message--test .message__content {
+            background-color: var(--color-chat-test-operator-bubble);
+            color: var(--accent-color);
         }
     }
 
@@ -307,6 +333,11 @@
     &--joined {
         background: var(--transparent-green-8);
         color: var(--success-color);
+    }
+
+    // Two in a row (queued, then joined) are 8px apart, not the thread's 12px.
+    & + & {
+        margin-top: -4px;
     }
 }
 
