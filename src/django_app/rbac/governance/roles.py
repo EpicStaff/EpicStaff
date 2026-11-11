@@ -21,7 +21,6 @@ from rbac.exceptions import (
 )
 from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.guards import UserManagementGuards
-from rbac.governance.storage_revocation import revoke_storage_access_on_commit
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 
@@ -108,12 +107,6 @@ class RoleManagementService(CrossOrgResourceService):
             if "permissions" in changes:
                 role.permissions_set.all().delete()
                 self._write_permission_rows(role=role, permissions=changes["permissions"])
-                revoke_storage_access_on_commit(
-                    org_id=role.org_id,
-                    user_ids=OrganizationUser.objects.filter(role_id=role.id).values_list(
-                        "user_id", flat=True
-                    ),
-                )
         return self._build_role_response(role_id=role.id)
 
     def preview_delete(self, actor, role_id) -> dict:
@@ -156,12 +149,6 @@ class RoleManagementService(CrossOrgResourceService):
             self._assert_not_own_role(actor=actor, role=role)
             viewer_role = Role.objects.get(
                 name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True
-            )
-            revoke_storage_access_on_commit(
-                org_id=role.org_id,
-                user_ids=OrganizationUser.objects.filter(role_id=role.id).values_list(
-                    "user_id", flat=True
-                ),
             )
             reassigned = OrganizationUser.objects.filter(role_id=role.id).update(
                 role_id=viewer_role.id

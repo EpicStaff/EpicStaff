@@ -110,8 +110,6 @@ class StorageMutations(ValueObject):
     execution_id: str
     org_prefix: str
     session_id: int | None = None
-    # Access key of the run's temporary storage account, taken from the job's credentials.
-    access_key: str | None = None
     mutations: list[dict] = Field(default_factory=list)
 
 

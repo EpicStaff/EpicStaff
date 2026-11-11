@@ -5,7 +5,6 @@ from rest_framework_simplejwt.token_blacklist.models import (
     OutstandingToken,
 )
 
-from rbac.governance.storage_revocation import revoke_storage_access_on_commit
 from rbac.models import ApiKey
 
 
@@ -17,8 +16,7 @@ class CredentialRevocationService:
     user's personal (USER) API keys. Called whenever a password is set —
     reset link, admin reset, CLI reset, self-service change — so a refresh
     token or API key obtained with the old password stops working. Also
-    called before a user is deleted. It also revokes the temporary storage accounts
-    minted for the user and their keys.
+    called before a user is deleted.
 
     The SYSTEM key is never touched: it has no owner, so the `created_by`
     filter cannot match it.
@@ -35,9 +33,6 @@ class CredentialRevocationService:
     """
 
     def revoke_all_credentials_for_user(self, user) -> None:
-        # Also the temporary storage accounts minted for the user and their keys, in
-        # every organization. Before the keys are revoked or deleted, so they are found.
-        revoke_storage_access_on_commit(org_id=None, user_ids=[user.id])
         blacklisted_count = self._blacklist_refresh_tokens(user)
         revoked_key_count = self._revoke_api_keys(user)
         logger.info(

@@ -12,7 +12,6 @@ from rbac.exceptions import (
     ApiKeyNotFoundError,
     SessionPasswordChangedError,
 )
-from rbac.governance.storage_revocation import revoke_storage_access_on_commit
 from rbac.identity.api_keys.generator import ApiKeyGenerator
 from rbac.identity.tokens import is_bound_to_current_password
 from rbac.models import ApiKey
@@ -109,13 +108,10 @@ class ApiKeyService:
         if key.revoked_at is None:
             key.revoked_at = timezone.now()
             key.save(update_fields=["revoked_at"])
-        revoke_storage_access_on_commit(org_id=key.org_id, api_key_ids=[key.pk])
         return key
 
     def delete_key(self, user, key_id) -> None:
-        key = self._get_own_key(user, key_id)
-        revoke_storage_access_on_commit(org_id=key.org_id, api_key_ids=[key.pk])
-        key.delete()
+        self._get_own_key(user, key_id).delete()
 
     def _get_own_key(self, user, key_id) -> ApiKey:
         key = ApiKey.objects.filter(

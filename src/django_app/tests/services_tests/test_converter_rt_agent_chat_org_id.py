@@ -15,7 +15,6 @@ source for the surviving conversion path:
 import pytest
 
 from agents.models import AgentDefinition
-from storage_credentials.services.acting_identity import ActingIdentity
 from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
     RealtimeAgentChat,
@@ -66,7 +65,7 @@ def test_convert_rt_agent_definition_chat_to_pydantic_populates_org_id_from_defi
     )
 
     data = converter.convert_rt_agent_definition_chat_to_pydantic(
-        chat, acting_identity=ActingIdentity.unattributed()
+        chat
     )
 
     assert data.org_id == default_org.pk

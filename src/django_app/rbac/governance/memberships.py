@@ -23,7 +23,6 @@ from rbac.governance.authorship import (
 from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.guards import UserManagementGuards
 from rbac.governance.role_assignment_checks import assert_role_assignment_allowed
-from rbac.governance.storage_revocation import revoke_storage_access_on_commit
 from rbac.models import ApiKey, Organization, OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
 
@@ -196,7 +195,6 @@ class MembershipManagementService(CrossOrgResourceService):
         if membership.role_id != new_role.pk:
             membership.role = new_role
             membership.save(update_fields=["role"])
-            revoke_storage_access_on_commit(org_id=membership.org_id, user_ids=[membership.user_id])
         logger.info(
             "MembershipManagementService.change_role actor={a} membership={m} role={r}",
             a=getattr(actor, "email", "system"),
@@ -225,8 +223,6 @@ class MembershipManagementService(CrossOrgResourceService):
         )  # no-leak 404
         self._assert_not_self(actor, membership)
         self.assert_can(effective, Permission.DELETE)
-        # Before the member's API keys are deleted below: the accounts are found through them.
-        revoke_storage_access_on_commit(org_id=membership.org_id, user_ids=[membership.user_id])
         membership.delete()
         released = AuthorshipReleaseService().release(
             user_id=membership.user_id, org_id=membership.org_id

@@ -13,7 +13,6 @@ from unittest.mock import patch
 import pytest
 from storage_credentials.models import TemporaryStorageAccount
 from storage_credentials.services import session_credential_service as service_module
-from storage_credentials.services.acting_identity import ActingIdentity
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import PythonCodeResult, StorageFile
 from tables.services.storage_service.quota import org_used_bytes
@@ -67,7 +66,6 @@ def _start(org, user, shared_paths=()) -> str:
         [OWN_FOLDER, *shared_paths],
         org.id,
         own_paths=[OWN_FOLDER],
-        acting_identity=ActingIdentity.for_request(user, None),
     )
     return result.execution_id
 
@@ -225,15 +223,3 @@ def test_nested_grants_are_listed_once_under_their_outermost_folder_and_all_inde
     assert listed == [f"org_{acme.id}/a/", f"org_{acme.id}/d/"]
     assert set(_indexed(acme)) == {"a/b/x.bin", "a/z.txt", "c.txt", "d/y.bin"}
     assert gateway.deleted == ["nested-key"]
-
-
-def test_revoking_an_identity_first_indexes_what_its_runs_wrote(
-    gateway, backend, acme, member_only
-):
-    _start(acme, member_only)
-    _store(backend, acme, f"{OWN_FOLDER}unreported.bin", 9)
-
-    session_credential_service.revoke_for_identity(org_id=acme.id, user_ids=[member_only.id])
-
-    assert _indexed(acme) == {f"{OWN_FOLDER}unreported.bin": 9}
-    assert not TemporaryStorageAccount.objects.exists()

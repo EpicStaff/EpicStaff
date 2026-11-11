@@ -112,13 +112,11 @@ async def test_mutations_are_carried_onto_the_wire():
             execution_id="exec-1",
             org_prefix="org1",
             session_id=7,
-            access_key="AK123",
             mutations=[{"path": "docs/a.txt"}],
         ),
     )
 
     message = queue.get_nowait()
-    assert message.mutations.access_key == "AK123"
     assert message.mutations.org_prefix == "org1"
     assert message.mutations.session_id == 7
     assert message.mutations.mutations == [{"path": "docs/a.txt"}]

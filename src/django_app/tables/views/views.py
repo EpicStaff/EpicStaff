@@ -36,7 +36,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.settings import api_settings
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
-from storage_credentials.services.acting_identity import ActingIdentity
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
 from tables.exceptions import (
@@ -708,7 +707,6 @@ class RunPythonCodeAPIView(APIView):
                     variables=variables,
                     organization_id=org_id,
                     user=request.user,
-                    api_key=request.auth if isinstance(request.auth, ApiKey) else None,
                 )
             except CodeRunTargetNotFoundError as error:
                 raise ValidationError(
@@ -733,7 +731,6 @@ class RunPythonCodeAPIView(APIView):
             varaibles=variables,
             organization_id=org_id,
             user=request.user,
-            api_key=request.auth if isinstance(request.auth, ApiKey) else None,
         )
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
 
@@ -855,9 +852,6 @@ class InitRealtimeAPIView(APIView):
                 config=config,
                 user_id=user_id,
                 org_id=org_id,
-                acting_identity=ActingIdentity.for_request(
-                    request.user, request.auth if isinstance(request.auth, ApiKey) else None
-                ),
             )
         except Exception as e:
             logger.exception(

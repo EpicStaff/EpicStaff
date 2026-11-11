@@ -11,14 +11,10 @@ synchronously via `_mint_and_persist`, keyed to its own
 point per owner type, each resolving the owning organization through its own
 FK path and then sharing `_revoke_and_delete`, which is the single place that
 talks to the storage backend to delete a service account and drop its row.
-A fourth entry point, `revoke_for_identity`, revokes by who the accounts were
-issued for rather than by owner: it finds many accounts at once and deletes them
-in one storage connection per organization (`_revoke_accounts`).
 
 Python code writes to storage without telling django, so each account records the
 folders its policy grants, and a revocation that ends a run first reconciles them into
-the file index (`_reconcile_granted_folders`). An organization already over its storage
-quota gets accounts that cannot write, whatever the identity's permissions are.
+the file index (`_reconcile_granted_folders`).
 """
 
 import asyncio
@@ -28,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import F, Q
+from django.db.models import F
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from loguru import logger
@@ -47,7 +43,6 @@ from storage_credentials.exceptions import (
 from storage_credentials.models import TemporaryStorageAccount
 from storage_credentials.policies import build_temporary_policy
 from storage_credentials.resource_names import org_storage_prefix
-from storage_credentials.services.acting_identity import ActingIdentity
 from storage_credentials.services.org_credential_store import org_credential_store
 from storage_credentials.services.scope_validator import credential_scope_validator
 from storage_credentials.services.storage_demand_collector import (
@@ -61,11 +56,11 @@ class SessionStorageCredentials:
     """The temporary storage accounts minted for one graph session.
 
     Attributes:
-        default: The account for code with no storage grant of its own, or for every
-            node in an attended run. None when no node needs one.
-        by_grant: For an unattended run, the account of each distinct `StorageGrant.key`
-            used by a storage-using node or code slot. Several keys may share one
-            account when the identity's own permissions cut them down to the same actions.
+        default: The account for code with no storage grant of its own. None when no
+            such code needs storage.
+        by_grant: The account of each distinct `StorageGrant.key` used by a storage-using
+            node or code slot. Several keys may share one account when they allow the same
+            actions.
     """
 
     default: StorageCredentials | None = None
@@ -85,29 +80,17 @@ class SessionCredentialService:
     """Service for processing temporary storage credentials."""
 
     def issue_for_session(
-        self,
-        session_data: SessionData,
-        session_orm: Session,
-        org: Organization,
-        *,
-        acting_identity: ActingIdentity,
+        self, session_data: SessionData, session_orm: Session, org: Organization
     ) -> StorageCredentials | None:
         """Mint and persist the temporary storage account of a session, and return the default one.
 
-        See `issue_session_accounts`, which also returns the accounts of an unattended
-        run's storage grants; this returns only `default`.
+        See `issue_session_accounts`, which also returns the accounts of the session's
+        storage grants; this returns only `default`.
         """
-        return self.issue_session_accounts(
-            session_data, session_orm, org, acting_identity=acting_identity
-        ).default
+        return self.issue_session_accounts(session_data, session_orm, org).default
 
     def issue_session_accounts(
-        self,
-        session_data: SessionData,
-        session_orm: Session,
-        org: Organization,
-        *,
-        acting_identity: ActingIdentity,
+        self, session_data: SessionData, session_orm: Session, org: Organization
     ) -> SessionStorageCredentials:
         """Mint and persist the temporary storage accounts a graph session needs.
 
@@ -118,12 +101,10 @@ class SessionCredentialService:
         folder (`sessions/<id>/`) allows every action in all of them; the other paths
         allow only what the account's actions say.
 
-        An attended run gets one account whose actions are what `acting_identity` may do
-        to files (see `_mint_accounts`). A run rooted in a trigger, with no one behind
-        it, gets one account per distinct set of actions its nodes' storage grants allow,
-        each narrowed to what the request's identity may do, plus one for the nodes
-        with no grant (what the identity may do). They are minted concurrently, at most
-        nine: the eight combinations of read, write and delete, and the ungranted one.
+        One account is minted per distinct set of actions the nodes' storage grants allow,
+        plus one allowing every action for the code with no grant. They are minted
+        concurrently, at most nine: the eight combinations of read, write and delete, and
+        the ungranted one.
 
         Returns:
             The accounts; empty when no node needs storage.
@@ -148,18 +129,15 @@ class SessionCredentialService:
             union_allowed_paths,
             node_declared_org_prefix,
         )
-        identity_actions = acting_identity.shared_actions(org.id)
+        all_actions = frozenset(StorageAction)
+        demand = collect_storage_grant_demand(session_data)
         keys_by_set: dict[frozenset[StorageAction], list[str]] = defaultdict(list)
-        has_default = True
-        if acting_identity.trigger_rooted:
-            demand = collect_storage_grant_demand(session_data)
-            has_default = demand.has_ungranted
-            for grant in sorted(demand.grants, key=lambda grant: grant.key):
-                keys_by_set[identity_actions & grant.actions].append(grant.key)
-        # A grant that ends up allowing what the default account allows runs with the
-        # default account, which is minted anyway: one account per distinct action set.
-        default_keys = keys_by_set.pop(identity_actions, []) if has_default else []
-        action_sets = ([identity_actions] if has_default else []) + list(keys_by_set)
+        for grant in sorted(demand.grants, key=lambda grant: grant.key):
+            keys_by_set[grant.actions].append(grant.key)
+        # A grant that allows every action runs with the default account, which is minted
+        # anyway when some code has no grant: one account per distinct action set.
+        default_keys = keys_by_set.pop(all_actions, []) if demand.has_ungranted else []
+        action_sets = ([all_actions] if demand.has_ungranted else []) + list(keys_by_set)
         credentials = self._mint_accounts(
             allowed_paths=union_allowed_paths,
             org_id=org.id,
@@ -167,11 +145,10 @@ class SessionCredentialService:
             fk_value=session_orm,
             owner_label=f"session {session_orm.id}",
             own_paths=[f"sessions/{session_orm.id}/"],
-            acting_identity=acting_identity,
             action_sets=action_sets,
         )
-        default = credentials[0] if has_default else None
-        grant_credentials = credentials[1:] if has_default else credentials
+        default = credentials[0] if demand.has_ungranted else None
+        grant_credentials = credentials[1:] if demand.has_ungranted else credentials
         by_grant = {
             key: account
             for account, keys in zip(grant_credentials, keys_by_set.values(), strict=True)
@@ -188,7 +165,6 @@ class SessionCredentialService:
         org_id: int,
         *,
         own_paths: list[str],
-        acting_identity: ActingIdentity,
     ) -> StorageCredentials:
         """Mint and persist temporary storage credentials for a django "Test run"
         execution. Unlike `issue_for_session`, the caller has already determined
@@ -206,7 +182,6 @@ class SessionCredentialService:
             fk_value=python_code_result,
             owner_label=f"test-run {python_code_result.execution_id}",
             own_paths=own_paths,
-            acting_identity=acting_identity,
         )
 
     def issue_for_realtime_chat(
@@ -214,8 +189,6 @@ class SessionCredentialService:
         realtime_agent_chat: RealtimeAgentChat,
         storage_allowed_paths: list[str],
         org_id: int,
-        *,
-        acting_identity: ActingIdentity,
     ) -> StorageCredentials:
         """Mint and persist temporary storage credentials for a realtime chat
         session. One account for the whole chat, reused by every storage tool
@@ -223,8 +196,7 @@ class SessionCredentialService:
 
         Raises:
             CredentialScopeValidationError: If the given scope is missing,
-            malformed, escapes the org's own prefix, or the acting identity may
-            not read any of the files the agent's tools use.
+            malformed, or escapes the org's own prefix.
             TemporaryCredentialIssueError: If minting or DB persistence fails.
         """
         return self._mint_and_persist(
@@ -234,7 +206,6 @@ class SessionCredentialService:
             fk_value=realtime_agent_chat,
             owner_label=f"realtime chat {realtime_agent_chat.id}",
             own_paths=[],
-            acting_identity=acting_identity,
         )
 
     def _mint_and_persist(
@@ -246,11 +217,10 @@ class SessionCredentialService:
         fk_value,
         owner_label: str,
         own_paths: list[str],
-        acting_identity: ActingIdentity,
     ) -> StorageCredentials:
         """Mint and persist the one account of a test run or a realtime chat.
 
-        The account allows what `acting_identity` may do to files; see `_mint_accounts`.
+        The account allows every action on the attached folders; see `_mint_accounts`.
         """
         return self._mint_accounts(
             allowed_paths=allowed_paths,
@@ -259,8 +229,7 @@ class SessionCredentialService:
             fk_value=fk_value,
             owner_label=owner_label,
             own_paths=own_paths,
-            acting_identity=acting_identity,
-            action_sets=[acting_identity.shared_actions(org_id)],
+            action_sets=[frozenset(StorageAction)],
         )[0]
 
     def _mint_accounts(
@@ -272,7 +241,6 @@ class SessionCredentialService:
         fk_value,
         owner_label: str,
         own_paths: list[str],
-        acting_identity: ActingIdentity,
         action_sets: list[frozenset[StorageAction]],
     ) -> list[StorageCredentials]:
         """Shared mint + persist body for all three `issue_for_*` entry points.
@@ -298,9 +266,7 @@ class SessionCredentialService:
         `own_paths` are the run's own folders, computed by the caller and never read
         from node data; they always allow every action. The rest of `allowed_paths`
         allow the account's entry of `action_sets`. An account with none of them has the
-        shared folders left out, and the run still gets its own folders. The identity is
-        recorded on each row so the account can be revoked when that identity's access
-        changes.
+        shared folders left out, and the run still gets its own folders.
 
         Raises:
             CredentialScopeValidationError: `allowed_paths` is empty or escapes
@@ -368,7 +334,6 @@ class SessionCredentialService:
             )
             raise TemporaryCredentialIssueError() from error
 
-        root_identity = acting_identity.bounded_by
         credentials: list[StorageCredentials] = []
         persisted_keys: set[str] = set()
         try:
@@ -379,10 +344,6 @@ class SessionCredentialService:
                 TemporaryStorageAccount.objects.create(
                     access_key=access_key,
                     issued_at=timezone.now(),
-                    issued_for_user=acting_identity.recorded_user,
-                    issued_for_api_key=acting_identity.api_key,
-                    issued_for_root_user=root_identity.recorded_user if root_identity else None,
-                    issued_for_root_api_key=root_identity.api_key if root_identity else None,
                     shared_actions=[action.value for action in shared_action_list],
                     granted_folders=self._org_relative_grants(
                         org_id, scoped_folders.own | account.shared_folders
@@ -541,122 +502,6 @@ class SessionCredentialService:
             owner_label=f"realtime chat {realtime_agent_chat_id}",
         )
 
-    def access_keys_for_identity(
-        self,
-        *,
-        org_id: int | None,
-        user_ids: Iterable[int] = (),
-        api_key_ids: Iterable[int] = (),
-    ) -> list[str]:
-        """Access keys of the accounts issued for these users or API keys.
-
-        Includes a sub-flow's account when the user or key started its root session.
-        `org_id=None` matches accounts of every organization.
-        """
-        return [
-            access_key
-            for access_key, _ in self._accounts_for_identity(
-                org_id=org_id, user_ids=user_ids, api_key_ids=api_key_ids
-            )
-        ]
-
-    def revoke_for_identity(
-        self,
-        *,
-        org_id: int | None,
-        user_ids: Iterable[int] = (),
-        api_key_ids: Iterable[int] = (),
-    ) -> None:
-        """Revoke the accounts issued for these users or API keys.
-
-        Called when the access of an identity changes (role, membership, key
-        revoked or deleted, user deactivated), so a run in flight stops holding
-        credentials built from the old permissions. `org_id=None` covers every
-        organization. Best-effort like the other `revoke_for_*` entry points: a
-        failure is logged and leaves the row for the manager's cleanup job.
-        """
-        try:
-            accounts = self._accounts_for_identity(
-                org_id=org_id, user_ids=user_ids, api_key_ids=api_key_ids
-            )
-        except Exception as error:
-            logger.warning("Failed to look up temporary storage accounts to revoke: {}", error)
-            return
-        self._revoke_accounts(accounts)
-
-    def revoke_access_keys(self, access_keys: Iterable[str]) -> None:
-        """Revoke and delete the accounts with these access keys (best-effort)."""
-        try:
-            accounts = list(
-                TemporaryStorageAccount.objects.filter(access_key__in=list(access_keys))
-                .annotate(owner_org_id=self._owner_org_id())
-                .values_list("access_key", "owner_org_id")
-            )
-        except Exception as error:
-            logger.warning("Failed to look up temporary storage accounts to revoke: {}", error)
-            return
-        self._revoke_accounts(accounts)
-
-    def _accounts_for_identity(
-        self,
-        *,
-        org_id: int | None,
-        user_ids: Iterable[int],
-        api_key_ids: Iterable[int],
-    ) -> list[tuple[str, int | None]]:
-        """(access key, owning org id) of every account issued for these identities, in one query."""
-        user_ids = list(user_ids)
-        api_key_ids = list(api_key_ids)
-        if not user_ids and not api_key_ids:
-            return []
-        accounts = TemporaryStorageAccount.objects.filter(
-            Q(issued_for_user_id__in=user_ids)
-            | Q(issued_for_api_key_id__in=api_key_ids)
-            | Q(issued_for_root_user_id__in=user_ids)
-            | Q(issued_for_root_api_key_id__in=api_key_ids)
-        ).annotate(owner_org_id=self._owner_org_id())
-        if org_id is not None:
-            accounts = accounts.filter(owner_org_id=org_id)
-        return list(accounts.values_list("access_key", "owner_org_id"))
-
-    def _revoke_accounts(self, accounts: list[tuple[str, int | None]]) -> None:
-        """Revoke many accounts with one credential fetch and one storage connection per org.
-
-        Deletes a `TemporaryStorageAccount` row only for an account the backend
-        confirmed gone, so a failed revocation leaves just that row for the manager's
-        cleanup job. Best-effort: every failure is logged, none is raised. Each account's
-        run is synced into the file index first (`_sync_run_storage`), so a revocation in
-        the middle of a run loses none of what it wrote. The manager's expiry cleanup of
-        stale accounts does not.
-
-        Args:
-            accounts: (access key, id of the org that owns the account). An account
-                whose org cannot be resolved is left for the cleanup job.
-        """
-        access_keys_by_org: dict[int, list[str]] = defaultdict(list)
-        for access_key, owner_org_id in accounts:
-            if owner_org_id is None:
-                logger.error(
-                    "Cannot revoke temporary storage account {}: no owning organization "
-                    "reachable. Leaving the row for cleanup.",
-                    access_key,
-                )
-                continue
-            access_keys_by_org[owner_org_id].append(access_key)
-
-        for org_id, access_keys in access_keys_by_org.items():
-            try:
-                self._sync_runs_storage(org_id, access_keys)
-                org_creds = org_credential_store.get(org_id=org_id)
-                revoked = asyncio.run(
-                    self._delete_service_accounts(org_creds=org_creds, access_keys=access_keys)
-                )
-                TemporaryStorageAccount.objects.filter(access_key__in=revoked).delete()
-            except Exception as error:
-                logger.warning(
-                    "Failed to revoke temporary storage credentials in org {}: {}", org_id, error
-                )
-
     async def _delete_service_accounts(self, org_creds, access_keys: list[str]) -> list[str]:
         """Delete service accounts on one gateway; returns the access keys confirmed gone."""
         gateway = StorageAdminGateway(
@@ -794,30 +639,6 @@ class SessionCredentialService:
                     owner_label,
                     error,
                 )
-
-    def _sync_runs_storage(self, org_id: int, access_keys: list[str]) -> None:
-        """`_sync_run_storage` for each account with these access keys; a failure only skips the sync."""
-        try:
-            accounts = list(
-                TemporaryStorageAccount.objects.filter(access_key__in=access_keys).select_related(
-                    "issued_for_user", "issued_for_root_user"
-                )
-            )
-        except Exception as error:
-            logger.warning("Cannot load accounts to sync before revoking them: {}", error)
-            return
-        # A session's accounts are synced once, over the folders of all of them.
-        synced_session_ids: set[int] = set()
-        for account in accounts:
-            granted_folders = None
-            if account.session_id is not None:
-                if account.session_id in synced_session_ids:
-                    continue
-                synced_session_ids.add(account.session_id)
-                granted_folders = self._union_of_granted_folders(
-                    TemporaryStorageAccount.objects.filter(session_id=account.session_id)
-                )
-            self._sync_run_storage(account, org_id, f"account {account.pk}", granted_folders)
 
     @staticmethod
     def _union_of_granted_folders(accounts: Iterable[TemporaryStorageAccount]) -> list[str] | None:

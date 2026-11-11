@@ -1,4 +1,4 @@
-"""tables 0287 and storage_credentials 0004 add storage grants.
+"""tables 0287 and storage_credentials 0002 add storage grants.
 
 Invariants: a node that existed before the columns is not configured (all NULL), so
 its runs keep today's access; the migration changes no data. A temporary account's
@@ -13,8 +13,8 @@ from django.db.migrations.executor import MigrationExecutor
 
 TABLES_BEFORE = ("tables", "0286_rename_filter_preset_org_indexes")
 TABLES_AFTER = ("tables", "0287_storage_grants")
-ACCOUNTS_BEFORE = ("storage_credentials", "0003_temporary_account_granted_folders")
-ACCOUNTS_AFTER = ("storage_credentials", "0004_storage_grants")
+ACCOUNTS_BEFORE = ("storage_credentials", "0001_initial")
+ACCOUNTS_AFTER = ("storage_credentials", "0002_session_accounts")
 
 
 def _migrate(*targets):

@@ -53,6 +53,5 @@ class CaptureMutationsStep:
             execution_id=job.execution_id,
             org_prefix=job.storage_org_prefix,
             session_id=job.session_id,
-            access_key=job.storage_credentials.access_key if job.storage_credentials else None,
             mutations=mutations,
         )

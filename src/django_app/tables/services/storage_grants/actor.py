@@ -6,9 +6,10 @@ from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models.enums import Permission, ResourceType
 from src.shared.models.storage_scope import StorageAction
 
-# The Files permissions each grant action stands for. The same rule `storage_actions_for`
-# applies to a run's identity, minus the read requirement: a grant is an explicit choice
-# of what the code may do, so a write grant does not imply a read grant.
+# The Files permissions each grant action stands for. READ needs FILES:READ; WRITE needs both
+# FILES:CREATE and FILES:UPDATE, because storage cannot tell creating an object from
+# overwriting one; DELETE needs FILES:DELETE. A grant is an explicit choice of what the code
+# may do, so a write grant does not imply a read grant.
 FILES_PERMISSIONS_BY_ACTION: dict[StorageAction, tuple[Permission, ...]] = {
     StorageAction.READ: (Permission.READ,),
     StorageAction.WRITE: (Permission.CREATE, Permission.UPDATE),

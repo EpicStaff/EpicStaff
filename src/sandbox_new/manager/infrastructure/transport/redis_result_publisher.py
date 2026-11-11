@@ -61,7 +61,6 @@ class RedisResultPublisher(AbstractResultPublisher):
                 "execution_id": result.execution_id,
                 "org_prefix": result.mutations.org_prefix,
                 "session_id": result.mutations.session_id,
-                "access_key": result.mutations.access_key,
                 "mutations": result.mutations.mutations,
             }
             await self._redis.publish(self._mutation_channel, json.dumps(event))

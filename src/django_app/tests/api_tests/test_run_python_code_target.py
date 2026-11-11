@@ -30,7 +30,7 @@ def minted_credentials(monkeypatch):
     """Stand in for minting a test run's storage credentials; records each scope asked for."""
     requested_scopes = []
 
-    def issue_for_test_run(*, python_code_result, storage_allowed_paths, org_id, own_paths, acting_identity):
+    def issue_for_test_run(*, python_code_result, storage_allowed_paths, org_id, own_paths):
         requested_scopes.append(
             {"storage_allowed_paths": storage_allowed_paths, "org_id": org_id, "own_paths": own_paths}
         )

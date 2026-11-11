@@ -1,4 +1,4 @@
-"""An unattended run's temporary storage accounts follow the storage grants of its nodes.
+"""A run's temporary storage accounts follow the storage grants of its nodes.
 
 Exercised through the real services and database; only the storage backend's admin API
 is replaced (FakeStorageGateway). The policy is what enforces a grant, so it is what is
@@ -21,10 +21,8 @@ from src.shared.models.sessions import SessionData
 from src.shared.models.storage_scope import StorageAction, StorageGrant
 from src.shared.models.tools import PythonCodeData
 from storage_credentials.models import TemporaryStorageAccount
-from storage_credentials.services.acting_identity import ActingIdentity
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import Graph, Session
-from tables.models.session_models import SessionPrincipal
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -93,12 +91,11 @@ def _session_data(session, org, grants: list[StorageGrant | None], **graph_field
     )
 
 
-def _issue(session, org, identity, grants, **graph_fields):
+def _issue(session, org, grants, **graph_fields):
     return session_credential_service.issue_session_accounts(
         session_data=_session_data(session, org, grants, **graph_fields),
         session_orm=session,
         org=org,
-        acting_identity=identity,
     )
 
 
@@ -136,10 +133,10 @@ def _policy_of(gateway, credentials) -> dict:
         (StorageGrant(read=True, delete=True), [GET, DELETE]),
     ],
 )
-def test_a_trigger_run_gives_a_node_exactly_its_grants_actions(
+def test_a_run_gives_a_node_exactly_its_grants_actions(
     gateway, acme, session, grant, expected
 ):
-    accounts = _issue(session, acme, ActingIdentity.unattributed(), [grant])
+    accounts = _issue(session, acme, [grant])
 
     assert accounts.default is None
     credentials = accounts.by_grant[grant.key]
@@ -151,7 +148,7 @@ def test_a_trigger_run_gives_a_node_exactly_its_grants_actions(
 
 @pytest.mark.django_db
 def test_a_node_granted_nothing_gets_its_own_folder_only(gateway, acme, session):
-    accounts = _issue(session, acme, ActingIdentity.unattributed(), [StorageGrant()])
+    accounts = _issue(session, acme, [StorageGrant()])
 
     policy = _policy_of(gateway, accounts.by_grant["---"])
     assert _shared_actions_of(policy, session) is None
@@ -162,66 +159,10 @@ def test_a_node_granted_nothing_gets_its_own_folder_only(gateway, acme, session)
 def test_a_node_with_no_grant_keeps_the_legacy_full_access_in_the_default_account(
     gateway, acme, session
 ):
-    accounts = _issue(session, acme, ActingIdentity.unattributed(), [None])
+    accounts = _issue(session, acme, [None])
 
     assert accounts.by_grant == {}
     assert _shared_actions_of(_policy_of(gateway, accounts.default), session) == [GET, PUT, DELETE]
-
-
-@pytest.mark.django_db
-def test_an_attended_run_ignores_grants_and_mints_one_account_for_the_identity(
-    gateway, acme, session, member_only
-):
-    accounts = _issue(
-        session,
-        acme,
-        ActingIdentity.for_request(member_only, None),
-        [StorageGrant(delete=True), StorageGrant(read=True)],
-    )
-
-    assert accounts.by_grant == {}
-    assert len(gateway.created) == 1
-    assert _shared_actions_of(_policy_of(gateway, accounts.default), session) == [GET, PUT]
-
-
-@pytest.mark.django_db
-def test_a_sub_flow_of_a_trigger_run_gets_its_grant_cut_down_to_the_callers_permissions(
-    gateway, acme, session, member_only
-):
-    root = Session.objects.create(graph=session.graph, status=Session.SessionStatus.PENDING)
-    SessionPrincipal.objects.create(session=root, kind=SessionPrincipal.ActionKind.TRIGGER)
-    session.parent_session = root
-    session.save()
-    identity = ActingIdentity.for_sub_flow(member_only, None, root.pk)
-    assert identity.trigger_rooted
-
-    accounts = _issue(
-        session,
-        acme,
-        identity,
-        [StorageGrant(read=True, write=True, delete=True), StorageGrant(delete=True), None],
-    )
-
-    # A member may read and write but not delete: rwd -> rw-, --d -> nothing, and the
-    # node with no grant follows the caller alone.
-    assert _shared_actions_of(_policy_of(gateway, accounts.by_grant["rwd"]), session) == [GET, PUT]
-    assert _shared_actions_of(_policy_of(gateway, accounts.by_grant["--d"]), session) is None
-    assert _shared_actions_of(_policy_of(gateway, accounts.default), session) == [GET, PUT]
-
-
-@pytest.mark.django_db
-def test_an_attended_chain_ignores_grants(gateway, acme, session, member_only, admin_acme):
-    root = Session.objects.create(graph=session.graph, status=Session.SessionStatus.PENDING)
-    SessionPrincipal.objects.create(
-        session=root, kind=SessionPrincipal.ActionKind.USER, user=admin_acme
-    )
-    identity = ActingIdentity.for_sub_flow(member_only, None, root.pk)
-    assert not identity.trigger_rooted
-
-    accounts = _issue(session, acme, identity, [StorageGrant(read=True)])
-
-    assert accounts.by_grant == {}
-    assert _shared_actions_of(_policy_of(gateway, accounts.default), session) == [GET, PUT]
 
 
 @pytest.mark.django_db
@@ -231,7 +172,7 @@ def test_ninety_nodes_over_all_combinations_and_no_grant_mint_one_account_per_di
     grants = [*ALL_GRANTS, None]
     nodes = [grants[index % 9] for index in range(90)]
 
-    accounts = _issue(session, acme, ActingIdentity.unattributed(), nodes)
+    accounts = _issue(session, acme, nodes)
 
     # Eight distinct action sets. The nodes with no grant run with everything, which is
     # exactly what rwd allows, so both share the default account.
@@ -257,48 +198,14 @@ def test_ninety_nodes_over_all_combinations_and_no_grant_mint_one_account_per_di
 
 
 @pytest.mark.django_db
-def test_a_default_account_that_cannot_delete_is_shared_with_the_grants_that_end_up_equal(
-    gateway, acme, session, member_only
-):
-    root = Session.objects.create(graph=session.graph, status=Session.SessionStatus.PENDING)
-    SessionPrincipal.objects.create(session=root, kind=SessionPrincipal.ActionKind.TRIGGER)
-    identity = ActingIdentity.for_sub_flow(member_only, None, root.pk)
-
-    accounts = _issue(
-        session, acme, identity, [None, StorageGrant(read=True, write=True), StorageGrant(write=True)]
-    )
-
-    # A member may read and write: that is the default account, and rw- equals it.
-    assert len(gateway.created) == 2
-    assert accounts.by_grant["rw-"] == accounts.default
-    assert accounts.by_grant["-w-"] != accounts.default
-
-
-@pytest.mark.django_db
 def test_ninety_nodes_with_one_combination_mint_one_account(gateway, acme, session):
     grant = StorageGrant(read=True, write=True)
 
-    accounts = _issue(session, acme, ActingIdentity.unattributed(), [grant] * 90)
+    accounts = _issue(session, acme, [grant] * 90)
 
     assert len(gateway.created) == 1
     assert TemporaryStorageAccount.objects.filter(session=session).count() == 1
     assert list(accounts.by_grant) == [grant.key]
-
-
-@pytest.mark.django_db
-def test_grants_the_callers_permissions_make_equal_share_one_account(
-    gateway, acme, session, member_only
-):
-    root = Session.objects.create(graph=session.graph, status=Session.SessionStatus.PENDING)
-    SessionPrincipal.objects.create(session=root, kind=SessionPrincipal.ActionKind.TRIGGER)
-    identity = ActingIdentity.for_sub_flow(member_only, None, root.pk)
-
-    accounts = _issue(
-        session, acme, identity, [StorageGrant(read=True, delete=True), StorageGrant(read=True)]
-    )
-
-    assert len(gateway.created) == 1
-    assert accounts.by_grant["r-d"] == accounts.by_grant["r--"]
 
 
 @pytest.mark.django_db
@@ -341,7 +248,6 @@ def test_agent_and_file_nodes_count_through_their_own_grants(gateway, acme, sess
         session_data=session_data,
         session_orm=session,
         org=acme,
-        acting_identity=ActingIdentity.unattributed(),
     )
 
     assert set(accounts.by_grant) == {"r--", "--d"}
@@ -350,8 +256,7 @@ def test_agent_and_file_nodes_count_through_their_own_grants(gateway, acme, sess
 
 @pytest.mark.django_db
 def test_every_account_of_a_session_is_revoked_when_it_ends(gateway, acme, session):
-    accounts = _issue(
-        session, acme, ActingIdentity.unattributed(), [*ALL_GRANTS, None]
+    accounts = _issue(session, acme, [*ALL_GRANTS, None]
     )
     keys = {a.access_key for a in accounts.by_grant.values()} | {accounts.default.access_key}
 
@@ -359,26 +264,6 @@ def test_every_account_of_a_session_is_revoked_when_it_ends(gateway, acme, sessi
 
     assert set(gateway.deleted) == keys
     assert len(keys) == 8
-    assert not TemporaryStorageAccount.objects.filter(session=session).exists()
-
-
-@pytest.mark.django_db
-def test_revoking_by_identity_reaches_every_account_of_a_sub_flow_session(
-    gateway, acme, session, member_only
-):
-    root = Session.objects.create(graph=session.graph, status=Session.SessionStatus.PENDING)
-    SessionPrincipal.objects.create(session=root, kind=SessionPrincipal.ActionKind.TRIGGER)
-    _issue(
-        session,
-        acme,
-        ActingIdentity.for_sub_flow(member_only, None, root.pk),
-        [StorageGrant(read=True), StorageGrant(write=True), None],
-    )
-    assert TemporaryStorageAccount.objects.filter(session=session).count() == 3
-
-    session_credential_service.revoke_for_identity(org_id=acme.id, user_ids=[member_only.pk])
-
-    assert len(gateway.deleted) == 3
     assert not TemporaryStorageAccount.objects.filter(session=session).exists()
 
 
@@ -396,7 +281,7 @@ def test_a_failed_mint_among_several_revokes_the_ones_that_succeeded(gateway, ac
     gateway.create_service_account = second_mint_fails
 
     with pytest.raises(TemporaryCredentialIssueError):
-        _issue(session, acme, ActingIdentity.unattributed(), [StorageGrant(read=True), StorageGrant(write=True)])
+        _issue(session, acme, [StorageGrant(read=True), StorageGrant(write=True)])
 
     assert gateway.deleted == ["temp-access-1"]
     assert not TemporaryStorageAccount.objects.filter(session=session).exists()
@@ -417,11 +302,7 @@ def test_every_minted_key_without_a_row_is_revoked_when_persisting_fails(gateway
 
     with patch.object(TemporaryStorageAccount.objects, "create", side_effect=second_row_fails):
         with pytest.raises(TemporaryCredentialIssueError):
-            _issue(
-                session,
-                acme,
-                ActingIdentity.unattributed(),
-                [StorageGrant(read=True), StorageGrant(write=True), StorageGrant(delete=True)],
+            _issue(session, acme, [StorageGrant(read=True), StorageGrant(write=True), StorageGrant(delete=True)],
             )
 
     # The first has its row (the session's end revokes it); the other two have none.
@@ -435,11 +316,7 @@ def test_every_minted_key_without_a_row_is_revoked_when_persisting_fails(gateway
 def test_a_session_end_reconciles_the_folders_of_all_its_accounts_once(gateway, acme, session):
     from unittest.mock import MagicMock
 
-    _issue(
-        session,
-        acme,
-        ActingIdentity.unattributed(),
-        [StorageGrant(), StorageGrant(write=True)],
+    _issue(session, acme, [StorageGrant(), StorageGrant(write=True)],
     )
     reconciler = MagicMock()
     with (
@@ -456,31 +333,3 @@ def test_a_session_end_reconciles_the_folders_of_all_its_accounts_once(gateway, 
     reconciled = sorted(call.kwargs["prefix"] for call in reconciler.reconcile_tree.call_args_list)
     assert reconciled == ["reports/", f"sessions/{session.pk}/"]
     assert len(gateway.deleted) == 2
-
-
-@pytest.mark.django_db
-def test_revoking_by_identity_reconciles_the_session_union_once(
-    gateway, acme, session, member_only
-):
-    from unittest.mock import MagicMock
-
-    root = Session.objects.create(graph=session.graph, status=Session.SessionStatus.PENDING)
-    SessionPrincipal.objects.create(session=root, kind=SessionPrincipal.ActionKind.TRIGGER)
-    _issue(
-        session,
-        acme,
-        ActingIdentity.for_sub_flow(member_only, None, root.pk),
-        [StorageGrant(), StorageGrant(write=True)],
-    )
-    reconciler = MagicMock()
-    with (
-        patch(
-            "storage_credentials.services.session_credential_service.StorageReconciler",
-            return_value=reconciler,
-        ),
-        patch("storage_credentials.services.session_credential_service.get_storage_backend"),
-    ):
-        session_credential_service.revoke_for_identity(org_id=acme.id, user_ids=[member_only.pk])
-
-    reconciled = sorted(call.kwargs["prefix"] for call in reconciler.reconcile_tree.call_args_list)
-    assert reconciled == ["reports/", f"sessions/{session.pk}/"]

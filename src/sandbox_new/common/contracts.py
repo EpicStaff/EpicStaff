@@ -64,7 +64,6 @@ class StorageMutationsMessage(Schema):
 
     org_prefix: str
     session_id: int | None = None
-    access_key: str | None = None
     mutations: list[dict] = Field(default_factory=list)
 
 

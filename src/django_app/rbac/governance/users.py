@@ -26,7 +26,6 @@ from rbac.governance.delete_collector import (
 )
 from rbac.governance.delete_verification import assert_delete_phrase
 from rbac.governance.guards import UserManagementGuards
-from rbac.governance.storage_revocation import revoke_storage_access_on_commit
 from rbac.identity.credential_revocation import (
     CredentialRevocationService,
 )
@@ -242,8 +241,6 @@ class UserManagementService(CrossOrgResourceService):
             target.is_superadmin = False
             target.save(update_fields=["is_superadmin", "updated_at"])
             target.refresh_from_db()
-            # Before the keys below are deleted, so the accounts minted for them are found.
-            revoke_storage_access_on_commit(org_id=None, user_ids=[target.pk])
             released = AuthorshipReleaseService().release_outside_memberships(user_id=target.pk)
             scrubbed_snapshots = SnapshotAuthorshipScrubService().scrub_outside_memberships(
                 user_id=target.pk
@@ -293,8 +290,6 @@ class UserManagementService(CrossOrgResourceService):
             target.is_active = value
             target.save(update_fields=["is_active", "updated_at"])
             target.refresh_from_db()
-            if value is False:
-                revoke_storage_access_on_commit(org_id=None, user_ids=[target.pk])
 
         logger.info(
             "UserManagementService.set_user_active actor={a} target={t} active={v}",

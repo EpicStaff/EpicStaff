@@ -74,7 +74,4 @@ class StorageMutationEvent(BaseModel):
     execution_id: str
     org_prefix: str
     session_id: int | None = None
-    # The run's temporary storage account, from the trusted job (never from the code's own
-    # report); None for events published before it was carried.
-    access_key: str | None = None
     mutations: list[StorageMutation]
