@@ -62,6 +62,18 @@ class Settings:
     # --- Soft config list (optional — default empty string preserves original behaviour) ---
     WEBHOOK_EMPTY_JSON_PATHS: str | None = env.str("WEBHOOK_EMPTY_JSON_PATHS")
 
+    # --- Secrets transport ---
+    # Opens the secret values Django seals for transport. Its length is not checked here:
+    # Django, which seals with the same key, refuses to start on a short one.
+    SECRETS_TRANSPORT_KEY: str = env.secret("SECRETS_TRANSPORT_KEY")
+    # Decrypt-only keys kept after SECRETS_TRANSPORT_KEY was replaced; `none` or empty means none.
+    SECRETS_TRANSPORT_PREVIOUS_KEYS: list[str] = [
+        key for key in env.list("SECRETS_TRANSPORT_PREVIOUS_KEYS") or [] if key
+    ]
+    # HKDF info the transport key is derived with: a wire contract with django_app, the producer.
+    # Read from the environment, which compose shares with every service.
+    SECRETS_TRANSPORT_HKDF_INFO: str = env.str("SECRETS_TRANSPORT_HKDF_INFO")
+
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
