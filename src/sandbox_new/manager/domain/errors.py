@@ -10,6 +10,7 @@ __all__ = [
     "ExecutionNotFoundError",
     "NotFoundError",
     "SandboxOverloadedError",
+    "SecretNotDecryptableError",
     "UVBuildError",
     "UVDependencyResolutionError",
     "UVPackageNotFoundError",
@@ -136,6 +137,15 @@ class WheelNameMismatchError(BadRequestError):
         "CustomLibrary(id={custom_library_id}) is '{library_name}', but this is a "
         "distribution named '{wheel_name}'."
     )
+
+
+class SecretNotDecryptableError(BadRequestError):
+    """A submitted secret is not a value this sandbox's transport key opens.
+
+    Names the secret only: its value, sealed or not, never goes into the message.
+    """
+
+    default_message: str = "Secret '{name}' could not be decrypted; the job was not run."
 
 
 class UVBuildError(BaseError):
