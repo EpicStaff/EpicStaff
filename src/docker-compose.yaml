@@ -51,6 +51,15 @@ x-communication-env: &communication-env
   REALTIME_CHANNELS_INVALIDATE_CHANNEL: ${REALTIME_CHANNELS_INVALIDATE_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
+x-secrets-encryption-env: &secrets-encryption-env
+  SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:?}
+  SECRETS_ENCRYPTION_PREVIOUS_KEYS: ${SECRETS_ENCRYPTION_PREVIOUS_KEYS:?}
+
+x-secrets-transport-env: &secrets-transport-env
+  SECRETS_TRANSPORT_KEY: ${SECRETS_TRANSPORT_KEY:?}
+  SECRETS_TRANSPORT_PREVIOUS_KEYS: ${SECRETS_TRANSPORT_PREVIOUS_KEYS:?}
+  SECRETS_TRANSPORT_HKDF_INFO: ${SECRETS_TRANSPORT_HKDF_INFO:?}
+
 # Bounded container logs (50 MB at most), for services a plugin can make log at will: a plugin's
 # flood of requests writes a line per request to plugins_egress's log, and its failing queries
 # to plugins_db's.
@@ -86,7 +95,7 @@ services:
     hostname: django_app
     command: ./entrypoint.sh
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *retention-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *retention-env, *secrets-encryption-env, *secrets-transport-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DB_USER: ${DB_USER:?}
@@ -235,7 +244,7 @@ services:
       context: .
       dockerfile: ./realtime/Dockerfile.realtime
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *secrets-transport-env]
       REALTIME_HOST: ${REALTIME_HOST:?}
       REALTIME_PORT: ${REALTIME_PORT:?}
       REALTIME_SGI_WORKERS: ${REALTIME_SGI_WORKERS:?}
@@ -579,7 +588,7 @@ services:
       context: .
       dockerfile: ./webhook/Dockerfile
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *secrets-transport-env]
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
 
@@ -759,7 +768,7 @@ services:
     # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
     stop_grace_period: 5m
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *secrets-transport-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:?}
@@ -886,7 +895,7 @@ services:
       storage:
         condition: service_healthy
     environment:
-      <<: [*docker-env, *database-env, *storage-env, *communication-env]
+      <<: [*docker-env, *database-env, *storage-env, *communication-env, *secrets-transport-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       KNOWLEDGE_DEBUG: ${KNOWLEDGE_DEBUG:?}
@@ -1202,7 +1211,7 @@ services:
       retries: 20
       start_period: 30s
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *secrets-transport-env]
       SANDBOX_CUSTOM_LIBRARY_BUCKET: ${SANDBOX_CUSTOM_LIBRARY_BUCKET:?}
       SANDBOX_HOST: ${SANDBOX_HOST:?}
       SANDBOX_PORT: ${SANDBOX_PORT:?}
