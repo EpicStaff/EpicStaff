@@ -19,4 +19,5 @@ export const PROVIDER_MONOCHROME_ICON_PATHS: Partial<Record<string, string>> = {
     openai: 'llm-openai-mono',
     ollama: 'llm-ollama-mono',
     anthropic: 'llm-anthropic-mono',
+    typesafe: 'llm-typesafe-mono',
 };

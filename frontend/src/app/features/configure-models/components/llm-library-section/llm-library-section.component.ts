@@ -47,7 +47,7 @@ import {
     LLMLibraryService,
     SystemOneConfigStorageService,
 } from '@shared/services';
-import { getProviderHeadingIcon, providerDisplayName } from '@shared/utils';
+import { getProviderHeadingIcon, getProviderIconPath, providerDisplayName } from '@shared/utils';
 import { forkJoin, Observable, of } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
 
@@ -805,7 +805,7 @@ export class LlmLibrarySectionComponent implements OnInit {
             .map(({ provider, providerCards }) => ({
                 id: `system_one-${provider.key}`,
                 name: provider.label,
-                ...getProviderHeadingIcon(provider.key, PROVIDER_ICON_PATHS['default']),
+                ...getProviderHeadingIcon(provider.key, getProviderIconPath(provider.key)),
                 order: providerCreationOrder(
                     providerCards.map(({ config }) => ({ id: config.id, createdAt: config.created_at }))
                 ),
