@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 04 Nov 2026 12:32:47 GMT -->
-<!-- commit: 8c58a2d7843ddb6f3db28317c407a6183e631da7 -->
-<!-- package-lock.json sha256: 787a9a18aa1d1db2 -->
+<!-- generated: Wed, 11 Nov 2026 08:17:37 GMT -->
+<!-- commit: d9b38bdfc7eec0bd2fd4549634106bed984ba721 -->
+<!-- package-lock.json sha256: d7c8adf8cadb653b -->
 
 ## Frontend license summary
 
@@ -23,7 +23,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | License | Packages |
 |---|---|
 | MIT | 51 |
-| ISC | 6 |
+| ISC | 5 |
 | Apache-2.0 | 2 |
 | OFL-1.1 | 1 |
 | (MPL-2.0 OR Apache-2.0) | 1 |
@@ -31,7 +31,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **65** |
+| **Total** | **64** |
 
 ## Package index
 
@@ -63,7 +63,6 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `d3-binarytree` | 1.0.2 | MIT |
 | `d3-dispatch` | 3.0.2 | ISC |
 | `d3-force-3d` | 3.0.6 | MIT |
-| `d3-force` | 3.0.1 | ISC |
 | `d3-octree` | 1.1.0 | MIT |
 | `d3-quadtree` | 3.0.2 | ISC |
 | `d3-timer` | 3.0.2 | ISC |
@@ -1441,32 +1440,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
-
-</details>
-
-### d3-force@3.0.1
-
-- **License:** ISC
-- **Publisher:** Mike Bostock
-- **Repository:** https://github.com/d3/d3-force
-
-<details><summary>License text</summary>
-
-```
-Copyright 2010-2026 Mike Bostock
-
-Permission to use, copy, modify, and/or distribute this software for any purpose
-with or without fee is hereby granted, provided that the above copyright notice
-and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
-OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
-THIS SOFTWARE.
 ```
 
 </details>
