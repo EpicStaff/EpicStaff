@@ -142,7 +142,7 @@
                             [attr.aria-valuenow]="width"
                             [attr.aria-valuetext]="width === null ? null : width + ' pixels'"
                             [attr.aria-valuemin]="minColumnWidth"
-                            [attr.aria-valuemax]="maxColumnWidth"
+                            [attr.aria-valuemax]="maxColumnWidth()"
                             [matTooltip]="resizeHandleTooltip"
                             [matTooltipDisabled]="resizeDragging()"
                             (pointerenter)="onResizeHandleEnter(col.key)"

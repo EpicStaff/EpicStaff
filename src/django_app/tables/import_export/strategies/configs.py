@@ -130,6 +130,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
         data_copy.pop("tags", None)
+        data_copy.pop("org", None)
 
         fk_filters = self.resolve_fk_filters(data_copy, id_mapper)
         filters, null_filters = create_filters(self._known_fields_only(data_copy))

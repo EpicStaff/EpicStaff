@@ -197,6 +197,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractNaiveR
                 similarity,
                 NaiveRagChunk.text,
                 DocumentMetadata.file_name,
+                NaiveRagDocumentConfig.naive_rag_document_id,
             )
             .select_from(NaiveRagEmbedding)
             .join(NaiveRagChunk, NaiveRagEmbedding.chunk_id == NaiveRagChunk.chunk_id)

@@ -439,39 +439,47 @@ function agentOf(id: number, name: string): AgentDefinition {
     };
 }
 
+/** The real store and its real API services, over a fake HTTP backend. */
+function storeOverFakeBackend(): { store: AgentsPageStore; backend: HttpTestingController } {
+    TestBed.configureTestingModule({
+        providers: [
+            provideHttpClient(),
+            provideHttpClientTesting(),
+            { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
+            AgentsPageStore,
+            // Only reloaded after a failed surface save, which these tests never make.
+            { provide: SurfaceCatalogsStore, useValue: {} },
+        ],
+    });
+    return { store: TestBed.inject(AgentsPageStore), backend: TestBed.inject(HttpTestingController) };
+}
+
+/** One page of a list endpoint, as the API answers it. */
+const page = <T>(results: T[]) => ({ count: results.length, next: null, previous: null, results });
+
+const isGet = (url: string) => (request: { method: string; url: string }) =>
+    request.method === 'GET' && request.url === url;
+
+/** Opens the page: the store loads agents, surfaces and groups; the backend answers with these rows. */
+function loadPage(
+    store: AgentsPageStore,
+    backend: HttpTestingController,
+    agents: AgentDefinition[],
+    surfaces: Surface[] = []
+): void {
+    store.load();
+    backend.expectOne(isGet(AGENTS_URL)).flush(page(agents));
+    backend.expectOne(isGet(SURFACES_URL)).flush(page(surfaces));
+    backend.expectOne(isGet(GROUPS_URL)).flush(page([]));
+}
+
 describe('AgentsPageStore: whether the agent shown is the one the latest draft was saved as', () => {
     let store: AgentsPageStore;
     let backend: HttpTestingController;
 
-    beforeEach(() => {
-        TestBed.configureTestingModule({
-            providers: [
-                provideHttpClient(),
-                provideHttpClientTesting(),
-                { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
-                AgentsPageStore,
-                // Only reloaded after a failed surface save, which these tests never make.
-                { provide: SurfaceCatalogsStore, useValue: {} },
-            ],
-        });
-        store = TestBed.inject(AgentsPageStore);
-        backend = TestBed.inject(HttpTestingController);
-    });
+    beforeEach(() => ({ store, backend } = storeOverFakeBackend()));
 
     afterEach(() => backend.verify());
-
-    function loadAgents(agents: AgentDefinition[]): void {
-        store.load();
-        backend
-            .expectOne((request) => request.method === 'GET' && request.url === AGENTS_URL)
-            .flush({ count: agents.length, next: null, previous: null, results: agents });
-        backend
-            .expectOne((request) => request.method === 'GET' && request.url === SURFACES_URL)
-            .flush({ count: 0, next: null, previous: null, results: [] });
-        backend
-            .expectOne((request) => request.method === 'GET' && request.url === GROUPS_URL)
-            .flush({ count: 0, next: null, previous: null, results: [] });
-    }
 
     /** Add Agent, then a name: the backend creates the agent. */
     function createFromDraft(agent: AgentDefinition): void {
@@ -504,7 +512,7 @@ describe('AgentsPageStore: whether the agent shown is the one the latest draft w
     });
 
     it('is false for an agent that was there before', () => {
-        loadAgents([agentOf(3, 'Invoice Reader')]);
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
         createFromDraft(agentOf(7, 'CV Processor'));
 
         store.selectAgent(3);
@@ -520,5 +528,95 @@ describe('AgentsPageStore: whether the agent shown is the one the latest draft w
         store.selectAgent(7);
 
         expect(store.isSelectedAgentFromLatestDraft()).toBe(false);
+    });
+});
+
+describe('AgentsPageStore duplicateAgent', () => {
+    const COPY_URL = `${AGENTS_URL}3/copy/`;
+    let store: AgentsPageStore;
+    let backend: HttpTestingController;
+    let toast: ToastService;
+
+    beforeEach(() => {
+        ({ store, backend } = storeOverFakeBackend());
+        toast = TestBed.inject(ToastService);
+        vi.spyOn(toast, 'error');
+    });
+
+    afterEach(() => backend.verify());
+
+    it('adds the copy the server made and selects it', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+
+        store.duplicateAgent(3);
+        backend
+            .expectOne({ method: 'POST', url: COPY_URL })
+            .flush(agentOf(8, 'Invoice Reader #2'), { status: 201, statusText: 'Created' });
+        backend.expectOne(isGet(SURFACES_URL)).flush(page([]));
+
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader', 'Invoice Reader #2']);
+        expect(store.selectedAgent()?.id).toBe(8);
+        expect(store.saving()).toBe(false);
+    });
+
+    it('reloads surfaces even when the source owned none in the list, so a surface cloned for the copy shows', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')], [surface(20, 'Web search', null)]);
+
+        store.duplicateAgent(3);
+        backend.expectOne({ method: 'POST', url: COPY_URL }).flush(agentOf(8, 'Invoice Reader #2'));
+        const clone = surface(22, 'Reader inbox', null, 8);
+        backend.expectOne(isGet(SURFACES_URL)).flush(page([surface(20, 'Web search', null), clone]));
+
+        expect(store.surfaces().filter((row) => row.owner_agent === 8)).toEqual([clone]);
+    });
+
+    it('shows the server message and adds nothing when the copy fails', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+        const message = 'A copy with that name was just created; please retry.';
+
+        store.duplicateAgent(3);
+        backend
+            .expectOne({ method: 'POST', url: COPY_URL })
+            .flush({ message }, { status: 400, statusText: 'Bad Request' });
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
+        expect(store.saving()).toBe(false);
+    });
+
+    it('shows the server message and adds nothing when the agent owns surfaces the user may not create', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+        const message =
+            'This agent owns surfaces, and copying it clones them, so it requires the Create permission on surfaces.';
+
+        store.duplicateAgent(3);
+        backend.expectOne({ method: 'POST', url: COPY_URL }).flush(
+            {
+                status_code: 403,
+                code: 'agent_with_owned_surfaces_requires_surfaces_create_permission',
+                message,
+            },
+            { status: 403, statusText: 'Forbidden' }
+        );
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
+        expect(store.saving()).toBe(false);
+    });
+
+    it('adds nothing and stays quiet on an uncoded 403, which the forbidden interceptor already reported', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+
+        store.duplicateAgent(3);
+        backend
+            .expectOne({ method: 'POST', url: COPY_URL })
+            .flush(
+                { detail: 'You do not have permission to perform this action.' },
+                { status: 403, statusText: 'Forbidden' }
+            );
+
+        expect(toast.error).not.toHaveBeenCalled();
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
+        expect(store.saving()).toBe(false);
     });
 });

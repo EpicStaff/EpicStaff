@@ -362,7 +362,7 @@ services:
       start_period: 15s
 
   redis:
-    image: redis
+    image: redis:8.10.3@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
     container_name: redis
     logging: *bounded-logs
     restart: unless-stopped
@@ -506,7 +506,7 @@ services:
   #       condition: service_started
 
   storage:
-    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
+    image: rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
     container_name: storage
     environment:
       RUSTFS_ACCESS_KEY: ${STORAGE_USER:?}
@@ -528,7 +528,7 @@ services:
     restart: unless-stopped
 
   storage-init:
-    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+    image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
     container_name: storage-init
     networks:
       - backend-network
@@ -753,7 +753,7 @@ services:
   # not remove this gate or give DJANGO_EMAIL_HOST a live prod default.
   mailpit:
     container_name: mailpit
-    image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
+    image: axllent/mailpit:v1.33.1@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
     profiles: ["dev"]
     ports:
       - "1025:1025"   # SMTP
@@ -809,7 +809,7 @@ services:
   opensearch:
     logging: *bounded-logs
     restart: unless-stopped
-    image: opensearchproject/opensearch:2.19.1
+    image: opensearchproject/opensearch:2.19.1@sha256:72fe2fc84be8295906b8efca020b46c58ed45c8da60cd9b8b49e1991e38e89a4
     container_name: opensearch
     profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]

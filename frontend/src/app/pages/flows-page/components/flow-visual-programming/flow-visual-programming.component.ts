@@ -158,6 +158,7 @@ import { withGraphScheduleTriggerRuntimeState } from '../../../../visual-program
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
 import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/utils/validation/execution-timeout.validator';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
+import { buildCurlCommand } from './build-curl-command';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { PREVIEW_BLOCKED_MESSAGES } from './components/header/flow-header.constants';
 import { FlowSaveStatus } from './components/header/flow-save-status.model';
@@ -355,9 +356,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /** The version shown instead of the live canvas; null while editing the live flow. */
     public readonly previewedVersion = signal<GraphVersionDto | null>(null);
     public readonly isPreviewing = computed(() => this.previewedVersion() !== null);
-    /** The header's save status chip; none while previewing a version. */
+    /** The header's save status chip; none while previewing a version or for a user who cannot edit the flow. */
     protected readonly saveStatus = computed<FlowSaveStatus | null>(() => {
-        if (this.isPreviewing()) return null;
+        if (this.isPreviewing() || this.flowReadOnly.isReadOnly()) return null;
         if (this.isSaving() || this.sidePanelService.savingNodeId() !== null) return 'saving';
         const connection = this.wsService.connectionStatus();
         if (connection === 'lost') return 'connection-lost';
@@ -1664,30 +1665,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const apiUrl = this.configService.apiUrl;
 
         if (flowUuid && startNodeInitialState) {
-            const curlCommand = this.generateCurlCommand(flowUuid, startNodeInitialState, apiUrl);
+            const curlCommand = buildCurlCommand(flowUuid, startNodeInitialState, apiUrl);
             this.copyToClipboard(curlCommand);
             this.toastService.success('cURL command copied to clipboard!');
         } else {
             this.toastService.error('Unable to generate cURL: Missing flow ID or start node data');
         }
-    }
-
-    private generateCurlCommand(flowUuid: string, variables: Record<string, unknown>, apiUrl: string): string {
-        const payload = JSON.stringify(
-            {
-                graph_uuid: flowUuid,
-                variables: variables,
-            },
-            null,
-            2
-        );
-
-        return `curl \\
-  -H "Content-Type: application/json" \\
-  -H "Accept: application/json" \\
-  -X POST \\
-  -d '${payload}' \\
-  ${apiUrl}run-session/`;
     }
 
     private async copyToClipboard(text: string): Promise<void> {

@@ -23,6 +23,7 @@ import {
 } from '@shared/components';
 import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
+import { DEFAULT_INITIAL_STATE, isSetInitialState } from '../../core/constants/default-node-data';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import {
     EMPTY_VALIDATION_RESULT,
@@ -52,16 +53,6 @@ export interface DomainDialogData {
      */
     variablesDiff: CodeChange | null;
 }
-
-export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
-    variables: {
-        context: null,
-    },
-    persistent_variables: {
-        user: [],
-        organization: [],
-    },
-};
 
 @Component({
     selector: 'app-domain-dialog',
@@ -388,12 +379,7 @@ export class DomainDialogComponent implements OnDestroy {
 
     private initializeJsonEditor(): void {
         const initial = this.data?.initialData as Record<string, unknown> | undefined;
-        const isEmptyObject =
-            initial && typeof initial === 'object' && !Array.isArray(initial)
-                ? Object.keys(initial).length === 0
-                : true;
-
-        if (initial && !isEmptyObject) {
+        if (isSetInitialState(initial)) {
             try {
                 this.initialStateJson = JSON.stringify(initial, null, 2);
                 this.isJsonValid = true;
