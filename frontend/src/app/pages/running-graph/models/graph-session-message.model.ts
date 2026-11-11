@@ -81,6 +81,8 @@ export interface ExtractedChunk {
     order: number;
     source?: string;
     similarity?: number;
+    /** Missing on messages saved before chunks carried their document. */
+    document_id?: number | null;
 }
 
 // A bare string only appears in old saved graph messages from the crew path,
@@ -122,6 +124,8 @@ export interface ExtractedChunksMessageData {
     crew_id?: number;
     agent_id: number;
     collection_id: number;
+    /** Missing on Knowledge-node messages saved before it was sent. */
+    rag_id?: number;
     retrieved_chunks: number;
     knowledge_query: string;
     /** Missing on old saved messages; fall back to `rag_search_config.rag_type` / `rag_strategy`. */
