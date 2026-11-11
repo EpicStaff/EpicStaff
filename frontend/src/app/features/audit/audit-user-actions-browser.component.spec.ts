@@ -203,7 +203,7 @@ beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('AuditUserActionsBrowserComponent', () => {
-    it('shows id, date, user, action, target type, target name and target parent for each action', async () => {
+    it('shows id, date, user, action, target type, name and id, and parent and its id for each action', async () => {
         const { fixture, http, root } = setup();
         flushSearch(http, [renamedFlow, editedNode, signIn, parentOnly, deletedTool, typeOnlyParent]);
         await render(fixture);
@@ -215,15 +215,34 @@ describe('AuditUserActionsBrowserComponent', () => {
                 .filter((_cell, index) => index !== 1)
                 .map((cell) => cellText(cell))
         );
-        expect(headers).toEqual(['ID', 'Date', 'User', 'Action', 'Target Type', 'Target Name', 'Target Parent']);
+        expect(headers).toEqual([
+            'ID',
+            'Date',
+            'User',
+            'Action',
+            'Target Type',
+            'Target Name',
+            'Target ID',
+            'Target Parent',
+            'Parent ID',
+        ]);
         expect(rows).toEqual([
-            ['41', 'ann@example.com via API key Deploy bot', 'Renamed', 'Flow', 'Invoices v2 → Billing', ''],
-            ['42', 'ann@example.com', 'Import entity', 'Python code node', 'Parse invoice', 'Billing · Flow'],
-            ['43', 'ann@example.com', 'Sign-in failed', '', '', ''],
-            ['44', 'ann@example.com', 'Updated', '', '', 'Billing · Flow'],
-            ['45', 'ann@example.com', 'Moved to Recycle Bin', 'Tool', '#9', 'Researcher · Agent'],
+            ['41', 'ann@example.com via API key Deploy bot', 'Renamed', 'Flow', 'Invoices v2 → Billing', '4', '', ''],
+            [
+                '42',
+                'ann@example.com',
+                'Import entity',
+                'Python code node',
+                'Parse invoice',
+                '12',
+                'Billing · Flow',
+                '4',
+            ],
+            ['43', 'ann@example.com', 'Sign-in failed', '', '', '', '', ''],
+            ['44', 'ann@example.com', 'Updated', '', '', '', 'Billing · Flow', '4'],
+            ['45', 'ann@example.com', 'Moved to Recycle Bin', 'Tool', '#9', '9', 'Researcher · Agent', '7'],
             // a record stored before records were numbered has a blank ID
-            ['', 'ann@example.com', 'Updated', '', '', 'Flow'],
+            ['', 'ann@example.com', 'Updated', '', '', '', 'Flow', ''],
         ]);
     });
 
@@ -260,8 +279,8 @@ describe('AuditUserActionsBrowserComponent', () => {
             )
         );
         expect(marks).toEqual([
-            [[], [], [], [], [], ['Bill'], []],
-            [[], [], [], [], [], [], ['Bill']],
+            [[], [], [], [], [], ['Bill'], [], [], []],
+            [[], [], [], [], [], [], [], ['Bill'], []],
         ]);
     });
 

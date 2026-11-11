@@ -86,7 +86,9 @@ const USER_ACTION_COLUMNS: UserActionColumn[] = [
     { label: 'Action', defaultWidth: 140 },
     { label: 'Target Type', defaultWidth: 140 },
     { label: 'Target Name', defaultWidth: 240 },
+    { label: 'Target ID', defaultWidth: 110 },
     { label: 'Target Parent', defaultWidth: 220 },
+    { label: 'Parent ID', defaultWidth: 110 },
 ];
 
 interface UserActionRow {
