@@ -5,6 +5,7 @@ from domain.models import FoundChunk, SearchUsage
 
 __all__ = [
     "EmbeddingEstimate",
+    "GraphTableDataResult",
     "GraphVisualizationResult",
     "IndexEstimateResult",
     "MetricsResult",
@@ -69,10 +70,20 @@ class VisualizationCommunity:
 
 
 @dataclass(frozen=True)
+class GraphTableDataResult(Result):
+    columns: list[str]
+    rows: list[dict[str, object]]
+    total: int
+    page: int
+    page_size: int
+
+
+@dataclass(frozen=True)
 class GraphVisualizationResult(Result):
     entities: list[VisualizationEntity]
     relationships: list[VisualizationRelationship]
     communities: list[VisualizationCommunity]
+    total_entities: int
 
 
 @dataclass(frozen=True)

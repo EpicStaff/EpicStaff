@@ -11,10 +11,11 @@ import { CollectionGraphRag } from '../../../models/graph-rag.model';
 import { GraphRagService } from '../../../services/graph-rag.service';
 import { GraphRagDocumentsStorageService } from '../../../services/graph-rag-documents-storage.service';
 import { GraphRagConfigurationComponent } from '../../graph-rag-configuration/graph-rag-configuration.component';
+import { GraphRagDataTablesComponent } from '../../graph-rag-data-tables/graph-rag-data-tables.component';
 import { GraphRagVisualizationComponent } from '../../graph-rag-visualization/graph-rag-visualization.component';
 import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.component';
 
-type DialogTab = 'configuration' | 'visualization';
+type DialogTab = 'configuration' | 'visualization' | 'data-tables';
 
 @Component({
     selector: 'app-graph-rag-configuration-dialog',
@@ -23,6 +24,7 @@ type DialogTab = 'configuration' | 'visualization';
     imports: [
         ButtonComponent,
         GraphRagConfigurationComponent,
+        GraphRagDataTablesComponent,
         GraphRagVisualizationComponent,
         HasPermissionDirective,
         TabButtonComponent,

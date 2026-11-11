@@ -1,4 +1,5 @@
 from .rag import (
+    GraphTableDataOutputSchema,
     GraphVisualizationOutputSchema,
     IndexEstimateInputSchema,
     IndexEstimateOutputSchema,
@@ -11,6 +12,7 @@ from .rag import (
 )
 
 __all__ = [
+    "GraphTableDataOutputSchema",
     "GraphVisualizationOutputSchema",
     "IndexEstimateInputSchema",
     "IndexEstimateOutputSchema",

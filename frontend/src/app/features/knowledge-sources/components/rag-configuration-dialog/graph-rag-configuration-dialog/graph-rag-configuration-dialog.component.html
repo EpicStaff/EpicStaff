@@ -46,6 +46,12 @@
         >
             Graph Visualization
         </app-tab-button>
+        <app-tab-button
+            [active]="activeTab() === 'data-tables'"
+            (action)="onTabChange('data-tables')"
+        >
+            Data Tables
+        </app-tab-button>
     </div>
 
     @if (activeTab() === 'configuration') {
@@ -60,6 +66,15 @@
     @if (activeTab() === 'visualization') {
         @if (graphRag(); as rag) {
             <app-graph-rag-visualization
+                class="dialog__content"
+                [ragId]="rag.graph_rag_id"
+            />
+        }
+    }
+
+    @if (activeTab() === 'data-tables') {
+        @if (graphRag(); as rag) {
+            <app-graph-rag-data-tables
                 class="dialog__content"
                 [ragId]="rag.graph_rag_id"
             />

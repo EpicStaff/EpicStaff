@@ -22,7 +22,7 @@ import {
     VisualizationEntity,
 } from '../../models/graph-visualization.model';
 import { GraphRagService } from '../../services/graph-rag.service';
-import { GraphNode, GraphSceneService } from './graph-scene.service';
+import { GraphEdge, GraphNode, GraphSceneService } from './graph-scene.service';
 
 type ViewState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
@@ -58,15 +58,16 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
     readonly labelsVisible = signal(false);
     readonly communitySidebarOpen = signal(true);
     readonly selectedNodeIndex = signal<number | null>(null);
+    readonly selectedEdgeIndex = signal<number | null>(null);
     readonly hoveredNodeTitle = signal<string | null>(null);
     readonly hoverPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
 
     readonly entityCount = signal(0);
+    readonly totalEntityCount = signal(0);
     readonly relationshipCount = signal(0);
     readonly communityCount = signal(0);
 
     readonly communities = signal<VisualizationCommunity[]>([]);
-    readonly expandedCommunityId = signal<string | null>(null);
     readonly highlightedCommunityId = signal<string | null>(null);
 
     readonly entityTypeFilters = signal<EntityTypeFilter[]>([]);
@@ -85,6 +86,35 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         return node.communityIds
             .map((id) => comms.find((c) => c.id === id)?.title)
             .filter((title): title is string => !!title);
+    });
+
+    readonly connectedEdges = computed<Array<{ edge: GraphEdge; otherNode: GraphNode }>>(() => {
+        const node = this.selectedNode();
+        if (!node) return [];
+        const edges = this.sceneService.getEdges();
+        const nodes = this.sceneService.getNodes();
+        const result: Array<{ edge: GraphEdge; otherNode: GraphNode }> = [];
+        for (const edge of edges) {
+            if (edge.sourceIndex === node.index) {
+                result.push({ edge, otherNode: nodes[edge.targetIndex] });
+            } else if (edge.targetIndex === node.index) {
+                result.push({ edge, otherNode: nodes[edge.sourceIndex] });
+            }
+        }
+        return result;
+    });
+
+    readonly selectedEdge = computed<GraphEdge | null>(() => {
+        const index = this.selectedEdgeIndex();
+        if (index === null) return null;
+        return this.sceneService.getEdges()[index] ?? null;
+    });
+
+    readonly selectedEdgeNodes = computed<{ source: GraphNode; target: GraphNode } | null>(() => {
+        const edge = this.selectedEdge();
+        if (!edge) return null;
+        const nodes = this.sceneService.getNodes();
+        return { source: nodes[edge.sourceIndex], target: nodes[edge.targetIndex] };
     });
 
     // 4. Effects
@@ -116,6 +146,7 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
     }> = [];
     private draggedNodeIndex: number | null = null;
     private isDragging = false;
+    private clickedEdgeOnDown = -1;
 
     constructor() {
         // Auto-load when the component is created (it is conditionally rendered via @if).
@@ -187,6 +218,7 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         if (nodeIndex >= 0) {
             this.draggedNodeIndex = nodeIndex;
             this.isDragging = false;
+            this.clickedEdgeOnDown = -1;
             this.sceneService.setControlsEnabled(false);
             // Fix the node in place during drag
             const simNode = this.simNodes[nodeIndex];
@@ -196,6 +228,13 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
                 if (this.is3D()) simNode.fz = simNode.z ?? 0;
             }
             this.simulation?.reheat();
+        } else {
+            // Track edge for click detection
+            this.clickedEdgeOnDown = this.sceneService.pickEdge(
+                event.clientX,
+                event.clientY,
+                containerRef.nativeElement
+            );
         }
     }
 
@@ -218,11 +257,20 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
             return;
         }
 
-        // Hover detection
+        // Hover detection — node first, then edge
         const nodeIndex = this.sceneService.pickNode(event.clientX, event.clientY, containerRef.nativeElement);
-        const hoveredIndex = nodeIndex >= 0 ? nodeIndex : null;
-        this.sceneService.setHoveredNode(hoveredIndex);
-        this.updateHoverTooltip(hoveredIndex, containerRef.nativeElement);
+        if (nodeIndex >= 0) {
+            this.sceneService.setHoveredEdge(null);
+            this.sceneService.setHoveredNode(nodeIndex);
+            if (!this.labelsVisible()) {
+                this.updateHoverTooltip(nodeIndex, containerRef.nativeElement);
+            }
+        } else {
+            this.sceneService.setHoveredNode(null);
+            this.hoveredNodeTitle.set(null);
+            const edgeIndex = this.sceneService.pickEdge(event.clientX, event.clientY, containerRef.nativeElement);
+            this.sceneService.setHoveredEdge(edgeIndex >= 0 ? edgeIndex : null);
+        }
     }
 
     onCanvasPointerUp(): void {
@@ -230,6 +278,7 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
             if (!this.isDragging) {
                 // It was a click, not a drag — select the node
                 this.selectedNodeIndex.set(this.draggedNodeIndex);
+                this.selectedEdgeIndex.set(null);
             }
             // Release the fixed position
             const simNode = this.simNodes[this.draggedNodeIndex];
@@ -241,12 +290,33 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
             this.draggedNodeIndex = null;
             this.isDragging = false;
             this.sceneService.setControlsEnabled(true);
+        } else if (this.clickedEdgeOnDown >= 0) {
+            // Edge click
+            this.selectedEdgeIndex.set(this.clickedEdgeOnDown);
+            this.selectedNodeIndex.set(null);
+            this.clickedEdgeOnDown = -1;
+        } else {
+            // Click on empty space — clear selection
+            this.selectedNodeIndex.set(null);
+            this.selectedEdgeIndex.set(null);
         }
     }
 
     onCanvasPointerLeave(): void {
-        this.onCanvasPointerUp();
+        if (this.draggedNodeIndex !== null) {
+            const simNode = this.simNodes[this.draggedNodeIndex];
+            if (simNode) {
+                simNode.fx = null;
+                simNode.fy = null;
+                simNode.fz = null;
+            }
+            this.draggedNodeIndex = null;
+            this.isDragging = false;
+            this.sceneService.setControlsEnabled(true);
+        }
+        this.clickedEdgeOnDown = -1;
         this.sceneService.setHoveredNode(null);
+        this.sceneService.setHoveredEdge(null);
         this.hoveredNodeTitle.set(null);
     }
 
@@ -260,19 +330,15 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         const community = this.communities().find((c) => c.id === communityId);
         if (!community) return;
 
-        const entityIds = new Set(community.entity_ids);
+        const memberIds = new Set(community.entity_ids);
         const nodes = this.sceneService.getNodes();
         const indices = new Set<number>();
         for (const node of nodes) {
-            if (node.communityIds.some((id) => entityIds.has(id)) || entityIds.has(node.title)) {
+            if (memberIds.has(node.id) || memberIds.has(node.title)) {
                 indices.add(node.index);
             }
         }
         this.sceneService.setHighlightedNodes(indices);
-    }
-
-    onToggleCommunityExpand(communityId: string): void {
-        this.expandedCommunityId.set(this.expandedCommunityId() === communityId ? null : communityId);
     }
 
     onToggleCommunitySidebar(): void {
@@ -281,6 +347,7 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
 
     closeDetailPanel(): void {
         this.selectedNodeIndex.set(null);
+        this.selectedEdgeIndex.set(null);
     }
 
     // 10. Private methods
@@ -302,12 +369,23 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         }
 
         this.entityCount.set(data.entities.length);
+        this.totalEntityCount.set(data.total_entities);
         this.relationshipCount.set(data.relationships.length);
         this.communityCount.set(data.communities.length);
         this.communities.set(data.communities);
         this.buildEntityTypeFilters(data.entities);
 
         this.sceneService.buildGraph(data.entities, data.relationships);
+
+        if (this.initialized) {
+            // Scene already exists — reinitialize with new data directly
+            const canvasRef = this.graphCanvas();
+            const containerRef = this.canvasContainer();
+            if (canvasRef && containerRef) {
+                this.initializeScene(canvasRef.nativeElement, containerRef.nativeElement);
+                return;
+            }
+        }
 
         // Store pending data so the effect can pick it up when the canvas appears.
         this.pendingData = data;

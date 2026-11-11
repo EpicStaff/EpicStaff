@@ -27,4 +27,13 @@ export interface GraphVisualizationData {
     entities: VisualizationEntity[];
     relationships: VisualizationRelationship[];
     communities: VisualizationCommunity[];
+    total_entities: number;
+}
+
+export interface GraphTableData {
+    columns: string[];
+    rows: Record<string, unknown>[];
+    total: number;
+    page: number;
+    page_size: number;
 }

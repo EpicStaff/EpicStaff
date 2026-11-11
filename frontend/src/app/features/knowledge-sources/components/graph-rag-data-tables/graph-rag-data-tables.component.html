@@ -1,0 +1,93 @@
+<div class="data-tables">
+    <!-- Sidebar -->
+    <nav class="data-tables__sidebar">
+        @for (table of tables; track table.name) {
+            <button
+                type="button"
+                class="data-tables__nav-item"
+                [class.data-tables__nav-item--active]="activeTable().name === table.name"
+                (click)="onSelectTable(table)"
+            >
+                {{ table.label }}
+            </button>
+        }
+    </nav>
+
+    <!-- Main content -->
+    <div class="data-tables__content">
+        <h3 class="data-tables__title">{{ activeTable().label }}</h3>
+
+        @if (viewState() === 'loading') {
+            <div class="data-tables__state">
+                <app-loading-spinner
+                    size="lg"
+                    message="Loading..."
+                />
+            </div>
+        }
+
+        @if (viewState() === 'empty') {
+            <div class="data-tables__state">
+                <p class="data-tables__state-message">No data</p>
+            </div>
+        }
+
+        @if (viewState() === 'error') {
+            <div class="data-tables__state">
+                <p class="data-tables__state-message data-tables__state-message--error">{{ errorMessage() }}</p>
+            </div>
+        }
+
+        @if (viewState() === 'ready') {
+            <div class="data-tables__table-wrapper">
+                <table class="data-tables__table">
+                    <thead>
+                        <tr>
+                            @for (col of activeTable().columns; track col.key) {
+                                <th>{{ col.label }}</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (row of rows(); track $index) {
+                            <tr>
+                                @for (col of activeTable().columns; track col.key) {
+                                    <td>{{ row[col.key] ?? '—' }}</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="data-tables__pagination">
+                <span class="data-tables__pagination-info">
+                    {{ (page() - 1) * pageSize() + 1 }}–{{
+                        page() * pageSize() > total() ? total() : page() * pageSize()
+                    }}
+                    of {{ total() }}
+                </span>
+                <div class="data-tables__pagination-controls">
+                    <app-button
+                        type="ghost"
+                        mod="small"
+                        [disabled]="page() <= 1"
+                        (click)="onPageChange(page() - 1)"
+                    >
+                        &#x2039;
+                    </app-button>
+                    <span class="data-tables__pagination-page">Page {{ page() }} / {{ totalPages() }}</span>
+                    <app-button
+                        type="ghost"
+                        mod="small"
+                        [disabled]="page() >= totalPages()"
+                        (click)="onPageChange(page() + 1)"
+                    >
+                        &#x203a;
+                    </app-button>
+                </div>
+            </div>
+        }
+    </div>
+</div>

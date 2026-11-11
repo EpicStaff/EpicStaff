@@ -76,6 +76,15 @@ class GraphVisualizationOutputSchema(BaseSchema):
     entities: list[VisualizationEntitySchema]
     relationships: list[VisualizationRelationshipSchema]
     communities: list[VisualizationCommunitySchema]
+    total_entities: int
+
+
+class GraphTableDataOutputSchema(BaseSchema):
+    columns: list[str]
+    rows: list[dict[str, object]]
+    total: int
+    page: int
+    page_size: int
 
 
 class IndexEstimateInputSchema(BaseSchema):

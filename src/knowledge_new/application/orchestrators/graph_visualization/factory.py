@@ -1,6 +1,8 @@
 from typing import TYPE_CHECKING
 
-from application.orchestrators.graph_visualization.base import AbstractGraphVisualizationOrchestrator
+from application.orchestrators.graph_visualization.base import (
+    AbstractGraphVisualizationOrchestrator,
+)
 from application.ports import AbstractUnitOfWork
 from common.lazy_import import LazyImport
 from domain.enums import RAGStrategy

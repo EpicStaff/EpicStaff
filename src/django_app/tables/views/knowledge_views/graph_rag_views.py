@@ -65,6 +65,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         "list_documents": Permission.READ,
         "initialize_documents": Permission.UPDATE,
         "visualization": Permission.READ,
+        "table_data": Permission.READ,
     }
 
     queryset = GraphRag.objects.all()
@@ -388,6 +389,36 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["get"], url_path="tables/(?P<table_name>[a-z_]+)")
+    def table_data(self, request, pk=None, table_name=None):
+        """Proxy paginated parquet table data from the knowledge_new service."""
+        self._assert_graph_rag_in_active_org(pk)
+
+        page = request.query_params.get("page", "1")
+        page_size = request.query_params.get("page_size", "10")
+
+        try:
+            page = int(page)
+            page_size = min(int(page_size), 100)
+        except (ValueError, TypeError):
+            return Response(
+                {"error": "page and page_size must be integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with KnowledgeClient() as client:
+                data = client.get_table_data(
+                    rag_id=int(pk),
+                    table_name=table_name,
+                    page=page,
+                    page_size=page_size,
+                )
+        except ClientError as e:
+            return Response({"error": e.public_detail}, status=e.status_code)
+
+        return Response(data)
 
     @action(detail=True, methods=["get"], url_path="visualization")
     def visualization(self, request, pk=None):

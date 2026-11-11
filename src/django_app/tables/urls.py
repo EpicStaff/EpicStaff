@@ -399,6 +399,11 @@ urlpatterns = [
         name="graph-rag-visualization",
     ),
     path(
+        "graph-rag/<int:pk>/tables/<str:table_name>/",
+        GraphRagViewSet.as_view({"get": "table_data"}),
+        name="graph-rag-table-data",
+    ),
+    path(
         "telegram-trigger-available-fields/",
         TelegramTriggerNodeAvailableFieldsView.as_view(),
         name="telegram-trigger-available-fields",

@@ -67,7 +67,12 @@
 
         <!-- Stats bar -->
         <div class="visualization__stats">
-            <span class="visualization__stat">Entities: {{ entityCount() }}</span>
+            <span class="visualization__stat"
+                >Entities: {{ entityCount() }}
+                @if (totalEntityCount() > entityCount()) {
+                    / {{ totalEntityCount() }}
+                }
+            </span>
             <span class="visualization__stat">Relationships: {{ relationshipCount() }}</span>
             <span class="visualization__stat">Communities: {{ communityCount() }}</span>
         </div>
@@ -157,6 +162,66 @@
                                     <span class="visualization__detail-value">{{ node.description }}</span>
                                 </div>
                             }
+
+                            <!-- Connected relationships -->
+                            @if (connectedEdges().length > 0) {
+                                <div class="visualization__detail-section">
+                                    <span class="visualization__detail-label"
+                                        >Relationships ({{ connectedEdges().length }})</span
+                                    >
+                                    @for (conn of connectedEdges(); track conn.otherNode.index) {
+                                        <div class="visualization__detail-connection">
+                                            <span class="visualization__detail-connection-node">{{
+                                                conn.otherNode.title
+                                            }}</span>
+                                            @if (conn.edge.description) {
+                                                <span class="visualization__detail-connection-desc">{{
+                                                    conn.edge.description
+                                                }}</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Edge detail panel -->
+                @if (selectedEdge(); as edge) {
+                    <div class="visualization__detail-panel">
+                        <div class="visualization__detail-header">
+                            <span class="visualization__detail-title">Relationship</span>
+                            <app-button
+                                type="ghost"
+                                mod="small"
+                                (click)="closeDetailPanel()"
+                                [ariaLabel]="'Close detail panel'"
+                            >
+                                X
+                            </app-button>
+                        </div>
+                        <div class="visualization__detail-body">
+                            @if (selectedEdgeNodes(); as nodes) {
+                                <div class="visualization__detail-row">
+                                    <span class="visualization__detail-label">Source</span>
+                                    <span class="visualization__detail-value">{{ nodes.source.title }}</span>
+                                </div>
+                                <div class="visualization__detail-row">
+                                    <span class="visualization__detail-label">Target</span>
+                                    <span class="visualization__detail-value">{{ nodes.target.title }}</span>
+                                </div>
+                            }
+                            @if (edge.description) {
+                                <div class="visualization__detail-row">
+                                    <span class="visualization__detail-label">Description</span>
+                                    <span class="visualization__detail-value">{{ edge.description }}</span>
+                                </div>
+                            }
+                            <div class="visualization__detail-row">
+                                <span class="visualization__detail-label">Weight</span>
+                                <span class="visualization__detail-value">{{ edge.weight }}</span>
+                            </div>
                         </div>
                     </div>
                 }
@@ -168,7 +233,9 @@
                 [class.visualization__sidebar--collapsed]="!communitySidebarOpen()"
             >
                 <div class="visualization__sidebar-header">
-                    <span class="visualization__sidebar-title">Communities</span>
+                    @if (communitySidebarOpen()) {
+                        <span class="visualization__sidebar-title">Communities</span>
+                    }
                     <app-button
                         type="ghost"
                         mod="small"
@@ -193,22 +260,11 @@
                                     (click)="onCommunityClick(community.id)"
                                 >
                                     <span class="visualization__community-title">{{ community.title }}</span>
-                                    <span class="visualization__community-size">{{ community.size }} entities</span>
+                                    <span class="visualization__community-meta">
+                                        <span>{{ community.size }} entities</span>
+                                        <span>Level {{ community.level }}</span>
+                                    </span>
                                 </button>
-                                <button
-                                    type="button"
-                                    class="visualization__community-expand"
-                                    (click)="onToggleCommunityExpand(community.id)"
-                                >
-                                    {{ expandedCommunityId() === community.id ? 'Collapse' : 'Details' }}
-                                </button>
-                                @if (expandedCommunityId() === community.id) {
-                                    <div class="visualization__community-details">
-                                        <span class="visualization__community-detail"
-                                            >Level: {{ community.level }}</span
-                                        >
-                                    </div>
-                                }
                             </div>
                         }
                     </div>

@@ -26,6 +26,15 @@ const DIMMED_ALPHA = 0.15;
 const LABEL_FONT_SIZE = 24;
 const LABEL_CANVAS_HEIGHT = 36;
 
+/** Hover outline colors — adjust these three to change the look. */
+const HOVERED_BORDER_COLOR: ColorTuple = [0.42, 0.45, 0.98]; // accent / indigo
+const CONNECTED_BORDER_COLOR: ColorTuple = [0.3, 0.75, 0.55]; // teal-green
+const HIGHLIGHT_EDGE_COLOR: ColorTuple = [1.0, 0.95, 0.4]; // bright yellow
+const OUTLINE_SCALE = 1.35; // how much larger the outline ring is vs the node
+const DOTS_PER_EDGE = 3;
+const DOT_RADIUS = 1.5;
+const DOT_SPEED = 0.4; // 0..1 per second
+
 /** Computes a stable index from a string — used for type-to-color mapping. */
 function stableHash(value: string): number {
     let hash = 0;
@@ -43,6 +52,7 @@ function hexToRgb(hex: string): ColorTuple {
 }
 
 export interface GraphNode {
+    id: string;
     index: number;
     title: string;
     type: string | null;
@@ -120,8 +130,14 @@ export class GraphSceneService {
     private searchHighlightIndices: Set<number> | null = null;
     private visibleTypeSet: Set<string | null> | null = null;
     private hoveredNodeIndex: number | null = null;
+    private hoveredEdgeIndex: number | null = null;
     private connectedEdgeIndices: Set<number> = new Set();
+    private connectedNodeIndices: Set<number> = new Set();
     private wheelHandler: ((event: WheelEvent) => void) | null = null;
+    private outlineMesh: InstancedMesh | null = null;
+    private highlightLinesObj: LineSegments | null = null;
+    private dotsMesh: InstancedMesh | null = null;
+    private dotsData: Array<{ edgeIndex: number; t: number; speed: number }> = [];
 
     /** Lazy-load Three.js and OrbitControls. */
     async loadDependencies(): Promise<void> {
@@ -148,6 +164,7 @@ export class GraphSceneService {
             const radius = minRadius + (entity.degree / maxDegree) * (maxRadius - minRadius);
 
             return {
+                id: entity.id,
                 index,
                 title: entity.title,
                 type: entity.type,
@@ -240,6 +257,50 @@ export class GraphSceneService {
         edgesLine.frustumCulled = false;
         scene.add(edgesLine);
 
+        // Node outline mesh (BackSide rendering creates a border ring)
+        const outlineGeometry = new THREE.SphereGeometry(1, 16, 12);
+        const outlineMaterial = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
+        const outlineMesh = new THREE.InstancedMesh(outlineGeometry, outlineMaterial, Math.max(this.nodes.length, 1));
+        outlineMesh.frustumCulled = false;
+        scene.add(outlineMesh);
+        this.outlineMesh = outlineMesh;
+
+        // Highlight lines overlay (connected edges rendered brighter on top)
+        const hlPositions = new Float32Array(this.edges.length * 6);
+        const hlGeometry = new THREE.BufferGeometry();
+        hlGeometry.setAttribute('position', new THREE.Float32BufferAttribute(hlPositions, 3));
+        hlGeometry.setDrawRange(0, 0);
+        const hlMaterial = new THREE.LineBasicMaterial({
+            color: new THREE.Color(...HIGHLIGHT_EDGE_COLOR),
+            transparent: true,
+            opacity: 1.0,
+            depthTest: false,
+        });
+        const highlightLines = new THREE.LineSegments(hlGeometry, hlMaterial);
+        highlightLines.frustumCulled = false;
+        highlightLines.renderOrder = 1;
+        scene.add(highlightLines);
+        this.highlightLinesObj = highlightLines;
+
+        // Animated dots (small spheres that travel along highlighted edges)
+        const maxDots = this.edges.length * DOTS_PER_EDGE;
+        const dotGeometry = new THREE.SphereGeometry(1, 8, 6);
+        const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+        const dotsMesh = new THREE.InstancedMesh(dotGeometry, dotMaterial, Math.max(maxDots, 1));
+        dotsMesh.frustumCulled = false;
+        dotsMesh.renderOrder = 2;
+        // Hide all dots initially
+        const zeroDummy = new THREE.Object3D();
+        zeroDummy.scale.setScalar(0);
+        zeroDummy.position.set(99999, 99999, 99999);
+        zeroDummy.updateMatrix();
+        for (let i = 0; i < maxDots; i++) {
+            dotsMesh.setMatrixAt(i, zeroDummy.matrix);
+        }
+        scene.add(dotsMesh);
+        this.dotsMesh = dotsMesh;
+        this.dotsData = [];
+
         // Labels
         const labelSprites: Sprite[] = [];
 
@@ -308,6 +369,9 @@ export class GraphSceneService {
         }
         this.updateInstanceMatrices();
         this.updateEdgePositions();
+        if (this.hoveredNodeIndex !== null) {
+            this.updateHoverVisuals();
+        }
         if (this.labelsVisible) {
             this.updateLabelPositions();
         }
@@ -375,6 +439,83 @@ export class GraphSceneService {
         return -1;
     }
 
+    /** Raycast to find which edge is nearest to the given screen coordinates. Returns edge index or -1. */
+    pickEdge(screenX: number, screenY: number, container: HTMLElement, threshold = 6): number {
+        if (!this.resources || !this.three) return -1;
+        const THREE = this.three;
+        const rect = container.getBoundingClientRect();
+        const mx = screenX - rect.left;
+        const my = screenY - rect.top;
+
+        const tempVec = new THREE.Vector3();
+        let bestIndex = -1;
+        let bestDist = threshold;
+
+        for (let i = 0; i < this.edges.length; i++) {
+            const edge = this.edges[i];
+            const src = this.nodes[edge.sourceIndex];
+            const tgt = this.nodes[edge.targetIndex];
+            if (!this.isNodeVisible(src) || !this.isNodeVisible(tgt)) continue;
+
+            // Project both endpoints to screen
+            tempVec.set(src.x, src.y, src.z);
+            tempVec.project(this.resources.camera);
+            const ax = ((tempVec.x + 1) / 2) * rect.width;
+            const ay = ((-tempVec.y + 1) / 2) * rect.height;
+
+            tempVec.set(tgt.x, tgt.y, tgt.z);
+            tempVec.project(this.resources.camera);
+            const bx = ((tempVec.x + 1) / 2) * rect.width;
+            const by = ((-tempVec.y + 1) / 2) * rect.height;
+
+            // Distance from point to line segment
+            const dist = this.pointToSegmentDistance(mx, my, ax, ay, bx, by);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
+    /** Set which edge is hovered — highlights connected nodes. Pass null to clear. */
+    setHoveredEdge(edgeIndex: number | null): void {
+        // If clearing edge hover while a node is hovered, don't touch dots or connected sets
+        if (edgeIndex === null && this.hoveredNodeIndex !== null) {
+            this.hoveredEdgeIndex = null;
+            return;
+        }
+
+        // Clear any node hover first
+        if (edgeIndex !== null && this.hoveredNodeIndex !== null) {
+            this.hoveredNodeIndex = null; // bypass setHoveredNode to avoid clearing dots prematurely
+        }
+
+        if (edgeIndex === this.hoveredEdgeIndex) return;
+
+        this.hoveredEdgeIndex = edgeIndex;
+        this.connectedEdgeIndices.clear();
+        this.connectedNodeIndices.clear();
+
+        if (edgeIndex !== null) {
+            const edge = this.edges[edgeIndex];
+            this.connectedEdgeIndices.add(edgeIndex);
+            this.connectedNodeIndices.add(edge.sourceIndex);
+            this.connectedNodeIndices.add(edge.targetIndex);
+            this.setupDots();
+        } else {
+            this.clearDots();
+        }
+
+        this.updateEdgeColors();
+        this.updateHoverVisuals();
+    }
+
+    /** Returns the currently hovered edge index, or null. */
+    getHoveredEdgeIndex(): number | null {
+        return this.hoveredEdgeIndex;
+    }
+
     /** Temporarily disable/enable OrbitControls entirely (used during node drag). */
     setControlsEnabled(enabled: boolean): void {
         if (!this.resources) return;
@@ -403,23 +544,35 @@ export class GraphSceneService {
         };
     }
 
-    /** Set which node is hovered — highlights connected edges and shows a title label. Pass null to clear. */
+    /** Set which node is hovered — highlights connected edges/nodes and shows outline. Pass null to clear. */
     setHoveredNode(nodeIndex: number | null): void {
         if (nodeIndex === this.hoveredNodeIndex) return;
         this.hoveredNodeIndex = nodeIndex;
+        this.hoveredEdgeIndex = null;
 
-        // Update connected edge set
+        // Update connected edge and node sets
         this.connectedEdgeIndices.clear();
+        this.connectedNodeIndices.clear();
         if (nodeIndex !== null) {
             for (let i = 0; i < this.edges.length; i++) {
                 const edge = this.edges[i];
-                if (edge.sourceIndex === nodeIndex || edge.targetIndex === nodeIndex) {
+                if (edge.sourceIndex === nodeIndex) {
                     this.connectedEdgeIndices.add(i);
+                    this.connectedNodeIndices.add(edge.targetIndex);
+                } else if (edge.targetIndex === nodeIndex) {
+                    this.connectedEdgeIndices.add(i);
+                    this.connectedNodeIndices.add(edge.sourceIndex);
                 }
             }
         }
 
         this.updateEdgeColors();
+        this.updateHoverVisuals();
+        if (nodeIndex !== null) {
+            this.setupDots();
+        } else {
+            this.clearDots();
+        }
     }
 
     /** Convert screen coordinates to world position (projects onto z=0 plane for 2D, or camera plane for 3D). */
@@ -482,6 +635,31 @@ export class GraphSceneService {
             (edgesLine.material as Material).dispose();
             scene.remove(edgesLine);
 
+            // Dispose outline mesh
+            if (this.outlineMesh) {
+                this.outlineMesh.geometry.dispose();
+                (this.outlineMesh.material as Material).dispose();
+                scene.remove(this.outlineMesh);
+                this.outlineMesh = null;
+            }
+
+            // Dispose highlight lines
+            if (this.highlightLinesObj) {
+                this.highlightLinesObj.geometry.dispose();
+                (this.highlightLinesObj.material as Material).dispose();
+                scene.remove(this.highlightLinesObj);
+                this.highlightLinesObj = null;
+            }
+
+            // Dispose dots
+            if (this.dotsMesh) {
+                this.dotsMesh.geometry.dispose();
+                (this.dotsMesh.material as Material).dispose();
+                scene.remove(this.dotsMesh);
+                this.dotsMesh = null;
+                this.dotsData = [];
+            }
+
             // Dispose renderer
             renderer.dispose();
             renderer.forceContextLoss();
@@ -489,9 +667,10 @@ export class GraphSceneService {
             this.resources = null;
         }
 
-        this.nodes = [];
-        this.edges = [];
-        this.titleToIndex.clear();
+        this.hoveredNodeIndex = null;
+        this.hoveredEdgeIndex = null;
+        this.connectedEdgeIndices.clear();
+        this.connectedNodeIndices.clear();
     }
 
     /** Returns the color for a given entity type. */
@@ -612,7 +791,9 @@ export class GraphSceneService {
             tempColor.setRGB(color[0], color[1], color[2]);
             this.resources.nodesMesh.setColorAt(i, tempColor);
         }
-        this.resources.nodesMesh.instanceColor!.needsUpdate = true;
+        if (this.resources.nodesMesh.instanceColor) {
+            this.resources.nodesMesh.instanceColor.needsUpdate = true;
+        }
     }
 
     private updateEdgePositions(): void {
@@ -695,6 +876,71 @@ export class GraphSceneService {
         return sprite;
     }
 
+    private updateHoverVisuals(): void {
+        if (!this.resources || !this.three) return;
+        const THREE = this.three;
+        const dummy = new THREE.Object3D();
+        const tempColor = new THREE.Color();
+
+        // --- Outline mesh ---
+        if (this.outlineMesh) {
+            for (let i = 0; i < this.nodes.length; i++) {
+                const node = this.nodes[i];
+                let borderColor: ColorTuple | null = null;
+
+                if (i === this.hoveredNodeIndex) {
+                    borderColor = HOVERED_BORDER_COLOR;
+                } else if (this.connectedNodeIndices.has(i)) {
+                    borderColor = CONNECTED_BORDER_COLOR;
+                }
+
+                if (borderColor) {
+                    dummy.position.set(node.x, node.y, node.z);
+                    dummy.scale.setScalar(node.radius * OUTLINE_SCALE);
+                    tempColor.setRGB(borderColor[0], borderColor[1], borderColor[2]);
+                } else {
+                    dummy.position.set(99999, 99999, 99999);
+                    dummy.scale.setScalar(0);
+                    tempColor.setRGB(0, 0, 0);
+                }
+
+                dummy.updateMatrix();
+                this.outlineMesh.setMatrixAt(i, dummy.matrix);
+                this.outlineMesh.setColorAt(i, tempColor);
+            }
+            this.outlineMesh.instanceMatrix.needsUpdate = true;
+            if (this.outlineMesh.instanceColor) {
+                this.outlineMesh.instanceColor.needsUpdate = true;
+            }
+        }
+
+        // --- Highlight lines (connected edges rendered on top) ---
+        if (this.highlightLinesObj) {
+            const posAttr = this.highlightLinesObj.geometry.getAttribute('position');
+            const positions = posAttr.array as Float32Array;
+            let count = 0;
+
+            if (this.connectedEdgeIndices.size > 0) {
+                for (const edgeIdx of this.connectedEdgeIndices) {
+                    const edge = this.edges[edgeIdx];
+                    const src = this.nodes[edge.sourceIndex];
+                    const tgt = this.nodes[edge.targetIndex];
+                    const offset = count * 6;
+                    positions[offset] = src.x;
+                    positions[offset + 1] = src.y;
+                    positions[offset + 2] = src.z;
+                    positions[offset + 3] = tgt.x;
+                    positions[offset + 4] = tgt.y;
+                    positions[offset + 5] = tgt.z;
+                    count++;
+                }
+            }
+
+            this.highlightLinesObj.geometry.setDrawRange(0, count * 2);
+            posAttr.needsUpdate = true;
+        }
+    }
+
     private updateEdgeColors(): void {
         if (!this.resources) return;
         const colorAttr = this.resources.edgesLine.geometry.getAttribute('color');
@@ -746,10 +992,87 @@ export class GraphSceneService {
         }
     }
 
+    /** Distance from point (px,py) to line segment (ax,ay)-(bx,by) in screen pixels. */
+    private pointToSegmentDistance(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+        const dx = bx - ax;
+        const dy = by - ay;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+        let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    }
+
+    private setupDots(): void {
+        this.dotsData = [];
+        if (this.connectedEdgeIndices.size === 0) return;
+
+        for (const edgeIdx of this.connectedEdgeIndices) {
+            for (let d = 0; d < DOTS_PER_EDGE; d++) {
+                this.dotsData.push({
+                    edgeIndex: edgeIdx,
+                    t: d / DOTS_PER_EDGE,
+                    speed: DOT_SPEED,
+                });
+            }
+        }
+    }
+
+    private updateDots(): void {
+        if (!this.dotsMesh || !this.three || this.dotsData.length === 0) return;
+        const THREE = this.three;
+        const dummy = new THREE.Object3D();
+
+        for (let i = 0; i < this.dotsData.length; i++) {
+            const dot = this.dotsData[i];
+            dot.t += dot.speed / 60; // ~60fps
+            if (dot.t > 1) dot.t -= 1;
+
+            const edge = this.edges[dot.edgeIndex];
+            const src = this.nodes[edge.sourceIndex];
+            const tgt = this.nodes[edge.targetIndex];
+            const t = dot.t;
+
+            dummy.position.set(src.x + (tgt.x - src.x) * t, src.y + (tgt.y - src.y) * t, src.z + (tgt.z - src.z) * t);
+            dummy.scale.setScalar(DOT_RADIUS);
+            dummy.updateMatrix();
+            this.dotsMesh.setMatrixAt(i, dummy.matrix);
+        }
+
+        // Hide unused instances
+        const zeroDummy = new THREE.Object3D();
+        zeroDummy.scale.setScalar(0);
+        zeroDummy.position.set(99999, 99999, 99999);
+        zeroDummy.updateMatrix();
+        const maxDots = this.edges.length * DOTS_PER_EDGE;
+        for (let i = this.dotsData.length; i < maxDots; i++) {
+            this.dotsMesh.setMatrixAt(i, zeroDummy.matrix);
+        }
+        this.dotsMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    private clearDots(): void {
+        if (!this.dotsMesh || !this.three) return;
+        this.dotsData = [];
+        const THREE = this.three;
+        const zeroDummy = new THREE.Object3D();
+        zeroDummy.scale.setScalar(0);
+        zeroDummy.position.set(99999, 99999, 99999);
+        zeroDummy.updateMatrix();
+        const maxDots = this.edges.length * DOTS_PER_EDGE;
+        for (let i = 0; i < maxDots; i++) {
+            this.dotsMesh.setMatrixAt(i, zeroDummy.matrix);
+        }
+        this.dotsMesh.instanceMatrix.needsUpdate = true;
+    }
+
     private startRenderLoop(): void {
         const render = (): void => {
             if (!this.resources) return;
             this.resources.controls.update();
+            if (this.dotsData.length > 0) {
+                this.updateDots();
+            }
             this.resources.renderer.render(this.resources.scene, this.resources.camera);
             this.animationFrameId = requestAnimationFrame(render);
         };

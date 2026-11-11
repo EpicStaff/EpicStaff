@@ -3,7 +3,9 @@ from collections.abc import Sized
 import numpy
 import pandas
 from application.commands import GetGraphVisualization
-from application.orchestrators.graph_visualization.base import AbstractGraphVisualizationOrchestrator
+from application.orchestrators.graph_visualization.base import (
+    AbstractGraphVisualizationOrchestrator,
+)
 from application.results import (
     GraphVisualizationResult,
     VisualizationCommunity,
@@ -46,6 +48,8 @@ class GraphVisualizationOrchestrator(AbstractGraphVisualizationOrchestrator):
         if entities.empty:
             raise GraphNotIndexedError(rag_id=command.rag_id)
 
+        total_entities = len(entities)
+
         if command.max_entities is not None:
             entities, relationships = self._apply_entity_limit(
                 entities, relationships, command.max_entities
@@ -55,6 +59,7 @@ class GraphVisualizationOrchestrator(AbstractGraphVisualizationOrchestrator):
             entities=self._build_entities(entities),
             relationships=self._build_relationships(relationships),
             communities=self._build_communities(communities),
+            total_entities=total_entities,
         )
 
     @staticmethod

@@ -9,7 +9,7 @@ import {
     CreateGraphRagIndexConfigRequest,
 } from '../models/graph-rag.model';
 import { GraphRagDocumentListResponse } from '../models/graph-rag-document.model';
-import { GraphVisualizationData } from '../models/graph-visualization.model';
+import { GraphTableData, GraphVisualizationData } from '../models/graph-visualization.model';
 
 @Injectable({
     providedIn: 'root',
@@ -69,6 +69,11 @@ export class GraphRagService {
 
     reIncludeFiles(ragId: number): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}${ragId}/documents/initialize/`, {});
+    }
+
+    getTableData(ragId: number, tableName: string, page = 1, pageSize = 10): Observable<GraphTableData> {
+        const params = new HttpParams().set('page', page.toString()).set('page_size', pageSize.toString());
+        return this.http.get<GraphTableData>(`${this.apiUrl}${ragId}/tables/${tableName}/`, { params });
     }
 
     getVisualizationData(ragId: number, maxEntities?: number): Observable<GraphVisualizationData> {

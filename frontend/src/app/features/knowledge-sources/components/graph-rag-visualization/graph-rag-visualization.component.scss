@@ -130,8 +130,8 @@
         position: absolute;
         bottom: 12px;
         left: 12px;
-        width: 280px;
-        max-height: 300px;
+        width: 300px;
+        max-height: 400px;
         background-color: var(--color-nodes-background);
         border: 1px solid var(--color-divider-subtle);
         border-radius: 8px;
@@ -168,6 +168,34 @@
         gap: 2px;
     }
 
+    &__detail-section {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 4px;
+        padding-top: 6px;
+        border-top: 1px solid var(--color-divider-subtle);
+    }
+
+    &__detail-connection {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        padding: 4px 6px;
+        border-radius: 4px;
+        background-color: var(--color-ghost-btn-active, rgba(255, 255, 255, 0.05));
+    }
+
+    &__detail-connection-node {
+        color: var(--accent-color);
+        font-weight: 500;
+    }
+
+    &__detail-connection-desc {
+        color: var(--color-ks-transparent-text-60);
+        font-size: 0.85rem;
+    }
+
     &__detail-label {
         color: var(--color-ks-transparent-text-60);
     }
@@ -194,8 +222,9 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 8px 8px 8px 12px;
+        padding: 8px;
         border-bottom: 1px solid var(--color-divider-subtle);
+        min-height: 40px;
     }
 
     &__sidebar-title {
@@ -244,27 +273,9 @@
         white-space: nowrap;
     }
 
-    &__community-size {
-        color: var(--color-ks-transparent-text-60);
-    }
-
-    &__community-expand {
-        background: none;
-        border: none;
-        color: var(--accent-color);
-        cursor: pointer;
-        padding: 2px 4px;
-
-        &:hover {
-            color: var(--accent-color-hover);
-        }
-    }
-
-    &__community-details {
-        padding: 4px 8px;
-    }
-
-    &__community-detail {
+    &__community-meta {
+        display: flex;
+        gap: 8px;
         color: var(--color-ks-transparent-text-60);
     }
 }
