@@ -9,7 +9,7 @@
  * so being wrong in either direction is a compliance problem, not cosmetics.
  *
  * The generator stamps the lockfile's sha256 into the file header, which makes
- * staleness detectable without re-running license-checker (and without network).
+ * staleness detectable without re-running the generator (and without network).
  *
  * Usage:  node scripts/check-third-party-notices.mjs
  * Exit codes: 0 = in sync, 1 = stale or unreadable.

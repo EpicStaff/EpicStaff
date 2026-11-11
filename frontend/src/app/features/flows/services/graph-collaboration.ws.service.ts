@@ -1,4 +1,4 @@
-import { inject, Injectable, signal } from '@angular/core';
+import { DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 
 import { WsTicketService } from '../../../services/auth/ws-ticket.service';
@@ -46,7 +46,7 @@ type WsErrorMessage = { type: 'error'; code: string; message: string };
 
 // type ClientMessage = { type: 'graph_modified' };
 
-type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting';
+type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting' | 'lost';
 
 @Injectable({ providedIn: 'root' })
 export class GraphCollaborationWsService {
@@ -67,6 +67,15 @@ export class GraphCollaborationWsService {
     public graphSaved$ = new Subject<GraphSavedMessage>();
     public graphModified$ = new Subject<GraphModifiedMessage>();
 
+    constructor() {
+        window.addEventListener('offline', this.handleOffline);
+        window.addEventListener('online', this.handleOnline);
+        inject(DestroyRef).onDestroy(() => {
+            window.removeEventListener('offline', this.handleOffline);
+            window.removeEventListener('online', this.handleOnline);
+        });
+    }
+
     public connect(graphId: number) {
         if (this.currentGraphId === graphId && this.socket) return;
         this.cleanUp();
@@ -81,7 +90,7 @@ export class GraphCollaborationWsService {
     }
 
     private openConnection(): void {
-        this.connectionStatus.set('connecting');
+        this.connectionStatus.set(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
 
         this.wsTicketService.fetchTicket().subscribe({
             next: (ticket) => this.openSocket(ticket),
@@ -156,13 +165,36 @@ export class GraphCollaborationWsService {
         }
     }
 
+    private readonly handleOffline = (): void => {
+        if (this.currentGraphId === null) return;
+        this.clearReconnectTimeout();
+        if (this.socket) {
+            this.socket.onclose = null;
+            this.socket.close();
+            this.socket = null;
+        }
+        this.connectionStatus.set('lost');
+    };
+
+    private readonly handleOnline = (): void => {
+        if (this.currentGraphId === null || this.connectionStatus() !== 'lost') return;
+        this.reconnectAttempts = 0;
+        this.handleConnectionLoss();
+    };
+
     private handleConnectionLoss(): void {
-        this.connectionStatus.set('reconnecting');
         this.socket = null;
+
+        if (!navigator.onLine) {
+            this.connectionStatus.set('lost');
+            return;
+        }
+
+        this.connectionStatus.set('reconnecting');
 
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             console.error(`[WS] Max reconnect attempts reached. Giving up.`);
-            this.connectionStatus.set('disconnected');
+            this.connectionStatus.set('lost');
             return;
         }
 
@@ -199,11 +231,15 @@ export class GraphCollaborationWsService {
         }
     }
 
-    private cleanUp(): void {
+    private clearReconnectTimeout(): void {
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
         }
+    }
+
+    private cleanUp(): void {
+        this.clearReconnectTimeout();
         if (this.socket) {
             this.socket.close();
             this.socket = null;

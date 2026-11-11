@@ -43,6 +43,7 @@ from tables.models import (
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
     StartNode,
+    SystemOneConfig,
     WebhookTrigger,
 )
 from tables.models.audit_filter_preset_models import AuditFilterPreset
@@ -155,6 +156,16 @@ def _gemini_realtime_config(org, author, provider):
     )
 
 
+def _system_one_config(org, author, provider):
+    return SystemOneConfig.objects.create(
+        custom_name="imported-system-one",
+        provider="typesafe",
+        model_name="jev-1.14.0",
+        org=org,
+        created_by=author,
+    )
+
+
 def _python_code_tool(org, author, provider):
     python_code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     tool = PythonCodeTool.objects.create(
@@ -232,6 +243,7 @@ SOURCE_FACTORIES: dict[EntityType, SourceFactory] = {
     EntityType.OPENAI_REALTIME_CONFIG: _openai_realtime_config,
     EntityType.ELEVENLABS_REALTIME_CONFIG: _elevenlabs_realtime_config,
     EntityType.GEMINI_REALTIME_CONFIG: _gemini_realtime_config,
+    EntityType.SYSTEM_ONE_CONFIG: _system_one_config,
     EntityType.PYTHON_CODE_TOOL: _python_code_tool,
     EntityType.MCP_TOOL: _mcp_tool,
     EntityType.WEBHOOK_TRIGGER: _webhook_trigger,

@@ -112,7 +112,24 @@ export class SelectComponent implements ControlValueAccessor {
     hideTrigger = input<boolean>(false);
     panelClass = input<string | string[]>('');
     variant = input<SelectVariant>('default');
+    /**
+     * The list-page toolbar look, for both the trigger and the panel. `toolbar` makes the closed trigger hug-width and
+     * transparent, with the 10px radius and dim outline and the chevron in line 16px after the text; and it gives the
+     * open panel the bulk-select menu's frame (no height cap, the page background, the 8px radius, the elevated
+     * shadow), its hover, and the picked option in the plain text colour. Its 40px row size applies only to the rows
+     * of `variant="default"` at `mod="default"`: with `variant="boxed"` the panel takes the toolbar frame while its
+     * rows keep the boxed size.
+     */
+    appearance = input<'default' | 'toolbar'>('default');
+    /** Sprite id of the icon that stands for the trigger's text while `iconOnly`; e.g. `filter`. */
+    triggerIcon = input<string | null>(null);
+    /**
+     * Shows `triggerIcon` and the chevron in place of the text, which stays the name and becomes the tooltip.
+     * Needs `triggerIcon`: without one it does nothing.
+     */
+    iconOnly = input<boolean>(false);
     showSearch = input<boolean>(false);
+    showCreate = input<boolean>(false);
     /**
      * Render each item under a heading taken from its `group`. Off by default: panels that
      * already set `group` on their items were written before any heading was rendered.
@@ -120,6 +137,7 @@ export class SelectComponent implements ControlValueAccessor {
     grouped = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
     transparent = input<boolean>(false);
+    searchNotFoundText = input<string>('No items available');
     /** When true, the selected item's tip is shown at the end of the closed trigger too, not only in the list. */
     showTipInTrigger = input<boolean>(false);
     /** When true, the user can commit the search text as a custom value (Enter or clicking the "Use ..." row). */
@@ -145,6 +163,7 @@ export class SelectComponent implements ControlValueAccessor {
 
     changed = output<unknown>();
     opened = output<void>();
+    onCreate = output<void>();
 
     selectedValue = model<unknown | null>(null);
 
@@ -218,6 +237,9 @@ export class SelectComponent implements ControlValueAccessor {
         if (this.allowCustomValue() && typeof value === 'string' && value.length) return value;
         return this.placeholder();
     });
+
+    protected readonly showsOnlyIcon = computed(() => this.iconOnly() && !!this.triggerIcon());
+    protected readonly triggerTooltip = computed(() => (this.showsOnlyIcon() ? this.displayText() : this.tooltip()));
 
     /**
      * Value to render in readonly mode: the selected item's name, or a custom-value string

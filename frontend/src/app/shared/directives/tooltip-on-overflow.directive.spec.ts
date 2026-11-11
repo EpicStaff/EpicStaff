@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
@@ -17,6 +17,15 @@ class ResizeObserverStub {
     template: '<span appTooltipOnOverflow matTooltip="Full text">Text</span>',
 })
 class HostComponent {}
+
+// Such a host is checked again by the dev-mode check, so a binding changed after its check throws there.
+@Component({
+    selector: 'app-eager-host',
+    imports: [MatTooltip, TooltipOnOverflowDirective],
+    template: '<span appTooltipOnOverflow matTooltip="Full text">Text</span>',
+    changeDetection: ChangeDetectionStrategy.Eager,
+})
+class EagerHostComponent {}
 
 function tooltipFor(
     size: Record<'scrollWidth' | 'clientWidth' | 'scrollHeight' | 'clientHeight', number>,
@@ -55,5 +64,14 @@ describe('TooltipOnOverflowDirective', () => {
     it('keeps the tooltip off for a fixed-height host taller inside but not clamped', () => {
         const tooltip = tooltipFor({ scrollWidth: 100, clientWidth: 100, scrollHeight: 24, clientHeight: 20 });
         expect(tooltip.disabled).toBe(true);
+    });
+
+    it('renders in a host that is always checked without changing a checked binding', () => {
+        const fixture = TestBed.createComponent(EagerHostComponent);
+
+        expect(() => fixture.detectChanges()).not.toThrow();
+        expect(
+            fixture.debugElement.query(By.directive(TooltipOnOverflowDirective)).injector.get(MatTooltip).disabled
+        ).toBe(true);
     });
 });

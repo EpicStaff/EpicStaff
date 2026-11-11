@@ -117,7 +117,19 @@
                                 <app-copy-button [text]="chunk.text" />
                             }
                             <div class="chunk-header">
-                                <div class="chunk-order">#{{ chunk.order }}</div>
+                                @if (chunkUrl(chunk); as url) {
+                                    <a
+                                        class="chunk-order chunk-order--link"
+                                        [href]="url"
+                                        target="_blank"
+                                        rel="noopener"
+                                        matTooltip="Open chunk in Knowledge Sources"
+                                    >
+                                        Chunk {{ chunk.order }}
+                                    </a>
+                                } @else {
+                                    <div class="chunk-order">Chunk {{ chunk.order }}</div>
+                                }
                                 @if (chunk.source || ragKind === 'naive') {
                                     <div
                                         class="chunk-source"

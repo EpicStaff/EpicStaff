@@ -1,3 +1,4 @@
+import { Clipboard } from '@angular/cdk/clipboard';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -26,6 +27,7 @@ export type CopyFieldInfoType = 'info' | 'warning';
 })
 export class CopyFieldComponent {
     private readonly toast = inject(ToastService);
+    private readonly clipboard = inject(Clipboard);
 
     readonly value = input.required<string>();
     readonly tooltipText = input<string>('');
@@ -49,18 +51,12 @@ export class CopyFieldComponent {
     }
 
     protected onCopy(): void {
-        const value = this.value();
-        if (!navigator.clipboard) {
-            this.toast.error('Copy is not supported in this browser');
+        if (!this.clipboard.copy(this.value())) {
+            this.toast.error('Failed to copy to clipboard');
             return;
         }
-        navigator.clipboard.writeText(value).then(
-            () => {
-                this.isCopied.set(true);
-                this.toast.info('Copied to clipboard');
-                this.onCopied.emit();
-            },
-            () => this.toast.error('Failed to copy to clipboard')
-        );
+        this.isCopied.set(true);
+        this.toast.info('Copied to clipboard');
+        this.onCopied.emit();
     }
 }

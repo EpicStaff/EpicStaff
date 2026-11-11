@@ -4,6 +4,18 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { SelectDropdownComponent } from './select-dropdown.component';
 import { SelectDropdownListItem } from './select-dropdown.model';
 
+beforeEach(() =>
+    vi.stubGlobal(
+        'ResizeObserver',
+        class {
+            observe(): void {}
+            unobserve(): void {}
+            disconnect(): void {}
+        }
+    )
+);
+afterEach(() => vi.unstubAllGlobals());
+
 function open(items: SelectDropdownListItem[]): {
     fixture: ComponentFixture<SelectDropdownComponent>;
     panel: HTMLElement;

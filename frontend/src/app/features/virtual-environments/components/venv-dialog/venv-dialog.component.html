@@ -58,6 +58,7 @@
                 <table>
                     <colgroup>
                         <col class="venv-dialog__col-index" />
+                        <col class="venv-dialog__col-custom" />
                         <col class="venv-dialog__col-name" />
                         <col />
                         <col class="venv-dialog__col-version" />
@@ -67,6 +68,16 @@
                     <thead>
                         <tr class="text-body-small-large">
                             <th class="venv-dialog__cell--center">#</th>
+                            <th class="venv-dialog__cell--center">
+                                <span class="venv-dialog__col-header">
+                                    Custom
+                                    <app-help-tooltip
+                                        text="Resolve this name against an uploaded custom library instead of PyPI."
+                                        position="top"
+                                        size="14px"
+                                    />
+                                </span>
+                            </th>
                             <th>Library Name<span class="venv-dialog__required">*</span></th>
                             <th>Description</th>
                             <th>
@@ -117,6 +128,12 @@
                             @let specificationError = specificationErrorMessage(row);
                             <tr [formGroupName]="index">
                                 <td class="venv-dialog__cell--center venv-dialog__cell--muted">{{ index + 1 }}</td>
+                                <td class="venv-dialog__cell--center">
+                                    <app-checkbox
+                                        formControlName="isCustom"
+                                        ariaLabel="Custom library"
+                                    />
+                                </td>
                                 <td>
                                     <input
                                         #libraryNameInput

@@ -11,15 +11,17 @@ from litestar.openapi.plugins import (
     StoplightRenderPlugin,
     SwaggerRenderPlugin,
 )
-from manager.presentation.rest.controllers import ExecutionController, VenvController
+from manager.presentation.rest import controllers
 
 configure_logging()
 
 app = Litestar(
     debug=settings.DEBUG,
     route_handlers=[
-        VenvController,
-        ExecutionController,
+        controllers.VenvController,
+        controllers.ExecutionController,
+        controllers.CustomLibraryController,
+        controllers.WheelController,
     ],
     on_startup=lifespan.get_startups(),
     on_shutdown=lifespan.get_shutdowns(),

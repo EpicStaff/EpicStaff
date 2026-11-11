@@ -1,0 +1,46 @@
+<button
+    #triggerButton
+    type="button"
+    class="trigger"
+    [class.trigger--disabled]="controlDisabled()"
+    [class.trigger--open]="open()"
+    [disabled]="controlDisabled()"
+    (click)="toggle()"
+>
+    <span class="trigger__label">{{ selectedValue() }}px</span>
+    <svg
+        class="trigger__chevron"
+        [class.trigger__chevron--open]="open()"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+    >
+        <path
+            d="M6 9l6 6 6-6"
+            stroke="currentColor"
+            stroke-width="2"
+            fill="none"
+            stroke-linecap="round"
+        />
+    </svg>
+</button>
+
+<ng-template #dropdownTemplate>
+    <div class="dropdown">
+        @for (size of sizes(); track size) {
+            <div
+                class="dropdown__item"
+                [class.dropdown__item--selected]="size === selectedValue()"
+                (click)="selectSize(size)"
+            >
+                <span
+                    class="dropdown__preview"
+                    [style.font-size.px]="size"
+                    >Aa</span
+                >
+                <span class="dropdown__label">&mdash;</span>
+                <span class="dropdown__label">{{ size }}px</span>
+            </div>
+        }
+    </div>
+</ng-template>

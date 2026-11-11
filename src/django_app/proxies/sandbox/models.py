@@ -12,3 +12,12 @@ class SandboxVenvBinding(AbstractBinding):
         related_name="favorited_venvs",
         blank=True,
     )
+
+
+class SandboxCustomLibraryBinding(AbstractBinding):
+    """Which organization may reach one of the sandbox's custom libraries.
+
+    The library's wheels have no binding of their own: the sandbox addresses a
+    wheel only under its library and checks the pair, so a wheel is reachable
+    exactly where the library is, and this binding is what scopes both.
+    """

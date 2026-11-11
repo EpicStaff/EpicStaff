@@ -57,6 +57,7 @@ import {
     NodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
+    TaskNodeModel,
     WebhookTriggerNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
 import { SubGraphNode } from '../../../../visual-programming/core/models/subgraph-node.model';
@@ -68,6 +69,7 @@ import { CdtExplanationsApiService } from '../../../../visual-programming/servic
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
+import { NodeSaveErrorsStore } from '../../../../visual-programming/services/node-save-errors.store';
 import { ScheduleTriggerRuntimeService } from '../../../../visual-programming/services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
@@ -91,6 +93,9 @@ import {
     TEST_RUN_PAYLOAD_REJECTED_MESSAGE,
 } from './flow-visual-programming.component';
 
+const SECRETS_REFUSAL_MESSAGE =
+    'This contains code that reads secrets. This action requires the Use permission on secrets.';
+
 /** Past the page's private 1.5 s explanation-save debounce. */
 const NODE_AUTOSAVE_WAIT_MS = 2000;
 const CAPTURED_VIEWPORT: FlowViewport = { position: { x: 120, y: -40 }, scale: 0.75 };
@@ -113,6 +118,7 @@ const RESTORED_GRAPH = graphDto({
     graph_note_list: [
         {
             id: 99,
+            uuid: '00000000-0000-4000-8000-000000000099',
             created_at: '2026-01-01T00:00:00Z',
             node_name: 'Restored note',
             graph: 1,
@@ -166,6 +172,7 @@ class FlowGraphStubComponent {
 class FlowVersionPreviewStubComponent {
     readonly version = input.required<GraphVersionDto>();
     readonly flowsLight = input<unknown[]>([]);
+    readonly liveFlow = input.required<FlowModel>();
     readonly closed = output<void>();
     readonly openShortcuts = output<DOMRect>();
 
@@ -187,7 +194,7 @@ class FlowHeaderStubComponent {
     readonly isRunning = input(false);
     readonly isPreviewMode = input(false);
     readonly runStatus = input<unknown>(null);
-    readonly hasUnsavedChanges = input(false);
+    readonly saveStatus = input<unknown>(null);
     readonly editors = input<unknown[]>([]);
     readonly save = output<void>();
     readonly saveVersion = output<void>();
@@ -257,12 +264,14 @@ describe('FlowVisualProgrammingComponent', () => {
     let queryParamMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
     /** A signal, so FlowReadOnlyService's computed re-reads it when a test revokes Flows:Update. */
     let canUpdateFlows: WritableSignal<boolean>;
+    let connectionStatus: WritableSignal<string>;
     let runGraph: Record<string, ReturnType<typeof vi.fn>>;
     let runSessionSse: { stopStream: ReturnType<typeof vi.fn>; startStream: ReturnType<typeof vi.fn> };
     let isStreaming: ReturnType<typeof signal<boolean>>;
     let sessionStatus: ReturnType<typeof signal<GraphSessionStatus>>;
     // A signal, so FlowReadOnlyService's computed permissions follow a change made inside a test.
     let canRunFlows: WritableSignal<boolean>;
+    let canUseSecrets: WritableSignal<boolean>;
     let explanationsApi: { saveExplanations: ReturnType<typeof vi.fn> };
     let flowsStorage: { bulkDelete: ReturnType<typeof vi.fn> };
 
@@ -270,6 +279,7 @@ describe('FlowVisualProgrammingComponent', () => {
         explanationsApi = { saveExplanations: vi.fn() };
         FlowGraphStubComponent.instances = [];
         canUpdateFlows = signal(true);
+        connectionStatus = signal('connected');
         flowsApi = {
             getGraphById: vi.fn().mockReturnValue(of(graphDto())),
             getGraphsLight: vi.fn().mockReturnValue(of([])),
@@ -299,6 +309,7 @@ describe('FlowVisualProgrammingComponent', () => {
         isStreaming = signal(false);
         sessionStatus = signal(GraphSessionStatus.RUNNING);
         canRunFlows = signal(true);
+        canUseSecrets = signal(true);
         const paramMap = convertToParamMap({ id: '1' });
         paramMap$ = new BehaviorSubject(paramMap);
         const queryParamMap = convertToParamMap({});
@@ -334,9 +345,11 @@ describe('FlowVisualProgrammingComponent', () => {
                 {
                     provide: PermissionsService,
                     useValue: {
-                        // Use follows its own signal; the other actions follow the update signal.
-                        can: (_resource: ResourceCode, action: ActionCode) =>
-                            action === ActionCode.Use ? canRunFlows() : canUpdateFlows(),
+                        // Use follows its own signal per resource; the other actions follow the update signal.
+                        can: (resource: ResourceCode, action: ActionCode) => {
+                            if (action !== ActionCode.Use) return canUpdateFlows();
+                            return resource === ResourceCode.Secrets ? canUseSecrets() : canRunFlows();
+                        },
                         canAny: (_resource: ResourceCode, actions: ActionCode[]) =>
                             actions.some((action) => (action === ActionCode.Use ? canRunFlows() : canUpdateFlows())),
                         meets: (requirement: PermissionRequirement) =>
@@ -353,6 +366,7 @@ describe('FlowVisualProgrammingComponent', () => {
                     provide: GraphCollaborationWsService,
                     useValue: {
                         editors: signal([]),
+                        connectionStatus,
                         graphSaved$: new Subject(),
                         connect: vi.fn(),
                         disconnect: vi.fn(),
@@ -428,6 +442,36 @@ describe('FlowVisualProgrammingComponent', () => {
         });
     }
 
+    describe('save status chip in the header', () => {
+        function saveStatusShown(): unknown {
+            fixture.detectChanges();
+            const header = fixture.debugElement.query(By.directive(FlowHeaderStubComponent))
+                .componentInstance as FlowHeaderStubComponent;
+            return header.saveStatus();
+        }
+
+        it.each([
+            ['connected', 'saved'],
+            ['reconnecting', 'reconnecting'],
+            ['lost', 'connection-lost'],
+        ])('shows an editor the status while the connection is %s', (connection, expectedStatus) => {
+            connectionStatus.set(connection);
+
+            expect(saveStatusShown()).toBe(expectedStatus);
+        });
+
+        // Without Flows:Update nothing can be saved, so "Saved" would claim something the user can't do.
+        it.each(['connected', 'reconnecting', 'lost'])(
+            'shows nothing to a user who cannot edit the flow while the connection is %s',
+            (connection) => {
+                canUpdateFlows.set(false);
+                connectionStatus.set(connection);
+
+                expect(saveStatusShown()).toBeNull();
+            }
+        );
+    });
+
     describe('version preview', () => {
         function preview(): HTMLElement | null {
             return fixture.nativeElement.querySelector('app-flow-version-preview');
@@ -450,6 +494,21 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(component.hasUnsavedChangesSignal()).toBe(dirtyBefore);
             expect(flowService.getFlowState()).toEqual(flowBefore);
+        });
+
+        it('gives the preview the live canvas, unsaved edits included, to compare the version with', () => {
+            const savedFlow = flowService.getFlowState();
+            const editedFlow = {
+                ...savedFlow,
+                nodes: savedFlow.nodes.map((node) => ({ ...node, node_name: 'Edited' })),
+            };
+            flowService.setFlow(editedFlow);
+
+            enterPreview();
+
+            const previewComponent = fixture.debugElement.query(By.directive(FlowVersionPreviewStubComponent))
+                .componentInstance as FlowVersionPreviewStubComponent;
+            expect(previewComponent.liveFlow()).toBe(editedFlow);
         });
 
         it('hands the viewport captured on entry back to the live canvas on a plain exit', () => {
@@ -576,6 +635,66 @@ describe('FlowVisualProgrammingComponent', () => {
                 previewGraphVersion.mockReturnValue(of({ snapshot: { nodes }, warnings: [], node_authorship: {} }));
             }
 
+            /** The version's webhook code declares the secret API_TOKEN, as the backend records it: by name. */
+            function versionHoldingSecretCode(): void {
+                previewGraphVersion.mockReturnValue(
+                    of({
+                        snapshot: {
+                            nodes: [WEBHOOK_SNAPSHOT],
+                            secret_declarations: { nodes: { '21': { python_code: ['API_TOKEN'] } } },
+                        },
+                        warnings: [],
+                        node_authorship: {},
+                    })
+                );
+            }
+
+            it('refuses code that reads secrets without Secrets:Use before the backup question', () => {
+                canUseSecrets.set(false);
+                versionHoldingSecretCode();
+                enterPreview(VERSION_A);
+                makeLiveFlowDirty();
+
+                requestRestore(VERSION_A);
+
+                expect(confirm).toHaveBeenCalledExactlyOnceWith(
+                    expect.objectContaining({
+                        message: 'This version contains code that reads secrets.',
+                        caution:
+                            '<strong>Restoring</strong> it requires the <strong>Use</strong> permission on secrets.',
+                    })
+                );
+                expect(unsavedChangesDialog.confirm).not.toHaveBeenCalled();
+                expect(flowsApi['restoreGraphVersion']).not.toHaveBeenCalled();
+            });
+
+            it('restores code that reads secrets for a user with Secrets:Use', () => {
+                versionHoldingSecretCode();
+                enterPreview(VERSION_A);
+                unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+
+                requestRestore(VERSION_A);
+
+                expect(confirm).not.toHaveBeenCalled();
+                expect(flowsApi['restoreGraphVersion']).toHaveBeenCalledWith(VERSION_A.id, false, 1);
+            });
+
+            it('gives the trigger node refusal when a version needs both permissions the user lacks', () => {
+                canRunFlows.set(false);
+                canUseSecrets.set(false);
+                versionHoldingSecretCode();
+                enterPreview(VERSION_A);
+
+                requestRestore(VERSION_A);
+
+                expect(confirm).toHaveBeenCalledExactlyOnceWith(
+                    expect.objectContaining({
+                        message: 'This version contains trigger nodes (Webhook, Telegram, Schedule).',
+                    })
+                );
+                expect(unsavedChangesDialog.confirm).not.toHaveBeenCalled();
+            });
+
             it('refuses it without Run before the backup question, keeping the preview and saving nothing', () => {
                 canRunFlows.set(false);
                 versionHolding(WEBHOOK_SNAPSHOT);
@@ -682,6 +801,39 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(flowsApi['getGraphById'].mock.calls.length).toBe(graphLoadsBefore);
             expect(component.isCanvasReloading()).toBe(false);
             expect(liveCanvas()).toBeDefined();
+        });
+
+        it('explains a restore refused over code that reads secrets with no toast', () => {
+            enterPreview(VERSION_A);
+            const confirm = vi
+                .spyOn(TestBed.inject(ConfirmationDialogService), 'confirm')
+                .mockReturnValue(of<ConfirmationResult>('close'));
+            flowsApi['restoreGraphVersion'].mockReturnValue(
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 403,
+                            error: {
+                                status_code: 403,
+                                code: 'code_with_secrets_requires_secrets_use_permission',
+                                message: SECRETS_REFUSAL_MESSAGE,
+                            },
+                        })
+                )
+            );
+            unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+
+            requestRestore(VERSION_A);
+
+            expect(confirm).toHaveBeenCalledExactlyOnceWith(
+                expect.objectContaining({
+                    title: 'Use permission required',
+                    message: 'This version contains code that reads secrets.',
+                    caution: '<strong>Restoring</strong> it requires the <strong>Use</strong> permission on secrets.',
+                })
+            );
+            expect(toast['error']).not.toHaveBeenCalled();
+            expect(toast['success']).not.toHaveBeenCalled();
         });
 
         // F-09 / F-10: someone else saved or restored the flow while this tab was previewing.
@@ -866,8 +1018,6 @@ describe('FlowVisualProgrammingComponent', () => {
             test_input: {},
             position: { x: 0, y: 0 },
             ports: null,
-            color: '',
-            icon: '',
             size: { width: 200, height: 100 },
             input_map: {},
             output_variable_path: null,
@@ -1332,6 +1482,7 @@ describe('FlowVisualProgrammingComponent', () => {
     describe('test run from a trigger node', () => {
         const savedWebhook: GetWebhookTriggerNodeRequest = {
             id: 21,
+            uuid: '00000000-0000-4000-8000-000000000021',
             graph: 1,
             node_number: 1,
             node_name: 'Webhook Trigger #1',
@@ -1535,6 +1686,7 @@ describe('FlowVisualProgrammingComponent', () => {
                         webhook_trigger_node_list: [
                             {
                                 id: 21,
+                                uuid: '00000000-0000-4000-8000-000000000021',
                                 graph: graphId,
                                 node_number: 1,
                                 node_name: 'Webhook Trigger #1',
@@ -1603,6 +1755,7 @@ describe('FlowVisualProgrammingComponent', () => {
             graph_note_list: [
                 {
                     id: 77,
+                    uuid: '00000000-0000-4000-8000-000000000077',
                     created_at: '2026-01-01T00:00:00Z',
                     node_name: 'Remote note',
                     graph: 1,
@@ -1796,6 +1949,132 @@ describe('FlowVisualProgrammingComponent', () => {
             );
 
             expect(saveAndReadToast()).toContain('"Summarise #4" is missing instructions');
+        });
+    });
+
+    describe('a save the backend refuses for fields of its nodes', () => {
+        const SENT = 'Use {context._x}';
+        const REFUSED = "Placeholder '{context._x}' is not allowed.";
+        let saveErrors: NodeSaveErrorsStore;
+
+        function canvasTask(): TaskNodeModel {
+            return flowService.nodes().find((node): node is TaskNodeModel => node.backendId === liveTask.id)!;
+        }
+
+        function editInstructions(instructions: string): void {
+            flowService.updateNode({ ...canvasTask(), data: { ...canvasTask().data, instructions } });
+        }
+
+        function refusal(errors: Record<string, unknown>): HttpErrorResponse {
+            return new HttpErrorResponse({ status: 400, error: { errors } });
+        }
+
+        function refusedInstructions(): Observable<never> {
+            return throwError(() => refusal({ task_node_list: [{ index: 0, errors: { instructions: [REFUSED] } }] }));
+        }
+
+        function savedWithInstructions(instructions: string): Observable<GraphDto> {
+            return of(
+                graphDto({
+                    save_version: 2,
+                    start_node_list: [liveStart],
+                    task_node_list: [{ ...liveTask, instructions }],
+                })
+            );
+        }
+
+        beforeEach(() => {
+            saveErrors = TestBed.inject(NodeSaveErrorsStore);
+            flowsApi['getGraphById'].mockReturnValue(
+                of(graphDto({ start_node_list: [liveStart], task_node_list: [liveTask] }))
+            );
+            component.refreshCurrentFlow();
+            editInstructions(SENT);
+        });
+
+        it('keeps the edit unsaved, holds why for the field and names the node in the toast', () => {
+            flowsApi['bulkSaveGraph'].mockReturnValue(refusedInstructions());
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(saveErrors.fieldMessages(canvasTask().id, 'instructions', SENT)).toEqual([REFUSED]);
+            expect(toast['error']).toHaveBeenCalledWith('Failed to save graph — fix the refused fields in "Task #2".');
+            expect(canvasTask().data.instructions).toBe(SENT);
+            expect(component.hasUnsavedChanges()).toBe(true);
+        });
+
+        it('sends the fixed field on the next save and drops the errors once it goes through', () => {
+            flowsApi['bulkSaveGraph'].mockReturnValueOnce(refusedInstructions());
+            component.onGraphSave(flowService.getFlowState());
+            editInstructions('Use {topic}');
+            flowsApi['bulkSaveGraph'].mockReturnValue(savedWithInstructions('Use {topic}'));
+
+            component.onGraphSave(flowService.getFlowState());
+
+            const retried = flowsApi['bulkSaveGraph'].mock.calls[1][1] as {
+                task_node_list: { instructions: string }[];
+            };
+            expect(retried.task_node_list.map((item) => item.instructions)).toEqual(['Use {topic}']);
+            expect(saveErrors.errors().size).toBe(0);
+            expect(component.hasUnsavedChanges()).toBe(false);
+        });
+
+        it('holds the errors of a refused one-node save too, until that node saves', () => {
+            const sidePanel = TestBed.inject(SidePanelService);
+            flowsApi['bulkSaveGraph'].mockReturnValueOnce(refusedInstructions());
+
+            sidePanel.requestSaveNode(canvasTask());
+
+            expect(saveErrors.fieldMessages(canvasTask().id, 'instructions', SENT)).toEqual([REFUSED]);
+            expect(toast['error']).toHaveBeenCalledWith('Failed to save node — fix the refused fields in "Task #2".');
+
+            editInstructions('Use {topic}');
+            flowsApi['bulkSaveGraph'].mockReturnValue(savedWithInstructions('Use {topic}'));
+            sidePanel.requestSaveNode(canvasTask());
+
+            expect(saveErrors.errors().size).toBe(0);
+        });
+
+        it("says what the server said when its errors name none of the flow's nodes", () => {
+            const errors = { nodes: ['This uuid is already used by another node of this flow.'] };
+            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => refusal(errors)));
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(toast['error']).toHaveBeenCalledWith(expect.stringMatching(/^Failed to save graph: /));
+            expect(saveErrors.errors().size).toBe(0);
+        });
+
+        it('says too what no node shows, next to the node it names', () => {
+            const errors = {
+                task_node_list: [{ index: 0, errors: { instructions: [REFUSED] } }],
+                edge_list: ['Edge references node IDs not found in this graph: [9]'],
+            };
+            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => refusal(errors)));
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(toast['error']).toHaveBeenCalledWith(
+                'Failed to save graph — fix the refused fields in "Task #2".' +
+                    ' Also: Edge references node IDs not found in this graph: [9]'
+            );
+        });
+
+        it.each([
+            ['a full save', () => component.onGraphSave(flowService.getFlowState())],
+            ['a one-node save', () => TestBed.inject(SidePanelService).requestSaveNode(canvasTask())],
+        ])('changes nothing when %s is refused after another flow loaded', (_case, save) => {
+            const inFlight = new Subject<GraphDto>();
+            flowsApi['bulkSaveGraph'].mockReturnValue(inFlight);
+            save();
+
+            flowsApi['getGraphById'].mockReturnValue(of(graphDto({ id: 2, start_node_list: [liveStart] })));
+            paramMap$.next(convertToParamMap({ id: '2' }));
+            fixture.detectChanges();
+            inFlight.error(refusal({ task_node_list: [{ index: 0, errors: { instructions: [REFUSED] } }] }));
+
+            expect(toast['error']).not.toHaveBeenCalled();
+            expect(saveErrors.errors().size).toBe(0);
         });
     });
 
@@ -2249,7 +2528,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 openFlow(legacyGraph);
 
                 expect(nodeOfType(NodeType.SCHEDULE_TRIGGER).node_name).toBe(shownName);
-                expect(header().hasUnsavedChanges()).toBe(unsaved);
+                expect(header().saveStatus() === 'unsaved').toBe(unsaved);
             });
         });
 
@@ -2384,7 +2663,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             it('takes the backend value on the canvas and in the saved baseline, leaving the flow clean', () => {
                 expect(nodeOfType<ScheduleTriggerNodeModel>(NodeType.SCHEDULE_TRIGGER).data.isActive).toBe(false);
-                expect(header().hasUnsavedChanges()).toBe(false);
+                expect(header().saveStatus() === 'unsaved').toBe(false);
             });
 
             it('sends no schedule update with the next save', () => {
@@ -2409,7 +2688,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             it('is not an unsaved change', () => {
                 expect(nodeOfType<ScheduleTriggerNodeModel>(NodeType.SCHEDULE_TRIGGER).data.isActive).toBe(false);
-                expect(header().hasUnsavedChanges()).toBe(false);
+                expect(header().saveStatus() === 'unsaved').toBe(false);
             });
 
             it('is not in the next save, which a user without Run can therefore send', () => {
@@ -2429,7 +2708,7 @@ describe('FlowVisualProgrammingComponent', () => {
             function expectSaveRefused(): void {
                 expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
                 expect(warningsShown()).toEqual([TRIGGER_CHANGES_WARNING]);
-                expect(header().hasUnsavedChanges()).toBe(true);
+                expect(header().saveStatus() === 'unsaved').toBe(true);
                 expect(header().isSaving()).toBe(false);
             }
 
@@ -2631,6 +2910,7 @@ describe('FlowVisualProgrammingComponent', () => {
     describe('full save of an agent node', () => {
         const SAVED_AGENT: AgentNode = {
             ...UNEDITED_NODE,
+            uuid: '00000000-0000-4000-8000-000000000041',
             id: 50,
             metadata: {},
             node_number: 1,
@@ -2710,6 +2990,7 @@ describe('FlowVisualProgrammingComponent', () => {
         function cdtDto(id: number, name: string, routeCode: string): GetClassificationDecisionTableNodeRequest {
             return {
                 ...UNEDITED_NODE,
+                uuid: '00000000-0000-4000-8000-000000000042',
                 id,
                 graph: 1,
                 node_number: id,
@@ -3272,6 +3553,7 @@ describe('FlowVisualProgrammingComponent', () => {
         describe('unpack a subflow', () => {
             const SUBGRAPH_NODE: SubGraphNode = {
                 ...UNEDITED_NODE,
+                uuid: '00000000-0000-4000-8000-000000000043',
                 id: 41,
                 node_number: 1,
                 node_name: 'Inner flow',
