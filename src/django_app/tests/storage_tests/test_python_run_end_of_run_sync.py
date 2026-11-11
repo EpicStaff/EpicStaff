@@ -12,12 +12,7 @@ from unittest.mock import patch
 
 import pytest
 from storage_credentials.models import TemporaryStorageAccount
-from datetime import timedelta
-
-from django.utils import timezone
-from storage_credentials.services import run_bin_purge as run_bin_purge_module
 from storage_credentials.services import session_credential_service as service_module
-from tables.services.storage_service.manager import StorageManager
 from storage_credentials.services.acting_identity import ActingIdentity
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import PythonCodeResult, StorageFile
@@ -29,7 +24,7 @@ from tests.services_tests.test_run_code_storage_credentials import (
     ORG_CREDENTIALS_PATH,
     FakeStorageGateway,
 )
-from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
 pytestmark = pytest.mark.django_db
 
@@ -59,8 +54,6 @@ def gateway():
 def backend(monkeypatch):
     in_memory = InMemoryStorageBackend(organization_prefix="")
     monkeypatch.setattr(service_module, "get_storage_backend", lambda organization_prefix="": in_memory)
-    manager = StorageManager(in_memory)
-    monkeypatch.setattr(run_bin_purge_module, "get_storage_manager", lambda: manager)
     return in_memory
 
 
@@ -244,58 +237,3 @@ def test_revoking_an_identity_first_indexes_what_its_runs_wrote(
 
     assert _indexed(acme) == {f"{OWN_FOLDER}unreported.bin": 9}
     assert not TemporaryStorageAccount.objects.exists()
-
-
-def _bin_file(backend, org, path: str, size: int, days_ago: int) -> None:
-    seed_file(backend, org.id, path, b"x" * size)
-    batch = StorageManager(backend).delete(org.id, path, user=None)
-    StorageFile.deleted_objects.filter(org=org, soft_delete_batch=batch).update(
-        soft_deleted_at=timezone.now() - timedelta(days=days_ago)
-    )
-
-
-def _binned(org) -> set[str]:
-    return set(StorageFile.deleted_objects.filter(org=org).values_list("path", flat=True))
-
-
-def test_unreported_writes_that_leave_the_org_over_quota_purge_the_bin_for_an_admin_run(
-    gateway, backend, acme, admin_acme, settings
-):
-    _bin_file(backend, acme, "oldest.bin", 10, days_ago=3)
-    _bin_file(backend, acme, "newer.bin", 10, days_ago=2)
-    execution_id = _start(acme, admin_acme)
-    _store(backend, acme, f"{OWN_FOLDER}sneaky.bin", 15)
-    settings.ORG_STORAGE_QUOTA = 30
-
-    session_credential_service.revoke_for_test_run(execution_id)
-
-    # 20 binned + 15 just indexed is 5 over: the oldest entry covers it.
-    assert _binned(acme) == {"newer.bin"}
-    assert _indexed(acme) == {f"{OWN_FOLDER}sneaky.bin": 15}
-    assert not TemporaryStorageAccount.objects.exists()
-    assert len(gateway.deleted) == 1
-
-
-def test_the_bin_is_left_alone_at_the_end_of_a_run_that_may_not_purge(
-    gateway, backend, acme, member_only, settings
-):
-    _bin_file(backend, acme, "old.bin", 10, days_ago=3)
-    execution_id = _start(acme, member_only)
-    _store(backend, acme, f"{OWN_FOLDER}sneaky.bin", 15)
-    settings.ORG_STORAGE_QUOTA = 20
-
-    session_credential_service.revoke_for_test_run(execution_id)
-
-    assert _binned(acme) == {"old.bin"}
-    assert len(gateway.deleted) == 1
-
-
-def test_a_run_ending_inside_the_quota_purges_nothing(gateway, backend, acme, admin_acme, settings):
-    _bin_file(backend, acme, "old.bin", 10, days_ago=3)
-    execution_id = _start(acme, admin_acme)
-    _store(backend, acme, f"{OWN_FOLDER}small.bin", 5)
-    settings.ORG_STORAGE_QUOTA = 100
-
-    session_credential_service.revoke_for_test_run(execution_id)
-
-    assert _binned(acme) == {"old.bin"}

@@ -363,16 +363,6 @@ def test_every_account_of_a_session_is_revoked_when_it_ends(gateway, acme, sessi
 
 
 @pytest.mark.django_db
-def test_unattended_accounts_never_purge_the_storage_bin(gateway, acme, session, admin_acme):
-    root = Session.objects.create(graph=session.graph, status=Session.SessionStatus.PENDING)
-    SessionPrincipal.objects.create(session=root, kind=SessionPrincipal.ActionKind.TRIGGER)
-
-    _issue(session, acme, ActingIdentity.for_sub_flow(admin_acme, None, root.pk), [StorageGrant(read=True)])
-
-    assert not TemporaryStorageAccount.objects.get(session=session).may_purge_storage_bin
-
-
-@pytest.mark.django_db
 def test_revoking_by_identity_reaches_every_account_of_a_sub_flow_session(
     gateway, acme, session, member_only
 ):
@@ -409,31 +399,6 @@ def test_a_failed_mint_among_several_revokes_the_ones_that_succeeded(gateway, ac
         _issue(session, acme, ActingIdentity.unattributed(), [StorageGrant(read=True), StorageGrant(write=True)])
 
     assert gateway.deleted == ["temp-access-1"]
-    assert not TemporaryStorageAccount.objects.filter(session=session).exists()
-
-
-@pytest.mark.django_db
-def test_going_over_quota_cuts_off_every_account_of_the_run(gateway, acme, session):
-    from storage_credentials.services.run_quota_enforcer import run_quota_enforcer
-
-    accounts = _issue(
-        session,
-        acme,
-        ActingIdentity.unattributed(),
-        [StorageGrant(read=True), StorageGrant(write=True), StorageGrant(delete=True)],
-    )
-
-    with patch(
-        "storage_credentials.services.run_quota_enforcer.is_over_quota", return_value=True
-    ):
-        run_quota_enforcer.enforce_after_write(
-            org_id=acme.id,
-            access_key=accounts.by_grant["-w-"].access_key,
-            session_id=session.pk,
-            execution_id="exec",
-        )
-
-    assert set(gateway.deleted) == {a.access_key for a in accounts.by_grant.values()}
     assert not TemporaryStorageAccount.objects.filter(session=session).exists()
 
 
@@ -483,10 +448,6 @@ def test_a_session_end_reconciles_the_folders_of_all_its_accounts_once(gateway, 
             return_value=reconciler,
         ),
         patch("storage_credentials.services.session_credential_service.get_storage_backend"),
-        patch(
-            "storage_credentials.services.session_credential_service.is_over_quota",
-            return_value=False,
-        ),
     ):
         session_credential_service.revoke_for_session(session.pk)
 
@@ -518,10 +479,6 @@ def test_revoking_by_identity_reconciles_the_session_union_once(
             return_value=reconciler,
         ),
         patch("storage_credentials.services.session_credential_service.get_storage_backend"),
-        patch(
-            "storage_credentials.services.session_credential_service.is_over_quota",
-            return_value=False,
-        ),
     ):
         session_credential_service.revoke_for_identity(org_id=acme.id, user_ids=[member_only.pk])
 

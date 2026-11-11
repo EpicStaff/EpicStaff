@@ -33,16 +33,13 @@ def _reset_module_state():
     ``STORAGE_ALLOWED_ACTIONS`` and ``STORAGE_OWN_PATHS`` are cached in the same
     dict, so ``restrict_actions`` clears it too.
 
-    ``_mutations`` is also module-level and must not leak between tests, and neither
-    must ``_bytes_added``, the bytes counted against ``STORAGE_FREE_BYTES``.
+    ``_mutations`` is also module-level and must not leak between tests.
     """
     storage_module.__cache.clear()
     clear_mutations()
-    storage_module._bytes_added = 0
     yield
     storage_module.__cache.clear()
     clear_mutations()
-    storage_module._bytes_added = 0
 
 
 @pytest.fixture

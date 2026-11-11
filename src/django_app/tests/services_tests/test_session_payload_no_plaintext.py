@@ -139,8 +139,6 @@ class TestSessionPayloadSecrets:
             "secret_key": "SK-run-session",
             "shared_actions": None,
             "own_paths": [],
-            "free_bytes": None,
-            "purgeable_bytes": None,
         }
         assert payload["storage_credentials_by_grant"]["r--"]["access_key"] == "AK-read-grant"
         assert "SK-run-session" not in _stored_sessions(graph), "storage secret key was persisted"
@@ -188,8 +186,6 @@ class TestSessionPayloadSecrets:
             "secret_key": "SK-published-only",
             "shared_actions": None,
             "own_paths": [],
-            "free_bytes": None,
-            "purgeable_bytes": None,
         }
 
     def test_published_copy_carries_no_credentials_when_none_were_issued(

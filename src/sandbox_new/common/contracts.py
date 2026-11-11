@@ -27,8 +27,6 @@ class StorageCredentialsMessage(Schema):
     secret_key: str
     shared_actions: list[str] | None = None
     own_paths: list[str] = Field(default_factory=list)
-    free_bytes: int | None = None
-    purgeable_bytes: int | None = None
 
 
 class ExecutionJobMessage(Schema):

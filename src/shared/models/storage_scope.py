@@ -83,28 +83,12 @@ class StorageCredentials(BaseModel):
     """Actions the account allows on the allowed paths outside `own_paths`.
 
     Mirrors the acting identity's permissions so `epicstaff_storage` can refuse an
-    operation before calling storage. An organization with no storage left additionally
-    gets an account without write access, which `free_bytes` and `purgeable_bytes`
-    report instead. None means the issuer did not narrow them, and the library keeps its
-    path-only checks.
+    operation before calling storage. None means the issuer did not narrow them, and the
+    library keeps its path-only checks.
     """
 
     own_paths: list[str] = Field(default_factory=list)
     """The run's own folders (`sessions/<id>/`, `test-runs/...`): every action allowed."""
-
-    free_bytes: int | None = None
-    """Bytes the organization may still add to storage when the account was issued.
-
-    `epicstaff_storage` refuses a write past it unless the oldest recycle-bin items may be
-    purged to make room. None means no limit is known and nothing is checked.
-    """
-
-    purgeable_bytes: int | None = None
-    """Bytes beyond `free_bytes` that purging the organization's recycle bin would free.
-
-    Only non-zero when the identity the run acts as may purge the bin; zero otherwise.
-    None means no limit is known.
-    """
 
     model_config = ConfigDict(from_attributes=True)
 

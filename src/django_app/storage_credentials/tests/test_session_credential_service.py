@@ -232,7 +232,6 @@ class TestIssueForSessionWithStorage(TestCase):
             },
             shared_actions=frozenset(StorageAction),
             own_folders={f"org_{self.org.id}/sessions/{self.session.id}/"},
-            own_actions=frozenset(StorageAction),
         )
 
     @mock.patch("storage_credentials.services.session_credential_service.asyncio.run")

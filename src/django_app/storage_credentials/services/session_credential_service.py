@@ -37,8 +37,6 @@ from src.shared.models.sessions import SessionData
 from src.shared.models.storage_scope import StorageAction, StorageCredentials
 from tables.models import PythonCodeResult, RealtimeAgentChat, Session
 from tables.services.storage_service import get_storage_backend
-from tables.services.storage_service.dataclasses import BinPurgeGrant
-from tables.services.storage_service.quota import is_over_quota, org_headroom
 from tables.services.storage_service.reconciler import StorageReconciler
 
 from storage_credentials.clients.minio_admin_client import StorageAdminGateway
@@ -51,7 +49,6 @@ from storage_credentials.policies import build_temporary_policy
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.acting_identity import ActingIdentity
 from storage_credentials.services.org_credential_store import org_credential_store
-from storage_credentials.services.run_bin_purge import purge_bin_for_run
 from storage_credentials.services.scope_validator import credential_scope_validator
 from storage_credentials.services.storage_demand_collector import (
     collect_storage_demand,
@@ -305,13 +302,6 @@ class SessionCredentialService:
         recorded on each row so the account can be revoked when that identity's access
         changes.
 
-        An organization with no storage left (its free bytes, plus its storage bin's when
-        the identity may purge it, are zero) gets accounts with no write access at all,
-        own folders included; the run still starts. The returned credentials carry
-        the free and purgeable bytes, so the library refuses a write that does not fit.
-        The actions stay as they are there, so a refused write reads as a
-        full quota rather than a missing permission.
-
         Raises:
             CredentialScopeValidationError: `allowed_paths` is empty or escapes
                 the org prefix, or nothing is left to grant because an account may
@@ -325,18 +315,6 @@ class SessionCredentialService:
             storage_allowed_paths=allowed_paths,
             own_paths=own_paths,
         )
-        may_purge_bin = acting_identity.may_purge_storage_bin(org_id)
-        free_bytes, purgeable_bytes = org_headroom(
-            org_id, bin_purge=BinPurgeGrant(actor="") if may_purge_bin else None
-        )
-        has_room = free_bytes + purgeable_bytes > 0
-        if not has_room:
-            logger.info(
-                "Organization {} has no storage left: {} gets accounts that cannot write",
-                org_id,
-                owner_label,
-            )
-
         planned: list[_PlannedAccount] = []
         for shared_actions in action_sets:
             shared_folders = scoped_folders.shared
@@ -352,17 +330,11 @@ class SessionCredentialService:
                 raise CredentialScopeValidationError(
                     "You don't have access to the files this agent's tools use."
                 )
-            own_actions = frozenset(StorageAction)
-            policy_shared_actions = shared_actions
-            if not has_room:
-                policy_shared_actions = shared_actions - {StorageAction.WRITE}
-                own_actions = own_actions - {StorageAction.WRITE}
             policy = build_temporary_policy(
                 bucket=settings.STORAGE_BUCKET_NAME,
                 shared_folders=set(shared_folders),
-                shared_actions=policy_shared_actions,
+                shared_actions=shared_actions,
                 own_folders=set(scoped_folders.own),
-                own_actions=own_actions,
             )
             planned.append(_PlannedAccount(shared_actions, shared_folders, policy))
 
@@ -411,7 +383,6 @@ class SessionCredentialService:
                     issued_for_api_key=acting_identity.api_key,
                     issued_for_root_user=root_identity.recorded_user if root_identity else None,
                     issued_for_root_api_key=root_identity.api_key if root_identity else None,
-                    may_purge_storage_bin=may_purge_bin,
                     shared_actions=[action.value for action in shared_action_list],
                     granted_folders=self._org_relative_grants(
                         org_id, scoped_folders.own | account.shared_folders
@@ -425,8 +396,6 @@ class SessionCredentialService:
                         secret_key=secret_key,
                         shared_actions=shared_action_list,
                         own_paths=sorted(own_paths),
-                        free_bytes=free_bytes,
-                        purgeable_bytes=purgeable_bytes,
                     )
                 )
             logger.info(
@@ -867,11 +836,9 @@ class SessionCredentialService:
         owner_label: str,
         granted_folders: list[str] | None = None,
     ) -> None:
-        """Before an account is revoked: index what its run wrote, then make room if that left the org over quota.
+        """Before an account is revoked: index what its run wrote.
 
-        The reconcile only adds (see `_reconcile_granted_folders`), and the purge needs the
-        run to be allowed one (see `purge_bin_for_run`). No revocation follows from being
-        over quota here: the account is being revoked anyway. Best-effort, like the revocation.
+        The reconcile only adds (see `_reconcile_granted_folders`). Best-effort, like the revocation.
 
         Args:
             granted_folders: The folders to reconcile, for a run with several accounts; the
@@ -884,13 +851,6 @@ class SessionCredentialService:
             else account.granted_folders,
             owner_label=owner_label,
         )
-        try:
-            if is_over_quota(org_id):
-                purge_bin_for_run(account, org_id, f"the end of {owner_label}")
-        except Exception as error:
-            logger.warning(
-                "Failed to purge the storage bin at the end of {}: {}", owner_label, error
-            )
 
     def revoke(self, access_key: str, org_id: int) -> None:
         """Revoke a temporary storage service account in the storage backend.

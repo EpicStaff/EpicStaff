@@ -46,10 +46,6 @@ class StorageCredentials(ValueObject):
     shared_actions: list[str] | None = None
     # The run's own folders, where every action is allowed.
     own_paths: list[str] = Field(default_factory=list)
-    # Bytes the org may still add, and bytes purging its recycle bin would free beyond
-    # that; None means no limit is known.
-    free_bytes: int | None = None
-    purgeable_bytes: int | None = None
 
 
 class Job(ValueObject):

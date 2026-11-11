@@ -45,7 +45,3 @@ class ConfigureStorageStep:
         context.env["STORAGE_OWN_PATHS"] = json.dumps(credentials.own_paths)
         if credentials.shared_actions is not None:
             context.env["STORAGE_ALLOWED_ACTIONS"] = json.dumps(credentials.shared_actions)
-        if credentials.free_bytes is not None:
-            context.env["STORAGE_FREE_BYTES"] = str(credentials.free_bytes)
-        if credentials.purgeable_bytes is not None:
-            context.env["STORAGE_PURGEABLE_BYTES"] = str(credentials.purgeable_bytes)

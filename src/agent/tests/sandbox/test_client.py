@@ -250,8 +250,6 @@ async def test_storage_credentials_reach_the_intake(client, sandbox):
         secret_key="SK-TEMP",
         shared_actions=["read"],
         own_paths=["sessions/42/"],
-        free_bytes=1000,
-        purgeable_bytes=0,
     )
 
     await asyncio.wait_for(client.submit(_storage_task(credentials)), timeout=2)
@@ -261,8 +259,6 @@ async def test_storage_credentials_reach_the_intake(client, sandbox):
         "secret_key": "SK-TEMP",
         "shared_actions": ["read"],
         "own_paths": ["sessions/42/"],
-        "free_bytes": 1000,
-        "purgeable_bytes": 0,
     }
     assert sandbox.submitted["use_storage"] is True
     assert sandbox.submitted["storage_allowed_paths"] == ["org_7/session_42/"]

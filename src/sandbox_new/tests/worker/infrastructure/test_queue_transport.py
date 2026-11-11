@@ -219,23 +219,3 @@ async def test_the_credential_scope_is_decoded_onto_the_job():
 
     assert job.storage_credentials.shared_actions == ["read", "delete"]
     assert job.storage_credentials.own_paths == ["sessions/7/"]
-
-
-async def test_the_remaining_storage_is_decoded_onto_the_job():
-    queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
-    queue.put_nowait(
-        ExecutionJobMessage(
-            execution_id="exec-10",
-            venv_hash="4abc",
-            code="",
-            entrypoint="main",
-            use_storage=True,
-            storage_credentials=StorageCredentialsMessage(
-                access_key="AK123", secret_key="SK456", free_bytes=5, purgeable_bytes=9
-            ),
-        )
-    )
-
-    job = await QueueJobSource(queue).get()
-
-    assert (job.storage_credentials.free_bytes, job.storage_credentials.purgeable_bytes) == (5, 9)

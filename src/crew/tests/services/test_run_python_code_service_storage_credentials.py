@@ -19,8 +19,6 @@ async def test_session_credentials_reach_the_submitted_execution(
         secret_key="SK-SESSION",
         shared_actions=["read"],
         own_paths=["sessions/42/"],
-        free_bytes=1000,
-        purgeable_bytes=0,
     )
 
     await run_code(
@@ -40,8 +38,6 @@ async def test_session_credentials_reach_the_submitted_execution(
         "secret_key": "SK-SESSION",
         "shared_actions": ["read"],
         "own_paths": ["sessions/42/"],
-        "free_bytes": 1000,
-        "purgeable_bytes": 0,
     }
     assert sandbox.submitted["use_storage"] is True
     assert sandbox.submitted["storage_allowed_paths"] == ["org_7/session_42/"]

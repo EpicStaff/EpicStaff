@@ -134,8 +134,6 @@ async def test_storage_credentials_parameter_is_forwarded_onto_the_submission(
                 secret_key="SK456",
                 shared_actions=["read"],
                 own_paths=[],
-                free_bytes=1000,
-                purgeable_bytes=0,
             ),
         ),
         timeout=5,
@@ -147,8 +145,6 @@ async def test_storage_credentials_parameter_is_forwarded_onto_the_submission(
         "secret_key": "SK456",
         "shared_actions": ["read"],
         "own_paths": [],
-        "free_bytes": 1000,
-        "purgeable_bytes": 0,
     }
 
 
