@@ -659,7 +659,7 @@ class TestCrossOrgApi:
         assert "a.txt" in _live_paths(beta)
 
     @pytest.mark.parametrize("operation", ["copy", "move"])
-    def test_a_superadmin_api_key_gets_a_413_and_the_destination_bin_stays_whole(
+    def test_a_superadmin_api_key_may_not_transfer_across_orgs_and_nothing_changes(
         self, issue_api_key, superadmin, acme, beta, operation
     ):
         raw_key, _ = issue_api_key(user=superadmin)
@@ -677,7 +677,8 @@ class TestCrossOrgApi:
             format="json",
         )
 
-        assert response.status_code == 413, response.content
+        assert response.status_code == 403, response.content
+        assert response.json()["code"] == "permission_denied"
         assert _binned_paths(beta) == {"old.txt"}
         assert _live_paths(acme) == {"a.txt"}
 

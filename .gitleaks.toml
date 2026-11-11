@@ -1,0 +1,23 @@
+# Gitleaks settings for the secret-scan job in .github/workflows/pr.yml: the default rules,
+# minus two kinds of false positive. The job reads this file from the pull request's BASE
+# branch, so a change here takes effect for pull requests opened against a branch that has it.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """\
+generic-api-key fires on a word such as Key or Secret in Python code (ApiKey.KeyType.SYSTEM, \
+ResourceType.SECRETS) and takes the next keyword argument as the secret: \
+revoked_at__isnull=True, permissions=secrets_bitmask. Allowed only when the value is \
+True/False/None or a lowercase snake_case name: no digits, no capitals, which a real \
+credential always has."""
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^[a-z_]+=(True|False|None|[a-z_]+)$''']
+
+[[allowlists]]
+description = "The made-up example key in docs/rbac/api_keys.md, not a key of any install."
+targetRules = ["generic-api-key", "curl-auth-header"]
+regexTarget = "secret"
+regexes = ['''^es-kR3f9s1n1qz8''']

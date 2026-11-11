@@ -42,7 +42,10 @@ _ENUM_FIELDS = {
 }
 
 # The widget (EpicChat) is served from its CDN, not by EpicStaff: `widget_url` is CHAT_WIDGET_URL.
-SNIPPET = '<script src="{widget_url}" data-public-key="{public_key}" data-chat-url="{base}/chat/" async></script>'
+SNIPPET = '<script src="{widget_url}"{integrity} data-public-key="{public_key}" data-chat-url="{base}/chat/" async></script>'
+# Filled from CHAT_WIDGET_INTEGRITY, which settings accept as SRI hashes only. The CDN script is
+# cross-origin: without crossorigin the browser cannot check its integrity and refuses to run it.
+INTEGRITY_ATTRIBUTES = ' integrity="{integrity}" crossorigin="anonymous"'
 
 
 CONTRACT_START_VARIABLES = ("chat_history", "user_message")
@@ -114,6 +117,7 @@ class BindingOrchestrator:
         flows: AbstractFlowRunner,
         public_base_url: str,
         widget_url: str,
+        widget_integrity: str | None,
         limits: BindingLimits,
     ):
         self._uow = uow_factory
@@ -121,6 +125,9 @@ class BindingOrchestrator:
         self._limits = limits
         self._base_url = public_base_url.rstrip("/")
         self._widget_url = widget_url
+        self._integrity_attributes = (
+            INTEGRITY_ATTRIBUTES.format(integrity=widget_integrity) if widget_integrity else ""
+        )
 
     def limits(self) -> BindingLimits:
         """The deployment's budget and duration defaults and caps; the same for every organization."""
@@ -410,6 +417,9 @@ class BindingOrchestrator:
             "public_key": binding.public_key,
             "chat_base_url": f"{self._base_url}/chat/",
             "snippet": SNIPPET.format(
-                widget_url=self._widget_url, base=self._base_url, public_key=binding.public_key
+                widget_url=self._widget_url,
+                integrity=self._integrity_attributes,
+                base=self._base_url,
+                public_key=binding.public_key,
             ),
         }

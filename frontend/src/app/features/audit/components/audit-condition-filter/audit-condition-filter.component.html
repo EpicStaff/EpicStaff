@@ -43,8 +43,10 @@
         }
 
         <button
+            #addConditionButton
             class="conditions-filter__add"
             type="button"
+            [attr.data-group-id]="group.id"
             (click)="addCondition(group.id)"
         >
             + Add condition
@@ -53,6 +55,7 @@
 }
 
 <button
+    #addGroupButton
     class="conditions-filter__add conditions-filter__add--group"
     type="button"
     (click)="addGroup()"

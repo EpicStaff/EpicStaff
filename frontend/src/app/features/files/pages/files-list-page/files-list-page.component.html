@@ -27,9 +27,11 @@
         </header>
         <nav class="tabs">
             <div class="tabs-left">
-                @for (tab of tabs; track tab.link; let last = $last) {
+                @for (tab of tabs; track tab.link) {
                     @if (tab.isPermitted()) {
+                        <!-- RouterLink makes a non-link host focusable; the tab's own button already takes Tab and Enter. -->
                         <app-tab-button
+                            tabindex="-1"
                             mod="sm"
                             routerLink="{{ tab.link }}"
                             routerLinkActive="active"
@@ -46,9 +48,6 @@
                         >
                             {{ tab.label }}
                         </app-tab-button>
-                        @if (!last) {
-                            <span class="tab-sep">/</span>
-                        }
                     }
                 }
             </div>
@@ -61,9 +60,11 @@
                             size="1rem"
                         ></app-svg-icon>
                         <input
+                            #searchInput
                             type="text"
                             class="search-input"
                             placeholder="Search collections, folders, files..."
+                            aria-label="Search"
                             [ngModel]="searchTerm()"
                             (ngModelChange)="filesSearchService.setSearchTerm($event)"
                         />
@@ -71,8 +72,9 @@
                             <button
                                 type="button"
                                 class="clear-btn"
-                                aria-label="Clear"
-                                (click)="filesSearchService.clear()"
+                                aria-label="Clear search"
+                                matTooltip="Clear search"
+                                (click)="filesSearchService.clear(); searchInput.focus()"
                             >
                                 <app-svg-icon
                                     icon="x"

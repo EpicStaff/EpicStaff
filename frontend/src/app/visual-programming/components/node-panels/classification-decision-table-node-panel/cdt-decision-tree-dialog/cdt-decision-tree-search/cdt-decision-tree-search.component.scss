@@ -68,7 +68,7 @@
     border: 1px solid var(--color-divider-regular);
     border-radius: 4px;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         border-color: var(--accent-color);
     }
 

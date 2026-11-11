@@ -2,33 +2,67 @@
     class="bulk-select"
     [class.bulk-select--small]="isSmall()"
     [class.bulk-select--outline]="isOutline()"
+    [class.bulk-select--toolbar]="isToolbar()"
+    [class.bulk-select--icon-only]="isIconOnly()"
     [class.bulk-select--selected]="showsSelection()"
     [class.bulk-select--disabled]="disabled()"
 >
-    <button
-        type="button"
-        class="bulk-select__main"
-        [class.bulk-select__main--open]="isMenuOpen()"
-        [cdkMenuTriggerFor]="menu"
-        [cdkMenuPosition]="menuPositions"
-        [disabled]="disabled()"
-        (cdkMenuOpened)="onMenuOpened()"
-        (cdkMenuClosed)="onMenuClosed()"
-    >
-        @if (showsSelection()) {
-            <span class="bulk-select__label">
-                Selected <span class="bulk-select__count">({{ selectedCount() }})</span>
-            </span>
-        } @else {
-            <span class="bulk-select__label">Select</span>
-        }
-        <app-svg-icon
-            icon="chevron-down"
-            class="bulk-select__chevron"
-            [size]="chevronIconSize()"
-            [class.bulk-select__chevron--open]="isMenuOpen()"
-        />
-    </button>
+    @if (isSelectToggle()) {
+        <!-- toggleWhenEmpty with nothing selected: no menu, a toggle of select mode. -->
+        <button
+            #mainButton
+            type="button"
+            class="bulk-select__main"
+            [disabled]="disabled()"
+            [attr.aria-pressed]="selectMode()"
+            [attr.aria-label]="isIconOnly() ? 'Select' : null"
+            matTooltip="Select"
+            (click)="onToggleSelectMode()"
+        >
+            @if (isToolbar()) {
+                <app-svg-icon
+                    icon="check-square"
+                    size="12px"
+                />
+            }
+            <span class="bulk-select__label"><span class="bulk-select__word">Select</span></span>
+        </button>
+    } @else {
+        <button
+            #mainButton
+            type="button"
+            class="bulk-select__main"
+            [class.bulk-select__main--open]="isMenuOpen()"
+            [cdkMenuTriggerFor]="menu"
+            [cdkMenuPosition]="menuPositions"
+            [disabled]="disabled()"
+            [matTooltip]="mainTooltip()"
+            (cdkMenuOpened)="onMenuOpened()"
+            (cdkMenuClosed)="onMenuClosed()"
+        >
+            @if (isToolbar()) {
+                <app-svg-icon
+                    icon="check-square"
+                    size="12px"
+                />
+            }
+            @if (showsSelection()) {
+                <span class="bulk-select__label">
+                    <!-- The space is inside the word: it goes with it in the icon-only look. -->
+                    <span class="bulk-select__word">{{ selectionWord() }}&#32;</span>
+                    <span class="bulk-select__count">({{ selectedCount() }})</span>
+                </span>
+            } @else {
+                <span class="bulk-select__label"><span class="bulk-select__word">Select</span></span>
+            }
+            <app-svg-icon
+                icon="chevron-down"
+                class="bulk-select__chevron"
+                [size]="chevronIconSize()"
+                [class.bulk-select__chevron--open]="isMenuOpen()"
+            />
+        </button>
+    }
     @if (showsSelection()) {
         <span
             class="bulk-select__divider"
@@ -59,14 +93,41 @@
         [class.bulk-select-menu--outline]="isOutline()"
     >
         <!-- (keydown.escape): see onMenuItemEscape(). -->
-        <button
-            cdkMenuItem
-            type="button"
-            class="bulk-select-menu__item"
-            (cdkMenuItemTriggered)="selectAllToggled.emit()"
-            (keydown.escape)="onMenuItemEscape($event)"
-        >
-            {{ menuItemLabel() }}
-        </button>
+        @if (hasSelectClearMenu()) {
+            <!-- Fixed items: "Select All" only ever selects, so it is off once everything is selected. -->
+            <button
+                cdkMenuItem
+                type="button"
+                class="bulk-select-menu__item"
+                [cdkMenuItemDisabled]="allSelected()"
+                (cdkMenuItemTriggered)="selectAllToggled.emit()"
+                (keydown.escape)="onMenuItemEscape($event)"
+            >
+                Select All
+            </button>
+            <div
+                class="bulk-select-menu__divider"
+                role="separator"
+            ></div>
+            <button
+                cdkMenuItem
+                type="button"
+                class="bulk-select-menu__item"
+                (cdkMenuItemTriggered)="selectionCleared.emit()"
+                (keydown.escape)="onMenuItemEscape($event)"
+            >
+                Clear Selection
+            </button>
+        } @else {
+            <button
+                cdkMenuItem
+                type="button"
+                class="bulk-select-menu__item"
+                (cdkMenuItemTriggered)="selectAllToggled.emit()"
+                (keydown.escape)="onMenuItemEscape($event)"
+            >
+                {{ menuItemLabel() }}
+            </button>
+        }
     </div>
 </ng-template>

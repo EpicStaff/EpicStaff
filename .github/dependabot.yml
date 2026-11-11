@@ -1,6 +1,6 @@
-# Keeps the commit-SHA pins in .github/workflows/ current. Every third-party
-# action is pinned as `owner/repo@<40-char sha> # vX.Y.Z`; Dependabot reads the
-# trailing version comment and bumps the SHA and the comment together.
+# Keeps the pins current. Every third-party action is pinned as
+# `owner/repo@<40-char sha> # vX.Y.Z` and every third-party image as
+# `image:tag@sha256:<digest>`; Dependabot bumps the version and the pin together.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -18,6 +18,48 @@ updates:
       # Minor and patch bumps land as one weekly PR; major bumps stay separate
       # so each breaking upgrade is reviewed on its own.
       github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # `/src/*` is one level deep on purpose: the lab and test Dockerfiles below it stay out.
+  - package-ecosystem: docker
+    directories:
+      - /frontend
+      - /src/*
+    target-branch: developer
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    cooldown:
+      default-days: 7
+    ignore:
+      # A Python minor (3.12 -> 3.13) breaks dependencies like a major; upgrade it on purpose.
+      - dependency-name: python
+        update-types:
+          - version-update:semver-minor
+    groups:
+      docker:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker-compose
+    directory: /src
+    target-branch: developer
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    cooldown:
+      default-days: 7
+    groups:
+      docker-compose:
         patterns:
           - "*"
         update-types:

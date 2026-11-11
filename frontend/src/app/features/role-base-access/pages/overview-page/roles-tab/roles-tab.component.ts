@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     AppTableCellDirective,
@@ -13,6 +13,7 @@ import {
     LoadingSpinnerComponent,
     SearchComponent,
     SelectItem,
+    TableColumnPickerComponent,
     TableRow,
     ViewButtonComponent,
 } from '@shared/components';
@@ -46,6 +47,7 @@ import { rbacErrorMessage } from '../../../utils';
     imports: [
         AppTableComponent,
         AppTableCellDirective,
+        TableColumnPickerComponent,
         ButtonComponent,
         SearchComponent,
         LoadingSpinnerComponent,
@@ -56,6 +58,9 @@ import { rbacErrorMessage } from '../../../utils';
     ],
 })
 export class RolesTabComponent {
+    // Takes the focus when a delete removes the row button that had it.
+    private readonly mainAction = viewChild<ButtonComponent>('mainAction');
+
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private toast = inject(ToastService);
@@ -93,19 +98,20 @@ export class RolesTabComponent {
     });
 
     readonly columns = computed<AppTableColumnDef[]>(() => [
-        { key: 'name', label: 'ROLE NAME', width: 'minmax(160px, 1.2fr)' },
-        { key: 'description', label: 'DESCRIPTION', width: 'minmax(200px, 2.5fr)' },
+        { key: 'name', label: 'Role Name', width: '200px', pinned: 'start' },
+        { key: 'description', label: 'Description', width: 'minmax(200px, 2.5fr)' },
         {
             key: 'organization',
-            label: 'ORGANIZATION',
+            label: 'Organization',
             width: 'minmax(175px, 1fr)',
+            hideable: false,
             filterItems: this.orgFilterItems(),
             filterKind: 'multi',
             filterServerSide: true,
             defaultValues: this.activeOrgDefault(),
         },
-        { key: 'members', label: 'MEMBERS', width: 'minmax(90px, 0.8fr)' },
-        { key: 'actions', label: 'ACTIONS', width: '160px', align: 'end' },
+        { key: 'members', label: 'Members', width: 'minmax(100px, 0.8fr)', hideable: false },
+        { key: 'actions', label: 'Actions', width: 'max-content', pinned: 'end' },
     ]);
 
     /** Combined rows: built-in roles first (org label = "All"), then custom roles. */
@@ -278,6 +284,7 @@ export class RolesTabComponent {
                             ? `Role deleted. ${res.reassigned_count} user${res.reassigned_count === 1 ? '' : 's'} moved to Viewer.`
                             : 'Role deleted.'
                     );
+                    this.mainAction()?.focus();
                 },
                 error: (e) => this.toast.error(e.error?.message ?? 'Failed to delete role'),
             });

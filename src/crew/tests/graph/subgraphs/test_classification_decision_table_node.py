@@ -13,11 +13,15 @@ class with its own singleton.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from dotdict import DotDict
 from langgraph.graph import END, StateGraph
+from litellm.types.utils import ModelResponse, Usage
+from loguru import logger
 
 from models.state import State
 from services.graph.events import StopEvent
@@ -33,6 +37,16 @@ from src.shared.models.graph_nodes import (
 )
 from src.shared.models import PythonCodeData
 from src.shared.models.ai_providers import LLMConfigData, LLMData
+from src.shared.models.sessions import TokenUsage
+from src.shared.models.system_one import (
+    NoulAnswer,
+    SystemOneConfigData,
+    SystemOneResult,
+)
+from src.shared.system_one.adapter import SYSTEM_ONE_ADAPTERS, SystemOneError
+from src.shared.system_one.llm_adapter import LlmSystemOneAdapter
+from src.shared.system_one.openai_adapter import OpenAIDecisionsAdapter
+from src.shared.system_one.typesafe_adapter import TypeSafeAdapter
 from utils.singleton_meta import SingletonMeta
 
 
@@ -930,3 +944,517 @@ async def test_llm_failure_reports_the_prompt_without_provider_exception_text(mo
     assert first_error_message(redis_service)["details"] == (
         "Error in condition 'prompt_row': LLM call failed for prompt 'classify'"
     )
+
+
+# ---------------------------------------------------------------------------
+# System One entries
+# ---------------------------------------------------------------------------
+
+
+class FakeSystemOneAdapter:
+    """Answers every question with a fixed noul and records the state it got."""
+
+    def __init__(self, noul: float = 0.92, error: Exception | None = None, cost: float = 0.0):
+        self.noul, self.error, self.cost, self.states = noul, error, cost, []
+
+    async def evaluate(self, *, config, state, questions):
+        self.states.append(state)
+        if self.error:
+            raise self.error
+        answers = {name: NoulAnswer(type="noul", noul=self.noul) for name in questions}
+        result = SystemOneResult(answers=answers, provider=config.provider, model_version="fake-1")
+        return result, TokenUsage(prompt_tokens=7, total_tokens=7, total_cost_usd=self.cost)
+
+
+FAKE_CONFIG = SystemOneConfigData(id=1, provider="fake")
+
+
+def system_one_node(
+    config: SystemOneConfigData | None = FAKE_CONFIG,
+    questions: dict | None = None,
+    input_map: dict | None = None,
+):
+    entry = PromptConfigData(
+        prompt_text="",
+        kind="system_one",
+        system_one_config=config,
+        questions=(
+            {"is_engineering": {"type": "noul", "instructions": "Engineering?"}}
+            if questions is None
+            else questions
+        ),
+        input_map={"company": "variables.company"} if input_map is None else input_map,
+        result_variable="company_check",
+    )
+    rows = [
+        row(0, prompt_id="company_check", continue_flag=True),
+        row(1, "company_check.answers.is_engineering.noul > 0.8", "eng_branch"),
+    ]
+    return make_node_data(
+        condition_groups=rows,
+        prompts={"company_check": entry},
+        default_next_node="other",
+        next_error_node="error_node",
+    )
+
+
+def result_node(result) -> str:
+    return result["system_variables"]["nodes"]["cdt_node"]["result_node"]
+
+
+@pytest.fixture
+def sandbox(monkeypatch):
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+
+
+@pytest.mark.asyncio
+async def test_a_system_one_row_stores_answers_and_the_next_row_routes_on_them(
+    monkeypatch, sandbox
+):
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", FakeSystemOneAdapter(noul=0.92))
+    subgraph, _ = build_subgraph_with_redis(system_one_node())
+
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "eng_branch"
+    assert result["variables"]["company_check"]["answers"]["is_engineering"]["noul"] == 0.92
+
+
+@pytest.mark.asyncio
+async def test_below_threshold_takes_the_default_path(monkeypatch, sandbox):
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", FakeSystemOneAdapter(noul=0.5))
+    subgraph, _ = build_subgraph_with_redis(system_one_node())
+
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "other"
+    assert result["variables"]["company_check"]["answers"]["is_engineering"]["noul"] == 0.5
+
+
+TYPESAFE_RECORDED = (
+    '{"model":"jev-1.14.0","answers":{"is_engineering":{"type":"noul","noul":0.93},'
+    '"department":{"type":"choice","choice":"engineering","confidence":1.0,'
+    '"probabilities":{"engineering":1.0,"sales":0.0}},'
+    '"size":{"type":"score","score":0.48,"confidence":0.26,'
+    '"legend":{"0":"small","1":"medium","2":"large"},'
+    '"probabilities":{"0":0.53,"1":0.45,"2":0.02}}},'
+    '"usage":{"input_tokens":377,"output_tokens":64}}'
+)
+OPENAI_RECORDED = (
+    '{"model":"gpt-6-luna","answers":[{"type":"predicate","name":"is_engineering",'
+    '"probability":0.95},{"type":"choice","name":"department","choice":"engineering",'
+    '"probabilities":[{"value":"engineering","probability":0.97},'
+    '{"value":"sales","probability":0.03}],"confidence":0.94},'
+    '{"type":"score","name":"size","score":1.0,"probabilities":['
+    '{"value":0,"label":"small","probability":0.0},{"value":1,"label":"medium",'
+    '"probability":1.0},{"value":2,"label":"large","probability":0.0}],"confidence":1.0}],'
+    '"usage":{"input_tokens":420,"output_tokens":0}}'
+)
+LLM_MODEL = "gpt-4o-mini"
+
+
+def real_typesafe_config() -> SystemOneConfigData:
+    return SystemOneConfigData(id=1, provider="typesafe", model_name="jev-1.14.0", api_key="ts-key")
+
+
+def real_openai_config() -> SystemOneConfigData:
+    return SystemOneConfigData(id=3, provider="openai", model_name="gpt-6-luna", api_key="sk-key")
+
+
+def real_llm_config() -> SystemOneConfigData:
+    return SystemOneConfigData(
+        id=2,
+        provider="llm",
+        llm_data=LLMData(provider="openai", config=LLMConfigData(model=LLM_MODEL)),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("config", "expected_provider", "expected_model_version"),
+    [
+        pytest.param(real_typesafe_config(), "typesafe", "jev-1.14.0", id="typesafe"),
+        pytest.param(real_llm_config(), "llm", LLM_MODEL, id="llm"),
+        pytest.param(real_openai_config(), "openai", "gpt-6-luna", id="openai"),
+    ],
+)
+async def test_switching_the_provider_needs_no_table_change(
+    monkeypatch, sandbox, config, expected_provider, expected_model_version
+):
+    typesafe = TypeSafeAdapter(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, content=TYPESAFE_RECORDED)
+        )
+    )
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "typesafe", typesafe)
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "llm", LlmSystemOneAdapter())
+    openai = OpenAIDecisionsAdapter(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=OPENAI_RECORDED))
+    )
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "openai", openai)
+    llm_reply = ModelResponse(
+        model=LLM_MODEL,
+        choices=[
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps({"answers": {"is_engineering": {"noul": 0.92}}}),
+                }
+            }
+        ],
+        usage=Usage(prompt_tokens=50, completion_tokens=20, total_tokens=70),
+    )
+    subgraph, redis_service = build_subgraph_with_redis(system_one_node(config))
+
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=llm_reply):
+        result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "eng_branch"
+    message = next(
+        m for m in published_messages(redis_service) if m["message_type"] == "classification_prompt"
+    )
+    assert message["provider"] == expected_provider
+    assert message["model_version"] == expected_model_version
+
+
+@pytest.mark.asyncio
+async def test_a_new_provider_runs_through_the_cdt_with_one_registry_entry(monkeypatch, sandbox):
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", FakeSystemOneAdapter(noul=0.99))
+    subgraph, _ = build_subgraph_with_redis(system_one_node())
+
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "eng_branch"
+
+
+@pytest.mark.asyncio
+async def test_the_message_carries_provider_model_version_state_and_raw_result(
+    monkeypatch, sandbox
+):
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", FakeSystemOneAdapter(cost=0.0000158))
+    subgraph, redis_service = build_subgraph_with_redis(system_one_node())
+
+    await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    message = next(
+        m for m in published_messages(redis_service) if m["message_type"] == "classification_prompt"
+    )
+    stored = {
+        "answers": {"is_engineering": {"type": "noul", "noul": 0.92}},
+        "provider": "fake",
+        "model_version": "fake-1",
+    }
+    assert message["provider"] == "fake"
+    assert message["model_version"] == "fake-1"
+    assert message["prompt_text"] == json.dumps({"company": "Acme"}, indent=2)
+    assert message["raw_response"] == json.dumps(stored)
+    assert message["parsed_result"] == stored
+    assert message["result_variable"] == "company_check"
+    assert message["usage"]["total_cost_usd"] == 0.0000158
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("node_kwargs", "adapter_error", "expected"),
+    [
+        pytest.param(
+            {"config": None},
+            None,
+            "Error in condition 'row0': System One entry 'company_check' has no config.",
+            id="no-config",
+        ),
+        pytest.param(
+            {"questions": {}},
+            None,
+            "Error in condition 'row0': System One entry 'company_check' has no valid questions.",
+            id="no-questions",
+        ),
+        pytest.param(
+            {"questions": {"1bad": {"type": "noul", "instructions": "x"}}},
+            None,
+            "Error in condition 'row0': System One entry 'company_check' has no valid questions.",
+            id="invalid-question-name",
+        ),
+        pytest.param(
+            {"input_map": {}},
+            None,
+            "Error in condition 'row0': System One entry 'company_check' has no input values.",
+            id="empty-input-map",
+        ),
+        pytest.param(
+            {"input_map": {"company": "variables.missing"}},
+            None,
+            "Error in condition 'row0': System One entry 'company_check' has no input values.",
+            id="every-input-value-is-none",
+        ),
+        pytest.param(
+            {},
+            SystemOneError("TypeSafe rate limit reached."),
+            "Error in condition 'row0': System One call failed for prompt 'company_check': "
+            "TypeSafe rate limit reached.",
+            id="adapter-reports-a-system-one-error",
+        ),
+        pytest.param(
+            {},
+            RuntimeError("401 key=ts-secret"),
+            "Error in condition 'row0': System One call failed for prompt 'company_check': "
+            "System One provider 'fake' failed.",
+            id="adapter-crashes-with-provider-text",
+        ),
+    ],
+)
+async def test_a_failing_system_one_entry_takes_the_error_path_with_our_own_message(
+    monkeypatch, sandbox, node_kwargs, adapter_error, expected
+):
+    adapter = FakeSystemOneAdapter(error=adapter_error)
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", adapter)
+    subgraph, redis_service = build_subgraph_with_redis(system_one_node(**node_kwargs))
+
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "error_node"
+    details = first_error_message(redis_service)["details"]
+    assert details == expected
+    assert "ts-secret" not in details
+    if adapter_error is None:
+        assert adapter.states == []
+
+
+@pytest.mark.asyncio
+async def test_input_map_missing_path_and_datetime_still_go_out(monkeypatch):
+    # Called directly: a datetime in the state already breaks the session messages
+    # of a full run, so only this step is under test.
+    adapter = FakeSystemOneAdapter()
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", adapter)
+    when = datetime(2026, 1, 1, 12, 30, tzinfo=UTC)
+    node_data = system_one_node(input_map={"a": "variables.missing", "b": "variables.when"})
+    node = ClassificationDecisionTableNodeSubgraph(
+        session_id=1,
+        node_data=node_data,
+        graph_builder=StateGraph(State),
+        stop_event=StopEvent(),
+        redis_service=recording_redis_service(),
+    )
+
+    await node._execute_prompt("company_check", make_state({"when": when}))
+
+    assert adapter.states == [{"a": None, "b": str(when)}]
+
+
+@pytest.mark.asyncio
+async def test_llm_entries_are_unchanged(sandbox):
+    prompt_config = PromptConfigData(
+        prompt_text="Classify {text}",
+        llm_data=make_llm_data(),
+        result_variable="classification_result",
+    )
+    groups = [row(0, "True", "after_prompt", prompt_id="classify")]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, prompts={"classify": prompt_config})
+    )
+    completion = MagicMock()
+    completion.choices = [MagicMock()]
+    completion.choices[0].message.content = '{"label": "a"}'
+    completion.usage.prompt_tokens = completion.usage.completion_tokens = 1
+    completion.usage.total_tokens = 2
+
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=completion):
+        result = await subgraph.ainvoke(make_state({"text": "hello"}))
+
+    assert result_node(result) == "after_prompt"
+    message = next(
+        m for m in published_messages(redis_service) if m["message_type"] == "classification_prompt"
+    )
+    assert message["provider"] is None
+    assert message["model_version"] is None
+    assert message["prompt_text"] == "Classify hello"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "node_data_overrides",
+    [
+        pytest.param(
+            {"pre_python_code": _FAILING_CODE, "pre_output_variable_path": "variables.__class__.status"},
+            id="pre-computation",
+        ),
+        pytest.param(
+            {"post_python_code": _FAILING_CODE, "post_output_variable_path": "variables.__class__.status"},
+            id="post-computation",
+        ),
+    ],
+)
+async def test_underscore_computation_output_path_routes_to_error_without_a_sandbox_call(
+    monkeypatch, node_data_overrides
+):
+    calls = record_run_code(monkeypatch)
+    node_data = make_node_data(next_error_node="error_node").model_copy(update=node_data_overrides)
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert calls == []
+    error_details = [
+        message["details"]
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    ]
+    assert error_details == [
+        "Variable path 'variables.__class__.status' is not allowed: path segments cannot start with '_'."
+    ]
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+
+
+async def run_prompt_and_capture(monkeypatch, prompt_text: str, variables: dict):
+    """Run one prompt row; return the prompt sent to the LLM and the published messages."""
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+    prompt_config = PromptConfigData(
+        prompt_text=prompt_text, llm_data=make_llm_data(), result_variable="classification_result"
+    )
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="prompt_row",
+            expression="True",
+            prompt_id="classify",
+            next_node="after_prompt",
+            order=0,
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, prompts={"classify": prompt_config})
+    )
+    mock_response = MagicMock()
+    mock_response.usage.total_tokens = 1
+    mock_response.usage.prompt_tokens = 1
+    mock_response.usage.completion_tokens = 0
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = '{"label": "positive"}'
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+        mock_completion.return_value = mock_response
+        await subgraph.ainvoke(make_state(variables))
+
+    (llm_message,) = mock_completion.call_args.kwargs["messages"]
+    return llm_message["content"], published_messages(redis_service)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt_text", "expected_prompt"),
+    [
+        ("Classify {text}", "Classify hello"),
+        ("Classify {user}", "Classify {'name': 'Ann'}"),
+        ("Classify {text} as {label}", "Classify {text} as {label}"),
+        ('Classify {text}. Reply {{"label": "x"}}', 'Classify hello. Reply {"label": "x"}'),
+        ('Classify {text}. Reply {"label": "x"}', 'Classify {text}. Reply {"label": "x"}'),
+        ("Classify {user.name}", "Classify Ann"),
+        ("Classify {context[user_input]}", "Classify hi"),
+        ("Classify {text[0]}", "Classify {text[0]}"),
+        ("Classify { brace {text}", "Classify { brace {text}"),
+    ],
+    ids=[
+        "plain",
+        "nested-value",
+        "missing-variable-sends-prompt-as-written",
+        "escaped-braces",
+        "json-example-sends-prompt-as-written",
+        "dotted-key-path",
+        "key-path",
+        "index-into-text-sends-prompt-as-written",
+        "lone-brace-sends-prompt-as-written",
+    ],
+)
+async def test_prompt_is_rendered_from_flow_variables(monkeypatch, prompt_text, expected_prompt):
+    sent_prompt, messages = await run_prompt_and_capture(
+        monkeypatch,
+        prompt_text,
+        {"text": "hello", "user": {"name": "Ann"}, "context": {"user_input": "hi"}},
+    )
+
+    assert sent_prompt == expected_prompt
+    (prompt_message,) = [
+        message for message in messages if message["message_type"] == "classification_prompt"
+    ]
+    assert prompt_message["prompt_text"] == expected_prompt
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "placeholder",
+    [
+        "{context.__class__}",
+        "{context.update.__globals__[ast].sys.modules[os].environ[CDT_PROMPT_TEST_CANARY]}",
+    ],
+    ids=["dunder-attribute", "chain-into-the-environment"],
+)
+async def test_refused_prompt_placeholder_routes_to_the_error_node_without_an_llm_call(
+    monkeypatch, placeholder
+):
+    canary_value = "canary-from-the-crew-environment"
+    monkeypatch.setenv("CDT_PROMPT_TEST_CANARY", canary_value)
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+    prompt_config = PromptConfigData(
+        prompt_text=f"Classify {placeholder}",
+        llm_data=make_llm_data(),
+        result_variable="classification_result",
+    )
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="prompt_row",
+            expression="True",
+            prompt_id="classify",
+            next_node="after_prompt",
+            order=0,
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(
+            condition_groups=groups,
+            prompts={"classify": prompt_config},
+            next_error_node="error_node",
+        )
+    )
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+        result = await subgraph.ainvoke(make_state({"context": {"user_input": "hi"}}))
+
+    mock_completion.assert_not_awaited()
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    details = first_error_message(redis_service)["details"]
+    assert details.startswith("Error in condition 'prompt_row': Prompt 'classify': ")
+    assert f"'{placeholder}'" in details
+    assert canary_value not in json.dumps(published_messages(redis_service))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt_text", "expected_warnings"),
+    [
+        ("Classify {text}", []),
+        (
+            "Classify {0}",
+            [
+                "Classification node 'cdt_node' prompt sent as written, no placeholder filled: "
+                "Placeholder '{0}' has no variable name, so it is never filled."
+            ],
+        ),
+        (
+            "Classify {text:>10}",
+            [
+                "Classification node 'cdt_node' prompt sent as written, no placeholder filled: "
+                "Placeholder '{text:>10}' has a format spec or conversion, which is not "
+                "supported. If it is example text, write its braces as '{{' and '}}'."
+            ],
+        ),
+    ],
+    ids=["rendered-no-warning", "positional-placeholder", "format-spec"],
+)
+async def test_prompt_sent_unrendered_leaves_a_warning(monkeypatch, prompt_text, expected_warnings):
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="WARNING", format="{message}")
+    try:
+        await run_prompt_and_capture(monkeypatch, prompt_text, {"text": "hello", "user": {"name": "Ann"}})
+    finally:
+        logger.remove(sink_id)
+
+    assert [line.strip() for line in lines if "prompt sent as written" in line] == expected_warnings

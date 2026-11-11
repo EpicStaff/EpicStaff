@@ -75,7 +75,6 @@
     --graphite-885: #1e1e2e; // dynamic-table drag-preview background
     --graphite-895: #22222b; // chunk-preview "odd" badge background
     --graphite-890: #1e1e1f; // ag-grid context menu background
-    --graphite-880: #1e1e22; // round-button tooltip background
     --graphite-870: #272836; // session/date-range filter dropdown background (used across flows too)
     --graphite-825: #232323;
     --graphite-822: #222222; // flow-export-import-button hover background
@@ -126,7 +125,7 @@
     --gray-400: #b4b4b4;
     --gray-450: #aaaaaa;
     --gray-204: #cccccc; // node-panel-mixins secondary-button text
-    --gray-455: #acacac; // llm-model-selector secondary text
+    --gray-455: #acacac; // grouped-picker group names
     --gray-475: #b1b1b1; // agents-table action-icon
     --gray-490: #a0a0a0; // llm/tool selector popups secondary text
     --gray-500: #9b9b9b;
@@ -329,6 +328,13 @@
     --orange-450-alpha-15: rgba(255, 140, 66, 0.15);
     --orange-alpha-8: rgba(255, 143, 63, 0.08);
     --orange-alpha-6: rgba(255, 143, 63, 0.06);
+    --presence-red: #ff453a; // graph-presence-indicators avatar color
+    --presence-orange: #ff9f0a; // graph-presence-indicators avatar color
+    --presence-yellow: #ffd60a; // graph-presence-indicators avatar color
+    --presence-green: #30d158; // graph-presence-indicators avatar color
+    --presence-cyan: #64d2ff; // graph-presence-indicators avatar color
+    --presence-indigo: #5e5cf6; // graph-presence-indicators avatar color
+    --presence-gray: #d1d1d6; // graph-presence-indicators avatar color
     --crimson-500: #ef4444; // distinct "danger" red used across error/validation states
     --crimson-500-alpha-10: rgba(239, 68, 68, 0.1);
     --crimson-500-alpha-20: rgba(239, 68, 68, 0.2);
@@ -383,9 +389,6 @@
     --red-460-alpha-40: rgba(255, 85, 85, 0.4);
     --red-540: #e53935; // textarea invalid border
     --red-580: #e0575b; // date-range-picker / session status error variant
-    --red-560: #e05c5c; // version-history-panel dropdown-item "danger" text
-    --red-470: #f07070; // version-history-panel dropdown-item "danger" hover text
-    --maroon-950: #3d2020; // version-history-panel dropdown-item "danger" hover background
     --maroon-960: #2a1a1a; // flow-visual-programming restore-warning-btn background
     --maroon-900: #7f1d1d; // flow-visual-programming restore-warning-btn border
     --red-580-alpha-18: rgba(224, 87, 91, 0.18);
@@ -537,6 +540,7 @@
     --color-tour-backdrop: var(--black-alpha-70); // guided-tour spotlight dim
     --color-flow-card-bg: var(--graphite-750);
     --color-table-border: var(--graphite-750);
+    --color-table-row-stripe: var(--color-ks-transparent-black-28); // darker odd rows of the shared table
     --color-surface-card: var(--graphite-825);
     --color-drag-drop-active: var(--black-alpha-28);
 
@@ -630,6 +634,17 @@
     --color-status-failed: var(--red-600);
 
     // ------------------------------------------------------------------
+    // SEMANTIC — tooltip (styles/_tooltip.scss). Dark in both themes: literals, not the palette primitives the
+    // light theme flips (--graphite-875, --fog-200), and never overridden in .my-app-light.
+    // ------------------------------------------------------------------
+    --tooltip-bg: #1e1e1e;
+    --tooltip-text: #d9d9de;
+    --tooltip-radius: 10px;
+    --tooltip-padding: 10px;
+    // A filter, not a box-shadow: it follows the arrow too.
+    --tooltip-shadow: drop-shadow(0 6px 5px var(--black-alpha-15)) drop-shadow(0 2px 1.5px var(--black-alpha-30));
+
+    // ------------------------------------------------------------------
     // SEMANTIC — avatar fills (chat desk pictures, picked by id). Bright fills under dark letters; the light theme
     // overrides none of these primitives, so the letters keep at least 6:1 contrast in both themes. Red, green and
     // yellow are left out: they are the status and badge colours drawn on top.
@@ -684,6 +699,17 @@
     --color-error: #f54242;
     --color-findings: #f5a623;
     --color-key-value: #14b8a6; // Key-Value node + session message accent (matches NODE_COLORS)
+    // Version diff on the flow canvas: what a restore of the version adds, removes or changes
+    // (node borders and badges, edges), and the marker of a node whose version lost a reference.
+    --color-diff-added: var(--color-ks-status-new);
+    --color-diff-deleted: var(--color-ks-status-failed);
+    --color-diff-changed: var(--color-ks-status-warning);
+    --color-diff-missing-reference: var(--color-ks-status-processing);
+    // A hovered added / removed edge (or an edge of the hovered node): the diff colour, brighter.
+    --color-diff-added-highlight: color-mix(in srgb, var(--color-diff-added) 65%, var(--white));
+    --color-diff-deleted-highlight: color-mix(in srgb, var(--color-diff-deleted) 65%, var(--white));
+    // What a restore removes (node content, edges, decision table rows) is drawn faded. Same in both themes.
+    --diff-deleted-opacity: 0.4;
     // JSON value colours: app-json-viewer (styles/json-viewer.scss) + Key-Value message previews
     --color-json-key: #e83e8c;
     --color-json-value: #17a2b8;
@@ -770,10 +796,14 @@
     --color-scrollbar-thumb-hover: rgba(71, 85, 105, 0.3);
     --color-scrollbar-track: transparent;
     --color-drag-drop-active: rgba(15, 15, 15, 0.12);
+    --color-table-row-stripe: var(--black-alpha-5);
     --color-card-background: #ffffff;
     --color-key-value: #115e59; // darker teal: 5.99:1 on its 15% chip over white (#14b8a6 is 2.2:1)
 
     // LEGACY overrides — see :root block above
     --color-nodes-actionbar-bg: #f8fafc;
     --color-nodes-sidepanel-bg: #ffffff;
+    // A hovered diff edge must get stronger on the light canvas, so the highlight darkens instead of lightening.
+    --color-diff-added-highlight: color-mix(in srgb, var(--color-diff-added) 70%, var(--black));
+    --color-diff-deleted-highlight: color-mix(in srgb, var(--color-diff-deleted) 70%, var(--black));
 }

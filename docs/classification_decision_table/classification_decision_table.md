@@ -133,7 +133,7 @@ Prompts live in the `prompts` dict on the node, keyed by id:
 
 ```python
 class PromptConfigData(BaseModel):
-    prompt_text: str  # template with {var_name} interpolation
+    prompt_text: str  # template with {var_name} / {var[key]} placeholders
     llm_id: int | None = None
     output_schema: dict | str = {}  # JSON Schema for structured output
     result_variable: str = "prompt_result"  # state variable to store the result
@@ -141,7 +141,34 @@ class PromptConfigData(BaseModel):
     llm_data: LLMData | None = None  # resolved at runtime
 ```
 
-The prompt is rendered with `str.format(**variables)` and sent via `litellm.acompletion`. When `output_schema` is non-empty it is applied as a `response_format` of `{"type": "json_schema", "json_schema": {"name": ..., "schema": <output_schema>, "strict": True}}`; a string schema is JSON-parsed first. If `output_schema` is empty or invalid JSON, the request is sent without `response_format`. The response is parsed via `extract_first_json_object`, stored at `result_variable`, and `variable_mappings` extract individual fields into other state variables.
+The prompt is rendered by `src/shared/flow_templates.py` (the same rule applies to task and agent instructions and knowledge queries; its module docstring is the full rule). `{{` / `}}` are literal braces. Each placeholder becomes `str()` of a flow value:
+
+- `{var_name}` is the variable of exactly that name (`{user-id}` works too).
+- `{context[user_input]}` and `{context.user_input}` both read key `user_input` of the `context` value; `{items[0]}` reads an index of a list. Only plain JSON data is walked, by key or index; attributes are never read, because attribute access on a live value can reach the crew process environment.
+
+Two kinds of placeholder fail the node before the LLM is called, with a public error that names the placeholder, and route the table to its error node: a path segment starting with `_` (`{context._x}`, `{data[__class__]}`), and a conversion such as `{topic!r}`. A prompt that names a value that does not exist (a missing variable, key or index) is sent as written, with nothing substituted. So is a prompt holding a positional placeholder (`{}`, `{0}`), a format spec (`{topic:>10}`), a JSON example such as `{"label": "x"}` — even next to real placeholders — or a lone brace; write example braces as `{{` and `}}`. The rendered prompt is sent via `litellm.acompletion`. When `output_schema` is non-empty it is applied as a `response_format` of `{"type": "json_schema", "json_schema": {"name": ..., "schema": <output_schema>, "strict": True}}`; a string schema is JSON-parsed first. If `output_schema` is empty or invalid JSON, the request is sent without `response_format`. The response is parsed via `extract_first_json_object`, stored at `result_variable`, and `variable_mappings` extract individual fields into other state variables.
+
+The JSON-LLM helper (`run_json_llm`, `extract_first_json_object`) lives in `src/shared/system_one/json_llm.py`.
+
+## System One entries
+
+A System One entry is a prompt with `kind: "system_one"` and a `system_one_config`: either TypeSafe Jev or an LLM config. It asks typed questions (`noul`, `choice`, `score`) about a JSON state and returns structured answers. Switching the provider changes only the config, not the table.
+
+**Row pattern.** Row 1 runs the entry (`prompt_id` set, Continue on). Rows below route on the stored result: `<result_variable>.answers.<question>.noul|choice|score|confidence`, for example `company_check.answers.is_engineering.noul > 0.8`.
+
+**State sent.** The entry's input map becomes one JSON object. A missing path becomes `null`. A value that is not JSON becomes a string. If every value is missing, the entry fails before any call.
+
+**Result.** Stored under the result variable as `{answers, provider, model_version}`.
+
+**Errors** (reported as `Error in condition '<group_name>': ...`, then `next_error_node`):
+- `System One entry '<id>' has no config.`
+- `System One entry '<id>' has no valid questions.`
+- `System One entry '<id>' has no input values.`
+- `System One call failed for prompt '<id>': <message>`. The message comes from the adapter. TypeSafe messages are in `src/shared/system_one/typesafe_adapter.py` (for example "TypeSafe rejected the API key.", "TypeSafe rate limit reached.", "TypeSafe is unreachable.", "TypeSafe returned a malformed answer.").
+
+**Cost.** TypeSafe: input tokens x the pinned Jev price in `src/shared/system_one/constants.py`. LLM: the litellm cost.
+
+**Run message.** The prompt message carries `provider` and `model_version`. `prompt_text` is the state sent, `raw_response` is the stored result JSON.
 
 ## Message Ordering
 

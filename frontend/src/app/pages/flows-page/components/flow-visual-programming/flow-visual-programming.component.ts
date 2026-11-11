@@ -31,11 +31,13 @@ import {
     GetLlmConfigRequest,
     GraphSessionStatus,
     isTerminalSessionStatus,
+    NODE_COLORS,
     NodeType,
     ResourceCode,
+    SystemOnePromptKind,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, LABELS_STORE, LlmConfigStorageService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, formatNodeLabel, generateUuid } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, formatNodeLabel, generateUuid, joinErrorMessages } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -76,16 +78,17 @@ import {
     GraphVersionDto,
     RestoreWarning,
 } from '../../../../features/flows/models/graph.model';
+import { snapshotDeclaresSecrets } from '../../../../features/flows/models/graph-version-preview.model';
 import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
-import {
-    FlowUsePermissionRefusalService,
-    UsePermissionAction,
-} from '../../../../features/flows/services/flow-use-permission-refusal.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
+import {
+    UsePermissionAction,
+    UsePermissionRefusalService,
+} from '../../../../features/flows/services/use-permission-refusal.service';
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -93,6 +96,7 @@ import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
+import { getNodeTitle } from '../../../../visual-programming/core/enums/node-title.util';
 import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
 import { renumberUnsavedNodesHolding } from '../../../../visual-programming/core/helpers/node-number.util';
 import { isTriggerNodeType } from '../../../../visual-programming/core/helpers/trigger-node-type.util';
@@ -120,6 +124,7 @@ import { FlowReadOnlyService } from '../../../../visual-programming/services/flo
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
 import { KeymapService } from '../../../../visual-programming/services/keymap.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
+import { NodeSaveErrorsStore } from '../../../../visual-programming/services/node-save-errors.store';
 import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
 import { ScheduleTriggerRuntimeService } from '../../../../visual-programming/services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
@@ -142,6 +147,8 @@ import {
     getConnectionDiff,
     getNodeDiff,
     hasTriggerNodeWrites,
+    mapBulkSaveErrors,
+    MappedSaveErrors,
     NodeDiffByType,
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
@@ -151,8 +158,10 @@ import { withGraphScheduleTriggerRuntimeState } from '../../../../visual-program
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
 import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/utils/validation/execution-timeout.validator';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
+import { buildCurlCommand } from './build-curl-command';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { PREVIEW_BLOCKED_MESSAGES } from './components/header/flow-header.constants';
+import { FlowSaveStatus } from './components/header/flow-save-status.model';
 import {
     SHORTCUTS_MODAL_HEIGHT_PX,
     ShortcutsModalComponent,
@@ -260,17 +269,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     );
     /** Read-only node id to node-type colour lookup for the snake-game intro; only evaluated while a game runs. */
     protected readonly snakeGameNodeColors = computed<ReadonlyMap<string, string>>(
-        () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
+        () => new Map(this.flowService.nodes().map((node) => [node.id, NODE_COLORS[node.type]]))
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly keymap = inject(KeymapService);
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly flowTestRunService = inject(FlowTestRunService);
+    private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     /** The root instance, as for the live canvas and its panels; the version preview has its own. */
     private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
-    private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
+    private readonly usePermissionRefusal = inject(UsePermissionRefusalService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
@@ -346,6 +356,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /** The version shown instead of the live canvas; null while editing the live flow. */
     public readonly previewedVersion = signal<GraphVersionDto | null>(null);
     public readonly isPreviewing = computed(() => this.previewedVersion() !== null);
+    /** The header's save status chip; none while previewing a version or for a user who cannot edit the flow. */
+    protected readonly saveStatus = computed<FlowSaveStatus | null>(() => {
+        if (this.isPreviewing() || this.flowReadOnly.isReadOnly()) return null;
+        if (this.isSaving() || this.sidePanelService.savingNodeId() !== null) return 'saving';
+        const connection = this.wsService.connectionStatus();
+        if (connection === 'lost') return 'connection-lost';
+        if (connection === 'reconnecting') return 'reconnecting';
+        return this.hasUnsavedChangesSignal() ? 'unsaved' : 'saved';
+    });
     /** Live canvas pan/zoom captured on entering a preview, handed back when the live canvas re-mounts. */
     public readonly savedViewport = signal<FlowViewport | null>(null);
     public readonly selectedVersionId = signal<number | null>(null);
@@ -1189,12 +1208,37 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.toastService.warning(
                         'This graph was modified by another user. Please refresh to see the latest changes.'
                     );
+                } else if (err.status === 400) {
+                    if (!this.isCurrentGraph(graphId)) return EMPTY;
+                    // The backend checks every node of the save before refusing it, so these replace all earlier ones.
+                    const refused = mapBulkSaveErrors(payload, err.error?.errors, this.flowService.nodes());
+                    this.nodeSaveErrors.setAll(refused.byNodeId);
+                    this.toastService.error(this.saveRefusedMessage('Failed to save graph', refused, err));
                 } else {
                     this.toastService.error(`Failed to save graph: ${extractHttpErrorMessage(err)}`);
                 }
                 return EMPTY;
             })
         );
+    }
+
+    /**
+     * The toast of a refused save: the nodes whose fields it refused, as their panels show why, then what no
+     * node shows (an edge, the graph as a whole); the server's message when it named none of the nodes.
+     */
+    private saveRefusedMessage(prefix: string, refused: MappedSaveErrors, error: HttpErrorResponse): string {
+        const labels = this.flowService
+            .nodes()
+            .filter((node) => refused.byNodeId.has(node.id))
+            .map((node) =>
+                formatNodeLabel({
+                    node_name: getNodeTitle(node) || node.node_name || 'Untitled node',
+                    nodeNumber: node.nodeNumber,
+                })
+            );
+        if (labels.length === 0) return `${prefix}: ${extractHttpErrorMessage(error)}`;
+        const fixIn = `${prefix} — fix the refused fields in ${labels.map((label) => `"${label}"`).join(', ')}.`;
+        return refused.unplaced.length > 0 ? `${fixIn} Also: ${joinErrorMessages(refused.unplaced)}` : fixIn;
     }
 
     private onFlowSaved(
@@ -1208,6 +1252,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.setGraphState(graph);
         this.availableFlowLights.set(flows);
         this.flowService.setNodeNumberFloor(graph.node_number_seq);
+        this.nodeSaveErrors.clear();
 
         // What was sent becomes the saved baseline; the canvas keeps what it holds now.
         // Patching the snapshot onto the canvas would revert anything that changed
@@ -1374,6 +1419,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     );
                 }
 
+                this.nodeSaveErrors.setForNode(nodeId, []);
                 this.toastService.success('Node saved');
             }),
             map(() => void 0),
@@ -1382,6 +1428,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.toastService.warning(
                         'This graph was modified by another user. Please refresh to see the latest changes.'
                     );
+                } else if (err.status === 400) {
+                    if (!this.isCurrentGraph(graphId)) return EMPTY;
+                    // Only this node was sent; the errors of the others stand.
+                    const refused = mapBulkSaveErrors(payload, err.error?.errors, this.flowService.nodes());
+                    this.nodeSaveErrors.setForNode(nodeId, refused.byNodeId.get(nodeId) ?? []);
+                    this.toastService.error(this.saveRefusedMessage('Failed to save node', refused, err));
                 } else {
                     this.toastService.error(`Failed to save node: ${extractHttpErrorMessage(err)}`);
                 }
@@ -1613,30 +1665,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const apiUrl = this.configService.apiUrl;
 
         if (flowUuid && startNodeInitialState) {
-            const curlCommand = this.generateCurlCommand(flowUuid, startNodeInitialState, apiUrl);
+            const curlCommand = buildCurlCommand(flowUuid, startNodeInitialState, apiUrl);
             this.copyToClipboard(curlCommand);
             this.toastService.success('cURL command copied to clipboard!');
         } else {
             this.toastService.error('Unable to generate cURL: Missing flow ID or start node data');
         }
-    }
-
-    private generateCurlCommand(flowUuid: string, variables: Record<string, unknown>, apiUrl: string): string {
-        const payload = JSON.stringify(
-            {
-                graph_uuid: flowUuid,
-                variables: variables,
-            },
-            null,
-            2
-        );
-
-        return `curl \\
-  -H "Content-Type: application/json" \\
-  -H "Accept: application/json" \\
-  -X POST \\
-  -d '${payload}' \\
-  ${apiUrl}run-session/`;
     }
 
     private async copyToClipboard(text: string): Promise<void> {
@@ -1784,6 +1818,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {
+        // Keyed by canvas node id, which every load mints anew.
+        this.nodeSaveErrors.clear();
         this.setGraphState(graph);
         this.availableFlowLights.set(flows);
         this.flowService.setNodeNumberFloor(graph.node_number_seq);
@@ -1860,7 +1896,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     data?: {
                         table?: {
                             default_llm_config?: number | null;
-                            prompts?: Record<string, { llm_config: number | null }>;
+                            prompts?: Record<string, { llm_config: number | null; kind?: SystemOnePromptKind }>;
                         };
                     };
                 }
@@ -1870,7 +1906,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             // Any prompt with no LLM config selected counts as missing.
             if (table.prompts) {
                 for (const prompt of Object.values(table.prompts)) {
-                    if (prompt.llm_config == null) return true;
+                    if (prompt.kind !== 'system_one' && prompt.llm_config == null) return true;
                 }
             }
             // Deleted-config references also count as missing.
@@ -1879,7 +1915,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }
             if (table.prompts) {
                 for (const prompt of Object.values(table.prompts)) {
-                    if (prompt.llm_config != null && !availableIds.has(prompt.llm_config)) return true;
+                    if (
+                        prompt.kind !== 'system_one' &&
+                        prompt.llm_config != null &&
+                        !availableIds.has(prompt.llm_config)
+                    )
+                        return true;
                 }
             }
             return false;
@@ -1971,7 +2012,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
-    /** A renamed or re-described version keeps the preview bar in step; same id, so nothing reloads. */
+    /** Replaces the previewed version with its renamed or re-described copy; same id, so the preview does not reload. */
     public onVersionUpdated(version: GraphVersionDto): void {
         if (this.previewedVersion()?.id === version.id) {
             this.previewedVersion.set(version);
@@ -1988,18 +2029,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             : `Restoring <strong>${escapeHtml(version.name)}</strong> will replace the current flow state. Save a backup of the current state first?`;
 
         // A restore this user may not do is refused first: before the backup question, the preview exit or a save.
-        this.refuseRestoreOfTriggerNodes(version)
+        this.refuseRestoreThisUserMayNotDo(version)
             .pipe(
                 filter((refused) => !refused),
                 switchMap(() =>
                     this.unsavedChangesDialog.confirm({
-                        title: 'Restore version',
+                        title: 'Restore Version',
                         message,
                         saveText: 'Save & Restore',
-                        dontSaveText: 'Discard & Restore',
+                        dontSaveText: 'Just restore',
                         cancelText: 'Cancel',
                         type: 'warning',
                         showDontSave: true,
+                        appearance: 'neutral',
                     })
                 ),
                 switchMap((result) => {
@@ -2023,25 +2065,37 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     /**
-     * Restoring creates the version's nodes again, and creating a trigger node needs Flows:Use, so for a user
-     * without it a version with trigger nodes is refused as a whole; emits true when it refused, after telling
-     * the user why. Users with Flows:Use get `false` at once, without fetching the version.
+     * Restoring creates the version's nodes again. Creating a trigger node needs Flows:Use, and getting code that
+     * reads secrets needs Secrets:Use, so for a user without either a version holding such nodes is refused as a
+     * whole; the trigger refusal wins when both apply, as on the backend. Emits true when it refused, after telling
+     * the user why. A user with both permissions gets `false` at once, without fetching the version.
+     *
+     * The secrets check counts every declared name, even one whose secret no longer exists, as the backend does:
+     * a deleted secret can come back later and the restored code would read it again.
      */
-    private refuseRestoreOfTriggerNodes(version: GraphVersionDto): Observable<boolean> {
-        if (this.flowReadOnly.canEditTriggerNodes()) {
+    private refuseRestoreThisUserMayNotDo(version: GraphVersionDto): Observable<boolean> {
+        const checksTriggerNodes = !this.flowReadOnly.canEditTriggerNodes();
+        const checksSecretCode = !this.permissionsService.can(ResourceCode.Secrets, ActionCode.Use);
+        if (!checksTriggerNodes && !checksSecretCode) {
             return of(false);
         }
         return this.flowApiService.previewGraphVersion(version.id).pipe(
-            map(({ snapshot }) =>
-                mapGraphDtoToFlowModel(mapSnapshotToGraphDto(snapshot, new Map())).nodes.some((node) =>
-                    isTriggerNodeType(node.type)
-                )
-            ),
+            map(({ snapshot }): 'triggerNodes' | 'secretCode' | null => {
+                const hasTriggerNodes =
+                    checksTriggerNodes &&
+                    mapGraphDtoToFlowModel(mapSnapshotToGraphDto(snapshot, new Map())).nodes.some((node) =>
+                        isTriggerNodeType(node.type)
+                    );
+                if (hasTriggerNodes) return 'triggerNodes';
+                return checksSecretCode && snapshotDeclaresSecrets(snapshot) ? 'secretCode' : null;
+            }),
             // Unknown (the version could not be read): the restore request decides, through catchRefusal.
-            catchError(() => of(false)),
-            tap((refused) => {
-                if (refused) this.usePermissionRefusal.showRefusal('restore');
-            })
+            catchError(() => of(null)),
+            tap((refusal) => {
+                if (refusal === 'triggerNodes') this.usePermissionRefusal.showRefusal('restore');
+                if (refusal === 'secretCode') this.usePermissionRefusal.showSecretsRefusal('restore');
+            }),
+            map((refusal) => refusal !== null)
         );
     }
 

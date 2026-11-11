@@ -7,7 +7,6 @@ collection/s3 carried-not-resolved semantics, and multi-agent pool sharing.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -21,6 +20,7 @@ from app.exceptions import (
 from app.resources.resolver import AgentResolver
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolDescription, McpToolGateway
+from mcp.types import Tool
 from shared.models.agent_service import (
     AgentRequest,
     AgentSpec,
@@ -230,10 +230,10 @@ async def test_mcp_tool_ref_resolves_to_registry():
 async def test_mcp_tool_schema_reaches_the_model_cleaned():
     """The registered spec, which is what the model receives, carries the external
     server's input schema without control characters and with free text capped."""
-    server_tool = SimpleNamespace(
+    server_tool = Tool(
         name="mcp_tool",
         description="Searches the web.",
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {
                 "query": {

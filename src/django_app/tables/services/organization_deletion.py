@@ -33,6 +33,7 @@ TABLES_RESOURCE_NAMES: dict[str, str] = {
     "tables.WebhookTrigger": "webhook_triggers",
     "tables.LLMModel": "llm_models",
     "tables.LLMConfig": "llm_configs",
+    "tables.SystemOneConfig": "llm_configs",
     "tables.EmbeddingModel": "embedding_models",
     "tables.EmbeddingConfig": "embedding_configs",
     "tables.PythonCodeTool": "tools",

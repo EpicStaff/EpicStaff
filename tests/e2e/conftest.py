@@ -235,7 +235,7 @@ def bootstrap(anonymous_client: ApiClient, timings: Timings) -> Bootstrap:
                 "api_key",
                 user_with_jwt.post(
                     "/api/profile/api-keys/",
-                    json={"name": "e2e", "expires_in_days": 1},
+                    json={"name": "e2e", "expires_in_days": 1, "org_id": result.org_id},
                     expect=201,
                 ),
             )

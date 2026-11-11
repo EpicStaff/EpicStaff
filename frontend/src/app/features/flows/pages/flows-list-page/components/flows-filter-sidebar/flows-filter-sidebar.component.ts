@@ -1,5 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    ElementRef,
+    inject,
+    OnInit,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LabelDto } from '@shared/models';
 
 import { AuditConditionFilterComponent } from '../../../../../audit/components/audit-condition-filter/audit-condition-filter.component';
@@ -49,6 +61,8 @@ type FlowsFilterTab = 'builder' | 'presets';
         FlowsFilterGroupComponent,
         FlowsCheckboxEnumComponent,
         FlowsFilterPresetsComponent,
+        MatTooltip,
+        TooltipOnOverflowDirective,
     ],
     providers: [FlowFilterPresetsStorageService],
     templateUrl: './flows-filter-sidebar.component.html',
@@ -61,6 +75,8 @@ export class FlowsFilterSidebarComponent implements OnInit {
     private readonly presetsStorage = inject(FlowFilterPresetsStorageService);
 
     public readonly closeSidebar = output<void>();
+
+    private readonly closeButton = viewChild.required<ElementRef<HTMLButtonElement>>('closeButton');
 
     protected readonly labelsExpanded = signal(false);
     protected readonly customExpanded = signal(false);
@@ -152,6 +168,11 @@ export class FlowsFilterSidebarComponent implements OnInit {
 
     protected cancel(): void {
         this.closeSidebar.emit();
+    }
+
+    /** Moves the keyboard focus into the panel, which sits after the page content in the Tab order. */
+    public focus(): void {
+        this.closeButton().nativeElement.focus();
     }
 
     private patchPending(patch: Partial<SidebarFilterState>): void {

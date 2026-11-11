@@ -23,6 +23,7 @@
       "webhooks": [ "create", "read", "update", "delete" ],
       "key_value_tables": [ "create", "read", "update", "delete" ],
       "venvs": [ "create", "read", "update", "delete" ],
+      "custom_libraries": [ "create", "read", "update", "delete" ],
       "chats": [ "create", "read", "update", "delete", "use" ],
       "audit": [ "read", "export" ]
     }
@@ -42,6 +43,7 @@
       "webhooks": [ "create", "read", "update", "delete" ],
       "key_value_tables": [ "read" ],
       "venvs": [ "create", "read", "update" ],
+      "custom_libraries": [ "read" ],
       "chats": [ "read", "use" ]
     }
   },
@@ -59,7 +61,8 @@
       "voice": [ "read" ],
       "webhooks": [ "read" ],
       "key_value_tables": [ "read" ],
-      "venvs": [ "read" ]
+      "venvs": [ "read" ],
+      "custom_libraries": [ "read" ]
     }
   }
 }

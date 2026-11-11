@@ -56,7 +56,7 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
 
     @extend_schema(**MEMBERSHIPS_LIST_GET)
     def list(self, request):
-        org_ids = self.parse_org_ids(request.query_params.get("org_ids"))
+        org_ids = self.requested_org_ids(request)
         filters = self._validator.validate_list_memberships_query(request.query_params)
         scopes = getattr(request, "_rbac_org_scopes", None)
         qs = self._service.list_memberships(
@@ -81,6 +81,7 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
             actor=request.user,
             search=request.query_params.get("search"),
             scopes=scopes,
+            org_ids=self.key_org_ids(request),
         )
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(qs, request, view=self)

@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.access.gates import DenyApiKeyAuth, RestrictApiKeyToUserKeyReads
-from rbac.models import ApiKey, Organization, OrganizationUser, Role
+from rbac.models import ApiKey, Organization, OrganizationConfig, OrganizationUser, Role
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -15,6 +15,7 @@ ROLES_URL = "/api/admin/roles/"
 MEMBERSHIPS_URL = "/api/admin/memberships/"
 USERS_URL = "/api/admin/users/"
 API_KEYS_URL = "/api/admin/api-keys/"
+ORG_SETTINGS_URL = "/api/admin/organizations/settings/"
 
 
 @pytest.fixture
@@ -26,9 +27,9 @@ def system_key_client(issue_api_key):
 
 
 @pytest.fixture
-def user_key_client(issue_api_key):
+def user_key_client(issue_api_key, acme):
     def _make(user):
-        raw_key, _ = issue_api_key(user=user, name="user-admin-surface")
+        raw_key, _ = issue_api_key(user=user, org=acme, name="user-admin-surface")
         client = APIClient()
         client.credentials(HTTP_X_API_KEY=raw_key)
         return client
@@ -97,6 +98,14 @@ def _is_superadmin(f):
     return f("outsider").is_superadmin
 
 
+def _acme_retention_days(f):
+    return OrganizationConfig.objects.filter(org=f("acme")).values_list("audit_retention_days", flat=True).first()
+
+
+def _change_acme_settings(client, f):
+    return client.patch(ORG_SETTINGS_URL, {"audit_retention_days": 7}, format="json", HTTP_X_ORGANIZATION_ID=str(f("acme").id))
+
+
 def _key_revoked(f):
     f("member_key").refresh_from_db()
     return f("member_key").revoked_at is not None
@@ -149,6 +158,7 @@ WRITES = {
         ),
         lambda f: f("outsider").__class__.objects.get(pk=f("outsider").pk).check_password("StrongPass123!"),
     ),
+    "org-settings": (_change_acme_settings, _acme_retention_days),
     "revoke-api-key": (lambda c, f: c.post(f"{API_KEYS_URL}{f('member_key').id}/revoke/"), _key_revoked),
     "delete-api-key": (
         lambda c, f: c.delete(f"{API_KEYS_URL}{f('member_key').id}/"),
@@ -184,6 +194,8 @@ REFUSED = [
     ("admin-user-key", "read", "api-keys", JWT_ONLY_ENDPOINT),
     ("superadmin-user-key", "write", "reset-users", JWT_ONLY_ENDPOINT),
     ("superadmin-user-key", "write", "grant-superadmin", API_KEY_WRITE_REJECTED),
+    ("admin-user-key", "write", "org-settings", API_KEY_WRITE_REJECTED),
+    ("superadmin-user-key", "write", "org-settings", API_KEY_WRITE_REJECTED),
 ]
 
 
@@ -233,3 +245,14 @@ def test_superadmin_jwt_still_performs_the_write(request, superadmin_jwt_client,
 
     assert response.status_code == expected_status, response.content
     assert state(f) != before
+
+
+@pytest.mark.django_db
+def test_org_admin_jwt_still_changes_its_org_settings(request, admin_acme):
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(admin_acme).access_token}")
+
+    response = _change_acme_settings(client, request.getfixturevalue)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert _acme_retention_days(request.getfixturevalue) == 7

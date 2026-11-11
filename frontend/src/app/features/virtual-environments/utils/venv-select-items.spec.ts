@@ -2,7 +2,7 @@ import { Venv, VENV_STATUS_VIEWS, VenvLib, VenvStatus } from '../models/venv.mod
 import { FAVORITES_GROUP, OTHER_GROUP, toVenvSelectItems } from './venv-select-items';
 
 function lib(name: string): VenvLib {
-    return { name, specification: '', version: null, description: null };
+    return { name, specification: '', version: null, description: null, is_custom: false };
 }
 
 function venv(

@@ -1,0 +1,18 @@
+// Fills the place its parent gives it (a flex item grows); Monaco needs a sized container. The background is the
+// code editor's (a palette primitive, as there: no semantic token exists for editor chrome).
+:host {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background-color: var(--gray-830);
+}
+
+// The library's own default height (200px) is replaced by the host's.
+.code-diff-view__editor {
+    display: block;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+}

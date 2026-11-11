@@ -32,8 +32,7 @@
     max-width: 100%;
     overflow: hidden;
 
-    &:hover,
-    &:focus {
+    &:is(:hover, :focus-visible) {
         background: var(--graphite-822);
         color: var(--white);
     }
@@ -45,8 +44,7 @@
             color: var(--accent-color);
         }
 
-        &:hover,
-        &:focus {
+        &:is(:hover, :focus-visible) {
             color: var(--accent-color);
         }
     }

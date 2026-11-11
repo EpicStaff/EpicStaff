@@ -55,7 +55,7 @@ $section-gutter: 22px;
     color: var(--accent-color);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--color-ghost-btn-hover);
     }
 }
@@ -206,6 +206,10 @@ $section-gutter: 22px;
     gap: 0.375rem;
     min-width: 0;
 
+    &--stack {
+        gap: 1rem;
+    }
+
     &__error {
         font-size: 0.75rem;
         color: var(--color-error);
@@ -219,6 +223,12 @@ $section-gutter: 22px;
     .required {
         color: var(--accent-color);
         margin-left: 2px;
+    }
+
+    &--with-help {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
     }
 }
 

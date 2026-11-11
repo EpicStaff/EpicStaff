@@ -18,15 +18,21 @@ endif
 uv_services := $(patsubst src/%/pyproject.toml,%,$(wildcard src/*/pyproject.toml))
 uv_lock_targets := $(addprefix uv-lock-,$(uv_services))
 
-# django_app keeps its own django-tests name (next to the other django-* targets).
-test_targets := $(addsuffix -tests,$(filter-out django_app,$(uv_services)))
+# django_app keeps its own django-tests name (next to the other django-* targets);
+# shared has no single test session, so it has its own shared-tests target below.
+test_targets := $(addsuffix -tests,$(filter-out django_app shared,$(uv_services)))
+
+# The suites under src/shared. Each has its own pytest.ini (or none) and cannot
+# join another suite's pytest session, so shared-tests runs them one by one.
+shared_suites := tools models audit dotdict epicstaff_storage communication
+shared_test_targets := $(addprefix shared-tests-,$(shared_suites))
 
 .PHONY: help \
         uv-lock \
         uv-sync \
         django-makemigrations django-migrate django-manage django-tests \
         env-update \
-        $(test_targets)
+        $(test_targets) shared-tests $(shared_test_targets)
 
 # --- Help ---
 
@@ -47,8 +53,12 @@ endif
 # loudly; `make uv-sync svc=<service>` is the one-command fix.
 ifeq ($(OS),Windows_NT)
 VENV_PY := .venv\Scripts\python.exe
+SHARED_VENV_PY := src\shared\$(VENV_PY)
+SHARED_SUITE_VENV_PY := ..\$(VENV_PY)
 else
 VENV_PY := .venv/bin/python
+SHARED_VENV_PY := src/shared/$(VENV_PY)
+SHARED_SUITE_VENV_PY := ../$(VENV_PY)
 endif
 
 # Regenerate every service's uv.lock. `--project` avoids a per-service cd and
@@ -105,6 +115,33 @@ $(test_targets): export PYTHONPATH = $(CURDIR)
 
 $(test_targets): %-tests:
 	@cd src/$* && $(VENV_PY) -m pytest $(ARGS)
+
+# src/shared holds the cross-service models, built-in tools and libraries; its
+# test environment is `make uv-sync svc=shared`. shared-tests runs every suite in
+# its own pytest session and stops at the first one that fails. To run one
+# suite, or to pass ARGS, use shared-tests-<suite> (tools, models, audit,
+# dotdict, epicstaff_storage, communication): ARGS aimed at one suite would make
+# the others fail on "no tests ran".
+shared-tests: $(shared_test_targets)
+
+$(shared_test_targets): export PYTHONPATH = $(CURDIR)
+
+# These suites run from their own directory, where their pytest.ini lives. The
+# venv is the one of src/shared, a directory up.
+shared-tests-tools shared-tests-dotdict shared-tests-epicstaff_storage shared-tests-communication: shared-tests-%:
+	@echo --- Testing src/shared/$* ---
+	@cd src/shared/$* && $(SHARED_SUITE_VENV_PY) -m pytest $(ARGS)
+
+# models has no pytest.ini and imports `shared.models`, so it runs from the repo
+# root. audit must too: `python -m pytest` puts the working directory first on
+# sys.path, and from src/shared/audit its token.py shadows the standard library's.
+shared-tests-models:
+	@echo --- Testing src/shared/models ---
+	@$(SHARED_VENV_PY) -m pytest src/shared/models/tests $(ARGS)
+
+shared-tests-audit:
+	@echo --- Testing src/shared/audit ---
+	@$(SHARED_VENV_PY) -m pytest -c src/shared/audit/pytest.ini src/shared/audit/tests $(ARGS)
 
 # ==========================================
 # ENV FILE

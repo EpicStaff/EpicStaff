@@ -34,8 +34,12 @@
 
     <!-- 3+ admins — collapsed trigger -->
 } @else {
-    <div
+    <button
+        type="button"
         class="admins-trigger"
+        aria-haspopup="dialog"
+        [attr.aria-expanded]="isOpen()"
+        [matTooltip]="adminsTooltip()"
         (click)="toggle($event)"
     >
         @for (admin of admins().slice(0, 2); track admin.id) {
@@ -43,11 +47,7 @@
                 [name]="admin.display_name || admin.email"
                 [avatarUrl]="admin.avatar_url"
             />
-            <span
-                class="trigger-name"
-                [matTooltip]="adminName(admin)"
-                >{{ adminName(admin) }}</span
-            >
+            <span class="trigger-name">{{ adminName(admin) }}</span>
         }
         <span class="overflow-count">+{{ admins().length - 2 }}</span>
         <app-svg-icon
@@ -55,13 +55,20 @@
             size="14px"
             class="chevron"
         />
-    </div>
+    </button>
 
     @if (isOpen()) {
+        <!-- Takes the focus when it opens and hands it back to the trigger when it closes. -->
         <div
             class="admins-panel"
+            role="dialog"
+            aria-label="Organization admins"
+            tabindex="0"
+            cdkTrapFocus
+            [cdkTrapFocusAutoCapture]="true"
             [ngStyle]="panelStyle()"
             (click)="stopProp($event)"
+            (keydown.escape)="onPanelEscape($event)"
             appClickOutside
             (appClickOutside)="isOpen.set(false)"
         >

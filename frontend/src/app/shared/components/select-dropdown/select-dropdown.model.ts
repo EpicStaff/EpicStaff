@@ -5,10 +5,8 @@ export type { SelectItem };
 export type SelectDropdownMode = 'list' | 'tree';
 export type SelectDropdownSelectionMode = 'single' | 'multiple';
 
-/** List item with optional disabled flag (SelectItem has no `disabled`). */
-export interface SelectDropdownListItem<T = unknown> extends SelectItem<T> {
-    disabled?: boolean;
-}
+/** An item of the list mode. */
+export type SelectDropdownListItem<T = unknown> = SelectItem<T>;
 
 export interface SelectDropdownTreeNode {
     /** Stable selection key. Identity + ancestry come from the node graph, not a path string. */

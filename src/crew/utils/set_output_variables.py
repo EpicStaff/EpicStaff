@@ -1,24 +1,24 @@
-import re
 from typing import Any
 
 from dotdict import DotDict
 from loguru import logger
 from models.state import State
 
+from utils.state_path import split_state_path
+
 
 def set_output_variables(state: State, output_variable_path: str | None, output: Any) -> None:
-    """
-    Saves output into state["variables"] at output_variable_path.
+    """Save output into state["variables"] at output_variable_path.
+
+    Raises:
+        InvalidStatePathError: A path segment starts with `_`.
     """
     if output_variable_path is None:
         return
 
     variables: DotDict = state["variables"]
 
-    # Normal variable path handling
-    pattern = re.compile(r"\w+|\[\d+\]")  # Match words or list indices like [0]
-
-    keys: list[str] = pattern.findall(output_variable_path)
+    keys = split_state_path(output_variable_path)
     if keys[0] != "variables":
         raise ValueError(f"`{output_variable_path}` does not contain name `variables`")
 
@@ -34,8 +34,11 @@ def set_output_variables(state: State, output_variable_path: str | None, output:
         # also a dict/DotDict, merge keys instead of replacing the whole dict.
         # This prevents e.g. message_history={chat_A: [...]} from wiping chat_B's
         # entries when two sessions for different chats save concurrently.
+        # Keys go through item access, not getattr/setattr: output keys are data (a webhook
+        # payload may carry `_id` or `__typename`), and attribute access on `_properties`,
+        # `_setters` or `__dict__` would write into the DotDict's internals instead.
         for out_key, out_val in output.items():
-            existing = getattr(value, out_key, None)
+            existing = value.get(out_key)
             if (
                 isinstance(out_val, dict)
                 and existing is not None
@@ -43,7 +46,7 @@ def set_output_variables(state: State, output_variable_path: str | None, output:
             ):
                 existing.update(out_val)
             else:
-                setattr(value, out_key, out_val)
+                value[out_key] = out_val
         return
 
     for key in keys[:-1]:

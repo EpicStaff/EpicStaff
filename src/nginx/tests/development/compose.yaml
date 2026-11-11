@@ -34,7 +34,10 @@ x-nginx-environment: &nginx-environment
   # Nothing in front of nginx on the developer's machine.
   NGINX_TRUSTED_PROXIES: none
   DJANGO_HOST: decision
-  DJANGO_PORT: "8000"
+  # One server: nginx sends Django's requests to its own port, DJANGO_PORT + 1, where the
+  # stand-in decision service listens (8000).
+  DJANGO_PORT: "7999"
+  DJANGO_SGI_WORKERS: "1"
   FRONTEND_HOST: frontend
   FRONTEND_PORT: "80"
   REALTIME_HOST: realtime
@@ -93,6 +96,12 @@ x-nginx: &nginx
     - type: bind
       source: ../../docker-entrypoint.d/18-check-trusted-proxies.envsh
       target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ../../docker-entrypoint.d/19-render-django-upstream.envsh
+      target: /docker-entrypoint.d/19-render-django-upstream.envsh
       read_only: true
       bind:
         create_host_path: false

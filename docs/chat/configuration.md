@@ -47,6 +47,7 @@ Duration values: seconds, or `<n>s|m|h|d`. Rate values: `<count>/<s|m|h|d>`.
 | `CHAT_DJANGO_TIMEOUT` | `10s` | Overall limit for one Django call (fractional allowed). |
 | `CHAT_PUBLIC_BASE_URL` | `http://localhost` (dev only) | Public origin printed in the widget embed snippet, no trailing slash. |
 | `CHAT_WIDGET_URL` | `https://epicstaffchat.pages.dev/embed.js` | Script the embed snippet loads: the EpicChat widget on its CDN (the latest release). Pin a version, e.g. `https://v3-0-0.epicstaffchat.pages.dev/embed.js`, to upgrade the widget only on purpose. An absolute https URL (http only for an internal host), no quotes, angle brackets or whitespace. |
+| `CHAT_WIDGET_INTEGRITY` | empty | Subresource Integrity hash for the widget script; when set, the embed snippet adds `integrity="…" crossorigin="anonymous"`. Only with a pinned `CHAT_WIDGET_URL`: the rolling URL changes content on every release and the browser would block the widget. Get it with `curl -s <CHAT_WIDGET_URL> \| openssl dgst -sha384 -binary \| openssl base64 -A` and prefix `sha384-`. One or more space-separated `sha256-`/`sha384-`/`sha512-` hashes. For production, set a pinned URL and its hash. |
 | `CHAT_CALLBACK_URL` | `http://chat:8200/chat/internal/v1/session-callbacks` | Where Django posts run results (`/<run id>` appended); its host must be in `DJANGO_SESSION_CALLBACK_ALLOWED_HOSTS`. |
 | `CHAT_TRUSTED_PROXIES` | RFC 1918 ranges | CIDRs whose `X-Forwarded-For` is trusted (last entry is used). |
 

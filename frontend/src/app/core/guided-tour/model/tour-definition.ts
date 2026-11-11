@@ -1,7 +1,7 @@
 import { TourContent, TourFloatingPosition, TourSide } from './tour-content';
 
 /**
- * When a tour starts. `manual`: only when the user asks for it (e.g. from the account menu). `until-completed`: also
+ * When a tour starts. `manual`: only when the user asks for it (e.g. from the Help menu). `until-completed`: also
  * by itself, until the user has finished or skipped it; at most once per sign-in, and not after the user started it
  * themselves in that sign-in.
  */

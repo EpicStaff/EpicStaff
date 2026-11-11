@@ -1,20 +1,32 @@
+@use '../../../../../styles/row-more-menu';
+
 :host {
     display: flex;
 }
 
 .llm-card {
     overflow: hidden;
-    border: 1px solid var(--white-alpha-8);
-    border-radius: 8px;
-    padding: 14px 16px;
+    border: 1px solid var(--graphite-750);
+    border-radius: 10px;
+    // One size for every card, tags or not: Figma's 113px plus a tag line, so a tagged card is not squeezed.
+    // The width comes from the section's grid.
+    box-sizing: border-box;
+    height: 132px;
+    padding: 16px;
     display: flex;
     flex-grow: 1;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
+    min-width: 0;
     background: transparent;
     transition: border-color 0.2s ease;
 
-    &:hover {
+    // The fixed height must not squeeze a row (the clipped ones would shrink to nothing).
+    > * {
+        flex-shrink: 0;
+    }
+
+    &:is(:hover, :focus-within) {
         border-color: var(--white-alpha-16);
     }
 
@@ -26,133 +38,103 @@
         border-color: var(--accent-color);
     }
 
+    // As tall as the action buttons, so the row keeps its height in select mode.
     &__checkbox {
         display: flex;
         align-items: center;
         flex-shrink: 0;
+        height: 28px;
     }
 
     &__top {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 0.25rem;
+        gap: 8px;
     }
 
     &__model {
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-size: 0.6875rem;
-        font-weight: 500;
-        color: var(--fog-alpha-50);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: 1.3; // 1 clips descenders (g, p, y) under overflow: hidden
+        color: var(--fog-alpha-60);
     }
 
     &__actions {
         display: flex;
+        flex-shrink: 0;
         align-items: center;
-        gap: 4px;
+        gap: 10px;
     }
 
+    // The app's plain (borderless) 28px row button, as the ⋮ menu trigger uses it.
     &__action {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        border: 1px solid var(--purple-alpha-40);
-        background: transparent;
-        color: var(--accent-color);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        padding: 0;
-        transition:
-            background 0.2s ease,
-            border-color 0.2s ease;
+        @include row-more-menu.trigger-button;
+
+        &:focus-visible {
+            color: var(--color-text-primary);
+        }
 
         i {
-            font-size: 0.875rem;
+            font-size: 1rem;
             line-height: 1;
-        }
-
-        &:hover {
-            background: var(--purple-alpha-12);
-            border-color: var(--purple-alpha-70);
-        }
-
-        &--delete {
-            &:hover {
-                background: var(--red-440-alpha-12);
-                border-color: var(--red-440-alpha-50);
-                color: var(--red-440);
-            }
         }
     }
 
     &__name {
-        font-size: 0.9375rem;
-        font-weight: 500;
-        color: var(--fog-200);
-        word-break: break-word;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: 1.3;
+        color: var(--color-text-primary);
     }
 
+    // One line under the model name; the card's height keeps room for it.
     &__tags {
         display: flex;
-        flex-wrap: wrap;
         gap: 6px;
+        overflow: hidden;
+        white-space: nowrap;
     }
 
     &__tag {
+        flex-shrink: 0;
         font-size: 0.6875rem;
         font-weight: 500;
+        line-height: 1.3;
         color: var(--fog-alpha-50);
     }
 
+    // Pinned to the bottom, at least 16px under the text above it.
     &__bottom {
+        margin-top: auto;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-top: auto;
-        padding-top: 8px;
+        gap: 8px;
     }
 
-    &__temp {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 0.75rem;
-        color: var(--fog-alpha-50);
-
-        i {
-            font-size: 0.875rem;
-        }
-    }
-
+    &__temp,
     &__deprecated {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        font-size: var(--text-body-small-large-size);
-        font-weight: var(--text-body-small-large-weight);
-        color: var(--orange-500);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: 1;
     }
 
-    &__usage {
-        font-size: 0.75rem;
-        color: var(--fog-alpha-50);
-
-        &--active {
-            color: var(--accent-color);
-            font-weight: 500;
-            cursor: pointer;
-
-            &:hover {
-                text-decoration: underline;
-            }
-        }
+    &__temp {
+        color: var(--fog-alpha-60);
     }
 
-    &__usage-arrow {
-        margin-left: 4px;
+    &__deprecated {
+        color: var(--color-status-processing);
     }
 }

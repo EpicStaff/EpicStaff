@@ -1,12 +1,21 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActionCode, ResourceCode } from '@shared/models';
-import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
+import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
+import {
+    computeUniqueCopyName,
+    computeUniqueName,
+    downloadBlob,
+    movedToRecycleBinMessage,
+    showExportExclusionWarning,
+} from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
-import { catchError, debounceTime, groupBy, mergeMap } from 'rxjs/operators';
+import { catchError, debounceTime, groupBy, mergeMap, tap } from 'rxjs/operators';
 
+import { wasHandledByForbiddenInterceptor } from '../../../core/interceptors/forbidden-interceptor-handled.util';
 import { PermissionsService } from '../../../services/auth/permissions.service';
+import { ProfileService } from '../../../services/auth/profile.service';
 import { ToastService } from '../../../services/notifications';
+import { ImportWithReviewService } from '../../flows/components/import-review-dialog/import-with-review.service';
 import {
     AgentDefaultSurface,
     AgentDefinition,
@@ -21,6 +30,7 @@ import {
     EXPLORER_SECTIONS,
     ExplorerSectionId,
     ExplorerSelection,
+    GroupAssignTarget,
     NO_SELECTION,
 } from '../models/explorer.model';
 import {
@@ -36,8 +46,9 @@ import {
     SURFACE_CATEGORIES,
     SurfaceCategoryId,
 } from '../models/surface-category.model';
-import { BranchTreeNode } from '../models/tree-node.model';
+import { BranchTreeNode, ExplorerGroupBlock, groupBlockKey, GroupedSectionId } from '../models/tree-node.model';
 import { AgentDefinitionsApiService } from './agent-definitions-api.service';
+import { AgentGroupsStorageService } from './agent-groups-storage.service';
 import { SurfaceCatalogsStore } from './surface-catalogs-store.service';
 import { SurfacesApiService } from './surfaces-api.service';
 
@@ -61,6 +72,32 @@ export interface SelectedAgentDoc {
 const VISIBLE_SECTIONS_STORAGE_KEY = 'agents-explorer/visibleSections';
 
 const SURFACE_PATCH_DEBOUNCE_MS = 400;
+
+/** Collapsed group blocks, per user: `<prefix>/<user id>` holds an array of `groupBlockKey`s. */
+const COLLAPSED_GROUPS_STORAGE_PREFIX = 'agents-explorer/collapsedGroups';
+
+/** The inline "new group" input in the Agents section; `assign` is moved into the group once it exists. */
+export interface NewGroupDraft {
+    assign: GroupAssignTarget | null;
+}
+
+function collapsedGroupsStorageKey(userId: number | undefined): string | null {
+    return userId === undefined ? null : `${COLLAPSED_GROUPS_STORAGE_PREFIX}/${userId}`;
+}
+
+function loadCollapsedGroups(storageKey: string | null): ReadonlySet<string> {
+    if (storageKey === null) return new Set();
+    try {
+        const parsed: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]');
+        return new Set(Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === 'string') : []);
+    } catch {
+        return new Set();
+    }
+}
+
+function isNode(node: BranchTreeNode | null): node is BranchTreeNode {
+    return node !== null;
+}
 
 function loadVisibleSections(): Set<ExplorerSectionId> {
     const permissionService = inject(PermissionsService);
@@ -90,6 +127,9 @@ export class AgentsPageStore {
     private readonly catalogs: SurfaceCatalogsStore = inject(SurfaceCatalogsStore);
     private readonly destroyRef = inject(DestroyRef);
     private readonly permissionService = inject(PermissionsService);
+    private readonly importWithReview = inject(ImportWithReviewService);
+    private readonly groupsStore = inject(AgentGroupsStorageService);
+    private readonly collapsedGroupsKey = collapsedGroupsStorageKey(inject(ProfileService).currentUserSignal()?.id);
 
     private readonly pendingSurfacePatch = new Map<number, PartialUpdateSurfaceRequest>();
     private readonly surfacePatch$ = new Subject<number>();
@@ -128,6 +168,34 @@ export class AgentsPageStore {
     readonly visibleSections = signal<Set<ExplorerSectionId>>(loadVisibleSections());
 
     readonly storageActivated = signal<boolean>(false);
+    readonly agentExportMode = signal<boolean>(false);
+    readonly selectedAgentIds = signal<Set<number>>(new Set());
+    readonly selectedAgentCount = computed<number>(() => this.selectedAgentIds().size);
+    readonly allAgentsSelected = computed<boolean>(() => {
+        const agents = this.agents();
+        const selected = this.selectedAgentIds();
+        return agents.length > 0 && agents.every((a) => selected.has(a.id));
+    });
+
+    /** The org's groups, sorted by name. */
+    readonly groups = computed<LabelDto[]>(() =>
+        [...this.groupsStore.labels()].sort((a, b) => a.name.localeCompare(b.name))
+    );
+
+    readonly groupsById = computed<ReadonlyMap<number, LabelDto>>(
+        () => new Map(this.groups().map((group) => [group.id, group]))
+    );
+
+    /** `groupBlockKey`s of the collapsed group blocks, kept per user in localStorage. */
+    readonly collapsedGroups = signal<ReadonlySet<string>>(loadCollapsedGroups(this.collapsedGroupsKey));
+
+    /** The group whose header shows the inline rename input. */
+    readonly renamingGroupId = signal<number | null>(null);
+
+    /** Set while the inline "new group" input is shown. */
+    readonly newGroupDraft = signal<NewGroupDraft | null>(null);
+
+    private readonly searchQuery = computed<string>(() => this.search().trim().toLowerCase());
 
     readonly visibleSectionsCount = computed<number>(() => this.visibleSections().size);
 
@@ -201,6 +269,15 @@ export class AgentsPageStore {
     });
 
     readonly isDraftingAgent = computed<boolean>(() => this.selectedNode().kind === 'draft-agent');
+
+    /** The agent the latest Add Agent draft was saved as; null until one is, and again once another draft begins. */
+    private readonly agentCreatedFromDraftId = signal<number | null>(null);
+
+    /** Whether the agent shown is the one the latest Add Agent draft was saved as. */
+    readonly isSelectedAgentFromLatestDraft = computed<boolean>(() => {
+        const agent = this.selectedAgent();
+        return agent !== null && agent.id === this.agentCreatedFromDraftId();
+    });
 
     readonly isDraftingSurface = computed<boolean>(() => this.selectedNode().kind === 'draft-surface');
 
@@ -421,80 +498,281 @@ export class AgentsPageStore {
         return map;
     });
 
+    /** The flat agent list, used while the org has no groups. */
     readonly agentsTree = computed<BranchTreeNode[]>(() => {
-        const q = this.search().trim().toLowerCase();
-        const matchLabel = (label: string) => !q || label.toLowerCase().includes(q);
-        const byAgent = this.surfacesByAgent();
-
+        const query = this.searchQuery();
         return this.agents()
-            .map((a) => {
-                const agentMatches = matchLabel(a.name);
-                const ownSurfaces: BranchTreeNode[] = (byAgent.get(a.id) ?? [])
-                    .filter((s) => agentMatches || matchLabel(s.name))
-                    .map((s) => ({
-                        kind: 'surface',
-                        surfaceId: s.id,
-                        label: s.name,
-                        locked: !this.isSurfaceShared(s.id),
-                        shared: this.isSurfaceShared(s.id),
-                        ownerAgentId: a.id,
-                    }));
-
-                const instructionDocs: BranchTreeNode[] = a.instruction_list
-                    .map((instruction, instructionIndex) => ({
-                        kind: 'agent-doc' as const,
-                        agentId: a.id,
-                        instructionIndex,
-                        label: instruction.name,
-                    }))
-                    .filter((doc) => agentMatches || matchLabel(doc.label));
-
-                const children: BranchTreeNode[] = [];
-                if (instructionDocs.length) {
-                    children.push({
-                        kind: 'group',
-                        id: `agent:${a.id}:instructions`,
-                        label: 'Instructions',
-                        icon: 'folder-storage',
-                        children: instructionDocs,
-                        defaultExpanded: false,
-                    });
-                }
-                // Add surface node if permitted
-                if (this.permissionService.can(ResourceCode.Surfaces, ActionCode.Read)) {
-                    children.push({
-                        kind: 'group',
-                        id: `agent:${a.id}:surfaces`,
-                        label: 'Surfaces',
-                        icon: 'surfaces-tab',
-                        children: ownSurfaces,
-                        defaultExpanded: false,
-                    });
-                }
-
-                return {
-                    node: {
-                        kind: 'agent',
-                        agentId: a.id,
-                        label: a.name,
-                        children,
-                    } as BranchTreeNode,
-                    agentMatches,
-                    matchingChildren: ownSurfaces.length + instructionDocs.length,
-                };
-            })
-            .filter((entry) => !q || entry.agentMatches || entry.matchingChildren > 0)
-            .map((entry) => entry.node);
+            .map((agent) => this.agentNode(agent, query))
+            .filter(isNode);
     });
 
+    /** The flat shared-surface list, used while the org has no groups. */
     readonly surfacesTree = computed<BranchTreeNode[]>(() => {
-        const q = this.search().trim().toLowerCase();
-        const matchLabel = (label: string) => !q || label.toLowerCase().includes(q);
-
+        const query = this.searchQuery();
         return this.sharedSurfaces()
-            .filter((s) => matchLabel(s.name))
-            .map((s) => ({ kind: 'surface', surfaceId: s.id, label: s.name, locked: false }) as BranchTreeNode);
+            .map((surface) => this.sharedSurfaceNode(surface, query))
+            .filter(isNode);
     });
+
+    /**
+     * The Agents section as group blocks, or null while the org has no groups (render `agentsTree`).
+     * Every group is listed, empty ones too, so they can be dropped onto.
+     */
+    readonly agentGroupBlocks = computed<ExplorerGroupBlock[] | null>(() =>
+        this.groupBlocks(this.agents(), (agent, query) => this.agentNode(agent, query), true)
+    );
+
+    /**
+     * The Shared Surfaces section as group blocks, or null while the org has no groups (render
+     * `surfacesTree`). Only groups holding a shared surface are listed; owned surfaces are never grouped.
+     */
+    readonly surfaceGroupBlocks = computed<ExplorerGroupBlock[] | null>(() =>
+        this.groupBlocks(this.sharedSurfaces(), (surface, query) => this.sharedSurfaceNode(surface, query), false)
+    );
+
+    /**
+     * Buckets items by group: groups sorted by name, then the ungrouped items, which sit beside the
+     * groups with no header of their own. An item whose group is unknown (deleted meanwhile) counts as
+     * ungrouped, so it shows exactly once. While searching, a group whose name matches shows all its
+     * members; otherwise only matching members are shown and a group with none is left out. The
+     * ungrouped block is always last and is listed even when empty unless searching: the section hides
+     * it while empty except as a drop target.
+     */
+    private groupBlocks<T extends { group: number | null }>(
+        items: T[],
+        toNode: (item: T, query: string) => BranchTreeNode | null,
+        keepEmptyGroups: boolean
+    ): ExplorerGroupBlock[] | null {
+        const groups = this.groups();
+        if (groups.length === 0) return null;
+        const query = this.searchQuery();
+        const known = this.groupsById();
+        const membersByGroup = new Map<number | null, T[]>();
+        for (const item of items) {
+            const groupId = item.group != null && known.has(item.group) ? item.group : null;
+            const members = membersByGroup.get(groupId) ?? [];
+            members.push(item);
+            membersByGroup.set(groupId, members);
+        }
+
+        const blocks: ExplorerGroupBlock[] = [];
+        for (const group of groups) {
+            const members = membersByGroup.get(group.id) ?? [];
+            if (members.length === 0 && !keepEmptyGroups) continue;
+            const groupMatches = query !== '' && group.name.toLowerCase().includes(query);
+            const nodes = members.map((item) => toNode(item, groupMatches ? '' : query)).filter(isNode);
+            if (query !== '' && !groupMatches && nodes.length === 0) continue;
+            blocks.push({
+                groupId: group.id,
+                label: group.name,
+                memberCount: members.length,
+                nodes,
+            });
+        }
+
+        const ungrouped = membersByGroup.get(null) ?? [];
+        const ungroupedNodes = ungrouped.map((item) => toNode(item, query)).filter(isNode);
+        if (query === '' || ungroupedNodes.length > 0) {
+            blocks.push({
+                groupId: null,
+                label: 'Ungrouped',
+                memberCount: ungrouped.length,
+                nodes: ungroupedNodes,
+            });
+        }
+        return blocks;
+    }
+
+    /** The agent's tree row, or null when neither it nor any of its documents or surfaces match `query`. */
+    private agentNode(agent: AgentDefinition, query: string): BranchTreeNode | null {
+        const matchLabel = (label: string) => !query || label.toLowerCase().includes(query);
+        const agentMatches = matchLabel(agent.name);
+        const ownSurfaces: BranchTreeNode[] = (this.surfacesByAgent().get(agent.id) ?? [])
+            .filter((s) => agentMatches || matchLabel(s.name))
+            .map((s) => ({
+                kind: 'surface',
+                surfaceId: s.id,
+                label: s.name,
+                locked: !this.isSurfaceShared(s.id),
+                shared: this.isSurfaceShared(s.id),
+                ownerAgentId: agent.id,
+            }));
+
+        const instructionDocs: BranchTreeNode[] = agent.instruction_list
+            .map((instruction, instructionIndex) => ({
+                kind: 'agent-doc' as const,
+                agentId: agent.id,
+                instructionIndex,
+                label: instruction.name,
+            }))
+            .filter((doc) => agentMatches || matchLabel(doc.label));
+
+        if (!agentMatches && ownSurfaces.length + instructionDocs.length === 0) return null;
+
+        const children: BranchTreeNode[] = [];
+        if (instructionDocs.length) {
+            children.push({
+                kind: 'group',
+                id: `agent:${agent.id}:instructions`,
+                label: 'Instructions',
+                icon: 'folder-storage',
+                children: instructionDocs,
+                defaultExpanded: false,
+            });
+        }
+        // Add surface node if permitted
+        if (this.permissionService.can(ResourceCode.Surfaces, ActionCode.Read)) {
+            children.push({
+                kind: 'group',
+                id: `agent:${agent.id}:surfaces`,
+                label: 'Surfaces',
+                icon: 'surfaces-tab',
+                children: ownSurfaces,
+                defaultExpanded: false,
+            });
+        }
+
+        return { kind: 'agent', agentId: agent.id, label: agent.name, children, groupId: agent.group };
+    }
+
+    private sharedSurfaceNode(surface: Surface, query: string): BranchTreeNode | null {
+        if (query && !surface.name.toLowerCase().includes(query)) return null;
+        return { kind: 'surface', surfaceId: surface.id, label: surface.name, locked: false, groupId: surface.group };
+    }
+
+    // ---- groups ----
+
+    /** Collapsed state of a group block; a search shows every block expanded. */
+    isGroupCollapsed(section: GroupedSectionId, groupId: number | null): boolean {
+        return this.searchQuery() === '' && this.collapsedGroups().has(groupBlockKey(section, groupId));
+    }
+
+    toggleGroupCollapsed(section: GroupedSectionId, groupId: number | null): void {
+        const key = groupBlockKey(section, groupId);
+        const next = new Set(this.collapsedGroups());
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        this.setCollapsedGroups(next);
+    }
+
+    /** Collapses or expands every group of the section; the ungrouped items have no header to collapse. */
+    setAllGroupsCollapsed(section: GroupedSectionId, collapsed: boolean): void {
+        const keys = this.groups().map((group) => groupBlockKey(section, group.id));
+        const next = new Set(this.collapsedGroups());
+        for (const key of keys) {
+            if (collapsed) next.add(key);
+            else next.delete(key);
+        }
+        this.setCollapsedGroups(next);
+    }
+
+    /** Opens the inline "new group" input at the top of the Agents section. */
+    startNewGroup(assign: GroupAssignTarget | null = null): void {
+        this.renamingGroupId.set(null);
+        this.newGroupDraft.set({ assign });
+        if (!this.isSectionExpanded('agents')) this.toggleSection('agents');
+    }
+
+    cancelNewGroup(): void {
+        this.newGroupDraft.set(null);
+    }
+
+    /**
+     * Creates a group (flat) and moves `assign` into it. Errors are left to the
+     * caller, which shows them next to the name it asked for.
+     */
+    createGroup(name: string, assign: GroupAssignTarget | null): Observable<LabelDto> {
+        return this.groupsStore.createLabel(name.trim(), null).pipe(
+            tap((created) => {
+                if (assign) this.moveToGroup(assign, created.id);
+            })
+        );
+    }
+
+    startRenameGroup(groupId: number): void {
+        this.newGroupDraft.set(null);
+        this.renamingGroupId.set(groupId);
+    }
+
+    cancelRenameGroup(): void {
+        this.renamingGroupId.set(null);
+    }
+
+    renameGroup(groupId: number, name: string): void {
+        this.renamingGroupId.set(null);
+        const group = this.groupsById().get(groupId);
+        const trimmed = name.trim();
+        if (!group || !trimmed || trimmed === group.name) return;
+        this.groupsStore.renameLabel(groupId, trimmed).subscribe({
+            error: (err) => this.toast.error(this.extractError(err, 'Failed to rename group')),
+        });
+    }
+
+    /** Deletes the group; the backend ungroups its members, so they are ungrouped here too. */
+    deleteGroup(groupId: number): void {
+        const name = this.groupsById().get(groupId)?.name ?? 'Group';
+        this.groupsStore.deleteLabel(groupId).subscribe({
+            next: () => {
+                this.agents.update((list) => list.map((a) => (a.group === groupId ? { ...a, group: null } : a)));
+                this.surfaces.update((list) => list.map((s) => (s.group === groupId ? { ...s, group: null } : s)));
+                const next = new Set(this.collapsedGroups());
+                next.delete(groupBlockKey('agents', groupId));
+                next.delete(groupBlockKey('surfaces', groupId));
+                this.setCollapsedGroups(next);
+                if (this.renamingGroupId() === groupId) this.renamingGroupId.set(null);
+                // A new agent being drafted into the deleted group would otherwise be created into a missing group.
+                const selected = this.selectedNode();
+                if (selected.kind === 'draft-agent' && selected.groupId === groupId) {
+                    this.selectedNode.set({ ...selected, groupId: null });
+                }
+                this.toast.success(`Group "${name}" ungrouped`);
+            },
+            error: (err) => this.toast.error(this.extractError(err, 'Failed to ungroup')),
+        });
+    }
+
+    moveToGroup(target: GroupAssignTarget, groupId: number | null): void {
+        if (target.kind === 'agent') this.moveAgentToGroup(target.id, groupId);
+        else this.moveSurfaceToGroup(target.id, groupId);
+    }
+
+    /**
+     * The breadcrumb group crumb belongs to whoever owns the group of what is open: the agent itself, the
+     * agent of an instruction or of a surface opened under it (those follow their agent), or a shared surface.
+     */
+    moveSelectionToGroup(groupId: number | null): void {
+        const agent = this.selectedAgent() ?? this.selectedAgentDoc()?.agent ?? this.selectedSurfaceView()?.ownerAgent;
+        if (agent) {
+            this.moveAgentToGroup(agent.id, groupId);
+            return;
+        }
+        const surface = this.selectedSurface();
+        if (surface) this.moveSurfaceToGroup(surface.id, groupId);
+    }
+
+    moveAgentToGroup(agentId: number, groupId: number | null): void {
+        const agent = this.agents().find((a) => a.id === agentId);
+        if (!agent || agent.group === groupId) return;
+        this.agentsApi.partialUpdate(agentId, { group: groupId }).subscribe({
+            next: (updated) => this.replaceAgent(updated),
+            error: (err) => this.toast.error(this.extractError(err, 'Failed to move agent to group')),
+        });
+    }
+
+    /** Only shared surfaces have a group: the backend rejects one on an owned surface. */
+    moveSurfaceToGroup(surfaceId: number, groupId: number | null): void {
+        const surface = this.surfaces().find((s) => s.id === surfaceId);
+        if (!surface || surface.owner_agent != null || surface.group === groupId) return;
+        this.updateSurface(surfaceId, { group: groupId });
+    }
+
+    private setCollapsedGroups(next: ReadonlySet<string>): void {
+        this.collapsedGroups.set(next);
+        if (this.collapsedGroupsKey === null) return;
+        try {
+            localStorage.setItem(this.collapsedGroupsKey, JSON.stringify([...next]));
+        } catch {}
+    }
 
     load(): void {
         this.loading.set(true);
@@ -514,7 +792,10 @@ export class AgentsPageStore {
             })
         );
 
-        forkJoin({ agents: agents$, surfaces: surfaces$ }).subscribe(({ agents, surfaces }) => {
+        // Fetched fresh with the items so the tree is grouped on first paint; a failure leaves it ungrouped.
+        const groups$ = this.groupsStore.loadLabels(true);
+
+        forkJoin({ agents: agents$, surfaces: surfaces$, groups: groups$ }).subscribe(({ agents, surfaces }) => {
             this.agents.set(Array.isArray(agents) ? agents : []);
             this.surfaces.set(Array.isArray(surfaces) ? surfaces : []);
             this.loading.set(false);
@@ -532,7 +813,7 @@ export class AgentsPageStore {
             });
     }
 
-    retrySurfaces(): void {
+    reloadSurfaces(): void {
         this.surfacesError.set(null);
         this.surfacesApi
             .getSurfaces()
@@ -556,8 +837,11 @@ export class AgentsPageStore {
         this.selectedNode.set({ kind: 'draft-surface', id: null });
     }
 
-    beginCreateAgent(): void {
-        this.selectedNode.set({ kind: 'draft-agent', id: null });
+    /** Opens the new-agent form; with `groupId` the agent is created in that group, whose block is expanded. */
+    beginCreateAgent(groupId: number | null = null): void {
+        if (groupId !== null && this.isGroupCollapsed('agents', groupId)) this.toggleGroupCollapsed('agents', groupId);
+        this.agentCreatedFromDraftId.set(null);
+        this.selectedNode.set({ kind: 'draft-agent', id: null, groupId });
     }
 
     cancelDraft(): void {
@@ -722,6 +1006,8 @@ export class AgentsPageStore {
                 name: computeUniqueCopyName(src.name, existingNames),
                 instructions: src.instructions,
                 owner_agent: src.owner_agent,
+                // A shared copy stays in the source's group; the backend rejects a group on an owned surface.
+                group: src.owner_agent == null ? src.group : null,
                 python_tools: src.python_tools,
                 mcp_tools: src.mcp_tools,
                 storage_items: src.storage_items,
@@ -749,6 +1035,7 @@ export class AgentsPageStore {
                 name: computeUniqueCopyName(src.name, existingNames),
                 instructions: src.instructions,
                 owner_agent: agentId,
+                group: null,
                 python_tools: src.python_tools,
                 mcp_tools: src.mcp_tools,
                 storage_items: src.storage_items,
@@ -770,7 +1057,7 @@ export class AgentsPageStore {
         body: CreateSurfaceRequest,
         category: SurfaceCategoryId = 'every-place'
     ): void {
-        this.createSurface({ ...body, owner_agent: agentId }, 'Surface created', (created) =>
+        this.createSurface({ ...body, owner_agent: agentId, group: null }, 'Surface created', (created) =>
             this.afterAgentSurfaceChange(agentId, () => {
                 if (category !== 'every-place') this.moveSurfacePlace(created.id, agentId, category);
             })
@@ -842,10 +1129,13 @@ export class AgentsPageStore {
                 this.agents().map((a) => a.name)
             );
         }
+        const draft = this.selectedNode();
+        const group = draft.kind === 'draft-agent' ? (draft.groupId ?? null) : null;
         this.saving.set(true);
-        this.agentsApi.create({ ...body, name: trimmed }).subscribe({
+        this.agentsApi.create({ ...body, name: trimmed, group }).subscribe({
             next: (created) => {
                 this.agents.update((list) => [...list, created]);
+                this.agentCreatedFromDraftId.set(created.id);
                 if (openFirstInstruction) {
                     this.selectAgentDoc(created.id, 0);
                 } else {
@@ -934,20 +1224,26 @@ export class AgentsPageStore {
     duplicateAgent(id: number): void {
         const src = this.agents().find((a) => a.id === id);
         if (!src) return;
-        const existingNames = this.agents().map((a) => a.name);
         this.saving.set(true);
-        this.agentsApi.copy(src, computeUniqueCopyName(src.name, existingNames)).subscribe({
-            next: (created) => {
-                this.agents.update((list) => [...list, created]);
-                this.selectAgent(created.id);
-                this.saving.set(false);
-                this.toast.success('Agent duplicated');
-            },
-            error: (err) => {
-                this.saving.set(false);
-                this.toast.error(this.extractError(err, 'Failed to duplicate agent'));
-            },
-        });
+        this.agentsApi
+            .copy(src.id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (created) => {
+                    this.agents.update((list) => [...list, created]);
+                    // The server clones the owned surfaces too. Reload always: our list may miss surfaces
+                    // the source gained elsewhere, so it cannot tell whether there is anything to show.
+                    this.reloadSurfaces();
+                    this.selectAgent(created.id);
+                    this.saving.set(false);
+                    this.toast.success('Agent duplicated');
+                },
+                error: (err) => {
+                    this.saving.set(false);
+                    if (wasHandledByForbiddenInterceptor(err)) return;
+                    this.toast.error(this.extractError(err, 'Failed to duplicate agent'));
+                },
+            });
     }
 
     deleteAgent(id: number): void {
@@ -968,6 +1264,74 @@ export class AgentsPageStore {
                 this.toast.error(this.extractError(err, 'Failed to delete agent'));
             },
         });
+    }
+
+    startAgentExport(): void {
+        this.selectedAgentIds.set(new Set());
+        this.agentExportMode.set(true);
+    }
+
+    cancelAgentExport(): void {
+        this.agentExportMode.set(false);
+        this.selectedAgentIds.set(new Set());
+    }
+
+    toggleAgentSelection(id: number): void {
+        this.selectedAgentIds.update((ids) => {
+            const next = new Set(ids);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }
+
+    toggleSelectAllAgents(): void {
+        this.selectedAgentIds.set(this.allAgentsSelected() ? new Set() : new Set(this.agents().map((a) => a.id)));
+    }
+
+    confirmAgentExport(): void {
+        const existing = new Set(this.agents().map((a) => a.id));
+        const ids = [...this.selectedAgentIds()].filter((id) => existing.has(id));
+        if (ids.length === 0) {
+            this.toast.info('Select at least one agent to export.');
+            return;
+        }
+        this.agentsApi.bulkExportAgents(ids).subscribe({
+            next: ({ blob, excluded }) => {
+                downloadBlob(blob, `agents_export_${Date.now()}.json`);
+                this.cancelAgentExport();
+                showExportExclusionWarning(this.toast, excluded);
+            },
+            error: (err) => this.toast.error(this.extractError(err, 'Failed to export agents')),
+        });
+    }
+
+    exportAgent(id: number): void {
+        const agent = this.agents().find((a) => a.id === id);
+        if (!agent) return;
+        this.agentsApi.exportAgent(id).subscribe({
+            next: ({ blob, excluded }) => {
+                downloadBlob(blob, `agent_${agent.name}.json`);
+                showExportExclusionWarning(this.toast, excluded);
+            },
+            error: (err) => this.toast.error(this.extractError(err, `Failed to export agent "${agent.name}"`)),
+        });
+    }
+
+    importAgents(): void {
+        this.importWithReview
+            .pickAndImport({
+                entityLabel: 'agent',
+                entityLabelPlural: 'agents',
+                inspect: (file) => this.agentsApi.inspectImport(file),
+                importFile: (file) => this.agentsApi.importAgents(file),
+            })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+                this.toast.success('Agents imported successfully.');
+                this.load();
+                this.catalogs.reloadLoadedCatalogs();
+            });
     }
 
     deleteSurface(id: number): void {

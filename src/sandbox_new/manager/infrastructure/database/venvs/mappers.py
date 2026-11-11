@@ -1,8 +1,12 @@
 import json
 
-from manager.domain.enums import VenvStatus
-from manager.domain.models import Library, Venv
-from manager.infrastructure.database.venvs.tables import VenvTable
+from manager.domain.enums import VenvStatus, WheelStatus
+from manager.domain.models import CustomLibrary, Library, Venv, Wheel
+from manager.infrastructure.database.venvs.tables import (
+    CustomLibraryTable,
+    VenvTable,
+    WheelTable,
+)
 
 
 class VenvMapper:
@@ -23,3 +27,32 @@ class VenvMapper:
     @staticmethod
     def dump_libs(libs: list[Library]) -> list[dict]:
         return [lib.model_dump() for lib in libs]
+
+
+class CustomLibraryMapper:
+    @staticmethod
+    def to_domain(row: CustomLibraryTable) -> CustomLibrary:
+        return CustomLibrary(
+            id=row.id,
+            name=row.name,
+            is_deleted=row.is_deleted,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+
+class WheelMapper:
+    @staticmethod
+    def to_domain(row: WheelTable) -> Wheel:
+        return Wheel(
+            id=row.id,
+            library_id=row.library,
+            source_filename=row.source_filename,
+            wheel_filename=row.wheel_filename,
+            upload_sha256=row.upload_sha256,
+            version=row.version,
+            status=WheelStatus(row.status),
+            error=row.error,
+            is_deleted=row.is_deleted,
+            created_at=row.created_at,
+        )

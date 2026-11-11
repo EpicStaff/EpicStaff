@@ -2,8 +2,11 @@
 // designer's Figma component. The chevron and × sprites draw their glyph inside a transparent inset of
 // 5/24 of the icon box (3.33px at 16px, 4.17px at 20px), so paddings and gaps are set for where the
 // visible glyphs land.
-// Two appearances: `filled` (the rules below) and `outline` (the --outline blocks at the end of each
-// part), the look of the flows page's Import button, for the default size.
+// Three appearances: `filled` (the rules below) and `outline` (the --outline blocks at the end of each
+// part), the look of the flows page's Import button, for the default size; `toolbar` (the --toolbar block at
+// the end of the control), the list-page toolbar look.
+@use '../../../../styles/a11y-mixins' as a11y;
+
 :host {
     display: inline-flex;
     flex-shrink: 0;
@@ -56,15 +59,14 @@
         cursor: pointer;
         transition: background-color 0.15s ease;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--color-secondary-btn-background-hover);
         }
 
         // Inset, so the container's overflow clipping cannot cut the ring off, and 1px clear of the
         // container border, so it stays distinct from the accent border of the Selected states.
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -2px;
+            outline-offset: -3px;
         }
 
         &:disabled {
@@ -138,7 +140,7 @@
 
         .bulk-select__main,
         .bulk-select__clear {
-            &:hover:not(:disabled) {
+            &:is(:hover, :focus-visible):not(:disabled) {
                 background: var(--color-ghost-btn-hover);
             }
 
@@ -170,6 +172,56 @@
         // With the 1px divider, 34px: the width of Import's cog.
         .bulk-select__clear {
             width: 33px;
+        }
+    }
+}
+
+// Toolbar (list-page toolbar look, default size): transparent at rest with the dim outline; the Selected states on the
+// page background with the accent border. The chevron keeps its 20px box, so its glyph sits ~12px further in.
+.bulk-select--toolbar {
+    border-color: var(--graphite-750);
+    border-radius: var(--radius-xl);
+    background: transparent;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+
+    &.bulk-select--selected {
+        border-color: var(--accent-color);
+        border-radius: var(--radius-lg);
+        background: var(--color-background-body);
+    }
+
+    // Positioned: the word hidden in the icon-only look stays inside the button.
+    .bulk-select__main {
+        position: relative;
+        gap: 8px;
+        padding: 0 16px;
+    }
+
+    &.bulk-select--selected .bulk-select__main {
+        padding-right: 8px;
+    }
+
+    .bulk-select__main--open:not(:disabled) {
+        background: var(--color-secondary-btn-background-hover);
+    }
+
+    .bulk-select__divider {
+        background: var(--graphite-750);
+    }
+
+    &.bulk-select--icon-only {
+        .bulk-select__word {
+            @include a11y.visually-hidden;
+        }
+
+        // At rest only the icon shows: a 40px square with the border.
+        // No gap: the label is still a (now empty) flex item, and the gap before it pushed the icon off centre.
+        &:not(.bulk-select--selected) .bulk-select__main {
+            width: 38px;
+            gap: 0;
+            padding: 0;
         }
     }
 }
@@ -221,8 +273,24 @@
 
         // Inset, so the menu's overflow clipping cannot cut the ring off.
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -1px;
+            outline-offset: -2px;
+        }
+    }
+
+    // Toolbar look: between "Select All" and "Clear Selection".
+    &__divider {
+        flex-shrink: 0;
+        height: 1px;
+        background: var(--graphite-750);
+    }
+
+    // "Select All" of the toolbar look, with everything already selected.
+    &__item[aria-disabled='true'] {
+        opacity: 0.6;
+        cursor: default;
+
+        &:hover {
+            background: transparent;
         }
     }
 

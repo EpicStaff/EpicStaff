@@ -1,9 +1,12 @@
 import { PercentPipe, TitleCasePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
 import { RAG_TYPE_LABELS } from '@shared/constants';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { formatSmallCostUsd, formatTokens, toFiniteNumber } from '@shared/utils';
 
+import { ChunkDeepLinkService } from '../../../../../../features/knowledge-sources/services/chunk-deep-link.service';
 import {
     ExtractedChunk,
     ExtractedChunksMessageData,
@@ -14,13 +17,22 @@ import {
 
 @Component({
     selector: 'app-extracted-chunks-message',
-    imports: [PercentPipe, TitleCasePipe, AppSvgIconComponent, CopyButtonComponent],
+    imports: [
+        PercentPipe,
+        TitleCasePipe,
+        AppSvgIconComponent,
+        CopyButtonComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './extracted-chunks-message.component.html',
     styleUrls: ['./extracted-chunks-message.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ExtractedChunksMessageComponent {
     readonly message = input.required<GraphMessage>();
+
+    private readonly deepLinkService = inject(ChunkDeepLinkService);
 
     protected readonly isExpanded = signal(false);
 
@@ -49,6 +61,12 @@ export class ExtractedChunksMessageComponent {
         return (data.chunks ?? []).map((chunk, index) =>
             typeof chunk === 'string' ? { text: chunk, order: index } : chunk
         );
+    }
+
+    chunkUrl(chunk: ExtractedChunk): string | null {
+        const data = this.data;
+        if (this.ragKind !== 'naive' || !data?.rag_id || chunk.document_id == null) return null;
+        return this.deepLinkService.buildUrl(data.collection_id, data.rag_id, chunk.document_id, chunk.order);
     }
 
     get chunkCountLabel(): string {
