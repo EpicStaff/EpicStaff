@@ -45,8 +45,10 @@ TARGET_TYPE_LABELS = {
     "audiotranscriptionnode": "audio to text node",
     "subgraphnode": "subflow node",
     "graphnote": "note",
-    # A venv lives in the sandbox; this side keeps only the binding that stands for it.
+    # A venv or custom library lives in the sandbox; this side keeps only the binding that
+    # stands for it.
     "sandboxvenvbinding": "venv",
+    "sandboxcustomlibrarybinding": "custom library",
 }
 # The relation a record names as the parent of a model the edit tracker gives no owner,
 # keyed by the model's `app_label.model_name`; `__` follows several relations. An

@@ -12,15 +12,13 @@ from tables.models.default_models import DefaultModels
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.llm_models import LLMModel
 from tables.models.provider import Provider
+from tables.services.quickstart_service import QuickstartService
 from tables.services.secrets import secret_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 pytestmark = pytest.mark.django_db
 
-PROVIDER_MODEL_NAMES = {
-    "openai": ("gpt-4o-mini", "text-embedding-3-small"),
-    "gemini": ("gemini-1.5-pro", "text-embedding-004"),
-}
+QUICKSTART_MODELS = QuickstartService.PROVIDER_CONFIGS
 
 
 @pytest.fixture
@@ -34,9 +32,9 @@ def admin_client(client_as, admin_acme, acme, beta, role_member):
 
 def _seed_built_in_models(provider_name: str) -> Provider:
     provider = Provider.objects.create(name=provider_name)
-    llm_model_name, embedding_model_name = PROVIDER_MODEL_NAMES[provider_name]
-    LLMModel.objects.create(name=llm_model_name, llm_provider=provider)
-    EmbeddingModel.objects.create(name=embedding_model_name, embedding_provider=provider)
+    models = QUICKSTART_MODELS[provider_name]
+    LLMModel.objects.create(name=models["llm_model"], llm_provider=provider)
+    EmbeddingModel.objects.create(name=models["embedding_model"], embedding_provider=provider)
     return provider
 
 
@@ -49,12 +47,15 @@ def _recorded(events):
 
 
 @pytest.mark.parametrize(
-    ("provider_name", "realtime_type"),
-    [("openai", "OpenAI voice config"), ("gemini", "Gemini voice config")],
+    ("provider_name", "provider_config_types"),
+    [
+        ("openai", ["OpenAI voice config", "System One config"]),
+        ("gemini", ["Gemini voice config"]),
+    ],
 )
 def test_quickstart_records_each_created_row_in_the_checked_org(
     admin_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks,
-    provider_name, realtime_type,
+    provider_name, provider_config_types,
 ):
     _seed_built_in_models(provider_name)
 
@@ -70,7 +71,10 @@ def test_quickstart_records_each_created_row_in_the_checked_org(
             ("created", acme.id, admin_acme.id, "secret", f"quickstart-{provider_name}-api-key", None),
             ("created", acme.id, admin_acme.id, "LLM config", bundle, None),
             ("created", acme.id, admin_acme.id, "embedding config", bundle, None),
-            ("created", acme.id, admin_acme.id, realtime_type, bundle, None),
+            *(
+                ("created", acme.id, admin_acme.id, config_type, bundle, None)
+                for config_type in provider_config_types
+            ),
         ]
     )
 
@@ -87,14 +91,17 @@ def test_quickstart_records_the_models_it_had_to_create(
         )
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert sorted((event.target_type, event.target_name) for event in sent_events) == [
-        ("LLM config", "quickstart_openai"),
-        ("LLM model", "gpt-4o-mini"),
-        ("OpenAI voice config", "quickstart_openai"),
-        ("embedding config", "quickstart_openai"),
-        ("embedding model", "text-embedding-3-small"),
-        ("secret", "quickstart-openai-api-key"),
-    ]
+    assert sorted((event.target_type, event.target_name) for event in sent_events) == sorted(
+        [
+            ("LLM config", "quickstart_openai"),
+            ("LLM model", QUICKSTART_MODELS["openai"]["llm_model"]),
+            ("OpenAI voice config", "quickstart_openai"),
+            ("System One config", "quickstart_openai"),
+            ("embedding config", "quickstart_openai"),
+            ("embedding model", QUICKSTART_MODELS["openai"]["embedding_model"]),
+            ("secret", "quickstart-openai-api-key"),
+        ]
+    )
 
 
 def test_quickstart_with_a_reused_secret_records_no_secret(
@@ -114,6 +121,7 @@ def test_quickstart_with_a_reused_secret_records_no_secret(
     assert sorted(event.target_type for event in sent_events) == [
         "LLM config",
         "OpenAI voice config",
+        "System One config",
         "embedding config",
     ]
 
@@ -124,7 +132,7 @@ def test_failed_quickstart_records_nothing(
     provider = Provider.objects.create(name="openai")
     # Refused after the secret and the LLM model were created, so both are rolled back.
     EmbeddingModel.objects.create(
-        name="text-embedding-3-small",
+        name=QUICKSTART_MODELS["openai"]["embedding_model"],
         embedding_provider=provider,
         org=acme,
         is_custom=True,

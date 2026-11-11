@@ -130,6 +130,7 @@ HOOK_RECORDED_ROUTES = frozenset(
         "POST api/sessions/bulk_delete/",
         # record_copy records the new copy in its own org, its source's name as previous
         # name. The fallback never records a copy: its URL names the source, not the copy.
+        "POST api/agent-definitions/<pk>/copy/",
         "POST api/audit-filter-presets/<pk>/copy/",
         "POST api/graphs/<pk>/copy/",
         "POST api/mcp-tools/<pk>/copy/",
@@ -170,6 +171,11 @@ HOOK_RECORDED_ROUTES = frozenset(
         "PATCH api/flow-assistants/<graph_id>/",
         "PUT api/default-models/",
         "POST api/twilio/configure-webhook/",
+        # A wheel has no row here: the view records the upload or delete as an update of
+        # its custom library. Generic actions, listed because the view has no model the
+        # fallback could name.
+        "DELETE api/custom-libraries/<library_pk>/wheels/<pk>/",
+        "POST api/custom-libraries/<library_pk>/wheels/",
         # QuickstartService records what it creates and applies.
         "POST api/quickstart/",
         "POST api/quickstart/apply/",
@@ -299,7 +305,8 @@ def test_fallback_recorded_routes_name_their_target_in_the_url():
 def test_every_view_the_fallback_records_names_its_model():
     """The fallback types and names its target through `model_of`, so a view it records
     must declare its model: a class `queryset` (`Model.objects.none()` when the view only
-    defines `get_queryset`) or `serializer_class`."""
+    defines `get_queryset`) or `serializer_class`. A route in `HOOK_RECORDED_ROUTES` is
+    recorded by its hook, never by the fallback."""
     unresolvable = sorted(
         {
             f"{key} ({view_class.__name__})"
@@ -307,6 +314,7 @@ def test_every_view_the_fallback_records_names_its_model():
                 include_generic_actions=True
             )
             if (key in FALLBACK_RECORDED_ROUTES or (actions is not None and name in GENERIC_ACTIONS))
+            and key not in HOOK_RECORDED_ROUTES
             and not handler_reads_only(view_class, name)
             and not _excluded(view_class, name)
             and model_of(view_class) is None

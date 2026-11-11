@@ -13,7 +13,7 @@ from rest_framework.test import APIClient
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from agents.models import AgentDefinition
+from agents.models import AgentDefinition, Surface
 from rbac.models import OrganizationUser
 from tables.models import (
     AuditFilterPreset,
@@ -125,6 +125,33 @@ def test_a_copy_records_the_new_copy_with_its_source_name(
         "Billing flow",
     )
     assert event.route is None
+
+
+def test_an_agent_copy_records_the_agent_once_and_not_the_surfaces_cloned_with_it(
+    admin_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
+):
+    # The surfaces it owns are part of the copy, as a flow's nodes are part of a flow copy.
+    agent = AgentDefinition.objects.create(org=acme, name="Writer")
+    Surface.objects.create(org=acme, name="Writer notes", owner_agent=agent)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.post(f"/api/agent-definitions/{agent.pk}/copy/", {}, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    copy = _copy_of(AgentDefinition, agent, org=acme)
+    assert Surface.objects.filter(owner_agent=copy).count() == 1
+    [event] = sent_events
+    assert (event.action, event.org_id, event.actor_user_id, event.route) == (
+        "copied",
+        acme.id,
+        admin_acme.id,
+        None,
+    )
+    assert (event.target_type, event.target_id, event.previous_name) == (
+        "agent",
+        str(copy.pk),
+        "Writer",
+    )
 
 
 def test_fallback_skips_when_tracker_recorded(

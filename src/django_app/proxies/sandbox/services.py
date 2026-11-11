@@ -52,6 +52,22 @@ def pair_with_bindings(
     return pairs
 
 
+def _name_or_none(
+    client: SandboxVenvClient | SandboxCustomLibraryClient, resource_id: str
+) -> str | None:
+    """The name the sandbox stores for an environment or library, or None when it could
+    not be asked.
+
+    Best effort: the name only labels a user-action record, which must not fail the
+    change it describes for want of it.
+    """
+    try:
+        return client.retrieve(resource_id).get("name")
+    except Exception:
+        logger.exception("Could not read the name of sandbox resource {}", resource_id)
+        return None
+
+
 class VenvService:
     """The sandbox's environments and their bindings, handled as one resource."""
 
@@ -167,7 +183,7 @@ class VenvService:
             raise VenvInUseError(self._describe_owners(code_ids))
 
         with self.client_class() as client:
-            name = self._name_before_removal(client, binding.resource_id)
+            name = _name_or_none(client, binding.resource_id)
             client.remove(binding.resource_id)
         binding.delete()
         return name
@@ -193,16 +209,6 @@ class VenvService:
                     logger.exception(
                         "Could not remove venv {} created by work that rolled back", venv_id
                     )
-
-    @staticmethod
-    def _name_before_removal(client: SandboxVenvClient, venv_id: str) -> str | None:
-        # Best effort: the name only labels the record of the delete, which must not
-        # fail for want of it.
-        try:
-            return client.retrieve(venv_id).get("name")
-        except Exception:
-            logger.exception("Could not read the name of venv {} before deleting it", venv_id)
-            return None
 
     def _assert_custom_libraries_owned(self, data: dict, org_id: int | None) -> None:
         """Refuse a venv that names a stored library the organization does not have.
@@ -370,15 +376,26 @@ class CustomLibraryService:
         )
         return binding, library
 
-    def delete(self, binding: SandboxCustomLibraryBinding) -> None:
+    def delete(self, binding: SandboxCustomLibraryBinding) -> str | None:
         """Delete a library no venv names any more, upstream and here.
 
         Which venvs name it is the sandbox's to answer, not this database's: it
         refuses with a 409 while one still does, and the binding is then left alone.
+
+        Returns:
+            The library's name, read just before it is removed, since nothing can
+            tell it afterwards; None when the sandbox could not be asked.
         """
         with self.client_class() as client:
+            name = _name_or_none(client, binding.resource_id)
             client.remove(binding.resource_id)
         binding.delete()
+        return name
+
+    def name(self, binding: SandboxCustomLibraryBinding) -> str | None:
+        """The library's name as the sandbox stores it; None when it could not be asked."""
+        with self.client_class() as client:
+            return _name_or_none(client, binding.resource_id)
 
     def list_wheels(self, binding: SandboxCustomLibraryBinding) -> list[dict]:
         """Every version of this library, as the sandbox reports them."""
