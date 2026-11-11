@@ -20,6 +20,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
     AppSvgIconComponent,
     AuthorshipDetailsDialogService,
@@ -32,12 +33,14 @@ import {
 } from '@shared/components';
 import { PROVIDER_ICON_PATHS } from '@shared/constants';
 import {
+    ActionCode,
     BulkDeleteGroup,
     BulkDeleteLabel,
     BulkDeleteOutcome,
     LlmLibraryModel,
     LlmLibraryProviderGroup,
     ModelTypes,
+    ResourceCode,
     SystemOneConfig,
 } from '@shared/models';
 import {
@@ -47,11 +50,12 @@ import {
     LLMLibraryService,
     SystemOneConfigStorageService,
 } from '@shared/services';
-import { getProviderHeadingIcon, getProviderIconPath, providerDisplayName } from '@shared/utils';
+import { getProviderHeadingIcon, getProviderIconPath, providerDisplayName, takeQueryParams } from '@shared/utils';
 import { forkJoin, Observable, of } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { SYSTEM_ONE_LABEL } from '../../constants/llm-library-capabilities.constant';
 import { SYSTEM_ONE_PROVIDERS } from '../../constants/system-one-providers.constant';
 import {
@@ -138,6 +142,25 @@ function noLoadErrors(): Record<LibraryLoadKey, boolean> {
     };
 }
 
+/** A config a `?configType=&configId=` link points at: its name, and how its Edit button opens it. */
+interface LinkedConfig {
+    name: string;
+    open: () => void;
+}
+
+/** The voice provider each voice `configType` of a link names. */
+const VOICE_CONFIG_TYPES = new Map<string, RealtimeProvider>([
+    ['openai-voice', 'openai'],
+    ['elevenlabs-voice', 'elevenlabs'],
+    ['gemini-voice', 'gemini'],
+]);
+
+/** The card type each LLM-library `configType` of a link names. */
+const MODEL_CONFIG_TYPES = new Map<string, ModelTypes>([
+    ['llm', ModelTypes.LLM],
+    ['embedding', ModelTypes.EMBEDDING],
+]);
+
 const LLM_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'LLM config', plural: 'LLM configs' };
 const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding config', plural: 'embedding configs' };
 const SYSTEM_ONE_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'System One config', plural: 'System One configs' };
@@ -181,6 +204,11 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
     private readonly dialog = inject(Dialog);
     private readonly injector = inject(Injector);
+    private readonly permissions = inject(PermissionsService);
+    private readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
+    // `?configType=&configId=`, taken from the URL at init and opened after the first load
+    private linkedConfigParams: Partial<Record<'configType' | 'configId', string>> = {};
     private readonly overlayContainer = inject(OverlayContainer);
     private readonly document = inject(DOCUMENT);
 
@@ -325,6 +353,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     }
 
     ngOnInit() {
+        this.linkedConfigParams = takeQueryParams(this.route, this.router, ['configType', 'configId']);
         this.loadAll();
     }
 
@@ -381,7 +410,43 @@ export class LlmLibrarySectionComponent implements OnInit {
             .subscribe(() => {
                 this.sectionErrors.set(errors);
                 this.status.set(LoadingState.LOADED);
+                this.openLinkedConfig();
             });
+    }
+
+    /**
+     * `?configType=&configId=` opens that config as its Edit button does. A viewer without that button gets the library
+     * searched for it instead. An unknown config is ignored.
+     */
+    private openLinkedConfig(): void {
+        const { configType, configId } = this.linkedConfigParams;
+        this.linkedConfigParams = {};
+        if (configType == null || configId == null) return;
+        const linked = this.findLinkedConfig(configType, Number(configId));
+        if (!linked) return;
+        if (this.permissions.can(ResourceCode.LlmConfigs, ActionCode.Update)) linked.open();
+        else this.searchQuery.set(linked.name);
+    }
+
+    private findLinkedConfig(configType: string, id: number): LinkedConfig | null {
+        const voiceProviderKey = VOICE_CONFIG_TYPES.get(configType);
+        if (voiceProviderKey) {
+            const provider = this.voiceProviders.find((candidate) => candidate.key === voiceProviderKey);
+            const config = provider?.storage.configs().find((candidate) => candidate.id === id);
+            return provider && config
+                ? { name: config.custom_name, open: () => this.onEditConfig(provider, config) }
+                : null;
+        }
+        if (configType === 'system-one') {
+            const config = this.systemOneStorage.configs().find((candidate) => candidate.id === id);
+            return config ? { name: config.custom_name, open: () => this.onEditSystemOne(config) } : null;
+        }
+        const modelType = MODEL_CONFIG_TYPES.get(configType);
+        if (!modelType) return null;
+        const model = this.providerGroups()
+            .flatMap((group) => group.models)
+            .find((candidate) => candidate.configType === modelType && candidate.id === id);
+        return model ? { name: model.customName, open: () => this.onEdit(model) } : null;
     }
 
     onEditConfig(provider: VoiceProvider, config: RealtimeConfig): void {

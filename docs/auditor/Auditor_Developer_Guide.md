@@ -3,23 +3,28 @@ This guide is task-oriented: how to actually do things in the audit-trail system
 
 ## Architecture in one paragraph
 
-`crew` and `django_app` emit `SessionAuditEvent`s via the shared `AuditClient` (`src/shared/audit/client.py`), which batches and `POST`s to `auditor`'s ingest route. `auditor` is the *only* thing that talks to the datastore — everything storage-specific hides behind the generic `AuditRepository` interface (`src/auditor/app/repositories/base.py`), implemented today by `OpenSearchAuditRepository` (`repositories/opensearch_repository.py`). The frontend never touches OpenSearch directly either: it gets a short-lived JWT from `django_app`'s `POST /api/audit/token/`, then calls `auditor`'s browse/export routes with it.
+`crew` emits `SessionAuditEvent`s and `django_app` emits `UserActionEvent`s via the shared `AuditClient` (`src/shared/audit/client.py`), which batches and `POST`s to `auditor`'s ingest route. Django captures user actions in `src/django_app/user_audit/` in three layers: the last-edit tracker (`rbac/authorship/last_edit.py`, real changes with detail), explicit hooks (recycle bin, graph-save deletes, auth, governance), and a fallback middleware (`user_audit/middleware.py`) that records one generic action from the route when neither of the others ran for the request. `auditor` is the *only* thing that talks to the datastore — everything storage-specific hides behind the generic `AuditRepository` interface (`src/auditor/app/repositories/base.py`), implemented today by `OpenSearchAuditRepository` (`repositories/opensearch_repository.py`). The frontend never touches OpenSearch directly either: it gets a short-lived JWT from `django_app`'s `POST /api/audit/token/`, then calls `auditor`'s browse/export routes with it.
 
 `auditor` is built around a pluggable **audit-domain abstraction**
 (`app/domains/base.py::AuditDomain`) — `sessions` (`app/domains/sessions/`)
-is the only domain today, but nothing under `app/filtering/`,
+and `user_actions` (`app/domains/user_actions/`) today, but nothing under `app/filtering/`,
 `app/repositories/`, or `app/services/` is sessions-specific; a domain
-supplies its own field cat1alog, computed fields, match-scope expansion, and
+supplies its own field catalog, computed fields, match-scope expansion, and
 OpenSearch mapping. Every route is mounted under `/api/audit/{domain.name}/...`
-so a second domain's routes, repository, and export-job storage never collide
-with `sessions`'s (see "How to add a new `auditor` route" below). See
+so each domain's routes, repository, and export-job storage never collide (see "How to add a new `auditor` route" below). See
 `wiki/services/auditor.md` for the full code map — this doc stays
 task-oriented (how to actually do things), not a repeat of that map.
 
 ```
-crew / django_app → AuditClient → POST /api/audit/sessions/events (X-API-Key) → auditor → AuditRepository (OpenSearchAuditRepository) → OpenSearch
+crew (sessions) / django_app (user_actions) → AuditClient → POST /api/audit/{domain}/events (X-API-Key) → auditor → AuditRepository (OpenSearchAuditRepository) → OpenSearch
 frontend → django_app POST /api/audit/token/ (RBAC) → JWT → auditor GET/POST (Bearer)
 ```
+
+**Switches.** `SESSION_AUDIT_TRAIL_ENABLED` (read by `crew`) and `USER_AUDIT_TRAIL_ENABLED` (read by `django_app`) are independent. `auditor` and `opensearch` start when either is on, and each domain registers (routes, indices) only when its own switch is on, so the other domain's routes answer 404.
+
+**Permission.** Sessions are gated by resource `audit` / token claim `AUDIT`; user actions by resource `user_audit` / claim `USER_AUDIT` (actions `read`, `export`). `POST /api/audit/token/` mints both claims, and refuses only a viewer with neither.
+
+**Adding a domain.** Add the event model under `src/shared/models/audit/`, then a package under `app/domains/<name>/` (`domain.py`, `index.py`, `fields.py`, `schemas.py`, `docs.py`, `mappings/`) and register it in `app/domains/registry.py` behind its own switch. `app/domains/user_actions/` is the flat example (no computed fields, no match-scope); `sessions` is the one with expansion.
 
 ---
 
@@ -30,6 +35,7 @@ This is the seam the whole `auditor` service is built around — swapping backen
 1. **Write a new repository**: `src/auditor/app/repositories/<newdb>_repository.py`, implementing `AuditRepository` (`repositories/base.py`):
    - `write_batch(events: list[T])` — must be idempotent by `event.id` (re-sending the same id overwrites, never duplicates — this is what makes the client's retry-on-failure path safe). On OpenSearch this holds within one receive month: a retry received after midnight UTC on the 1st lands in the next month's index, next to the first copy (see "Cross-month retry duplicates" below).
    - `query(query: dict, cursor, size)` — `query` is a fully-compiled, backend-native query clause (the output of `repositories/compiler.py::QueryCompiler.compile()` plus the always-injected org_id/retention_days scoping); translate it into the new DB's native query shape. Return `(events, next_cursor | None)`.
+   - `distinct_values(query: dict, field: str, limit: int)` — the distinct non-empty values of `field` among the events matching the same kind of scoped `query`, ascending, at most `limit` (the first `limit` in that order). Backs the value-list route; on OpenSearch it is one `terms` aggregation ordered by `_key` with `size: 0` hits.
    - `close()`.
 2. **Write a client wrapper**: `src/auditor/app/db/<newdb>_client.py`, mirroring `db/opensearch_client.py` — built during `lifespan` (`app/main.py`), never at import time.
 3. **Register it**: add one entry to `_BACKEND_BUILDERS` in `repositories/factory.py`, keyed by whatever value `AUDIT_STORAGE_BACKEND` should be set to.
@@ -73,8 +79,8 @@ Also re-derive the type-drift answer for `input`/`output`/`details`: these hold 
 
 1. Add the field to `src/shared/models/audit/session_audit.py`.
 2. Add it to the OpenSearch mapping (`app/domains/sessions/mappings/0001_audit_events.json`) — additive, so no migration is needed: new monthly indices pick it up from the template, and a `PUT audit_events-*/_mapping` adds it to the existing ones.
-3. Populate it from wherever it's sourced — most likely `SessionAuditWriter` (`src/shared/audit/writers/session_writer.py`) if it's a session/node-level field, or inline at `django_app`'s HITL call site if it's specific to that path.
-4. If it should be exportable, it's already covered — `export_routes.py::_to_csv` derives its CSV columns from `SessionAuditEvent.model_fields`, not from the first row, so a new field appears in every export automatically (including an all-empty column on a zero-result export, rather than a broken zero-byte file).
+3. Populate it from wherever it's sourced — most likely `SessionAuditWriter` (`src/shared/audit/writers/session_writer.py`) if it's a session/node-level field, or, for a user action, `UserActionEvent` (`src/shared/models/audit/user_action_audit.py`) built in `src/django_app/user_audit/recorder.py`.
+4. If it should be exportable, it's already covered — `app/services/export_write_service.py` derives its CSV columns from `SessionAuditEvent.model_fields`, not from the first row, so a new field appears in every export automatically (including an all-empty column on a zero-result export, rather than a broken zero-byte file).
 
 ---
 
@@ -89,6 +95,24 @@ The whole search/export request body is one `FilterNode` AST (`app/filtering/ast
 5. Update [`Filtering_And_Query_Language.md`](./Filtering_And_Query_Language.md)'s field/op table (and the query-language grammar too, if the new op needs a symbol) and the matching `SEARCH_REQUEST_EXAMPLES`/field description in `src/auditor/app/domains/sessions/docs.py` — hand-maintained references, generated from `KNOWN_FIELDS` only for the field-name list itself (`build_filters_field_description`), not for the op tables or examples.
 
 This is domain-generic machinery — a second domain would follow the same steps against its own `app/domains/<name>/fields.py`/`computed.py`, never touching `app/filtering/` or `app/repositories/compiler.py` unless it needs genuinely new DSL-compilation behavior no existing domain has needed yet.
+
+---
+
+## How to list a field's values (filter options)
+
+`GET /api/audit/{domain.name}/values/{field}` returns the distinct values a field holds, so a filter's option list comes from the data and nobody maintains it:
+
+```
+GET /auditor/api/audit/user_actions/values/target_type
+Authorization: Bearer <token with "USER_AUDIT": ["read"]>
+
+200 {"field": "target_type", "values": ["agent", "flow", "python node"]}
+```
+
+- **Which fields.** Only those a domain declares in `AuditDomain.value_fields` (`user_actions`: `target_type`; `sessions`: none, so it has no such route at all). Any other field answers `404`. `AuditDomain.__post_init__` rejects, at import time, a value field that is not a keyword select field of the domain's catalog (unknown, analyzed text, numeric, computed, aliased, or a flattened path): a `terms` aggregation on any of those fails or returns nothing useful.
+- **Auth and scope.** Exactly as search: `require_audit_action(domain, "read")`, then `domain.scoping` with the token's `org_id` and `retention_days`, so another org's values and values recorded only before the retention window never appear.
+- **Shape.** Distinct non-empty values, sorted ascending, no counts, at most `MAX_LISTED_VALUES` (200, `app/controllers/query_routes.py`). Past the cap the first 200 in sorted order are returned, without a truncation flag.
+- **Adding a field.** Add it to the domain's `value_fields` in `app/domains/<name>/domain.py`. The route is mounted by `build_values_router(domain)` only when that set is non-empty.
 
 ---
 
@@ -225,7 +249,7 @@ Remember `kind="session"`/`kind="node"` wrapper docs always have `status: null` 
 
 ## How to run the dev stack locally
 
-`opensearch` + `auditor` are gated behind the `audit` compose profile, so a bare `docker compose up -d` skips them. Name them explicitly:
+`opensearch` + `auditor` are gated behind the `auditor` compose profile, so a bare `docker compose up -d` skips them. Name them explicitly:
 
 ```bash
 docker compose -f docker-compose.yaml --env-file ./.env up -d --build auditor opensearch
@@ -246,8 +270,8 @@ There is no `opensearch-dashboards` service in compose. To browse the indices ad
 ## How to add a new `auditor` route
 
 Routes are built by per-domain factory functions in `app/controllers/*.py`
-(`build_search_router(domain)`, `build_export_router(domain)`,
-`build_ingest_router(domain)`), assembled into one router per domain by
+(`build_search_router(domain)`, `build_values_router(domain)`,
+`build_export_router(domain)`, `build_ingest_router(domain)`), assembled into one router per domain by
 `app/controllers/domain_router.py::build_domain_router(domain)`, mounted in
 `app/main.py::create_app` by looping `app.domains.registry.DOMAINS`. A new
 route on an *existing* domain's concern goes inside that concern's factory
@@ -266,6 +290,9 @@ factory following the same shape. Pick the right auth dependency:
 - `src/shared/audit/client.py` — `AuditClient` (batching/retry/drop).
 - `src/shared/audit/writers/{base.py,session_writer.py}` — `BaseAuditWriter` (shared `ABC`/`Generic[T]` base) and `SessionAuditWriter` (session/node/event → `SessionAuditEvent` translation, write-once lifecycle).
 - `src/crew/services/graph/session_audit_provider.py` — `crew`'s dispatch point.
+- `src/django_app/user_audit/` — `django_app`'s user-action emitter: `sender.py` (background-loop `AuditClient`), `recorder.py`, `actor.py`, `targets.py`, `context.py`, `middleware.py` (fallback layer).
+- `src/shared/models/audit/user_action_audit.py` — `UserActionEvent`, the `user_actions` domain's event model.
+- `src/auditor/app/domains/user_actions/` — the `user_actions` domain (flat example for a new domain).
 - `src/django_app/tables/views/audit_token_views.py` — token minting.
 - `src/auditor/app/main.py`, `controllers/*.py`, `core/security.py` — the service itself.
 - `src/auditor/app/domains/base.py`, `domains/registry.py` — the audit-domain abstraction (`AuditDomain`, `ApiSpec`, `ScopingPolicy`, the per-domain registry; see `wiki/services/auditor.md` for the full code map).

@@ -38,6 +38,7 @@ from tables.swagger_schemas.knowledge_schemas.collection_management_schemas impo
     SOURCE_COLLECTIONS_GET,
 )
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
+from user_audit.recorder import record_copy
 
 redis_service = RedisService()
 
@@ -63,6 +64,10 @@ class SourceCollectionViewSet(
     - DELETE /source-collections/{id}/purge/ - Delete a binned collection for good (superadmin only)
 
     """
+
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = SourceCollection.objects.none()
 
     http_method_names = ["get", "post", "patch", "put", "delete"]
 
@@ -218,6 +223,7 @@ class SourceCollectionViewSet(
                 org_id=self.get_active_org_id(),
                 user=request.user,
             )
+            record_copy(collection, new_collection)
 
             output_serializer = SourceCollectionDetailSerializer(
                 new_collection, context=self.get_serializer_context()

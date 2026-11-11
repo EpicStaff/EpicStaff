@@ -59,6 +59,7 @@ from tables.serializers.naive_rag_serializers import (
     PreviewChunksByIdsRequestSerializer,
     PreviewChunksByIdsResponseSerializer,
 )
+from tables.services.knowledge_services.collection_last_edit import record_rag_change
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_COLLECTIONS_GET,
@@ -76,6 +77,7 @@ from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST,
     NAIVE_RAG_GET,
 )
+from user_audit.read_only import reads_only
 
 # ORM path from a NaiveRag (or its children) up to the owning collection's org.
 _NAIVE_RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
@@ -94,6 +96,9 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     - GET /naive-rag/{id}/ - Get NaiveRag details with configs
     """
 
+    # Read only by `utils.request_target.org_row`, which names the RAG in user-action and
+    # plugin-activity records; this view scopes through `get_in_active_org_or_404`.
+    org_filter_path = _NAIVE_RAG_ORG_PATH
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
     rbac_action_map = {
@@ -229,6 +234,7 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
                 naive_rag_id=int(naive_rag_id), user=request.user
             )
 
+            record_rag_change(naive_rag.base_rag_type.source_collection, changed=bool(new_configs))
             existing_count = NaiveRagDocumentConfig.objects.filter(
                 naive_rag=naive_rag
             ).count() - len(new_configs)
@@ -286,6 +292,9 @@ class NaiveRagDocumentConfigViewSet(
     - POST /api/naive-rag/{naive_rag_id}/document-configs/bulk-delete/ - Bulk delete configs
     """
 
+    # Read only by `utils.request_target.org_row`, which names the config in user-action and
+    # plugin-activity records; this view scopes in `get_queryset`.
+    org_filter_path = _DOC_CONFIG_ORG_PATH
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
     rbac_action_map = {
@@ -553,6 +562,7 @@ class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView)
                 )
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)
+        record_rag_change(config.naive_rag.base_rag_type.source_collection, changed=True)
 
         return Response(
             {
@@ -568,20 +578,22 @@ class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView)
 class CancelNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_DELETE)
     def delete(self, request, naive_rag_id: int, document_config_id: int):
-        self.get_in_active_org_or_404(NaiveRag, naive_rag_id, _NAIVE_RAG_ORG_PATH)
+        naive_rag = self.get_in_active_org_or_404(NaiveRag, naive_rag_id, _NAIVE_RAG_ORG_PATH)
         assert_org_permission(
             request.user,
             self.get_active_org_id(),
             ResourceType.KNOWLEDGE_SOURCES,
             Permission.UPDATE,
         )
+        cancelled = True
         try:
             with KnowledgeClient() as client:
                 client.cancel(strategy=RAGStrategy.NAIVE, rag_id=naive_rag_id, operation="prechunk")
         except ClientResourceNotFoundError:
-            pass
+            cancelled = False  # No chunking was running.
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)
+        record_rag_change(naive_rag.base_rag_type.source_collection, changed=cancelled)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -796,6 +808,7 @@ class NaiveRagPreviewChunkBulkByIdsView(OrgScopedServiceViewSetMixin, APIView):
             404: OpenApiResponse(description="NaiveRag or DocumentConfig not found"),
         },
     )
+    @reads_only
     def post(self, request, naive_rag_id: int, document_config_id: int):
         self.get_in_active_org_or_404(
             NaiveRagDocumentConfig,

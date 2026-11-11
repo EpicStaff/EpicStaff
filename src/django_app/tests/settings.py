@@ -37,3 +37,7 @@ STORAGES = {
 # suite runs in `open` mode. Tests for the gate itself opt in explicitly with
 # @override_settings(FIRST_SETUP_MODE="cli_only").
 FIRST_SETUP_MODE = FirstSetupMode.OPEN
+
+# Pinned off so the suite does not depend on src/.env: a test that runs on-commit callbacks
+# would otherwise start a real sender. Tests of the trail turn it on with the `settings` fixture.
+USER_AUDIT_TRAIL_ENABLED = False

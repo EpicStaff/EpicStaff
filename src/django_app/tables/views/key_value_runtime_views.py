@@ -9,6 +9,7 @@ from tables.serializers.model_serializers.key_value_serializers import (
     KeyValueWriteSerializer,
 )
 from tables.services.key_value_table_service import KeyValueTableService
+from user_audit.read_only import not_a_user_change
 
 _ACTIVE_STATUSES = (
     Session.SessionStatus.PENDING,
@@ -24,6 +25,7 @@ class KeyValueRuntimeAPIView(APIView):
     permission_classes = [IsSystemApiKeyAuthenticated]
     service = KeyValueTableService()
 
+    @not_a_user_change
     def post(self, request, session_id: int, table_id: int, operation: str):
         session = self._get_active_session(session_id)
         table = self._get_accessible_table(session, table_id)

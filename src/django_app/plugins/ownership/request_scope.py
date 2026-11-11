@@ -90,7 +90,7 @@ def scope_for_authentication() -> PluginRequestScope:
 class PluginRequestScopeMiddleware:
     """Opens the scope for each Django request and records a service account's writes.
 
-    The last entry of `MIDDLEWARE`, so the scope surrounds exactly the view. Synchronous
+    Next to the end of `MIDDLEWARE`, so the scope surrounds the view. Synchronous
     only: Django runs it in the view's own thread, where the scope is visible to
     authentication and to every save. Does nothing while the plugin platform is off.
     """

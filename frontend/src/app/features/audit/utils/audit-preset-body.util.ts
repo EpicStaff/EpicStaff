@@ -1,3 +1,4 @@
+import { AuditCatalogField, AuditFieldCatalog } from '../models/audit-domain.models';
 import {
     AuditFilterState,
     AuditMatchScopeState,
@@ -11,8 +12,9 @@ import { compileAuditFilter } from './compile-audit-filter.util';
 
 export const AUDIT_PRESET_UI_STATE_VERSION = 1;
 
-export function buildPresetBody(state: AuditFilterState): AuditPresetBody {
-    const { filters, query, matchScope } = compileAuditFilter(state);
+// The body is the domain's search request, so only a sessions preset carries a match scope.
+export function buildPresetBody(state: AuditFilterState, catalog: AuditFieldCatalog): AuditPresetBody {
+    const { filters, query, matchScope } = compileAuditFilter(state, catalog);
     return {
         filters,
         query,
@@ -29,10 +31,33 @@ export function mergeSavedFilterState(saved: Partial<AuditFilterState>): AuditFi
     };
 }
 
-export function restorePresetState(body: AuditPresetBody): AuditFilterState | null {
+// Keeps only the entries the catalog's Builder still offers in that shape, so a field removed or turned from
+// typed conditions into a picked list is dropped instead of lingering unseen in the state.
+function keepCatalogFields(state: AuditFilterState, catalog: AuditFieldCatalog): AuditFilterState {
+    const keep = <T>(
+        values: Record<string, T> | undefined,
+        kinds: AuditCatalogField['kind'][]
+    ): Record<string, T> | undefined => {
+        if (!values) {
+            return undefined;
+        }
+        const offered = catalog.builderFields.filter((item) => kinds.includes(item.kind));
+        return Object.fromEntries(
+            Object.entries(values).filter(([field]) => offered.some((item) => item.field === field))
+        );
+    };
+    return {
+        ...state,
+        selections: keep(state.selections, ['select', 'lookup']),
+        textConditions: keep(state.textConditions, ['text']),
+        idFilters: keep(state.idFilters, ['id']),
+    };
+}
+
+export function restorePresetState(body: AuditPresetBody, catalog: AuditFieldCatalog): AuditFilterState | null {
     const saved = body.ui_state?.state;
     if (saved) {
-        return mergeSavedFilterState(saved);
+        return keepCatalogFields(mergeSavedFilterState(saved), catalog);
     }
     if (typeof body.query === 'string') {
         return {

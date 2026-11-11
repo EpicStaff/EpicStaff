@@ -91,9 +91,17 @@ class Feature(NamedTuple):
 # writes both together so they cannot drift apart.
 FEATURES = (
     Feature("Chat", "CHAT_ENABLED", "chat", ("chat", "chatdb"), ("CHAT_WORKERS", "CHAT_LOG_LEVEL")),
+    # Both audit switches share the auditor stack: its profile is on when either is.
     Feature(
-        "Audit trail",
-        "AUDIT_TRAIL_ENABLED",
+        "Session audit trail",
+        "SESSION_AUDIT_TRAIL_ENABLED",
+        "auditor",
+        ("auditor", "opensearch"),
+        ("AUDITOR_LOG_LEVEL",),
+    ),
+    Feature(
+        "User audit trail",
+        "USER_AUDIT_TRAIL_ENABLED",
         "auditor",
         ("auditor", "opensearch"),
         ("AUDITOR_LOG_LEVEL",),
@@ -307,7 +315,9 @@ def feature_values(enabled: dict[str, bool], current_profiles: str, local: bool)
     profiles = [profile for profile in parse_profiles(current_profiles) if profile not in owned]
     if local:
         profiles.append("dev")
-    profiles += [feature.profile for feature in FEATURES if enabled[feature.flag]]
+    for feature in FEATURES:
+        if enabled[feature.flag] and feature.profile not in profiles:
+            profiles.append(feature.profile)
     values = {feature.flag: "true" if enabled[feature.flag] else "false" for feature in FEATURES}
     values["COMPOSE_PROFILES"] = ",".join(profiles) or "none"
     return values
@@ -462,6 +472,7 @@ def update_env_file(
     # utf-8-sig: a byte order mark (Windows editors) would glue onto the first variable name.
     original = env_file.read_bytes().decode("utf-8-sig")
     already_set = set(SET_VARIABLE.findall(original))
+    overrides = {**_split_audit_switch(original), **(overrides or {})}
     added, needs_value, content = [], [], []
     for variables in schema["groups"].values():
         for name, declaration in variables["vars"].items():
@@ -484,6 +495,22 @@ def update_env_file(
         with env_file.open("a", encoding="utf-8", newline=newline) as file:
             file.write(appended + "".join(content))
     return added, needs_value
+
+
+# The single audit switch released before the session and user trails got one each. It
+# only ever audited sessions, so its value carries into the session switch alone; the user
+# trail collects new personal data, so its switch keeps its default and an operator opts in.
+LEGACY_AUDIT_SWITCH = "AUDIT_TRAIL_ENABLED"
+SESSION_AUDIT_SWITCH = "SESSION_AUDIT_TRAIL_ENABLED"
+
+
+def _split_audit_switch(env_text: str) -> dict[str, str]:
+    """The old audit switch's value for the session switch, so an upgrade that audited
+    sessions keeps doing so instead of getting the new switch's `false` default."""
+    legacy_value = read_env_values(env_text).get(LEGACY_AUDIT_SWITCH)
+    if legacy_value is None:
+        return {}
+    return {SESSION_AUDIT_SWITCH: legacy_value}
 
 
 def read_env_values(text: str) -> dict[str, str]:
@@ -802,9 +829,10 @@ def advanced_values(
         for name in target_defaults(schema, "prod"):
             if name.endswith("_LOG_LEVEL"):
                 values[name] = log_level
+    kept = {name for feature in FEATURES if enabled[feature.flag] for name in feature.settings}
     for feature in FEATURES:
         if not enabled[feature.flag]:
-            for name in feature.settings:
+            for name in set(feature.settings) - kept:
                 values.pop(name, None)
     return values
 
@@ -949,7 +977,13 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
     for feature in FEATURES:
         flag_on = old.get(feature.flag, "").strip().lower() in Env.BOOLEAN_TRUE_VALUES
         profile_on = feature.profile in profiles
-        if flag_on != profile_on:
+        # A profile shared by two flags stays on while either flag is on.
+        sibling_on = any(
+            old.get(other.flag, "").strip().lower() in Env.BOOLEAN_TRUE_VALUES
+            for other in FEATURES
+            if other.profile == feature.profile and other is not feature
+        )
+        if flag_on != profile_on and not (profile_on and sibling_on):
             screen.notes.append(
                 f"{feature.label} is out of sync: {feature.flag} is "
                 f"{'on' if flag_on else 'off'} but the {feature.profile} profile is "
@@ -981,9 +1015,13 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
     print(f"{style('✓', GREEN)} Updated {style(str(env_file), BOLD)}")
     commands = ["cd src", "docker compose up -d"]
     for feature in FEATURES:
-        if was_on[feature.flag] and not enabled[feature.flag]:
+        profile_still_on = any(
+            enabled[other.flag] for other in FEATURES if other.profile == feature.profile
+        )
+        stop = f"docker compose stop {' '.join(feature.services)}"
+        if was_on[feature.flag] and not profile_still_on and stop not in commands:
             # `up -d` leaves containers of a deactivated profile running.
-            commands.append(f"docker compose stop {' '.join(feature.services)}")
+            commands.append(stop)
     print_panel("Apply it with", commands)
 
 

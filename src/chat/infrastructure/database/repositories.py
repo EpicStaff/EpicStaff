@@ -305,11 +305,12 @@ class BindingRepository(_Repository, AbstractBindingRepository):
             .values(broken_reason=reason, updated_at=utcnow())
         )
 
-    async def delete(self, binding_id: UUID, org_id: int) -> bool:
-        result = await self._session.execute(
-            delete(BindingRow).where(BindingRow.id == binding_id, BindingRow.org_id == org_id)
+    async def delete(self, binding_id: UUID, org_id: int) -> str | None:
+        return await self._session.scalar(
+            delete(BindingRow)
+            .where(BindingRow.id == binding_id, BindingRow.org_id == org_id)
+            .returning(BindingRow.name)
         )
-        return result.rowcount == 1
 
 
 class ConversationRepository(_Repository, AbstractConversationRepository):

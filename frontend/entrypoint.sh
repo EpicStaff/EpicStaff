@@ -45,10 +45,15 @@ else
   # so the UI never offers the audit page while the auditor exits. Written as a JSON
   # literal: the shared .env uses Python-style True/False, which would make config.json
   # invalid and silently drop the frontend back to its build-time defaults.
-  if env_bool AUDIT_TRAIL_ENABLED false; then
-    audit_trail_enabled=true
+  if env_bool SESSION_AUDIT_TRAIL_ENABLED false; then
+    session_audit_enabled=true
   else
-    audit_trail_enabled=false
+    session_audit_enabled=false
+  fi
+  if env_bool USER_AUDIT_TRAIL_ENABLED false; then
+    user_audit_enabled=true
+  else
+    user_audit_enabled=false
   fi
   # Read by the same rule as nginx (src/nginx/docker-entrypoint.d/16-normalize-plugins-enabled.envsh),
   # so the UI offers plugins exactly when nginx serves the plugin hosts and the upload route.
@@ -64,7 +69,8 @@ else
   "auditorUrl": "${AUDITOR_API_URL}",
   "isChatEnabled": ${chat_enabled},
   "chatApiUrl": "${CHAT_API_URL:-/chat/}",
-  "isAuditTrailEnabled": ${audit_trail_enabled},
+  "isSessionAuditEnabled": ${session_audit_enabled},
+  "isUserAuditEnabled": ${user_audit_enabled},
   "isPluginsEnabled": ${plugins_enabled}
 }
 EOF

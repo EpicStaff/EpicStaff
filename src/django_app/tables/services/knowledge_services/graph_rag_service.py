@@ -4,6 +4,7 @@ from django.db import transaction
 from django.db.models import Q
 from loguru import logger
 from src.shared.enums.knowledge_new import RAGStrategy
+from src.shared.models import UserAction
 from tables.clients import KnowledgeClient
 from tables.constants.knowledge_constants import (
     GRAPHRAG_DEFAULT_CHUNK_OVERLAP,
@@ -33,7 +34,11 @@ from tables.models.knowledge_models import (
     SourceCollection,
 )
 from tables.models.llm_models import LLMConfig
-from tables.services.knowledge_services.collection_last_edit import record_collection_edits
+from tables.services.knowledge_services.collection_last_edit import (
+    record_collection_edits,
+    record_rag_change,
+)
+from user_audit.recorder import record_user_action
 
 
 class GraphRagService:
@@ -218,6 +223,8 @@ class GraphRagService:
         Create new GraphRag or update existing one.
         On create: sets up default index config and auto-adds all documents from collection.
         On update: only updates embedder and llm; index config and documents are left untouched.
+        Records a created RAG as a `created` user action under its collection, and a model
+        change as the collection `updated`; an unchanged RAG records nothing.
 
         Args:
             collection_id: ID of source collection
@@ -243,9 +250,13 @@ class GraphRagService:
             models_before = (rag.embedder_id, rag.llm_id)
             rag = cls._update_rag(rag, collection, embedding_config, llm_config)
             changed = (rag.embedder_id, rag.llm_id) != models_before
+            record_rag_change(collection, changed=changed)
         else:
             rag = cls._create_rag(collection, embedding_config, llm_config)
             changed = True
+            record_user_action(
+                action=UserAction.CREATED, org_id=collection.org_id, target=rag, parent=collection
+            )
         if changed:
             record_collection_edits([collection_id], user)
 

@@ -40,6 +40,7 @@ from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
     NAIVE_RAG_SUGGEST_PARAMS_POST,
 )
 from tables.utils.litellm_model_info import resolve_context_window
+from user_audit.read_only import reads_only
 
 
 def _validation_error_response(exc: ValidationError) -> Response:
@@ -104,6 +105,7 @@ class NaiveRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
     serializer_class = NaiveRagSuggestInputSerializer
 
     @extend_schema(**NAIVE_RAG_SUGGEST_PARAMS_POST)
+    @reads_only
     def post(self, request):
         try:
             req = NaiveRagSuggestInput(**(request.data or {}))
@@ -145,6 +147,7 @@ class GraphRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
     serializer_class = GraphRagSuggestInputSerializer
 
     @extend_schema(**GRAPH_RAG_SUGGEST_PARAMS_POST)
+    @reads_only
     def post(self, request):
         try:
             req = GraphRagSuggestInput(**(request.data or {}))

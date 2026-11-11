@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import router, transaction
 from django.db.models.deletion import Collector
 from django.utils import timezone
+from src.shared.models import UserAction
 from tables.exceptions import CrossOrgCascadeError
 from tables.models import SourceCollection, StorageFile
 from tables.models.base_models import SoftDeleteFields, SoftDeleteMixin
@@ -18,6 +19,7 @@ from tables.services.knowledge_services.collection_management_service import (
 from tables.services.recycle_bin.registry import bin_resource_for, bin_resources
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service.recycle_bin import StorageRecycleBinService
+from user_audit.recorder import describe_for_record, record_user_action
 from utils.logger import logger
 
 RETENTION_JOB_ACTOR = "retention job"
@@ -36,7 +38,8 @@ class PurgeService:
 
         Every purge is logged with `actor` (who asked for it, e.g. "user 7" or
         "retention job"): it can't be undone, so it must be traceable. The log
-        line holds ids only, no names.
+        line holds ids only, no names. A purge someone asked for is also recorded
+        as a user action; the retention job's is not.
 
         Raises:
             NotInRecycleBinError: `root` is live (e.g. restored after the caller
@@ -48,6 +51,8 @@ class PurgeService:
         pk = root.pk
         org_id = getattr(root, f"{resource.org_field}_id")
         batch = root.soft_delete_batch
+        # Read now: the purge clears the root's primary key.
+        target = describe_for_record(root)
 
         if isinstance(root, SourceCollection):
             CollectionManagementService.purge_collection(root)
@@ -59,6 +64,8 @@ class PurgeService:
                     resource.before_purge(root)
                 root.purge()
 
+        if actor != RETENTION_JOB_ACTOR:
+            record_user_action(action=UserAction.DELETED, org_id=org_id, target_description=target)
         logger.info(
             "Purged {model} {pk} of org {org_id} (batch {batch}) by {actor}",
             model=resource.model.__name__,

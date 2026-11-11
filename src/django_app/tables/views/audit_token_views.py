@@ -31,18 +31,24 @@ class AuditTokenView(APIView):
     _org_context = OrgContextService()
     _resolver = PermissionResolver()
 
+    @staticmethod
+    def _granted_actions(effective, resource_type):
+        actions = []
+        if effective.can(resource_type, Permission.READ):
+            actions.append("read")
+        if effective.can(resource_type, Permission.EXPORT):
+            actions.append("export")
+        return actions
+
     @extend_schema(**AUDIT_TOKEN_CREATE)
     def post(self, request):
         org_id = self._org_context.resolve(request=request, view_kwargs={})
         effective = self._resolver.resolve(user=request.user, org_id=org_id)
 
-        actions = []
-        if effective.can(ResourceType.AUDIT, Permission.READ):
-            actions.append("read")
-        if effective.can(ResourceType.AUDIT, Permission.EXPORT):
-            actions.append("export")
+        session_actions = self._granted_actions(effective, ResourceType.AUDIT)
+        user_action_actions = self._granted_actions(effective, ResourceType.USER_AUDIT)
 
-        if not actions:
+        if not session_actions and not user_action_actions:
             raise PermissionDenied("You do not have permission to perform this action.")
 
         # Restrictionless pass for superadmin and this org's Org Admin
@@ -64,7 +70,8 @@ class AuditTokenView(APIView):
             "iss": AUDIT_TOKEN_ISSUER,
             "user_id": request.user.id,
             "org_id": org_id,
-            ResourceType.AUDIT.name: actions,
+            ResourceType.AUDIT.name: session_actions,
+            ResourceType.USER_AUDIT.name: user_action_actions,
             "retention_days": retention_days,
             "iat": now,
             "exp": now + timedelta(seconds=settings.AUDIT_TOKEN_TTL_SECONDS),
