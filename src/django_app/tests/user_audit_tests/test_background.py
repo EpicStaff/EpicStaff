@@ -109,7 +109,9 @@ def test_a_failing_sign_in_job_logs_where_it_failed_never_the_email(
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    written = "\n".join(captured_log_output)
-    assert "error_type=RuntimeError" in written
-    assert regular_user.email not in written
+    # Only the recording failure's own line: the refused-login security line names the
+    # account on purpose.
+    [failure] = [line for line in captured_log_output if "Failed to record user action" in line]
+    assert "error_type=RuntimeError" in failure
+    assert regular_user.email not in failure
     assert sent_events == []

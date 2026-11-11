@@ -6,7 +6,7 @@ from proxies.sandbox.services import VenvService
 from rbac.authorship import record_last_edits
 from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from src.shared.models import UserAction
 from user_audit.context import mark_request_handled
 from user_audit.recorder import record_user_action
@@ -19,6 +19,7 @@ from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.schemas import ImportSettings
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
+from tables.validators.run_refusal_validator import find_run_refusals_in_export
 
 
 class ImportService:
@@ -58,6 +59,10 @@ class ImportService:
             export_data
         ):
             trigger_node_access.assert_may_recreate(effective_permissions)
+        # A flow crew would refuse to run is refused here, before anything is written.
+        run_refusals = find_run_refusals_in_export(export_data)
+        if run_refusals:
+            raise ValidationError({"detail": run_refusals})
         created_resources: list[LastEditTrackedModel] = []
         # Venvs are created in the sandbox service, which the transaction does not
         # cover; a rollback has to undo them by hand.

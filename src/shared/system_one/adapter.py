@@ -3,13 +3,15 @@ from typing import Any
 from src.shared.models.sessions import TokenUsage
 from src.shared.models.system_one import SystemOneConfigData, SystemOneQuestion, SystemOneResult
 from src.shared.system_one.base import SystemOneAdapter, SystemOneError
-from src.shared.system_one.constants import LLM_PROVIDER, TYPESAFE_PROVIDER
+from src.shared.system_one.constants import LLM_PROVIDER, OPENAI_PROVIDER, TYPESAFE_PROVIDER
 from src.shared.system_one.llm_adapter import LlmSystemOneAdapter
+from src.shared.system_one.openai_adapter import OpenAIDecisionsAdapter
 from src.shared.system_one.typesafe_adapter import TypeSafeAdapter
 
 SYSTEM_ONE_ADAPTERS: dict[str, SystemOneAdapter] = {
     TYPESAFE_PROVIDER: TypeSafeAdapter(),
     LLM_PROVIDER: LlmSystemOneAdapter(),
+    OPENAI_PROVIDER: OpenAIDecisionsAdapter(),
 }
 
 

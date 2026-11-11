@@ -24,6 +24,7 @@ class ResourceType(models.TextChoices):
     KEY_VALUE_TABLES = "key_value_tables", "Key-Value Tables"
     VENVS = "venvs", "Venvs"
     CHATS = "chats", "Conversations"
+    CUSTOM_LIBRARIES = "custom_libraries", "Custom Libraries"
 
 
 class Permission(IntFlag):

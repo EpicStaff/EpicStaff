@@ -22,6 +22,12 @@ services:
       AUDITOR_API_URL: ${AUDITOR_API_URL:?}
       SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
       USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
+    # Docker's default json-file log never rotates; keep at most 50 MB, as src/docker-compose.yaml does.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 networks:
   frontend-network:

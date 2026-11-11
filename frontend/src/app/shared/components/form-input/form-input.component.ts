@@ -11,14 +11,14 @@ import {
     signal,
     ViewChild,
 } from '@angular/core';
-import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-custom-input',
-    imports: [FormsModule, HelpTooltipComponent, MatTooltipModule],
+    imports: [HelpTooltipComponent, MatTooltipModule],
     template: `
         <div class="form-group">
             @if (label) {
@@ -58,7 +58,10 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         [attr.aria-invalid]="errorMessage || invalid() ? true : null"
                         [matTooltip]="fieldName"
                         [placeholder]="placeholder"
-                        [(ngModel)]="value"
+                        [value]="value"
+                        (input)="onInput()"
+                        (compositionstart)="composing = true"
+                        (compositionend)="composing = false; onInput()"
                         (focus)="focused.set(true)"
                         (blur)="focused.set(false); onTouched(); blur.emit(); scrollToEndIfSecret()"
                         class="text-input"
@@ -66,7 +69,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         [class.has-toggle]="hasToggle"
                         [class.masked]="isMasked"
                         [class.error]="errorMessage || invalid()"
-                        [attr.disabled]="isDisabled || null"
+                        [disabled]="isDisabled"
                         [style.--active-color]="activeColor"
                     />
                     @if (hasToggle) {
@@ -166,6 +169,11 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     &.error {
                         border-color: #ef4444;
                     }
+
+                    &:disabled {
+                        color: var(--color-text-disabled);
+                        cursor: not-allowed;
+                    }
                 }
 
                 .toggle-visibility {
@@ -263,6 +271,7 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     focused = signal<boolean>(false);
 
     passwordVisible: boolean = false;
+    protected composing = false;
 
     private readonly supportsTextSecurity: boolean =
         typeof CSS !== 'undefined' &&
@@ -370,6 +379,11 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
 
     registerOnTouched(fn: () => void): void {
         this.onTouched = fn;
+    }
+
+    protected onInput(): void {
+        if (this.composing) return;
+        this.value = this.inputEl.nativeElement.value;
     }
 
     setDisabledState(isDisabled: boolean): void {

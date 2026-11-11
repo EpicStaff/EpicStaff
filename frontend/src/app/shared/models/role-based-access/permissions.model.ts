@@ -28,6 +28,7 @@ export enum ResourceCode {
     KeyValueTables = 'key_value_tables',
     Venvs = 'venvs',
     Chats = 'chats',
+    CustomLibraries = 'custom_libraries',
 }
 
 export interface ActivePermissions {

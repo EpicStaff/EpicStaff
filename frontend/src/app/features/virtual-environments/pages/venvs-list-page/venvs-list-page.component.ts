@@ -47,8 +47,13 @@ import { VenvCardComponent } from '../../components/venv-card/venv-card.componen
 import { VenvDialogComponent, VenvDialogData } from '../../components/venv-dialog/venv-dialog.component';
 import { BUILDING_STATUSES, Venv, VenvListQuery, VenvSortOrder } from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
+import { CustomLibrariesListPageComponent } from '../custom-libraries-list-page/custom-libraries-list-page.component';
 import { VenvsFilterMenuComponent, VenvsFilterState } from './components/venvs-filter-menu/venvs-filter-menu.component';
 import { VENVS_SORT_MENU_ITEMS, VenvsSortMenuComponent } from './components/venvs-sort-menu/venvs-sort-menu.component';
+
+/** Which list the page shows. Held here rather than in the URL: the page is one route and both
+ *  lists share its header. */
+export type VenvsPageTab = 'venvs' | 'custom-libraries';
 
 const POLL_INTERVAL_MS = 2_000;
 // Long enough that typing a word is one request, short enough to feel immediate.
@@ -65,6 +70,7 @@ const SEARCH_DEBOUNCE_MS = 300;
         TabButtonComponent,
         HasPermissionDirective,
         HideInlineSubtitleOnOverflowDirective,
+        CustomLibrariesListPageComponent,
         VenvCardComponent,
         VenvsFilterMenuComponent,
         VenvsSortMenuComponent,
@@ -76,6 +82,7 @@ export class VenvsListPageComponent implements OnInit {
     private readonly venvCards = viewChildren(VenvCardComponent);
     private readonly createButton = viewChild('createButton', { read: ButtonComponent });
 
+    readonly activeTab = signal<VenvsPageTab>('venvs');
     readonly isLoading = signal(true);
     readonly loadError = signal<string | null>(null);
     readonly venvs = signal<Venv[]>([]);
@@ -85,6 +92,11 @@ export class VenvsListPageComponent implements OnInit {
     readonly deletePending = signal(false);
 
     readonly sortOrder = signal<VenvSortOrder>('default');
+    // The custom libraries tab narrows and orders its own list; the controls live here because
+    // the header belongs to the page, not to the tab under it.
+    readonly librarySearchTerm = signal('');
+    readonly librarySortOrder = signal<VenvSortOrder>('default');
+    readonly librarySortMenuOpen = signal(false);
     readonly favoritesOnly = signal(false);
     readonly filterMenuOpen = signal(false);
     readonly sortMenuOpen = signal(false);
@@ -104,14 +116,27 @@ export class VenvsListPageComponent implements OnInit {
         return VENVS_SORT_MENU_ITEMS.find((item) => item.value === order)?.label ?? 'Sort';
     });
 
+    readonly librarySortTriggerLabel = computed(() => {
+        const order = this.librarySortOrder();
+        if (order === 'default') return 'Sort';
+        return VENVS_SORT_MENU_ITEMS.find((item) => item.value === order)?.label ?? 'Sort';
+    });
+
     readonly canUpdate = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Update));
     readonly canDelete = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Delete));
+    readonly canReadCustomLibraries = computed(() =>
+        this.permissions.can(ResourceCode.CustomLibraries, ActionCode.Read)
+    );
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
     protected readonly menuPositions: ConnectedPosition[] = [
         { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
     ];
+
+    // Present only while its tab is active, which is also the only time the create button it
+    // answers is on screen.
+    private readonly customLibrariesPage = viewChild(CustomLibrariesListPageComponent);
 
     private readonly venvsApi = inject(VenvsApiService);
     private readonly permissions = inject(PermissionsService);
@@ -148,12 +173,42 @@ export class VenvsListPageComponent implements OnInit {
         this.loadVenvs();
     }
 
+    selectTab(tab: VenvsPageTab): void {
+        if (this.activeTab() === tab) return;
+        this.activeTab.set(tab);
+        // Nothing behind the custom libraries tab reads venv statuses, so the poll does not keep
+        // running there; coming back reloads the list and starts it again if a build is under way.
+        if (tab === 'venvs') {
+            this.loadVenvs();
+        } else {
+            this.stopPolling();
+        }
+    }
+
+    /** The create button lives in the page header, the dialog it opens belongs to the tab. */
+    openCreateCustomLibrary(): void {
+        this.customLibrariesPage()?.openCreateDialog();
+    }
+
     toggleFilterMenu(): void {
         this.filterMenuOpen.update((open) => !open);
     }
 
     closeFilterMenu(): void {
         this.filterMenuOpen.set(false);
+    }
+
+    toggleLibrarySortMenu(): void {
+        this.librarySortMenuOpen.update((open) => !open);
+    }
+
+    closeLibrarySortMenu(): void {
+        this.librarySortMenuOpen.set(false);
+    }
+
+    onLibrarySortSelected(sortOrder: VenvSortOrder): void {
+        this.librarySortOrder.set(sortOrder);
+        this.closeLibrarySortMenu();
     }
 
     toggleSortMenu(): void {

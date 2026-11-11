@@ -1,7 +1,7 @@
-langchain_community
+langchain_community==0.4.2
 langchain
-langchain-litellm
-litellm
-sqlalchemy
+langchain-litellm==0.10.0
+litellm==1.100.5
+sqlalchemy==2.1.8
 psycopg2-binary
 pymysql

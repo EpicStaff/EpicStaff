@@ -59,7 +59,12 @@ class TicketService:
         return ticket, self._ttl_seconds
 
     def consume(self, ticket: str) -> TicketHolder | None:
-        """Redeem `ticket` once; None when it is unknown, expired, malformed or its user is gone."""
+        """Redeem `ticket` once; None when it is unknown, expired, malformed or its user is gone.
+
+        A deactivated user gets None, as an API key of theirs would be
+        refused: a ticket issued just before the deactivation must not open
+        a stream after it.
+        """
         if not isinstance(ticket, str) or not ticket:
             return None
         raw = self._redis().getdel(self._key(ticket))
@@ -72,7 +77,7 @@ class TicketService:
             api_key_org_id = int(org_part) if separator else None
         except ValueError:
             return None
-        user = get_user_model().objects.filter(pk=user_id).first()
+        user = get_user_model().objects.filter(pk=user_id, is_active=True).first()
         if user is None:
             return None
         return TicketHolder(user=user, api_key_org_id=api_key_org_id)

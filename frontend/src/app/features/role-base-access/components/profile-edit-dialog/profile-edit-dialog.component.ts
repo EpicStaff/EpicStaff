@@ -21,7 +21,6 @@ import { ToastService } from '../../../../services/notifications';
 
 export interface ProfileEditDialogData {
     name: string;
-    email: string;
     avatarUrl: string | null;
 }
 
@@ -55,7 +54,6 @@ export class ProfileEditDialogComponent {
 
     readonly form = this.fb.group({
         full_name: [this.data.name, [Validators.required, Validators.maxLength(50)]],
-        email: [{ value: this.data.email, disabled: true }],
         picture: [null as File | null],
     });
 

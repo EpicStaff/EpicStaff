@@ -44,7 +44,7 @@ django-app-versions = [
     "anyio==4.14.2",
     # django_app ships 2025.11.12, held below the floor by a recorded exception (miniopy-async);
     # the floor version, which es_plugins ships with the same httpx, needs no exception here.
-    "certifi==2026.7.22",
+    "certifi==2026.10.23",
     "cffi==2.1.1",
     "cryptography==50.0.1",
     "h11==0.16.0",

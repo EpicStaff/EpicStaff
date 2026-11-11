@@ -307,6 +307,21 @@ class NodeIdentityMixin(models.Model):
 SOFT_DELETE_FIELD_NAMES = ("active", "soft_deleted_at", "soft_delete_batch")
 
 
+def copied_field_values(instance: models.Model, exclude: set[str]) -> dict:
+    """Return {field_name: value} of `instance`'s concrete, non-pk fields not in `exclude`.
+
+    For building a copy of the row. The soft-delete state is never included: a
+    copy starts live.
+    """
+    return {
+        field.name: getattr(instance, field.name)
+        for field in instance._meta.concrete_fields
+        if not field.primary_key
+        and field.name not in exclude
+        and field.name not in SOFT_DELETE_FIELD_NAMES
+    }
+
+
 class SoftDeleteFields(models.Model):
     """
     Only the fields required for soft deletion. No delete() override —

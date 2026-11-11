@@ -1,3 +1,6 @@
+import json
+from http import HTTPStatus
+
 from django.core.exceptions import PermissionDenied
 from django.db import OperationalError
 from django.http import Http404, JsonResponse
@@ -42,7 +45,7 @@ def _flatten_detail(detail) -> str:
 
 
 def _upstream_detail(exc: ClientError) -> str | None:
-    """Return the upstream response body, or the exception text when there is no body.
+    """Return what the upstream said, or the exception text when there is no body.
 
     `ClientTimeoutError` is raised without a response, and a response body can be empty,
     so neither is assumed to be there. `None` lets DRF fall back to its default detail
@@ -50,20 +53,48 @@ def _upstream_detail(exc: ClientError) -> str | None:
     """
     response = getattr(exc, "response", None)
     if response is not None and response.text:
-        return response.text
+        return _upstream_message(response.text)
     return str(exc) or None
+
+
+def _upstream_message(text: str) -> str:
+    """The upstream failure in words, taken out of the envelope it arrived in.
+
+    Services answer with the shared `{"type", "errors": [{"code", "detail", "attr"}]}`
+    shape; handed on as it stands, that JSON is what the user reads on their screen.
+    A body in any other shape is passed through, there being nothing to unwrap.
+    """
+    try:
+        body = json.loads(text)
+    except ValueError:
+        return text
+
+    if not isinstance(body, dict):
+        return text
+
+    errors = body.get("errors")
+    if isinstance(errors, list):
+        details = [
+            error["detail"]
+            for error in errors
+            if isinstance(error, dict) and isinstance(error.get("detail"), str)
+        ]
+        if details:
+            return "; ".join(details)
+
+    detail = body.get("detail")
+    return detail if isinstance(detail, str) and detail else text
 
 
 def _client_error_as_api_exception(exc: ClientError) -> APIException:
     """Translate a transport error from a proxied microservice into a DRF exception.
 
-    Only a missing resource, a rejected payload and rate limiting describe the caller's
-    own request, so those statuses pass through. A dependency that could not be reached
-    at all is service unavailable, which tells the caller the request is worth retrying.
-    Every other upstream failure - timeout, upstream auth, conflict, 5xx - is a failure
-    of this gateway's dependency rather than anything the caller did, and is reported as
-    a bad gateway: passing an upstream 401 or 409 through would tell the caller something
-    false about their own request.
+    An upstream 4xx is the caller's own request coming back refused, so it keeps its
+    status: a conflict stays a conflict rather than becoming a gateway failure the
+    caller can do nothing about. A dependency that could not be reached at all is
+    service unavailable, which tells the caller the request is worth retrying. What is
+    left - a timeout, an upstream 5xx, a response with no status at all - is this
+    gateway's dependency failing, and is reported as a bad gateway.
     """
     detail = _upstream_detail(exc)
 
@@ -79,10 +110,26 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
         unreachable_error.default_code = "upstream_service_unreachable"
         return unreachable_error
 
+    status_code = getattr(getattr(exc, "response", None), "status_code", None)
+    if status_code is not None and status.is_client_error(status_code):
+        client_error = APIException(detail)
+        client_error.status_code = status_code
+        client_error.default_code = _status_code_name(status_code)
+        return client_error
+
     upstream_error = APIException(detail)
     upstream_error.status_code = status.HTTP_502_BAD_GATEWAY
     upstream_error.default_code = "upstream_service_error"
     return upstream_error
+
+
+def _status_code_name(status_code: int) -> str:
+    """The status as a code name, the way every service in the project spells it."""
+    try:
+        return HTTPStatus(status_code).phrase.lower().replace(" ", "_")
+    except ValueError:
+        # A status outside the standard table: there is no phrase to name it with.
+        return "client_error"
 
 
 def _outbound_client_error_as_api_exception(exc: OutboundClientError) -> APIException:

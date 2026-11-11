@@ -57,6 +57,7 @@ import {
 import {
     buildPreviewImportResult,
     enrichImportResult,
+    escapeHtml,
     extractHttpErrorMessage,
     ImportFileData,
     JsonObject,
@@ -230,7 +231,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     }
 
     public readonly deleteMessageForLabel = (label: LabelTreeNode): string => {
-        return `Are you sure you want to delete <strong>${label.name}</strong> label? This will remove it from all flows and sublabels.`;
+        return `Are you sure you want to delete <strong>${escapeHtml(label.name)}</strong> label? This will remove it from all flows and sublabels.`;
     };
 
     public readonly deleteCautionForLabel = (label: LabelTreeNode): string | undefined => {
@@ -608,8 +609,9 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
                 showExportExclusionWarning(this.toastService, excluded);
             },
-            error: (error) => {
+            error: (error: HttpErrorResponse) => {
                 console.error('Bulk export failed:', error);
+                this.toastService.error(extractHttpErrorMessage(error, 'Failed to export the selected flows'));
             },
         });
     }

@@ -11,6 +11,7 @@ import {
     UnsavedChangesDialogService,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
 
 import { tourAnchorSelector } from '../../../../core/guided-tour';
@@ -18,6 +19,7 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
 import { AgentDefinition } from '../../models/agent-definition.model';
+import { Surface } from '../../models/surface.model';
 import { AgentGroupsStorageService } from '../../services/agent-groups-storage.service';
 import { AgentsPageStore } from '../../services/agents-page-store.service';
 import { SurfaceCatalogsStore } from '../../services/surface-catalogs-store.service';
@@ -87,19 +89,28 @@ function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
     };
 }
 
+/** Every permission granted (`true`), none (`false`), or the answer per resource and action. */
+type Grants = boolean | ((resource: ResourceCode, action: ActionCode) => boolean);
+
 function render(
-    canWrite: boolean,
+    grants: Grants,
     queryParams: Record<string, string> = {}
 ): {
     fixture: ComponentFixture<AgentDefinitionsPageComponent>;
     host: HTMLElement;
     overlay: HTMLElement;
 } {
+    const can = typeof grants === 'function' ? grants : () => grants;
     TestBed.configureTestingModule({
         providers: [
             {
                 provide: PermissionsService,
-                useValue: { active: signal(null), can: () => canWrite, canAny: () => canWrite },
+                useValue: {
+                    active: signal(null),
+                    can,
+                    canAny: (resource: ResourceCode, actions: ActionCode[]) =>
+                        actions.some((action) => can(resource, action)),
+                },
             },
             { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(queryParams) } } },
             {
@@ -284,6 +295,46 @@ describe('AgentDefinitionsPageComponent agent header menu "View Details"', () =>
         fixture.detectChanges();
 
         expect(document.activeElement).toBe(document.body);
+    });
+});
+
+describe('AgentDefinitionsPageComponent agent header menu "Duplicate"', () => {
+    const OWNED_SURFACE = {
+        id: 20,
+        name: 'Reader inbox',
+        group: null,
+        owner_agent: AGENT.id,
+    } as Partial<Surface> as Surface;
+
+    /** Renders with the agent owning a surface, granting everything except, optionally, Surfaces:Create. */
+    function renderOwningSurface(canCreateSurfaces: boolean): {
+        fixture: ComponentFixture<AgentDefinitionsPageComponent>;
+        overlay: HTMLElement;
+    } {
+        const { fixture, overlay } = render(
+            (resource, action) =>
+                canCreateSurfaces || !(resource === ResourceCode.Surfaces && action === ActionCode.Create)
+        );
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+        (store.surfaces as WritableSignal<Surface[]>).set([OWNED_SURFACE]);
+        fixture.detectChanges();
+        return { fixture, overlay };
+    }
+
+    it('is hidden for an agent that owns a surface when the user cannot create surfaces, as the copy clones it', () => {
+        const { fixture, overlay } = renderOwningSurface(false);
+
+        openMenu(fixture);
+
+        expect(menuItemLabels(overlay)).toEqual(['View Details', 'Delete']);
+    });
+
+    it('is offered for an agent that owns a surface when the user can create surfaces', () => {
+        const { fixture, overlay } = renderOwningSurface(true);
+
+        openMenu(fixture);
+
+        expect(menuItemLabels(overlay)).toEqual(['Duplicate', 'View Details', 'Delete']);
     });
 });
 

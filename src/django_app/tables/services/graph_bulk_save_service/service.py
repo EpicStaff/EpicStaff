@@ -34,6 +34,7 @@ from tables.services.node_number_service import NodeNumberService
 from tables.services.secrets import SecretUseDeniedError
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
 from tables.services.secrets.request_actor import actor_from_request
+from tables.validators.run_refusal_validator import node_run_refusals
 
 
 def _stored_secret_prefetches(model) -> list[Prefetch]:
@@ -233,6 +234,8 @@ class GraphBulkSaveService:
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
+            # Checked on the item as the client sent it: the build below rewrites it in place.
+            run_refusals = node_run_refusals(item_data)
 
             # The URL graph is the authority: a per-item graph would let an item
             # be written into (or moved to) another graph that skips the checks below.
@@ -260,9 +263,13 @@ class GraphBulkSaveService:
                     config, item_data, index, payload_temp_ids, instance=db_instance
                 )
 
+            # Refusals are reported only on an item that otherwise builds; behind another
+            # error they come back on the next save, once that error is fixed.
             if build.error:
                 result.errors.append(build.error)
             else:
+                if run_refusals:
+                    result.errors.append({"index": index, "errors": run_refusals})
                 result.node_saveables.append(
                     _NodeSaveable(
                         build.inner_saveable,

@@ -6,8 +6,9 @@ from loguru import logger
 
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
-from services.graph.exceptions import ReturnCodeError, StopSession
+from services.graph.exceptions import InvalidStatePathError, ReturnCodeError, StopSession
 from services.graph.nodes.base_node import BaseNode
+from src.shared.flow_templates import RefusedPlaceholderError, render_template
 
 SECRET_TEXT = "postgres://admin:sup3rs3cret@internal-db.epicstaff.local:5432/crewdb"
 GENERIC_DETAILS_PATTERN = r"^Node execution failed \(reference: [0-9a-f]{12}\)$"
@@ -33,6 +34,25 @@ class StoppedNode(BaseNode):
 
     async def execute(self, state, writer, execution_order, input_):
         raise StopSession(reason="manual stop")
+
+
+class RefusedPlaceholderNode(BaseNode):
+    TYPE = "TASK"
+
+    async def execute(self, state, writer, execution_order, input_):
+        return render_template("Answer {context._x}", {"context": {"_x": SECRET_TEXT}})
+
+
+class RecordingNode(BaseNode):
+    TYPE = "PYTHON"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.executed = False
+
+    async def execute(self, state, writer, execution_order, input_):
+        self.executed = True
+        return {"done": True}
 
 
 def build_state():
@@ -152,6 +172,25 @@ async def test_sandbox_return_code_error_keeps_its_stderr_on_the_error_card(capt
 
 
 @pytest.mark.asyncio
+async def test_refused_template_placeholder_is_streamed_verbatim(captured_logs):
+    node = RefusedPlaceholderNode(session_id=7, node_name="task", stop_event=StopEvent())
+    messages = []
+
+    with pytest.raises(RefusedPlaceholderError):
+        await node.run(build_state(), writer=messages.append)
+
+    error_messages = [
+        message for message in messages if message.message_data.message_type == "error"
+    ]
+    assert len(error_messages) == 1
+    assert error_messages[0].message_data.details == (
+        "Placeholder '{context._x}' is not allowed: '_x' starts with '_'. "
+        "Rename that variable or key."
+    )
+    assert captured_logs == []
+
+
+@pytest.mark.asyncio
 async def test_stop_session_gets_an_empty_error_card_not_the_generic_message(captured_logs):
     node = StoppedNode(session_id=7, node_name="stopped", stop_event=StopEvent())
     messages = []
@@ -182,3 +221,42 @@ def test_error_passed_as_string_is_also_sanitized(captured_logs):
     assert re.match(GENERIC_DETAILS_PATTERN, details)
     assert SECRET_TEXT not in details
     assert SECRET_TEXT in captured_logs[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("input_map", "output_variable_path", "rejected_path"),
+    [
+        pytest.param(
+            {"x": "variables.__class__.__init__.__globals__"},
+            None,
+            "variables.__class__.__init__.__globals__",
+            id="input-map",
+        ),
+        pytest.param({}, "variables.__class__.status", "variables.__class__.status", id="output-path"),
+    ],
+)
+async def test_underscore_state_path_fails_before_execute_with_a_public_message(
+    captured_logs, input_map, output_variable_path, rejected_path
+):
+    node = RecordingNode(
+        session_id=7,
+        node_name="pathbad",
+        stop_event=StopEvent(),
+        input_map=input_map,
+        output_variable_path=output_variable_path,
+    )
+    messages = []
+
+    with pytest.raises(InvalidStatePathError):
+        await node.run(build_state(), writer=messages.append)
+
+    assert node.executed is False
+    error_messages = [
+        message for message in messages if message.message_data.message_type == "error"
+    ]
+    assert len(error_messages) == 1
+    assert error_messages[0].message_data.details == (
+        f"Variable path '{rejected_path}' is not allowed: path segments cannot start with '_'."
+    )
+    assert captured_logs == []

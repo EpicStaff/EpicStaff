@@ -1,26 +1,30 @@
-import re
-
 from dotdict import DotDict
 from loguru import logger
+from services.graph.exceptions import InvalidStatePathError
+
+from utils.state_path import split_state_path
+
+_JSON_SCALAR_TYPES = (str, int, float, bool, type(None))
 
 
-def _clean_value(v):
-    """Recursively convert proxy objects (DotDict, etc.) to plain types."""
-    if hasattr(v, "model_dump"):
-        v = v.model_dump()
-    if isinstance(v, dict):
-        return _clean_dict(v)
-    if isinstance(v, list):
-        return _clean_list(v)
-    return v
+class _NotPlainDataError(Exception): ...
 
 
-def _clean_dict(d: dict) -> dict:
-    return {k: _clean_value(v) for k, v in d.items()}
+def _to_plain_data(value):
+    """Copy `value` as plain JSON data, converting DotDict/DotList and models on the way.
 
-
-def _clean_list(lst: list) -> list:
-    return [_clean_value(v) for v in lst]
+    Raises:
+        _NotPlainDataError: `value` holds anything else, such as a bound method.
+    """
+    if hasattr(value, "model_dump"):
+        value = value.model_dump()
+    if isinstance(value, dict):
+        return {key: _to_plain_data(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_to_plain_data(item) for item in value]
+    if isinstance(value, _JSON_SCALAR_TYPES):
+        return value
+    raise _NotPlainDataError
 
 
 def map_variables_to_input(
@@ -40,6 +44,10 @@ def map_variables_to_input(
 
     Returns:
         dict: A dictionary with mapped keys and corresponding values from `variables`.
+
+    Raises:
+        InvalidStatePathError: A path segment starts with `_`, or the path resolves to
+            something other than plain JSON data, such as a built-in method.
 
     Example:
         Given the following `variables`:
@@ -69,7 +77,6 @@ def map_variables_to_input(
         ```
     """
     output_dict = {}
-    pattern = re.compile(r"\w+|\[\d+\]")
 
     for output_key, input_key in map.items():
         # Check for default value using pipe syntax: path|default
@@ -89,8 +96,7 @@ def map_variables_to_input(
             elif default_value.isdigit():
                 default_value = int(default_value)
 
-        # Normal variable path handling
-        keys: list[str] = pattern.findall(input_key)
+        keys = split_state_path(input_key)
         if keys[0] != "variables":
             raise ValueError(f"`{input_key}` does not contain name `variables` for {output_key}")
         keys = keys[1:]
@@ -119,13 +125,16 @@ def map_variables_to_input(
                         value = None
                         break
 
-        if hasattr(value, "model_dump"):
-            value = value.model_dump()
-        if isinstance(value, dict):
-            value = _clean_dict(value)
-        if isinstance(value, list):
-            value = _clean_list(value)
-
-        output_dict[output_key] = value
+        try:
+            output_dict[output_key] = _to_plain_data(value)
+        except _NotPlainDataError:
+            # Attribute access on the resolved value finds a method of its type (DotDict, list,
+            # str, ...) before any stored key of that name; the live method must not reach a
+            # node, whose templates could walk from it into the process.
+            raise InvalidStatePathError(
+                f"Variable path '{input_key}' reads a built-in method instead of flow data: "
+                "either the path goes past a text, number or list value, or a segment is named "
+                "like a method (such as 'items' or 'update') — rename that variable."
+            ) from None
 
     return output_dict

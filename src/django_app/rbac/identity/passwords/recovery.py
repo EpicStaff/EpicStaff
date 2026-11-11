@@ -62,6 +62,9 @@ class PasswordRecoveryService:
       - Every flow checks the new password against the target account
         (`PasswordWriter.set`) before writing anything; a rejection raises
         FormValidationError and the transaction changes nothing.
+      - Every password set writes one audit log line naming the actor and
+        the target account, never the password or the reset token. The line
+        is bound `audit=True` so two long emails are not cut off.
     """
 
     def __init__(
@@ -145,6 +148,10 @@ class PasswordRecoveryService:
             self._password_writer.set(user, new_password)
             self._token_repo.consume(token_row)
             self._credential_revoker.revoke_all_credentials_for_user(user)
+        logger.bind(audit=True).info(
+            "PasswordRecoveryService.confirm_reset actor=reset-link target={target}",
+            target=user.email,
+        )
         return user
 
     # ---- admin flow ----
@@ -158,6 +165,11 @@ class PasswordRecoveryService:
             self._password_writer.set(target, new_password)
             self._token_repo.invalidate_all_for_user(target)
             self._credential_revoker.revoke_all_credentials_for_user(target)
+        logger.bind(audit=True).info(
+            "PasswordRecoveryService.admin_reset actor={actor} target={target}",
+            actor=actor.email,
+            target=target.email,
+        )
         return target
 
     # ---- CLI flow ----
@@ -170,6 +182,10 @@ class PasswordRecoveryService:
             self._password_writer.set(user, new_password)
             self._token_repo.invalidate_all_for_user(user)
             self._credential_revoker.revoke_all_credentials_for_user(user)
+        logger.bind(audit=True).info(
+            "PasswordRecoveryService.cli_reset actor=cli target={target}",
+            target=user.email,
+        )
 
     # ---- helpers ----
 

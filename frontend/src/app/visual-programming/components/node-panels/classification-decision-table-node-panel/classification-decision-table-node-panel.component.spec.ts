@@ -5,11 +5,16 @@ import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, Provider, s
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
-import { ExecutionTimeoutFieldComponent, ExecutionTimeoutFormField, JsonEditorComponent } from '@shared/components';
+import {
+    ConfirmationDialogService,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
+    JsonEditorComponent,
+} from '@shared/components';
 import { NodeType, ResourceCode } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
 import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
-import { of } from 'rxjs';
+import { Observable, of } from 'rxjs';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -27,6 +32,7 @@ import { ClassificationDecisionTableNodeModel, NodeModel } from '../../../core/m
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { CdtExplainApiService } from '../../../services/cdt-explain-api.service';
 import { FlowService } from '../../../services/flow.service';
+import { NodeSaveErrorsStore } from '../../../services/node-save-errors.store';
 import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
@@ -1437,5 +1443,106 @@ describe('ClassificationDecisionTableNodePanelComponent — System One entries i
         panel.updatePromptFields('System One', { system_one_config: 7 });
 
         expect(sentPromptConfigs()[0]).toMatchObject({ system_one_config: 7 });
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — the delete prompt message', () => {
+    it('shows a prompt name with markup as text, because the dialog renders the message as HTML', () => {
+        const confirm = vi.fn<(options: { message: string }) => Observable<boolean>>(() => of(false));
+        configurePanelTestBed({ providers: [{ provide: ConfirmationDialogService, useValue: { confirm } }] });
+        const fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', tableNode());
+        fixture.detectChanges();
+
+        fixture.componentInstance.deletePrompt('<img src=https://example.com/x.gif>');
+
+        const { message } = confirm.mock.calls[0][0];
+        expect(message).toContain('<strong>&lt;img src=https://example.com/x.gif&gt;</strong>');
+        expect(message).not.toContain('<img');
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — a prompt text the last save refused', () => {
+    const SENT = 'Pull {context._x}';
+    const REFUSED = "Placeholder '{context._x}' is not allowed.";
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    const llmPrompt = (prompt_text: string) => ({
+        prompt_text,
+        llm_config: null,
+        output_schema: { type: 'object' },
+        result_variable: 'result',
+        variable_mappings: {},
+    });
+
+    /** Two prompts sending the same text; the save refused it in `extract` only. */
+    beforeEach(() => {
+        configurePanelTestBed();
+        // The JSON editor runs Monaco, which jsdom cannot.
+        TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
+            remove: { imports: [JsonEditorComponent] },
+            add: { schemas: [NO_ERRORS_SCHEMA] },
+        });
+        const node = tableNode();
+        const prompts = { classify: llmPrompt(SENT), extract: llmPrompt(SENT) };
+        const flowService = TestBed.inject(FlowService);
+        flowService.setFlow({
+            nodes: [{ ...node, data: { ...node.data, table: { ...node.data.table, prompts } } }],
+            connections: [],
+        });
+        TestBed.inject(SavedFlowStateService).setSavedFlow(flowService.getFlowState());
+        TestBed.inject(NodeSaveErrorsStore).setAll(
+            new Map([
+                [
+                    NODE_ID,
+                    [
+                        {
+                            field: 'prompt_text',
+                            child: { list: 'prompt_configs', key: 'extract', position: 1 },
+                            sentValue: SENT,
+                            messages: [REFUSED],
+                        },
+                    ],
+                ],
+            ])
+        );
+
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', flowService.nodes()[0]);
+        fixture.detectChanges();
+        fixture.componentInstance.activeTab.set('prompts');
+        fixture.detectChanges();
+    });
+
+    function card(promptId: string): HTMLElement {
+        return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.prompt-card')).find(
+            (candidate) => candidate.querySelector('.prompt-id')?.textContent?.trim() === promptId
+        )!;
+    }
+
+    function openCard(promptId: string): void {
+        card(promptId).querySelector<HTMLElement>('.prompt-id')!.click();
+        fixture.detectChanges();
+    }
+
+    function shownUnder(promptId: string): string[] {
+        return Array.from(card(promptId).querySelectorAll('app-node-save-errors li')).map(
+            (item) => item.textContent?.trim() ?? ''
+        );
+    }
+
+    it('shows it under its own prompt only, and hides it once the text is edited', () => {
+        openCard('classify');
+        expect(shownUnder('classify')).toEqual([]);
+
+        openCard('extract');
+        expect(shownUnder('extract')).toEqual([REFUSED]);
+
+        const promptText = card('extract').querySelector<HTMLTextAreaElement>('textarea[aria-label="Prompt"]')!;
+        promptText.value = 'Pull {topic}';
+        promptText.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(shownUnder('extract')).toEqual([]);
     });
 });
