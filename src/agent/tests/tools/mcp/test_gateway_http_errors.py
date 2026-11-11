@@ -21,6 +21,8 @@ from app.tools.mcp.gateway import McpToolGateway
 from mcp.types import INTERNAL_ERROR
 from shared.models.tools import McpToolData
 
+from tests.secret_sealing import agent_cryptographer, seal
+
 # Returns (status, json_body), or None to hold the request until the client gives up.
 Responder = Callable[[str, dict], tuple[int, dict | None] | None]
 
@@ -74,7 +76,9 @@ def _always(status: int) -> Responder:
     return lambda http_method, request: (status, {"error": "invalid_token"})
 
 
-def _legacy_server_whose_tool_call_fails(http_method: str, request: dict) -> tuple[int, dict | None]:
+def _legacy_server_whose_tool_call_fails(
+    http_method: str, request: dict
+) -> tuple[int, dict | None]:
     """A handshake-era server: it refuses the server/discover probe with a 400, then
     answers tools/call with a JSON-RPC internal error over HTTP 200."""
     if http_method != "POST":
@@ -104,12 +108,14 @@ def _legacy_server_too_slow_to_initialize(
 
 def _tool_data(url: str) -> McpToolData:
     return McpToolData(
-        transport=url, tool_name="search", auth=_SECRET_TOKEN, timeout=5, init_timeout=5
+        transport=url, tool_name="search", auth=seal(_SECRET_TOKEN), timeout=5, init_timeout=5
     )
 
 
 async def _run(operation: str, data: McpToolData) -> str:
-    gateway = McpToolGateway(FastMCPClientFactory(), describe_cache_ttl_s=300)
+    gateway = McpToolGateway(
+        FastMCPClientFactory(agent_cryptographer()), agent_cryptographer(), describe_cache_ttl_s=300
+    )
     with pytest.raises(McpToolError) as error_info:
         if operation == "describe":
             await gateway.describe(data)

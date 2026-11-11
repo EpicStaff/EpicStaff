@@ -21,6 +21,7 @@ from app.runners.single_task import SingleTaskRunner
 from app.sandbox.client import SandboxClient
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolGateway
+from foundation.cryptographer import FernetRotatedCryptographer
 from loguru import logger
 from pydantic import ValidationError
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -213,13 +214,22 @@ async def main() -> None:
     )
     await loader.connect()
 
+    # The one cryptographer that opens what django_app seals for transport; every
+    # consumer below receives this instance.
+    secrets_cryptographer = FernetRotatedCryptographer(
+        settings.SECRETS_TRANSPORT_KEY,
+        settings.SECRETS_TRANSPORT_PREVIOUS_KEYS,
+        hkdf_info=settings.SECRETS_TRANSPORT_HKDF_INFO.encode(),
+    )
     llm = LiteLLMClient()
     mcp_gateway = McpToolGateway(
-        FastMCPClientFactory(), describe_cache_ttl_s=settings.AGENT_MCP_DESCRIBE_CACHE_TTL
+        FastMCPClientFactory(secrets_cryptographer),
+        secrets_cryptographer,
+        describe_cache_ttl_s=settings.AGENT_MCP_DESCRIBE_CACHE_TTL,
     )
     deps = RunnerDependencies(
         resolver=AgentResolver(sandbox_client, mcp_gateway, knowledge_client),
-        loop=DefaultAgentLoop(llm, settings.AGENT_CONTEXT_WARNING_RATIO),
+        loop=DefaultAgentLoop(llm, secrets_cryptographer, settings.AGENT_CONTEXT_WARNING_RATIO),
     )
     factory = RunnerFactory(deps)
     factory.register(RunType.SINGLE_TASK, SingleTaskRunner)

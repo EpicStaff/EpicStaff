@@ -28,6 +28,7 @@ from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
 from tests.log_capture import assert_masked_exception, log_line_starting_with, capture_logs_at
+from tests.secret_sealing import agent_cryptographer, header_marker, seal, seal_with_foreign_key
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -216,7 +217,9 @@ async def _model_config(llm: LLMData, tool_choice=None) -> dict:
     context = AgentContext(agent=agent, attachments=[], correlation_id="c", tool_choice=tool_choice, is_cancelled=never_cancelled)
     fake_llm = FakeLLMClient([text_chunks("ok")])
 
-    await DefaultAgentLoop(fake_llm).run(context, StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5))
+    await DefaultAgentLoop(fake_llm, agent_cryptographer()).run(
+        context, StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5)
+    )
 
     (config,) = fake_llm.received_configs
     return config
@@ -242,7 +245,9 @@ async def _model_config(llm: LLMData, tool_choice=None) -> dict:
         ("openai", "anthropic/claude-sonnet-4-5", "anthropic/claude-sonnet-4-5", None),
     ],
 )
-async def test_llm_call_routes_to_the_provider_and_opts_out_of_storage(provider, model, expected_model, expected_store):
+async def test_llm_call_routes_to_the_provider_and_opts_out_of_storage(
+    provider, model, expected_model, expected_store
+):
     config = await _model_config(LLMData(provider=provider, config=LLMConfigData(model=model)))
 
     assert config["model"] == expected_model
@@ -250,7 +255,9 @@ async def test_llm_call_routes_to_the_provider_and_opts_out_of_storage(provider,
 
 
 @pytest.mark.parametrize(
-    "tool_choice", [{"type": "function", "function": {"name": "submit_final_answer"}}, None], ids=["set", "unset"]
+    "tool_choice",
+    [{"type": "function", "function": {"name": "submit_final_answer"}}, None],
+    ids=["set", "unset"],
 )
 async def test_tool_choice_reaches_the_llm_only_when_set(tool_choice):
     config = await _model_config(_make_llm_data(), tool_choice=tool_choice)
@@ -272,7 +279,7 @@ async def test_llm_call_receives_every_set_config_field():
         seed=7,
         base_url="https://example.openai.azure.com",
         api_version="2025-01-01-preview",
-        api_key="sk-test",
+        api_key=seal("sk-test"),
         api_key_secret_id=99,
         deployment_id="my-deployment",
         extra_headers={"X-Team": "core"},
@@ -303,9 +310,92 @@ async def test_llm_call_receives_every_set_config_field():
 
 
 async def test_llm_call_receives_no_unset_config_field():
-    config = await _model_config(LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet-4-5")))
+    config = await _model_config(
+        LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet-4-5"))
+    )
 
     assert config == {"model": "anthropic/claude-sonnet-4-5"}
+
+
+async def test_every_llm_call_receives_the_sealed_credentials_decrypted():
+    llm_config = LLMConfigData(
+        model="fake-model",
+        api_key=seal("sk-live-key"),
+        extra_headers={
+            "Authorization": f"Bearer {header_marker(seal('header-token'))}",
+            "X-Team": "core",
+        },
+    )
+    agent = AgentSpec(
+        id=1, name="a", instructions="i", llm=LLMData(provider="openai", config=llm_config)
+    )
+    context = AgentContext(
+        agent=agent, attachments=[], correlation_id="c", is_cancelled=never_cancelled
+    )
+    fake_llm = FakeLLMClient([tool_chunks("call-1", "echo", "{}"), text_chunks("done")])
+
+    await DefaultAgentLoop(fake_llm, agent_cryptographer()).run(
+        context,
+        StubToolRegistry({"echo": lambda args: "ok"}),
+        RecordingEmitter(),
+        MaxIterAndNoToolCalls(max_iter=5),
+    )
+
+    assert len(fake_llm.received_configs) == 2
+    for config in fake_llm.received_configs:
+        assert config["api_key"] == "sk-live-key"
+        assert config["extra_headers"] == {"Authorization": "Bearer header-token", "X-Team": "core"}
+
+
+@pytest.mark.parametrize(
+    ("llm_config", "expected_error"),
+    [
+        (
+            LLMConfigData(
+                model="fake-model",
+                custom_name="Team key",
+                api_key=seal_with_foreign_key("sk-live-key"),
+            ),
+            'LLM config "Team key": api_key could not be decrypted.',
+        ),
+        (
+            LLMConfigData(model="fake-model", api_key="not-a-fernet-token"),
+            'LLM config "fake-model": api_key could not be decrypted.',
+        ),
+        (
+            LLMConfigData(
+                model="fake-model",
+                custom_name="Team key",
+                extra_headers={"X-Key": header_marker(seal_with_foreign_key("header-token"))},
+            ),
+            'LLM config "Team key": extra_headers could not be decrypted.',
+        ),
+    ],
+    ids=["api-key-under-another-key", "api-key-not-a-token", "header-marker-under-another-key"],
+)
+async def test_undecryptable_llm_credential_fails_the_run_without_the_value(
+    llm_config, expected_error
+):
+    agent = AgentSpec(
+        id=1, name="a", instructions="i", llm=LLMData(provider="openai", config=llm_config)
+    )
+    context = AgentContext(
+        agent=agent, attachments=[], correlation_id="c", is_cancelled=never_cancelled
+    )
+    fake_llm = FakeLLMClient([text_chunks("never sent")])
+    sealed_values = [llm_config.api_key, *(llm_config.extra_headers or {}).values()]
+
+    with capture_logs_at("DEBUG") as messages:
+        result = await DefaultAgentLoop(fake_llm, agent_cryptographer()).run(
+            context, StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5)
+        )
+
+    assert result.stop_reason == "llm_error"
+    assert result.error == expected_error
+    assert fake_llm.received_configs == []
+    logged = "\n".join(messages)
+    for value in filter(None, sealed_values):
+        assert value not in logged
 
 
 @pytest.mark.parametrize(
@@ -325,7 +415,9 @@ async def test_sampling_params_follow_the_routed_provider(provider, model, expec
 
     config = await _model_config(LLMData(provider=provider, config=llm_config))
 
-    assert {key: config[key] for key in ("temperature", "top_p") if key in config} == expected_sampling
+    assert {
+        key: config[key] for key in ("temperature", "top_p") if key in config
+    } == expected_sampling
     assert config["reasoning_effort"] == "high"
 
 
@@ -342,7 +434,7 @@ async def test_single_text_response_no_tools():
     stop = MaxIterAndNoToolCalls(max_iter=5)
 
     llm = FakeLLMClient([text_chunks("Hello", " world")])
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -372,7 +464,7 @@ async def test_tool_call_then_text_response():
             text_chunks("The time is 12:00"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -422,7 +514,7 @@ async def test_tool_result_enveloped_for_llm_regardless_of_executor():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     await loop.run(context, tools, emitter, stop)
 
@@ -463,7 +555,7 @@ async def test_knowledge_search_content_carried_in_envelope_content_field():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     await loop.run(context, tools, emitter, stop)
 
@@ -506,7 +598,7 @@ async def test_injected_content_cannot_forge_envelope_keys():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     await loop.run(context, tools, emitter, stop)
 
@@ -537,7 +629,7 @@ async def test_emitter_receives_raw_unenveloped_content():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     await loop.run(context, tools, emitter, stop)
 
@@ -584,7 +676,7 @@ async def test_parallel_tool_calls():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -621,7 +713,7 @@ async def test_tool_raises_feeds_error_back_and_loop_continues():
             text_chunks("recovered"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -662,7 +754,7 @@ async def test_tool_json_parse_failure():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -691,7 +783,7 @@ async def test_unknown_tool_name():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     await loop.run(context, tools, emitter, stop)
 
@@ -719,7 +811,7 @@ async def test_max_iter_reached():
             text_chunks("never reached"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -736,7 +828,7 @@ async def test_llm_raises_returns_llm_error_no_on_error():
     stop = MaxIterAndNoToolCalls(max_iter=5)
 
     llm = FakeLLMClient([], chat_raises=RuntimeError("LLM down"))
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -760,7 +852,9 @@ async def test_llm_error_logs_the_exception_class_without_its_message():
     llm = FakeLLMClient([], chat_raises=RuntimeError(raw_error_text))
 
     with capture_logs_at("DEBUG") as messages:
-        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+        result = await DefaultAgentLoop(llm, agent_cryptographer()).run(
+            context, tools, emitter, stop
+        )
 
     error_line = log_line_starting_with(messages, "loop llm_error")
     assert "correlation_id=test-corr" in error_line
@@ -794,7 +888,7 @@ async def test_timeout_fires_mid_execution():
             tool_chunks("c1", "slow", "{}"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -815,7 +909,7 @@ async def test_streaming_chunk_order_preserved():
 
     ordered_chunks = [LLMChunk(delta_text=str(i)) for i in range(5)]
     llm = FakeLLMClient([ordered_chunks])
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     await loop.run(context, tools, emitter, stop)
 
@@ -857,7 +951,7 @@ async def test_token_usage_aggregated_across_two_iterations():
     ]
 
     llm = FakeLLMClient([iter1_chunks, iter2_chunks])
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -877,7 +971,7 @@ async def test_token_usage_defaults_to_zero_when_no_usage_chunks():
     stop = MaxIterAndNoToolCalls(max_iter=5)
 
     llm = FakeLLMClient([text_chunks("hello")])
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -908,7 +1002,9 @@ def _raise_model_not_found(model):
     ],
     ids=["over-ratio-warns-once", "under-ratio", "warning-disabled", "model-info-unavailable"],
 )
-async def test_context_window_warning(monkeypatch, ratio, get_model_info, prompt_tokens, expected_warnings):
+async def test_context_window_warning(
+    monkeypatch, ratio, get_model_info, prompt_tokens, expected_warnings
+):
     import litellm
 
     monkeypatch.setattr(litellm, "get_model_info", get_model_info)
@@ -917,8 +1013,11 @@ async def test_context_window_warning(monkeypatch, ratio, get_model_info, prompt
     # Two iterations, so a warning that is not de-duplicated would appear twice.
     llm = FakeLLMClient([[*tool_chunks("c1", "ping", "{}"), usage], [*text_chunks("done"), usage]])
 
-    result = await DefaultAgentLoop(llm, context_warning_ratio=ratio).run(
-        make_context(), StubToolRegistry({"ping": lambda args: "pong"}), emitter, MaxIterAndNoToolCalls(max_iter=5)
+    result = await DefaultAgentLoop(llm, agent_cryptographer(), context_warning_ratio=ratio).run(
+        make_context(),
+        StubToolRegistry({"ping": lambda args: "pong"}),
+        emitter,
+        MaxIterAndNoToolCalls(max_iter=5),
     )
 
     assert result.stop_reason == "completed"
@@ -962,7 +1061,7 @@ async def test_max_tool_calls_overflow_rejected_with_error_result():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -997,7 +1096,7 @@ async def test_max_tool_calls_enforced_cumulatively_across_iterations():
             text_chunks("summary after budget exhausted"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -1032,7 +1131,7 @@ async def test_max_tool_calls_none_unlimited():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -1057,7 +1156,7 @@ async def test_overflow_rejection_does_not_count_toward_consecutive_failures():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -1090,7 +1189,7 @@ async def test_tool_timeout_is_an_error_result_counted_toward_the_failure_limit(
             text_chunks("summary after timeout"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -1123,7 +1222,7 @@ async def test_consecutive_failures_stops_gracefully_with_summary():
             text_chunks("I tried X; it failed because Y"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -1167,7 +1266,7 @@ async def test_consecutive_failures_reset_on_success():
             text_chunks("done"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -1197,7 +1296,7 @@ async def test_failure_limit_mid_batch_rejects_remaining_calls():
             text_chunks("summary"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -1227,7 +1326,7 @@ async def test_consecutive_failures_none_disabled():
             text_chunks("never reached"),
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -1263,7 +1362,7 @@ async def test_finalization_token_usage_accumulated():
             finalize_chunks,
         ]
     )
-    loop = DefaultAgentLoop(llm)
+    loop = DefaultAgentLoop(llm, agent_cryptographer())
 
     result = await loop.run(context, tools, emitter, stop)
 
@@ -1279,11 +1378,12 @@ async def test_finalization_token_usage_accumulated():
 # ---------------------------------------------------------------------------
 
 _PRIMARY_LLM = LLMData(
-    provider="openai", config=LLMConfigData(model="fake-model", custom_name="Key A", api_key="key-a")
+    provider="openai",
+    config=LLMConfigData(model="fake-model", custom_name="Key A", api_key=seal("key-a")),
 )
 _FALLBACK_LLM = LLMData(
     provider="anthropic",
-    config=LLMConfigData(model="claude-sonnet-4-5", custom_name="Key B", api_key="key-b"),
+    config=LLMConfigData(model="claude-sonnet-4-5", custom_name="Key B", api_key=seal("key-b")),
 )
 _PRIMARY_MODEL = "openai/fake-model"
 _FALLBACK_MODEL = "anthropic/claude-sonnet-4-5"
@@ -1291,11 +1391,17 @@ _FALLBACK_MODEL = "anthropic/claude-sonnet-4-5"
 
 def _provider_error(error_type: type[Exception]) -> Exception:
     """Build a LiteLLM error the way the provider adapter raises it, with provider text."""
-    kwargs: dict = {"message": "provider said: secret-ish text", "llm_provider": "openai", "model": "fake-model"}
+    kwargs: dict = {
+        "message": "provider said: secret-ish text",
+        "llm_provider": "openai",
+        "model": "fake-model",
+    }
     parameters = inspect.signature(error_type.__init__).parameters
 
     if "response" in parameters:
-        kwargs["response"] = httpx.Response(500, request=httpx.Request("POST", "https://provider.test"))
+        kwargs["response"] = httpx.Response(
+            500, request=httpx.Request("POST", "https://provider.test")
+        )
 
     if "status_code" in parameters:
         kwargs["status_code"] = 500
@@ -1318,7 +1424,11 @@ def _context_with_fallback(
         max_consecutive_failures=max_consecutive_failures,
     )
     return AgentContext(
-        agent=agent, attachments=[], correlation_id="test-corr", tool_choice=tool_choice, is_cancelled=is_cancelled
+        agent=agent,
+        attachments=[],
+        correlation_id="test-corr",
+        tool_choice=tool_choice,
+        is_cancelled=is_cancelled,
     )
 
 
@@ -1326,8 +1436,10 @@ def _called_models(llm: FakeLLMClient) -> list[str]:
     return [config["model"] for config in llm.received_configs]
 
 
-async def _run(llm: FakeLLMClient, context: AgentContext, emitter: Emitter, tools: dict | None = None) -> LoopResult:
-    return await DefaultAgentLoop(llm).run(
+async def _run(
+    llm: FakeLLMClient, context: AgentContext, emitter: Emitter, tools: dict | None = None
+) -> LoopResult:
+    return await DefaultAgentLoop(llm, agent_cryptographer()).run(
         context, StubToolRegistry(tools or {}), emitter, MaxIterAndNoToolCalls(max_iter=5)
     )
 
@@ -1384,7 +1496,9 @@ async def test_request_errors_do_not_switch(error_type):
 
 
 async def test_switch_warning_names_the_error_class_without_provider_text():
-    llm = FakeLLMClient([_provider_error(litellm.AuthenticationError), text_chunks("fallback answer")])
+    llm = FakeLLMClient(
+        [_provider_error(litellm.AuthenticationError), text_chunks("fallback answer")]
+    )
 
     with capture_logs_at("WARNING") as logs:
         await _run(llm, _context_with_fallback(), RecordingEmitter())
@@ -1411,7 +1525,11 @@ async def test_without_fallback_a_trigger_error_fails_the_run_as_before():
 async def test_fallback_sticks_for_the_rest_of_the_run():
     emitter = RecordingEmitter()
     llm = FakeLLMClient(
-        [_provider_error(litellm.RateLimitError), tool_chunks("c1", "ping", "{}"), text_chunks("done")]
+        [
+            _provider_error(litellm.RateLimitError),
+            tool_chunks("c1", "ping", "{}"),
+            text_chunks("done"),
+        ]
     )
 
     result = await _run(llm, _context_with_fallback(), emitter, tools={"ping": lambda args: "pong"})
@@ -1424,7 +1542,9 @@ async def test_fallback_sticks_for_the_rest_of_the_run():
 async def test_trigger_error_on_the_fallback_after_the_switch_fails_the_run_unchanged():
     emitter = RecordingEmitter()
     fallback_error = _provider_error(litellm.RateLimitError)
-    llm = FakeLLMClient([_provider_error(litellm.RateLimitError), tool_chunks("c1", "ping", "{}"), fallback_error])
+    llm = FakeLLMClient(
+        [_provider_error(litellm.RateLimitError), tool_chunks("c1", "ping", "{}"), fallback_error]
+    )
 
     result = await _run(llm, _context_with_fallback(), emitter, tools={"ping": lambda args: "pong"})
 
@@ -1440,7 +1560,11 @@ async def test_final_answer_call_switches_to_fallback():
         tool_choice={"type": "function", "function": {"name": "bad"}}, max_consecutive_failures=1
     )
     llm = FakeLLMClient(
-        [tool_chunks("c1", "bad", "{}"), _provider_error(litellm.RateLimitError), text_chunks("fallback summary")]
+        [
+            tool_chunks("c1", "bad", "{}"),
+            _provider_error(litellm.RateLimitError),
+            text_chunks("fallback summary"),
+        ]
     )
 
     def bad_tool(args):
@@ -1473,7 +1597,9 @@ async def test_final_answer_call_switches_to_fallback():
 )
 async def test_fallback_failure_names_both_configs_and_error_classes(fallback, expected_error):
     emitter = RecordingEmitter()
-    llm = FakeLLMClient([_provider_error(litellm.RateLimitError), _provider_error(litellm.AuthenticationError)])
+    llm = FakeLLMClient(
+        [_provider_error(litellm.RateLimitError), _provider_error(litellm.AuthenticationError)]
+    )
 
     result = await _run(llm, _context_with_fallback(fallback=fallback), emitter)
 
@@ -1491,19 +1617,25 @@ async def test_cancelled_run_does_not_call_the_fallback():
     llm = FakeLLMClient([_provider_error(litellm.RateLimitError), text_chunks("never reached")])
 
     with pytest.raises(RunCancelled):
-        await _run(llm, _context_with_fallback(is_cancelled=cancelled_after_primary_call), RecordingEmitter())
+        await _run(
+            llm,
+            _context_with_fallback(is_cancelled=cancelled_after_primary_call),
+            RecordingEmitter(),
+        )
 
     assert _called_models(llm) == [_PRIMARY_MODEL]
 
 
 async def test_context_window_warning_uses_the_fallback_model_after_a_switch(monkeypatch):
     windows = {_PRIMARY_MODEL: 100_000, _FALLBACK_MODEL: 1000}
-    monkeypatch.setattr(litellm, "get_model_info", lambda model: {"max_input_tokens": windows[model]})
+    monkeypatch.setattr(
+        litellm, "get_model_info", lambda model: {"max_input_tokens": windows[model]}
+    )
     emitter = RecordingEmitter()
     usage = LLMChunk(usage={"prompt_tokens": 900, "completion_tokens": 1})
     llm = FakeLLMClient([_provider_error(litellm.RateLimitError), [*text_chunks("done"), usage]])
 
-    await DefaultAgentLoop(llm, context_warning_ratio=0.8).run(
+    await DefaultAgentLoop(llm, agent_cryptographer(), context_warning_ratio=0.8).run(
         _context_with_fallback(), StubToolRegistry({}), emitter, MaxIterAndNoToolCalls(max_iter=5)
     )
 
@@ -1542,7 +1674,9 @@ async def test_no_debug_log_site_carries_the_payload_verbatim():
     )
 
     with capture_logs_at("DEBUG") as messages:
-        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+        result = await DefaultAgentLoop(llm, agent_cryptographer()).run(
+            context, tools, emitter, stop
+        )
 
     assert result.final_text == "done"
     assert _SENTINEL not in "\n".join(messages)
@@ -1577,7 +1711,7 @@ async def test_debug_logs_still_carry_the_identifiers_needed_to_correlate_a_call
     )
 
     with capture_logs_at("DEBUG") as messages:
-        await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+        await DefaultAgentLoop(llm, agent_cryptographer()).run(context, tools, emitter, stop)
 
     log_text = "\n".join(messages)
     assert "tool call id=call-42 name=lookup" in log_text
@@ -1599,7 +1733,9 @@ async def test_no_payload_log_lines_are_emitted_below_debug_level():
     )
 
     with capture_logs_at("INFO") as messages:
-        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+        result = await DefaultAgentLoop(llm, agent_cryptographer()).run(
+            context, tools, emitter, stop
+        )
 
     assert result.final_text == "done"
     assert not [

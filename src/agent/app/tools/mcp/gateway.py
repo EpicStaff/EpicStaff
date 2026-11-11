@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 import anyio
 from fastmcp import Client
+from foundation.cryptographer import AbstractCryptographer
 from loguru import logger
 from mcp import MCPError
 from mcp.types import INTERNAL_ERROR, REQUEST_TIMEOUT
@@ -17,7 +18,11 @@ from mcp.types.version import HANDSHAKE_PROTOCOL_VERSIONS
 
 from app.exceptions import McpToolError
 from app.logging_utils import format_exception_for_log
-from app.tools.mcp.client_factory import FastMCPClientFactory, http_error_status
+from app.tools.mcp.client_factory import (
+    FastMCPClientFactory,
+    http_error_status,
+    open_mcp_auth,
+)
 from app.tools.mcp.schema_sanitizer import (
     MAX_TEXT_CHARS,
     UnsafeSchemaError,
@@ -47,12 +52,14 @@ class McpToolGateway:
     def __init__(
         self,
         factory: FastMCPClientFactory,
+        cryptographer: AbstractCryptographer,
         *,
         describe_cache_ttl_s: float,
         clock: Callable[[], float] = time.monotonic,
         max_cached_descriptions: int = _MAX_CACHED_DESCRIPTIONS,
     ) -> None:
         self._factory = factory
+        self._cryptographer = cryptographer
         self._describe_cache_ttl_s = describe_cache_ttl_s
         self._clock = clock
         self._max_cached_descriptions = max_cached_descriptions
@@ -65,7 +72,7 @@ class McpToolGateway:
         several tools of one server, or back-to-back runs, do not reconnect each time.
         Failures are not cached.
 
-        Raises McpToolError if the server is unreachable, the tool is absent, or its
+        Raises McpToolError if the auth cannot be decrypted, the server is unreachable, the tool is absent, or its
         input schema is unsafe (see sanitize_input_schema).
         """
         cache_key = self._describe_cache_key(data)
@@ -79,10 +86,13 @@ class McpToolGateway:
         self._store_description(cache_key, description, now)
         return copy.deepcopy(description)
 
-    @staticmethod
-    def _describe_cache_key(data: McpToolData) -> str:
+    def _describe_cache_key(self, data: McpToolData) -> str:
         # Hashed so neither the auth token nor a credential in the URL sits in the key.
-        identity = json.dumps([data.transport, data.auth, data.tool_name])
+        # The auth is opened first: each run carries a fresh sealing of the same token,
+        # and only the plaintext is stable across runs. Only its digest is kept.
+        auth = open_mcp_auth(data, self._cryptographer)
+        auth_identity = hashlib.sha256(auth.encode()).hexdigest() if auth else data.auth
+        identity = json.dumps([data.transport, auth_identity, data.tool_name])
         return hashlib.sha256(identity.encode()).hexdigest()
 
     def _store_description(
