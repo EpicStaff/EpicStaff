@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from tables.models.user import TOUR_KEY_MAX_LENGTH, TOURS_MAX_PER_USER
 
+from rbac.access.principals import user_api_key_org_id
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.identity.refresh_cookie import (
     get_refresh_from_cookie,
@@ -38,6 +39,9 @@ def _require_user_context(request):
 
 
 def _extract_active_org_id(request):
+    key_org_id = user_api_key_org_id(request)
+    if key_org_id is not None:
+        return key_org_id
     raw = request.headers.get("X-Organization-Id")
     if not raw:
         return None
@@ -61,7 +65,11 @@ class ProfileView(APIView):
     def get(self, request):
         _require_user_context(request)
         active_org_id = _extract_active_org_id(request)
-        user = self._service.get_profile(request.user, active_org_id=active_org_id)
+        user = self._service.get_profile(
+            request.user,
+            active_org_id=active_org_id,
+            api_key_org_id=user_api_key_org_id(request),
+        )
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 
     @extend_schema(
@@ -76,7 +84,7 @@ class ProfileView(APIView):
         _require_user_context(request)
         cleaned = self._validator.validate_profile_patch(request.data)
         user = self._service.update_profile(request.user, cleaned)
-        user = self._service.get_profile(user)
+        user = self._service.get_profile(user, api_key_org_id=user_api_key_org_id(request))
         if "display_name" in cleaned:
             profile_updated.send(sender=type(user), user=user)
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
@@ -111,7 +119,7 @@ class ProfileAvatarView(APIView):
         _require_user_context(request)
         uploaded = self._validator.validate_avatar_upload(request.data)
         user = self._service.update_avatar(request.user, uploaded)
-        user = self._service.get_profile(user)
+        user = self._service.get_profile(user, api_key_org_id=user_api_key_org_id(request))
         profile_updated.send(sender=type(user), user=user)
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 
@@ -169,7 +177,9 @@ class ProfileTourCompleteView(APIView):
         # The response is the full profile, so render it with the same org context as GET
         # rather than with null active-org fields.
         user = self._service.get_profile(
-            request.user, active_org_id=_extract_active_org_id(request)
+            request.user,
+            active_org_id=_extract_active_org_id(request),
+            api_key_org_id=user_api_key_org_id(request),
         )
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 

@@ -1,8 +1,19 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    ElementRef,
+    inject,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -17,6 +28,7 @@ import { EnterSubmitDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { finalize } from 'rxjs/operators';
 
+import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 
@@ -35,18 +47,26 @@ import { ToastService } from '../../../../services/notifications';
         ReactiveFormsModule,
         SelectComponent,
         ValidationErrorsComponent,
+        MatTooltip,
     ],
 })
 export class CreateApiKeyDialogComponent {
+    private readonly createdStep = viewChild<ElementRef<HTMLElement>>('createdStep');
+
     private readonly dialogRef = inject(DialogRef<boolean>);
     private readonly destroyRef = inject(DestroyRef);
     private readonly profileService = inject(ProfileService);
+    private readonly activeOrgService = inject(ActiveOrgService);
     private readonly toast = inject(ToastService);
 
     readonly step = signal<'pending' | 'created'>('pending');
     readonly loading = signal(false);
-    readonly copiedToClipboard = signal(false);
     readonly showStepper = signal(false);
+    /** A key is issued for exactly one organization: the one the user is working in. */
+    protected readonly orgId = this.activeOrgService.activeOrgId;
+
+    // The created step replaces the focused Create Key button: the focus moves on to the new key.
+    private readonly focusCreatedStep = effect(() => this.createdStep()?.nativeElement.focus());
 
     protected apiKey = '';
     protected defaultExpirationValue: number = 90;
@@ -104,13 +124,12 @@ export class CreateApiKeyDialogComponent {
     }
 
     onCreate(): void {
-        if (this.form.invalid) return;
-
-        const value = this.form.getRawValue();
+        const orgId = this.orgId();
+        if (this.form.invalid || orgId === null) return;
 
         this.loading.set(true);
         this.profileService
-            .createApiKey(value)
+            .createApiKey({ ...this.form.getRawValue(), org_id: orgId })
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => this.loading.set(false))
@@ -121,13 +140,14 @@ export class CreateApiKeyDialogComponent {
                     this.step.set('created');
                 },
                 error: (err: HttpErrorResponse) => {
-                    this.toast.error(err.error.message);
+                    this.toast.error(err.error?.message ?? 'Failed to create API key');
                 },
             });
     }
 
-    readonly isEnterSubmitDisabled = computed(() =>
-        this.step() === 'pending' ? this.loading() || this.form.invalid : !this.copiedToClipboard()
+    /** Form validity is not a signal, so it stays out of here: `onCreate` guards an invalid form itself. */
+    readonly isEnterSubmitDisabled = computed(
+        () => this.step() === 'pending' && (this.loading() || this.orgId() === null)
     );
 
     onEnterSubmit(): void {

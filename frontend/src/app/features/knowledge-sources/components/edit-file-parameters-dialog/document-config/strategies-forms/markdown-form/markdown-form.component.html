@@ -14,6 +14,7 @@
         <div class="config__grid-item config__grid-item--short">
             @if (canUpdate()) {
                 <app-input-number
+                    ariaLabel="Chunk Size"
                     formControlName="chunk_size"
                     [alwaysShowSteps]="true"
                     [stepSize]="DEFAULT_STEP_SIZE"
@@ -36,6 +37,7 @@
         <div class="config__grid-item config__grid-item--short">
             @if (canUpdate()) {
                 <app-input-number
+                    ariaLabel="Chunk Overlap"
                     formControlName="chunk_overlap"
                     [alwaysShowSteps]="true"
                     [stepSize]="DEFAULT_STEP_SIZE"
@@ -82,7 +84,10 @@
         </div>
         <div class="config__grid-item">
             @if (canUpdate()) {
-                <app-toggle-switch formControlName="return_each_line"></app-toggle-switch>
+                <app-toggle-switch
+                    ariaLabel="Return Each Line"
+                    formControlName="return_each_line"
+                ></app-toggle-switch>
             } @else {
                 <span>{{ params().return_each_line }}</span>
             }
@@ -97,7 +102,10 @@
         </div>
         <div class="config__grid-item">
             @if (canUpdate()) {
-                <app-toggle-switch formControlName="strip_headers"></app-toggle-switch>
+                <app-toggle-switch
+                    ariaLabel="Strip Headers"
+                    formControlName="strip_headers"
+                ></app-toggle-switch>
             } @else {
                 <span>{{ params().strip_headers }}</span>
             }

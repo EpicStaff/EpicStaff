@@ -17,7 +17,8 @@
             <app-button
                 type="primary"
                 (click)="onSubmit()"
-                [disabled]="submitDisabled()"
+                [disabled]="hasInvalidInput()"
+                [ariaDisabled]="isSubmitting()"
             >
                 {{ isEditMode ? 'Save' : 'Create' }}
             </app-button>
@@ -28,8 +29,11 @@
         <div class="control">
             <label class="label">Organization Name <span class="required">*</span></label>
 
+            <!-- The dialog opens with the focus here, its first field. -->
             <app-custom-input
+                cdkFocusInitial
                 placeholder="Enter organization name"
+                ariaLabel="Organization Name"
                 [formControl]="orgNameControl"
             />
         </div>

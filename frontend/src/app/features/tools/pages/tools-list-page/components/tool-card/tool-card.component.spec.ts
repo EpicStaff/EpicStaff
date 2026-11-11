@@ -2,6 +2,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 import { LabelDto } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
 import { of } from 'rxjs';
@@ -10,6 +11,15 @@ import { PermissionsService } from '../../../../../../services/auth/permissions.
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
 import { ToolCardComponent } from './tool-card.component';
 import { ToolCardMenuActionEvent, ToolCardVM } from './tool-card.model';
+
+// jsdom has no ResizeObserver; the overflow tooltips only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
 
 const CUSTOM_TOOL: ToolCardVM = {
     id: 3,
@@ -110,6 +120,37 @@ describe('ToolCardComponent "View Details" menu item', () => {
 
         expect(menuItems(overlay).length).toBeGreaterThan(0);
         expect(viewDetailsItem(overlay)).toBeUndefined();
+    });
+});
+
+describe('ToolCardComponent "Duplicate" menu item', () => {
+    function duplicateItem(overlay: HTMLElement): HTMLButtonElement {
+        return menuItems(overlay).find((item) => item.textContent?.trim() === 'Duplicate')!;
+    }
+
+    it('does nothing for a tool this user may not copy, and says why', () => {
+        const reason = 'This code reads secrets. Copying it requires the Use permission on Secrets.';
+        const { fixture, overlay, emitted } = render({ ...CUSTOM_TOOL, copyBlockedReason: reason });
+        openMenu(fixture);
+
+        duplicateItem(overlay).click();
+        fixture.detectChanges();
+
+        expect(emitted).toEqual([]);
+        expect(duplicateItem(overlay).getAttribute('aria-disabled')).toBe('true');
+        const tooltip = fixture.debugElement
+            .queryAll(By.directive(MatTooltip))
+            .find((debugElement) => debugElement.nativeElement === duplicateItem(overlay));
+        expect(tooltip?.injector.get(MatTooltip).message).toBe(reason);
+    });
+
+    it('emits duplicate for a tool this user may copy', () => {
+        const { fixture, overlay, emitted } = render(CUSTOM_TOOL);
+        openMenu(fixture);
+
+        duplicateItem(overlay).click();
+
+        expect(emitted.map((event) => event.action)).toEqual(['duplicate']);
     });
 });
 

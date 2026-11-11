@@ -22,7 +22,7 @@ A good flow does not treat `variables` as a bag of flat keys. It shapes it as do
 {
   "city": "Amsterdam",
   "temperature": 18.5,
-  "service_account_info": {...},
+  "space_id": "spaces/AAAA",
   "model_id": "gpt-5",
   "jira_url": "..."
 }
@@ -31,7 +31,7 @@ A good flow does not treat `variables` as a bag of flat keys. It shapes it as do
 {
   "request":  { "city": "Amsterdam", "units": "celsius" },
   "weather":  { "temperature": null, "conditions": null },
-  "gchat":    { "service_account_info": {...} },
+  "gchat":    { "space_id": "spaces/AAAA" },
   "model": { "model_id": "gpt-5", "provider_id": "openai" },
   "jira":     { "base_url": "...", "project_key": "..." }
 }
@@ -63,7 +63,7 @@ Both are the correct answer to "what if this path may not exist" — prefer them
 ### 2. Group by bounded context, not by data shape
 Top-level keys are domains — things the business talks about. Typical domains:
 - `request` — the invoking user's input (what the webhook/trigger brought in, or the initial question).
-- `config` (or per-system: `jira`, `gchat`, `slack`) — credentials and endpoints for external systems.
+- `config` (or per-system: `jira`, `gchat`, `slack`) — endpoints and non-secret settings for external systems (base URL, project key, space id). Never credentials: those belong in the Secrets store, see "Credentials Never Live in `variables`" below.
 - Output domains named after what is produced (`weather`, `report`, `ticket`, `transcript`).
 - `session` — optional; state that survives across turns of the same session.
 
@@ -111,6 +111,7 @@ The question when explaining a node's presence in a flow is always: "What is the
 | Map a raw API response into domain objects | `python` |
 | Pick one of a small fixed set of targets by a Python boolean rule | `decision_table` |
 | Decide next step using LLM judgment over free text | `classification_decision_table` |
+| Decide next step from typed answers (noul (yes/no), choice, score) with probabilities, cheaper and faster than an LLM | `classification_decision_table` with a System One prompt entry |
 | Compose a narrative, summarize, hold a persona, or converse — as one wiring point in the graph | `task` (its own `agent_definition`, one node = one wiring point) |
 | Same, but as an ordered sequence of sub-steps under one persona (e.g. draft → critique → revise) that only needs one entry/exit in the graph | `agent` (bundles an ordered list of internal sub-tasks; nothing else in the graph can wire between them) |
 | Parse a user-uploaded document | `file_extractor` |
@@ -122,7 +123,7 @@ Heuristics that matter:
 - **If the logic is a pure function of structured inputs, `python` is right.** It is cheaper, faster, and more deterministic than any LLM-backed node.
 - **`task` and `agent` are both LLM-backed graph nodes, each with its own `agent_definition` — they are alternatives, not a pair.** A `task` node is one LLM step with its own `instructions`, `output_schema`, and wiring point; use it when a single open-ended step (drafting a reply, summarizing free text, deciding between options that don't reduce to a boolean rule) needs to sit in the graph like any other node, with its own edges in and out. An `agent` node bundles an ordered list of internal sub-tasks (each with its own `instructions` and `output_schema`, able to reference earlier sub-tasks as context) under one `agent_definition` — use it when several LLM sub-steps genuinely belong together as one unit, and nothing else in the graph needs to intervene between them. The sub-tasks inside an `agent` node are not separate graph nodes and can't be individually wired.
 - **`crew` is the older project/crew abstraction that predates `agent`/`task`.** It still runs in legacy flows and is deprecated — a flow being reviewed today should be using `agent`/`task`, not `crew`. Flag a `crew` node in an otherwise-new flow as worth migrating, not as broken.
-- **`classification_decision_table` is the LLM-backed node for branching** — it applies an LLM's judgment as a routing rule over fuzzy text. `agent` nodes are also LLM-backed, but for generation, not branching; don't reach for an `agent` to pick between a fixed set of outcomes — that's what `classification_decision_table` is for.
+- **`classification_decision_table` is the LLM-backed node for branching** — it applies an LLM's judgment as a routing rule over fuzzy text. `agent` nodes are also LLM-backed, but for generation, not branching; don't reach for an `agent` to pick between a fixed set of outcomes — that's what `classification_decision_table` is for. A prompt entry of kind `system_one` asks a System One model typed questions instead of running an LLM prompt; one row with no condition runs it and continues, and the rows below route on `<result_variable>.answers.<question>.noul` / `.choice` / `.score`.
 - **Use `decision_table` when branching is a business rule expressible as Python boolean expressions over variables.** This holds for two branches as well as many: one condition group plus the default branch covers a simple if/else.
 - **Use `subgraph` when the sub-workflow is genuinely reusable and has its own lifecycle.** Copy-pasting nodes is worse than a subgraph, but a subgraph called only once is pure indirection.
 
@@ -169,7 +170,8 @@ When a branch also needs to tweak `variables` before routing, the right place is
 
 ## Patterns That Break
 
-- **Flat variable namespace.** `variables.city`, `variables.api_key`, `variables.temperature` — grows into a minefield. Domain dicts are the fix.
+- **Flat variable namespace.** `variables.city`, `variables.temperature`, `variables.units` — grows into a minefield. Domain dicts are the fix.
+- **Credentials in `variables`.** An API key, token, password or service-account JSON declared in the start node is stored in plaintext in the flow and travels with it. See "Credentials Never Live in `variables`".
 - **Two writers, one path.** Order-dependent correctness. Always resolvable by splitting into subpaths.
 - **Undeclared variables.** Every `input_map` path should exist at session start — even though a missing one won't crash (see Rule 1), it will misbehave silently.
 - **`agent`/`task` where `python` would do.** If the work is deterministic and typed, an LLM adds latency, cost, and non-determinism for no benefit.
@@ -177,6 +179,17 @@ When a branch also needs to tweak `variables` before routing, the right place is
 - **Decision-table node with overlapping groups.** First match wins, in declared order. Ambiguous rules silently route to the first listed group. Order groups deliberately or write mutually exclusive conditions.
 - **Webhook handler that returns nothing.** The returned dict merges into `variables`. A handler that does `return None` or omits `return` writes nothing — downstream reads will fail.
 - **Changing domain shape mid-flow.** Node A writing `variables.user = "alice"` then node B overwriting `variables.user = {"name": "alice"}` is a bug waiting to happen. One shape per path, picked up front.
+
+---
+
+## Credentials Never Live in `variables`
+
+`variables` is plain flow data: it is saved with the flow and visible to anyone who can read it. Credentials (API keys, tokens, passwords, service-account JSON) belong in the **Secrets store**, which keeps them encrypted and gated by the "Use" permission on Secrets.
+
+- A `python` node reads one with `get_secret("NAME")` — no import needed — and the secret must be declared on that node's code (its secrets list). Reading an undeclared name raises an error that lists what was declared.
+- The flow then carries only non-secret settings (`variables.gchat.space_id`); the credential never appears in `variables`, an `input_map` or an `output_map`.
+- When reviewing a flow, flag any start-node variable that looks like a credential (`api_key`, `token`, `password`, `service_account_info`) as a finding and recommend moving it to the Secrets store.
+- Don't print or return a secret's value from node code: it can end up in `variables` through the node's output.
 
 ---
 
@@ -217,7 +230,7 @@ Every declared path — in both `organization` and `user` lists — must already
 ### When it's the right call
 - Flow-wide (organization-scoped) shared state today: shared context, org-level counters, config that should stick across every user's runs.
 - Not yet for per-user memory — the `user` list exists in the schema but does nothing. If someone wants per-user isolation across sessions, say so plainly rather than pointing them at the `user` list as if it worked.
-- Not for secrets that should always be pulled fresh from a vault — persistent values sit in the DB and can go stale.
+- Never for credentials — persistent values sit in the DB and can go stale. Use the Secrets store.
 
 ---
 
@@ -233,6 +246,7 @@ When explaining or reviewing a flow's variable design, you should be able to ans
 6. Where are the end points? What does `output_map` pick from `variables`?
 7. Is there a trigger? If so, is `__start__` also connected to the first real node (dual entry)?
 8. For each `task` node: what tools does it need, and what's its `output_schema`? For each `agent` node: what tools/surfaces does it need, and what's each internal sub-task's `output_schema`?
-9. Does the flow need cross-session state? If so, which paths are declared under `organization` (the only scope that actually persists), and are they nested under a domain dict like `variables.context`?
+9. Is any credential declared in `variables`, instead of read with `get_secret` from the Secrets store?
+10. Does the flow need cross-session state? If so, which paths are declared under `organization` (the only scope that actually persists), and are they nested under a domain dict like `variables.context`?
 
 When every question has a concrete, tool-grounded answer, the design holds together. Anything you can't answer from the tools is an open question — say so rather than guessing.

@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { CombinedSurface, Surface } from '../../../../models/surface.model';
@@ -15,7 +16,7 @@ export interface SurfaceSummaryDialogData {
 
 @Component({
     selector: 'app-surface-summary-dialog',
-    imports: [AppSvgIconComponent, SurfaceCardComponent],
+    imports: [AppSvgIconComponent, MatTooltip, SurfaceCardComponent],
     templateUrl: './surface-summary-dialog.component.html',
     styleUrls: ['./surface-summary-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -40,6 +41,7 @@ export class SurfaceSummaryDialogComponent {
             name: `${this.data.placeLabel} summary`,
             instructions: c.instructions,
             owner_agent: null,
+            group: null,
             python_tools: c.python_tools,
             mcp_tools: c.mcp_tools,
             storage_items: c.storage_items,

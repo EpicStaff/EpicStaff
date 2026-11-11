@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -9,6 +10,7 @@ import {
     SimpleChanges,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 
@@ -16,7 +18,7 @@ import { DurationFilter, DurationOperator } from '../../services/flows-sessions.
 
 @Component({
     selector: 'app-duration-filter-dropdown',
-    imports: [FormsModule, ClickOutsideDirective, AppSvgIconComponent],
+    imports: [CdkTrapFocus, FormsModule, ClickOutsideDirective, AppSvgIconComponent, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './duration-filter-dropdown.component.html',
     styleUrls: ['./duration-filter-dropdown.component.scss'],
@@ -47,6 +49,11 @@ export class DurationFilterDropdownComponent implements OnChanges {
         { value: 'greaterThan', label: '> More' },
         { value: 'equal', label: '= Equal' },
     ];
+
+    /** The first field holds the lower bound of a range, or the one value compared against. */
+    get firstValueLabel(): string {
+        return this.selectedOperator === 'between' ? 'From' : 'Duration';
+    }
 
     get label(): string {
         if (!this.value) return 'Duration';
@@ -80,6 +87,13 @@ export class DurationFilterDropdownComponent implements OnChanges {
         event?.stopPropagation();
         this.open = !this.open;
         this.cdr.markForCheck();
+    }
+
+    /** Escape closes the open panel without applying, and goes no further (it would close a dialog around it). */
+    public closeOnEscape(event: Event): void {
+        if (!this.open) return;
+        event.stopPropagation();
+        this.close();
     }
 
     public close(): void {

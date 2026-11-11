@@ -114,22 +114,30 @@ jobs:
           #   this file        -- same self-testing rule as the filters above
           backend_wide='src/shared/|src/foundation/|Makefile$|\.github/workflows/pr\.yml$'
 
-          # crew, agent, plugin_sdk, es_plugins and plugins_egress need no
-          # database and nothing from the filesystem beyond an interpreter, so
+          # crew, agent, plugin_sdk, es_plugins, plugins_egress, realtime,
+          # webhook, knowledge_new and shared need no database and nothing from
+          # the filesystem beyond an interpreter (knowledge_new also bakes a
+          # tokenizer file, see its step in backend-tests), so
           # one matrix job covers them all and this picks its legs. A new
           # service of that kind is not picked up by itself: add it to this
           # list. `filter` leaves $result set, so the array is built from the
           # same regex that writes each output rather than from a second copy
           # of it.
           nodb=''
-          for svc in crew agent plugin_sdk es_plugins plugins_egress; do
+          # shared's own leg runs the suites under src/shared/ (file tools,
+          # storage path containment, SSRF guards); its directory is already in
+          # $backend_wide, so any change there runs it.
+          for svc in crew agent plugin_sdk es_plugins plugins_egress realtime webhook knowledge_new shared; do
             # es_plugins installs src/plugin_sdk (package rules, signatures and
             # the runtime file contract), so a change there runs its suite too,
             # and its policy contract test runs the egress proxy's host helper
-            # on the policy it writes.
+            # on the policy it writes. knowledge_new's tests check that its ORM maps
+            # exactly the columns django_app grants its database role.
             also=''
             if [ "$svc" = es_plugins ]; then
               also='src/plugin_sdk/|src/plugins_egress/plugin_host_acl\.py$|src/plugins_egress/private_ranges\.txt$|'
+            elif [ "$svc" = knowledge_new ]; then
+              also='src/django_app/tables/service_db_grants\.py$|'
             fi
             filter "be_$svc" "^(${also}src/$svc/|$backend_wide)"
             if [ "$result" = true ]; then
@@ -219,7 +227,7 @@ jobs:
 
       - name: Install dependencies
         if: vars.CLA_ENFORCED == 'true'
-        run: pip install requests
+        run: python -m pip install --require-hashes -r .github/requirements/requests.txt
 
       - name: Verify PR author signed the CLA
         if: vars.CLA_ENFORCED == 'true'
@@ -257,6 +265,102 @@ jobs:
             exit 1
           fi
 
+  # The hooks in .pre-commit-config.yaml (check-yaml, ruff, ruff-format, gitleaks)
+  # only run on a machine whose developer installed them, so this job runs the
+  # same hooks in CI, except gitleaks, which the secret-scan job covers. Over the files the pull request changes, like the local hook does over
+  # staged files: several files on the base branch predate the rules and fail
+  # them, and a pull request that does not touch them is not held to them. A
+  # pull request that does touch one fixes it. Runs on every pull request because
+  # it is cheap and the hooks themselves pick which files they apply to.
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # --from-ref/--to-ref diff from the merge base, which is not reachable
+          # from a shallow clone.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install pre-commit
+        run: python -m pip install --quiet --require-hashes -r .github/requirements/pre-commit.txt
+
+      # ruff runs with --fix, so a fixable violation shows up as "files were
+      # modified by this hook" and fails the step; the diff below is the fix to commit.
+      # gitleaks is skipped here: as a hook it checks staged changes, of which CI
+      # has none, and the secret-scan job below scans the pull request's commits.
+      - name: Run the pre-commit hooks on the changed files
+        env:
+          SKIP: gitleaks
+        run: |
+          pre-commit run --show-diff-on-failure --color always \
+            --from-ref "${{ github.event.pull_request.base.sha }}" \
+            --to-ref "${{ github.event.pull_request.head.sha }}"
+
+  # Fails when a commit in the pull request adds a secret (API key, token, private
+  # key, password in a connection string, ...). Scans the diff of every non-merge
+  # commit between the base and the head, so a secret added in one commit and
+  # removed in a later one is still caught: it stays in history once merged. Files
+  # inside committed archives (zip, tar, ...) are scanned too, up to three levels
+  # deep. Commits already on the base branch are not rescanned. Not covered: a
+  # secret typed into a merge commit while resolving a conflict, because git log
+  # shows no diff for merge commits.
+  #
+  # The scan never takes its settings from the pull request: .gitleaks.toml and
+  # .gitleaksignore are replaced with the base branch's copies before it runs, and
+  # inline `gitleaks:allow` comments are ignored, so a pull request cannot switch
+  # off the check that is checking it.
+  #
+  # A false positive: add its fingerprint WITHOUT the leading commit sha
+  # (`<file>:<rule>:<line>`, printed in the job log) to .gitleaksignore, with a
+  # comment saying why it is not a secret, in a SEPARATE pull request that touches
+  # nothing else. Once that is merged, re-run this job on the original pull request.
+  # The sha is left out because it changes when a pull request is rebased or
+  # squash-merged, and an entry that names it stops matching.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The base..head range needs both commits and the history between them.
+          fetch-depth: 0
+
+      # The release tarball is checked against the sha256 that gitleaks published
+      # for it, so a changed download fails here instead of running.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl -sSfL -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+
+      - name: Scan the pull request's commits for secrets
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # gitleaks reads both files from the directory it scans, so the pull
+          # request's copies are replaced in place, or removed when the base has none.
+          for file in .gitleaks.toml .gitleaksignore; do
+            rm -f "$file"
+            if git cat-file -e "${BASE_SHA}:${file}" 2>/dev/null; then
+              git show "${BASE_SHA}:${file}" > "$file"
+            fi
+          done
+          "$RUNNER_TEMP/gitleaks" git --log-opts="${BASE_SHA}..${HEAD_SHA}" \
+            --ignore-gitleaks-allow --max-archive-depth 3 \
+            --redact --verbose --no-banner --exit-code 1 .
+
   # Compose variables must be required (`${VAR:?}`) and boolean flags parsed
   # strictly (Env.bool in Python, env_bool in shell). The rules and what to do
   # on a failure are in the docstring of check_env_conventions.py. Also runs the
@@ -282,7 +386,7 @@ jobs:
 
       - name: Test envtool and the setup wizard
         run: |
-          python -m pip install --quiet pyyaml==6.0.3
+          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python -m unittest scripts/test_envtool.py
 
   # Backend half of the licence attribution guard: compares the uv.lock hashes
@@ -381,7 +485,7 @@ jobs:
 
       # Licence attribution has to follow the production dependency set. Compares the
       # lockfile hash stamped in the notices header, so it needs neither network nor
-      # a license-checker run.
+      # a generator run.
       # Only the lockfile feeds that hash, so nothing but a dependency change can
       # alter the outcome.
       - name: Check third-party notices are in sync
@@ -400,8 +504,9 @@ jobs:
         if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
 
-  # crew, agent, plugin_sdk, es_plugins and plugins_egress: no database, no
-  # service containers, well under a minute each. One matrix job whose legs are decided at runtime,
+  # crew, agent, plugin_sdk, es_plugins, plugins_egress, realtime, webhook,
+  # knowledge_new and shared: no database, no service containers, a minute or two
+  # each. One matrix job whose legs are decided at runtime,
   # so a pull request touching only src/agent/ runs one leg and a pull request
   # touching none of them skips the job outright. sandbox was a leg until it
   # needed a container of its own; it has a separate job below. es_plugins'
@@ -435,7 +540,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -450,13 +555,38 @@ jobs:
       # at collection and agent errors out across the board.
       - name: Generate dev env from env.yaml
         run: |
-          python -m pip install --quiet pyyaml
+          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python scripts/envtool.py --dev
 
       # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
       # rather than silently resolving to something the Docker build never saw.
       - name: Install ${{ matrix.service }} dependencies
         run: make uv-sync svc=${{ matrix.service }}
+
+      # knowledge_new's token chunker loads the gpt2 tokenizer from the file that
+      # its Dockerfile bakes into the image (KNOWLEDGE_TOKENIZER_PATH); the runner
+      # has no image, so bake the same file here. Cached on the lockfile, which
+      # pins the tokie version that writes it, so huggingface.co is reached only
+      # when that changes. The process environment wins over src/.env.
+      - name: Cache knowledge_new tokenizer
+        if: matrix.service == 'knowledge_new'
+        id: tokenizer-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/tokenizer
+          key: tokenizer-gpt2-${{ runner.os }}-${{ hashFiles('src/knowledge_new/uv.lock') }}
+
+      - name: Bake knowledge_new tokenizer
+        if: matrix.service == 'knowledge_new' && steps.tokenizer-cache.outputs.cache-hit != 'true'
+        run: >-
+          mkdir -p "$RUNNER_TEMP/tokenizer" &&
+          src/knowledge_new/.venv/bin/python -c
+          "import sys; from tokie import Tokenizer; Tokenizer.from_pretrained('openai-community/gpt2').save(sys.argv[1])"
+          "$RUNNER_TEMP/tokenizer/gpt2.tkz"
+
+      - name: Point knowledge_new at the tokenizer
+        if: matrix.service == 'knowledge_new'
+        run: echo "KNOWLEDGE_TOKENIZER_PATH=$RUNNER_TEMP/tokenizer/gpt2.tkz" >> "$GITHUB_ENV"
 
       - name: Unit tests
         run: make ${{ matrix.service }}-tests
@@ -524,7 +654,7 @@ jobs:
           # --user because /usr/local is root-owned and this job is not root,
           # and GITHUB_PATH because nothing else puts that prefix's bin
           # directory on PATH, while the Makefile calls `uv` by name.
-          python -m pip install --no-cache-dir --user uv==0.11.21
+          python -m pip install --no-cache-dir --user --require-hashes -r .github/requirements/uv.txt
           echo "$PYTHONUSERBASE/bin" >> "$GITHUB_PATH"
 
       - name: Cache uv downloads
@@ -539,7 +669,7 @@ jobs:
       # the file is absent, so the suite cannot even be collected without this.
       - name: Generate dev env from env.yaml
         run: |
-          python -m pip install --quiet --user pyyaml
+          python -m pip install --quiet --user --require-hashes -r .github/requirements/pyyaml.txt
           python scripts/envtool.py --dev
 
       # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
@@ -574,7 +704,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -632,7 +762,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -693,7 +823,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -705,7 +835,7 @@ jobs:
       # Same reason as the matrix job: settings read src/.env at import time.
       - name: Generate dev env from env.yaml
         run: |
-          python -m pip install --quiet pyyaml
+          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python scripts/envtool.py --dev
 
       # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
@@ -749,7 +879,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -762,7 +892,7 @@ jobs:
       # PyYAML also serves the lab's own envtool run.
       - name: Generate dev env from env.yaml
         run: |
-          python -m pip install --quiet pyyaml
+          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python scripts/envtool.py --dev
 
       # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
@@ -830,7 +960,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -939,7 +1069,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install PyYAML
-        run: python -m pip install --quiet pyyaml
+        run: python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
 
       - name: Describe the Docker host
         run: bash .github/scripts/describe_docker_host.sh
@@ -985,6 +1115,8 @@ jobs:
       - check-cla
       - check-external-urls
       - check-ticket-references
+      - pre-commit
+      - secret-scan
       - check-env-conventions
       - check-backend-notices
       - check-rbac-boundary

@@ -15,7 +15,12 @@
     @default {
         <!-- A search or filter that matches nothing keeps the table, so its filters can be undone. -->
         @if (showEmptyState()) {
-            <div class="bin-state bin-empty">
+            <!-- Not a Tab stop: it takes the focus when the last row goes, see focusRowAfterReload. -->
+            <div
+                #emptyState
+                class="bin-state bin-empty"
+                tabindex="-1"
+            >
                 <h4 class="empty-title">The recycle bin is empty</h4>
                 <p class="empty-subtitle">{{ emptyHint() }}</p>
             </div>
@@ -103,12 +108,21 @@
                 </div>
                 <div class="table-body">
                     @if (items().length === 0) {
-                        <div class="bin-no-results">{{ noResultsMessage() }}</div>
+                        <div
+                            #emptyState
+                            class="bin-no-results"
+                            tabindex="-1"
+                        >
+                            {{ noResultsMessage() }}
+                        </div>
                     }
                     @for (item of items(); track item.key) {
                         <div class="bin-row-wrapper">
+                            <!-- Not a Tab stop: it takes the focus when a restore or delete removes the row that had it. -->
                             <div
+                                #rowElement
                                 class="table-row"
+                                tabindex="-1"
                                 [class.selected]="isSelected(item)"
                                 [class.table-row--expandable]="isExpandable(item)"
                                 [style.grid-template-columns]="gridTemplateColumns()"
@@ -134,6 +148,9 @@
                                             type="button"
                                             class="bin-name bin-name--toggle"
                                             [attr.aria-expanded]="isExpanded(item)"
+                                            appTooltipOnOverflow=".bin-name-text"
+                                            [matTooltip]="item.name"
+                                            matTooltipClass="bin-name-tooltip"
                                             (click)="$event.stopPropagation(); toggle(item)"
                                         >
                                             <app-svg-icon
@@ -142,14 +159,7 @@
                                                 class="bin-collapse-icon"
                                                 [class.collapsed]="!isExpanded(item)"
                                             />
-                                            <span
-                                                class="bin-name-text"
-                                                appTooltipOnOverflow
-                                                [matTooltip]="item.name"
-                                                matTooltipPosition="above"
-                                                matTooltipClass="bin-name-tooltip"
-                                                >{{ item.displayName }}</span
-                                            >
+                                            <span class="bin-name-text">{{ item.displayName }}</span>
                                         </button>
                                     } @else {
                                         <span class="bin-name">
@@ -178,7 +188,6 @@
                                     <span
                                         class="bin-muted bin-deleted"
                                         [matTooltip]="item.deletedAt | date: dateFormat"
-                                        matTooltipPosition="above"
                                         >{{ deletedLabel(item) }}</span
                                     >
                                 </div>
@@ -186,7 +195,6 @@
                                     <span
                                         class="bin-muted bin-days-left"
                                         [matTooltip]="purgeTitle(item)"
-                                        matTooltipPosition="above"
                                         >{{ timeLeftLabel(item) }}</span
                                     >
                                 </div>
@@ -400,6 +408,7 @@
             class="col-label col-label--filter"
             [class.col-label--filter--active]="active"
             [attr.aria-label]="ariaLabel ?? null"
+            [matTooltip]="ariaLabel ?? ''"
             [appSelectTrigger]="filterSelect"
         >
             {{ label }}

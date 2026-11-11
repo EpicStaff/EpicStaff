@@ -1,13 +1,22 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import {
+    afterNextRender,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    Injector,
+    signal,
+    viewChild,
+    viewChildren,
+} from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
-    CheckboxComponent,
     ConfirmationDialogService,
     SearchComponent,
     TabButtonComponent,
@@ -36,8 +45,13 @@ import { VenvCardComponent } from '../../components/venv-card/venv-card.componen
 import { VenvDialogComponent, VenvDialogData } from '../../components/venv-dialog/venv-dialog.component';
 import { BUILDING_STATUSES, Venv, VenvListQuery, VenvSortOrder } from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
+import { CustomLibrariesListPageComponent } from '../custom-libraries-list-page/custom-libraries-list-page.component';
 import { VenvsFilterMenuComponent, VenvsFilterState } from './components/venvs-filter-menu/venvs-filter-menu.component';
 import { VENVS_SORT_MENU_ITEMS, VenvsSortMenuComponent } from './components/venvs-sort-menu/venvs-sort-menu.component';
+
+/** Which list the page shows. Held here rather than in the URL: the page is one route and both
+ *  lists share its header. */
+export type VenvsPageTab = 'venvs' | 'custom-libraries';
 
 const POLL_INTERVAL_MS = 2_000;
 // Long enough that typing a word is one request, short enough to feel immediate.
@@ -50,11 +64,11 @@ const SEARCH_DEBOUNCE_MS = 300;
         MatTooltipModule,
         AppSvgIconComponent,
         ButtonComponent,
-        CheckboxComponent,
         SearchComponent,
         TabButtonComponent,
         HasPermissionDirective,
         HideInlineSubtitleOnOverflowDirective,
+        CustomLibrariesListPageComponent,
         VenvCardComponent,
         VenvsFilterMenuComponent,
         VenvsSortMenuComponent,
@@ -63,6 +77,10 @@ const SEARCH_DEBOUNCE_MS = 300;
     styleUrls: ['./venvs-list-page.component.scss'],
 })
 export class VenvsListPageComponent {
+    private readonly venvCards = viewChildren(VenvCardComponent);
+    private readonly createButton = viewChild('createButton', { read: ButtonComponent });
+
+    readonly activeTab = signal<VenvsPageTab>('venvs');
     readonly isLoading = signal(true);
     readonly loadError = signal<string | null>(null);
     readonly venvs = signal<Venv[]>([]);
@@ -72,6 +90,11 @@ export class VenvsListPageComponent {
     readonly deletePending = signal(false);
 
     readonly sortOrder = signal<VenvSortOrder>('default');
+    // The custom libraries tab narrows and orders its own list; the controls live here because
+    // the header belongs to the page, not to the tab under it.
+    readonly librarySearchTerm = signal('');
+    readonly librarySortOrder = signal<VenvSortOrder>('default');
+    readonly librarySortMenuOpen = signal(false);
     readonly favoritesOnly = signal(false);
     readonly filterMenuOpen = signal(false);
     readonly sortMenuOpen = signal(false);
@@ -91,8 +114,17 @@ export class VenvsListPageComponent {
         return VENVS_SORT_MENU_ITEMS.find((item) => item.value === order)?.label ?? 'Sort';
     });
 
+    readonly librarySortTriggerLabel = computed(() => {
+        const order = this.librarySortOrder();
+        if (order === 'default') return 'Sort';
+        return VENVS_SORT_MENU_ITEMS.find((item) => item.value === order)?.label ?? 'Sort';
+    });
+
     readonly canUpdate = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Update));
     readonly canDelete = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Delete));
+    readonly canReadCustomLibraries = computed(() =>
+        this.permissions.can(ResourceCode.CustomLibraries, ActionCode.Read)
+    );
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
@@ -100,12 +132,17 @@ export class VenvsListPageComponent {
         { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
     ];
 
+    // Present only while its tab is active, which is also the only time the create button it
+    // answers is on screen.
+    private readonly customLibrariesPage = viewChild(CustomLibrariesListPageComponent);
+
     private readonly venvsApi = inject(VenvsApiService);
     private readonly permissions = inject(PermissionsService);
     private readonly dialog = inject(Dialog);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     private pollSubscription: Subscription | null = null;
     // Dropped before the next request is sent, so a slow answer to an old search cannot
@@ -126,12 +163,42 @@ export class VenvsListPageComponent {
             .subscribe(() => this.loadVenvs());
     }
 
+    selectTab(tab: VenvsPageTab): void {
+        if (this.activeTab() === tab) return;
+        this.activeTab.set(tab);
+        // Nothing behind the custom libraries tab reads venv statuses, so the poll does not keep
+        // running there; coming back reloads the list and starts it again if a build is under way.
+        if (tab === 'venvs') {
+            this.loadVenvs();
+        } else {
+            this.stopPolling();
+        }
+    }
+
+    /** The create button lives in the page header, the dialog it opens belongs to the tab. */
+    openCreateCustomLibrary(): void {
+        this.customLibrariesPage()?.openCreateDialog();
+    }
+
     toggleFilterMenu(): void {
         this.filterMenuOpen.update((open) => !open);
     }
 
     closeFilterMenu(): void {
         this.filterMenuOpen.set(false);
+    }
+
+    toggleLibrarySortMenu(): void {
+        this.librarySortMenuOpen.update((open) => !open);
+    }
+
+    closeLibrarySortMenu(): void {
+        this.librarySortMenuOpen.set(false);
+    }
+
+    onLibrarySortSelected(sortOrder: VenvSortOrder): void {
+        this.librarySortOrder.set(sortOrder);
+        this.closeLibrarySortMenu();
     }
 
     toggleSortMenu(): void {
@@ -224,6 +291,9 @@ export class VenvsListPageComponent {
             .subscribe({
                 next: () => {
                     this.toastService.success(`Venv "${venv.name}" deleted`);
+                    const index = this.venvs().findIndex((item) => item.id === venv.id);
+                    this.venvs.update((venvs) => venvs.filter((item) => item.id !== venv.id));
+                    this.keepFocusAfterRemoval(index);
                     this.loadVenvs();
                 },
                 error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
@@ -250,6 +320,19 @@ export class VenvsListPageComponent {
                     this.toastService.error(extractHttpErrorMessage(error));
                 },
             });
+    }
+
+    /** The deleted card takes its focused Delete button along: the focus moves to the card now in its place. */
+    private keepFocusAfterRemoval(index: number): void {
+        if (index === -1) return;
+        afterNextRender(
+            () => {
+                const cards = this.venvCards();
+                if (cards.length) cards[Math.min(index, cards.length - 1)].focus();
+                else this.createButton()?.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     private setFavoriteLocally(id: number, favorite: boolean): void {

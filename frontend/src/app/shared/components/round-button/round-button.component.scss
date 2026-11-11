@@ -20,7 +20,7 @@
         border-color 0.15s ease,
         color 0.15s ease;
 
-    &:hover:not(.round-btn--active) {
+    &:is(:hover, :focus-visible):not(.round-btn--active) {
         border-color: var(--active-color, var(--accent-color, #685fff));
         color: var(--active-color, var(--accent-color, #685fff));
     }
@@ -30,5 +30,11 @@
         border-color: var(--active-color, var(--accent-color, #685fff));
         color: var(--white);
         font-weight: 500;
+    }
+
+    // Same look as a disabled toggle switch: faded, and no hover or click.
+    &--disabled {
+        opacity: 0.45;
+        pointer-events: none;
     }
 }

@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent } from '@shared/components';
-import { LabelDropDirective } from '@shared/directives';
+import { LabelDropDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { getLabelColorOption, ResourceCode } from '@shared/models';
 
 import { GetGraphLightRequest, SubflowLightDto } from '../../models/graph.model';
@@ -33,6 +33,7 @@ export interface FlowLabelDropEvent {
         CheckboxComponent,
         AppSvgIconComponent,
         MatTooltipModule,
+        TooltipOnOverflowDirective,
         LabelDropDirective,
     ],
     templateUrl: './flow-card.component.html',
@@ -77,8 +78,7 @@ export class FlowCardComponent {
 
     getLabelFullPath(id: number): string {
         const label = this.labelsStorage.labels().find((l) => l.id === id);
-        if (!label || !label.parent) return '';
-        return label.full_path;
+        return label?.full_path ?? '';
     }
 
     getLabelChipStyles(id: number): { background: string; color: string } {

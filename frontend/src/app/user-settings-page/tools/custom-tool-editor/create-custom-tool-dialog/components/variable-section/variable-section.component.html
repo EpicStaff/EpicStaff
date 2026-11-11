@@ -23,9 +23,9 @@
             <button
                 type="button"
                 class="section__add-btn"
-                (click)="addRow()"
                 [attr.aria-label]="isArrayValuesMode() ? 'Add element' : 'Add row'"
                 [matTooltip]="isArrayValuesMode() ? 'Add element' : 'Add row'"
+                (click)="addRow()"
             >
                 <app-svg-icon
                     icon="plus"

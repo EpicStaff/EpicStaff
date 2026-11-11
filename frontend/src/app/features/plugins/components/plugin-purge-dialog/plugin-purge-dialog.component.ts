@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
 import { formatFileSize } from '@shared/utils';
 import { filter, finalize, map, Observable } from 'rxjs';
@@ -109,6 +110,7 @@ interface PluginPurgeView {
 @Component({
     selector: 'app-plugin-purge-dialog',
     imports: [
+        MatTooltip,
         AppSvgIconComponent,
         ButtonComponent,
         LoadingSpinnerComponent,

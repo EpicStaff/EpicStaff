@@ -1,6 +1,6 @@
 """
 org_id must be forced into global_kwargs so sandboxed callback tools
-(fanout_tool, subflow_tool, schedule_manager_tool) can read
+(such as schedule_manager_tool) can read
 `globals()["org_id"]` and send X-Organization-Id to org-scoped Django
 endpoints. org_id is resolved server-side (Graph.org_id, via
 converter_service) and must always win over a same-named agent/tool-config

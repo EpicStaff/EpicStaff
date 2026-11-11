@@ -175,7 +175,7 @@
         color: var(--accent-color);
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 }
@@ -215,7 +215,7 @@
     white-space: nowrap;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 
@@ -260,7 +260,7 @@
     font-size: 0.75rem;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 }
@@ -383,7 +383,7 @@
     font-size: 0.875rem;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         border-color: var(--accent-color);
     }
 }
@@ -464,7 +464,7 @@
         background-color: var(--graphite-750);
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-error);
     }
 }
@@ -482,7 +482,7 @@
         box-shadow: none;
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: color-mix(in srgb, var(--color-ks-transparent-black-28) 88%, var(--white));
     }
 }
@@ -563,7 +563,7 @@
         background-color: var(--graphite-750);
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }
@@ -597,7 +597,7 @@
         color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         border-color: var(--accent-color);
     }
 }
@@ -681,7 +681,7 @@ $remove-col: 28px;
         cursor: default;
     }
 
-    &:not(:disabled):hover {
+    &:not(:disabled):is(:hover, :focus-visible) {
         color: var(--white);
     }
 
@@ -716,7 +716,7 @@ $remove-col: 28px;
     color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-error);
     }
 }
@@ -742,7 +742,7 @@ $remove-col: 28px;
             box-shadow: none;
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: color-mix(in srgb, var(--color-ks-transparent-black-28) 88%, var(--white));
         }
     }
@@ -814,7 +814,7 @@ $remove-col: 28px;
         cursor: default;
     }
 
-    &:not(:disabled):hover:not(.perm-cell--allow):not(.perm-cell--deny) {
+    &:not(:disabled):is(:hover, :focus-visible):not(.perm-cell--allow):not(.perm-cell--deny) {
         border-color: var(--color-text-primary);
     }
 
@@ -849,7 +849,7 @@ $remove-col: 28px;
     color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }
@@ -874,7 +874,7 @@ $remove-col: 28px;
     font-weight: var(--text-body-weight);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }
@@ -886,4 +886,9 @@ $remove-col: 28px;
     &--open {
         transform: rotate(0deg);
     }
+}
+
+// Drawn inside: the card's tabs, tables and menu clip their buttons.
+button:focus-visible {
+    outline-offset: -2px;
 }

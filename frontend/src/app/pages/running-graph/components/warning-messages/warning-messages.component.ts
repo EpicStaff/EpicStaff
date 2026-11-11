@@ -6,7 +6,7 @@ import { AppSvgIconComponent } from '@shared/components';
     imports: [AppSvgIconComponent],
     template: `
         @if (messages && messages.length > 0) {
-            <div class="warning-container">
+            <div class="session-message warning-container">
                 <div
                     class="warning-header"
                     (click)="toggleExpand()"
@@ -23,12 +23,21 @@ import { AppSvgIconComponent } from '@shared/components';
                             size="1rem"
                         />
                     </div>
-                    <h3>Warnings</h3>
+                    <h3>
+                        <button
+                            type="button"
+                            class="message-toggle"
+                            [attr.aria-expanded]="isExpanded"
+                        >
+                            Warnings
+                        </button>
+                    </h3>
                     <span class="warning-count">({{ messages.length }})</span>
                 </div>
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isExpanded"
+                    [inert]="!isExpanded"
                 >
                     <div class="warning-content">
                         @for (message of messages; track message; let i = $index) {
@@ -45,6 +54,18 @@ import { AppSvgIconComponent } from '@shared/components';
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the warnings; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .warning-container {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;

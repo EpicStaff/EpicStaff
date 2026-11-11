@@ -42,7 +42,7 @@
         padding: 0.2rem;
         border-radius: 4px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-ks-text);
         }
     }
@@ -66,9 +66,17 @@
     position: relative;
     min-width: 0;
 
-    &:hover {
+    &:is(:hover, :focus-visible, :has(> .label-name:focus-visible)) {
         background: var(--color-ghost-btn-hover);
         color: var(--color-ks-text);
+    }
+
+    // The sidebar clips anything drawn outside a full-width row. A label row shows the keyboard focus of its name
+    // button, which selects it.
+    &:focus-visible,
+    &:has(> .label-name:focus-visible) {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
     }
 
     &.active {
@@ -88,26 +96,49 @@
         flex-shrink: 0;
     }
 
-    &:hover .item-actions {
+    // Shown while the row or one of its buttons has the keyboard focus too.
+    &:is(:hover, :focus-within) .item-actions {
         visibility: visible;
     }
 
     .label-name {
         flex: 1;
+        padding: 0;
+        border: none;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: inherit;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
         min-width: 0;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     // 5rem clears three 28px .action-btn + gaps + right offset.
-    &:hover .label-name {
+    &:is(:hover, :focus-within) .label-name {
         padding-right: 5rem;
     }
 
     .label-icon {
         flex-shrink: 0;
     }
+}
+
+// The all-items and unlabeled rows are plain buttons that look like the other rows. :where() keeps this reset
+// below every row rule (the unlabeled row's top border, the hover and active backgrounds).
+:where(button.tree-item) {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    text-align: left;
 }
 
 .all-items-item {
@@ -121,7 +152,7 @@
         padding-top: 4px;
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-ks-text);
     }
 
@@ -164,7 +195,7 @@
         padding: 0.15rem;
         border-radius: 4px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-ks-text);
         }
 
@@ -229,7 +260,7 @@
     color: var(--white);
     background: var(--accent-color);
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--accent-color-hover);
     }
 
@@ -243,7 +274,7 @@
     background: transparent;
     border: 1px solid var(--accent-color);
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--accent-color-hover);
     }
 
@@ -265,7 +296,7 @@
     width: 0.8rem;
     height: 0.8rem;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--color-ghost-btn-hover);
         color: var(--color-ks-text);
     }
@@ -314,7 +345,7 @@
     padding: 0.15rem;
     border-radius: 3px;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-ks-text);
     }
 
@@ -328,6 +359,7 @@
     transition: color 0.15s ease;
 
     &:hover,
+    &:focus-visible,
     &:active {
         color: var(--color-ks-text);
     }
@@ -340,7 +372,7 @@
     color: var(--color-text-secondary);
     transition: color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-ks-text);
     }
 

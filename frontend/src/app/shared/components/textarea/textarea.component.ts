@@ -43,6 +43,8 @@ export class TextareaComponent implements ControlValueAccessor {
     isReadonly = this.readonly;
 
     value = signal<string>('');
+    /** The field's accessible name and tooltip: the label shown above it isn't tied to it. */
+    protected readonly fieldName = computed(() => this.label() || this.placeholder());
 
     @ViewChild('textareaRef') private textareaRef!: ElementRef<HTMLTextAreaElement>;
 

@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { NgClass } from '@angular/common';
@@ -20,12 +21,28 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { deepEqual } from '@shared/utils';
+import { filter } from 'rxjs';
 
 import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
-export interface SelectItem<T = unknown> {
+/**
+ * An optional trailing action button at the end of an item row. A button with only an icon needs a name, so the label
+ * comes with the icon.
+ */
+type SelectItemTrailingAction =
+    | { trailingActionIcon?: undefined; trailingActionLabel?: undefined }
+    | {
+          /** app-svg-icon id of the button (e.g. edit-pencil). */
+          trailingActionIcon: string;
+          /** Names the button (its aria-label and tooltip), e.g. "Edit". */
+          trailingActionLabel: string;
+      };
+
+export type SelectItem<T = unknown> = SelectItemFields<T> & SelectItemTrailingAction;
+
+interface SelectItemFields<T> {
     name: string;
     tip?: string;
     subtitle?: string;
@@ -41,8 +58,6 @@ export interface SelectItem<T = unknown> {
     tipColor?: string;
     /** CSS color (e.g. `var(--success-color)`) of a dot shown before the name, in the trigger, options and readonly value. */
     dotColor?: string;
-    /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */
-    trailingActionIcon?: string;
 }
 
 interface SelectItemGroup {
@@ -59,6 +74,7 @@ let nextSelectId = 0;
     imports: [
         NgClass,
         OverlayModule,
+        CdkTrapFocus,
         TooltipComponent,
         AppSvgIconComponent,
         MatTooltipModule,
@@ -80,16 +96,40 @@ export class SelectComponent implements ControlValueAccessor {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    /** The field's name for the trigger's tooltip when it has no `label` (e.g. a caption outside the select). */
+    tooltip = input<string>('');
     loading = input<boolean>(false);
     mod = input<'default' | 'small'>('default');
     items = input<SelectItem[]>([]);
     placeholder = input<string>('Select option');
     invalid = input<boolean>(false);
+    /**
+     * Ids of what describes the trigger, e.g. the `app-validation-errors` saying why it is invalid. The reason is said
+     * through it alone: a button takes no `aria-invalid`.
+     */
+    ariaDescribedby = input<string | null>(null);
     disabled = input<boolean>(false);
     hideTrigger = input<boolean>(false);
     panelClass = input<string | string[]>('');
     variant = input<SelectVariant>('default');
+    /**
+     * The list-page toolbar look, for both the trigger and the panel. `toolbar` makes the closed trigger hug-width and
+     * transparent, with the 10px radius and dim outline and the chevron in line 16px after the text; and it gives the
+     * open panel the bulk-select menu's frame (no height cap, the page background, the 8px radius, the elevated
+     * shadow), its hover, and the picked option in the plain text colour. Its 40px row size applies only to the rows
+     * of `variant="default"` at `mod="default"`: with `variant="boxed"` the panel takes the toolbar frame while its
+     * rows keep the boxed size.
+     */
+    appearance = input<'default' | 'toolbar'>('default');
+    /** Sprite id of the icon that stands for the trigger's text while `iconOnly`; e.g. `filter`. */
+    triggerIcon = input<string | null>(null);
+    /**
+     * Shows `triggerIcon` and the chevron in place of the text, which stays the name and becomes the tooltip.
+     * Needs `triggerIcon`: without one it does nothing.
+     */
+    iconOnly = input<boolean>(false);
     showSearch = input<boolean>(false);
+    showCreate = input<boolean>(false);
     /**
      * Render each item under a heading taken from its `group`. Off by default: panels that
      * already set `group` on their items were written before any heading was rendered.
@@ -97,6 +137,7 @@ export class SelectComponent implements ControlValueAccessor {
     grouped = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
     transparent = input<boolean>(false);
+    searchNotFoundText = input<string>('No items available');
     /** When true, the selected item's tip is shown at the end of the closed trigger too, not only in the list. */
     showTipInTrigger = input<boolean>(false);
     /** When true, the user can commit the search text as a custom value (Enter or clicking the "Use ..." row). */
@@ -122,6 +163,7 @@ export class SelectComponent implements ControlValueAccessor {
 
     changed = output<unknown>();
     opened = output<void>();
+    onCreate = output<void>();
 
     selectedValue = model<unknown | null>(null);
 
@@ -196,6 +238,9 @@ export class SelectComponent implements ControlValueAccessor {
         return this.placeholder();
     });
 
+    protected readonly showsOnlyIcon = computed(() => this.iconOnly() && !!this.triggerIcon());
+    protected readonly triggerTooltip = computed(() => (this.showsOnlyIcon() ? this.displayText() : this.tooltip()));
+
     /**
      * Value to render in readonly mode: the selected item's name, or a custom-value string
      * (when allowed), or the readonly empty placeholder. Never falls back to the interactive
@@ -268,6 +313,14 @@ export class SelectComponent implements ControlValueAccessor {
         this.overlayRef
             .backdropClick()
             .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
+
+        this.overlayRef
+            .keydownEvents()
+            .pipe(
+                filter((event) => event.key === 'Escape'),
+                takeUntilDestroyed(this.destroyRef)
+            )
             .subscribe(() => this.close());
 
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);

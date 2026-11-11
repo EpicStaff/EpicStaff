@@ -5,10 +5,12 @@ lifespan hooks open a database pool, connect to Redis and build the default venv
 of which belong in a unit suite. ``debug=True`` so an unexpected failure shows its
 traceback in the response body instead of a bare 500.
 
-``runtime_state`` mirrors what ``common.bootstrap.lifespan`` publishes on ``app.state``.
-It is rebuilt here from fakes instead of imported, so importing this conftest does not
+``runtime_state`` mirrors what the startup hooks publish on ``app.state`` -- the job
+orchestrator's factory, the intake gate, the execution registry and the object store. It
+is rebuilt here from fakes instead of imported, so importing this conftest does not
 register the real runtime's startup hooks. The dependency providers are the real ones
-from ``manager.bootstrap.di``; only ``uow`` is swapped for the fake.
+from ``manager.bootstrap.di``; only ``uow`` is swapped for the fake, so a controller
+reaching the object store goes through the same provider it would in production.
 
 The error handlers are the real ones, so a test can assert the status a rejected request
 actually gets rather than the one the controller hoped for.
@@ -28,7 +30,12 @@ from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
 from manager.application.ports import AbstractUnitOfWork
 from manager.application.registry import ExecutionRegistry
-from manager.presentation.rest.controllers import ExecutionController, VenvController
+from manager.presentation.rest.controllers import (
+    CustomLibraryController,
+    ExecutionController,
+    VenvController,
+    WheelController,
+)
 from tests.fakes import FakeJobDispatcher, FakeJobFailureSink
 
 # Small, so a test reaches either cap with a few reservations.
@@ -54,6 +61,7 @@ def runtime_state(
     holding: JobHoldingRegistry,
     failure_sink: FakeJobFailureSink,
     registry: ExecutionRegistry,
+    file_storage,
 ) -> State:
     intake_gate = IntakeGate(
         registry,
@@ -76,6 +84,7 @@ def runtime_state(
             "build_job_orchestrator": build_job_orchestrator,
             "intake_gate": intake_gate,
             "execution_registry": registry,
+            "custom_library_storage": file_storage,
         }
     )
 
@@ -86,7 +95,12 @@ def client(uow, runtime_state):
         return uow
 
     with create_test_client(
-        route_handlers=[VenvController, ExecutionController],
+        route_handlers=[
+            VenvController,
+            ExecutionController,
+            CustomLibraryController,
+            WheelController,
+        ],
         dependencies={**di.get_dependencies(), "uow": Provide(provide_uow)},
         state=runtime_state,
         exception_handlers=error_handler.get_handlers(),

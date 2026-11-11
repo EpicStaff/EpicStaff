@@ -153,7 +153,10 @@ def _stub_publish(monkeypatch) -> SessionManagerService:
         session_manager,
         "create_session_data",
         lambda session, **kwargs: SessionData(
-            id=1, org_id=1, graph=GraphData(name="stub", entrypoint="__end__", end_node=None)
+            id=1,
+            org_id=1,
+            graph=GraphData(name="stub", entrypoint="__end__", end_node=None),
+            audit_retention_days=30,
         ),
     )
     monkeypatch.setattr(session_manager.redis_service, "publish_session_data", lambda **kwargs: 2)
@@ -219,6 +222,7 @@ def test_row_in_another_org_answers_the_views_own_not_found(principal, beta):
             ResourceType.FLOWS,
             Permission.READ,
             not_found=GraphNotFoundError(),
+            api_key_org_id=None,
         )
 
 
@@ -230,6 +234,7 @@ def test_row_in_the_pinned_org_without_the_declared_action_is_403(principal, acm
             ResourceType.FLOWS,
             Permission.DELETE,
             not_found=GraphNotFoundError(),
+            api_key_org_id=None,
         )
 
 
@@ -237,7 +242,7 @@ def test_running_another_orgs_flow_is_not_found(principal, beta):
     other_graph = Graph.objects.create(name="beta flow", org=beta)
 
     with pytest.raises(GraphNotFoundError):
-        get_runnable_graph(principal, graph_id=other_graph.id)
+        get_runnable_graph(principal, graph_id=other_graph.id, api_key_org_id=None)
 
 
 # ---- OrgContextService ----

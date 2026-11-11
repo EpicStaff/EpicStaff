@@ -94,7 +94,6 @@
     user-select: none;
 
     &:focus-visible {
-        outline: 1px solid var(--accent-color);
         outline-offset: 2px;
         border-radius: 4px;
     }
@@ -177,7 +176,6 @@
     white-space: nowrap;
 
     &:focus-visible {
-        outline: 1px solid var(--accent-color);
         outline-offset: 2px;
         border-radius: 2px;
     }
@@ -217,7 +215,7 @@
     color: var(--color-text-primary);
     border-color: var(--color-divider-regular);
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--white-alpha-4);
     }
 }

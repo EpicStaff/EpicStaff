@@ -24,6 +24,7 @@ const SURFACE: Surface = {
     name: 'Research',
     instructions: '',
     owner_agent: null,
+    group: null,
     python_tools: [{ python_tool: 1, mode: 'deny' }],
     mcp_tools: [
         { mcp_tool: 2, mode: 'deny' },
@@ -76,6 +77,16 @@ function render(template = '', toast: Partial<ToastService> = {}): ComponentFixt
     fixture.detectChanges();
     return fixture;
 }
+
+// jsdom has no ResizeObserver; the overflow tooltips on the card name and knowledge rows need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
 
 describe('SurfaceCardComponent tool modes', () => {
     it('sends each stored tool mode back unchanged instead of rewriting deny to allow', () => {
@@ -153,6 +164,7 @@ const DETAILS_SURFACE: Surface = {
     name: 'Surface_1',
     instructions: '',
     owner_agent: null,
+    group: null,
     python_tools: [],
     mcp_tools: [],
     storage_items: [],
@@ -364,7 +376,7 @@ describe('SurfaceCardComponent file permissions table', () => {
 
     it('keeps the icon-only column labels hoverable when the card is read-only', () => {
         const host = renderFiles(true);
-        const button = host.querySelector<HTMLButtonElement>('[aria-label="View"]')!;
+        const button = host.querySelector<HTMLButtonElement>('[aria-label="View for all files: deny"]')!;
         expect(button.disabled).toBe(true);
         const tooltipHost = button.parentElement!;
         const tooltip = getDebugNode(tooltipHost)!.injector.get(MatTooltip);
@@ -372,7 +384,7 @@ describe('SurfaceCardComponent file permissions table', () => {
 
         tooltipHost.dispatchEvent(new MouseEvent('mouseenter'));
 
-        expect(tooltip.message).toBe('View');
+        expect(tooltip.message).toBe('View for all files: deny');
         expect(show).toHaveBeenCalled();
         expect(getComputedStyle(button).pointerEvents).toBe('none');
     });

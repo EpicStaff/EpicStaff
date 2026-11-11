@@ -7,6 +7,7 @@ import {
     HostListener,
     inject,
     OnInit,
+    signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -19,158 +20,139 @@ export interface NoteEditDialogData {
     node: GraphNoteModel;
     /** Who created and who last edited the note; the dialog cannot read the editor's store itself. */
     authorship: AuthorshipDetailsSource;
+    readonly?: boolean;
 }
 
 @Component({
     selector: 'app-note-edit-dialog',
     imports: [FormsModule, AppSvgIconComponent, MatTooltipModule, AuthorshipFooterComponent],
     template: `
-        <div
-            class="backdrop"
-            (click)="close()"
-        >
-            <div
-                class="wrapper"
-                (click)="$event.stopPropagation()"
-            >
-                <div class="dialog-header">
-                    <div class="icon-and-title">
-                        <app-svg-icon
-                            icon="note"
-                            size="1.25rem"
-                        ></app-svg-icon>
-                        <h2 class="title">Edit Note</h2>
-                    </div>
-                    <div class="header-actions">
-                        <div class="close-action">
-                            <span class="esc-label">ESC</span>
-                            <app-svg-icon
-                                icon="x"
-                                (click)="close()"
-                                style="cursor:pointer"
-                                matTooltip="Close"
-                                matTooltipPosition="above"
-                            ></app-svg-icon>
-                        </div>
-                    </div>
-                </div>
+        <div class="dialog">
+            <div class="header">
+                <span class="title">
+                    <app-svg-icon
+                        icon="note"
+                        size="1.25rem"
+                    ></app-svg-icon>
+                    {{ data.readonly ? 'View Note' : 'Edit Note' }}
+                </span>
 
-                <div class="dialog-content">
-                    <div class="form-group">
-                        <textarea
-                            class="note-textarea"
-                            [(ngModel)]="noteContent"
-                            placeholder="Add note text..."
-                            autofocus
-                        ></textarea>
-                    </div>
+                <div class="actions">
+                    <button
+                        type="button"
+                        class="close-button"
+                        aria-label="Close"
+                        matTooltip="Close"
+                        matTooltipPosition="above"
+                        (click)="close()"
+                    >
+                        <app-svg-icon icon="x"></app-svg-icon>
+                    </button>
                 </div>
-
-                <app-authorship-footer
-                    class="dialog-footer"
-                    [createdBy]="data.authorship.created_by"
-                    [createdAt]="data.authorship.created_at"
-                    [lastEditedBy]="data.authorship.last_edited_by"
-                    [lastEditedAt]="data.authorship.last_edited_at"
-                />
             </div>
+
+            <div class="body">
+                <textarea
+                    class="note-textarea"
+                    [(ngModel)]="noteContent"
+                    placeholder="Add note text..."
+                    aria-label="Note text"
+                    [readonly]="data.readonly"
+                    autofocus
+                ></textarea>
+            </div>
+
+            <app-authorship-footer
+                class="footer"
+                [createdBy]="data.authorship.created_by"
+                [createdAt]="data.authorship.created_at"
+                [lastEditedBy]="data.authorship.last_edited_by"
+                [lastEditedAt]="data.authorship.last_edited_at"
+            />
         </div>
     `,
     styles: [
         `
-            .wrapper {
-                background-color: var(--color-modals-background, #1e1e1e);
-                border-radius: 12px;
-                color: var(--color-text-primary, #fff);
-                width: 500px;
-                max-width: 90vw;
-                max-height: 85vh;
-                display: flex;
-                flex-direction: column;
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            :host {
+                display: block;
+                width: 100%;
+                height: 100%;
             }
 
-            .dialog-header {
+            .dialog {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                background-color: var(--color-nodes-sidepanel-bg);
+                border-radius: 12px;
+                border: 1px solid var(--color-divider-subtle);
+                overflow: hidden;
+            }
+
+            .header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 1.5rem;
-                padding-bottom: 0.5rem;
-            }
-
-            .icon-and-title {
-                display: flex;
-                align-items: center;
-                min-width: 0;
-                gap: 0.75rem;
-            }
-
-            .icon-and-title app-svg-icon {
-                color: var(--accent-color, #4a6da7);
+                padding: 20px 40px;
+                border-bottom: 1px solid var(--color-divider-subtle);
+                flex-shrink: 0;
             }
 
             .title {
-                font-size: var(--text-h4-size);
-                font-weight: var(--text-h4-weight);
-                margin: 0;
-            }
-
-            .header-actions {
                 display: flex;
                 align-items: center;
-                gap: 1rem;
+                gap: 0.75rem;
+                font-size: 1.25rem;
+                white-space: nowrap;
             }
 
-            .close-action {
+            .title app-svg-icon {
+                color: var(--accent-color, #4a6da7);
+            }
+
+            .actions {
                 display: flex;
                 align-items: center;
                 gap: 0.5rem;
             }
 
-            .esc-label {
-                font-size: var(--text-body-small-large-size);
-                color: #666;
-                font-weight: var(--text-body-small-large-weight);
-                padding: 0.15rem 0.3rem;
-                border: 1px solid #444;
-                border-radius: 4px;
-                background: #2a2a2a;
-            }
-
-            .header-actions app-svg-icon {
+            .close-button {
+                display: flex;
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
                 font-size: 1.25rem;
                 cursor: pointer;
                 transition: all 0.2s ease;
                 opacity: 0.8;
             }
 
-            .header-actions app-svg-icon:hover {
+            .close-button:is(:hover, :focus-visible) {
                 opacity: 1;
                 transform: scale(1.1);
                 color: var(--accent-color, #4a6da7);
             }
 
-            .dialog-content {
+            .body {
                 flex: 1;
-                overflow-y: auto;
-                padding: 1.5rem;
-                min-height: 200px;
-            }
-
-            .form-group {
-                margin-bottom: 1rem;
-                width: 100%;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                padding: 20px 40px;
             }
 
             .note-textarea {
+                flex: 1;
                 width: 100%;
-                height: 250px;
                 background-color: var(--color-input-background, #2a2a2a);
                 border: 1px solid var(--color-input-border, #444);
                 border-radius: 6px;
-                padding: 0.625rem 0.75rem;
+                padding: 0.75rem;
                 color: #fff;
-                font-size: 0.875rem;
+                font-size: 0.9375rem;
+                line-height: 1.6;
                 outline: none;
                 transition: border-color 0.2s ease;
                 font-family: inherit;
@@ -181,9 +163,9 @@ export interface NoteEditDialogData {
                 border-color: var(--accent-color, #4a6da7);
             }
 
-            .dialog-footer {
+            .footer {
                 flex-shrink: 0;
-                padding: 12px 24px;
+                padding: 20px 40px;
                 border-top: 1px solid var(--color-divider-subtle);
             }
         `,
@@ -191,7 +173,7 @@ export interface NoteEditDialogData {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NoteEditDialogComponent implements OnInit {
-    noteContent: string = '';
+    noteContent = signal<string>('');
 
     public readonly dialogRef = inject<DialogRef<{ content: string }>>(DialogRef);
     public readonly data = inject<NoteEditDialogData>(DIALOG_DATA);
@@ -200,7 +182,7 @@ export class NoteEditDialogComponent implements OnInit {
 
     ngOnInit(): void {
         // Initialize with the current note content
-        this.noteContent = this.data.node.data.content || '';
+        this.noteContent.set(this.data.node.data.content || '');
         this.cdr.detectChanges();
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
@@ -212,11 +194,16 @@ export class NoteEditDialogComponent implements OnInit {
     }
 
     close(): void {
-        this.dialogRef.close({ content: this.noteContent });
+        this.dialogRef.close(this.data.readonly ? undefined : { content: this.noteContent() });
     }
 
+    // The host listener runs ahead of the tooltip of the focused control, which would take the first Escape;
+    // the document one covers the focus being outside the dialog.
+    @HostListener('keydown.escape', ['$event'])
     @HostListener('document:keydown.escape', ['$event'])
     onEsc(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
         if (event instanceof KeyboardEvent) {
             event.preventDefault();
         }

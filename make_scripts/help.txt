@@ -48,6 +48,14 @@
    Example: make crew-tests
    Example: make agent-tests ARGS="-k my_test"
 
+ make shared-tests
+   Run every test suite under src/shared, one pytest session per
+   suite. Needs: make uv-sync svc=shared
+ make shared-tests-<suite> ARGS=<pytest-args>
+   One suite: tools, models, audit, dotdict, epicstaff_storage,
+   communication.
+   Example: make shared-tests-tools ARGS="-k s3_bash"
+
  ENV FILE
 ----------------------------------------------------------------
  Runs on the host Python 3.11+ (PYTHON=<interpreter> to

@@ -34,13 +34,14 @@
         justify-content: center;
         height: 160px;
         width: 160px;
+        padding: 0;
         border-radius: 10px;
         border: 2px dashed var(--color-input-border);
         background-color: var(--color-divider-subtle);
         cursor: pointer;
         color: var(--color-ks-button-activated);
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-drag-drop-active);
         }
     }

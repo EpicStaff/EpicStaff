@@ -5,7 +5,12 @@
     (click)="onCardClick()"
 >
     <div class="llm-card__top">
-        <span class="llm-card__model">{{ model().customName }}</span>
+        <span
+            class="llm-card__model"
+            appTooltipOnOverflow
+            [matTooltip]="model().customName"
+            >{{ model().customName }}</span
+        >
         @if (selectMode()) {
             <div
                 class="llm-card__checkbox"
@@ -13,6 +18,7 @@
             >
                 <app-checkbox
                     color="secondary"
+                    [ariaLabel]="'Select ' + model().customName"
                     [checked]="selected()"
                     [disabled]="isDeleting()"
                     (changed)="onCardClick()"
@@ -38,7 +44,7 @@
                 <button
                     *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
                     type="button"
-                    class="llm-card__action llm-card__action--delete"
+                    class="llm-card__action"
                     [attr.aria-label]="'Delete ' + model().customName"
                     matTooltip="Delete"
                     matTooltipPosition="above"
@@ -53,7 +59,13 @@
         }
     </div>
 
-    <div class="llm-card__name">{{ model().modelName }}</div>
+    <div
+        class="llm-card__name"
+        appTooltipOnOverflow
+        [matTooltip]="model().modelName"
+    >
+        {{ model().modelName }}
+    </div>
 
     @if (model().tags.length > 0) {
         <div class="llm-card__tags">
@@ -68,11 +80,12 @@
         <div class="llm-card__bottom">
             @if (temperature !== null) {
                 <div class="llm-card__temp">
-                    <i
-                        class="ti ti-thermometer"
+                    <app-svg-icon
+                        icon="thermometer"
+                        size="16px"
                         aria-hidden="true"
-                    ></i>
-                    {{ temperature }}°
+                    />
+                    <span>{{ temperature }}°</span>
                 </div>
             }
 
@@ -80,7 +93,7 @@
                 <div class="llm-card__deprecated">
                     <app-svg-icon
                         icon="warning"
-                        size="12px"
+                        size="16px"
                         aria-hidden="true"
                     />
                     <span>Deprecated</span>

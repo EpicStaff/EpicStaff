@@ -218,15 +218,24 @@ class TestPythonCodeToolDeclaration:
 
 @pytest.mark.django_db
 class TestCopyCarriesTheDeclaration:
-    def test_copy_python_code_keeps_declared_secrets(self, org, secret):
+    def test_copy_python_code_keeps_declared_secrets(self, django_user_model, org, secret):
         """Copy stays inside one org, so the ids remain valid and the copy must be
         runnable — dropping the declaration would silently break the duplicate."""
         from tables.services.copy_services.helpers import copy_python_code
+        from tables.services.secrets.secret_use_service import SecretActor
 
+        user = django_user_model.objects.create_user(
+            email="decl_copier@example.com", password="StrongPass123!"
+        )
+        OrganizationUser.objects.create(
+            user=user,
+            org=org,
+            role=Role.objects.get(name=BuiltInRole.ORG_ADMIN, is_built_in=True, org__isnull=True),
+        )
         original = PythonCode.objects.create(code=DECLARING_CODE, entrypoint="main")
         original.secrets.set([secret])
 
-        duplicate = copy_python_code(original)
+        duplicate = copy_python_code(original, actor=SecretActor(user=user, org_id=org.id))
 
         assert duplicate.pk != original.pk
         assert list(duplicate.secrets.values_list("name", flat=True)) == ["DECL_KEY"]

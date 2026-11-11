@@ -15,8 +15,9 @@ from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.graph_versioning.services import GraphVersioningService
-from tables.models import GraphVersion, KeyValueNode, KeyValueTable, PythonCode, PythonNode
+from tables.models import GraphVersion, KeyValueNode, KeyValueTable, PythonCode, PythonNode, Secret
 from tables.models.graph_models import Edge, Graph, SubGraphNode
+from tables.services.secrets import secret_service
 from tests.api_tests.graph_version_api_fixtures import *  # noqa: F401,F403
 from tests.api_tests.graph_version_api_fixtures import save_version
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -286,7 +287,7 @@ def test_preview_query_count_does_not_grow_with_node_count(
 
 
 @pytest.mark.django_db
-def test_preview_response_has_exactly_snapshot_warnings_and_node_authorship(
+def test_preview_response_has_exactly_its_four_keys(
     client, graph_with_declared_secret
 ):
     graph, _ = graph_with_declared_secret
@@ -295,7 +296,12 @@ def test_preview_response_has_exactly_snapshot_warnings_and_node_authorship(
     response = _preview(client=client, version_id=version_id)
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert set(response.data) == {"snapshot", "warnings", "node_authorship"}
+    assert set(response.data) == {
+        "snapshot",
+        "warnings",
+        "node_authorship",
+        "resolved_secrets",
+    }
     assert {
         "nodes",
         "edge_list",
@@ -339,27 +345,112 @@ def test_viewer_can_preview_but_not_change_versions(
 
 
 @pytest.mark.django_db
-def test_preview_does_not_report_a_dropped_secret_that_restore_reports(
-    client, graph_with_declared_secret
+def test_preview_resolves_declared_secrets_and_reports_a_deleted_one(client, org):
+    graph = Graph.objects.create(name="flow-with-two-secrets", org=org)
+    kept = secret_service.create(text="sk-kept", org=org, name="STRIPE_KEY")
+    deleted = secret_service.create(text="sk-gone", org=org, name="GONE_KEY")
+    python_code = PythonCode.objects.create(code="def main():\n    return 1\n")
+    python_code.secrets.set([kept, deleted])
+    node = PythonNode.objects.create(graph=graph, node_name="Python-Node #1", python_code=python_code)
+    version_id = save_version(client=client, graph=graph)
+    deleted.delete()
+    Secret.all_objects.get(pk=deleted.pk).purge()  # deleting only moves it to the recycle bin
+
+    response = _preview(client=client, version_id=version_id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["resolved_secrets"] == {"STRIPE_KEY": kept.id}
+    [warning] = response.data["warnings"]
+    assert warning["type"] == "secret_declaration_dropped"
+    assert warning["node_id"] == node.id
+    assert warning["field"] == "python_code"
+    assert warning["missing_name"] == "GONE_KEY"
+    assert all(isinstance(secret_id, int) for secret_id in response.data["resolved_secrets"].values())
+
+
+def _acme_flow_declaring(*, acme, secret_name):
+    graph = Graph.objects.create(name="acme-flow-with-secret", org=acme)
+    secret = secret_service.create(text="sk-acme", org=acme, name=secret_name)
+    python_code = PythonCode.objects.create(code="def main():\n    return 1\n")
+    python_code.secrets.set([secret])
+    PythonNode.objects.create(graph=graph, node_name="Python-Node #1", python_code=python_code)
+    return graph, secret
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("caller", ["member_only", "viewer_only"])
+def test_a_caller_without_secrets_read_gets_the_resolved_secrets(
+    request, client_as, acme, admin_acme, caller
 ):
-    """Documents the known gap: secret declarations are only re-linked on restore."""
-    graph, secret = graph_with_declared_secret
+    """A restore re-links by name with no secrets permission, so the preview reports the
+    same to every caller who may read the flow."""
+    graph, secret = _acme_flow_declaring(acme=acme, secret_name="STRIPE_KEY")
+    version = GraphVersioningService().save_version(graph, name="v1")
+    caller_client = client_as(request.getfixturevalue(caller))
+    caller_client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+
+    secrets_response = caller_client.get("/api/secrets/")
+    response = _preview(client=caller_client, version_id=version.id)
+
+    # Positive control: this caller really cannot list secrets.
+    assert secrets_response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["resolved_secrets"] == {"STRIPE_KEY": secret.id}
+    assert response.data["warnings"] == []
+
+
+@pytest.mark.django_db
+def test_preview_counts_a_name_that_exists_only_in_another_org_as_missing(
+    client_as, admin_acme, acme, beta
+):
+    graph, secret = _acme_flow_declaring(acme=acme, secret_name="SHARED_NAME")
     version = GraphVersioningService().save_version(graph, name="v1")
     secret.delete()
     type(secret).all_objects.get(pk=secret.pk).purge()
+    secret_service.create(text="sk-beta", org=beta, name="SHARED_NAME")
+    acme_client = client_as(admin_acme)
+    acme_client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
 
-    preview_response = _preview(client=client, version_id=version.id)
-    restore_result = GraphVersioningService().restore_version(
-        version, expected_save_version=Graph.objects.get(pk=graph.pk).save_version
+    response = _preview(client=acme_client, version_id=version.id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["resolved_secrets"] == {}
+    assert [warning["missing_name"] for warning in response.data["warnings"]] == [
+        "SHARED_NAME"
+    ]
+
+
+def _graph_with_declaring_python_nodes(*, org, name, node_count):
+    graph = Graph.objects.create(name=name, org=org)
+    for index in range(node_count):
+        secret = secret_service.create(text="sk", org=org, name=f"{name.upper()}_KEY_{index}")
+        python_code = PythonCode.objects.create(code="def main():\n    return 1\n")
+        python_code.secrets.set([secret])
+        PythonNode.objects.create(
+            graph=graph, node_name=f"Python-Node #{index + 1}", python_code=python_code
+        )
+    return graph
+
+
+@pytest.mark.django_db
+def test_preview_resolves_secrets_in_a_query_count_that_does_not_grow_with_declarations(
+    client, org, django_assert_num_queries
+):
+    small_version = GraphVersioningService().save_version(
+        _graph_with_declaring_python_nodes(org=org, name="one", node_count=1), name="small"
+    )
+    large_version = GraphVersioningService().save_version(
+        _graph_with_declaring_python_nodes(org=org, name="five", node_count=5), name="large"
     )
 
-    assert preview_response.status_code == status.HTTP_200_OK, preview_response.content
-    assert "secret_declaration_dropped" not in {
-        warning["type"] for warning in preview_response.data["warnings"]
-    }
-    assert "secret_declaration_dropped" in {
-        warning["type"] for warning in restore_result["warnings"]
-    }
+    with CaptureQueriesContext(connection) as small_queries:
+        small_response = _preview(client=client, version_id=small_version.id)
+    assert small_response.status_code == status.HTTP_200_OK, small_response.content
+
+    with django_assert_num_queries(len(small_queries.captured_queries)):
+        large_response = _preview(client=client, version_id=large_version.id)
+    assert large_response.status_code == status.HTTP_200_OK, large_response.content
+    assert len(large_response.data["resolved_secrets"]) == 5
 
 
 @pytest.mark.django_db

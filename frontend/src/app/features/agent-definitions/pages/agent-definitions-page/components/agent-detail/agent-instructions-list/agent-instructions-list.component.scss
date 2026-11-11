@@ -25,7 +25,7 @@
     box-sizing: border-box;
     min-width: 0;
 
-    &:hover {
+    &:is(:hover, :focus-within) {
         border-color: var(--accent-color);
     }
 }
@@ -126,7 +126,7 @@
     color: var(--color-text-secondary);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }

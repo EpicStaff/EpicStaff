@@ -15,7 +15,7 @@ def uvicorn_log_level(level: str) -> str:
 
 async def main():
     logger.remove()
-    logger.add(sys.stderr, level=settings.LOG_LEVEL)
+    logger.add(sys.stderr, level=settings.LOG_LEVEL, diagnose=False)
 
     app = create_app()
 

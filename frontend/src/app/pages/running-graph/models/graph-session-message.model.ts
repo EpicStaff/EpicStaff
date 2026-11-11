@@ -81,6 +81,8 @@ export interface ExtractedChunk {
     order: number;
     source?: string;
     similarity?: number;
+    /** Missing on messages saved before chunks carried their document. */
+    document_id?: number | null;
 }
 
 // A bare string only appears in old saved graph messages from the crew path,
@@ -122,6 +124,8 @@ export interface ExtractedChunksMessageData {
     crew_id?: number;
     agent_id: number;
     collection_id: number;
+    /** Missing on Knowledge-node messages saved before it was sent. */
+    rag_id?: number;
     retrieved_chunks: number;
     knowledge_query: string;
     /** Missing on old saved messages; fall back to `rag_search_config.rag_type` / `rag_strategy`. */
@@ -195,6 +199,8 @@ export interface ClassificationPromptMessageData {
     parsed_result: unknown;
     result_variable: string;
     usage: ClassificationTokenUsage;
+    provider?: string | null;
+    model_version?: string | null;
     message_type: MessageType.CLASSIFICATION_PROMPT;
 }
 
@@ -299,11 +305,33 @@ export interface NodeStreamTaskFinishData {
     truncated?: boolean;
 }
 
+export interface NodeStreamLlmRef {
+    config_name: string | null;
+    model: string;
+}
+
+export interface NodeStreamLlmFallbackData {
+    task?: NodeStreamTaskRef | null;
+    primary: NodeStreamLlmRef;
+    fallback: NodeStreamLlmRef;
+    error_type: string;
+}
+
+export interface NodeStreamLlmFallbackSkippedData {
+    message: string;
+}
+
 interface NodeStreamMessageDataBase {
-    event: 'task_start' | 'tool_call' | 'tool_result' | 'task_finish';
+    event: 'task_start' | 'tool_call' | 'tool_result' | 'task_finish' | 'llm_fallback' | 'llm_fallback_skipped';
     step_id: number;
     is_final: boolean;
-    data: NodeStreamToolCallData | NodeStreamToolResultData | NodeStreamTaskStartData | NodeStreamTaskFinishData;
+    data:
+        | NodeStreamToolCallData
+        | NodeStreamToolResultData
+        | NodeStreamTaskStartData
+        | NodeStreamTaskFinishData
+        | NodeStreamLlmFallbackData
+        | NodeStreamLlmFallbackSkippedData;
 }
 
 export interface TaskNodeStreamMessageData extends NodeStreamMessageDataBase {

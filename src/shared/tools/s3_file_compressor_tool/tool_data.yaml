@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Compressor Tool"
+  description: "Compress a file or a folder in S3 storage into one archive, written back to S3 storage. Params: input_path (required) - the file or folder to compress; a folder is archived recursively - in zip with member paths relative to it, in tar formats under a top-level directory named after the folder (folder reports -> reports/...) - and a single file is archived under its base name; original modified times are kept; output_path (optional) - where to write the archive; defaults to next to the input as <base name><extension> (e.g. folder reports -> reports.zip, file notes.txt -> notes.zip) and must end with the extension of the chosen format; overwrite (default false) - set true to replace an existing archive at output_path; format (default zip) - one of zip, tar, tar.gz, tar.bz2, tar.xz. Both input_path and output_path must be within your flow's allowed files. The input is limited to 50 MB in total and to 1000 files; over either limit, narrow input_path to a subfolder or a single file. An empty folder is refused. If output_path lies inside the input folder, the archive never includes itself. Use s3_file_copy_tool instead if you only need a duplicate of a file, not an archive."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

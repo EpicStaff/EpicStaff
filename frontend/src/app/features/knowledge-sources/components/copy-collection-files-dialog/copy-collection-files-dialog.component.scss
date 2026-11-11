@@ -26,13 +26,15 @@
         justify-content: center;
         width: 36px;
         height: 36px;
+        padding: 0;
         border-radius: 50%;
         border: 1px solid var(--accent-color);
+        background: transparent;
         color: var(--accent-color);
         cursor: pointer;
         flex-shrink: 0;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             border-color: var(--accent-color-hover);
             color: var(--accent-color-hover);
         }
@@ -86,7 +88,7 @@
         color: var(--color-input-text-placeholder);
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         border-color: var(--accent-color, #685fff);
     }
 

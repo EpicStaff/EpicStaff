@@ -734,8 +734,8 @@ REJECTED = [
             ("variables.order.items.count", {"order": {"items": {"count": 5}}}, "uses 'items', the name of a built-in method"),
             ("variables.values.total|0", {"values": {"total": 5}}, "uses 'values', the name of a built-in method"),
             ("variables.values.total|null", {"values": {"total": 5}}, "uses 'values', the name of a built-in method"),
-            ("variables.name.upper", {"name": "Ann"}, "'variables.name.upper' resolves to a built-in method"),
-            ("variables.tags.count", {"tags": ["x"]}, "'variables.tags.count' resolves to a built-in method"),
+            ("variables.name.upper", {"name": "Ann"}, "'variables.name.upper' reads a built-in method"),
+            ("variables.tags.count", {"tags": ["x"]}, "'variables.tags.count' reads a built-in method"),
         ]
     ],
     *[

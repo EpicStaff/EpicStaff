@@ -1,6 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from tables.exceptions import ExportCycleError
 from tables.import_export.constants import IMPORT_VERSION, MAIN_ENTITY_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.export_exclusions import ExcludedEntity, ExcludedEntityRecorder
@@ -57,6 +58,7 @@ class DependencyCollector:
         self.org_id = org_id
         self.collected = defaultdict(dict)
         self._exclusions = ExcludedEntityRecorder(registry, policy, org_id)
+        self._path: list[tuple[str, int]] = []
 
     @property
     def excluded(self) -> list[ExcludedEntity]:
@@ -68,21 +70,34 @@ class DependencyCollector:
         if entity_id in self.collected[entity_type]:
             return
 
-        strategy = self.registry.get_strategy(entity_type)
-        instance = strategy.get_instance(entity_id)
+        entity_key = (entity_type, entity_id)
+        if entity_key in self._path:
+            cycle_start_index = self._path.index(entity_key)
+            raise ExportCycleError([*self._path[cycle_start_index:], entity_key])
 
-        if not instance:
-            return
+        # append/pop bracket the whole body: an entity leaves `_path` only once its
+        # own subtree is done, so a diamond-shaped dependency reached twice (once
+        # per branch) isn't mistaken for a cycle.
+        try:
+            self._path.append(entity_key)
 
-        dependencies = self._extract_dependencies(strategy, instance)
+            strategy = self.registry.get_strategy(entity_type)
+            instance = strategy.get_instance(entity_id)
 
-        for dep_type, dep_ids in dependencies.items():
-            for dep_id in dep_ids:
-                if not self._exclusions.admits(dep_type, dep_id):
-                    continue
-                self.collect(dep_type, dep_id)
+            if not instance:
+                return
 
-        self.collected[entity_type][entity_id] = instance
+            dependencies = self._extract_dependencies(strategy, instance)
+
+            for dep_type, dep_ids in dependencies.items():
+                for dep_id in dep_ids:
+                    if not self._exclusions.admits(dep_type, dep_id):
+                        continue
+                    self.collect(dep_type, dep_id)
+
+            self.collected[entity_type][entity_id] = instance
+        finally:
+            self._path.pop()
 
     def _extract_dependencies(self, strategy, instance) -> dict[str, list[int]]:
         extractor = getattr(strategy, "extract_org_scoped_dependencies", None)

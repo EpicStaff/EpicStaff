@@ -8,11 +8,12 @@ authors = [
 ]
 requires-python = "==3.12.10"
 dependencies = [
-    "fastmcp==3.4.7",
+    "fastmcp==4.1.6",
     "foundation",
     "jsonschema==4.26.0",
-    "litellm==1.100.5",
+    "litellm==1.108.1",
     "loguru==0.7.3",
+    "mcp==2.3.0",
     "pydantic==2.13.4",
     "redis==5.3.1",
 ]
@@ -26,12 +27,12 @@ transitive-pins = [
     "aiohttp==3.14.3",
     "anyio==4.14.2",
     "authlib==1.7.2",
-    "certifi==2026.7.22",
+    "certifi==2026.10.23",
     "charset-normalizer==3.4.7",
     "cryptography==50.0.1",
     "idna==3.18",
     "jinja2==3.1.6",
-    "pyjwt==2.13.0",
+    "pyjwt==2.15.1",
     "python-dotenv==1.2.2",
     "python-multipart==0.0.32",
     "requests==2.34.2",

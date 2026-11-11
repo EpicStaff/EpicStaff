@@ -6,6 +6,15 @@ import { of } from 'rxjs';
 
 import { KeyValueListComponent } from './key-value-list.component';
 
+// jsdom has no ResizeObserver; the overflow tooltips only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+
 @Component({
     imports: [KeyValueListComponent, ReactiveFormsModule],
     template: `<app-key-value-list [formControl]="control" />`,
@@ -42,6 +51,10 @@ describe('KeyValueListComponent', () => {
 
     function field(fixture: ComponentFixture<HostComponent>, row: number, kind: 'name' | 'value'): HTMLInputElement {
         return inputs(fixture)[row * 2 + (kind === 'name' ? 0 : 1)];
+    }
+
+    function describedBy(element: HTMLElement): string[] {
+        return (element.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean);
     }
 
     function removeButtons(fixture: ComponentFixture<HostComponent>): HTMLButtonElement[] {
@@ -128,8 +141,9 @@ describe('KeyValueListComponent', () => {
         expect(field(fixture, 0, 'name').getAttribute('aria-label')).toBe('Header name, row 1');
         expect(valueInput.getAttribute('aria-label')).toBe('Header value, row 1');
         expect(valueInput.getAttribute('aria-invalid')).toBe('true');
-        expect(valueInput.getAttribute('aria-describedby')).toBe(error.id);
-        expect(field(fixture, 0, 'name').getAttribute('aria-describedby')).toBeNull();
+        // The name tooltip may add its own description id: only which input the error describes matters here.
+        expect(describedBy(valueInput)).toContain(error.id);
+        expect(describedBy(field(fixture, 0, 'name'))).not.toContain(error.id);
         expect(removeButtons(fixture)[0].getAttribute('aria-label')).toBe('Remove header, row 1');
     });
 
@@ -210,5 +224,158 @@ describe('KeyValueListComponent', () => {
         control.setValue({ '': '' });
         fixture.detectChanges();
         expect(control.valid).toBe(true);
+    });
+});
+
+@Component({
+    imports: [KeyValueListComponent, ReactiveFormsModule],
+    template: `<app-key-value-list
+        [formControl]="control"
+        rowLabel="Option"
+        [secretSuggestions]="false"
+        [headerRules]="false"
+    />`,
+})
+class PlainHostComponent {
+    readonly control = new FormControl<Record<string, string>>({});
+}
+
+describe('KeyValueListComponent as a plain name-to-text list', () => {
+    let getSecrets: ReturnType<typeof vi.fn>;
+
+    function setup() {
+        getSecrets = vi.fn(() => of([]));
+        TestBed.configureTestingModule({
+            providers: [{ provide: SecretsStorageService, useValue: { secrets: () => [], getSecrets } }],
+        });
+        const fixture = TestBed.createComponent(PlainHostComponent);
+        fixture.detectChanges();
+        return { fixture, control: fixture.componentInstance.control };
+    }
+
+    function inputs(fixture: ComponentFixture<PlainHostComponent>): HTMLInputElement[] {
+        return Array.from(fixture.nativeElement.querySelectorAll('input'));
+    }
+
+    function type(fixture: ComponentFixture<PlainHostComponent>, input: HTMLInputElement, text: string): void {
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    it('names rows after the row label for assistive tech', () => {
+        const { fixture } = setup();
+
+        const [name, value] = inputs(fixture);
+
+        expect(name.getAttribute('aria-label')).toBe('Option name, row 1');
+        expect(value.getAttribute('aria-label')).toBe('Option value, row 1');
+        expect(fixture.nativeElement.querySelector('.kv-list__remove-btn').getAttribute('aria-label')).toBe(
+            'Remove option, row 1'
+        );
+    });
+
+    it('accepts a name with spaces and emits it, with no header error', () => {
+        const { fixture, control } = setup();
+
+        type(fixture, inputs(fixture)[0], 'Very senior');
+        type(fixture, inputs(fixture)[1], 'Ten years or more');
+
+        expect(fixture.nativeElement.querySelector('.kv-list__error-message')).toBeNull();
+        expect(control.value).toEqual({ 'Very senior': 'Ten years or more' });
+        expect(control.valid).toBe(true);
+    });
+
+    it('treats names that differ only in case as different, and flags an exact duplicate', () => {
+        const { fixture, control } = setup();
+        control.setValue({ Eng: 'a', eng: 'b' });
+        fixture.detectChanges();
+        expect(control.valid).toBe(true);
+
+        control.setValue({ Eng: 'a' });
+        fixture.detectChanges();
+        type(fixture, inputs(fixture)[2], 'Eng');
+        type(fixture, inputs(fixture)[3], 'b');
+
+        expect(fixture.nativeElement.querySelector('.kv-list__error-message').textContent.trim()).toBe(
+            'Duplicate name'
+        );
+    });
+
+    it('uses plain copy for a missing value', () => {
+        const { fixture } = setup();
+
+        type(fixture, inputs(fixture)[0], 'eng');
+
+        expect(fixture.nativeElement.querySelector('.kv-list__error-message').textContent.trim()).toBe(
+            'Value is required'
+        );
+    });
+
+    it('does not fetch secrets or offer them on the value field', () => {
+        const { fixture } = setup();
+
+        inputs(fixture)[1].dispatchEvent(new Event('focus'));
+        fixture.detectChanges();
+
+        expect(getSecrets).not.toHaveBeenCalled();
+        expect(document.querySelector('.kv-list__suggestions')).toBeNull();
+    });
+
+    it('shows a value that looks like a secret marker as the plain text it is', async () => {
+        const { fixture, control } = setup();
+        control.setValue({ eng: 'epicstaff_secret(key)' });
+        fixture.detectChanges();
+        await fixture.whenStable();
+
+        expect(inputs(fixture)[1].value).toBe('epicstaff_secret(key)');
+        expect(fixture.nativeElement.querySelector('.kv-list__secret-badge')).toBeNull();
+    });
+});
+
+@Component({
+    imports: [KeyValueListComponent, ReactiveFormsModule],
+    template: `<app-key-value-list
+        [formControl]="control"
+        [compact]="true"
+    />`,
+})
+class CompactHostComponent {
+    readonly control = new FormControl<Record<string, string>>({});
+}
+
+describe('KeyValueListComponent compact', () => {
+    function render<T>(host: new () => T): HTMLElement {
+        TestBed.configureTestingModule({
+            providers: [{ provide: SecretsStorageService, useValue: { secrets: () => [], getSecrets: () => of([]) } }],
+        });
+        const fixture = TestBed.createComponent(host);
+        fixture.detectChanges();
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    it('is framed by default and drops the frame only when asked', () => {
+        expect(render(HostComponent).querySelector('.kv-list--compact')).toBeNull();
+    });
+
+    it('marks the list compact when the input is set', () => {
+        expect(render(CompactHostComponent).querySelector('.kv-list--compact')).not.toBeNull();
+    });
+});
+
+describe('KeyValueListComponent defaults', () => {
+    it('keeps header rules and the secrets picker for callers that set nothing', () => {
+        const getSecrets = vi.fn(() => of([]));
+        TestBed.configureTestingModule({
+            providers: [{ provide: SecretsStorageService, useValue: { secrets: () => [], getSecrets } }],
+        });
+        const fixture = TestBed.createComponent(HostComponent);
+        fixture.componentInstance.control.setValue({ 'X Team': 'v' });
+        fixture.detectChanges();
+
+        expect(getSecrets).toHaveBeenCalledTimes(1);
+        expect(fixture.nativeElement.querySelector('.kv-list__error-message').textContent.trim()).toBe(
+            "Header names can't contain spaces or special characters"
+        );
     });
 });

@@ -246,7 +246,7 @@ $logo-padding-bottom: 0.75rem;
             line-height: 1;
         }
 
-        // A row that opens a list (Apps, the app switcher) rather than a page: a button drawn like the links.
+        // A row that opens a list (Apps, the app switcher, Help) rather than a page: a button drawn like the links.
         .sidenav-nav-button {
             border: 0;
             background-color: transparent;
@@ -302,7 +302,7 @@ $logo-padding-bottom: 0.75rem;
             margin: 0 auto;
             position: relative;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--white-alpha-5);
             }
             &.active {
@@ -320,8 +320,8 @@ $logo-padding-bottom: 0.75rem;
                 color: var(--gray-400);
                 transition: color 0.2s ease-in-out;
             }
-            &:hover .sidenav-link-icon,
-            &:hover .sidenav-row-label {
+            &:is(:hover, :focus-visible) .sidenav-link-icon,
+            &:is(:hover, :focus-visible) .sidenav-row-label {
                 color: var(--gray-200);
             }
             &.active .sidenav-link-icon,
@@ -332,14 +332,14 @@ $logo-padding-bottom: 0.75rem;
     }
 }
 
-// An apps list opened inline in the drawer: under its row, as wide as the rows.
+// A list opened inline in the drawer: under its row, as wide as the rows.
 .sidenav-inline-list {
     align-self: stretch;
     padding: 0 $nav-padding-inline;
 }
 
-// The popover an apps row opens, to the right of the sidebar; its list scrolls when the window is short.
-.apps-popover {
+// The popover a list row opens, to the right of the sidebar; its list scrolls when the window is short.
+.sidenav-popover {
     display: flex;
     flex-direction: column;
     width: 18.75rem; // 300px
@@ -367,7 +367,7 @@ $logo-padding-bottom: 0.75rem;
         background-color 0.2s ease-out,
         color 0.2s ease-out;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
         color: var(--color-text-primary);
     }
@@ -401,15 +401,20 @@ $logo-padding-bottom: 0.75rem;
     width: $row-size;
     height: $row-size;
     padding: 0 $avatar-padding;
+    border: 0;
     border-radius: 0.5rem;
     margin: 0 auto;
+    background-color: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
     transition: background-color 0.2s ease-out;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--white-alpha-5);
     }
-    &:hover .sidenav-row-label {
+    &:is(:hover, :focus-visible) .sidenav-row-label {
         color: var(--gray-200);
     }
 

@@ -44,6 +44,17 @@ function fileNames(fixture: ComponentFixture<CollectionFilesComponent>): string[
 }
 
 describe('CollectionFilesComponent filter by type', () => {
+    beforeEach(() => {
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        );
+    });
+
     it('lists every file without a filter', () => {
         expect(fileNames(render())).toEqual(['a.pdf', 'b.txt', 'c.pdf', 'd.exe']);
     });

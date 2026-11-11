@@ -6,12 +6,15 @@ from rbac.models import ApiKey
 
 class ApiKeySerializer(serializers.ModelSerializer):
     status = serializers.CharField(read_only=True)
+    org_name = serializers.CharField(source="org.name", read_only=True)
 
     class Meta:
         model = ApiKey
         fields = [
             "id",
             "name",
+            "org_id",
+            "org_name",
             "prefix",
             "created_at",
             "expires_at",
@@ -26,6 +29,9 @@ class ApiKeyCreateRequestSerializer(serializers.Serializer):
     # `ApiKeyValidationService.validate_create` so errors can be
     # aggregated and formatted uniformly.
     name = serializers.CharField(max_length=255)
+    org_id = serializers.IntegerField(
+        min_value=1, help_text="Organization the key is bound to; the key works only there."
+    )
     expires_in_days = serializers.IntegerField(
         required=False,
         allow_null=True,
@@ -57,11 +63,6 @@ class ApiKeyOwnerSerializer(serializers.ModelSerializer):
 
 class ApiKeyAdminSerializer(ApiKeySerializer):
     owner = ApiKeyOwnerSerializer(source="created_by", read_only=True)
-    org_ids = serializers.SerializerMethodField()
 
     class Meta(ApiKeySerializer.Meta):
-        fields = [*ApiKeySerializer.Meta.fields, "owner", "org_ids"]
-
-    def get_org_ids(self, key: ApiKey) -> list[int]:
-        """Set by ApiKeyManagementService.attach_visible_orgs."""
-        return getattr(key, "_visible_org_ids", [])
+        fields = [*ApiKeySerializer.Meta.fields, "owner"]

@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
 
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
@@ -52,7 +53,10 @@ describe('VenvDialogComponent library rows', () => {
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
-                { provide: DialogRef, useValue: { close } as unknown as DialogRef },
+                {
+                    provide: DialogRef,
+                    useValue: { close, keydownEvents: new Subject<KeyboardEvent>() } as unknown as DialogRef,
+                },
                 { provide: DIALOG_DATA, useValue: data },
                 { provide: ToastService, useValue: { error: vi.fn() } as unknown as ToastService },
             ],
@@ -119,7 +123,15 @@ describe('VenvDialogComponent library rows', () => {
 
     it('fills Version with the installed version and Specification with the stored specifier set', () => {
         open({
-            venv: storedVenv([{ name: 'requests', version: '2.31.0', specification: '>=2.0,<3.0', description: null }]),
+            venv: storedVenv([
+                {
+                    name: 'requests',
+                    version: '2.31.0',
+                    specification: '>=2.0,<3.0',
+                    description: null,
+                    is_custom: false,
+                },
+            ]),
         });
 
         expect(cell(0, 'Version').value).toBe('2.31.0');
@@ -127,14 +139,22 @@ describe('VenvDialogComponent library rows', () => {
     });
 
     it('leaves Version empty for a library the build has not resolved yet', () => {
-        open({ venv: storedVenv([{ name: 'requests', version: null, specification: '>=2.0', description: null }]) });
+        open({
+            venv: storedVenv([
+                { name: 'requests', version: null, specification: '>=2.0', description: null, is_custom: false },
+            ]),
+        });
 
         expect(cell(0, 'Version').value).toBe('');
     });
 
     it('sends a stored specifier set back unchanged when nothing in the row was edited', () => {
         const specification = '!=1.2,>=1.0,<=1.8';
-        open({ venv: storedVenv([{ name: 'requests', version: '1.5', specification, description: null }]) });
+        open({
+            venv: storedVenv([
+                { name: 'requests', version: '1.5', specification, description: null, is_custom: false },
+            ]),
+        });
 
         save();
 
@@ -142,9 +162,11 @@ describe('VenvDialogComponent library rows', () => {
         expect(request.request.method).toBe('PATCH');
         expect(request.request.body).toEqual({
             name: 'ml base',
-            libs: [{ name: 'requests', version: '1.5', specification, description: null }],
+            libs: [{ name: 'requests', version: '1.5', specification, description: null, is_custom: false }],
         });
-        request.flush(storedVenv([{ name: 'requests', version: '1.5', specification, description: null }]));
+        request.flush(
+            storedVenv([{ name: 'requests', version: '1.5', specification, description: null, is_custom: false }])
+        );
     });
 
     it.each([
@@ -152,25 +174,37 @@ describe('VenvDialogComponent library rows', () => {
             shape: 'name only: the resolver picks a version',
             version: '',
             specification: '',
-            expected: { name: 'requests', version: null, specification: '', description: null },
+            expected: { name: 'requests', version: null, specification: '', description: null, is_custom: false },
         },
         {
             shape: 'name and version: that version is pinned',
             version: '2.31.0',
             specification: '',
-            expected: { name: 'requests', version: '2.31.0', specification: '', description: null },
+            expected: { name: 'requests', version: '2.31.0', specification: '', description: null, is_custom: false },
         },
         {
             shape: 'name and specification: the resolver picks inside the set',
             version: '',
             specification: '!=1.2,>=1.0,<=1.8',
-            expected: { name: 'requests', version: null, specification: '!=1.2,>=1.0,<=1.8', description: null },
+            expected: {
+                name: 'requests',
+                version: null,
+                specification: '!=1.2,>=1.0,<=1.8',
+                description: null,
+                is_custom: false,
+            },
         },
         {
             shape: 'name, version and specification: the version wins, the set is kept',
             version: '1.5',
             specification: '!=1.2,>=1.0,<=1.8',
-            expected: { name: 'requests', version: '1.5', specification: '!=1.2,>=1.0,<=1.8', description: null },
+            expected: {
+                name: 'requests',
+                version: '1.5',
+                specification: '!=1.2,>=1.0,<=1.8',
+                description: null,
+                is_custom: false,
+            },
         },
     ])('posts $shape', ({ version, specification, expected }) => {
         open({});
@@ -188,7 +222,7 @@ describe('VenvDialogComponent library rows', () => {
         save();
 
         expect(savedBody().libs).toEqual([
-            { name: 'requests', version: '2.31.0', specification: '>=2.0', description: null },
+            { name: 'requests', version: '2.31.0', specification: '>=2.0', description: null, is_custom: false },
         ]);
     });
 
@@ -240,6 +274,26 @@ describe('VenvDialogComponent library rows', () => {
         expect(TestBed.inject(ToastService).error).toHaveBeenCalledWith(
             "Version '1.0' does not satisfy specification '>=2.0'"
         );
+        expect(close).not.toHaveBeenCalled();
+    });
+
+    it('toasts why a library change was refused for a venv that code reading secrets runs in', () => {
+        const message =
+            'libs: Changing code that reads secrets, or what it runs with, requires the "Use" permission on Secrets. ' +
+            'The existing value was left unchanged. Ask an organization admin to grant it.';
+        open({
+            venv: storedVenv([
+                { name: 'requests', specification: '', version: '2.31.0', description: null, is_custom: false },
+            ]),
+        });
+        type(0, 'Version', '2.32.0');
+
+        save();
+        httpMock
+            .expectOne(`${VENVS_URL}7/`)
+            .flush({ status_code: 400, code: 'invalid', message }, { status: 400, statusText: 'Bad Request' });
+
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledExactlyOnceWith(message);
         expect(close).not.toHaveBeenCalled();
     });
 });
