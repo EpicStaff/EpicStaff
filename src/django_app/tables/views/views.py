@@ -1058,14 +1058,14 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
         secret_resolver = SecretResolver()
 
         embedding_api_key_secret_id = indexing_data["embedder_api_key_secret_id"]
-        embedding_api_key = secret_resolver.resolve(
+        embedding_api_key = secret_resolver.resolve_sealed(
             secret_id=embedding_api_key_secret_id,
             org_id=org_id,
         )
 
         llm_api_key_secret_id = indexing_data.get("llm_api_key_secret_id")
         if llm_api_key_secret_id is not None:
-            llm_api_key = secret_resolver.resolve(
+            llm_api_key = secret_resolver.resolve_sealed(
                 secret_id=llm_api_key_secret_id,
                 org_id=org_id,
             )

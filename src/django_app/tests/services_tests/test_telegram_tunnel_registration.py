@@ -42,6 +42,8 @@ from tables.services.session_manager_service import SessionManagerService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 
+from tests.sealed_values import open_sealed
+
 
 def _empty_session_data() -> SessionData:
     """Real session data with an empty graph: only the session's own records are under
@@ -126,6 +128,30 @@ def test_tunnel_is_registered_under_the_bare_path_whatever_nodes_are_attached(de
 
     assert (pydantic_config.name, pydantic_config.org_id) == (trigger.path, trigger.org_id)
     assert pydantic_config.unique_id == f"{provider}:{trigger.org_id}:{trigger.path}" == config.get_redis_key()
+
+
+WEBHOOK_AUTH_PLAINTEXT = "webhook-auth-secret-" + "w" * 20
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("no_registration_side_effects")
+def test_ngrok_config_conversion_seals_the_auth_token_and_the_trigger_auth_secret(default_org):
+    trigger, _ = _trigger_with_nodes(default_org, "sealed-path", ProviderType.NGROK, ())
+    config = _ngrok_config(default_org, trigger)
+    WebhookTriggerService().set_trigger_auth_secret(
+        trigger,
+        secret=secret_service.create(
+            text=WEBHOOK_AUTH_PLAINTEXT, org=default_org, name="sealed-path-auth"
+        ),
+        kind=WebhookTriggerAuthKind.WEBHOOK,
+    )
+
+    pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(config)
+
+    assert pydantic_config.auth_token != "tok"
+    assert open_sealed(pydantic_config.auth_token) == "tok"
+    assert pydantic_config.auth.secret != WEBHOOK_AUTH_PLAINTEXT
+    assert open_sealed(pydantic_config.auth.secret) == WEBHOOK_AUTH_PLAINTEXT
 
 
 @pytest.fixture
