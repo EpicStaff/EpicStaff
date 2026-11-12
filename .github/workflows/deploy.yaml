@@ -41,7 +41,7 @@ permissions:
 jobs:
   resolve:
     name: Resolve target/ref/tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       server: ${{ steps.r.outputs.server }}
       ref: ${{ steps.r.outputs.ref }}

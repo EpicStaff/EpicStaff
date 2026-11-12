@@ -18,7 +18,7 @@ permissions:
 jobs:
   resolve:
     name: Resolve release tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.r.outputs.tag }}
     steps:
