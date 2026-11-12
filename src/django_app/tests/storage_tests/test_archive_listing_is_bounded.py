@@ -1,11 +1,12 @@
-"""An uploaded archive is listed once, within the caps, before any verdict on it.
+"""An uploaded archive is inspected once, within the caps, before any verdict on it.
 
-Listing stops as soon as the entry cap is exceeded or the decompressed size
-passes its cap, so a small hostile archive cannot make the validator inflate it
-in full or hold every header in memory. The size and entry verdicts come before
-the executable verdict, because the executable check only sees what the bounded
-listing read. An archive that is recognised but cannot be read to the end is
-rejected: a partial listing would let the unread members skip every check.
+The validator runs the storage upload's header-only inspection. It stops as soon as
+the entry cap is exceeded, folders and links included, or the declared size passes the
+expansion cap, so a small hostile archive cannot make it inflate the archive in full or
+read every header. The size and entry verdicts come before the executable verdict,
+because the executable check only sees what the inspection read. An archive that is
+recognised but cannot be read to the end is rejected: a partial inspection would let the
+unread members skip every check.
 """
 
 import bz2
@@ -93,11 +94,14 @@ def test_listing_stops_once_the_entry_cap_is_exceeded():
     [
         (3, 0, False),
         (4, 0, True),
-        (3, 2, False),
+        (2, 1, False),
+        (2, 2, True),
+        (0, 4, True),
     ],
-    ids=["at-cap", "one-over-cap", "directories-do-not-count"],
+    ids=["at-cap", "one-over-cap", "with-a-folder-at-cap", "folders-count", "folders-only"],
 )
-def test_entry_cap_counts_regular_files_only(file_count, directory_count, rejected):
+def test_entry_cap_counts_every_member(file_count, directory_count, rejected):
+    """Folders count too: a tar of nothing but folders would otherwise be read in full."""
     content = _tar(
         files=[(f"f{index}.txt", b"x") for index in range(file_count)],
         directories=[f"dir{index}" for index in range(directory_count)],
@@ -112,6 +116,19 @@ def test_entry_cap_counts_regular_files_only(file_count, directory_count, reject
         assert validator.validate([upload]) == [upload]
 
 
+@pytest.mark.parametrize("link_type", [tarfile.SYMTYPE, tarfile.LNKTYPE], ids=["symlink", "hardlink"])
+def test_tar_with_a_link_is_rejected(link_type):
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as archive:
+        info = tarfile.TarInfo("link")
+        info.type = link_type
+        info.linkname = "target"
+        archive.addfile(info)
+
+    with pytest.raises(ValidationError, match="contains a symlink or hardlink"):
+        _validator().validate([_upload("bundle.tar", buffer.getvalue())])
+
+
 def test_tar_with_an_unreadable_later_header_is_rejected():
     """The hidden member is a script; reading only the first header would wave it through."""
     content = _tar_members(files=[("readme.txt", b"hello")]) + _truncated_long_name_header(
@@ -119,7 +136,7 @@ def test_tar_with_an_unreadable_later_header_is_rejected():
     )
     _assert_tarfile_cannot_list(content)
 
-    with pytest.raises(ValidationError, match="corrupt or unreadable"):
+    with pytest.raises(ValidationError, match="damaged or unreadable"):
         _validator().validate([_upload("bundle.tar", content)])
 
 
@@ -135,7 +152,7 @@ def test_tar_with_an_unreadable_later_header_is_rejected():
     ids=["gzip", "gzip-deflate", "bzip2", "xz"],
 )
 def test_corrupt_compressed_layer_is_rejected(content):
-    with pytest.raises(ValidationError, match="corrupt or unreadable"):
+    with pytest.raises(ValidationError, match="damaged or unreadable"):
         _validator().validate([_upload("bundle.tar.gz", content)])
 
 
@@ -185,12 +202,12 @@ def test_zip_with_a_broken_central_directory_is_rejected():
     content = buffer.getvalue().replace(b"PK\x01\x02", b"PK\x00\x00")
     assert zipfile.is_zipfile(io.BytesIO(content))
 
-    with pytest.raises(ValidationError, match="corrupt or unreadable"):
+    with pytest.raises(ValidationError, match="damaged or unreadable"):
         _validator().validate([_upload("bundle.zip", content)])
 
 
 def test_an_inner_compressed_layer_is_never_inflated(monkeypatch):
-    """Only the outer layer is inflated, through the cap; a layer inside it is opaque data."""
+    """Only the outer layer is inflated; a layer inside it is no tar, so the upload is refused."""
     pax_header = tarfile.TarInfo("././@PaxHeader")
     pax_header.type = tarfile.XHDTYPE
     pax_header.size = 5_000_000
@@ -205,7 +222,8 @@ def test_an_inner_compressed_layer_is_never_inflated(monkeypatch):
 
     monkeypatch.setattr(bz2.BZ2File, "read", counting_read)
 
-    _validator().validate([_upload("bundle.tar.gz", gzip.compress(inner))])
+    with pytest.raises(ValidationError, match="damaged or unreadable"):
+        _validator().validate([_upload("bundle.tar.gz", gzip.compress(inner))])
 
     assert sum(inflated) <= 1_000_000
 
@@ -225,7 +243,7 @@ def _tar_with_bad_sparse_map(after_another_member: bool) -> bytes:
 def test_tar_with_a_malformed_sparse_map_is_rejected(after_another_member):
     content = _tar_with_bad_sparse_map(after_another_member)
 
-    with pytest.raises(ValidationError, match="corrupt or unreadable"):
+    with pytest.raises(ValidationError, match="damaged or unreadable"):
         _validator().validate([_upload("bundle.tar", content)])
 
 
@@ -259,5 +277,5 @@ def test_zip_with_an_unreadable_central_header_is_rejected(patch):
     content = _zip_with_central_header(patch)
     assert zipfile.is_zipfile(io.BytesIO(content))
 
-    with pytest.raises(ValidationError, match="corrupt or unreadable"):
+    with pytest.raises(ValidationError, match="damaged or unreadable"):
         _validator().validate([_upload("bundle.zip", content)])

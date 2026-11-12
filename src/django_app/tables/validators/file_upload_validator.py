@@ -1,48 +1,11 @@
-import bz2
-import gzip
-import io
-import lzma
 import os
-import tarfile
-import zipfile
-import zlib
-from dataclasses import dataclass
 
 from rest_framework import serializers
 
 from tables.constants.upload_limits import UploadLimits, default_upload_limits
-
-
-class _ArchiveTooLarge(ValueError):  # noqa: N818
-    """Internal signal that a bounded decompression hit its cap."""
-
-
-class _ArchiveUnreadable(ValueError):  # noqa: N818
-    """Internal signal that a recognised archive cannot be read to the end."""
-
-    def __init__(self):
-        super().__init__("is corrupt or unreadable")
-
-
-# What zipfile/tarfile raise on crafted headers: besides their own errors, a bare
-# ValueError (e.g. a bad GNU sparse map), UnicodeDecodeError on a mislabelled
-# name, NotImplementedError on an unknown zip version.
-_ARCHIVE_READ_ERRORS = (
-    tarfile.TarError,
-    zipfile.BadZipFile,
-    ValueError,
-    NotImplementedError,
-    OSError,
-    EOFError,
-)
-
-
-@dataclass(frozen=True)
-class _ArchiveListing:
-    """Regular files an archive's headers declare; nothing is extracted."""
-
-    uncompressed_bytes: int
-    file_names: list[str]
+from tables.exceptions import StorageQuotaExceeded
+from tables.services.storage_service.archive_unpacking.extraction_guard import ArchiveLimitExceeded
+from tables.services.storage_service.archive_unpacking.inspection import inspect_archive
 
 
 class FileValidator:
@@ -134,90 +97,31 @@ class FileValidator:
         if problem := self._name_problem(filename, None):
             raise serializers.ValidationError(problem)
 
-    def _bounded_decompress(self, raw: bytes) -> bytes:
-        """Inflate an outer gzip/bzip2/xz layer, reading at most one byte past the cap."""
+    def _archive_problem(self, file) -> str | None:
+        """Why an archive may not be uploaded, or None when it may, or is no archive at all.
+
+        The same header-only inspection the storage upload runs before unpacking, with
+        the expansion cap in place of the free quota.
+        """
         cap = self._limits.max_archive_uncompressed_bytes
-        compressed = io.BytesIO(raw)
-
-        if raw.startswith(b"\x1f\x8b"):
-            stream = gzip.GzipFile(fileobj=compressed)
-        elif self._is_bzip2(raw):
-            stream = bz2.BZ2File(compressed)
-        elif raw.startswith(b"\xfd7zXZ\x00"):
-            stream = lzma.LZMAFile(compressed)  # noqa: SIM115
-        else:
-            return raw
-
         try:
-            with stream:
-                plain = stream.read(cap + 1)
-        except (OSError, EOFError, lzma.LZMAError, zlib.error) as error:
-            # Fail closed: a stream that cannot be inflated cannot be checked either.
-            raise _ArchiveUnreadable() from error
-
-        if len(plain) > cap:
-            raise _ArchiveTooLarge(f"expands to more than {cap} bytes")
-
-        return plain
-
-    @staticmethod
-    def _is_bzip2(raw: bytes) -> bool:
-        """A bzip2 stream, not just text that happens to start with "BZh".
-
-        The header is "BZh", a block-size digit, then the magic of the first block
-        or of the end of an empty stream.
-        """
-        return (
-            raw[:3] == b"BZh"
-            and b"1" <= raw[3:4] <= b"9"
-            and raw[4:10] in {b"1AY&SY", b"\x17rE8P\x90"}
-        )
-
-    def _list_archive(self, raw: bytes) -> _ArchiveListing | None:
-        """List a ZIP/TAR archive from its headers alone, or None when it is neither.
-
-        A TAR listing stops one file past ``max_archive_entries``: the archive is
-        rejected at that point, so reading further only costs memory and time.
-        """
-        buf = io.BytesIO(raw)
-        if zipfile.is_zipfile(buf):
-            buf.seek(0)
-            try:
-                with zipfile.ZipFile(buf, "r") as zf:
-                    entries = [e for e in zf.infolist() if not e.is_dir()]
-            except _ARCHIVE_READ_ERRORS as error:
-                raise _ArchiveUnreadable() from error
-            return _ArchiveListing(
-                uncompressed_bytes=sum(e.file_size for e in entries),
-                file_names=[e.filename for e in entries],
+            inspect_archive(
+                file,
+                file.name,
+                max_entries=self._limits.max_archive_entries,
+                free_bytes=cap,
+                is_blocked=self.is_executable_filename,
             )
-
-        plain_buf = io.BytesIO(self._bounded_decompress(raw))
-        try:
-            # "r:" rather than is_tarfile(): its "r:*" would inflate an inner
-            # compressed layer with no cap.
-            tf = tarfile.open(fileobj=plain_buf, mode="r:")  # noqa: SIM115
-        except tarfile.ReadError:
-            return None
-        except _ARCHIVE_READ_ERRORS as error:
-            raise _ArchiveUnreadable() from error
-
-        members: list[tarfile.TarInfo] = []
-        try:
-            with tf:
-                for member in tf:
-                    if not member.isfile():
-                        continue
-                    members.append(member)
-                    if len(members) > self._limits.max_archive_entries:
-                        break
-        except _ARCHIVE_READ_ERRORS as error:
-            # Fail closed: a partial listing would let the unread members skip the checks.
-            raise _ArchiveUnreadable() from error
-        return _ArchiveListing(
-            uncompressed_bytes=sum(m.size for m in members),
-            file_names=[m.name for m in members],
-        )
+        except StorageQuotaExceeded:
+            return f"Archive '{file.name}' expands to more than {cap} bytes"
+        except ArchiveLimitExceeded:
+            return (
+                f"Archive '{file.name}' contains more than "
+                f"{self._limits.max_archive_entries} entries"
+            )
+        except ValueError as error:
+            return str(error)
+        return None
 
     def validate(self, files: list) -> list:
         """
@@ -240,38 +144,8 @@ class FileValidator:
                 detail_lines.append(problem)
                 continue
 
-            position = f.tell()
-            raw = f.read()
-            f.seek(position)
-
-            try:
-                listing = self._list_archive(raw)
-            except (_ArchiveTooLarge, _ArchiveUnreadable) as error:
-                detail_lines.append(f"Archive '{f.name}' {error}")
-                continue
-
-            if listing is None:
-                continue
-
-            if len(listing.file_names) > self._limits.max_archive_entries:
-                detail_lines.append(
-                    f"Archive '{f.name}' contains more than "
-                    f"{self._limits.max_archive_entries} entries"
-                )
-                continue
-
-            if listing.uncompressed_bytes > self._limits.max_archive_uncompressed_bytes:
-                detail_lines.append(
-                    f"Archive '{f.name}' expands to {listing.uncompressed_bytes} bytes, "
-                    f"over the limit of {self._limits.max_archive_uncompressed_bytes} bytes"
-                )
-                continue
-
-            blocked = [name for name in listing.file_names if self.is_executable_filename(name)]
-            if blocked:
-                detail_lines.append(
-                    f"Archive '{f.name}' contains executable files: " + ", ".join(blocked)
-                )
+            if archive_problem := self._archive_problem(f):
+                detail_lines.append(archive_problem)
 
         if total_bytes > self._limits.max_total_bytes:
             detail_lines.append(
