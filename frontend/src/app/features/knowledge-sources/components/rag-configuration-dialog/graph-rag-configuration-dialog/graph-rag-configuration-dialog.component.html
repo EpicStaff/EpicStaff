@@ -33,51 +33,12 @@
         </div>
     </div>
 
-    <div class="dialog__tabs">
-        <app-tab-button
-            [active]="activeTab() === 'configuration'"
-            (action)="onTabChange('configuration')"
-        >
-            Configuration
-        </app-tab-button>
-        <app-tab-button
-            [active]="activeTab() === 'visualization'"
-            (action)="onTabChange('visualization')"
-        >
-            Graph Visualization
-        </app-tab-button>
-        <app-tab-button
-            [active]="activeTab() === 'data-tables'"
-            (action)="onTabChange('data-tables')"
-        >
-            Data Tables
-        </app-tab-button>
-    </div>
-
-    @if (activeTab() === 'configuration') {
-        @if (graphRag()) {
+    @if (graphRag(); as rag) {
+        <app-graph-rag-tabbed-view [ragId]="rag.graph_rag_id">
             <app-graph-rag-configuration
                 class="dialog__content"
                 [graphRag]="graphRag()!"
             />
-        }
-    }
-
-    @if (activeTab() === 'visualization') {
-        @if (graphRag(); as rag) {
-            <app-graph-rag-visualization
-                class="dialog__content"
-                [ragId]="rag.graph_rag_id"
-            />
-        }
-    }
-
-    @if (activeTab() === 'data-tables') {
-        @if (graphRag(); as rag) {
-            <app-graph-rag-data-tables
-                class="dialog__content"
-                [ragId]="rag.graph_rag_id"
-            />
-        }
+        </app-graph-rag-tabbed-view>
     }
 </div>

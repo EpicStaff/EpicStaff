@@ -12,10 +12,17 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 1.875rem 1rem 2.5rem;
+        padding: 0 1.875rem 0.25rem 2.5rem;
         width: 100%;
         font-size: var(--text-body-medium-size);
         font-weight: var(--text-body-medium-weight);
+
+        .add-files {
+            display: flex;
+            align-items: center;
+            padding-left: 0.625rem;
+            gap: 0.5rem;
+        }
 
         .count {
             color: var(--accent-color);

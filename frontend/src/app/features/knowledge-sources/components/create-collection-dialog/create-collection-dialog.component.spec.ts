@@ -232,3 +232,59 @@ describe('CreateCollectionDialogComponent indexing confirmation', () => {
         expect(startIndexing).toHaveBeenCalledTimes(startCount);
     });
 });
+
+describe('CreateCollectionDialogComponent graph tabs', () => {
+    function createComponent(overrides: { ragType?: RagType; stepIndex?: number; indexingTriggered?: boolean } = {}) {
+        const { ragType = 'graph', stepIndex = 2 } = overrides;
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: DIALOG_DATA, useValue: { collection_id: 1 } },
+                { provide: DialogRef, useValue: { close: vi.fn() } },
+                {
+                    provide: RagStrategyFactory,
+                    useValue: { create: () => ({ getRagId: () => 42 }) },
+                },
+                {
+                    provide: CollectionsStorageService,
+                    useValue: {
+                        fullCollections: signal([{ collection_id: 1, rag_configurations: [] }]),
+                        getFullCollection: () => of(null),
+                    },
+                },
+                { provide: ToastService, useValue: { error: vi.fn() } },
+                { provide: ConfirmationDialogService, useValue: { confirm: vi.fn() } },
+                { provide: IndexingConfirmationDialogService, useValue: { confirm: vi.fn() } },
+                { provide: RagDeleteRegistryService, useValue: {} },
+                { provide: PermissionsService, useValue: { can: () => true } },
+            ],
+        });
+        const component = TestBed.runInInjectionContext(() => new CreateCollectionDialogComponent());
+        component.currentStepIndex.set(stepIndex);
+        component.selectedRagType.set(ragType);
+
+        return component;
+    }
+
+    it.each<[{ ragType: RagType; stepIndex: number; indexingTriggered: boolean }, boolean]>([
+        [{ ragType: 'graph', stepIndex: 2, indexingTriggered: true }, true],
+        [{ ragType: 'graph', stepIndex: 2, indexingTriggered: false }, false],
+        [{ ragType: 'graph', stepIndex: 1, indexingTriggered: true }, false],
+        [{ ragType: 'naive', stepIndex: 2, indexingTriggered: true }, false],
+    ])('showGraphTabs is %s for %o', (overrides, expected) => {
+        const component = createComponent(overrides);
+
+        expect(component.showGraphTabs()).toBe(expected);
+    });
+
+    it('defaults activeTab to configuration when no tabbed view child is present', () => {
+        const component = createComponent();
+
+        expect(component.activeTab()).toBe('configuration');
+    });
+
+    it('exposes the rag id from the strategy via graphRagId', () => {
+        const component = createComponent();
+
+        expect(component.graphRagId()).toBeNull();
+    });
+});

@@ -163,6 +163,18 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
         });
     }
 
+    toggleAllDocs(): void {
+        const selectable = this.documents()
+            .filter((d) => !(this.indexMode() === 'update_new' && d.status === 'completed'))
+            .map((d) => d.graph_rag_document_id);
+        const allChecked = selectable.every((id) => this.checkedDocIds().has(id));
+        if (allChecked) {
+            this.checkedDocIds.update((prev) => this.removeIds(prev, selectable));
+        } else {
+            this.checkedDocIds.update((prev) => new Set([...prev, ...selectable]));
+        }
+    }
+
     clearPendingDeletes(): void {
         if (this.pendingDeleteIdsSignal().size === 0) return;
         this.pendingDeleteIdsSignal.set(new Set());

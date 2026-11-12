@@ -3,7 +3,7 @@ import { StorageService } from '@shared/services';
 import { catchError, delay, Observable, of, Subject, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
-import { RagStatus, RagType } from '../models/base-rag.model';
+import { IndexingUsage, RagStatus, RagType } from '../models/base-rag.model';
 import {
     CreateCollectionDtoResponse,
     DeleteCollectionResponse,
@@ -64,6 +64,14 @@ export class CollectionsStorageService implements StorageService {
         for (const c of this.fullCollectionsSignal()) {
             const found = c.rag_configurations.find((r) => r.rag_id === ragId && r.rag_type === ragType);
             if (found) return found.status;
+        }
+        return null;
+    }
+
+    getRagIndexingUsage(ragId: number, ragType: RagType): IndexingUsage | null {
+        for (const c of this.fullCollectionsSignal()) {
+            const found = c.rag_configurations.find((r) => r.rag_id === ragId && r.rag_type === ragType);
+            if (found) return found.indexing_usage;
         }
         return null;
     }

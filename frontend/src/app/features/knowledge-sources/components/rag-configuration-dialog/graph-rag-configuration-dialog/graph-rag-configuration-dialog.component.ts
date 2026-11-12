@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ButtonComponent, TabButtonComponent } from '@shared/components';
+import { ButtonComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, Observable, of } from 'rxjs';
@@ -11,32 +11,23 @@ import { CollectionGraphRag } from '../../../models/graph-rag.model';
 import { GraphRagService } from '../../../services/graph-rag.service';
 import { GraphRagDocumentsStorageService } from '../../../services/graph-rag-documents-storage.service';
 import { GraphRagConfigurationComponent } from '../../graph-rag-configuration/graph-rag-configuration.component';
-import { GraphRagDataTablesComponent } from '../../graph-rag-data-tables/graph-rag-data-tables.component';
-import { GraphRagVisualizationComponent } from '../../graph-rag-visualization/graph-rag-visualization.component';
+import { GraphRagTabbedViewComponent } from '../../graph-rag-tabbed-view/graph-rag-tabbed-view.component';
 import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.component';
-
-type DialogTab = 'configuration' | 'visualization' | 'data-tables';
 
 @Component({
     selector: 'app-graph-rag-configuration-dialog',
     templateUrl: './graph-rag-configuration-dialog.component.html',
     styleUrls: ['../rag-configuration-dialog.component.scss'],
-    imports: [
-        ButtonComponent,
-        GraphRagConfigurationComponent,
-        GraphRagDataTablesComponent,
-        GraphRagVisualizationComponent,
-        HasPermissionDirective,
-        TabButtonComponent,
-    ],
+    imports: [ButtonComponent, GraphRagConfigurationComponent, GraphRagTabbedViewComponent, HasPermissionDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent implements OnInit {
     private graphRagService = inject(GraphRagService);
     private graphRagDocumentsStorage = inject(GraphRagDocumentsStorageService);
     private ragConfiguration = viewChild(GraphRagConfigurationComponent);
+    private tabbedView = viewChild(GraphRagTabbedViewComponent);
 
-    readonly activeTab = signal<DialogTab>('configuration');
+    readonly activeTab = computed(() => this.tabbedView()?.activeTab() ?? 'configuration');
 
     graphRag = signal<CollectionGraphRag | null>(null);
 
@@ -164,10 +155,6 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
                     this.toast.error(err.error?.message || 'Files re-indexing failed');
                 },
             });
-    }
-
-    onTabChange(tab: DialogTab): void {
-        this.activeTab.set(tab);
     }
 
     protected readonly ResourceCode = ResourceCode;

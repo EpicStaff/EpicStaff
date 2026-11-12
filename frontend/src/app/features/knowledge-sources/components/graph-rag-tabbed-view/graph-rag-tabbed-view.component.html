@@ -1,0 +1,38 @@
+@if (showTabs()) {
+    <div class="tabs">
+        <app-tab-button
+            [active]="activeTab() === 'configuration'"
+            (action)="onTabChange('configuration')"
+        >
+            Configuration
+        </app-tab-button>
+        <app-tab-button
+            [active]="activeTab() === 'visualization'"
+            (action)="onTabChange('visualization')"
+        >
+            Graph Visualization
+        </app-tab-button>
+        <app-tab-button
+            [active]="activeTab() === 'data-tables'"
+            (action)="onTabChange('data-tables')"
+        >
+            Data Tables
+        </app-tab-button>
+    </div>
+}
+
+@if (activeTab() === 'configuration' || !showTabs()) {
+    <ng-content />
+}
+@if (showTabs() && activeTab() === 'visualization') {
+    <app-graph-rag-visualization
+        class="content"
+        [ragId]="ragId()"
+    />
+}
+@if (showTabs() && activeTab() === 'data-tables') {
+    <app-graph-rag-data-tables
+        class="content"
+        [ragId]="ragId()"
+    />
+}

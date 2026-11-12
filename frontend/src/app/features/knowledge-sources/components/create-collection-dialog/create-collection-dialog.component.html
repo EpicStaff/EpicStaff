@@ -20,23 +20,25 @@
             >
                 Back
             </app-button>
-            @if (currentStepIndex() === 2 && isIndexing()) {
-                <app-button
-                    type="primary"
-                    (click)="stopIndexing()"
-                >
-                    Stop indexing
-                </app-button>
-            } @else {
-                @if (!nextHidden()) {
+            @if (activeTab() === 'configuration') {
+                @if (currentStepIndex() === 2 && isIndexing()) {
                     <app-button
                         type="primary"
-                        [rightIcon]="currentStepIndex() < 2 ? 'arrow-right' : ''"
-                        [disabled]="nextDisabled()"
-                        (click)="nextStep()"
+                        (click)="stopIndexing()"
                     >
-                        {{ nextText() }}
+                        Stop indexing
                     </app-button>
+                } @else {
+                    @if (!nextHidden()) {
+                        <app-button
+                            type="primary"
+                            [rightIcon]="currentStepIndex() < 2 ? 'arrow-right' : ''"
+                            [disabled]="nextDisabled()"
+                            (click)="nextStep()"
+                        >
+                            {{ nextText() }}
+                        </app-button>
+                    }
                 }
             }
 
@@ -76,13 +78,25 @@
             />
         }
         @case (CreateCollectionStep.CONFIGURE) {
-            <div class="dialog__content">
-                @if (configurationComponent()) {
-                    <ng-container
-                        *ngComponentOutlet="configurationComponent(); inputs: configurationInputs()"
-                    ></ng-container>
-                }
-            </div>
+            @if (showGraphTabs() && graphRagId(); as ragId) {
+                <app-graph-rag-tabbed-view [ragId]="ragId">
+                    <div class="dialog__content">
+                        @if (configurationComponent()) {
+                            <ng-container
+                                *ngComponentOutlet="configurationComponent(); inputs: configurationInputs()"
+                            ></ng-container>
+                        }
+                    </div>
+                </app-graph-rag-tabbed-view>
+            } @else {
+                <div class="dialog__content">
+                    @if (configurationComponent()) {
+                        <ng-container
+                            *ngComponentOutlet="configurationComponent(); inputs: configurationInputs()"
+                        ></ng-container>
+                    }
+                </div>
+            }
         }
     }
 </div>
