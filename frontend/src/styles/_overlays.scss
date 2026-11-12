@@ -105,16 +105,39 @@
 
 .cdk-overlay-pane.audit-select-panel {
     .select-dropdown__panel {
-        padding: 6px;
+        padding: 0;
+        overflow: hidden;
+        background-color: var(--graphite-900);
+        border: 1px solid var(--graphite-750);
+        border-radius: 6px;
     }
 
     .select-dropdown__list {
-        gap: 2px;
+        gap: 0;
     }
 
     .select-dropdown__row {
-        height: 30px;
+        height: 28px;
         gap: 6px;
-        padding: 0 8px;
+        padding: 0 24px;
+        border: none;
+        border-radius: 0;
+        background-color: transparent;
+
+        & + .select-dropdown__row {
+            border-top: 1px solid var(--graphite-750);
+        }
+
+        &--disabled:is(:hover, :focus-visible) {
+            background-color: transparent;
+        }
+    }
+
+    .select-dropdown__list .select-dropdown__row.select-dropdown__row--selected {
+        background-color: transparent;
+
+        &:is(:hover, :focus-visible) {
+            background-color: var(--color-ghost-btn-hover);
+        }
     }
 }
