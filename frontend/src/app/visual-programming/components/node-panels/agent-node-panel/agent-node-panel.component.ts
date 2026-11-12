@@ -70,8 +70,9 @@ import {
 import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { inputMapFromRows } from '../../input-map/input-map-rows';
 import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
-import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { surfaceFieldChange } from '../shared/diff/surface-field-change';
 import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 import {
@@ -646,8 +647,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     }
 
     createUpdatedNode(): AgentNodeModel {
-        const validInputPairs = getValidInputPairs(this.inputMapPairs);
-        const inputMapValue = createInputMapFromPairs(validInputPairs);
+        const inputMapValue = inputMapFromRows(this.inputMapPairs.getRawValue());
 
         return {
             ...this.node(),

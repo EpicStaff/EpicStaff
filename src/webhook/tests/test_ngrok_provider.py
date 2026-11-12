@@ -11,6 +11,7 @@ from unittest.mock import patch, ANY
 from app.providers.tunnels import ngrok_tunnel as ngrok_tunnel_module
 from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
 from app.core.settings import settings
+from transport_secrets import sealing_cryptographer, seal
 
 
 def _symlinks_supported(directory) -> bool:
@@ -28,7 +29,9 @@ def _refuse_symlink(*args, **kwargs):
 
 
 def _make_provider() -> NgrokTunnel:
-    return NgrokTunnel(port=settings.WEBHOOK_PORT, auth_token="test-token")
+    return NgrokTunnel(
+        port=settings.WEBHOOK_PORT, auth_token=seal("test-token"), cryptographer=sealing_cryptographer()
+    )
 
 
 def _started_config(environment):
@@ -304,7 +307,12 @@ async def provider_blocked_mid_reconnect(ngrok_environment):
     blocking_connect = _BlockingReconnect(ngrok_environment.ngrok.connect.return_value)
     ngrok_environment.ngrok.connect.side_effect = blocking_connect
     ngrok_environment.process.kill_process.side_effect = blocking_connect.kill
-    provider = NgrokTunnel(port=settings.WEBHOOK_PORT, auth_token="test-token", reconnect_timeout=0)
+    provider = NgrokTunnel(
+        port=settings.WEBHOOK_PORT,
+        auth_token=seal("test-token"),
+        cryptographer=sealing_cryptographer(),
+        reconnect_timeout=0,
+    )
     await provider.connect()
     assert await asyncio.to_thread(blocking_connect.started.wait, 5)
     yield provider, blocking_connect
@@ -369,7 +377,12 @@ async def test_hung_url_callback_does_not_block_disconnect(ngrok_environment):
         callback_entered.set()
         await asyncio.Event().wait()
 
-    provider = NgrokTunnel(port=settings.WEBHOOK_PORT, auth_token="test-token", reconnect_timeout=0)
+    provider = NgrokTunnel(
+        port=settings.WEBHOOK_PORT,
+        auth_token=seal("test-token"),
+        cryptographer=sealing_cryptographer(),
+        reconnect_timeout=0,
+    )
     provider._on_url_set = hung_set_url
     await provider.connect()
     await asyncio.wait_for(callback_entered.wait(), timeout=5)

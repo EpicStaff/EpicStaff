@@ -6,6 +6,7 @@ import pandas
 from application.commands import RunSearch
 from application.orchestrators.searching.base import AbstractSearchOrchestrator
 from application.results import SearchResult
+from application.sealed_secrets import open_sealed_secrets
 from domain.enums import GraphSearchMethodEnum
 from domain.errors import GraphRagConfigNotFoundError, UnsupportedError
 from domain.models import GraphPricingConfig, SearchUsage
@@ -109,22 +110,24 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
         ),
     }
 
-    def __init__(self, uow):
+    def __init__(self, uow, cryptographer):
         patch_graphrag_prompts()
-        super().__init__(uow)
+        super().__init__(uow, cryptographer)
 
     async def on_execute(self, command: RunSearch) -> SearchResult:
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(command.rag_id)
             pricing = await self._get_pricing(command.rag_id)
 
-        config.embedding_models["default_embedding_model"].api_key = command.embedding_api_key
-        config.completion_models["default_completion_model"].api_key = command.llm_api_key
+        secrets = open_sealed_secrets(command, self.cryptographer)
+        config.embedding_models["default_embedding_model"].api_key = secrets.embedding_api_key
+        config.completion_models["default_completion_model"].api_key = secrets.llm_api_key
         set_extra_headers(
-            config.embedding_models["default_embedding_model"], command.embedding_extra_headers
+            config.embedding_models["default_embedding_model"],
+            secrets.embedding_extra_headers,
         )
         set_extra_headers(
-            config.completion_models["default_completion_model"], command.llm_extra_headers
+            config.completion_models["default_completion_model"], secrets.llm_extra_headers
         )
 
         if command.search_config.method not in self._SEARCH_MAP:

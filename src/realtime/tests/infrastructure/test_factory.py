@@ -18,13 +18,17 @@ from infrastructure.providers.factory import RealtimeAgentClientFactory
 from infrastructure.providers.gemini.gemini_realtime_agent_client import GeminiRealtimeAgentClient
 from infrastructure.providers.openai.openai_realtime_agent_client import OpenaiRealtimeAgentClient
 from src.shared.models import RealtimeAgentChatData
+from tests.conftest import OTHER_TRANSPORT_KEY, TRANSPORT_CRYPTOGRAPHER, seal
+from utils.transport_secrets import SecretDecryptionError
+
+PLAINTEXT_API_KEY = "sk-provider-plaintext"
 
 
 def _make_config(**overrides) -> RealtimeAgentChatData:
     defaults = dict(
         connection_key="test_key",
         org_id=1,
-        rt_api_key="api_key",
+        rt_api_key=seal(PLAINTEXT_API_KEY),
         rt_model_name="gpt-4o-realtime-preview",
         rt_provider="openai",
         wake_word=None,
@@ -54,7 +58,10 @@ def gemini_sdk():
 
 
 def _create(config: RealtimeAgentChatData, is_twilio: bool = False):
-    factory = RealtimeAgentClientFactory(elevenlabs_agent_provisioner=MagicMock(spec=ElevenLabsAgentProvisioner))
+    factory = RealtimeAgentClientFactory(
+        elevenlabs_agent_provisioner=MagicMock(spec=ElevenLabsAgentProvisioner),
+        transport_cryptographer=TRANSPORT_CRYPTOGRAPHER,
+    )
     return factory.create(
         config=config,
         rt_tools=[],
@@ -121,3 +128,25 @@ def test_the_configured_temperature_reaches_the_adapter_unchanged(provider, temp
     client = _create(_make_config(rt_provider=provider, temperature=temperature))
 
     assert client.temperature == temperature
+
+
+@pytest.mark.parametrize("provider", ["openai", "elevenlabs", "gemini"])
+def test_the_provider_gets_the_decrypted_api_key(provider):
+    assert _create(_make_config(rt_provider=provider)).api_key == PLAINTEXT_API_KEY
+
+
+def test_an_unset_api_key_stays_unset():
+    assert _create(_make_config(rt_api_key=None)).api_key is None
+
+
+@pytest.mark.parametrize(
+    "rt_api_key",
+    [PLAINTEXT_API_KEY, seal(PLAINTEXT_API_KEY, key=OTHER_TRANSPORT_KEY)],
+    ids=["unsealed", "sealed-under-another-key"],
+)
+def test_an_undecryptable_api_key_fails_naming_the_field_only(rt_api_key):
+    with pytest.raises(SecretDecryptionError) as failure:
+        _create(_make_config(rt_api_key=rt_api_key))
+
+    assert str(failure.value) == "rt_api_key could not be decrypted"
+    assert PLAINTEXT_API_KEY not in str(failure.value)

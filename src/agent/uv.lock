@@ -8,7 +8,7 @@ version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastmcp" },
-    { name = "foundation" },
+    { name = "foundation", extra = ["cryptographer"] },
     { name = "jsonschema" },
     { name = "litellm" },
     { name = "loguru" },
@@ -43,7 +43,7 @@ transitive-pins = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = "==4.1.6" },
-    { name = "foundation", editable = "../foundation" },
+    { name = "foundation", extras = ["cryptographer"], editable = "../foundation" },
     { name = "jsonschema", specifier = "==4.26.0" },
     { name = "litellm", specifier = "==1.108.1" },
     { name = "loguru", specifier = "==0.7.3" },
@@ -531,11 +531,17 @@ dependencies = [
     { name = "pydantic" },
 ]
 
+[package.optional-dependencies]
+cryptographer = [
+    { name = "cryptography" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "boto3", marker = "extra == 's3-storage'", specifier = "==1.43.111" },
     { name = "boto3-stubs", marker = "extra == 's3-storage'", specifier = "==1.43.111" },
     { name = "certifi", marker = "extra == 'transitive-pins'", specifier = "==2026.10.23" },
+    { name = "cryptography", marker = "extra == 'cryptographer'", specifier = "==50.0.1" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "idna", marker = "extra == 'transitive-pins'", specifier = "==3.18" },
     { name = "litestar", marker = "extra == 'litestar'", specifier = "==2.24.0" },
@@ -543,7 +549,7 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "urllib3", marker = "extra == 'transitive-pins'", specifier = "==2.7.0" },
 ]
-provides-extras = ["litestar", "s3-storage", "transitive-pins"]
+provides-extras = ["litestar", "s3-storage", "cryptographer", "transitive-pins"]
 
 [package.metadata.requires-dev]
 dev = [

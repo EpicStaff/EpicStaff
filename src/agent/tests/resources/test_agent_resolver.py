@@ -49,6 +49,7 @@ from shared.models.tools import (
     PythonCodeToolData,
 )
 from tests.cancellation import never_cancelled
+from tests.secret_sealing import agent_cryptographer
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -249,7 +250,7 @@ async def test_mcp_tool_schema_reaches_the_model_cleaned():
     client.list_tools = AsyncMock(return_value=[server_tool])
     factory = MagicMock(spec=FastMCPClientFactory)
     factory.create.return_value = client
-    gateway = McpToolGateway(factory, describe_cache_ttl_s=300)
+    gateway = McpToolGateway(factory, agent_cryptographer(), describe_cache_ttl_s=300)
     agent = _agent_spec(tool_refs=["mcp-tool:4"])
     request = _request([agent], tools=[_base_tool("mcp-tool:4", _mcp_tool_data("mcp_tool"))])
 

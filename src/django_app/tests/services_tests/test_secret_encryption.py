@@ -1,13 +1,9 @@
 import pytest
-from django.core.exceptions import ImproperlyConfigured
-from django.test import override_settings
-
 from tables.models import Secret
 from tables.services.secrets import (
     MAX_TEXT_BYTES,
     SealedValue,
     SecretDecryptionError,
-    SecretEncryption,
     SecretTooLargeError,
     secret_encryption,
 )
@@ -57,20 +53,24 @@ def test_encrypt_at_max_text_fits_column():
     assert len(sealed.encryptedtext) <= max_length
 
 
-def test_encrypt_above_max_text_raises():
-    text = "a" * (MAX_TEXT_BYTES + 1)
-    with pytest.raises(SecretTooLargeError):
-        secret_encryption.encrypt(text=text)
+def test_encrypt_above_max_text_is_refused_by_its_encoded_size():
+    # 4097 characters, 8194 bytes: the limit counts bytes.
+    with pytest.raises(SecretTooLargeError) as raised:
+        secret_encryption.encrypt(text="\u00e9" * 4097)
+
+    assert str(raised.value.detail) == "Secret value is 8194 bytes; the maximum is 8192."
 
 
-def test_tail_populated_above_threshold():
-    sealed = secret_encryption.encrypt(text="123456789")  # 9 chars
-    assert sealed.tail == "6789"
-
-
-def test_tail_empty_at_threshold_boundary():
-    sealed = secret_encryption.encrypt(text="12345678")  # 8 chars
-    assert sealed.tail == ""
+@pytest.mark.parametrize(
+    ("text", "tail"),
+    [
+        ("123456789", "6789"),
+        ("12345678", ""),
+        ("", ""),
+    ],
+)
+def test_tail_shows_the_last_four_characters_from_nine_on(text, tail):
+    assert secret_encryption.encrypt(text=text).tail == tail
 
 
 def test_sealed_value_write_to_sets_both_fields():
@@ -79,14 +79,3 @@ def test_sealed_value_write_to_sets_both_fields():
     sealed.write_to(secret)
     assert secret.value == "dummy-encryptedtext"
     assert secret.tail == "beef"
-
-
-@override_settings(SECRET_KEY=None)
-def test_encrypt_raises_when_secret_key_is_unset():
-    # A fresh instance, not the module singleton — cached_property would
-    # otherwise hand back a Fernet cached before override_settings applied.
-    # Django's own settings machinery rejects an empty SECRET_KEY before our
-    # code ever touches it (LazySettings.__getattr__ special-cases it).
-    fresh_encryption = SecretEncryption()
-    with pytest.raises(ImproperlyConfigured):
-        fresh_encryption.encrypt(text="anything")

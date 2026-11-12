@@ -1,8 +1,8 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from tests.fixtures import DummyToolExecutor
-from tests.conftest import CONNECTION_KEY
+from tests.conftest import CONNECTION_KEY, seal
 
 
 @pytest.mark.parametrize(
@@ -108,3 +108,30 @@ def test_register_tools_with_storage_credentials(tool_manager, sample_chat_data)
     assert python_code_executors[0].storage_credentials is storage_credentials
 
 
+
+
+@pytest.mark.asyncio
+async def test_rag_secrets_reach_knowledge_still_sealed(tool_manager, sample_chat_data):
+    """knowledge_new decrypts the RAG secrets itself; realtime must not open them."""
+    from src.shared.models import NaiveRagSearchConfig
+
+    sealed_embedder_api_key = seal("sk-embedder")
+    sealed_llm_api_key = seal("sk-llm")
+    embedder_headers = {"Authorization": f"Bearer epicstaff_secret({seal('sk-embedder-header')})"}
+    llm_headers = {"X-Llm-Key": f"epicstaff_secret({seal('sk-llm-header')})"}
+    sample_chat_data.rag_type_id = "naive:2"
+    sample_chat_data.rag_search_config = NaiveRagSearchConfig()
+    sample_chat_data.rag_embedder_api_key = sealed_embedder_api_key
+    sample_chat_data.rag_llm_api_key = sealed_llm_api_key
+    sample_chat_data.rag_embedder_extra_headers = embedder_headers
+    sample_chat_data.rag_llm_extra_headers = llm_headers
+    tool_manager.knowledge_client.search = AsyncMock(return_value=[])
+    tool_manager.register_tools_from_rt_agent_chat_data(sample_chat_data)
+
+    await tool_manager.execute(CONNECTION_KEY, "knowledge_tool", {"query": "q"})
+
+    target = tool_manager.knowledge_client.search.call_args.args[0]
+    assert target.embedder_api_key == sealed_embedder_api_key
+    assert target.llm_api_key == sealed_llm_api_key
+    assert target.embedder_extra_headers == embedder_headers
+    assert target.llm_extra_headers == llm_headers

@@ -84,9 +84,9 @@ class RedisService(metaclass=SingletonMeta):
         org_id: int,
         storage_credentials: StorageCredentials | None = None,
     ) -> int:
-        """Publish session data to crew, with every secret resolved on a copy.
+        """Publish session data to crew, with every secret sealed for transport on a copy.
 
-        The caller's `session_data` stays unresolved: neither resolved plaintext nor
+        The caller's `session_data` stays unresolved: neither sealed values nor
         `storage_credentials` may touch it. `resolve_payload` returns a deep copy and
         both exist only on that copy, which is the payload published to Redis.
 
@@ -122,7 +122,7 @@ class RedisService(metaclass=SingletonMeta):
         embedder_api_key_secret_id: int | None = None,
         llm_api_key_secret_id: int | None = None,
     ) -> None:
-        """Publish a RAG indexing request with its credentials resolved to plaintext."""
+        """Publish a RAG indexing request with its credentials sealed for transport."""
         message = ProcessRagIndexingMessage(
             rag_id=rag_id,
             rag_type=rag_type,

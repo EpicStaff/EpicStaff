@@ -28,6 +28,7 @@ from tables.services.secrets.exceptions import SecretMarkerNotReferenceableError
 
 from tests.plugins_tests.conftest import GATEWAY_SECRET, service_account_client
 from tests.plugins_tests.suspension_helpers import flow, llm_config, marker, own, secret_row
+from tests.sealed_values import open_sealed_headers
 
 pytestmark = [pytest.mark.django_db]
 
@@ -227,7 +228,8 @@ def test_a_plugin_indexes_with_a_header_marker_of_its_own_secret(acme, acme_key,
     response = _index(acme, acme_key, _naive_rag(acme, marker(own_key)))
 
     assert response.status_code == 202, response.content
-    assert knowledge_client.index.call_args.kwargs["embedding_extra_headers"] == {"Authorization": "Bearer sk-weather"}
+    sent_headers = knowledge_client.index.call_args.kwargs["embedding_extra_headers"]
+    assert open_sealed_headers(sent_headers) == {"Authorization": "Bearer sk-weather"}
 
 
 def test_a_purged_then_recreated_secret_name_refuses_the_plugin_s_indexing(acme, acme_key, own_key, knowledge_client):
