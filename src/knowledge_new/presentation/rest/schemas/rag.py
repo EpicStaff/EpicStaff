@@ -47,6 +47,46 @@ class DocumentChunkingOverrideSchema(BaseSchema):
     chunking_config: ChunkingConfig
 
 
+class VisualizationEntitySchema(BaseSchema):
+    id: str
+    title: str
+    type: str | None
+    description: str | None
+    degree: int
+    community_ids: list[str]
+
+
+class VisualizationRelationshipSchema(BaseSchema):
+    id: str
+    source: str
+    target: str
+    description: str | None
+    weight: float
+
+
+class VisualizationCommunitySchema(BaseSchema):
+    id: str
+    title: str
+    level: int
+    size: int
+    entity_ids: list[str]
+
+
+class GraphVisualizationOutputSchema(BaseSchema):
+    entities: list[VisualizationEntitySchema]
+    relationships: list[VisualizationRelationshipSchema]
+    communities: list[VisualizationCommunitySchema]
+    total_entities: int
+
+
+class GraphTableDataOutputSchema(BaseSchema):
+    columns: list[str]
+    rows: list[dict[str, object]]
+    total: int
+    page: int
+    page_size: int
+
+
 class IndexEstimateInputSchema(BaseSchema):
     document_ids: frozenset[int]
     chunking_overrides: list[DocumentChunkingOverrideSchema] = Field(default_factory=list)

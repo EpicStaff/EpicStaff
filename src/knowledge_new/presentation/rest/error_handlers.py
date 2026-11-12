@@ -3,6 +3,7 @@ from collections.abc import Callable
 from domain.errors import (
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
+    GraphNotIndexedError,
     GraphRagConfigNotFoundError,
     KnowledgeError,
     NotRunningOperationError,
@@ -49,6 +50,7 @@ def registry(*errors: type[Exception]):
     RagNotFoundError,
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
+    GraphNotIndexedError,
     GraphRagConfigNotFoundError,
     NotRunningOperationError,
 )

@@ -1,0 +1,275 @@
+@if (viewState() === 'loading') {
+    <div class="visualization__state">
+        <app-loading-spinner
+            size="lg"
+            message="Loading graph data..."
+        />
+    </div>
+}
+
+@if (viewState() === 'empty') {
+    <div class="visualization__state">
+        <p class="visualization__state-message">No index data -- run indexing first</p>
+    </div>
+}
+
+@if (viewState() === 'error') {
+    <div class="visualization__state">
+        <p class="visualization__state-message visualization__state-message--error">{{ errorMessage() }}</p>
+    </div>
+}
+
+@if (viewState() === 'ready') {
+    <div class="visualization">
+        <!-- Toolbar -->
+        <div class="visualization__toolbar">
+            <div class="visualization__toolbar-left">
+                <app-button
+                    type="outline-primary"
+                    mod="small"
+                    (click)="onToggleDimension()"
+                >
+                    {{ is3D() ? 'Switch to 2D' : 'Switch to 3D' }}
+                </app-button>
+
+                <app-button
+                    type="outline-primary"
+                    mod="small"
+                    (click)="onToggleLabels()"
+                >
+                    {{ labelsVisible() ? 'Hide Labels' : 'Show Labels' }}
+                </app-button>
+
+                <div class="visualization__slider">
+                    <label class="visualization__slider-label">Max entities: {{ maxEntities() }}</label>
+                    <input
+                        type="range"
+                        class="visualization__slider-input"
+                        [min]="50"
+                        [max]="1000"
+                        [step]="50"
+                        [value]="maxEntities()"
+                        (change)="onMaxEntitiesSliderChange($event)"
+                    />
+                </div>
+            </div>
+
+            <div class="visualization__toolbar-right">
+                <app-search
+                    placeholder="Search nodes..."
+                    [searchTerm]="searchTerm()"
+                    (searchTermChange)="onSearchTermChange($event)"
+                    [ariaLabel]="'Search graph nodes'"
+                    mod="small"
+                />
+            </div>
+        </div>
+
+        <!-- Stats bar -->
+        <div class="visualization__stats">
+            <span class="visualization__stat"
+                >Entities: {{ entityCount() }}
+                @if (totalEntityCount() > entityCount()) {
+                    / {{ totalEntityCount() }}
+                }
+            </span>
+            <span class="visualization__stat">Relationships: {{ relationshipCount() }}</span>
+            <span class="visualization__stat">Communities: {{ communityCount() }}</span>
+        </div>
+
+        <div class="visualization__body">
+            <!-- Entity type filters -->
+            <div class="visualization__filters">
+                <span class="visualization__filters-title">Entity Types</span>
+                @for (filter of entityTypeFilters(); track filter.type) {
+                    <div class="visualization__filter-item">
+                        <app-checkbox
+                            [checked]="filter.checked"
+                            (changed)="onTypeFilterChange($index, $event)"
+                            [ariaLabel]="filter.label"
+                        />
+                        <span
+                            class="visualization__filter-color"
+                            [style.background-color]="filter.color"
+                        ></span>
+                        <span class="visualization__filter-label">{{ filter.label }}</span>
+                    </div>
+                }
+            </div>
+
+            <!-- Canvas container -->
+            <div
+                class="visualization__canvas-container"
+                #canvasContainer
+            >
+                <canvas
+                    #graphCanvas
+                    class="visualization__canvas"
+                    aria-label="Force-directed graph visualization of knowledge entities and their relationships"
+                    (pointerdown)="onCanvasPointerDown($event)"
+                    (pointermove)="onCanvasPointerMove($event)"
+                    (pointerup)="onCanvasPointerUp()"
+                    (pointerleave)="onCanvasPointerLeave()"
+                ></canvas>
+
+                <!-- Hover tooltip -->
+                @if (hoveredNodeTitle()) {
+                    <div
+                        class="visualization__hover-tooltip"
+                        [style.left.px]="hoverPosition().x"
+                        [style.top.px]="hoverPosition().y"
+                    >
+                        {{ hoveredNodeTitle() }}
+                    </div>
+                }
+
+                <!-- Node detail panel -->
+                @if (selectedNode(); as node) {
+                    <div class="visualization__detail-panel">
+                        <div class="visualization__detail-header">
+                            <span class="visualization__detail-title">{{ node.title }}</span>
+                            <app-button
+                                type="ghost"
+                                mod="small"
+                                (click)="closeDetailPanel()"
+                                [ariaLabel]="'Close detail panel'"
+                            >
+                                X
+                            </app-button>
+                        </div>
+                        <div class="visualization__detail-body">
+                            @if (node.type) {
+                                <div class="visualization__detail-row">
+                                    <span class="visualization__detail-label">Type</span>
+                                    <span class="visualization__detail-value">{{ node.type }}</span>
+                                </div>
+                            }
+                            <div class="visualization__detail-row">
+                                <span class="visualization__detail-label">Degree</span>
+                                <span class="visualization__detail-value">{{ node.degree }}</span>
+                            </div>
+                            @if (selectedNodeCommunities().length > 0) {
+                                <div class="visualization__detail-row">
+                                    <span class="visualization__detail-label">Communities</span>
+                                    <span class="visualization__detail-value">{{
+                                        selectedNodeCommunities().join(', ')
+                                    }}</span>
+                                </div>
+                            }
+                            @if (node.description) {
+                                <div class="visualization__detail-row">
+                                    <span class="visualization__detail-label">Description</span>
+                                    <span class="visualization__detail-value">{{ node.description }}</span>
+                                </div>
+                            }
+
+                            <!-- Connected relationships -->
+                            @if (connectedEdges().length > 0) {
+                                <div class="visualization__detail-section">
+                                    <span class="visualization__detail-label"
+                                        >Relationships ({{ connectedEdges().length }})</span
+                                    >
+                                    @for (conn of connectedEdges(); track conn.otherNode.index) {
+                                        <div class="visualization__detail-connection">
+                                            <span class="visualization__detail-connection-node">{{
+                                                conn.otherNode.title
+                                            }}</span>
+                                            @if (conn.edge.description) {
+                                                <span class="visualization__detail-connection-desc">{{
+                                                    conn.edge.description
+                                                }}</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Edge detail panel -->
+                @if (selectedEdge(); as edge) {
+                    <div class="visualization__detail-panel">
+                        <div class="visualization__detail-header">
+                            <span class="visualization__detail-title">Relationship</span>
+                            <app-button
+                                type="ghost"
+                                mod="small"
+                                (click)="closeDetailPanel()"
+                                [ariaLabel]="'Close detail panel'"
+                            >
+                                X
+                            </app-button>
+                        </div>
+                        <div class="visualization__detail-body">
+                            @if (selectedEdgeNodes(); as nodes) {
+                                <div class="visualization__detail-row">
+                                    <span class="visualization__detail-label">Source</span>
+                                    <span class="visualization__detail-value">{{ nodes.source.title }}</span>
+                                </div>
+                                <div class="visualization__detail-row">
+                                    <span class="visualization__detail-label">Target</span>
+                                    <span class="visualization__detail-value">{{ nodes.target.title }}</span>
+                                </div>
+                            }
+                            @if (edge.description) {
+                                <div class="visualization__detail-row">
+                                    <span class="visualization__detail-label">Description</span>
+                                    <span class="visualization__detail-value">{{ edge.description }}</span>
+                                </div>
+                            }
+                            <div class="visualization__detail-row">
+                                <span class="visualization__detail-label">Weight</span>
+                                <span class="visualization__detail-value">{{ edge.weight }}</span>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Community sidebar -->
+            <div
+                class="visualization__sidebar"
+                [class.visualization__sidebar--collapsed]="!communitySidebarOpen()"
+            >
+                <div class="visualization__sidebar-header">
+                    @if (communitySidebarOpen()) {
+                        <span class="visualization__sidebar-title">Communities</span>
+                    }
+                    <app-button
+                        type="ghost"
+                        mod="small"
+                        (click)="onToggleCommunitySidebar()"
+                        [ariaLabel]="communitySidebarOpen() ? 'Collapse community sidebar' : 'Expand community sidebar'"
+                    >
+                        {{ communitySidebarOpen() ? '<<' : '>>' }}
+                    </app-button>
+                </div>
+                @if (communitySidebarOpen()) {
+                    <div class="visualization__sidebar-body">
+                        @for (community of communities(); track community.id) {
+                            <div
+                                class="visualization__community-item"
+                                [class.visualization__community-item--highlighted]="
+                                    highlightedCommunityId() === community.id
+                                "
+                            >
+                                <button
+                                    type="button"
+                                    class="visualization__community-header"
+                                    (click)="onCommunityClick(community.id)"
+                                >
+                                    <span class="visualization__community-title">{{ community.title }}</span>
+                                    <span class="visualization__community-meta">
+                                        <span>{{ community.size }} entities</span>
+                                        <span>Level {{ community.level }}</span>
+                                    </span>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}

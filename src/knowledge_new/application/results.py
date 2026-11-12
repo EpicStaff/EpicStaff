@@ -5,10 +5,15 @@ from domain.models import FoundChunk, SearchUsage
 
 __all__ = [
     "EmbeddingEstimate",
+    "GraphTableDataResult",
+    "GraphVisualizationResult",
     "IndexEstimateResult",
     "MetricsResult",
     "Result",
     "SearchResult",
+    "VisualizationCommunity",
+    "VisualizationEntity",
+    "VisualizationRelationship",
 ]
 
 
@@ -34,6 +39,51 @@ class PrechunkResult:
 class MetricsResult(Result):
     total_chunks: int
     avg_chunk_size: float
+
+
+@dataclass(frozen=True)
+class VisualizationEntity:
+    id: str
+    title: str
+    type: str | None
+    description: str | None
+    degree: int
+    community_ids: list[str]
+
+
+@dataclass(frozen=True)
+class VisualizationRelationship:
+    id: str
+    source: str
+    target: str
+    description: str | None
+    weight: float
+
+
+@dataclass(frozen=True)
+class VisualizationCommunity:
+    id: str
+    title: str
+    level: int
+    size: int
+    entity_ids: list[str]
+
+
+@dataclass(frozen=True)
+class GraphTableDataResult(Result):
+    columns: list[str]
+    rows: list[dict[str, object]]
+    total: int
+    page: int
+    page_size: int
+
+
+@dataclass(frozen=True)
+class GraphVisualizationResult(Result):
+    entities: list[VisualizationEntity]
+    relationships: list[VisualizationRelationship]
+    communities: list[VisualizationCommunity]
+    total_entities: int
 
 
 @dataclass(frozen=True)

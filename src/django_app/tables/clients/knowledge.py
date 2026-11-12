@@ -105,9 +105,33 @@ class KnowledgeClient:
         response = self._request(method="get", url=f"rags/{strategy}/{rag_id}/metrics/")
         return response.json()
 
-    def _request(self, method: str, url: str, *, json: dict | None = None) -> httpx.Response:
+    def get_visualization(self, rag_id: int, max_entities: int | None = None) -> dict:
+        """Fetch graph visualization data for a graph RAG."""
+        url = f"rags/graph/{rag_id}/visualization/"
+        if max_entities is not None:
+            url = f"{url}?max_entities={max_entities}"
+        response = self._request(method="get", url=url)
+        return response.json()
+
+    def get_table_data(
+        self, rag_id: int, table_name: str, page: int = 1, page_size: int = 10
+    ) -> dict:
+        """Fetch paginated parquet table data for a graph RAG."""
+        url = f"rags/graph/{rag_id}/tables/{table_name}/"
+        params = {"page": page, "page_size": page_size}
+        response = self._request(method="get", url=url, params=params)
+        return response.json()
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        json: dict | None = None,
+        params: dict | None = None,
+    ) -> httpx.Response:
         try:
-            response = self._client.request(method, url, json=json)
+            response = self._client.request(method, url, json=json, params=params)
         except httpx.TimeoutException as e:
             raise ClientTimeoutError("Knowledge service timed out.") from e
         except httpx.RequestError as e:

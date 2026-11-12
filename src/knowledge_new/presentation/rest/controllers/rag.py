@@ -2,8 +2,10 @@ import asyncio
 from typing import Literal
 
 from application import commands
-from application.commands import GetMetrics, RemoveRag
+from application.commands import GetGraphTableData, GetGraphVisualization, GetMetrics, RemoveRag
 from application.orchestrators.estimating import build_estimator
+from application.orchestrators.graph_table_data import build_graph_table_data
+from application.orchestrators.graph_visualization import build_graph_visualization
 from application.orchestrators.indexing import build_indexer
 from application.orchestrators.metrics import build_metrics
 from application.orchestrators.prechunking import build_prechunker
@@ -147,6 +149,44 @@ class RagController(Controller):
         orchestrator = build_metrics(strategy, uow)
         result = await orchestrator.execute(GetMetrics(rag_id=rag_id))
         return schemas.MetricsOutputSchema.model_validate(result)
+
+    @get(
+        path="{rag_id:int}/tables/{table_name:str}/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Paginated parquet table data",
+    )
+    async def table_data(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        uow: AbstractUnitOfWork,
+        table_name: str,
+        page: int = 1,
+        page_size: int = 10,
+    ) -> schemas.GraphTableDataOutputSchema:
+        command = GetGraphTableData(
+            rag_id=rag_id, table_name=table_name, page=page, page_size=page_size
+        )
+        orchestrator = build_graph_table_data(strategy, uow)
+        result = await orchestrator.execute(command)
+        return schemas.GraphTableDataOutputSchema.model_validate(result)
+
+    @get(
+        path="{rag_id:int}/visualization/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Graph visualization data",
+    )
+    async def visualization(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        uow: AbstractUnitOfWork,
+        max_entities: int | None = None,
+    ) -> schemas.GraphVisualizationOutputSchema:
+        command = GetGraphVisualization(rag_id=rag_id, max_entities=max_entities)
+        orchestrator = build_graph_visualization(strategy, uow)
+        result = await orchestrator.execute(command)
+        return schemas.GraphVisualizationOutputSchema.model_validate(result)
 
     @delete(
         path="{rag_id:int}/cancel/{operation:str}/",
