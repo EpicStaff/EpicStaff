@@ -44,6 +44,8 @@
 }
 
 .dropdown-panel {
+    display: flex;
+    flex-direction: column;
     width: 450px;
     background: var(--color-sidenav-background);
     border: 1px solid var(--color-input-border);
@@ -150,6 +152,7 @@
     flex-direction: column;
     gap: 8px;
     max-height: 260px;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: auto;
     padding: 0 1.25rem 0.5rem;
@@ -357,6 +360,30 @@
         &:is(:hover, :focus-visible) {
             background: var(--color-ghost-btn-hover);
         }
+    }
+}
+
+.add-label-row:not(.child-add) {
+    padding-inline: 1.25rem;
+
+    .label-input {
+        height: 40px;
+        padding: 0.25rem 1rem;
+    }
+
+    .confirm-btn,
+    .cancel-btn-icon {
+        width: 40px;
+        height: 40px;
+    }
+
+    app-label-color-picker ::ng-deep .color-trigger-btn {
+        height: 40px;
+        border-color: var(--accent-color);
+    }
+
+    + .label-error {
+        margin-inline: 1.25rem;
     }
 }
 
