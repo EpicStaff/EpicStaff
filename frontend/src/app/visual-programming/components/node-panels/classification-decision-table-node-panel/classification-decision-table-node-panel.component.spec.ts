@@ -1284,6 +1284,45 @@ describe('ClassificationDecisionTableNodePanelComponent — stored code fields',
     });
 });
 
+describe('ClassificationDecisionTableNodePanelComponent — the pre-computation Input List on save', () => {
+    it('saves the filled and the named rows as they are, and leaves out a row added and left empty', () => {
+        configurePanelTestBed();
+        const node = tableNode();
+        const fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...node,
+            data: {
+                ...node.data,
+                table: {
+                    ...node.data.table,
+                    pre_computation: { code: 'def main(): pass', input_map: { text: 'variables.text', topic: '' } },
+                },
+            },
+        } as ClassificationDecisionTableNodeModel);
+        fixture.detectChanges();
+        fixture.componentInstance.activeTab.set('precomputation');
+        fixture.detectChanges();
+        const root = fixture.nativeElement as HTMLElement;
+        const addInput = root.querySelector<HTMLButtonElement>('.cdt-input-map-wrapper .add-pair-btn')!;
+
+        // One row left as added, one only named.
+        addInput.click();
+        fixture.detectChanges();
+        addInput.click();
+        fixture.detectChanges();
+        const named = root.querySelectorAll<HTMLInputElement>('.cdt-input-map-wrapper input[formControlName="key"]')[3];
+        named.value = 'company';
+        named.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.onSaveSilently()?.data.table.pre_computation?.input_map).toEqual({
+            text: 'variables.text',
+            topic: '',
+            company: 'variables.',
+        });
+    });
+});
+
 describe('ClassificationDecisionTableNodePanelComponent — System One entries in the Prompt Library', () => {
     let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
     let panel: ClassificationDecisionTableNodePanelComponent;

@@ -112,3 +112,30 @@ def test_map_variables_to_input_returns_nested_values_as_plain_data():
     assert type(mapped["user"]) is dict
     assert type(mapped["user"]["tags"]) is list
     assert type(mapped["user"]["tags"][1]) is dict
+
+
+@pytest.mark.parametrize(
+    ("set_missing_variables", "expected"),
+    [(False, None), (True, "not found")],
+)
+def test_map_variables_to_input_without_default_keeps_running_on_a_missing_path(
+    set_missing_variables, expected
+):
+    variables = DotDict({"user": {"name": "Ann"}})
+
+    mapped = map_variables_to_input(
+        variables,
+        {"name": "variables.user.name", "city": "variables.user.address.city"},
+        set_missing_variables=set_missing_variables,
+    )
+
+    assert mapped == {"name": "Ann", "city": expected}
+
+
+@pytest.mark.parametrize("mapped_path", ["", "|null", "|fallback", "|"])
+def test_map_variables_to_input_refuses_an_entry_without_a_path_even_with_a_default(mapped_path):
+    # Without the check, an empty path crashed on its first segment with a raw IndexError.
+    with pytest.raises(
+        InvalidStatePathError, match=re.escape("Input map entry 'user' has no variable path.")
+    ):
+        map_variables_to_input(DotDict({"user": "Ann"}), {"user": mapped_path})
