@@ -87,9 +87,13 @@ export function kindFilterNarrows(kindFilter: string | null, kindSwitch: boolean
     return kindFilter !== null && !kindSwitch;
 }
 
-/** The kind a tab starts on: its first source on a Kind switch (Tools: Python tools), otherwise all. */
-export function initialKindFilter(tab: RecycleBinTabDefinition): string | null {
-    return hasKindSwitch(tab) ? tab.sources[0] : null;
+/**
+ * The kind a tab starts on: on a Kind switch, the source `requestedKind` names (a link's `?kind=`) or else its
+ * first source (Tools: Python tools); otherwise all.
+ */
+export function initialKindFilter(tab: RecycleBinTabDefinition, requestedKind?: string): string | null {
+    if (!hasKindSwitch(tab)) return null;
+    return tab.sources.find((source) => source === requestedKind) ?? tab.sources[0];
 }
 
 /** The bin a tab lists: the one its Kind switch picks (Tools), otherwise its only source. */

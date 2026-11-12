@@ -4,6 +4,7 @@ from django.core.files.uploadedfile import UploadedFile
 from django.db import models, transaction
 from loguru import logger
 from rest_framework import serializers
+from src.shared.models import UserAction
 from tables.constants.knowledge_constants import ALLOWED_FILE_TYPES
 from tables.constants.upload_limits import default_upload_limits
 from tables.exceptions import (
@@ -22,6 +23,8 @@ from tables.services.knowledge_services.collection_last_edit import record_colle
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.validators.file_upload_validator import FileValidator
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 
 
 class DocumentManagementService:
@@ -258,7 +261,8 @@ class DocumentManagementService:
         Args:
             collection_id: ID of the source collection
             uploaded_files: List of Django UploadedFile objects
-            user: Acting user, recorded as the collection's last editor
+            user: Acting user, recorded as the collection's last editor. Each document is
+                recorded as a `created` user action under the collection.
 
         Returns:
             list: List of created DocumentMetadata instances
@@ -308,6 +312,8 @@ class DocumentManagementService:
 
         # Collection status will be updated automatically by DocumentMetadata.save()
         record_collection_edits([collection_id], user)
+        for document in created_documents:
+            record_user_action(action=UserAction.CREATED, org_id=collection.org_id, target=document)
 
         return created_documents
 
@@ -451,7 +457,8 @@ class DocumentManagementService:
 
         Args:
             document_ids: List of document IDs to delete
-            user: Acting user, recorded as the last editor of every affected collection
+            user: Acting user, recorded as the last editor of every affected collection.
+                Each deleted document is recorded as a `deleted` user action.
 
         Returns:
             dict: Summary of deletion operation
@@ -459,6 +466,8 @@ class DocumentManagementService:
         Raises:
             DocumentNotFoundException: If any document not found
         """
+        # Each deleted document records itself; a request that deleted none records nothing.
+        mark_request_handled()
         if not document_ids:
             return {"deleted_count": 0, "documents": []}
 
@@ -504,6 +513,14 @@ class DocumentManagementService:
                 rag,
                 (existing[1] if existing else False) or completed,
             )
+
+        for document in documents:
+            if document.source_collection is not None:
+                record_user_action(
+                    action=UserAction.DELETED,
+                    org_id=document.source_collection.org_id,
+                    target=document,
+                )
 
         # Delete all documents
         _, details = documents.delete()
@@ -597,6 +614,9 @@ class DocumentManagementService:
 
         Documents already present (by content), duplicate ids and copies into the source
         collection are skipped; `user` last edits the collection when anything was copied.
+        Each new copy is recorded as a `copied` user action under the target collection,
+        its source's name as the previous name; a copy that skipped everything records
+        nothing.
         The target collection and every source document must belong to ``org_id``.
         Returns (copied, skipped).
 
@@ -621,6 +641,7 @@ class DocumentManagementService:
 
         copied_documents: list[DocumentMetadata] = []
         skipped_documents: list[DocumentMetadata] = []
+        source_names: list[str] = []
         for source_doc in source_documents:
             if source_doc.document_content_id in existing_content_ids:
                 skipped_documents.append(source_doc)
@@ -635,6 +656,7 @@ class DocumentManagementService:
                     file_size=source_doc.file_size,
                 )
             )
+            source_names.append(source_doc.file_name)
             existing_content_ids.add(source_doc.document_content_id)
 
         logger.info(
@@ -643,5 +665,11 @@ class DocumentManagementService:
         )
         if copied_documents:
             record_collection_edits([collection_id], user)
+        for copied, source_name in zip(copied_documents, source_names, strict=True):
+            record_user_action(
+                action=UserAction.COPIED, org_id=org_id, target=copied, previous_name=source_name
+            )
+        if not copied_documents:
+            mark_request_handled()
 
         return copied_documents, skipped_documents

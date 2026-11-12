@@ -12,6 +12,7 @@ import {
     Injector,
     OnInit,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -26,7 +27,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { escapeHtml } from '@shared/utils';
+import { escapeHtml, takeQueryParams } from '@shared/utils';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
@@ -160,7 +161,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         read: ElementRef,
     });
 
-    private preselectApplied = false;
+    // `?agentId=` and `?surfaceId=`, taken from the URL at init and applied once the agent list has loaded
+    private queryPreselect: Partial<Record<'agentId' | 'surfaceId', string>> = {};
     private sawLoading = false;
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
@@ -258,30 +260,26 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         });
 
         effect(() => {
-            if (this.preselectApplied) return;
             const loading = this.store.loading();
             if (loading) {
                 this.sawLoading = true;
                 return;
             }
-            if (!this.sawLoading) return;
-            this.preselectApplied = true;
-            this.applySurfaceIdPreselect();
+            // Only the end of a load reruns this: not the lists and selection the preselect reads and sets.
+            if (this.sawLoading) untracked(() => this.applyQueryPreselect());
         });
     }
 
-    private applySurfaceIdPreselect(): void {
-        const raw = this.route.snapshot.queryParamMap.get('surfaceId');
-        if (raw == null) return;
-        void this.router.navigate([], {
-            relativeTo: this.route,
-            queryParams: { surfaceId: null },
-            queryParamsHandling: 'merge',
-            replaceUrl: true,
-        });
-        const surfaceId = Number(raw);
-        if (!Number.isFinite(surfaceId)) return;
-        const surface = this.store.surfaces().find((s) => s.id === surfaceId);
+    /** `?agentId=` selects that agent; `?surfaceId=` opens that surface where it lives. An unknown id is ignored. */
+    private applyQueryPreselect(): void {
+        const { agentId, surfaceId } = this.queryPreselect;
+        this.queryPreselect = {};
+        if (agentId != null) {
+            const id = Number(agentId);
+            if (this.store.agents().some((agent) => agent.id === id)) this.store.selectAgent(id);
+        }
+        if (surfaceId == null) return;
+        const surface = this.store.surfaces().find((s) => s.id === Number(surfaceId));
         if (!surface) return;
         if (surface.owner_agent != null) {
             this.store.selectAgent(surface.owner_agent);
@@ -291,6 +289,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     ngOnInit(): void {
+        this.queryPreselect = takeQueryParams(this.route, this.router, ['agentId', 'surfaceId']);
         this.store.load();
     }
 

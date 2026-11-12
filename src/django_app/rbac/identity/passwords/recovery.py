@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import transaction
 from loguru import logger
+from tables.models.user import User
 
 from rbac.exceptions import (
     InvalidOrExpiredTokenError,
@@ -135,7 +136,8 @@ class PasswordRecoveryService:
         # back.
         self._email_sender.send(user, raw_token)
 
-    def confirm_reset(self, raw_token: str, new_password: str) -> None:
+    def confirm_reset(self, raw_token: str, new_password: str) -> User:
+        """Set the new password and return the user whose password was reset."""
         token_row = self._token_repo.get_active_by_raw_token(raw_token)
         if token_row is None:
             raise InvalidOrExpiredTokenError()
@@ -150,10 +152,12 @@ class PasswordRecoveryService:
             "PasswordRecoveryService.confirm_reset actor=reset-link target={target}",
             target=user.email,
         )
+        return user
 
     # ---- admin flow ----
 
-    def admin_reset(self, actor, target_user_id: int, new_password: str) -> None:
+    def admin_reset(self, actor, target_user_id: int, new_password: str) -> User:
+        """Set another user's password and return that user."""
         if not getattr(actor, "is_superadmin", False):
             raise SuperadminRequiredError()
         target = self._get_user_by_id(target_user_id)
@@ -166,6 +170,7 @@ class PasswordRecoveryService:
             actor=actor.email,
             target=target.email,
         )
+        return target
 
     # ---- CLI flow ----
 

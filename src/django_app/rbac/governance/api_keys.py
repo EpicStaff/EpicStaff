@@ -3,6 +3,9 @@ from datetime import datetime
 from django.db.models import F, Q, QuerySet
 from django.utils import timezone
 from loguru import logger
+from src.shared.models import UserAction
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 
 from rbac.access.cross_org_resolver import OrgScope
 from rbac.exceptions import ApiKeyNotFoundError
@@ -61,6 +64,9 @@ class ApiKeyManagementService(CrossOrgResourceService):
         if key.revoked_at is None:
             key.revoked_at = timezone.now()
             key.save(update_fields=["revoked_at"])
+            record_user_action(action=UserAction.UPDATED, org_id=key.org_id, target=key)
+        else:
+            mark_request_handled()
         logger.info(
             "ApiKeyManagementService.revoke_key actor={a} key={k} owner={o} org={org}",
             a=getattr(actor, "email", "system"),
@@ -84,6 +90,8 @@ class ApiKeyManagementService(CrossOrgResourceService):
             o=key.created_by_id,
             org=key.org_id,
         )
+        # Before the delete: the record names the key, and a deleted instance loses its pk.
+        record_user_action(action=UserAction.DELETED, org_id=key.org_id, target=key)
         key.delete()
 
     def _get_key_for_delete(self, actor, key_id: int) -> ApiKey:

@@ -27,6 +27,8 @@ from rbac.exceptions import (
 from rbac.governance.roles import RoleManagementService
 from rbac.models import Organization, Role
 from rbac.models.enums import Permission, ResourceType
+from src.shared.models import UserAction
+from user_audit.recorder import record_user_action
 
 from plugins.access.plugin_permissions import (
     declared_actions,
@@ -134,6 +136,8 @@ class PluginRolePermissionService:
     ) -> RolePluginPermissions:
         """Replace a custom role's actions on every plugin usable in its organization.
 
+        A change is recorded as an `updated` user action on the role.
+
         A usable plugin left out of `requested` loses its actions; rows of grants that are
         not usable now (a suspended grant, a stopped plugin) are left as they are. The role
         row is locked for the write, like rbac's own role update.
@@ -167,6 +171,8 @@ class PluginRolePermissionService:
                 if not changed <= set(ceilings[grant.pk]):
                     raise PermissionEscalationError()
             changes = _write_rows(role, grants, wanted, actor)
+            if changes:
+                record_user_action(action=UserAction.UPDATED, org_id=role.org_id, target=role)
         for grant, before, after in changes:
             log_role_plugin_actions(
                 actor,

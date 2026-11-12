@@ -82,9 +82,9 @@ class SearchConfigEntry(BaseModel):
     LLM can choose the appropriate strategy at runtime.
 
     ``ToolRegistryBuilder`` extracts ``embedder.config.api_key`` and
-    ``llm.config.api_key`` onto ``KnowledgeSearchTarget``; both arrive already
-    resolved to plaintext (SecretResolver runs at publish time), the raw
-    credentials the knowledge_new REST search endpoint expects.
+    ``llm.config.api_key`` onto ``KnowledgeSearchTarget``; both arrive sealed
+    with the transport key (SecretResolver seals at publish time) and are
+    forwarded as-is: knowledge_new opens them at the point of use.
 
     ``llm`` is only populated for graph entries — graph RAG runs LLM calls
     server-side; naive search leaves it ``None``.

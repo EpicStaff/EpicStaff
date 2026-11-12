@@ -23,6 +23,9 @@ for _variable, _value in {
     "REDIS_PASSWORD": "root_password",
     "DJANGO_CORS_ALLOWED_ORIGINS": "",
     "WEBHOOK_EMPTY_JSON_PATHS": "none",
+    "SECRETS_TRANSPORT_KEY": "webhook-tests-transport-key",
+    "SECRETS_TRANSPORT_PREVIOUS_KEYS": "none",
+    "SECRETS_TRANSPORT_HKDF_INFO": "epicstaff.secrets.transport.v1",
 }.items():
     os.environ.setdefault(_variable, _value)
 
@@ -30,6 +33,19 @@ from app.core.settings import settings
 from app.main import create_app
 from app.services.redis_service import RedisService, get_redis_service
 from app.services.tunnel_registry import TunnelRegistry, get_tunnel_registry
+from transport_secrets import TRANSPORT_KEY, sealing_cryptographer
+
+
+@pytest.fixture(autouse=True)
+def transport_settings(monkeypatch):
+    """Point the transport settings at the key the tests seal secrets with.
+
+    Patched on ``settings`` rather than left to the environment, so a developer's own key
+    cannot leak in. ``create_app`` reads these when it builds the app's cryptographer; a
+    sealed value is made with ``transport_secrets.seal``.
+    """
+    monkeypatch.setattr(settings, "SECRETS_TRANSPORT_KEY", TRANSPORT_KEY)
+    monkeypatch.setattr(settings, "SECRETS_TRANSPORT_PREVIOUS_KEYS", [])
 
 
 @pytest.fixture
@@ -66,7 +82,7 @@ async def received_events(redis_service):
 
 @pytest.fixture
 def tunnel_registry(redis_service):
-    return TunnelRegistry(redis_service=redis_service)
+    return TunnelRegistry(sealing_cryptographer(), redis_service=redis_service)
 
 
 @pytest.fixture

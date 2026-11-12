@@ -4,8 +4,11 @@ WORKDIR /app/src/webhook
 
 # Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
 # sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
-# never executes arbitrary Python code. No exception is needed here -- every
-# package this service resolves has a Linux wheel.
+# never executes arbitrary Python code. foundation is the one audited
+# exception: a first-party local path dependency with no wheel of its own,
+# carved out via UV_NO_BINARY_PACKAGE below. It is pure Python, so it still
+# needs no compiler. A service that gains a dependency with no Linux wheel will
+# fail the build rather than silently regain source execution.
 #
 # UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
 # interpreter instead of using the digest-pinned base image above, silently
@@ -18,6 +21,7 @@ WORKDIR /app/src/webhook
 RUN pip install --no-cache-dir uv==0.11.21
 
 ENV UV_NO_BUILD=1 \
+    UV_NO_BINARY_PACKAGE=foundation \
     UV_PROJECT_ENVIRONMENT=/app/src/.venv \
     UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
@@ -29,6 +33,7 @@ ENV UV_NO_BUILD=1 \
     PYTHONPATH=/app
 
 COPY ./webhook/uv.lock ./webhook/pyproject.toml .
+COPY ./foundation /app/src/foundation
 
 # Install dependencies into /app/src/.venv.
 # --all-groups is required: transitive-pins (and any other non-dev group) is

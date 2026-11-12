@@ -51,6 +51,15 @@ x-communication-env: &communication-env
   REALTIME_CHANNELS_INVALIDATE_CHANNEL: ${REALTIME_CHANNELS_INVALIDATE_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
+x-secrets-encryption-env: &secrets-encryption-env
+  SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:?}
+  SECRETS_ENCRYPTION_PREVIOUS_KEYS: ${SECRETS_ENCRYPTION_PREVIOUS_KEYS:?}
+
+x-secrets-transport-env: &secrets-transport-env
+  SECRETS_TRANSPORT_KEY: ${SECRETS_TRANSPORT_KEY:?}
+  SECRETS_TRANSPORT_PREVIOUS_KEYS: ${SECRETS_TRANSPORT_PREVIOUS_KEYS:?}
+  SECRETS_TRANSPORT_HKDF_INFO: ${SECRETS_TRANSPORT_HKDF_INFO:?}
+
 # Bounded container logs (50 MB per container at most), set on every service: Docker's default
 # json-file log never rotates, so anything that makes a service log at will fills the host disk.
 # epicstaff-nginx writes a line per public request; a plugin's flood of requests does the same
@@ -88,7 +97,7 @@ services:
     hostname: django_app
     command: ./entrypoint.sh
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *retention-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *retention-env, *secrets-encryption-env, *secrets-transport-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DB_USER: ${DB_USER:?}
@@ -176,7 +185,7 @@ services:
       SANDBOX_PORT: ${SANDBOX_PORT:?}
       SANDBOX_CLIENT_TIMEOUT: ${SANDBOX_CLIENT_TIMEOUT:?}
 
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       AUDITOR_URL: ${AUDITOR_URL:?}
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       AUDIT_TOKEN_TTL_SECONDS: ${AUDIT_TOKEN_TTL_SECONDS:?}
@@ -238,7 +247,7 @@ services:
       context: .
       dockerfile: ./realtime/Dockerfile.realtime
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *secrets-transport-env]
       REALTIME_HOST: ${REALTIME_HOST:?}
       REALTIME_PORT: ${REALTIME_PORT:?}
       REALTIME_SGI_WORKERS: ${REALTIME_SGI_WORKERS:?}
@@ -417,7 +426,7 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_TIMEOUT: ${AGENT_RESULT_TIMEOUT:?}
       CREW_TOKEN_BUDGET: ${CREW_TOKEN_BUDGET:?}
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
       AUDITOR_URL: ${AUDITOR_URL:?}
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       CREW_KEY_VALUE_TIMEOUT: ${CREW_KEY_VALUE_TIMEOUT:?}
@@ -576,7 +585,8 @@ services:
       AUDITOR_API_URL: ${AUDITOR_API_URL:?}
       CHAT_ENABLED: ${CHAT_ENABLED:?}
       CHAT_API_URL: ${CHAT_API_URL:?}
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
     networks:
       - frontend-network
@@ -590,7 +600,7 @@ services:
       context: .
       dockerfile: ./webhook/Dockerfile
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *secrets-transport-env]
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
 
@@ -773,7 +783,7 @@ services:
     # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
     stop_grace_period: 5m
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *secrets-transport-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:?}
@@ -804,7 +814,7 @@ services:
       - backend-network
 
   # Audit trail stack (opensearch, auditor). Gated behind profiles: ["auditor"]: they start only when
-  # COMPOSE_PROFILES includes "auditor"; AUDIT_TRAIL_ENABLED=true then makes them do work.
+  # COMPOSE_PROFILES includes "auditor"; either audit switch set to true then makes them do work.
   # Nothing outside the profile may depend_on them, or a stack without the audit trail would not start.
   opensearch:
     logging: *bounded-logs
@@ -814,7 +824,8 @@ services:
     profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
     environment:
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       discovery.type: single-node
       bootstrap.memory_lock: "true"
       OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:?}
@@ -853,7 +864,8 @@ services:
     environment:
       <<: [*docker-env, *redis-env]
       AUDITOR_DEBUG: ${AUDITOR_DEBUG:?}
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       AUDITOR_PORT: ${AUDITOR_PORT:?}
       AUDITOR_LOG_LEVEL: ${AUDITOR_LOG_LEVEL:?}
       AUDIT_STORAGE_BACKEND: ${AUDIT_STORAGE_BACKEND:?}
@@ -903,7 +915,7 @@ services:
       storage:
         condition: service_healthy
     environment:
-      <<: [*docker-env, *database-env, *storage-env, *communication-env]
+      <<: [*docker-env, *database-env, *storage-env, *communication-env, *secrets-transport-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       KNOWLEDGE_DEBUG: ${KNOWLEDGE_DEBUG:?}
@@ -1222,7 +1234,7 @@ services:
       retries: 20
       start_period: 30s
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *secrets-transport-env]
       SANDBOX_CUSTOM_LIBRARY_BUCKET: ${SANDBOX_CUSTOM_LIBRARY_BUCKET:?}
       SANDBOX_HOST: ${SANDBOX_HOST:?}
       SANDBOX_PORT: ${SANDBOX_PORT:?}

@@ -243,6 +243,8 @@ class ExecutionController(Controller):
             "whose build failed produces a failed result rather than a run. All three "
             "answer 202 -- "
             "acceptance says the submission was understood, not that the code will run.\n\n"
+            "Every `secrets` value must be sealed with the transport key; one the sandbox "
+            "cannot decrypt is refused with 400 naming the secret, and nothing is run.\n\n"
             "Re-posting an `execution_id` the sandbox already knows does not run it again: "
             "it answers 202 with that execution's current status.\n\n"
             "A full sandbox answers 503 with `Retry-After` instead of accepting work it "
@@ -261,6 +263,8 @@ class ExecutionController(Controller):
             VenvNotFoundError: `venv_id` names no venv, or none is given and there is no
                 default venv. Rendered as 404.
             SandboxOverloadedError: The sandbox cannot take the job now. Rendered as 503.
+            SecretNotDecryptableError: A secret is not a transport ciphertext this
+                sandbox can open. Rendered as 400.
         """
         logger.log(
             BENCH_LEVEL,

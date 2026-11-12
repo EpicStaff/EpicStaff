@@ -8,10 +8,16 @@ from application.commands import RunIndex
 from application.orchestrators.indexing.strategies import graph_indexer
 from application.orchestrators.indexing.strategies.graph_indexer import GraphIndexOrchestrator
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
-from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
+from domain.errors import (
+    DocumentNotFoundError,
+    GraphRagConfigNotFoundError,
+    RagNotFoundError,
+    SecretDecryptError,
+)
 from domain.models import EmbeddingConfig, GraphPricingConfig, Rag
 from domain.usage import IndexingRunUsage
 from graphrag_input import TextDocument
+from tests.orchestrators.conftest import CRYPTOGRAPHER, seal, sealed_marker
 
 
 def _result(workflow: str, error: BaseException | None = None) -> types.SimpleNamespace:
@@ -58,12 +64,15 @@ def _text_document(doc_id: int, *, status: str = "new", text: str = "hello world
     )
 
 
-def _make_request(document_ids: frozenset[int], rag_id: int = 1) -> RunIndex:
+def _make_request(document_ids: frozenset[int], rag_id: int = 1, **command_fields) -> RunIndex:
     return RunIndex(
-        rag_id=rag_id,
-        document_ids=document_ids,
-        embedding_api_key="sk-test",
-        llm_api_key="sk-llm",
+        **{
+            "rag_id": rag_id,
+            "document_ids": document_ids,
+            "embedding_api_key": seal("sk-test"),
+            "llm_api_key": seal("sk-llm"),
+            **command_fields,
+        }
     )
 
 
@@ -191,7 +200,7 @@ async def test_index_builds_the_graph_from_the_documents_and_completes_the_rag(m
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({1, 2}))
-    await GraphIndexOrchestrator(uow).execute(request)
+    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert captured["config"] is config
     assert config.embedding_models["default_embedding_model"].api_key == "sk-test"
@@ -248,7 +257,7 @@ async def test_is_update_run_computed_correctly(
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({10}))
-    await GraphIndexOrchestrator(uow).execute(request)
+    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert captured_is_update_run == [expected_is_update_run]
 
@@ -271,7 +280,7 @@ async def test_indexing_errors_raise_exception_group_and_mark_rag_failed(monkeyp
     request = _make_request(frozenset({7}))
 
     with pytest.raises(ExceptionGroup):
-        await GraphIndexOrchestrator(uow).execute(request)
+        await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert repo.status_updates == [(frozenset({7}), DocumentStatusEnum.FAILED)]
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.FAILED]
@@ -292,7 +301,7 @@ async def test_missing_rag_raises_and_marks_nothing(monkeypatch):
     request = _make_request(frozenset({1}))
 
     with pytest.raises(RagNotFoundError):
-        await GraphIndexOrchestrator(uow).execute(request)
+        await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert repo.rag_status_log == []
     assert build_index_called == []
@@ -315,7 +324,7 @@ async def test_missing_config_marks_rag_failed_and_reraises(monkeypatch):
     request = _make_request(frozenset({5}))
 
     with pytest.raises(GraphRagConfigNotFoundError):
-        await GraphIndexOrchestrator(uow).execute(request)
+        await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert repo.rag_status_log == [IndexStatusEnum.FAILED]
     assert build_index_called == []
@@ -337,7 +346,7 @@ async def test_no_documents_marks_rag_failed_and_reraises(monkeypatch):
     request = _make_request(frozenset({99}))
 
     with pytest.raises(DocumentNotFoundError):
-        await GraphIndexOrchestrator(uow).execute(request)
+        await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert repo.rag_status_log == [IndexStatusEnum.FAILED]
     assert build_index_called == []
@@ -352,7 +361,9 @@ async def test_cancellation_while_building_marks_rag_cancelled(monkeypatch):
 
     monkeypatch.setattr(graph_indexer, "build_index", cancelled_build_index)
 
-    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_request(frozenset({7}))
+    )
 
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.CANCELLED]
     assert repo.status_updates == []
@@ -377,7 +388,7 @@ async def test_graph_rag_never_resolves_to_partial_when_failed_doc_exists(monkey
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({7}))
-    await GraphIndexOrchestrator(uow).execute(request)
+    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
     assert rag.status == IndexStatusEnum.COMPLETED
     assert IndexStatusEnum.PARTIAL not in repo.rag_status_log
 
@@ -401,7 +412,7 @@ async def test_outdated_doc_keeps_rag_outdated_and_preserves_reasons(monkeypatch
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({7}))
-    await GraphIndexOrchestrator(uow).execute(request)
+    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert rag.status == IndexStatusEnum.OUTDATED
     assert rag.outdated_reasons == {"doc_99": "source_changed"}
@@ -421,7 +432,7 @@ async def test_outdated_reasons_cleared_when_no_outdated_document_remains(monkey
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({7}))
-    await GraphIndexOrchestrator(uow).execute(request)
+    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert rag.outdated_reasons == {}
     assert rag.status == IndexStatusEnum.COMPLETED
@@ -482,7 +493,7 @@ async def test_full_reindex_builds_into_the_other_slot_then_switches_and_clears_
 
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
-    await GraphIndexOrchestrator(uow).execute(request)
+    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert repo.get_config_calls == [(rag.id, target_slot)]
     assert captured["config"] is config
@@ -495,7 +506,7 @@ async def test_full_reindex_builds_into_the_other_slot_then_switches_and_clears_
 
 
 async def test_full_reindex_cancelled_clears_target_and_keeps_slot(monkeypatch):
-    rag, config, repo, uow, request = _make_full_reindex_setup(rag_slot=SlotEnum.A)
+    rag, _config, _repo, uow, request = _make_full_reindex_setup(rag_slot=SlotEnum.A)
     cleared_prefixes = _make_slot_monkeypatches(monkeypatch)
 
     async def fake_build_index(**kwargs):
@@ -503,14 +514,14 @@ async def test_full_reindex_cancelled_clears_target_and_keeps_slot(monkeypatch):
 
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
-    await GraphIndexOrchestrator(uow).execute(request)
+    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
     assert rag.slot == SlotEnum.A
     assert rag.status == IndexStatusEnum.CANCELLED
     assert cleared_prefixes == ["graphrag/rag_1/b"]
 
 
 async def test_full_reindex_error_clears_target_and_keeps_slot(monkeypatch):
-    rag, config, repo, uow, request = _make_full_reindex_setup(rag_slot=SlotEnum.A)
+    rag, _config, repo, uow, request = _make_full_reindex_setup(rag_slot=SlotEnum.A)
     cleared_prefixes = _make_slot_monkeypatches(monkeypatch)
 
     async def fake_build_index(**kwargs):
@@ -519,7 +530,7 @@ async def test_full_reindex_error_clears_target_and_keeps_slot(monkeypatch):
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     with pytest.raises(ExceptionGroup):
-        await GraphIndexOrchestrator(uow).execute(request)
+        await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert rag.slot == SlotEnum.A
     assert rag.status == IndexStatusEnum.FAILED
@@ -543,7 +554,7 @@ async def test_first_index_touches_no_slot_storage(monkeypatch):
         return [_result("extract_graph")]
 
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
-    await GraphIndexOrchestrator(uow).execute(_make_request(frozenset({5})))
+    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(_make_request(frozenset({5})))
     assert rag.slot is None
     assert cleared_prefixes == []
 
@@ -561,15 +572,12 @@ async def test_extra_headers_injected_into_both_graphrag_models(monkeypatch):
 
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
-    request = RunIndex(
-        rag_id=1,
-        document_ids=frozenset({7}),
-        embedding_api_key="sk-test",
-        llm_api_key="sk-llm",
-        embedding_extra_headers={"X-Emb": "emb-resolved"},
-        llm_extra_headers={"X-Llm": "llm-resolved"},
+    request = _make_request(
+        frozenset({7}),
+        embedding_extra_headers={"X-Emb": sealed_marker("emb-resolved")},
+        llm_extra_headers={"X-Llm": f"Bearer {sealed_marker('llm-resolved')}"},
     )
-    await GraphIndexOrchestrator(FakeUoW(repo)).execute(request)
+    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(request)
 
     sent = captured["config"]
     assert sent.embedding_models["default_embedding_model"].call_args == {
@@ -577,8 +585,66 @@ async def test_extra_headers_injected_into_both_graphrag_models(monkeypatch):
     }
     assert sent.completion_models["default_completion_model"].call_args == {
         "temperature": 0.1,
-        "extra_headers": {"X-Llm": "llm-resolved"},
+        "extra_headers": {"X-Llm": "Bearer llm-resolved"},
     }
+
+
+async def test_absent_llm_api_key_reaches_the_completion_model_as_none(monkeypatch):
+    config = _make_config()
+    repo = FakeGraphRagRepo(rag=_new_rag(), config=config, documents=[_text_document(7)])
+
+    async def fake_build_index(**kwargs):
+        return [_result("extract_graph")]
+
+    monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
+
+    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_request(frozenset({7}), llm_api_key=None)
+    )
+
+    assert config.embedding_models["default_embedding_model"].api_key == "sk-test"
+    assert config.completion_models["default_completion_model"].api_key is None
+    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.COMPLETED]
+
+
+@pytest.mark.parametrize(
+    ("field", "command_fields"),
+    [
+        ("embedding_api_key", {"embedding_api_key": "sk-never-sealed"}),
+        ("llm_api_key", {"llm_api_key": "sk-never-sealed"}),
+        (
+            "embedding_extra_headers",
+            {"embedding_extra_headers": {"X-Key": "epicstaff_secret(sk-never-sealed)"}},
+        ),
+        (
+            "llm_extra_headers",
+            {"llm_extra_headers": {"X-Key": "epicstaff_secret(sk-never-sealed)"}},
+        ),
+    ],
+    ids=["embedding-api-key", "llm-api-key", "embedding-header-marker", "llm-header-marker"],
+)
+async def test_secret_that_cannot_be_decrypted_fails_the_rag_without_its_value(
+    monkeypatch, field, command_fields
+):
+    rag = _new_rag()
+    repo = FakeGraphRagRepo(rag=rag, config=_make_config(), documents=[_text_document(7)])
+    build_index_calls = []
+
+    async def fake_build_index(**kwargs):
+        build_index_calls.append(kwargs)
+        return [_result("extract_graph")]
+
+    monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
+
+    with pytest.raises(SecretDecryptError):
+        await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+            _make_request(frozenset({7}), **command_fields)
+        )
+
+    assert build_index_calls == []
+    assert repo.rag_status_log == [IndexStatusEnum.FAILED]
+    assert field in rag.error_message
+    assert "sk-never-sealed" not in rag.error_message
 
 
 def _metered_config() -> types.SimpleNamespace:
@@ -634,7 +700,9 @@ async def test_run_records_usage_reported_by_graphrag_models(monkeypatch):
         graph_indexer, "build_index", _calling_build_index(embeddings=2, completions=3)
     )
 
-    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_request(frozenset({7}))
+    )
 
     (run,) = repo.usage_runs
     assert run.embedding_tokens > 0
@@ -655,7 +723,9 @@ async def test_run_prefers_custom_llm_prices_over_the_price_map(monkeypatch):
     )
     monkeypatch.setattr(graph_indexer, "embedding_cost", lambda model, tokens: 0.0)
 
-    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_request(frozenset({7}))
+    )
 
     (run,) = repo.usage_runs
     assert run.cost_usd == run.llm_input_tokens * 1.0 + run.llm_output_tokens * 2.0
@@ -670,7 +740,9 @@ async def test_run_records_null_cost_when_the_llm_is_unpriced(monkeypatch):
         graph_indexer, "build_index", _calling_build_index(embeddings=1, completions=1)
     )
 
-    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_request(frozenset({7}))
+    )
 
     (run,) = repo.usage_runs
     assert run.llm_input_tokens > 0
@@ -686,7 +758,9 @@ async def test_failed_run_records_usage_consumed_before_the_failure(monkeypatch)
     )
 
     with pytest.raises(RuntimeError):
-        await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+        await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+            _make_request(frozenset({7}))
+        )
 
     (run,) = repo.usage_runs
     assert run.llm_input_tokens > 0
@@ -694,8 +768,12 @@ async def test_failed_run_records_usage_consumed_before_the_failure(monkeypatch)
 
 
 async def test_concurrent_runs_keep_their_usage_apart(monkeypatch):
-    first = FakeGraphRagRepo(rag=_new_rag(1), config=_metered_config(), documents=[_text_document(7)])
-    second = FakeGraphRagRepo(rag=_new_rag(2), config=_metered_config(), documents=[_text_document(8)])
+    first = FakeGraphRagRepo(
+        rag=_new_rag(1), config=_metered_config(), documents=[_text_document(7)]
+    )
+    second = FakeGraphRagRepo(
+        rag=_new_rag(2), config=_metered_config(), documents=[_text_document(8)]
+    )
     calls_by_document_id = {"7": 1, "8": 4}
 
     async def build_index(*, config, **kwargs):
@@ -705,8 +783,12 @@ async def test_concurrent_runs_keep_their_usage_apart(monkeypatch):
     monkeypatch.setattr(graph_indexer, "build_index", build_index)
 
     await asyncio.gather(
-        GraphIndexOrchestrator(FakeUoW(first)).execute(_make_request(frozenset({7}), rag_id=1)),
-        GraphIndexOrchestrator(FakeUoW(second)).execute(_make_request(frozenset({8}), rag_id=2)),
+        GraphIndexOrchestrator(FakeUoW(first), CRYPTOGRAPHER).execute(
+            _make_request(frozenset({7}), rag_id=1)
+        ),
+        GraphIndexOrchestrator(FakeUoW(second), CRYPTOGRAPHER).execute(
+            _make_request(frozenset({8}), rag_id=2)
+        ),
     )
 
     assert second.usage_runs[0].llm_input_tokens == 4 * first.usage_runs[0].llm_input_tokens
@@ -723,7 +805,9 @@ async def test_missing_pricing_config_leaves_cost_null_and_does_not_fail_the_run
         graph_indexer, "build_index", _calling_build_index(embeddings=1, completions=1)
     )
 
-    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_request(frozenset({7}))
+    )
 
     (run,) = repo.usage_runs
     assert run.llm_input_tokens > 0
@@ -739,7 +823,9 @@ async def test_run_without_model_calls_records_no_usage(monkeypatch):
 
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
-    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_request(frozenset({7}))
+    )
 
     assert repo.usage_runs == []
 
@@ -760,6 +846,6 @@ async def test_build_index_never_enables_graphrag_verbose_logging(monkeypatch):
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({1}))
-    await GraphIndexOrchestrator(uow).execute(request)
+    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
 
     assert captured.get("verbose", False) is False

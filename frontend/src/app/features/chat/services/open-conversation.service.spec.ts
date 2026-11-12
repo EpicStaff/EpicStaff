@@ -15,7 +15,7 @@ class DeskPageComponent {
     readonly openConversation = inject(OpenConversationService);
 }
 
-@Component({ template: '' })
+@Component({ selector: 'app-other-page', template: '' })
 class OtherPageComponent {}
 
 const conversation = (id: string, preview = 'hello'): ChatConversation =>

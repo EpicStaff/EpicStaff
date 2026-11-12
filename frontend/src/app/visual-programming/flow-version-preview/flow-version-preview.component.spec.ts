@@ -215,7 +215,7 @@ describe('FlowVersionPreviewComponent', () => {
             ],
         });
         // jsdom cannot lay out the Foblex canvas; the handlers under test do not need it.
-        TestBed.overrideComponent(FlowGraphComponent, { set: { template: '', imports: [] } });
+        TestBed.overrideComponent(FlowGraphComponent, { set: { template: '<div #flowHost></div>', imports: [] } });
     });
 
     afterEach(() => {

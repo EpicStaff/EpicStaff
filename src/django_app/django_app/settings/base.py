@@ -50,6 +50,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "plugins.ownership.request_scope.PluginRequestScopeMiddleware",
+    "user_audit.middleware.UserActionMiddleware",
 ]
 
 AUTH_PASSWORD_VALIDATORS = [

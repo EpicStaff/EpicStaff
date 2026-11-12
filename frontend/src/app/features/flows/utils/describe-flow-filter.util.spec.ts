@@ -28,7 +28,7 @@ describe('describeFlowFilter', () => {
 
     it('produces chips for usable custom conditions', () => {
         const group = {
-            ...createAuditConditionGroup(),
+            ...createAuditConditionGroup(['contains']),
             conditions: [{ id: '1', join: 'and' as const, key: 'flow_name', op: 'contains' as const, value: 'test' }],
         };
         const chips = describeFlowFilter(makeState({ customConditions: [group] }));
@@ -37,7 +37,7 @@ describe('describeFlowFilter', () => {
 
     it('skips custom conditions with no value and non-value-free op', () => {
         const group = {
-            ...createAuditConditionGroup(),
+            ...createAuditConditionGroup(['contains']),
             conditions: [{ id: '1', join: 'and' as const, key: 'name', op: 'contains' as const, value: '' }],
         };
         const chips = describeFlowFilter(makeState({ customConditions: [group] }));
@@ -46,7 +46,7 @@ describe('describeFlowFilter', () => {
 
     it('includes value-free ops like is_empty even without a value', () => {
         const group = {
-            ...createAuditConditionGroup(),
+            ...createAuditConditionGroup(['contains']),
             conditions: [{ id: '1', join: 'and' as const, key: 'name', op: 'is_empty' as const, value: '' }],
         };
         const chips = describeFlowFilter(makeState({ customConditions: [group] }));

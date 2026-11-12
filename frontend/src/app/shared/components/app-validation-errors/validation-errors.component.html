@@ -1,6 +1,6 @@
 @if (control().invalid && control().touched) {
     <div class="validation-errors">
-        @for (msg of messagesList(); track msg) {
+        @for (msg of messagesList(); track $index) {
             <label class="validation-errors__item">{{ msg }}</label>
         }
     </div>
