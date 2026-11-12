@@ -65,9 +65,9 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
             )
         except ValidationError:
             # Never log or return `error` itself: pydantic's ValidationError
-            # repr embeds the full constructor input, including `secrets`
-            # plaintext (see CodeTaskData.log_summary(), which exists for
-            # exactly this reason).
+            # repr embeds the full constructor input, `secrets` included
+            # (sealed, but still not for logs -- see CodeTaskData.log_summary(),
+            # which exists for exactly this reason).
             logger.error(
                 "Invalid storage scope for code execution (execution_id={})", unique_task_id
             )

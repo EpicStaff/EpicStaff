@@ -39,6 +39,8 @@ from shared.models.tools import (
     PythonCodeToolData,
 )
 
+from tests.secret_sealing import header_marker, seal
+
 
 @pytest.fixture(autouse=True)
 def clear_global_registry():
@@ -402,11 +404,19 @@ def _recording_knowledge_client(targets: list) -> _RecordingKnowledgeClient:
     return _RecordingKnowledgeClient(targets)
 
 
-async def test_knowledge_tools_naive_target_carries_embedder_extra_headers():
+_SEALED_EMBEDDER_KEY = seal("embedder-key")
+_SEALED_LLM_KEY = seal("llm-key")
+_EMBEDDER_HEADER = header_marker(seal("embedder-header"))
+_LLM_HEADER = header_marker(seal("llm-header"))
+
+
+async def test_knowledge_tools_naive_target_forwards_the_embedder_secrets_sealed():
     embedder = EmbedderData(
         provider="openai",
         config=EmbedderConfigData(
-            model="text-embedding-3-small", extra_headers={"X-Emb": "emb-resolved"}
+            model="text-embedding-3-small",
+            api_key=_SEALED_EMBEDDER_KEY,
+            extra_headers={"X-Emb": _EMBEDDER_HEADER},
         ),
     )
     entry = SearchConfigEntry(
@@ -420,20 +430,26 @@ async def test_knowledge_tools_naive_target_carries_embedder_extra_headers():
 
     await registry.execute("search_docs_naive", {"query": "q"})
 
-    assert targets[0].embedder_extra_headers == {"X-Emb": "emb-resolved"}
+    assert targets[0].embedder_api_key == _SEALED_EMBEDDER_KEY
+    assert targets[0].embedder_extra_headers == {"X-Emb": _EMBEDDER_HEADER}
+    assert targets[0].llm_api_key is None
     assert targets[0].llm_extra_headers is None
 
 
-async def test_knowledge_tools_graph_target_carries_embedder_and_llm_extra_headers():
+async def test_knowledge_tools_graph_target_forwards_the_embedder_and_llm_secrets_sealed():
     embedder = EmbedderData(
         provider="openai",
         config=EmbedderConfigData(
-            model="text-embedding-3-small", extra_headers={"X-Emb": "emb-resolved"}
+            model="text-embedding-3-small",
+            api_key=_SEALED_EMBEDDER_KEY,
+            extra_headers={"X-Emb": _EMBEDDER_HEADER},
         ),
     )
     llm = LLMData(
         provider="openai",
-        config=LLMConfigData(model="gpt-4o", extra_headers={"X-Llm": "llm-resolved"}),
+        config=LLMConfigData(
+            model="gpt-4o", api_key=_SEALED_LLM_KEY, extra_headers={"X-Llm": _LLM_HEADER}
+        ),
     )
     entry = SearchConfigEntry(
         rag_id=2,
@@ -450,5 +466,7 @@ async def test_knowledge_tools_graph_target_carries_embedder_and_llm_extra_heade
 
     await registry.execute("search_wiki_graph", {"query": "q"})
 
-    assert targets[0].embedder_extra_headers == {"X-Emb": "emb-resolved"}
-    assert targets[0].llm_extra_headers == {"X-Llm": "llm-resolved"}
+    assert targets[0].embedder_api_key == _SEALED_EMBEDDER_KEY
+    assert targets[0].embedder_extra_headers == {"X-Emb": _EMBEDDER_HEADER}
+    assert targets[0].llm_api_key == _SEALED_LLM_KEY
+    assert targets[0].llm_extra_headers == {"X-Llm": _LLM_HEADER}

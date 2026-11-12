@@ -82,7 +82,7 @@ class SessionCallbackSender:
                     ready.append(callback)
                     secrets.append(secret)
             except SecretDecryptionError as exc:
-                # A retry cannot succeed: the key that sealed it (SECRET_KEY) is gone.
+                # Retrying cannot help: SECRETS_ENCRYPTION_KEY and its previous keys all fail on it.
                 self._mark_failed(
                     callback,
                     callback.attempts,

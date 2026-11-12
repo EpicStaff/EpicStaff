@@ -18,6 +18,7 @@ from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
 from manager.application.registry import ExecutionRegistry
+from manager.bootstrap import di as manager_di
 from manager.domain.enums import VenvStatus
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
@@ -40,6 +41,7 @@ from worker.infrastructure.transport.queue_result_sink import QueueResultSink
 from worker.presentation.job_consumer import JobConsumer
 from tests.builders import make_venv, make_worker_job
 from tests.fakes import FakeClock, FakeHostMetrics, FakeIsolationProbe, FakeJobSource
+from tests.transport_secrets import seal
 
 VENV_HASH = "1integration"
 EXECUTION_ID = "exec-integration"
@@ -106,6 +108,7 @@ def build_manager(uow, runtime) -> JobOrchestrator:
         QueueJobFailureSink(runtime["result_queue"]),
         registry,
         IntakeGate(registry, lambda: True, max_accepted=10, max_held=10, queue_timeout=120),
+        cryptographer=manager_di.cryptographer(),
         hold_timeout=1800,
         wall_clock=FakeClock(QUEUED_AT),
     )
@@ -145,6 +148,8 @@ def build_worker(runtime) -> ExecutionOrchestrator:
 
 
 async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
+    """The secret arrives sealed; the worker must get it opened, or the scrubber would
+    look for the ciphertext and let the printed plaintext through."""
     venv = uow.venv_repo.seed(
         make_venv(status=VenvStatus.COMPLETED, hash=VENV_HASH)
     )[0]
@@ -157,7 +162,7 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
         entrypoint="main",
         global_kwargs={"LIMIT": 3},
         func_kwargs={"value": "x"},
-        secrets={"TOKEN": "s3cret"},
+        secrets={"TOKEN": seal("s3cret")},
         venv_id=venv.id,
         use_storage=False,
         storage_allowed_paths=[],
