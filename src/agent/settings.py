@@ -23,6 +23,11 @@ def positive_seconds(variable: str, seconds: float | None) -> float:
     return seconds
 
 
+def without_empty_items(items: list[str] | None) -> list[str]:
+    """Drop the empty items an empty value or a stray comma leaves (``None`` is the ``none`` env value)."""
+    return [item for item in items or [] if item]
+
+
 env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(BASE_DIR / "../.env")
@@ -79,6 +84,14 @@ AGENT_CONTEXT_WARNING_RATIO = env.float("AGENT_CONTEXT_WARNING_RATIO")
 AGENT_MCP_DESCRIBE_CACHE_TTL = positive_seconds(
     "AGENT_MCP_DESCRIBE_CACHE_TTL", env.time("AGENT_MCP_DESCRIBE_CACHE_TTL")
 )
+
+# Opens the secret values django_app seals for transport; the previous keys only decrypt,
+# so values sealed before a key rotation still open.
+SECRETS_TRANSPORT_KEY = env.secret("SECRETS_TRANSPORT_KEY")
+SECRETS_TRANSPORT_PREVIOUS_KEYS = without_empty_items(env.list("SECRETS_TRANSPORT_PREVIOUS_KEYS"))
+# HKDF info the transport key is derived with: a wire contract with django_app, the producer.
+# Read from the environment, which compose shares with every service.
+SECRETS_TRANSPORT_HKDF_INFO = env.str("SECRETS_TRANSPORT_HKDF_INFO")
 
 KNOWLEDGE_SEARCH_REQUEST_CHANNEL = env.str("KNOWLEDGE_SEARCH_REQUEST_CHANNEL")
 KNOWLEDGE_SEARCH_RESPONSE_CHANNEL = env.str("KNOWLEDGE_SEARCH_RESPONSE_CHANNEL")

@@ -29,6 +29,7 @@ from tables.services.converter_service import ConverterService
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import secret_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.sealed_values import open_sealed, open_sealed_headers
 
 EMBEDDER_HEADERS = {"X-Emb-Key": "epicstaff_secret(EMB_GATEWAY)", "X-Trace": "t"}
 LLM_HEADERS = {"Authorization": "Bearer epicstaff_secret(LLM_GATEWAY)"}
@@ -218,7 +219,7 @@ def test_realtime_naive_rag_resolution_carries_embedder_headers_only(org, collec
     assert result.rag_llm_extra_headers is None
 
 
-# ---- ProcessRagIndexingView: Django resolves the markers before calling knowledge_new ----
+# ---- ProcessRagIndexingView: Django seals the markers before calling knowledge_new ----
 
 
 @pytest.fixture
@@ -246,6 +247,14 @@ def test_indexing_sends_resolved_graph_rag_headers(indexing_client, knowledge_cl
     graph_rag.index_config = _index_config()
     graph_rag.save(update_fields=["index_config"])
     _link_document(graph_rag, collection)
+    graph_rag.embedder.api_key_secret = secret_service.create(
+        text="emb-key-plain", org=acme, name="EMB_API_KEY"
+    )
+    graph_rag.embedder.save(update_fields=["api_key_secret"])
+    graph_rag.llm.api_key_secret = secret_service.create(
+        text="llm-key-plain", org=acme, name="LLM_API_KEY"
+    )
+    graph_rag.llm.save(update_fields=["api_key_secret"])
 
     response = indexing_client.post(
         "/api/process-rag-indexing/",
@@ -255,8 +264,15 @@ def test_indexing_sends_resolved_graph_rag_headers(indexing_client, knowledge_cl
 
     assert response.status_code == 202, response.data
     sent = knowledge_client.index.call_args.kwargs
-    assert sent["embedding_extra_headers"] == {"X-Emb-Key": "emb-plain", "X-Trace": "t"}
-    assert sent["llm_extra_headers"] == {"Authorization": "Bearer llm-plain"}
+    assert open_sealed(sent["embedding_api_key"]) == "emb-key-plain"
+    assert open_sealed(sent["llm_api_key"]) == "llm-key-plain"
+    assert "emb-plain" not in str(sent["embedding_extra_headers"])
+    assert "llm-plain" not in str(sent["llm_extra_headers"])
+    assert open_sealed_headers(sent["embedding_extra_headers"]) == {
+        "X-Emb-Key": "emb-plain",
+        "X-Trace": "t",
+    }
+    assert open_sealed_headers(sent["llm_extra_headers"]) == {"Authorization": "Bearer llm-plain"}
     # The stored configs keep their markers.
     graph_rag.embedder.refresh_from_db()
     assert graph_rag.embedder.extra_headers == EMBEDDER_HEADERS
@@ -268,6 +284,10 @@ def test_indexing_sends_resolved_naive_rag_headers(indexing_client, knowledge_cl
     collection = SourceCollection.objects.create(collection_name="Naive KB", org=acme)
     naive_rag = _naive_rag(acme, collection)
     DocumentMetadata.objects.create(source_collection=collection, file_name="a.txt")
+    naive_rag.embedder.api_key_secret = secret_service.create(
+        text="emb-key-plain", org=acme, name="EMB_API_KEY"
+    )
+    naive_rag.embedder.save(update_fields=["api_key_secret"])
 
     response = indexing_client.post(
         "/api/process-rag-indexing/",
@@ -277,7 +297,12 @@ def test_indexing_sends_resolved_naive_rag_headers(indexing_client, knowledge_cl
 
     assert response.status_code == 202, response.data
     sent = knowledge_client.index.call_args.kwargs
-    assert sent["embedding_extra_headers"] == {"X-Emb-Key": "emb-plain", "X-Trace": "t"}
+    assert open_sealed(sent["embedding_api_key"]) == "emb-key-plain"
+    assert sent["llm_api_key"] is None
+    assert open_sealed_headers(sent["embedding_extra_headers"]) == {
+        "X-Emb-Key": "emb-plain",
+        "X-Trace": "t",
+    }
     assert sent["llm_extra_headers"] is None
 
 

@@ -125,7 +125,7 @@ class SecretUseService:
     ) -> None:
         """Require USE when a header dict gains an `epicstaff_secret(<name>)` marker.
 
-        A marker makes a run send that secret's plaintext, so adding one is a secret
+        A marker makes a run send that secret's sealed value, so adding one is a secret
         reference. Keeping or removing markers is free, so a caller without USE can
         still edit the rest of the resource.
 

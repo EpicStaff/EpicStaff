@@ -2,6 +2,7 @@ import hmac
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from foundation.cryptographer import CryptographerError
 from loguru import logger
 
 from app.core.settings import settings
@@ -55,11 +56,20 @@ async def handle_webhook(
 
     token = request.headers.get(auth.header_name)
 
-    authenticated = (
-        bool(token)
-        and bool(auth.secret)
-        and hmac.compare_digest(token.encode("utf-8"), auth.secret.encode("utf-8"))
-    )
+    authenticated = False
+    if token and auth.secret:
+        try:
+            # The secret arrives sealed for transport; an unopenable one fails closed.
+            secret = request.app.state.cryptographer.decrypt(auth.secret)
+        except CryptographerError:
+            logger.warning(
+                "Webhook PATH: {} | CONFIG ID: {} | AUTH: '{}' secret could not be decrypted.",
+                custom_path,
+                config_id,
+                auth.kind,
+            )
+        else:
+            authenticated = hmac.compare_digest(token.encode("utf-8"), secret.encode("utf-8"))
     if not authenticated:
         logger.warning(
             f"Webhook PATH: {custom_path} | CONFIG ID: {config_id} | "

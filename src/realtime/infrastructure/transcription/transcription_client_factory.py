@@ -3,7 +3,9 @@ from collections.abc import Awaitable, Callable
 from domain.ports.i_transcription_client import ITranscriptionClient
 from domain.ports.i_transcription_client_factory import ITranscriptionClientFactory
 from domain.services.chat_buffer import ChatSummarizedBuffer
+from foundation.cryptographer import AbstractCryptographer
 from src.shared.models import RealtimeAgentChatData
+from utils.transport_secrets import decrypt_transport_secret
 
 from infrastructure.transcription.openai_realtime_transcription_client import (
     OpenaiRealtimeTranscriptionClient,
@@ -16,6 +18,9 @@ class TranscriptionClientFactory(ITranscriptionClientFactory):
     client to instantiate (or return None for providers with built-in STT).
     """
 
+    def __init__(self, transport_cryptographer: AbstractCryptographer):
+        self._transport_cryptographer = transport_cryptographer
+
     def create(
         self,
         config: RealtimeAgentChatData,
@@ -27,7 +32,11 @@ class TranscriptionClientFactory(ITranscriptionClientFactory):
         if not config.transcript_api_key:
             return None
         return OpenaiRealtimeTranscriptionClient(
-            api_key=config.transcript_api_key,
+            api_key=decrypt_transport_secret(
+                self._transport_cryptographer,
+                config.transcript_api_key,
+                field_name="transcript_api_key",
+            ),
             connection_key=config.connection_key,
             on_server_event=on_server_event,
             model="gpt-4o-mini-transcribe",

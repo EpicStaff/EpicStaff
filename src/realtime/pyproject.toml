@@ -11,7 +11,7 @@ requires-python = "==3.12.10"
 dependencies = [
     "asyncpg==0.30.0",
     "fastapi==0.141.1",
-    "foundation",
+    "foundation[cryptographer]",
     "google-genai==1.19.0",
     "httpx==0.28.1",
     "loguru==0.7.3",

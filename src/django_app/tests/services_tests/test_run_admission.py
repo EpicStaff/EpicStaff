@@ -4,6 +4,7 @@ The registered checks are replaced by test checks (`run_admission_fixtures`), so
 never depend on a real check. Redis is mocked; the database, views and services are real.
 """
 
+import json
 from datetime import timedelta
 
 import pytest
@@ -50,6 +51,7 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tests.fixtures import _make_secret
+from tests.sealed_values import open_sealed
 from tests.services_tests.run_admission_fixtures import *  # noqa: F401,F403
 from tests.services_tests.run_admission_fixtures import (
     REFUSAL_EXTRA,
@@ -529,7 +531,8 @@ def test_a_refused_secret_named_in_the_realtime_config_override_is_never_used(
     assert response.status_code == 201, response.content
     published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
     assert "sk-refused-override" not in published
-    assert "sk-own" in published
+    _channel, body = redis_client_mock.publish.call_args[0]
+    assert open_sealed(json.loads(body)["rt_api_key"]) == "sk-own"
 
 
 # --- Code test runs ---------------------------------------------------------------------

@@ -6,7 +6,8 @@ first fails every job held past its hold deadline. Every submission is recorded 
 execution registry; one refused before it was enqueued is forgotten again, and a job
 is stamped with the wall-clock time it reached the queue, never while it is held. Held jobs have their own cap
 and never count toward the in-flight one; a released job is dispatched even when the
-in-flight cap is full.
+in-flight cap is full. Secrets arrive sealed and leave for the worker opened; one that
+cannot be opened refuses the submission, naming the secret and nothing else.
 """
 
 import asyncio
@@ -17,14 +18,20 @@ from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
 from manager.application.registry import ExecutionRegistry
+from manager.bootstrap import di as manager_di
 from manager.domain.enums import ExecutionStatus, VenvStatus
-from manager.domain.errors import SandboxOverloadedError, VenvNotFoundError
+from manager.domain.errors import (
+    SandboxOverloadedError,
+    SecretNotDecryptableError,
+    VenvNotFoundError,
+)
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
 from manager.presentation.result_consumer import ResultConsumer
 from tests.builders import make_venv
 from tests.fakes import FakeClock, FakeResultPublisher, FakeUnitOfWork, FakeVenvRepository
+from tests.transport_secrets import seal, seal_with_foreign_key
 
 QUEUE_TIMEOUT = 120.0
 HOLD_TIMEOUT = 1800.0
@@ -41,7 +48,7 @@ SUBMISSION = {
     "entrypoint": "main",
     "global_kwargs": {"LIMIT": 3},
     "func_kwargs": {"value": "x"},
-    "secrets": {"TOKEN": "s3cret"},
+    "secrets": {},
     "use_storage": False,
     "storage_allowed_paths": [],
     "storage_org_prefix": None,
@@ -107,6 +114,7 @@ def build_orchestrator(
         failure_sink,
         registry,
         intake_gate,
+        cryptographer=manager_di.cryptographer(),
         hold_timeout=HOLD_TIMEOUT,
         clock=clock,
         wall_clock=wall_clock or FakeClock(),
@@ -160,7 +168,6 @@ async def test_submit_against_a_completed_venv_dispatches_it(
 
     assert [dispatched.execution_id for dispatched in dispatcher.dispatched] == ["exec-1"]
     assert dispatcher.dispatched[0].venv_hash == "1abc"
-    assert dispatcher.dispatched[0].secrets == {"TOKEN": "s3cret"}
     assert dispatcher.dispatched[0].venv_id == venv.id
     assert holding.pending_venv_ids() == []
     assert status is ExecutionStatus.QUEUED
@@ -240,6 +247,52 @@ async def test_a_dispatch_failure_is_reported_as_a_failed_run(
     assert failure.execution_id == "exec-1"
     assert failure.message == "The job could not be handed to the worker and was not run."
     assert (failure.session_id, failure.not_run_reason) == (7, "dispatch_failed")
+
+
+async def test_sealed_secrets_reach_the_worker_opened(uow, orchestrator, dispatcher):
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+    sealed = {
+        "TOKEN": seal("s3cret"),
+        "EMPTY": seal(""),
+    }
+
+    await orchestrator.submit(venv_id=venv.id, **{**SUBMISSION, "secrets": sealed})
+
+    assert dispatcher.dispatched[0].secrets == {"TOKEN": "s3cret", "EMPTY": ""}
+
+
+async def test_a_held_job_carries_its_secrets_opened(uow, orchestrator, holding):
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.PROCESSING))[0]
+    sealed = {"TOKEN": seal("s3cret")}
+
+    await orchestrator.submit(venv_id=venv.id, **{**SUBMISSION, "secrets": sealed})
+
+    [held] = holding.release(venv.id)
+    assert held.secrets == {"TOKEN": "s3cret"}
+
+
+@pytest.mark.parametrize(
+    "undecryptable",
+    [
+        pytest.param("s3cret", id="plaintext"),
+        pytest.param(seal_with_foreign_key("s3cret"), id="another-key"),
+        pytest.param(42, id="not-a-string"),
+    ],
+)
+async def test_an_undecryptable_secret_refuses_the_job_naming_only_the_secret(
+    uow, orchestrator, dispatcher, holding, failure_sink, registry, undecryptable
+):
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+    secrets = {"GOOD": seal("fine"), "API_KEY": undecryptable}
+
+    with pytest.raises(SecretNotDecryptableError) as refused:
+        await orchestrator.submit(venv_id=venv.id, **{**SUBMISSION, "secrets": secrets})
+
+    assert str(refused.value) == "Secret 'API_KEY' could not be decrypted; the job was not run."
+    assert dispatcher.dispatched == []
+    assert holding.pending_venv_ids() == []
+    assert failure_sink.failures == []
+    assert registry.status("exec-1") is None
 
 
 async def test_flush_pending_dispatches_jobs_whose_venv_finished_building(
