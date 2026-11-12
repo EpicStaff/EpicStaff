@@ -5,6 +5,7 @@ import { DateRangeFilter } from '@shared/models';
 
 import { AuditEnumOption } from '../../models/audit-filter.models';
 import {
+    AUDIT_DEFAULT_TIME,
     AuditDateBoundary,
     AuditDateTimeParts,
     combineAuditDateTime,
@@ -90,9 +91,12 @@ export class AuditDateFilterComponent {
     protected setPart(boundary: AuditDateBoundary, field: keyof AuditDateTimeParts, value: string): void {
         const partsSignal = boundary === 'from' ? this.fromParts : this.toParts;
         const parts = { ...partsSignal(), [field]: value };
+        const combined = combineAuditDateTime(parts, boundary);
+        if (field === 'date' && combined !== undefined) {
+            parts.time = combined === null ? '' : parts.time || AUDIT_DEFAULT_TIME[boundary];
+        }
         partsSignal.set(parts);
 
-        const combined = combineAuditDateTime(parts, boundary);
         if (combined === undefined) {
             return;
         }
