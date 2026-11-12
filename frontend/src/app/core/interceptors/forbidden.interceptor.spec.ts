@@ -140,6 +140,7 @@ describe('forbiddenInterceptor', () => {
     it.each([
         ['flow_with_trigger_nodes_requires_use_permission', 'This flow contains trigger nodes.'],
         ['code_with_secrets_requires_secrets_use_permission', 'This contains code that reads secrets.'],
+        ['agent_with_owned_surfaces_requires_surfaces_create_permission', 'This agent owns surfaces.'],
     ])(
         'passes a %s 403 to the caller without a refresh or toast',
         (code, message) =>

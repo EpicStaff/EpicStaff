@@ -24,6 +24,7 @@ from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.archive_unpacking.names import is_archive_name
 from tables.views.storage_bin_purge_access import StorageBinPurgeAccess
 from tables.views.storage_views import StorageAPIView
+from user_audit.context import current_context
 from utils.exception_handler import custom_exception_handler
 from utils.logger import logger
 
@@ -113,8 +114,7 @@ def _check_access(scope) -> tuple[Request, int]:
     view = StorageAPIView()
     view.action_map = {"post": UPLOAD_STREAM_ACTION}
     view.args, view.kwargs = (), {}
-    # Empty body: the real one is read straight from `receive`.
-    request = view.initialize_request(ASGIRequest(scope, io.BytesIO()))
+    request = view.initialize_request(_http_request(scope))
     view.request = request
     try:
         view.perform_authentication(request)
@@ -128,6 +128,16 @@ def _check_access(scope) -> tuple[Request, int]:
             exc.status_code = status.HTTP_403_FORBIDDEN
         raise
     return request, view.get_active_org_id()
+
+
+def _http_request(scope) -> ASGIRequest:
+    """The request of the user-action context asgi.py opened, so the caller and the org
+    checked here are the ones its record names; a new one outside that context."""
+    context = current_context()
+    if context is not None:
+        return context.request
+    # Empty body: the real one is read straight from `receive`.
+    return ASGIRequest(scope, io.BytesIO())
 
 
 def _overwrite_authorizer(user, org_id: int):

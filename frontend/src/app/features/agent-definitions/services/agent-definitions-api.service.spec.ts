@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
+import { ConfigService } from '../../../services/config';
 import { AgentDefinition } from '../models/agent-definition.model';
 import { AgentDefinitionsApiService } from './agent-definitions-api.service';
 
@@ -37,27 +38,25 @@ const SOURCE: AgentDefinition = {
 };
 
 describe('AgentDefinitionsApiService.copy', () => {
-    it('creates the copy with the same primary and fallback LLM config', () => {
-        TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    it('asks the server to copy the agent, sending no fields of its own', () => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
+            ],
+        });
         const http = TestBed.inject(HttpTestingController);
-
-        TestBed.inject(AgentDefinitionsApiService).copy(SOURCE, 'CV Processor (copy)').subscribe();
-
-        const request = http.expectOne((req) => req.method === 'POST');
-        expect(request.request.body).toMatchObject({ llm_config: 1, fallback_llm_config: 2 });
-        http.verify();
-    });
-
-    it('drops the fallback when the source has no primary LLM config', () => {
-        TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
-        const http = TestBed.inject(HttpTestingController);
+        let copied: AgentDefinition | undefined;
 
         TestBed.inject(AgentDefinitionsApiService)
-            .copy({ ...SOURCE, llm_config: null }, 'CV Processor (copy)')
-            .subscribe();
+            .copy(3)
+            .subscribe((agent) => (copied = agent));
 
-        const request = http.expectOne((req) => req.method === 'POST');
-        expect(request.request.body).toMatchObject({ llm_config: null, fallback_llm_config: null });
+        const request = http.expectOne({ method: 'POST', url: '/api/agent-definitions/3/copy/' });
+        expect(request.request.body).toEqual({});
+        request.flush({ ...SOURCE, id: 8, name: 'CV Processor #2' }, { status: 201, statusText: 'Created' });
+        expect(copied?.id).toBe(8);
         http.verify();
     });
 });

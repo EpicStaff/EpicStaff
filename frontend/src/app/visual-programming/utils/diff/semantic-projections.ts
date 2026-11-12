@@ -6,7 +6,12 @@ import {
     SystemOneQuestion,
 } from '@shared/models';
 
-import { DEFAULT_KEY_VALUE_MODE, MISSING_END_OUTPUT_MAP } from '../../core/constants/default-node-data';
+import {
+    DEFAULT_INITIAL_STATE,
+    DEFAULT_KEY_VALUE_MODE,
+    isSetInitialState,
+    MISSING_END_OUTPUT_MAP,
+} from '../../core/constants/default-node-data';
 import { findCdtSection } from '../../core/models/cdt-section.model';
 import { ComputationConfig, PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../core/models/decision-table.model';
@@ -124,7 +129,7 @@ const TEST_AID = 'a testing aid, not part of the flow';
 
 export const SEMANTIC_PROJECTIONS = {
     [NodeType.START]: {
-        project: (node) => ({ variables: node.data.initialState ?? {} }),
+        project: (node) => ({ variables: startVariables(node.data.initialState) }),
         ignored: {},
     },
     [NodeType.END]: {
@@ -626,4 +631,15 @@ function computation(
         secret_names: sortedStrings(block?.secret_names),
         execution_timeout: storedExecutionTimeout(block?.execution_timeout, context),
     };
+}
+
+/**
+ * Start variables that are not set (`isSetInitialState`) as `DEFAULT_INITIAL_STATE`. The two only look the same: the
+ * Start dialog shows the template for unset variables (and writes it into the node on close), but at run time they
+ * differ — with `{}` the keys `variables.context` and `persistent_variables` are absent, with the template they are
+ * `null` and `[]`. The diff counts them equal on purpose, so the Changes tab matches what the dialog shows. A restore
+ * still writes the value the version stores.
+ */
+function startVariables(state: unknown): Readonly<Record<string, unknown>> {
+    return isSetInitialState(state) ? state : DEFAULT_INITIAL_STATE;
 }

@@ -1,6 +1,6 @@
 from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
 from rbac.authorship import authorship_prefetches
@@ -17,21 +17,30 @@ from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.swagger_schemas.tools_schemas import (
     AGENT_DEFINITION_BULK_EXPORT_POST,
+    AGENT_DEFINITION_COPY_POST,
     AGENT_DEFINITION_EXPORT_GET,
     AGENT_DEFINITION_IMPORT_POST,
 )
-from tables.views.mixins import InspectActionMixin
+from tables.views.mixins import CopyActionMixin, InspectActionMixin
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
+from user_audit.read_only import reads_only
 
 from agents.models import AgentDefinition
 from agents.serializers.agent_definition_serializers import (
+    AgentDefinitionCopyRequestSerializer,
     AgentDefinitionReadSerializer,
     AgentDefinitionWriteSerializer,
 )
+from agents.services.agent_definition_copy_service import AgentDefinitionCopyService
 
 
+@extend_schema_view(copy=extend_schema(**AGENT_DEFINITION_COPY_POST))
 class AgentDefinitionViewSet(
-    OrgScopedViewSetMixin, InspectActionMixin, RecycleBinActionsMixin, viewsets.ModelViewSet
+    OrgScopedViewSetMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    RecycleBinActionsMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
@@ -42,8 +51,13 @@ class AgentDefinitionViewSet(
         "bulk_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
+        # Copying an agent that owns surfaces also needs surfaces CREATE, checked
+        # by AgentDefinitionCopyService inside the copy's transaction.
+        "copy": Permission.CREATE,
     }
     recycle_bin_resource_key = RecycleBinSource.AGENT
+    copy_service_class = AgentDefinitionCopyService
+    copy_serializer_class = AgentDefinitionReadSerializer
     queryset = AgentDefinition.objects.select_related(
         "org", "llm_config", "fallback_llm_config", "fcm_llm_config", "realtime_agent"
     ).prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())
@@ -57,6 +71,11 @@ class AgentDefinitionViewSet(
             export_prefix="agent",
             filename_attr="name",
         )
+
+    def check_copy_allowed(self, request, instance) -> None:
+        # CopyActionMixin passes the raw `name` on; refuse a malformed body here,
+        # after the org-scoped 404 and before anything is written.
+        AgentDefinitionCopyRequestSerializer(data=request.data).is_valid(raise_exception=True)
 
     def get_serializer_class(self):
         if self.action in ["list", "retrieve"]:
@@ -112,6 +131,7 @@ class AgentDefinitionViewSet(
 
     @extend_schema(**AGENT_DEFINITION_BULK_EXPORT_POST)
     @action(detail=False, methods=["post"], url_path="bulk-export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

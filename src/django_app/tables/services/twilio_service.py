@@ -17,9 +17,11 @@ import urllib.parse
 import urllib.request
 import uuid
 
+from src.shared.models import UserAction
 from tables.models.webhook_models import RealtimeChannel
 from tables.services.secrets import secret_resolver
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from user_audit.recorder import record_user_action
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
 
@@ -152,6 +154,8 @@ class TwilioService(metaclass=SingletonMeta):
         the channel's own org may configure their own org's Twilio number. A
         channel belonging to another org (or none at all) is rejected
         exactly like a missing token, so existence never leaks.
+
+        Records the channel as updated once Twilio has taken the new URL.
         """
         logger.info(f"configure-webhook: phone_sid={phone_sid} channel_token={channel_token}")
 
@@ -247,6 +251,7 @@ class TwilioService(metaclass=SingletonMeta):
                 data={"VoiceUrl": webhook_url, "VoiceMethod": "POST"},
             )
             logger.info(f"configure-webhook: success webhook_url={webhook_url}")
+            record_user_action(action=UserAction.UPDATED, org_id=channel.org_id, target=channel)
             return webhook_url
         except urllib.error.HTTPError as e:
             body = e.read().decode()

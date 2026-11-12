@@ -1,0 +1,3 @@
+# False positives: `key_type=ApiKey.KeyType.SYSTEM` is an enum value, not a secret.
+src/django_app/rbac/identity/api_keys/system_key.py:generic-api-key:56
+src/django_app/tests/api_tests/test_api_keys.py:generic-api-key:176

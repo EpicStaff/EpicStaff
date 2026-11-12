@@ -7,7 +7,7 @@ from tables.import_export.serializers.audit_filter_preset import (
     AuditFilterPresetEntitySerializer,
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.models.audit_filter_preset_models import AuditFilterPreset
+from tables.models.audit_filter_preset_models import AuditFilterPreset, AuditPresetDomain
 from tables.services.copy_services.audit_filter_preset_copy_service import next_free_preset_name
 
 
@@ -26,6 +26,7 @@ class AuditFilterPresetStrategy(EntityImportExportStrategy):
             "id": instance.id,
             "name": instance.name,
             "filter_body": instance.filter_body,
+            "domain": instance.domain,
         }
 
     def export_entity(self, instance: AuditFilterPreset) -> dict:
@@ -34,11 +35,14 @@ class AuditFilterPresetStrategy(EntityImportExportStrategy):
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> AuditFilterPreset:
         """Reuse a preset with the same search, otherwise create a private one.
 
-        A preset in the org that the importer authored, or that anyone shared, with the
-        same `filters`, `query` and `match_scope` is reused and mapped as not created, so
-        the import summary reports it under "reused". A colleague's private preset never
-        matches. A created preset whose name the importer already uses gets the copy
-        numbering; colleagues' names do not collide.
+        The file's presets must be of `kwargs["domain"]`, the domain the import was
+        requested for (sessions when none is named; a file without a domain holds
+        sessions presets); any other is rejected. A preset of that domain in the org
+        that the importer authored, or that anyone shared, with the same `filters`,
+        `query` and `match_scope` is reused and mapped as not created, so the import
+        summary reports it under "reused". A colleague's private preset never matches.
+        A created preset whose name the importer already uses in the domain gets the
+        copy numbering; colleagues' names do not collide.
         """
         name = data.get("name")
         if not isinstance(name, str) or not name.strip():
@@ -47,13 +51,20 @@ class AuditFilterPresetStrategy(EntityImportExportStrategy):
         name = name.strip()
         org_id = kwargs.get("org_id")
         created_by = kwargs.get("user")
+        domain = kwargs.get("domain", AuditPresetDomain.SESSIONS)
+        # Compared before validation, so a preset is never validated or created
+        # under a domain the caller was not authorized for.
+        if data.get("domain", AuditPresetDomain.SESSIONS) != domain:
+            raise ValidationError(
+                {"domain": f"This file holds presets of another audit domain, not {domain!r}."}
+            )
 
         # Validate before matching, so a malformed entry is rejected rather than reused.
-        serializer = self.serializer_class(data={**data, "name": name})
+        serializer = self.serializer_class(data={**data, "name": name, "domain": domain})
         serializer.is_valid(raise_exception=True)
 
         existing = self._find_same_search(
-            serializer.validated_data["filter_body"], org_id, created_by.id
+            serializer.validated_data["filter_body"], org_id, created_by.id, domain
         )
         if existing is not None:
             # ImportService keeps a mapping the strategy registered itself.
@@ -61,15 +72,15 @@ class AuditFilterPresetStrategy(EntityImportExportStrategy):
             return existing
 
         # A numbered name always fits the column, so the validation above still holds.
-        free_name = next_free_preset_name(org_id, created_by.id, name)
+        free_name = next_free_preset_name(org_id, created_by.id, name, domain=domain)
         return serializer.save(name=free_name, org_id=org_id, created_by=created_by)
 
     def _find_same_search(
-        self, filter_body: dict, org_id: int, user_id: int
+        self, filter_body: dict, org_id: int, user_id: int, domain: str
     ) -> AuditFilterPreset | None:
         search_key = _search_key(filter_body)
         # A colleague's private preset is excluded: matching it would reveal it exists.
-        candidates = AuditFilterPreset.objects.filter(org_id=org_id).filter(
+        candidates = AuditFilterPreset.objects.filter(org_id=org_id, domain=domain).filter(
             Q(created_by_id=user_id) | Q(is_shared=True)
         )
         # The importer's own preset wins over a colleague's shared one with the same search.

@@ -16,7 +16,7 @@ import {
     ExplorerMenuPosition,
     ExplorerMenuSubject,
 } from '../explorer-context-menu/explorer-menu.model';
-import { menuPositionFromClick, treeNodeMenuItems } from '../explorer-menu.util';
+import { isTreeNodeMenuItemAllowed, menuPositionFromClick, treeNodeMenuItems } from '../explorer-menu.util';
 
 export interface ExplorerTreeMenuEvent {
     node: ExplorerMenuSubject;
@@ -145,9 +145,13 @@ export class TreeNodeComponent implements OnInit {
 
     readonly childIndent = computed(() => this.depth() + 1);
 
-    private readonly hoverMenuItems = computed(() =>
-        treeNodeMenuItems(this.node()).filter((i) => this.permissionService.can(i.resource, i.action))
-    );
+    private readonly hoverMenuItems = computed(() => {
+        const node = this.node();
+        const surfaces = this.store.surfaces();
+        return treeNodeMenuItems(node).filter((item) =>
+            isTreeNodeMenuItemAllowed(node, item, surfaces, this.permissionService)
+        );
+    });
 
     readonly showHoverMenu = computed(() => this.hoverMenuItems().length > 0);
 

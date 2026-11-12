@@ -7,10 +7,12 @@ from django.conf import settings
 from django.db import close_old_connections, transaction
 from rbac.authorship import RecordedLastEdit, restore_last_edits
 from rbac.models import Organization
+from src.shared.models import UserAction
 from tables.exceptions import StorageQuotaExceeded, UploadTooLarge
 from tables.models import StorageFile
 from tables.services.storage_service import get_storage_backend
 from tables.services.storage_service.dataclasses import BinPurgeGrant, PurgedBinEntry
+from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.path_utils import storage_key
 from tables.services.storage_service.quota import org_writable_bytes, record_files_within_quota
@@ -80,7 +82,9 @@ async def save_stream(
     The row is written before the store commits, so a rejected row aborts the upload.
     `recycle_bin_purged` in the result lists, as PurgedBinEntry, the bin entries purged to
     make room, which only a `bin_purge` grant allows. They stay purged if the store then
-    fails to commit; _undo_file_row logs that."""
+    fails to commit; _undo_file_row logs that.
+    Once the store has committed, the file is recorded as a `created` user action, or
+    `updated` when it replaced a file."""
     max_size = settings.MAX_STREAM_UPLOAD_FILE_SIZE
     # Under a bin_purge grant the early rejects count the storage bin as freeable; the
     # row write purges it.
@@ -123,6 +127,12 @@ async def save_stream(
             )
         raise
 
+    await sync_to_async(StorageFileSync.record_transfer)(
+        UserAction.UPDATED if replaced_row is not None else UserAction.CREATED,
+        org_id,
+        target,
+        user=user,
+    )
     return {"path": target, "size": size, "recycle_bin_purged": purged}
 
 

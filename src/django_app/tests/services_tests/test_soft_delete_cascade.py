@@ -81,12 +81,11 @@ from tables.import_export.serializers.knowledge_node import (
     _GraphLocalSearchConfigImportSerializer,
     _NaiveSearchConfigImportSerializer,
 )
-from tables.models.base_models import SOFT_DELETE_FIELD_NAMES, SoftDeleteFields
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES, SoftDeleteFields, copied_field_values
 from tables.serializers.model_serializers.realtime_serializers import RealtimeAgentDefinitionSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.strategies.nodes.knowledge_node import KnowledgeNodeStrategy
-from tables.services.copy_services.inline_surface_copy_helpers import _copy_field_values
 from tables.services.copy_services.node_copy_handlers import copy_knowledge_node
 from tables.models.session_models import SessionTrigger
 from rbac.models import OrganizationUser
@@ -1081,7 +1080,7 @@ class TestSoftDeleteStateStaysOutOfApiImportAndCopy:
             inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
         )
 
-        copied_values = _copy_field_values(tool_link, exclude={"inline_surface"})
+        copied_values = copied_field_values(tool_link, exclude={"inline_surface"})
 
         assert not set(copied_values) & set(SOFT_DELETE_FIELD_NAMES)
 

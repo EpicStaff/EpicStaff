@@ -1,3 +1,4 @@
+import { AuditFieldCatalog, AuditLookupField, AuditSelectField } from '../models/audit-domain.models';
 import {
     AuditCondition,
     AuditConditionGroup,
@@ -7,7 +8,10 @@ import {
     AuditFilterNode,
     AuditFilterOp,
     AuditFilterState,
+    AuditIdFilter,
     AuditValuesFilter,
+    catalogIdFilter,
+    catalogSelection,
     createAuditCondition,
     createAuditConditionGroup,
     EMPTY_AUDIT_FILTER,
@@ -31,7 +35,8 @@ import { compileAuditFilter, TOKENS_FIELD, TOOL_NAME_FIELD } from './compile-aud
 type ConditionStateKey = 'error' | 'input' | 'output' | 'details' | 'task' | 'prompt' | 'messageText';
 
 interface ConditionField {
-    stateKey: ConditionStateKey;
+    // null for a field catalog text field, whose groups live in textConditions under its field name
+    stateKey: ConditionStateKey | null;
     operators: AuditFilterOp[];
     // only the JSON roots let the Builder pick a key below the root
     hasKey: boolean;
@@ -48,6 +53,34 @@ const CONDITION_FIELDS = new Map<string, ConditionField>([
 ]);
 
 const SELECT_FIELDS = ['kind', 'status', 'node_type', 'flow_name', 'agent', 'tool'];
+
+// The fields a domain's Builder shows, as the matching below needs them.
+interface BuilderFields {
+    selectFields: string[];
+    conditionFields: Map<string, ConditionField>;
+}
+
+const SESSION_BUILDER_FIELDS: BuilderFields = { selectFields: SELECT_FIELDS, conditionFields: CONDITION_FIELDS };
+
+function builderFieldsOf(catalog: AuditFieldCatalog): BuilderFields {
+    if (catalog.domain === 'sessions') {
+        return SESSION_BUILDER_FIELDS;
+    }
+    return {
+        // a lookup field is listed too, so `actor_user_id = 5` reads as a one-member selection
+        selectFields: catalog.builderFields
+            .filter((item) => item.kind === 'select' || item.kind === 'lookup')
+            .map((item) => item.field),
+        conditionFields: new Map(
+            catalog.builderFields.flatMap((item) =>
+                item.kind === 'text'
+                    ? [[item.field, { stateKey: null, operators: item.operators, hasKey: false }] as const]
+                    : []
+            )
+        ),
+    };
+}
+
 // the NUMBER token of the query language - only such strings may stand in for a compiled number
 const NUMBER_TEXT = /^\d+(\.\d+)?$/;
 
@@ -58,27 +91,27 @@ function isLeaf(node: AuditFilterNode): node is AuditFilterLeaf {
 // The one place where two filters count as "the same": nested same-op groups are flattened
 // (associativity), `= v` / `!= v` on select fields become `in [v]` / `not in [v]`, `tool` becomes
 // its compiled details.data.name form, and `!=` becomes key_not_equals on condition fields that offer it.
-function canonical(node: AuditFilterNode): AuditFilterNode {
+function canonical(node: AuditFilterNode, fields: BuilderFields): AuditFilterNode {
     if ('children' in node) {
         const children = node.children
-            .map(canonical)
+            .map((child) => canonical(child, fields))
             .flatMap((child) => ('children' in child && child.op === node.op ? child.children : [child]));
         return { op: node.op, children };
     }
     if (node.op === 'not') {
-        return { op: 'not', child: canonical(node.child) };
+        return { op: 'not', child: canonical(node.child, fields) };
     }
     const { op, value } = node;
     const field = normalizeFieldName(node.field);
-    if (SELECT_FIELDS.includes(field) && (op === 'equals' || op === 'not_equal')) {
-        return canonical({ field, op: op === 'equals' ? 'in' : 'not_in', value: [value] });
+    if (fields.selectFields.includes(field) && (op === 'equals' || op === 'not_equal')) {
+        return canonical({ field, op: op === 'equals' ? 'in' : 'not_in', value: [value] }, fields);
     }
     if (field === 'tool' && (op === 'in' || op === 'not_in') && Array.isArray(value)) {
         const leaves: AuditFilterNode[] = value.map((name) => ({ field: TOOL_NAME_FIELD, op: 'equals', value: name }));
         const anyOf = leaves.length === 1 ? leaves[0] : { op: 'or' as const, children: leaves };
         return op === 'in' ? anyOf : { op: 'not', child: anyOf };
     }
-    if (op === 'not_equal' && CONDITION_FIELDS.get(field.split('.')[0])?.operators.includes('key_not_equals')) {
+    if (op === 'not_equal' && fields.conditionFields.get(field.split('.')[0])?.operators.includes('key_not_equals')) {
         return { field, op: 'key_not_equals', value };
     }
     return { field, op, value };
@@ -204,16 +237,16 @@ function applyFieldFilter(node: AuditFilterNode, state: AuditFilterState): boole
         state.agent = { op, values };
         return true;
     }
-    if (field === 'event_time' && op === 'gte' && state.dateFrom === null) {
-        state.dateFrom = text;
-        return true;
-    }
-    if (field === 'event_time' && op === 'lte' && state.dateTo === null) {
-        state.dateTo = text;
+    if (applyDateFilter(node, state)) {
         return true;
     }
     if (field === 'session_id') {
-        return applySessionId(op, text, values, state);
+        const id = applyIdFilter(op, text, values, state.id);
+        if (id === null) {
+            return false;
+        }
+        state.id = id;
+        return true;
     }
     // a tokens op the Tokens filter does not offer falls through to a Details condition on the same path
     const isTokensUnset = state.tokens.op !== 'is_empty' && state.tokens.value === '';
@@ -228,53 +261,161 @@ function applyFieldFilter(node: AuditFilterNode, state: AuditFilterState): boole
     return false;
 }
 
-function applySessionId(op: AuditFilterOp, text: string, values: string[], state: AuditFilterState): boolean {
-    const id = state.id;
-    const isUnset = id.from === '' && id.to === '' && id.value === '' && id.values.length === 0;
-    if (op === 'gte' || op === 'lte') {
-        const bound = op === 'gte' ? 'from' : 'to';
-        if (!isUnset && (id.mode !== 'range' || id[bound] !== '')) {
-            return false;
-        }
-        state.id = { ...id, mode: 'range', [bound]: text };
+function applyDateFilter(leaf: AuditFilterLeaf, state: AuditFilterState): boolean {
+    const text = typeof leaf.value === 'string' ? leaf.value : '';
+    if (leaf.field === 'event_time' && leaf.op === 'gte' && state.dateFrom === null) {
+        state.dateFrom = text;
         return true;
     }
-    if (!isUnset) {
-        return false;
-    }
-    if (op === 'in') {
-        state.id = { ...id, mode: 'in', values };
-        return true;
-    }
-    if (op === 'equals' || op === 'gt' || op === 'lt') {
-        state.id = { ...id, mode: op, value: text };
+    if (leaf.field === 'event_time' && leaf.op === 'lte' && state.dateTo === null) {
+        state.dateTo = text;
         return true;
     }
     return false;
 }
 
-function conditionRoot(field: string): string | null {
+// The first `in` / `not in` list of ids in the tree: the ids a lookup field compiled into it. Other lists are
+// passed over: canonical turns the flow match's `target_type = "flow"` into one, as target type is a select.
+function firstIdList(node: AuditFilterNode): string[] | null {
+    if (isLeaf(node)) {
+        const ids =
+            (node.op === 'in' || node.op === 'not_in') && Array.isArray(node.value) ? node.value.map(String) : [];
+        return ids.length > 0 && ids.every((id) => /^\d+$/.test(id)) ? ids : null;
+    }
+    if (node.op === 'not') {
+        return firstIdList(node.child);
+    }
+    for (const child of node.children) {
+        const ids = firstIdList(child);
+        if (ids !== null) {
+            return ids;
+        }
+    }
+    return null;
+}
+
+// A lookup field owns the conjunct exactly when its own compile of the conjunct's ids gives it back.
+function applyLookupFilter(
+    node: AuditFilterNode,
+    state: AuditFilterState,
+    catalog: AuditFieldCatalog,
+    fields: BuilderFields
+): boolean {
+    const values = firstIdList(node);
+    if (values === null) {
+        return false;
+    }
+    const lookupFields = catalog.builderFields.filter(
+        (item): item is AuditLookupField =>
+            item.kind === 'lookup' && catalogSelection(state, item.field).values.length === 0
+    );
+    for (const lookupField of lookupFields) {
+        for (const op of ['in', 'not_in'] as const) {
+            // canonical like the parsed query, so an equality on a select field inside it compares as a list
+            if (sameNode(node, canonical(lookupField.compile({ op, values }), fields))) {
+                state.selections = { ...state.selections, [lookupField.field]: { op, values } };
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// The field catalog counterpart of applyFieldFilter: its select and lookup fields and the date.
+function applyCatalogFieldFilter(
+    node: AuditFilterNode,
+    state: AuditFilterState,
+    catalog: AuditFieldCatalog,
+    fields: BuilderFields
+): boolean {
+    if (applyLookupFilter(node, state, catalog, fields)) {
+        return true;
+    }
+    if (!isLeaf(node)) {
+        return false;
+    }
+    if (applyDateFilter(node, state)) {
+        return true;
+    }
+    const { field, op, value } = node;
+    if (catalog.builderFields.some((item) => item.kind === 'id' && item.field === field)) {
+        const text = typeof value === 'string' ? value : '';
+        const values = Array.isArray(value) ? value.map(String) : [];
+        const id = applyIdFilter(op, text, values, catalogIdFilter(state, field));
+        if (id === null) {
+            return false;
+        }
+        state.idFilters = { ...state.idFilters, [field]: id };
+        return true;
+    }
+    const selectField = catalog.builderFields.find(
+        (item): item is AuditSelectField => item.kind === 'select' && item.field === field
+    );
+    if (
+        selectField === undefined ||
+        (op !== 'in' && op !== 'not_in') ||
+        !Array.isArray(value) ||
+        catalogSelection(state, field).values.length > 0
+    ) {
+        return false;
+    }
+    const values = value.map(String);
+    // a loaded list may lack a recorded value, which the chip then shows as typed, as a lookup shows an id
+    if ('options' in selectField && !isOptionList(values, selectField.options)) {
+        return false;
+    }
+    state.selections = { ...state.selections, [field]: { op, values } };
+    return true;
+}
+
+// The ID filter with this conjunct added, or null when the filter cannot hold it next to what it already has.
+function applyIdFilter(op: AuditFilterOp, text: string, values: string[], id: AuditIdFilter): AuditIdFilter | null {
+    const isUnset = id.from === '' && id.to === '' && id.value === '' && id.values.length === 0;
+    if (op === 'gte' || op === 'lte') {
+        const bound = op === 'gte' ? 'from' : 'to';
+        if (!isUnset && (id.mode !== 'range' || id[bound] !== '')) {
+            return null;
+        }
+        return { ...id, mode: 'range', [bound]: text };
+    }
+    if (!isUnset) {
+        return null;
+    }
+    if (op === 'in') {
+        return { ...id, mode: 'in', values };
+    }
+    if (op === 'equals' || op === 'gt' || op === 'lt') {
+        return { ...id, mode: op, value: text };
+    }
+    return null;
+}
+
+function conditionRoot(field: string, conditionFields: Map<string, ConditionField>): string | null {
     const root = field.split('.')[0];
-    const spec = CONDITION_FIELDS.get(root);
+    const spec = conditionFields.get(root);
     return spec !== undefined && (field === root || spec.hasKey) ? root : null;
 }
 
 // the single condition field every leaf of this and/or tree belongs to
-function conditionRootOf(node: AuditFilterNode): string | null {
+function conditionRootOf(node: AuditFilterNode, conditionFields: Map<string, ConditionField>): string | null {
     if (isLeaf(node)) {
-        return conditionRoot(node.field);
+        return conditionRoot(node.field, conditionFields);
     }
     if (node.op === 'not') {
         return null;
     }
-    const roots = new Set(node.children.map(conditionRootOf));
+    const roots = new Set(node.children.map((child) => conditionRootOf(child, conditionFields)));
     const [root] = roots;
     return roots.size === 1 ? root : null;
 }
 
-function toCondition(leaf: AuditFilterNode, root: string, join: AuditConditionJoin): AuditCondition | null {
-    const spec = CONDITION_FIELDS.get(root);
-    if (!isLeaf(leaf) || spec === undefined || !spec.operators.includes(leaf.op)) {
+function toCondition(
+    leaf: AuditFilterNode,
+    root: string,
+    join: AuditConditionJoin,
+    spec: ConditionField
+): AuditCondition | null {
+    if (!isLeaf(leaf) || !spec.operators.includes(leaf.op)) {
         return null;
     }
     const value = VALUE_FREE_OPS.includes(leaf.op) ? '' : leaf.value;
@@ -282,18 +423,18 @@ function toCondition(leaf: AuditFilterNode, root: string, join: AuditConditionJo
         return null;
     }
     const key = leaf.field === root ? '' : leaf.field.slice(root.length + 1);
-    return { ...createAuditCondition(), join, key, op: leaf.op, value };
+    return { ...createAuditCondition(spec.operators), join, key, op: leaf.op, value };
 }
 
 // A leaf is one group; an OR becomes groups joined by OR, where leaves extend the current
 // group with OR and each AND of leaves opens a new group.
-function conjunctGroups(node: AuditFilterNode, root: string): AuditConditionGroup[] | null {
+function conjunctGroups(node: AuditFilterNode, root: string, spec: ConditionField): AuditConditionGroup[] | null {
     const children = isLeaf(node) ? [node] : node.op === 'or' ? node.children : [];
     const groups: AuditConditionGroup[] = [];
     for (const child of children) {
         const current = groups.at(-1);
         if (isLeaf(child) && current !== undefined) {
-            const condition = toCondition(child, root, 'or');
+            const condition = toCondition(child, root, 'or', spec);
             if (condition === null) {
                 return null;
             }
@@ -301,17 +442,21 @@ function conjunctGroups(node: AuditFilterNode, root: string): AuditConditionGrou
             continue;
         }
         const leaves = isLeaf(child) ? [child] : child.op === 'and' ? child.children : [];
-        const conditions = leaves.map((leaf) => toCondition(leaf, root, 'and'));
+        const conditions = leaves.map((leaf) => toCondition(leaf, root, 'and', spec));
         if (conditions.length === 0 || conditions.some((condition) => condition === null)) {
             return null;
         }
-        groups.push({ ...createAuditConditionGroup(), conditions: conditions as AuditCondition[] });
+        groups.push({ ...createAuditConditionGroup(spec.operators), conditions: conditions as AuditCondition[] });
     }
     return groups.length > 0 ? groups : null;
 }
 
-function conditionGroups(conjuncts: AuditFilterNode[], root: string): AuditConditionGroup[] | null {
-    const perConjunct = conjuncts.map((node) => conjunctGroups(node, root));
+function conditionGroups(
+    conjuncts: AuditFilterNode[],
+    root: string,
+    spec: ConditionField
+): AuditConditionGroup[] | null {
+    const perConjunct = conjuncts.map((node) => conjunctGroups(node, root, spec));
     if (perConjunct.some((groups) => groups === null)) {
         return null;
     }
@@ -322,7 +467,13 @@ function conditionGroups(conjuncts: AuditFilterNode[], root: string): AuditCondi
     );
 }
 
-function buildState(root: AuditFilterNode, base: AuditFilterState): AuditFilterState | null {
+function buildState(
+    root: AuditFilterNode,
+    base: AuditFilterState,
+    catalog: AuditFieldCatalog,
+    fields: BuilderFields
+): AuditFilterState | null {
+    const { conditionFields } = fields;
     const state = { ...base };
     const conditionConjuncts = new Map<string, AuditFilterNode[]>();
 
@@ -331,10 +482,14 @@ function buildState(root: AuditFilterNode, base: AuditFilterState): AuditFilterS
         if (isLeaf(node) && node.field === FREE_TEXT_FIELD) {
             return null;
         }
-        if (applyFieldFilter(node, state)) {
+        const isApplied =
+            catalog.domain === 'sessions'
+                ? applyFieldFilter(node, state)
+                : applyCatalogFieldFilter(node, state, catalog, fields);
+        if (isApplied) {
             continue;
         }
-        const conditionRoot = conditionRootOf(node);
+        const conditionRoot = conditionRootOf(node, conditionFields);
         if (conditionRoot === null) {
             return null;
         }
@@ -342,12 +497,19 @@ function buildState(root: AuditFilterNode, base: AuditFilterState): AuditFilterS
     }
 
     for (const [conditionRoot, conjuncts] of conditionConjuncts) {
-        const groups = conditionGroups(conjuncts, conditionRoot);
-        const spec = CONDITION_FIELDS.get(conditionRoot);
-        if (groups === null || spec === undefined) {
+        const spec = conditionFields.get(conditionRoot);
+        if (spec === undefined) {
             return null;
         }
-        state[spec.stateKey] = groups;
+        const groups = conditionGroups(conjuncts, conditionRoot, spec);
+        if (groups === null) {
+            return null;
+        }
+        if (spec.stateKey === null) {
+            state.textConditions = { ...state.textConditions, [conditionRoot]: groups };
+        } else {
+            state[spec.stateKey] = groups;
+        }
     }
     return state;
 }
@@ -360,7 +522,12 @@ function isAllowedCombination(state: AuditFilterState): boolean {
 
 // Builder state for the query, or null when the query does not parse or the Builder cannot show
 // it with exactly the same meaning.
-export function queryToBuilderState(query: string, current: AuditFilterState): AuditFilterState | null {
+export function queryToBuilderState(
+    query: string,
+    current: AuditFilterState,
+    catalog: AuditFieldCatalog
+): AuditFilterState | null {
+    const fields = builderFieldsOf(catalog);
     const base: AuditFilterState = {
         ...EMPTY_AUDIT_FILTER,
         query: current.query,
@@ -373,7 +540,7 @@ export function queryToBuilderState(query: string, current: AuditFilterState): A
 
     let parsed: AuditFilterNode;
     try {
-        parsed = canonical(parseAuditQuery(query));
+        parsed = canonical(parseAuditQuery(query), fields);
     } catch (error) {
         if (error instanceof AuditQueryParseError) {
             return null;
@@ -381,11 +548,11 @@ export function queryToBuilderState(query: string, current: AuditFilterState): A
         throw error;
     }
 
-    const state = buildState(parsed, base);
+    const state = buildState(parsed, base, catalog, fields);
     if (state === null || !isAllowedCombination(state)) {
         return null;
     }
     // safety net: the Builder must compile back to the very filter the text describes
-    const compiled = compileAuditFilter({ ...state, searchText: '' }).filters;
-    return compiled !== undefined && sameConjuncts(parsed, canonical(compiled)) ? state : null;
+    const compiled = compileAuditFilter({ ...state, searchText: '' }, catalog).filters;
+    return compiled !== undefined && sameConjuncts(parsed, canonical(compiled, fields)) ? state : null;
 }

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from loguru import logger
-from settings import AUDIT_TRAIL_ENABLED, AUDITOR_INGEST_API_KEY, AUDITOR_URL
+from settings import AUDITOR_INGEST_API_KEY, AUDITOR_URL, SESSION_AUDIT_TRAIL_ENABLED
 from src.shared.audit.client import AuditClient
 from src.shared.audit.writers.session_writer import SessionAuditWriter
 from src.shared.models import SessionAuditEvent, SessionData
@@ -79,7 +79,7 @@ def get_session_audit_writer() -> SessionAuditWriter:
         base_url=AUDITOR_URL,
         ingest_path="/api/audit/sessions/events",
         api_key=AUDITOR_INGEST_API_KEY,
-        enabled=AUDIT_TRAIL_ENABLED,
+        enabled=SESSION_AUDIT_TRAIL_ENABLED,
     )
     return SessionAuditWriter(client)
 
@@ -135,7 +135,7 @@ def emit_session_audit_event(encoded_message: str) -> None:
     is dispatched as a fire-and-forget asyncio task (track_audit_task) that
     only enqueues onto the shared AuditClient's background batch loop.
     """
-    if not AUDIT_TRAIL_ENABLED:
+    if not SESSION_AUDIT_TRAIL_ENABLED:
         return
     data = json.loads(encoded_message)
     session_id = data.get("session_id")

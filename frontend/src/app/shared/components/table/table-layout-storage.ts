@@ -4,8 +4,9 @@ export const MIN_COLUMN_WIDTH = 80;
 /** Widest a resized column gets; gives the resize separator a real range for assistive tech. */
 export const MAX_COLUMN_WIDTH = 1600;
 
-export function clampColumnWidth(width: number): number {
-    return Math.round(Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width)));
+/** `maxWidth` lowers the ceiling below MAX_COLUMN_WIDTH, e.g. to a share of the table's visible width. */
+export function clampColumnWidth(width: number, maxWidth: number = MAX_COLUMN_WIDTH): number {
+    return Math.round(Math.min(maxWidth, MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width)));
 }
 
 /** What a user customized in a table: which columns show and how wide (px) the resized ones are. */

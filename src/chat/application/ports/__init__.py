@@ -9,6 +9,7 @@ from .identity import (
 from .rate_limiter import AbstractRateLimiter
 from .tickets import AbstractTickets
 from .unit_of_work import AbstractUnitOfWork
+from .user_actions import AbstractUserActionRecorder, DeskAction
 
 __all__ = [
     "ALL_CHATS_ACTIONS",
@@ -19,7 +20,9 @@ __all__ = [
     "AbstractRateLimiter",
     "AbstractTickets",
     "AbstractUnitOfWork",
+    "AbstractUserActionRecorder",
     "CallerCredentials",
+    "DeskAction",
     "GraphContract",
     "IntrospectedUser",
     "RunStatus",

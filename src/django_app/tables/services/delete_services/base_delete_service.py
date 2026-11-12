@@ -5,6 +5,7 @@ from django.db.models.deletion import ProtectedError, RestrictedError
 from rbac.access.effective import EffectivePermissions
 from rbac.models import LastEditTrackedModel
 from rest_framework.exceptions import NotFound
+from src.shared.models import UserAction
 from tables.exceptions import InUseRestrictedError
 from tables.models.base_models import SoftDeleteMixin
 from tables.services.delete_services.usage import (
@@ -14,6 +15,7 @@ from tables.services.delete_services.usage import (
     UsageReport,
 )
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
+from user_audit.recorder import record_user_action
 
 
 class BaseDeleteService(ABC):
@@ -189,7 +191,8 @@ class BaseDeleteService(ABC):
         delete() on the *instance*, and QuerySet.delete() bypasses that
         override entirely -- a bulk delete would silently hard-delete them.
         Everything else takes the queryset path, where the cascade is collected
-        once for the whole set instead of once per row.
+        once for the whole set instead of once per row, and each row is recorded as a
+        `deleted` user action (the row-by-row path's deletes record themselves).
         """
         if not instances:
             return [], []
@@ -197,6 +200,10 @@ class BaseDeleteService(ABC):
         if issubclass(self.model, SoftDeleteMixin):
             return self._delete_one_by_one(instances, deleted_by)
 
+        # Recorded first, while each row still has its primary key; a failed delete rolls
+        # the transaction back, and the records with it.
+        for obj in instances:
+            record_user_action(action=UserAction.DELETED, org_id=self.org_id, target=obj)
         self.model.objects.filter(pk__in=[obj.pk for obj in instances]).delete()
         return [obj.pk for obj in instances], []
 

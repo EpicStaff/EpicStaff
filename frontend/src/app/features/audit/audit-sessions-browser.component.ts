@@ -21,7 +21,6 @@ import {
     ActionDropdownButtonComponent,
     ActionDropdownItem,
     AppSvgIconComponent,
-    normalizeIana,
     NumberStepperComponent,
 } from '@shared/components';
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
@@ -31,10 +30,8 @@ import { downloadBlob } from '@shared/utils';
 import {
     catchError,
     debounceTime,
-    exhaustMap,
     filter,
     finalize,
-    first,
     forkJoin,
     fromEvent,
     interval,
@@ -42,9 +39,6 @@ import {
     of,
     Subject,
     Subscription,
-    switchMap,
-    timeout,
-    timer,
 } from 'rxjs';
 
 import { ExportFormat } from '../../core/services/import-export.service';
@@ -58,8 +52,15 @@ import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
 import { AuditValueViewerComponent } from './components/audit-value-viewer/audit-value-viewer.component';
+import { AUDIT_FIELD_CATALOG } from './models/audit-domain.models';
 import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
-import { AuditExportRequest, AuditSessionEvent } from './models/audit-session.models';
+import { SESSION_FIELD_CATALOG } from './models/audit-filter-options';
+import {
+    AuditExportRequest,
+    AuditSessionEvent,
+    SessionSearchRequest,
+    SessionSearchResponse,
+} from './models/audit-session.models';
 import { AuditJsonPipe } from './pipes/audit-json.pipe';
 import { AuditApiService } from './services/audit-api.service';
 import {
@@ -67,6 +68,8 @@ import {
     readStoredAuditFilter,
     writeStoredAuditFilter,
 } from './utils/audit-filter-storage.util';
+import { AuditResizableColumns } from './utils/audit-resizable-columns.util';
+import { buildTimeZoneLabel } from './utils/audit-time-zone-label.util';
 import { AuditRow, buildAuditRows } from './utils/build-audit-rows.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
@@ -77,10 +80,6 @@ const MAX_PAGE_SIZE = 100;
 const PAGE_SIZE_STEP = 10;
 const POLL_INTERVAL_MS = 10_000;
 const SEARCH_DEBOUNCE_MS = 400;
-const EXPORT_POLL_INTERVAL_MS = 1_000;
-const EXPORT_TIMEOUT_MS = 5 * 60_000;
-// narrow enough to tuck a column away, wide enough to keep its handle and an ellipsis grabbable
-const COLUMN_MIN_WIDTH = 48;
 const PANEL_WIDTH_KEY = 'audit-side-panel';
 const PANEL_WIDTH_OPTIONS = { defaultWidth: 480, minWidth: 360, maxWidth: 960 } satisfies SidebarWidthOptions;
 
@@ -104,12 +103,6 @@ const AUDIT_TABLE_COLUMNS: AuditTableColumn[] = [
     { label: 'Error', className: '', defaultWidth: 110 },
     { label: 'Details', className: '', defaultWidth: 96 },
 ];
-
-interface ColumnResize {
-    index: number;
-    startX: number;
-    startWidth: number;
-}
 
 interface ViewedValue {
     rowId: string;
@@ -136,6 +129,7 @@ interface ViewedValue {
         ResizableSidebarDirective,
         MatTooltip,
     ],
+    providers: [{ provide: AUDIT_FIELD_CATALOG, useValue: SESSION_FIELD_CATALOG }],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -171,9 +165,9 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public pageSize = signal<number>(20);
     public areColumnsExpanded = signal<boolean>(false);
     protected readonly columns = AUDIT_TABLE_COLUMNS;
-    protected readonly columnWidths = signal<number[]>(AUDIT_TABLE_COLUMNS.map((column) => column.defaultWidth));
-    // the table is at least as wide as its columns, so widening one scrolls the table instead of squeezing the rest
-    protected readonly tableWidth = computed(() => this.columnWidths().reduce((total, width) => total + width, 0));
+    protected readonly resizableColumns = new AuditResizableColumns(
+        AUDIT_TABLE_COLUMNS.map((column) => column.defaultWidth)
+    );
     public isFiltersPanelOpen = signal<boolean>(false);
     protected readonly panelWidthKey = PANEL_WIDTH_KEY;
     protected readonly panelWidthOptions = PANEL_WIDTH_OPTIONS;
@@ -214,7 +208,6 @@ export class AuditSessionsBrowserComponent implements OnInit {
     protected readonly minPageSize = MIN_PAGE_SIZE;
     protected readonly maxPageSize = MAX_PAGE_SIZE;
     protected readonly pageSizeStep = PAGE_SIZE_STEP;
-    private columnResize: ColumnResize | null = null;
 
     public hasCollapsibleRows = computed(() => this.allRows().some((row) => row.hasChildren));
     public areAllRowsExpanded = computed(() => this.collapsedIds().size === 0);
@@ -242,7 +235,10 @@ export class AuditSessionsBrowserComponent implements OnInit {
     });
 
     public appliedChips = computed(() =>
-        describeAuditFilter(this.appliedFilter(), { agents: this.agentOptions(), tools: this.toolOptions() })
+        describeAuditFilter(this.appliedFilter(), SESSION_FIELD_CATALOG, {
+            agents: this.agentOptions(),
+            tools: this.toolOptions(),
+        })
     );
     public activeFilterCount = computed(() => this.appliedChips().length);
     protected appliedSearchText = computed(() => this.appliedFilter().searchText);
@@ -335,34 +331,6 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.areColumnsExpanded.set(expanded);
     }
 
-    protected startColumnResize(event: PointerEvent, index: number): void {
-        if (event.button !== 0) {
-            return;
-        }
-        event.preventDefault();
-        const handle = event.currentTarget as HTMLElement;
-        // capture keeps the drag alive when the pointer leaves the narrow handle
-        handle.setPointerCapture(event.pointerId);
-        // start from where the column actually is on screen, so the drag never jumps
-        const startWidth = handle.parentElement?.getBoundingClientRect().width ?? this.columnWidths()[index];
-        this.columnResize = { index, startX: event.clientX, startWidth };
-    }
-
-    protected resizeColumn(event: PointerEvent): void {
-        const resize = this.columnResize;
-        if (resize === null) {
-            return;
-        }
-        const width = Math.max(COLUMN_MIN_WIDTH, Math.round(resize.startWidth + event.clientX - resize.startX));
-        this.columnWidths.update((widths) =>
-            widths.map((current, index) => (index === resize.index ? width : current))
-        );
-    }
-
-    protected stopColumnResize(): void {
-        this.columnResize = null;
-    }
-
     public toggleFiltersPanel(): void {
         if (this.viewedValue()) {
             this.viewedValue.set(null);
@@ -429,7 +397,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public loadSessions(silent = false): void {
         this.searchSubscription?.unsubscribe();
         const stack = this.cursorStack();
-        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter());
+        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter(), SESSION_FIELD_CATALOG);
         if (!silent) {
             this.isLoading.set(true);
             this.loadError.set(false);
@@ -437,7 +405,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
         }
 
         this.searchSubscription = this.auditApiService
-            .searchSessions({
+            .search<SessionSearchRequest, SessionSearchResponse>('sessions', {
                 filters,
                 query,
                 match_scope: matchScope,
@@ -548,20 +516,13 @@ export class AuditSessionsBrowserComponent implements OnInit {
     }
 
     public exportFiltered(format: ExportFormat): void {
-        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter());
+        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter(), SESSION_FIELD_CATALOG);
         const request: AuditExportRequest = { format, filters, query, match_scope: matchScope };
         this.exportingFormat.set(format);
 
         this.auditApiService
-            .startExport(request)
+            .downloadExport('sessions', request)
             .pipe(
-                switchMap(({ job_id }) =>
-                    timer(0, EXPORT_POLL_INTERVAL_MS).pipe(
-                        exhaustMap(() => this.auditApiService.getExportFile(job_id)),
-                        first((response) => response.status === 200)
-                    )
-                ),
-                timeout({ first: EXPORT_TIMEOUT_MS }),
                 finalize(() => this.exportingFormat.set(null)),
                 takeUntilDestroyed(this.destroyRef)
             )
@@ -607,15 +568,4 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private focusAfterRender(focus: () => void): void {
         afterNextRender(focus, { injector: this.injector });
     }
-}
-
-function buildTimeZoneLabel(): string {
-    // some browsers still report the legacy 'Europe/Kiev' name
-    const zone = normalizeIana(Intl.DateTimeFormat().resolvedOptions().timeZone);
-    const offsetMinutes = -new Date().getTimezoneOffset();
-    const sign = offsetMinutes < 0 ? '-' : '+';
-    const absolute = Math.abs(offsetMinutes);
-    const hours = String(Math.floor(absolute / 60)).padStart(2, '0');
-    const minutes = String(absolute % 60).padStart(2, '0');
-    return `${sign}${hours}:${minutes} ${zone}`;
 }
