@@ -16,7 +16,7 @@ jobs:
   cla-assistant:
     # Toggle: set repo variable CLA_ENFORCED=true to enable. Unset/anything else = CLA bot off.
     if: vars.CLA_ENFORCED == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
