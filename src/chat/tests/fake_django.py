@@ -21,6 +21,8 @@ class FakeDjango:
         self.lose_run_session_response = False
         # An EpicStaff release from before introspection carried the user's display name.
         self.introspect_omits_display_name = False
+        self.user_actions: list[dict] = []         # bodies EpicStaff recorded in its user-action audit trail
+        self.user_action_status: int | None = 204  # None: EpicStaff unreachable; another status: it refuses the record
 
     @property
     def transport(self) -> httpx.MockTransport:
@@ -98,4 +100,13 @@ class FakeDjango:
             if answer is None:
                 return httpx.Response(403, json={"status_code": 403, "code": "forbidden", "message": "Not a member"})
             return httpx.Response(200, json={"org_id": self._org(request), "is_superadmin": answer == "*", "role": None, "permissions": answer})
+        if method == "POST" and path == "/api/internal/user-actions/":
+            if request.headers.get("X-Api-Key") is None:
+                return httpx.Response(403, json={"detail": "This endpoint requires system API key authentication."})
+            if self.user_action_status is None:
+                raise httpx.ConnectError("EpicStaff is unreachable", request=request)
+            if self.user_action_status != 204:
+                return httpx.Response(self.user_action_status)
+            self.user_actions.append(json.loads(request.content))
+            return httpx.Response(204)
         return httpx.Response(404, json={"code": "unknown_route", "message": path})

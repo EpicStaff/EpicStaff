@@ -24,6 +24,7 @@ NON_DECLARABLE_RESOURCE_TYPES = frozenset(
         ResourceType.ROLES.value,
         ResourceType.API_KEYS.value,
         ResourceType.AUDIT.value,
+        ResourceType.USER_AUDIT.value,
         ResourceType.CHATS.value,
     }
 )

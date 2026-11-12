@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db.models import Exists, OuterRef, Value
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -13,8 +14,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
+from src.shared.models import UserAction
 from tables.services.secrets.request_actor import actor_from_request
 from tables.services.secrets.secret_use_checks import check_venv_write
+from user_audit.recorder import record_user_action
+from user_audit.targets import TargetDescription, target_type
 
 from proxies.models import AbstractBinding
 from proxies.sandbox.models import SandboxCustomLibraryBinding, SandboxVenvBinding
@@ -35,7 +39,13 @@ def serialize_owner(binding: AbstractBinding) -> dict | None:
 
 class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
     """Venvs as this API exposes them: addressed by their binding, never by the
-    sandbox's own id. The upstream id stays inside this package."""
+    sandbox's own id. The upstream id stays inside this package.
+
+    Records its own creates, updates and deletes as user actions: the binding has no
+    name, so the middleware's fallback could name none. They are recorded here, not in
+    `VenvService`, because an import creates venvs through the service too and is
+    recorded as one import.
+    """
 
     queryset = SandboxVenvBinding.objects.all()
     service_class = VenvService
@@ -92,6 +102,9 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             org_id=self.get_active_org_id(),
             created_by=resolve_author(request.user),
         )
+        _record_binding_action(
+            UserAction.CREATED, SandboxVenvBinding, binding.org_id, binding.pk, venv.get("name")
+        )
         return Response(self._as_response(venv, binding), status=status.HTTP_201_CREATED)
 
     def partial_update(self, request: Request, pk: str) -> Response:
@@ -114,6 +127,10 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             read_current_libs=lambda: service.retrieve(binding).get("libs"),
         )
         venv = service.update(binding, request.data)
+        # Not RENAMED: telling a rename apart would take an extra sandbox call for the old name.
+        _record_binding_action(
+            UserAction.UPDATED, SandboxVenvBinding, binding.org_id, binding.pk, venv.get("name")
+        )
         return Response(self._as_response(venv, binding))
 
     def destroy(self, request: Request, pk: str) -> Response:
@@ -123,7 +140,13 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             Http404: No venv with this id in the active org.
             VenvInUseError: Some Python code still runs in it. Rendered as 409.
         """
-        self.service_class().delete(self._get_binding_or_404(pk))
+        binding = self._get_binding_or_404(pk)
+        # The delete clears the binding's pk.
+        binding_id = binding.pk
+        name = self.service_class().delete(binding)
+        _record_binding_action(
+            UserAction.DELETED, SandboxVenvBinding, binding.org_id, binding_id, name
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post", "delete"], url_path="favorite")
@@ -160,7 +183,11 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
 
 class SandboxCustomLibraryBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
     """Custom libraries as this API exposes them: addressed by their binding, never
-    by the sandbox's own id. The upstream id stays inside this package."""
+    by the sandbox's own id. The upstream id stays inside this package.
+
+    Records its own creates and deletes as user actions, as venvs do: the binding has
+    no name, so the middleware's fallback could name none.
+    """
 
     queryset = SandboxCustomLibraryBinding.objects.all()
     service_class = CustomLibraryService
@@ -195,6 +222,13 @@ class SandboxCustomLibraryBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             org_id=self.get_active_org_id(),
             created_by=resolve_author(request.user),
         )
+        _record_binding_action(
+            UserAction.CREATED,
+            SandboxCustomLibraryBinding,
+            binding.org_id,
+            binding.pk,
+            library.get("name"),
+        )
         return Response(self._as_response(library, binding), status=status.HTTP_201_CREATED)
 
     def destroy(self, request: Request, pk: str) -> Response:
@@ -204,7 +238,13 @@ class SandboxCustomLibraryBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             Http404: No library with this id in the active org.
             ClientConflictError: Some venv still names it. Rendered as 409.
         """
-        self.service_class().delete(self._get_binding_or_404(pk))
+        binding = self._get_binding_or_404(pk)
+        # The delete clears the binding's pk.
+        binding_id = binding.pk
+        name = self.service_class().delete(binding)
+        _record_binding_action(
+            UserAction.DELETED, SandboxCustomLibraryBinding, binding.org_id, binding_id, name
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _get_binding_or_404(self, pk: str) -> SandboxCustomLibraryBinding:
@@ -224,6 +264,8 @@ class SandboxWheelViewSet(OrgScopedServiceViewSetMixin, GenericViewSet):
     active org does not own is a 404 before the sandbox is asked anything. The
     sandbox's wheel ids are passed through, because they mean nothing outside the
     library that the caller already had to own.
+
+    An upload or a delete is recorded as an update of the library (`_record_library_change`).
     """
 
     service_class = CustomLibraryService
@@ -250,11 +292,16 @@ class SandboxWheelViewSet(OrgScopedServiceViewSetMixin, GenericViewSet):
         file = request.FILES.get("file")
         if file is None:
             raise ValidationError({"file": "No file was uploaded."})
-        wheel = self.service_class().upload_wheel(binding, file)
+        service = self.service_class()
+        wheel = service.upload_wheel(binding, file)
+        _record_library_change(service, binding)
         return Response(wheel, status=status.HTTP_201_CREATED)
 
     def destroy(self, request: Request, library_pk: str, pk: str) -> Response:
-        self.service_class().remove_wheel(self._get_library_or_404(library_pk), pk)
+        binding = self._get_library_or_404(library_pk)
+        service = self.service_class()
+        service.remove_wheel(binding, pk)
+        _record_library_change(service, binding)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"], url_path="file")
@@ -269,3 +316,41 @@ class SandboxWheelViewSet(OrgScopedServiceViewSetMixin, GenericViewSet):
 
     def _get_library_or_404(self, library_pk: str) -> SandboxCustomLibraryBinding:
         return self.get_in_active_org_or_404(SandboxCustomLibraryBinding, library_pk)
+
+
+def _record_binding_action(
+    action: str,
+    binding_model: type[AbstractBinding],
+    org_id: int,
+    binding_id: int,
+    name: str | None,
+) -> None:
+    """Record a write to a venv or custom library under its binding's id, the one this
+    API exposes, and the name the sandbox stored."""
+    record_user_action(
+        action=action,
+        org_id=org_id,
+        target_description=TargetDescription(
+            type=target_type(binding_model), id=str(binding_id), name=name
+        ),
+    )
+
+
+def _record_library_change(
+    service: CustomLibraryService, binding: SandboxCustomLibraryBinding
+) -> None:
+    """Record a wheel uploaded or deleted as an update of its library.
+
+    A wheel has no row here and is reached only under its library, so, as a RAG change
+    is recorded on its collection, the record names the library. Reading the library's
+    name costs a sandbox call, made only while the trail is on.
+    """
+    if not settings.USER_AUDIT_TRAIL_ENABLED:
+        return
+    _record_binding_action(
+        UserAction.UPDATED,
+        SandboxCustomLibraryBinding,
+        binding.org_id,
+        binding.pk,
+        service.name(binding),
+    )

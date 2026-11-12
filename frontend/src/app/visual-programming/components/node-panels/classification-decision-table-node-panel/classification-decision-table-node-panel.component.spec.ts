@@ -1,7 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, Provider, signal } from '@angular/core';
+import { ApplicationRef, Component, input, NgZone, NO_ERRORS_SCHEMA, output, Provider, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
@@ -471,7 +471,7 @@ describe('ClassificationDecisionTableNodePanelComponent — explanations of a ru
     // -- the decision tree, in the CDK overlay ---------------------------------
 
     function renderOverlay(): void {
-        TestBed.inject(ApplicationRef).tick();
+        TestBed.inject(NgZone).run(() => TestBed.inject(ApplicationRef).tick());
     }
 
     function openTree(): void {

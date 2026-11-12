@@ -1,13 +1,20 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ConfirmationDialogService, ConfirmationResult } from '@shared/components';
 import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SidebarWidthService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, movedToRecycleBinMessage, recycleBinNotice } from '@shared/utils';
+import {
+    escapeHtml,
+    extractHttpErrorMessage,
+    movedToRecycleBinMessage,
+    recycleBinNotice,
+    takeQueryParams,
+} from '@shared/utils';
 import { catchError, filter, finalize, Observable, of, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -29,7 +36,7 @@ import { KeyValueTablesStorageService } from '../../services/key-value-tables-st
     templateUrl: './key-value-tables-page.component.html',
     styleUrls: ['./key-value-tables-page.component.scss'],
 })
-export class KeyValueTablesPageComponent {
+export class KeyValueTablesPageComponent implements OnInit {
     private readonly tableList = viewChild.required(KeyValueTableListComponent);
 
     readonly selectedTableId = signal<number | null>(null);
@@ -58,6 +65,7 @@ export class KeyValueTablesPageComponent {
                 // A superseded load's response never becomes the signal's value; it reaches here only
                 // when it ends before this effect reruns, and must not move the selection.
                 if (tables !== this.keyValueTablesStorage.tables()) return;
+                this.selectLinkedTable(tables);
                 // Keep the current selection while it still exists; otherwise fall back to the first table.
                 const selectedId = this.selectedTableId();
                 if (selectedId === null || !tables.some((table) => table.id === selectedId)) {
@@ -84,8 +92,16 @@ export class KeyValueTablesPageComponent {
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
+    // `?tableId=`, taken from the URL at init and selected after the first load
+    private linkedTableId: string | undefined;
     // A delete takes the row whose ⋮ had the focus: the next list moves it to the row selected in its place.
     private focusSelectedAfterReload = false;
+
+    ngOnInit(): void {
+        this.linkedTableId = takeQueryParams(this.route, this.router, ['tableId']).tableId;
+    }
 
     onCreate(): void {
         this.dialog
@@ -135,6 +151,13 @@ export class KeyValueTablesPageComponent {
                 },
                 error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
             });
+    }
+
+    /** `?tableId=` selects that table, once, after the first load. An unknown id is ignored. */
+    private selectLinkedTable(tables: KeyValueTable[]): void {
+        const id = Number(this.linkedTableId);
+        this.linkedTableId = undefined;
+        if (tables.some((table) => table.id === id)) this.selectedTableId.set(id);
     }
 
     // The table moves to the recycle bin. The backend unbinds it from its nodes on delete, and a

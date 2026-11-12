@@ -198,7 +198,7 @@ export class VarPickerFlatComponent {
             index = (index + step + count) % count;
             if (!this.filteredItems[index].disabled) {
                 this.highlightedIndex.set(index);
-                this.optionButtons()[index]?.nativeElement.scrollIntoView({ block: 'nearest' });
+                this.optionButtons()[index]?.nativeElement.scrollIntoView?.({ block: 'nearest' });
                 return;
             }
         }
@@ -243,7 +243,7 @@ export class VarPickerFlatComponent {
         afterNextRender(
             () => {
                 const index = this.highlightedIndex();
-                if (index !== -1) this.optionButtons()[index]?.nativeElement.scrollIntoView({ block: 'nearest' });
+                if (index !== -1) this.optionButtons()[index]?.nativeElement.scrollIntoView?.({ block: 'nearest' });
             },
             { injector: this.injector }
         );

@@ -21,12 +21,13 @@ from app.domains.base import (
 )
 from app.domains.sessions.domain import SESSIONS
 from app.domains.sessions.expansion import MatchScope, SessionTreeExpander, expand_matches
-from app.filtering.ast import FieldSpec, FilterValidationError
+from app.domains.user_actions.domain import USER_ACTIONS
+from app.filtering.ast import FieldSpec, FilterValidationError, validate_filter_node
 from app.filtering.constants import SELECT_OPS, TEXT_CONDITION_OPS
 from app.repositories.compiler import FilterCompileError, QueryCompiler
 from app.services.matching import expand_and_mark
 from app.services.search_pipeline import SearchPipeline
-from src.shared.models import BaseAuditEvent, SessionAuditEvent
+from src.shared.models import BaseAuditEvent, SessionAuditEvent, UserAction, UserActionEvent
 from tests._auth import auth
 from tests._fakes import InMemoryFakeRepository
 
@@ -257,6 +258,103 @@ async def test_audit_grant_does_not_open_another_domains_routes():
     assert resp.status_code == 403
 
 
+def _user_action(
+    event_id: str, org_id: int, action: UserAction, number: int | None = None
+) -> UserActionEvent:
+    return UserActionEvent(
+        id=event_id,
+        number=number,
+        org_id=org_id,
+        event_time=NOW,
+        actor_user_id=1,
+        actor_email="user@example.com",
+        action=action,
+    )
+
+
+def _user_actions_app(events: list[UserActionEvent]) -> FastAPI:
+    app = FastAPI()
+    app.include_router(build_search_router(USER_ACTIONS))
+    app.state.repositories = {USER_ACTIONS.name: InMemoryFakeRepository(events)}
+    return app
+
+
+@pytest.mark.asyncio
+async def test_user_actions_search_returns_org_scoped_items():
+    events = [
+        _user_action("ua-1", ORG_ID, UserAction.CREATED),
+        _user_action("ua-2", ORG_ID, UserAction.DELETED),
+        _user_action("ua-other-org", 999, UserAction.CREATED),
+    ]
+    transport = ASGITransport(app=_user_actions_app(events))
+    headers = auth(AUDIT=None, USER_AUDIT=["read"])
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
+        resp = await client.post(
+            "/api/audit/user_actions/search",
+            json={"filters": {"field": "action", "op": "equals", "value": "created"}},
+        )
+
+    assert resp.status_code == 200
+    assert [item["id"] for item in resp.json()["items"]] == ["ua-1"]
+    assert "retention_days" not in resp.json()["items"][0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("body", "expected_numbers"),
+    [
+        ({"filters": {"field": "number", "op": "equals", "value": 3}}, [3]),
+        ({"filters": {"field": "number", "op": "in", "value": [1, 4]}}, [1, 4]),
+        ({"filters": {"field": "number", "op": "gt", "value": 3}}, [4, 5]),
+        ({"filters": {"field": "number", "op": "lt", "value": 3}}, [1, 2]),
+        ({"query": "number >= 2 and number <= 4"}, [2, 3, 4]),
+    ],
+    ids=["exact", "specific", "more-than", "less-than", "range"],
+)
+async def test_user_actions_filter_by_record_number(body, expected_numbers):
+    events = [_user_action(f"ua-{number}", ORG_ID, UserAction.CREATED, number) for number in range(1, 6)]
+    # Stored before records were numbered: must not break the search or match a number.
+    events.append(_user_action("ua-unnumbered", ORG_ID, UserAction.CREATED))
+    transport = ASGITransport(app=_user_actions_app(events))
+    headers = auth(AUDIT=None, USER_AUDIT=["read"])
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
+        resp = await client.post("/api/audit/user_actions/search", json=body)
+
+    assert resp.status_code == 200
+    assert sorted(item["number"] for item in resp.json()["items"]) == expected_numbers
+
+
+def test_user_actions_reject_a_non_numeric_record_number():
+    with pytest.raises(FilterValidationError, match="must be numbers"):
+        validate_filter_node(
+            USER_ACTIONS.fields, {"field": "number", "op": "gt", "value": "abc"}
+        )
+
+
+@pytest.mark.asyncio
+async def test_audit_claim_does_not_open_user_actions():
+    transport = ASGITransport(app=_user_actions_app([]))
+    headers = auth(AUDIT=["read", "export"])
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
+        resp = await client.post("/api/audit/user_actions/search", json={})
+
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_user_audit_claim_does_not_open_sessions():
+    app = FastAPI()
+    app.include_router(build_search_router(SESSIONS))
+    app.state.repositories = {SESSIONS.name: InMemoryFakeRepository([])}
+    headers = auth(AUDIT=None, USER_AUDIT=["read", "export"])
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=headers
+    ) as client:
+        resp = await client.post("/api/audit/sessions/search", json={})
+
+    assert resp.status_code == 403
+
+
 # --- AuditDomain computed-field consistency ----------------------------
 
 
@@ -268,6 +366,30 @@ def test_audit_domain_rejects_catalog_computed_field_without_implementation():
 def test_audit_domain_rejects_implementation_not_marked_computed_in_catalog():
     with pytest.raises(ValueError, match="duration"):
         replace(FLAT_DOMAIN, computed=SESSIONS.computed)
+
+
+# --- AuditDomain value_fields -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("domain", "field"),
+    [
+        (USER_ACTIONS, "no_such_field"),
+        (USER_ACTIONS, "actor_email"),
+        (USER_ACTIONS, "actor_user_id"),
+        (SESSIONS, "duration"),
+        (SESSIONS, "agent"),
+        (SESSIONS, "details.message_type"),
+    ],
+    ids=["unknown", "analyzed-text", "numeric", "computed", "alias", "flattened-path"],
+)
+def test_audit_domain_rejects_a_value_field_that_is_not_a_keyword_select_field(domain, field):
+    with pytest.raises(ValueError, match=f"value field {field!r}"):
+        replace(domain, value_fields=frozenset({field}))
+
+
+def test_audit_domain_accepts_a_keyword_select_value_field():
+    assert replace(SESSIONS, value_fields=frozenset({"node_type"})).value_fields == {"node_type"}
 
 
 # --- DictFieldCatalog --------------------------------------------------

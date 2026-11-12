@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rbac.governance.memberships import (
     MembershipManagementService,
 )
+from rbac.models import OrganizationUser
 from rbac.models.enums import Permission, ResourceType
 from rbac.schemas.memberships import (
     MEMBERSHIPS_ASSIGNABLE_USERS_GET,
@@ -40,6 +41,10 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
     Door gate: HasResourcePermissionAnywhere(MEMBERSHIPS); precise per-org checks
     and invariants live in MembershipManagementService.
     """
+
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = OrganizationUser.objects.none()
 
     pagination_class = CrossOrgAdminPagination
     rbac_resource_type = ResourceType.MEMBERSHIPS

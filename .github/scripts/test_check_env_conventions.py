@@ -118,7 +118,7 @@ class ShellTest(unittest.TestCase):
 
     def test_helper_use_and_local_or_non_boolean_comparisons_pass(self):
         script = shell(
-            "if env_bool AUDIT_TRAIL_ENABLED; then echo on; fi",
+            "if env_bool SESSION_AUDIT_TRAIL_ENABLED; then echo on; fi",
             'if [ "$failed" = "1" ]; then exit 1; fi',
             'if [[ "$1" = "healthcheck-users" ]]; then check; fi',
             'case "$MODE" in',
@@ -139,7 +139,12 @@ class ShellTest(unittest.TestCase):
             ['flag=$(echo "$FLAG" | tr "[:upper:]" "[:lower:]")'],
             ['flag=$(echo "$FLAG" | tr A-Z a-z)'],
             ['if [ "${FLAG,,}" = yes ]; then go; fi'],
-            ['case "$AUDIT_TRAIL_ENABLED" in', "  True|true) start ;;", "  *) exit 0 ;;", "esac"],
+            [
+                'case "$SESSION_AUDIT_TRAIL_ENABLED" in',
+                "  True|true) start ;;",
+                "  *) exit 0 ;;",
+                "esac",
+            ],
         ]:
             with self.subTest(body=body):
                 self.assertEqual(len(self.check({"a.sh": shell(*body)})), 1)

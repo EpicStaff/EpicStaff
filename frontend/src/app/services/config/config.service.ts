@@ -12,7 +12,8 @@ export interface AppConfig {
     auditorUrl?: string;
     isChatEnabled?: boolean;
     chatApiUrl?: string;
-    isAuditTrailEnabled?: boolean;
+    isSessionAuditEnabled?: boolean;
+    isUserAuditEnabled?: boolean;
     /** The plugin platform is on (`PLUGINS_ENABLED`); nothing plugin-related renders while it is off. */
     isPluginsEnabled?: boolean;
 }
@@ -35,7 +36,8 @@ export class ConfigService {
                 auditorUrl: environment.auditorUrl,
                 isChatEnabled: environment.isChatEnabled ?? false,
                 chatApiUrl: environment.chatApiUrl,
-                isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
+                isSessionAuditEnabled: environment.isSessionAuditEnabled ?? false,
+                isUserAuditEnabled: environment.isUserAuditEnabled ?? false,
                 isPluginsEnabled: environment.isPluginsEnabled ?? false,
             });
             return;
@@ -54,7 +56,8 @@ export class ConfigService {
                             auditorUrl: environment.auditorUrl,
                             isChatEnabled: environment.isChatEnabled ?? false,
                             chatApiUrl: environment.chatApiUrl,
-                            isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
+                            isSessionAuditEnabled: environment.isSessionAuditEnabled ?? false,
+                            isUserAuditEnabled: environment.isUserAuditEnabled ?? false,
                             isPluginsEnabled: environment.isPluginsEnabled ?? false,
                         } as AppConfig);
                     })
@@ -70,7 +73,8 @@ export class ConfigService {
                 realtimeApiUrl: environment.realtimeApiUrl,
                 auditorUrl: environment.auditorUrl,
                 isChatEnabled: false,
-                isAuditTrailEnabled: false,
+                isSessionAuditEnabled: false,
+                isUserAuditEnabled: false,
                 isPluginsEnabled: false,
             });
         }
@@ -107,8 +111,12 @@ export class ConfigService {
         return auditorUrl;
     }
 
-    get isAuditTrailEnabled(): boolean {
-        return this.configSignal()?.isAuditTrailEnabled ?? false;
+    get isSessionAuditEnabled(): boolean {
+        return this.configSignal()?.isSessionAuditEnabled ?? false;
+    }
+
+    get isUserAuditEnabled(): boolean {
+        return this.configSignal()?.isUserAuditEnabled ?? false;
     }
 
     get isPluginsEnabled(): boolean {
