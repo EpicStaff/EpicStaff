@@ -15,8 +15,6 @@ from tables.import_export.services.import_service import ImportSettings
 from tables.serializers.serializers import BulkExportSerializer, ImportRequestSerializer
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.recycle_bin.sources import RecycleBinSource
-from tables.services.storage_grants.actor import GrantActor
-from tables.services.storage_grants.tool_lock import check_agent_definition_write
 from tables.swagger_schemas.tools_schemas import (
     AGENT_DEFINITION_BULK_EXPORT_POST,
     AGENT_DEFINITION_EXPORT_GET,
@@ -65,14 +63,6 @@ class AgentDefinitionViewSet(
             return AgentDefinitionReadSerializer
         return AgentDefinitionWriteSerializer
 
-    def _check_storage_grant(self, instance, write_serializer) -> None:
-        check_agent_definition_write(
-            GrantActor.for_request(self.request),
-            instance,
-            write_serializer.validated_data,
-            org_id=self.get_active_org_id(),
-        )
-
     @extend_schema(request=AgentDefinitionWriteSerializer, responses=AgentDefinitionReadSerializer)
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -91,7 +81,6 @@ class AgentDefinitionViewSet(
         instance = self.get_object()
         write_serializer = self.get_serializer(instance, data=request.data, partial=False)
         write_serializer.is_valid(raise_exception=True)
-        self._check_storage_grant(instance, write_serializer)
         self.perform_update(write_serializer)
 
         instance.refresh_from_db()
@@ -106,7 +95,6 @@ class AgentDefinitionViewSet(
         instance = self.get_object()
         write_serializer = self.get_serializer(instance, data=request.data, partial=True)
         write_serializer.is_valid(raise_exception=True)
-        self._check_storage_grant(instance, write_serializer)
         self.perform_update(write_serializer)
 
         instance.refresh_from_db()

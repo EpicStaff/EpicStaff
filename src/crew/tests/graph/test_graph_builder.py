@@ -880,14 +880,13 @@ class RecordingAgentService:
         pytest.param(_agent_node_session_data, "agent_node_list", id="agent-node"),
     ],
 )
-def test_agent_and_task_nodes_pass_their_grants_account_to_the_agent_service(
+def test_agent_and_task_nodes_run_with_the_default_account_even_when_grant_accounts_exist(
     mock_services, mock_llm_data, monkeypatch, session_data, node_list_name
 ):
     monkeypatch.setattr(
         mock_services["redis_service"], "aioredis_client", FakeAsyncRedis(decode_responses=True)
     )
     data = session_data(mock_llm_data)
-    getattr(data.graph, node_list_name)[0].storage_grant = FULL_ACCESS
     data.storage_credentials = DEFAULT_CREDENTIALS
     data.storage_credentials_by_grant = {FULL_ACCESS.key: CREDENTIALS_FOR_FULL_ACCESS}
     agent_service = RecordingAgentService()
@@ -899,7 +898,7 @@ def test_agent_and_task_nodes_pass_their_grants_account_to_the_agent_service(
         {},
     )
 
-    assert agent_service.received_storage_credentials == [CREDENTIALS_FOR_FULL_ACCESS]
+    assert agent_service.received_storage_credentials == [DEFAULT_CREDENTIALS]
 
 
 def test_classification_table_slots_run_with_the_account_of_their_own_grant(

@@ -8,6 +8,7 @@ from tables.services.storage_grants.actor import GrantActor
 from tables.services.storage_grants.errors import StorageGrantDeniedError
 from tables.services.storage_grants.flags import GrantFlags
 from tables.services.storage_grants.slots import (
+    GRANT_ACTION_NAMES,
     PYTHON_CODE_STEERING_FIELDS,
     STORAGE_GRANT_SLOTS,
     GrantSlot,
@@ -158,11 +159,16 @@ def _missing(actor: GrantActor | None, actions) -> frozenset[StorageAction]:
 
 
 def _incoming_flags(current: GrantFlags, data: dict, slot: GrantSlot) -> GrantFlags:
-    current_values = (current.read, current.write, current.delete)
+    current_by_action = {
+        StorageAction.READ: current.read,
+        StorageAction.WRITE: current.write,
+        StorageAction.DELETE: current.delete,
+    }
+    names = dict(zip(slot.actions, slot.flag_names, strict=True))
     return GrantFlags(
         *(
-            data.get(name, current_value)
-            for name, current_value in zip(slot.flag_names, current_values, strict=True)
+            data.get(names[action], current_by_action[action]) if action in names else False
+            for action, _ in GRANT_ACTION_NAMES
         )
     )
 

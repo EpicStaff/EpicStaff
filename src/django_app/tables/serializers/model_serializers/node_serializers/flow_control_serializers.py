@@ -24,7 +24,6 @@ from tables.serializers.base_serializer import (
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
-from tables.serializers.utils.storage_grant_mixin import StorageGrantFlagsMixin
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
@@ -253,7 +252,6 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 
 
 class ClassificationDecisionTableNodeSerializer(
-    StorageGrantFlagsMixin,
     CdtExplanationsSanitizingMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
@@ -268,8 +266,6 @@ class ClassificationDecisionTableNodeSerializer(
     default_llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True
     )
-
-    storage_grant_prefixes = ("pre_", "post_")
 
     class Meta:
         model = ClassificationDecisionTableNode

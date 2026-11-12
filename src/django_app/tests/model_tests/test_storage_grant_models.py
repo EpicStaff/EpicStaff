@@ -39,32 +39,36 @@ def graph(default_org):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(("model", "slot"), CASES)
-def test_a_row_is_not_configured_unless_it_is_given_flags(model, slot, graph):
+def test_a_row_starts_with_every_box_unticked(model, slot, graph):
     node = _create(model, graph)
 
     node.refresh_from_db()
-    assert [getattr(node, name) for name in slot.flag_names] == [None, None, None]
+    assert [getattr(node, name) for name in slot.flag_names] == [False] * len(slot.flag_names)
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(("model", "slot"), CASES)
-@pytest.mark.parametrize("values", [(True, None, None), (None, False, None), (True, True, None)])
-def test_a_partly_set_slot_is_rejected_by_the_database(model, slot, values, graph):
+def test_ticked_boxes_are_stored_as_given(model, slot, graph):
+    values = (True, False, True)[: len(slot.flag_names)]
     flags = dict(zip(slot.flag_names, values, strict=True))
-
-    with pytest.raises(IntegrityError), transaction.atomic():
-        _create(model, graph, **flags)
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize(("model", "slot"), CASES)
-def test_a_fully_set_slot_is_stored_as_given(model, slot, graph):
-    flags = dict(zip(slot.flag_names, (True, False, True), strict=True))
 
     node = _create(model, graph, **flags)
 
     node.refresh_from_db()
-    assert [getattr(node, name) for name in slot.flag_names] == [True, False, True]
+    assert [getattr(node, name) for name in slot.flag_names] == list(values)
+
+
+@pytest.mark.parametrize("model", [FileExtractorNode, AudioTranscriptionNode])
+def test_file_extractor_and_audio_have_a_read_box_only(model):
+    field_names = {field.name for field in model._meta.fields}
+
+    assert "storage_grant_read" in field_names
+    assert not {"storage_grant_write", "storage_grant_delete"} & field_names
+
+
+@pytest.mark.parametrize("model", [AgentNode, TaskNode])
+def test_agent_and_task_nodes_have_no_grant(model):
+    assert not [field.name for field in model._meta.fields if "storage_grant" in field.name]
 
 
 @pytest.mark.django_db
@@ -77,7 +81,7 @@ def test_the_two_code_slots_of_a_classification_table_are_independent(graph):
     )
 
     node.refresh_from_db()
-    assert node.post_storage_grant_read is None
+    assert node.post_storage_grant_read is False
 
 
 @pytest.mark.django_db
@@ -103,7 +107,5 @@ def test_every_grant_model_is_listed_for_the_tests_above():
         WebhookTriggerNode,
         FileExtractorNode,
         AudioTranscriptionNode,
-        AgentNode,
-        TaskNode,
         ClassificationDecisionTableNode,
     }

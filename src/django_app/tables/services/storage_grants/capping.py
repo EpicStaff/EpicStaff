@@ -2,7 +2,6 @@ from rest_framework.fields import BooleanField
 from src.shared.models.storage_scope import StorageAction
 from tables.services.storage_grants.actor import GrantActor
 from tables.services.storage_grants.slots import (
-    GRANT_ACTION_NAMES,
     STORAGE_GRANT_SLOTS,
     GrantSlot,
 )
@@ -47,7 +46,7 @@ def _cap_slot(data: dict, slot: GrantSlot, held: frozenset[StorageAction]) -> No
         if held == _ALL_ACTIONS:
             return
         values = [True] * len(names)
-    for (action, _), name, value in zip(GRANT_ACTION_NAMES, names, values, strict=True):
+    for action, name, value in zip(slot.actions, names, values, strict=True):
         data[name] = bool(value) and action in held
 
 

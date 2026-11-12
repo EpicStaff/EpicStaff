@@ -328,11 +328,6 @@ from tables.services.secrets.secret_use_checks import (
     check_webhook_trigger_node_write,
     check_webhook_trigger_write,
 )
-from tables.services.storage_grants.actor import GrantActor
-from tables.services.storage_grants.tool_lock import (
-    check_agent_node_task_write,
-    check_python_tool_write,
-)
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.tools_usage_service import (
     get_mcp_tool_usage_detail,
@@ -735,15 +730,6 @@ class PythonCodeToolViewSet(
         if self.request.query_params.get("ordering") == "favorite":
             ordering = ["-is_favorite", "-id"]
         return queryset.order_by(*ordering)
-
-    def perform_update(self, serializer):
-        check_python_tool_write(
-            GrantActor.for_request(self.request),
-            serializer.instance,
-            serializer.validated_data,
-            org_id=self.get_active_org_id(),
-        )
-        super().perform_update(serializer)
 
     def get_permissions(self):
         permissions = super().get_permissions()
@@ -1581,7 +1567,6 @@ class AudioTranscriptionNodeViewSet(
 
 
 class TaskNodeViewSet(
-    StorageGrantCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
     ContentHashPreconditionMixin,
@@ -1628,7 +1613,6 @@ class TaskNodeViewSet(
 
 
 class AgentNodeViewSet(
-    StorageGrantCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
     ContentHashPreconditionMixin,
@@ -1707,7 +1691,6 @@ class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         agent_node = serializer.validated_data.get("agent_node")
         if agent_node is not None and (agent_node.graph.org_id != self.get_active_org_id()):
             raise NotFound()
-        self._check_storage_grant(agent_node)
         self._clean_and_save(serializer)
 
     @transaction.atomic
@@ -1718,19 +1701,7 @@ class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         agent_node = serializer.validated_data.get("agent_node")
         if agent_node is not None and (agent_node.graph.org_id != self.get_active_org_id()):
             raise NotFound()
-        # Moving a task between nodes writes both: the one it leaves and the one it joins.
-        self._check_storage_grant(serializer.instance.agent_node)
-        self._check_storage_grant(agent_node)
         self._clean_and_save(serializer)
-
-    @transaction.atomic
-    def perform_destroy(self, instance):
-        self._check_storage_grant(instance.agent_node)
-        super().perform_destroy(instance)
-
-    def _check_storage_grant(self, agent_node) -> None:
-        if agent_node is not None:
-            check_agent_node_task_write(GrantActor.for_request(self.request), agent_node)
 
 
 class EdgeViewSet(

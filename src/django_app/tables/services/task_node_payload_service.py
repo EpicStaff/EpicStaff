@@ -4,7 +4,6 @@ from agents.services.node_surface_service import NodeSurfaceService
 from src.shared.models import CombinedSurfaceData, TaskNodeData
 from tables.models.graph_models import TaskNode
 from tables.services.base_node_payload_service import BaseNodePayloadService
-from tables.services.storage_grants.flags import storage_grant_of
 
 
 class TaskNodePayloadService(BaseNodePayloadService):
@@ -36,7 +35,6 @@ class TaskNodePayloadService(BaseNodePayloadService):
             output_variable_path=task_node.output_variable_path,
             output_schema=task_node.output_schema or {},
             remember_output=task_node.remember_output,
-            storage_grant=storage_grant_of(task_node),
             surface=combined_surface,
             tools=self._build_tool_pool(
                 combined_surface, graph_id, session_id, s3_files, org_id=org_id

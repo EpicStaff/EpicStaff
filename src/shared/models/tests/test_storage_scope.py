@@ -163,5 +163,3 @@ def test_a_payload_published_before_grants_existed_is_still_valid():
 
     assert session.storage_credentials_by_grant == {}
     assert session.graph.python_node_list[0].python_code.storage_grant is None
-    assert session.graph.agent_node_list[0].storage_grant is None
-    assert session.graph.task_node_list[0].storage_grant is None

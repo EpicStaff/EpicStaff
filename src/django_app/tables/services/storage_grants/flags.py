@@ -46,10 +46,15 @@ class GrantFlags:
     @classmethod
     def of(cls, source, slot: GrantSlot) -> "GrantFlags":
         """The flags of `slot` read from a model instance, or from a dict keyed by column name."""
-        names = slot.flag_names
-        if isinstance(source, Mapping):
-            return cls(*(source.get(name) for name in names))
-        return cls(*(getattr(source, name) for name in names))
+        read_flags = dict(zip(slot.actions, slot.flag_names, strict=True))
+        read = source.get if isinstance(source, Mapping) else lambda name: getattr(source, name)
+        # A box the node has none for (write and delete of a read-only node) is off.
+        return cls(
+            *(
+                read(read_flags[action]) if action in read_flags else False
+                for action, _ in GRANT_ACTION_NAMES
+            )
+        )
 
     @classmethod
     def nothing(cls) -> "GrantFlags":
@@ -68,11 +73,11 @@ def granted_actions(flag_sources: Iterable[GrantFlags]) -> frozenset[StorageActi
     return frozenset(actions)
 
 
-def storage_grant_of(node, *, prefix: str = "") -> StorageGrant | None:
-    """The grant of a node's slot for the session payload, None when it is not configured."""
-    flags = GrantFlags(
-        *(getattr(node, f"{prefix}storage_grant_{name}") for _, name in GRANT_ACTION_NAMES)
+def storage_grant_of(node, *, prefix: str = "") -> StorageGrant:
+    """The grant of a node's slot for the session payload; a read-only node's write and delete are off."""
+    return StorageGrant(
+        **{
+            name: getattr(node, f"{prefix}storage_grant_{name}", False)
+            for _, name in GRANT_ACTION_NAMES
+        }
     )
-    if not flags.configured:
-        return None
-    return StorageGrant(read=flags.read, write=flags.write, delete=flags.delete)

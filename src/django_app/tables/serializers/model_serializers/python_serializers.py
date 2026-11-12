@@ -1,12 +1,10 @@
 from django.db import transaction
 from proxies.sandbox.models import SandboxVenvBinding
-from rbac.access.resolver import resolve_request_permissions
 from rbac.authorship import (
     AuthorStampingSerializerMixin,
     AuthorSummarySerializerMixin,
     LastEditFieldsSerializerMixin,
 )
-from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -43,7 +41,6 @@ from tables.services.copy_services.helpers import (
     create_python_code,
 )
 from tables.services.secrets.parse_code import parse_secret_names
-from tables.services.storage_grants.tool_lock import describe_lock, grant_locks_for_tools
 from tables.validators.execution_timeout_validator import normalize_execution_timeout
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
@@ -191,13 +188,6 @@ class PythonCodeToolSerializer(
         required=False,
         queryset=Label.objects.filter(scope=Label.Scope.TOOL),
     )
-    storage_grant_lock = serializers.SerializerMethodField(
-        help_text=(
-            "Set while flow nodes that use this tool run with a storage grant: editing the "
-            "tool's code then needs those Files permissions. Holds `required_grants`, "
-            "`required_permissions` and `flow_names`; null when nothing locks the tool."
-        )
-    )
 
     class Meta:
         model = PythonCodeTool
@@ -210,7 +200,6 @@ class PythonCodeToolSerializer(
             "is_favorite",
             "built_in",
             "use_storage",
-            "storage_grant_lock",
             "labels",
             "created_by",
             "created_at",
@@ -221,34 +210,6 @@ class PythonCodeToolSerializer(
     def validate_description(self, value: str) -> str:
         """See validate_tool_description: this text reaches the LLM tool schema verbatim."""
         return validate_tool_description(value)
-
-    def get_storage_grant_lock(self, tool) -> dict | None:
-        request = self.context.get("request")
-        if tool.built_in or request is None:
-            return None
-        can_read_flows = resolve_request_permissions(request).can(
-            ResourceType.FLOWS, Permission.READ
-        )
-        return describe_lock(
-            self._grant_locks(request, tool).get(tool.pk), show_flow_names=can_read_flows
-        )
-
-    def _grant_locks(self, request, tool) -> dict:
-        """The locks of `tool` and of the tools rendered beside it, each computed once per request.
-
-        A list renders many tools through one child serializer; the locks of all of
-        them come from one set of queries rather than one set per tool.
-        """
-        cache = self.context.setdefault("_storage_grant_locks", {"computed": set(), "locks": {}})
-        if tool.pk not in cache["computed"]:
-            siblings = getattr(self.parent, "instance", None) if self.parent is not None else None
-            tool_ids = {tool.pk}
-            if getattr(self.parent, "many", False) and siblings is not None:
-                tool_ids |= {sibling.pk for sibling in siblings if not sibling.built_in}
-            tool_ids -= cache["computed"]
-            cache["locks"].update(grant_locks_for_tools(tool_ids, resolve_active_org_id(request)))
-            cache["computed"] |= tool_ids
-        return cache["locks"]
 
     def to_representation(self, instance):
         """Scope the serialized `labels` to the active org.

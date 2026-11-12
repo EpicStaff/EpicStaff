@@ -47,6 +47,8 @@ class FileExtractorNodeData(StorageScopedData):
     output_variable_path: str | None = None
     use_storage: bool = True
     """File extractor nodes always require storage access."""
+    storage_grant: StorageGrant = Field(default_factory=StorageGrant)
+    """Read only: a file extractor never writes or deletes."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -68,6 +70,8 @@ class AudioTranscriptionNodeData(StorageScopedData):
     output_variable_path: str | None = None
     use_storage: bool = True
     """Audio transcription nodes always require storage access."""
+    storage_grant: StorageGrant = Field(default_factory=StorageGrant)
+    """Read only: an audio transcription node never writes or deletes."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -182,7 +186,6 @@ class TaskNodeData(BaseModel):
     tools: list[BaseToolData] = []
     collections: list[CollectionSpec] = []
     s3_files: list[S3FileSpec] = []
-    storage_grant: StorageGrant | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -207,7 +210,6 @@ class AgentNodeData(BaseModel):
     collections: list[CollectionSpec] = []
     s3_files: list[S3FileSpec] = []
     tasks: list[AgentNodeTaskData] = []
-    storage_grant: StorageGrant | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -108,10 +108,10 @@ class _StorageDemandWalker:
                 self._check_storage_scoped(node.post_python_code)
 
         for node in graph.agent_node_list:
-            self._visit_tools(node.tools, node.storage_grant)
+            self._visit_tools(node.tools, None)
 
         for node in graph.task_node_list:
-            self._visit_tools(node.tools, node.storage_grant)
+            self._visit_tools(node.tools, None)
 
     def _visit_tools(self, tools: list[BaseToolData], grant: StorageGrant | None) -> None:
         """Traverse tools list to find PythonCodeData nodes; they run with the owning node's grant."""

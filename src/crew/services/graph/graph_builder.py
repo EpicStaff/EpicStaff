@@ -237,9 +237,7 @@ class SessionGraphBuilder:
                 task_node_data=task_node_data,
                 agent_task_service=self.agent_task_service,
                 remembered_outputs_store=self.remembered_outputs_store,
-                storage_credentials=storage_credentials_for(
-                    session_data, task_node_data.storage_grant
-                ),
+                storage_credentials=storage_credentials_for(session_data, None),
             )
             self.add_node(task_node)
 
@@ -262,9 +260,7 @@ class SessionGraphBuilder:
                 stop_event=self.stop_event,
                 agent_node_data=agent_node_data,
                 agent_task_service=self.agent_task_service,
-                storage_credentials=storage_credentials_for(
-                    session_data, agent_node_data.storage_grant
-                ),
+                storage_credentials=storage_credentials_for(session_data, None),
             )
             self.add_node(agent_node)
 

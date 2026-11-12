@@ -3,12 +3,10 @@ from enum import Enum
 
 from src.shared.models.storage_scope import StorageAction
 from tables.models.graph_models import (
-    AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
     FileExtractorNode,
     PythonNode,
-    TaskNode,
     WebhookTriggerNode,
 )
 
@@ -45,12 +43,14 @@ class GrantSlot:
         code_fields: Names of nested PythonCode fields on the node that hold the code.
         storage_use: How the slot touches storage. A slot that is not configured runs
             with every action, so it is locked like a granted one when it touches storage.
+        actions: The actions the node has a box for. File Extractor and Audio to Text only read.
     """
 
     prefix: str = ""
     steering_fields: tuple[str, ...] = ()
     code_fields: tuple[str, ...] = ()
     storage_use: StorageUse = StorageUse.SWITCH
+    actions: tuple[StorageAction, ...] = tuple(action for action, _ in GRANT_ACTION_NAMES)
 
     @property
     def use_storage_field(self) -> str:
@@ -60,21 +60,18 @@ class GrantSlot:
         return f"{self.prefix}use_storage"
 
     @property
-    def flag_names(self) -> tuple[str, str, str]:
-        """The columns holding read, write and delete, in that order."""
-        read, write, delete = (
-            f"{self.prefix}storage_grant_{name}" for _, name in GRANT_ACTION_NAMES
+    def flag_names(self) -> tuple[str, ...]:
+        """The columns holding the slot's actions, in the order read, write, delete."""
+        return tuple(
+            f"{self.prefix}storage_grant_{name}"
+            for action, name in GRANT_ACTION_NAMES
+            if action in self.actions
         )
-        return read, write, delete
 
 
 # What a nested PythonCode changes about the run: its source, its entrypoint, the arguments
 # it is called with and the environment it runs in (which is where its libraries come from).
 PYTHON_CODE_STEERING_FIELDS: tuple[str, ...] = ("code", "entrypoint", "global_kwargs", "venv")
-
-# The tools of an agent or task node come from its surfaces, and the agent runs them as
-# its prompt (instructions, task text, output schema) says.
-_TOOL_STEERING_FIELDS = ("input_map", "agent_definition", "surface_list", "inline_surface")
 
 # Every model carrying grants. Adding a code-running node type: give it
 # `StorageGrantFields` (or per-slot columns), add its slots here, and nothing else
@@ -87,17 +84,18 @@ STORAGE_GRANT_SLOTS: dict[type, tuple[GrantSlot, ...]] = {
     WebhookTriggerNode: (
         GrantSlot(steering_fields=("use_storage",), code_fields=("python_code",)),
     ),
-    FileExtractorNode: (GrantSlot(steering_fields=("input_map",), storage_use=StorageUse.ALWAYS),),
-    AudioTranscriptionNode: (
-        GrantSlot(steering_fields=("input_map",), storage_use=StorageUse.ALWAYS),
-    ),
-    AgentNode: (
-        GrantSlot(steering_fields=(*_TOOL_STEERING_FIELDS, "tasks"), storage_use=StorageUse.TOOLS),
-    ),
-    TaskNode: (
+    FileExtractorNode: (
         GrantSlot(
-            steering_fields=(*_TOOL_STEERING_FIELDS, "instructions", "output_schema"),
-            storage_use=StorageUse.TOOLS,
+            steering_fields=("input_map",),
+            storage_use=StorageUse.ALWAYS,
+            actions=(StorageAction.READ,),
+        ),
+    ),
+    AudioTranscriptionNode: (
+        GrantSlot(
+            steering_fields=("input_map",),
+            storage_use=StorageUse.ALWAYS,
+            actions=(StorageAction.READ,),
         ),
     ),
     ClassificationDecisionTableNode: (
