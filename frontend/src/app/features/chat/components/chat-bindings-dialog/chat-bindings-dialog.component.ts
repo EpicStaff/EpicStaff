@@ -16,7 +16,6 @@ import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
-    ChipsInputComponent,
     ConfirmationDialogService,
     CopyFieldComponent,
     CustomInputComponent,
@@ -132,6 +131,15 @@ const TEXT_FIELD_LABELS: Record<TextField, string> = {
     operator_display_name: 'Displayed operator name',
 };
 const TEXT_FIELDS = Object.keys(TEXT_FIELD_LABELS) as TextField[];
+
+// Allowed origins are typed in one field, comma separated; an origin holds neither a comma nor a space, so both split.
+const ORIGIN_SEPARATOR = /[\s,]+/;
+const ORIGIN_JOINER = ', ';
+
+function splitOrigins(text: string): string[] {
+    return text.split(ORIGIN_SEPARATOR).filter((origin) => origin !== '');
+}
+
 const DEFAULTS_MISSING_MESSAGE = "Couldn't fill in this desk's default settings. Close the dialog and try again.";
 const PAUSED_ON_SAVE_MESSAGE = 'Saved but paused: the flow does not meet the chat contract.';
 
@@ -192,7 +200,6 @@ export interface ChatBindingsDialogData {
         MatTooltip,
         AppSvgIconComponent,
         ButtonComponent,
-        ChipsInputComponent,
         ChatContractFixComponent,
         CopyFieldComponent,
         CustomInputComponent,
@@ -297,7 +304,8 @@ export class ChatBindingsDialogComponent {
             validators: this.publicName(),
         }),
         graph_id: new FormControl<number | null>(null, { validators: [Validators.required] }),
-        allowed_origins: new FormControl<string[]>([], { nonNullable: true }),
+        // The text as typed; split into the binding's list on save (`splitOrigins`).
+        allowed_origins: new FormControl('', { nonNullable: true }),
         identity_mode: new FormControl<ChatIdentityMode>('anonymous', { nonNullable: true }),
         history_window: new FormControl<number | null>(20, { validators: [Validators.required, Validators.min(0)] }),
         max_message_length: new FormControl<number | null>(4000, {
@@ -625,6 +633,7 @@ export class ChatBindingsDialogComponent {
         // Nullable controls reset to null, so the defaults are restated here; the server's come in `applyLimits`.
         this.form.reset({
             ...CHAT_BINDING_DEFAULTS,
+            allowed_origins: CHAT_BINDING_DEFAULTS.allowed_origins.join(ORIGIN_JOINER),
             name: '',
             bot_display_name: '',
             graph_id: null,
@@ -634,9 +643,9 @@ export class ChatBindingsDialogComponent {
     private fillFrom(binding: ChatBinding): void {
         // Stored errors first: the reset re-checks the flow live and replaces them with the current ones.
         this.contractErrors.set(binding.contract_errors);
-        // reset() reads only the keys the form has; id, public_key and the rest are ignored. The durations are typed
-        // in other units than the binding's seconds.
-        this.form.reset(binding);
+        // reset() reads only the keys the form has; id, public_key and the rest are ignored. The origins are typed as
+        // one text, and the durations in other units than the binding's seconds.
+        this.form.reset({ ...binding, allowed_origins: binding.allowed_origins.join(ORIGIN_JOINER) });
         for (const field of DURATION_FIELDS) this.fillDuration(field, binding[field]);
     }
 
@@ -704,7 +713,7 @@ export class ChatBindingsDialogComponent {
             bot_display_name: raw.bot_display_name,
             operator_display_name: raw.operator_display_name,
             graph_id: raw.graph_id as number,
-            allowed_origins: raw.allowed_origins,
+            allowed_origins: splitOrigins(raw.allowed_origins),
             identity_mode: raw.identity_mode,
             history_window: raw.history_window as number,
             max_message_length: raw.max_message_length as number,

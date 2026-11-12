@@ -50,9 +50,6 @@
                 [matTooltipDisabled]="!isSigned()"
                 >{{ name() }}</span
             >
-            @if (conversation().is_test) {
-                <span class="conversation-row__test-chip">Test</span>
-            }
             <!-- A waiting row says how long instead, beside the row: see the wait chip below. -->
             @if (!isWaiting()) {
                 <!-- Said in the row's name too: the dot is not the only sign. -->

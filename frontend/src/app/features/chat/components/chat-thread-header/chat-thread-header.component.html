@@ -141,9 +141,6 @@
                 <span class="thread-header__desk text-body-small">{{ desk.name }}</span>
             }
         }
-        @if (conversation().is_test) {
-            <span class="test-chip">Test</span>
-        }
         @if (!isPhone() && primaryAction(); as action) {
             <!-- The main action, first on the right: Resolve on a Support desk; for the holder, Done or Release. -->
             <app-button

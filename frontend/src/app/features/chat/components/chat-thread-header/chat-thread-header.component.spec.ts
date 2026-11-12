@@ -316,17 +316,6 @@ describe('ChatThreadHeaderComponent', () => {
             expect(menuLabels()).toEqual(['Resolve', 'Copy Visitor ID']);
         });
 
-        it('puts Delete Conversation after it, set apart, for whoever may delete', () => {
-            renderOn(SUPPORT_DESK);
-            fixture.componentRef.setInput('canDelete', true);
-            fixture.detectChanges();
-
-            expect(menuLabels()).toEqual(['Copy Visitor ID', 'Delete Conversation']);
-            expect(
-                document.querySelector('.chat-action-menu__separator')?.nextElementSibling?.textContent?.trim()
-            ).toBe('Delete Conversation');
-        });
-
         it.each([
             { visitor: 'a signed visitor', overrides: { chat_user_id: 'customer-881' }, copied: 'customer-881' },
             { visitor: 'an anonymous visitor', overrides: {}, copied: '12' },

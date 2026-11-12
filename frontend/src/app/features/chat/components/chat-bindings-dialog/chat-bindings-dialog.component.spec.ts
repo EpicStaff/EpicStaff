@@ -155,13 +155,22 @@ describe('ChatBindingsDialogComponent', () => {
     }
 
     /** Types `value` into the number field bound to `controlName`, as the user does. */
-    function typeNumber(controlName: string, value: number): void {
+    function inputOf(controlName: string): HTMLInputElement {
         const host: HTMLElement = fixture.nativeElement;
         const input = host.querySelector<HTMLInputElement>(`[formControlName="${controlName}"] input`);
         if (!input) throw new Error(`No input for ${controlName}`);
-        input.value = String(value);
+        return input;
+    }
+
+    function typeText(controlName: string, text: string): void {
+        const input = inputOf(controlName);
+        input.value = text;
         input.dispatchEvent(new Event('input'));
         fixture.detectChanges();
+    }
+
+    function typeNumber(controlName: string, value: number): void {
+        typeText(controlName, String(value));
     }
 
     function clickSave(): void {
@@ -201,6 +210,30 @@ describe('ChatBindingsDialogComponent', () => {
         component.form.controls.operator_display_name.setValue('Helpers');
         component.submit();
         expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { operator_display_name: 'Helpers' });
+    });
+
+    it('shows the allowed origins as one comma-separated text and sends what is typed as a list', async () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({})));
+        const component = open(binding({ allowed_origins: ['https://a.example', 'https://b.example'] }));
+        // The field's ngModel writes the input a microtask later.
+        await fixture.whenStable();
+        expect(inputOf('allowed_origins').value).toBe('https://a.example, https://b.example');
+
+        // Commas, spaces and both together separate; the empty pieces they leave are dropped.
+        typeText('allowed_origins', ' https://a.example,https://c.example  https://d.example, ');
+        component.submit();
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', {
+            allowed_origins: ['https://a.example', 'https://c.example', 'https://d.example'],
+        });
+    });
+
+    it('leaves unchanged allowed origins out of the PATCH, however they are retyped', () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({ max_turns: 100 })));
+        const component = open(binding({ allowed_origins: ['https://a.example', 'https://b.example'] }));
+        typeText('allowed_origins', 'https://a.example https://b.example');
+        typeNumber('max_turns', 100);
+        component.submit();
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { max_turns: 100 });
     });
 
     it("sends the General fields edited in the settings, the bot name not following the desk's name", () => {

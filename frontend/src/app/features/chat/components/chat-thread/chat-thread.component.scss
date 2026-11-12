@@ -69,11 +69,12 @@
     }
 }
 
-// A message: who and when above, the bubble (its content) below, as wide as its text, then the run it belongs to.
+// A message: who and when above, the bubble (its content) below, as wide as its text, then the run it belongs to;
+// 2px apart.
 .message {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     max-width: 70%;
     font-size: var(--text-body-size);
     font-weight: var(--text-body-weight);
@@ -163,12 +164,12 @@
         color: var(--accent-color);
     }
 
-    // Under the bubble: Raw data and the run, 8px apart.
+    // Under the bubble: Raw data and the run, 4px apart.
     &__actions {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
     }
 
     // A 28px outlined chip: 8px either side, 8px between its icon and its label.
@@ -222,8 +223,9 @@
         color: var(--color-ks-transparent-text-60);
     }
 
-    // Test conversations: the message's action payloads, open under its buttons, in a 714 × 280 frame.
+    // Test conversations: the message's action payloads, open under its buttons, in a 714 × 280 frame, 4px below them.
     &__raw {
+        margin-top: 2px;
         width: 714px;
         max-width: 100%;
         height: 280px;

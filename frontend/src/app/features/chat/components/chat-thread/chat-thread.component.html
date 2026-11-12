@@ -3,8 +3,6 @@
     [binding]="binding()"
     [listTitle]="listTitle()"
     [isAllBindings]="isAllBindings()"
-    [canDelete]="canDelete()"
-    (deleteRequested)="deleteRequested.emit()"
 />
 
 <div
@@ -95,7 +93,7 @@
                     <!-- The run a bot or operator message belongs to; under a visitor's, the run it started, on a test only. -->
                     @let runId = message.role === 'user' && !conversation().is_test ? null : message.session_id;
                     @if (raw || runId) {
-                        <!-- Below the bubble, 8px apart: Raw data, then the run. -->
+                        <!-- Below the bubble, 4px apart: Raw data, then the run. -->
                         <div class="message__actions">
                             @if (raw) {
                                 <button

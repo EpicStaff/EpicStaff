@@ -71,7 +71,7 @@ describe('DeskStatusSelectComponent', () => {
         expect(host().querySelector('.desk-status')?.getAttribute('tabindex')).toBeNull();
     });
 
-    it('offers Live and Pause, with what each means, and names its trigger after the status', () => {
+    it('offers Live and Paused, with what each means, and names its trigger after the status', () => {
         render(binding({}), true);
         expect(trigger()?.getAttribute('aria-label')).toBe('Desk status: Live. Change');
         openMenu();
@@ -83,7 +83,7 @@ describe('DeskStatusSelectComponent', () => {
             ])
         ).toEqual([
             ['Live', 'Visitors can chat', 'true'],
-            ['Pause', 'Inbox paused. Test lab active.', 'false'],
+            ['Paused', 'Inbox paused. Test lab active.', 'false'],
         ]);
     });
 

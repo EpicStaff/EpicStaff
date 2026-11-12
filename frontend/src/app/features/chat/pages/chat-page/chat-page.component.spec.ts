@@ -299,17 +299,8 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
     }
 
-    /** Chooses Delete Conversation in the open conversation's ⋯ menu. */
-    function deleteFromThread(): void {
-        openThreadMenu();
-        Array.from(document.querySelectorAll<HTMLButtonElement>('.chat-action-menu__item'))
-            .find((item) => item.textContent?.trim() === 'Delete Conversation')!
-            .click();
-        fixture.detectChanges();
-    }
-
-    /** Picks Live or Pause in the desk status menu beside the title, as the user would. */
-    function pickRunState(label: 'Live' | 'Pause'): void {
+    /** Picks Live or Paused in the desk status menu beside the title, as the user would. */
+    function pickRunState(label: 'Live' | 'Paused'): void {
         (fixture.nativeElement.querySelector('.desk-toolbar .desk-status--button') as HTMLButtonElement).click();
         fixture.detectChanges();
         Array.from(document.querySelectorAll<HTMLButtonElement>('.desk-status-menu__item'))
@@ -488,7 +479,6 @@ describe('ChatPageComponent', () => {
         expect(chatApi.createTestConversation).toHaveBeenCalledWith('b-2');
         expect(openSections()).toEqual(['test_open']);
         expect(component.selectedId()).toBe('c-9');
-        expect(text('.thread-header .test-chip')).toEqual(['Test']);
         expect(host.querySelector('.composer__role[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');
 
         typeInComposer('hi');
@@ -548,7 +538,7 @@ describe('ChatPageComponent', () => {
             listBindings([binding]);
             scopeTo('b-1');
             bindingActions.pause.mockReturnValue(of(true));
-            pickRunState('Pause');
+            pickRunState('Paused');
             expect(bindingActions.pause).toHaveBeenCalledWith(binding);
 
             const paused = { ...binding, is_active: false };
@@ -610,68 +600,21 @@ describe('ChatPageComponent', () => {
         expect(bindingActions.copySnippet).toHaveBeenCalledWith(binding);
     });
 
-    it("offers Delete Conversation last in the thread's ⋯ menu, set apart, on a desk to whoever may delete desks", () => {
+    // The desk is deleted from the toolbar only: a thread menu item would read as deleting the one conversation.
+    it("offers no delete in the thread's ⋯ menu, even to whoever may delete desks", () => {
         permissions.can = () => true;
         try {
             listBindings([binding]);
             scopeTo('b-1');
             openConversation();
-            expect(openThreadMenu()).toEqual(['Copy Visitor ID', 'Delete Conversation']);
-            expect(
-                document.querySelector('.chat-action-menu [role="separator"]')?.nextElementSibling?.textContent?.trim()
-            ).toBe('Delete Conversation');
-            expect(headerButton('Delete')).toBeUndefined();
-            closeMenu();
-
-            // All desks: there is no one desk to delete.
-            scopeTo('');
-            openConversation();
-            expect(openThreadMenu()).toEqual(['Copy Visitor ID']);
-            closeMenu();
-
-            permissions.can = (resource, action) => resource === ResourceCode.Chats && action !== ActionCode.Delete;
-            fixture = TestBed.createComponent(ChatPageComponent);
-            listBindings([binding]);
-            scopeTo('b-1');
-            openConversation();
-            expect(openThreadMenu()).toEqual(['Copy Visitor ID']);
+            expect(openThreadMenu().filter((label) => label.includes('Delete'))).toEqual([]);
         } finally {
             permissions.can = (resource, action) =>
                 resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
         }
     });
 
-    it('deletes the route binding from the thread after its confirmation, goes to All desks, then reloads the desks; a cancel stays', async () => {
-        permissions.can = () => true;
-        try {
-            listBindings([binding]);
-            scopeTo('b-1');
-            openConversation();
-            const callsBefore = chatApi.getBindings.mock.calls.length;
-            let finishNavigation: (navigated: boolean) => void = () => undefined;
-            navigate.mockReturnValueOnce(new Promise<boolean>((resolve) => (finishNavigation = resolve)));
-            bindingActions.delete.mockReturnValueOnce(of(true));
-            deleteFromThread();
-            expect(bindingActions.delete).toHaveBeenCalledWith(binding);
-            expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'all']);
-            // Only once the page has left: a list without the desk must not read as "no longer exists".
-            expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore);
-            finishNavigation(true);
-            await vi.waitFor(() => expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1));
-            expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
-
-            navigate.mockClear();
-            // The shared action completes without emitting when the confirm is cancelled or the delete fails.
-            bindingActions.delete.mockReturnValueOnce(of());
-            deleteFromThread();
-            expect(navigate).not.toHaveBeenCalled();
-        } finally {
-            permissions.can = (resource, action) =>
-                resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
-        }
-    });
-
-    it("deletes the route binding from the toolbar's Delete desk through the same confirmation, goes to All desks, then reloads the desks; a cancel stays", async () => {
+    it("deletes the route binding from the toolbar's Delete desk after its confirmation, goes to All desks, then reloads the desks; a cancel stays", async () => {
         permissions.can = () => true;
         try {
             listBindings([binding]);
@@ -718,10 +661,9 @@ describe('ChatPageComponent', () => {
         try {
             listBindings([binding, { ...binding, id: 'b-2', name: 'Sales' }]);
             scopeTo('b-1');
-            openConversation();
             const deleted$ = new Subject<boolean>();
             bindingActions.delete.mockReturnValueOnce(deleted$);
-            deleteFromThread();
+            headerButton('Delete desk')!.click();
             scopeTo('b-2');
             const callsBefore = chatApi.getBindings.mock.calls.length;
 
@@ -1766,12 +1708,11 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
         }
 
-        it("shows the visitor, the path with the id, Test chip and today's turns and tokens against the limits", () => {
+        it("shows the visitor, the path with the id and today's turns and tokens against the limits", () => {
             open(row({ id: 'c-1', is_test: true, tokens_used: 9000, tokens_today: 250, turns: 40, turns_today: 3 }));
             expect(header().querySelector('.mode-badge')).toBeNull();
             expect(text('.thread-header__visitor')).toEqual(['Visitor 1']);
             expect(text('.thread-header__path')).toEqual(['Bot / c-1']);
-            expect(text('.thread-header .test-chip')).toEqual(['Test']);
             expect(rings()).toEqual(['Turns today: 3 of 50', 'Tokens today: 250 of 1,000']);
             expect(
                 Array.from(header().querySelectorAll('.usage-ring__icon use')).map((use) => use.getAttribute('href'))
@@ -2221,14 +2162,6 @@ describe('ChatPageComponent', () => {
                 chooseInMenu('Settings');
                 expect(bindingActions.openSettings).toHaveBeenLastCalledWith(binding);
                 expect(document.querySelector('.chat-action-menu')).toBeNull();
-
-                permissions.can = () => true;
-                renderOnDesk();
-
-                openConversation(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
-                openMenu('.thread-header__nav');
-                expect(menuItems().at(-1)).toBe('Delete Conversation');
-                closeMenu();
 
                 permissions.can = (_resource, action) => action === ActionCode.Read;
                 renderOnDesk();

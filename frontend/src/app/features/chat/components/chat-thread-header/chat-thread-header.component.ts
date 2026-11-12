@@ -1,14 +1,4 @@
-import {
-    Component,
-    computed,
-    DestroyRef,
-    ElementRef,
-    inject,
-    input,
-    linkedSignal,
-    output,
-    viewChild,
-} from '@angular/core';
+import { Component, computed, DestroyRef, ElementRef, inject, input, linkedSignal, viewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
@@ -37,11 +27,8 @@ import { ChatActionMenuComponent, ChatActionMenuItem } from '../chat-action-menu
 import { ChatUsageRingComponent } from '../chat-usage-ring/chat-usage-ring.component';
 import { ConversationAvatarComponent } from '../conversation-avatar/conversation-avatar.component';
 
-/**
- * The ⋯ menu's actions: the conversation's own, Copy Visitor ID (the header's own, as it changes nothing), and Delete
- * Conversation, which the page carries out.
- */
-type ThreadMenuAction = ConversationAction | 'copy-visitor-id' | 'delete';
+/** The ⋯ menu's actions: the conversation's own, and Copy Visitor ID (the header's own, as it changes nothing). */
+type ThreadMenuAction = ConversationAction | 'copy-visitor-id';
 
 // How long the copy icon shows its check after the conversation id was copied.
 const ID_COPIED_CONFIRMATION_MS = 2000;
@@ -55,9 +42,9 @@ interface ThreadWait {
 /**
  * The open conversation's header. On desktop one row: the visitor's avatar; their name, then how long they have waited
  * for a person (while they do, as the list's row says it), over the conversation's path (Bot, or Bot / Human with an
- * operator) and its id, which copies; then the Test chip; at the end the main action, today's usage against
- * its desk's limits and the ⋯ menu. On phones it is also the thread screen's nav bar: Back to the list, the visitor and
- * the ⋯ menu, with the mode (or Closed), Test chip and usage centred under it, then the handoff reason.
+ * operator) and its id, which copies; at the end the main action, today's usage against its desk's limits and the ⋯
+ * menu. On phones it is also the thread screen's nav bar: Back to the list, the visitor and the ⋯ menu, with the mode
+ * (or Closed) and usage centred under it, then the handoff reason.
  */
 @Component({
     selector: 'app-chat-thread-header',
@@ -83,9 +70,6 @@ export class ChatThreadHeaderComponent {
     /** The list the phone's Back returns to: the desk name or All desks; empty while not known. */
     readonly listTitle = input('');
     readonly isAllBindings = input(false);
-    /** Offers Delete Conversation at the end of the ⋯ menu; the page decides when, and what it deletes. */
-    readonly canDelete = input(false);
-    readonly deleteRequested = output<void>();
 
     private readonly threadBack = viewChild<ElementRef<HTMLButtonElement>>('threadBack');
 
@@ -157,14 +141,13 @@ export class ChatThreadHeaderComponent {
     /** The main action, a button before the usage (see `primaryConversationAction`): on Support, for any holder. */
     readonly primaryAction = computed(() => primaryConversationAction(this.actionContext()));
     /**
-     * The ⋯ menu: the conversation's other actions (see `conversationMenuItems`), then Copy Visitor ID, then Delete
-     * Conversation, set apart. Copy Visitor ID is there on any conversation, open or closed, and needs no chats use: it
-     * changes nothing. So the menu is never empty.
+     * The ⋯ menu: the conversation's other actions (see `conversationMenuItems`), then Copy Visitor ID. Copy Visitor ID
+     * is there on any conversation, open or closed, and needs no chats use: it changes nothing. So the menu is never
+     * empty.
      */
     readonly conversationMenuItems = computed((): ChatActionMenuItem<ThreadMenuAction>[] => [
         ...conversationMenuItems(this.actionContext()),
         { id: 'copy-visitor-id', label: 'Copy Visitor ID' },
-        ...(this.canDelete() ? [{ id: 'delete' as const, label: 'Delete Conversation', separated: true }] : []),
     ]);
 
     protected readonly isActionPending = inject(ChatConversationActionsService).isPending;
@@ -205,7 +188,6 @@ export class ChatThreadHeaderComponent {
             resolve: () => this.conversationActions.resolve(conversation),
             close: () => this.conversationActions.closeConversation(conversation),
             'copy-visitor-id': () => this.copyVisitorId(),
-            delete: () => this.deleteRequested.emit(),
         };
         run[action]();
     }

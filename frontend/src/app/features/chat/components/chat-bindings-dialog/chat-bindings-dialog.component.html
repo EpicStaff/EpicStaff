@@ -172,11 +172,12 @@
                         [ngTemplateOutletContext]="{ id: null }"
                     />
                 }
-                <app-chips-input
+                <app-custom-input
                     label="Allowed origins"
                     formControlName="allowed_origins"
-                    inputPlaceholder="https://www.example.com"
-                    tooltipText="Sites allowed to embed this chat. Test conversations skip this check."
+                    placeholder="https://www.example.com"
+                    tooltipText="Sites allowed to embed this chat, separated by commas. Test conversations skip this check."
+                    autocomplete="off"
                 />
                 <app-select
                     label="Identity"

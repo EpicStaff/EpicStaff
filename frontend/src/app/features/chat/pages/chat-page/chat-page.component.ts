@@ -162,13 +162,8 @@ export class ChatPageComponent {
     readonly canUpdate = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Update));
     readonly canDelete = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Delete));
     /**
-     * The thread's "Delete Conversation" (the user's wording) runs Delete of this desk, the only delete the chat API
-     * has; so it is offered on a desk's page only, to whoever may delete desks.
-     */
-    readonly canDeleteFromThread = computed(() => this.canDelete() && !!this.routeBinding());
-    /**
      * Phones put the desk actions in the list screen's ⋯ menu, with the toolbar's permissions. Delete desk comes last,
-     * set apart as in the thread's ⋯ menu: a desk with no conversations has no thread to delete it from.
+     * set apart.
      */
     readonly deskMenuItems = computed((): ChatActionMenuItem<DeskAction>[] => {
         if (!this.routeBinding()) return [];

@@ -29,7 +29,7 @@ const RUN_STATE_OPTIONS: readonly DeskRunStateOption[] = [
     { value: 'live', label: 'Live', description: 'Visitors can chat', dotColor: STATUS_DOT_COLORS.live },
     {
         value: 'paused',
-        label: 'Pause',
+        label: 'Paused',
         description: 'Inbox paused. Test lab active.',
         dotColor: STATUS_DOT_COLORS.paused,
     },

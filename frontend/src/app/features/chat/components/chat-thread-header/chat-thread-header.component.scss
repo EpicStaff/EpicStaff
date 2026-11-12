@@ -2,14 +2,14 @@
 @use '../../../../../styles/touch';
 @use '../../styles/wait-chip';
 
-// Where the usage rings drop their numbers: below the desktop row's widest fixed part, about 574px. That is the
+// Where the usage rings drop their numbers: below the desktop row's widest fixed part, about 517px. That is the
 // header's 32px side padding, the avatar (36px and its 8px gap), the identity column's least and its 8px gap, then
-// Test, the filled Resolve (about 89px: 12px, the 8px check, 8px, the label, 16px), both rings with numbers and ⋯
-// (about 410px in all, gaps included). The column's least is its widest uncut line, about 80px
+// the filled Resolve (about 89px: 12px, the 8px check, 8px, the label, 16px), both rings with numbers and ⋯
+// (about 353px in all, gaps included). The column's least is its widest uncut line, about 80px
 // either way: the name line (the name cut to nothing, 8px, then the wait chip: "12m 16s" with its icon, gap and
 // padding, about 72px) or the path (Bot / Human / at about 60px, two 4px gaps and the 12px copy icon, the id cut to
 // nothing). A longer wait ("23h 59m") makes the name line the wider by a few px; the margin covers it.
-$usage-numbers-min-width: 590px;
+$usage-numbers-min-width: 533px;
 
 :host {
     display: block;
@@ -27,16 +27,9 @@ $usage-numbers-min-width: 590px;
     }
 }
 
-// A test conversation, in the thread header.
-// The flow sessions' status chip, so chat chips match every other status chip. Looks: Test = expired,
-// Bot = pending, Awaiting human = waiting, Human = running, Closed = expired.
-.test-chip {
-    @include status-chip.chip;
-    @include status-chip.expired;
-    margin-left: 6px;
-}
-
-// Phones only: desktop says Bot or Bot / Human on the path line, and the wait on its chip.
+// Phones only: desktop says Bot or Bot / Human on the path line, and the wait on its chip. The flow sessions' status
+// chip, so chat chips match every other status chip. Looks: Bot = pending, Awaiting human = waiting, Human = running,
+// Closed = expired.
 .mode-badge {
     @include status-chip.chip;
     @include status-chip.pending;
@@ -123,7 +116,7 @@ $usage-numbers-min-width: 590px;
 // Desktop: one row, 60px tall, then its 1px divider (61px in all, as boxes are border-box), level with the hairline
 // under the conversation list's tabs (conversation-list-toolbar: 8px + the 40px switch + 12px, then the same subtle
 // line). Left to right: the visitor's avatar; the identity column (their name, with the wait chip after it while they
-// wait, over the conversation's path and id); the Test chip; then, at the end, the main action, today's usage
+// wait, over the conversation's path and id); then, at the end, the main action, today's usage
 // rings and the ⋯ menu. The handoff reason is in the wait chip's tooltip: the fixed height has no room for another
 // line.
 :host(:not(.chat-thread-header--phone)) .thread-header {
@@ -142,7 +135,7 @@ $usage-numbers-min-width: 590px;
 // with the wait chip, which is taller than the name: 31px or 37px in all, the name centred on the chip. The name and
 // the id are cut first when the row runs short. The column may get narrower than the path's uncut part (CSS cannot
 // make that its minimum: the name and the id, which do get cut, would count too), so it clips rather than paint over
-// the Test chip or the usage. The 6px padding, taken back by the margin, keeps the focus outlines and the copy icon's
+// the usage. The 6px padding, taken back by the margin, keeps the focus outlines and the copy icon's
 // hit area inside the clip.
 .thread-header__identity {
     display: flex;
@@ -266,8 +259,8 @@ $usage-numbers-min-width: 590px;
     outline-offset: -2px;
 }
 
-// The thread screen's header on phones: a nav bar (Back, the visitor centred, ⋯), then the mode, Test and today's
-// usage centred under it, then the handoff reason.
+// The thread screen's header on phones: a nav bar (Back, the visitor centred, ⋯), then the mode and today's usage
+// centred under it, then the handoff reason.
 :host(.chat-thread-header--phone) .thread-header {
     gap: 4px;
     padding: 0 max(4px, env(safe-area-inset-right, 0px)) 8px max(4px, env(safe-area-inset-left, 0px));

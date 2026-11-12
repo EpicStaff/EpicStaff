@@ -1,4 +1,3 @@
-@use '../../../../../styles/status-chip';
 @use '../../styles/wait-chip';
 
 // The row is the button and, on a waiting row, the actions beside it: the host draws the background and the border
@@ -72,12 +71,6 @@
         font-size: var(--text-body-bold-size);
         font-weight: var(--text-body-bold-weight);
         line-height: var(--text-body-bold-line-height);
-    }
-
-    &__test-chip {
-        @include status-chip.chip;
-        @include status-chip.expired;
-        flex-shrink: 0;
     }
 
     // News the user has not opened: a dot left of the time, which it takes the line's free space from.

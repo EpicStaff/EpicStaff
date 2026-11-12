@@ -10,8 +10,6 @@
     min-height: 0;
     overflow: hidden;
     color: var(--color-text-primary);
-    // The rail's header and the page's desk toolbar share it, so their bottom lines meet.
-    --desk-toolbar-height: 60px;
 
     // Nested beside `headerLayout()`, as on the Agents page, so the two cascade the same way.
     .header {

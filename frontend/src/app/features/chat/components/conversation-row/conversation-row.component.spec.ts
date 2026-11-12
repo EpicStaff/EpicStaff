@@ -268,11 +268,6 @@ describe('ConversationRowComponent', () => {
             }
             expect(textOf('.conversation-row__wait')).toBe('55m 0s');
         });
-
-        it('marks a test with its chip', () => {
-            render(conversation({ is_test: true }));
-            expect(textOf('.conversation-row__test-chip')).toBe('Test');
-        });
     });
 
     describe('overdue', () => {
@@ -361,9 +356,8 @@ describe('ConversationRowComponent', () => {
             expect(accessibleName()).not.toContain('taken by');
         });
 
-        it('marks a closed test as closed beside its Test chip, timed by its last message as Tests sorts it', () => {
+        it('marks a closed test as closed, timed by its last message as Tests sorts it', () => {
             render(resolved({ is_test: true }), { rules: { style: 'support', overdueAfterMs: null } });
-            expect(textOf('.conversation-row__test-chip')).toBe('Test');
             expect(textOf('.conversation-row__closed')).toBe('Resolved');
             expect(textOf('.conversation-row__time')).toBe('6m');
             expect(accessibleName()).toBe('Visitor 1, last message today at 2:24 PM, test, resolved by Grace Hopper');
