@@ -1,18 +1,11 @@
-import bz2
-import gzip
-import io
-import lzma
 import os
-import tarfile
-import zipfile
 
 from rest_framework import serializers
 
 from tables.constants.upload_limits import UploadLimits, default_upload_limits
-
-
-class _ArchiveTooLarge(ValueError):  # noqa: N818
-    """Internal signal that a bounded decompression hit its cap."""
+from tables.exceptions import StorageQuotaExceeded
+from tables.services.storage_service.archive_unpacking.extraction_guard import ArchiveLimitExceeded
+from tables.services.storage_service.archive_unpacking.inspection import inspect_archive
 
 
 class FileValidator:
@@ -104,119 +97,30 @@ class FileValidator:
         if problem := self._name_problem(filename, None):
             raise serializers.ValidationError(problem)
 
-    def scan_archive_for_executables(self, file_obj) -> list[str]:
+    def _archive_problem(self, file) -> str | None:
+        """Why an archive may not be uploaded, or None when it may, or is no archive at all.
+
+        The same header-only inspection the storage upload runs before unpacking, with
+        the expansion cap in place of the free quota.
         """
-        Inspect a ZIP or TAR archive in memory and return entry paths that
-        have blocked extensions.  Only reads the directory listing — no
-        content is extracted.  Resets file position after inspection.
-        """
-        pos = file_obj.tell()
-        data = file_obj.read()
-        file_obj.seek(pos)
-
-        blocked: list[str] = []
-        buf = io.BytesIO(data)
-
-        if zipfile.is_zipfile(buf):
-            buf.seek(0)
-            with zipfile.ZipFile(buf, "r") as zf:
-                for name in zf.namelist():
-                    if not name.endswith("/") and self.is_executable_filename(name):
-                        blocked.append(name)
-            return blocked
-
-        buf.seek(0)
-        try:
-            is_tar = tarfile.is_tarfile(buf)
-        except Exception:
-            is_tar = False
-
-        if is_tar:
-            buf.seek(0)
-            with tarfile.open(fileobj=buf, mode="r:*") as tf:
-                for member in tf.getmembers():
-                    if member.isfile() and self.is_executable_filename(member.name):
-                        blocked.append(member.name)
-            return blocked
-
-        return blocked
-
-    def _bounded_decompress(self, raw: bytes) -> bytes | None:
-        """Inflate an outer gzip/bzip2/xz layer, reading at most one byte past the cap."""
         cap = self._limits.max_archive_uncompressed_bytes
-        compressed = io.BytesIO(raw)
-
-        if raw.startswith(b"\x1f\x8b"):
-            stream = gzip.GzipFile(fileobj=compressed)
-        elif raw.startswith(b"BZh"):
-            stream = bz2.BZ2File(compressed)
-        elif raw.startswith(b"\xfd7zXZ\x00"):
-            stream = lzma.LZMAFile(compressed)  # noqa: SIM115
-        else:
-            return raw
-
         try:
-            with stream:
-                plain = stream.read(cap + 1)
-        except (OSError, EOFError, lzma.LZMAError):
-            return None
-
-        if len(plain) > cap:
-            raise _ArchiveTooLarge(f"expands to more than {cap} bytes")
-
-        return plain
-
-    def _declared_archive_contents(self, raw: bytes) -> tuple[int, int] | None:
-        """Return (entry count, declared uncompressed bytes), reading headers only."""
-        buf = io.BytesIO(raw)
-        if zipfile.is_zipfile(buf):
-            buf.seek(0)
-            with zipfile.ZipFile(buf, "r") as zf:
-                entries = [e for e in zf.infolist() if not e.is_dir()]
-                return len(entries), sum(e.file_size for e in entries)
-
-        plain = self._bounded_decompress(raw)
-        if plain is None:
-            return None
-
-        plain_buf = io.BytesIO(plain)
-        try:
-            if not tarfile.is_tarfile(plain_buf):
-                return None
-            plain_buf.seek(0)
-            with tarfile.open(fileobj=plain_buf, mode="r:") as tf:
-                members = [m for m in tf.getmembers() if m.isfile()]
-                return len(members), sum(m.size for m in members)
-        except (tarfile.TarError, OSError, EOFError):
-            return None
-
-    def scan_archive_expansion(self, file_obj) -> str | None:
-        """Return why an archive's declared expansion is unsafe, or None when it is fine."""
-        pos = file_obj.tell()
-        raw = file_obj.read()
-        file_obj.seek(pos)
-
-        try:
-            declared = self._declared_archive_contents(raw)
-        except _ArchiveTooLarge as e:
-            return str(e)
-
-        if declared is None:
-            return None
-
-        entries, uncompressed = declared
-
-        if entries > self._limits.max_archive_entries:
-            return (
-                f"contains {entries} entries, over the limit of {self._limits.max_archive_entries}"
+            inspect_archive(
+                file,
+                file.name,
+                max_entries=self._limits.max_archive_entries,
+                free_bytes=cap,
+                is_blocked=self.is_executable_filename,
             )
-
-        if uncompressed > self._limits.max_archive_uncompressed_bytes:
+        except StorageQuotaExceeded:
+            return f"Archive '{file.name}' expands to more than {cap} bytes"
+        except ArchiveLimitExceeded:
             return (
-                f"expands to {uncompressed} bytes, over the limit of "
-                f"{self._limits.max_archive_uncompressed_bytes} bytes"
+                f"Archive '{file.name}' contains more than "
+                f"{self._limits.max_archive_entries} entries"
             )
-
+        except ValueError as error:
+            return str(error)
         return None
 
     def validate(self, files: list) -> list:
@@ -224,7 +128,8 @@ class FileValidator:
         Validate a list of uploaded files.  Raises
         ``serializers.ValidationError`` if the batch or any single file is over
         its size cap, if any file uses an unsupported archive format, contains
-        blocked executable extensions, or declares an unsafe expansion.
+        blocked executable extensions, declares an unsafe expansion, or is an
+        archive that cannot be read to the end.
         ZIP and TAR archives are allowed — they are auto-extracted by the
         storage layer and never stored as-is.
         """
@@ -239,18 +144,8 @@ class FileValidator:
                 detail_lines.append(problem)
                 continue
 
-            # Scan ZIP/TAR contents for executables
-            archive_blocked = self.scan_archive_for_executables(f)
-            if archive_blocked:
-                detail_lines.append(
-                    f"Archive '{f.name}' contains executable files: " + ", ".join(archive_blocked)
-                )
-                continue
-
-            # Reject an archive whose headers declare an unsafe expansion
-            expansion_problem = self.scan_archive_expansion(f)
-            if expansion_problem:
-                detail_lines.append(f"Archive '{f.name}' {expansion_problem}")
+            if archive_problem := self._archive_problem(f):
+                detail_lines.append(archive_problem)
 
         if total_bytes > self._limits.max_total_bytes:
             detail_lines.append(
