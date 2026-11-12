@@ -1,4 +1,5 @@
 from .rag import (
+    EntityDetailOutputSchema,
     GraphTableDataOutputSchema,
     GraphVisualizationOutputSchema,
     IndexEstimateInputSchema,
@@ -7,11 +8,13 @@ from .rag import (
     MetricsOutputSchema,
     PrechunkInputSchema,
     PrechunkOutputSchema,
+    RelationshipDetailOutputSchema,
     SearchInputSchema,
     SearchOutputSchema,
 )
 
 __all__ = [
+    "EntityDetailOutputSchema",
     "GraphTableDataOutputSchema",
     "GraphVisualizationOutputSchema",
     "IndexEstimateInputSchema",
@@ -20,6 +23,7 @@ __all__ = [
     "MetricsOutputSchema",
     "PrechunkInputSchema",
     "PrechunkOutputSchema",
+    "RelationshipDetailOutputSchema",
     "SearchInputSchema",
     "SearchOutputSchema",
 ]

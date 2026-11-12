@@ -2,7 +2,6 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
-    DestroyRef,
     effect,
     ElementRef,
     inject,
@@ -14,15 +13,24 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ButtonComponent, CheckboxComponent, LoadingSpinnerComponent, SearchComponent } from '@shared/components';
-
 import {
-    GraphVisualizationData,
-    VisualizationCommunity,
-    VisualizationEntity,
-} from '../../models/graph-visualization.model';
+    AppSvgIconComponent,
+    ButtonComponent,
+    CheckboxComponent,
+    FetchErrorStateComponent,
+    LoadingSpinnerComponent,
+    SearchComponent,
+    SliderWithStepperComponent,
+    ToggleSwitchComponent,
+} from '@shared/components';
+import { ResizableSidebarDirective } from '@shared/directives';
+import { SidebarWidthService } from '@shared/services';
+import { catchError, debounceTime, distinctUntilChanged, EMPTY, of, Subject, switchMap, tap } from 'rxjs';
+
+import { GraphVisualizationData, VisualizationEntity } from '../../models/graph-visualization.model';
 import { GraphRagService } from '../../services/graph-rag.service';
-import { GraphEdge, GraphNode, GraphSceneService } from './graph-scene.service';
+import { GraphEdge, GraphNode } from './graph-scene.model';
+import { GraphSceneService } from './graph-scene.service';
 
 type ViewState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
@@ -38,7 +46,18 @@ interface EntityTypeFilter {
     templateUrl: './graph-rag-visualization.component.html',
     styleUrls: ['./graph-rag-visualization.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [ButtonComponent, CheckboxComponent, FormsModule, LoadingSpinnerComponent, SearchComponent],
+    imports: [
+        ButtonComponent,
+        CheckboxComponent,
+        FetchErrorStateComponent,
+        FormsModule,
+        LoadingSpinnerComponent,
+        ResizableSidebarDirective,
+        SearchComponent,
+        SliderWithStepperComponent,
+        ToggleSwitchComponent,
+        AppSvgIconComponent,
+    ],
     providers: [GraphSceneService],
 })
 export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
@@ -56,20 +75,23 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
     readonly maxEntities = signal(200);
     readonly searchTerm = signal('');
     readonly labelsVisible = signal(false);
-    readonly communitySidebarOpen = signal(true);
     readonly selectedNodeIndex = signal<number | null>(null);
     readonly selectedEdgeIndex = signal<number | null>(null);
     readonly hoveredNodeTitle = signal<string | null>(null);
     readonly hoverPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
 
+    readonly toolbarVisible = signal(false);
     readonly entityCount = signal(0);
     readonly totalEntityCount = signal(0);
     readonly relationshipCount = signal(0);
-    readonly communityCount = signal(0);
 
-    readonly communities = signal<VisualizationCommunity[]>([]);
-    readonly highlightedCommunityId = signal<string | null>(null);
-
+    readonly sliderStep = computed(() => {
+        const total = this.totalEntityCount();
+        if (total <= 10) return 1;
+        if (total <= 50) return 5;
+        if (total <= 100) return 10;
+        return 100;
+    });
     readonly entityTypeFilters = signal<EntityTypeFilter[]>([]);
 
     readonly selectedNode = computed<GraphNode | null>(() => {
@@ -77,15 +99,6 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         if (index === null) return null;
         const nodes = this.sceneService.getNodes();
         return nodes[index] ?? null;
-    });
-
-    readonly selectedNodeCommunities = computed<string[]>(() => {
-        const node = this.selectedNode();
-        if (!node) return [];
-        const comms = this.communities();
-        return node.communityIds
-            .map((id) => comms.find((c) => c.id === id)?.title)
-            .filter((title): title is string => !!title);
     });
 
     readonly connectedEdges = computed<Array<{ edge: GraphEdge; otherNode: GraphNode }>>(() => {
@@ -117,6 +130,10 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         return { source: nodes[edge.sourceIndex], target: nodes[edge.targetIndex] };
     });
 
+    readonly nodeDescription = signal<string | null>(null);
+    readonly edgeDescription = signal<string | null>(null);
+    readonly detailLoading = signal(false);
+
     // 4. Effects
     /** When the canvas element becomes available (after viewState switches to 'ready'), init the scene. */
     private readonly canvasEffect = effect(() => {
@@ -127,9 +144,41 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         }
     });
 
+    private readonly nodeDetailTrigger$ = new Subject<GraphNode | null>();
+    private readonly edgeDetailTrigger$ = new Subject<GraphEdge | null>();
+
+    /** Fetch entity description lazily when a node is selected. */
+    private readonly nodeDetailEffect = effect(() => {
+        this.nodeDetailTrigger$.next(this.selectedNode());
+    });
+
+    /** Fetch relationship description lazily when an edge is selected. */
+    private readonly edgeDetailEffect = effect(() => {
+        this.edgeDetailTrigger$.next(this.selectedEdge());
+    });
+
+    readonly detailPanelOpen = computed(() => this.selectedNode() !== null || this.selectedEdge() !== null);
+
+    // 5. Sidebar
+    private static readonly SIDEBAR_STORAGE_KEY = 'graph-viz-sidebar';
+    private static readonly DETAIL_PANEL_STORAGE_KEY = 'graph-viz-detail';
+    private readonly sidebarWidthService = inject(SidebarWidthService);
+    readonly sidebarWidth = this.sidebarWidthService.getWidth(GraphRagVisualizationComponent.SIDEBAR_STORAGE_KEY, {
+        defaultWidth: 220,
+        minWidth: 160,
+        maxWidth: 400,
+    });
+    readonly detailPanelWidth = this.sidebarWidthService.getWidth(
+        GraphRagVisualizationComponent.DETAIL_PANEL_STORAGE_KEY,
+        {
+            defaultWidth: 320,
+            minWidth: 240,
+            maxWidth: 600,
+        }
+    );
+
     // 6. Private fields
     private readonly graphRagService = inject(GraphRagService);
-    private readonly destroyRef = inject(DestroyRef);
     private readonly sceneService = inject(GraphSceneService);
 
     private simulation: { stop: () => void; reheat: () => void } | null = null;
@@ -144,12 +193,75 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         fy?: number | null;
         fz?: number | null;
     }> = [];
+    private readonly loadTrigger$ = new Subject<{ ragId: number; maxEntities: number; search?: string }>();
+    private readonly searchTrigger$ = new Subject<string>();
     private draggedNodeIndex: number | null = null;
     private isDragging = false;
     private clickedEdgeOnDown = -1;
 
     constructor() {
-        // Auto-load when the component is created (it is conditionally rendered via @if).
+        this.loadTrigger$
+            .pipe(
+                switchMap(({ ragId, maxEntities, search }) =>
+                    this.graphRagService.getVisualizationData(ragId, maxEntities, search).pipe(
+                        tap((data) => this.handleDataLoaded(data)),
+                        catchError((error) => {
+                            this.handleError(error);
+                            return EMPTY;
+                        })
+                    )
+                ),
+                takeUntilDestroyed()
+            )
+            .subscribe();
+
+        this.searchTrigger$.pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed()).subscribe(() => {
+            this.entityTypeFilters.set([]);
+            this.closeDetailPanel();
+            this.loadData();
+        });
+
+        this.nodeDetailTrigger$
+            .pipe(
+                switchMap((node) => {
+                    this.nodeDescription.set(null);
+                    if (!node) return of(null);
+                    this.detailLoading.set(true);
+                    return this.graphRagService.getEntityDetails(this.ragId(), node.id).pipe(
+                        tap((result) => {
+                            this.nodeDescription.set(result.description);
+                            this.detailLoading.set(false);
+                        }),
+                        catchError(() => {
+                            this.detailLoading.set(false);
+                            return of(null);
+                        })
+                    );
+                }),
+                takeUntilDestroyed()
+            )
+            .subscribe();
+
+        this.edgeDetailTrigger$
+            .pipe(
+                switchMap((edge) => {
+                    this.edgeDescription.set(null);
+                    if (!edge) return of(null);
+                    this.detailLoading.set(true);
+                    return this.graphRagService.getRelationshipDetails(this.ragId(), edge.id).pipe(
+                        tap((result) => {
+                            this.edgeDescription.set(result.description);
+                            this.detailLoading.set(false);
+                        }),
+                        catchError(() => {
+                            this.detailLoading.set(false);
+                            return of(null);
+                        })
+                    );
+                }),
+                takeUntilDestroyed()
+            )
+            .subscribe();
     }
 
     ngOnInit() {
@@ -162,43 +274,33 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         this.sceneService.dispose();
     }
 
-    onToggleDimension(): void {
-        const newIs3D = !this.is3D();
-        this.is3D.set(newIs3D);
+    onToggleDimension(is3D: boolean): void {
+        this.is3D.set(is3D);
         const containerRef = this.canvasContainer();
         if (containerRef) {
-            this.sceneService.switchDimension(containerRef.nativeElement, newIs3D);
+            this.sceneService.switchDimension(containerRef.nativeElement, is3D);
         }
         this.restartSimulation();
     }
 
-    onMaxEntitiesSliderChange(event: Event): void {
-        const value = (event.target as HTMLInputElement).valueAsNumber;
+    onMaxEntitiesChange(value: number | null): void {
+        if (value === null) return;
         this.maxEntities.set(value);
+        this.closeDetailPanel();
         this.loadData();
     }
 
     onSearchTermChange(term: string): void {
         this.searchTerm.set(term);
-        if (!term.trim()) {
-            this.sceneService.setSearchHighlight(null);
-            return;
-        }
-        const lower = term.toLowerCase();
-        const nodes = this.sceneService.getNodes();
-        const indices = new Set<number>();
-        for (const node of nodes) {
-            if (node.title.toLowerCase().includes(lower)) {
-                indices.add(node.index);
-            }
-        }
-        this.sceneService.setSearchHighlight(indices.size > 0 ? indices : null);
+        this.searchTrigger$.next(term);
     }
 
-    onToggleLabels(): void {
-        const visible = !this.labelsVisible();
+    onToggleLabels(visible: boolean): void {
         this.labelsVisible.set(visible);
         this.sceneService.setLabelsVisible(visible);
+        if (visible) {
+            this.hoveredNodeTitle.set(null);
+        }
     }
 
     onTypeFilterChange(filterIndex: number, checked: boolean): void {
@@ -295,10 +397,6 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
             this.selectedEdgeIndex.set(this.clickedEdgeOnDown);
             this.selectedNodeIndex.set(null);
             this.clickedEdgeOnDown = -1;
-        } else {
-            // Click on empty space — clear selection
-            this.selectedNodeIndex.set(null);
-            this.selectedEdgeIndex.set(null);
         }
     }
 
@@ -320,46 +418,27 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         this.hoveredNodeTitle.set(null);
     }
 
-    onCommunityClick(communityId: string): void {
-        if (this.highlightedCommunityId() === communityId) {
-            this.highlightedCommunityId.set(null);
-            this.sceneService.setHighlightedNodes(null);
-            return;
-        }
-        this.highlightedCommunityId.set(communityId);
-        const community = this.communities().find((c) => c.id === communityId);
-        if (!community) return;
-
-        const memberIds = new Set(community.entity_ids);
-        const nodes = this.sceneService.getNodes();
-        const indices = new Set<number>();
-        for (const node of nodes) {
-            if (memberIds.has(node.id) || memberIds.has(node.title)) {
-                indices.add(node.index);
-            }
-        }
-        this.sceneService.setHighlightedNodes(indices);
+    onSelectNode(nodeIndex: number): void {
+        this.selectedNodeIndex.set(nodeIndex);
+        this.selectedEdgeIndex.set(null);
     }
 
-    onToggleCommunitySidebar(): void {
-        this.communitySidebarOpen.set(!this.communitySidebarOpen());
+    retryLoad(): void {
+        this.loadData();
     }
 
     closeDetailPanel(): void {
         this.selectedNodeIndex.set(null);
         this.selectedEdgeIndex.set(null);
+        this.nodeDescription.set(null);
+        this.edgeDescription.set(null);
     }
 
     // 10. Private methods
     private loadData(): void {
         this.viewState.set('loading');
-        this.graphRagService
-            .getVisualizationData(this.ragId(), this.maxEntities())
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (data) => this.handleDataLoaded(data),
-                error: (error) => this.handleError(error),
-            });
+        const search = this.searchTerm().trim() || undefined;
+        this.loadTrigger$.next({ ragId: this.ragId(), maxEntities: this.maxEntities(), search });
     }
 
     private handleDataLoaded(data: GraphVisualizationData): void {
@@ -368,14 +447,17 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
             return;
         }
 
+        if (!this.toolbarVisible()) {
+            this.maxEntities.set(data.entities.length);
+        }
+        this.toolbarVisible.set(true);
         this.entityCount.set(data.entities.length);
         this.totalEntityCount.set(data.total_entities);
-        this.relationshipCount.set(data.relationships.length);
-        this.communityCount.set(data.communities.length);
-        this.communities.set(data.communities);
+        this.relationshipCount.set(data.total_relationships);
         this.buildEntityTypeFilters(data.entities);
 
         this.sceneService.buildGraph(data.entities, data.relationships);
+        this.applySearchHighlight();
 
         if (this.initialized) {
             // Scene already exists — reinitialize with new data directly
@@ -503,6 +585,23 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         const screenPos = this.sceneService.projectToScreen(nodeIndex, container);
         if (screenPos) {
             this.hoverPosition.set(screenPos);
+        }
+    }
+
+    private applySearchHighlight(): void {
+        const term = this.searchTerm().trim();
+        if (term) {
+            const lower = term.toLowerCase();
+            const nodes = this.sceneService.getNodes();
+            const matchedIndices = new Set<number>();
+            for (const node of nodes) {
+                if (node.title.toLowerCase().includes(lower)) {
+                    matchedIndices.add(node.index);
+                }
+            }
+            this.sceneService.setSearchHighlight(matchedIndices);
+        } else {
+            this.sceneService.setSearchHighlight(null);
         }
     }
 

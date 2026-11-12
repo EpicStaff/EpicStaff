@@ -1,4 +1,4 @@
-"""Tests for GraphVisualizationOrchestrator.
+"""Tests for GraphVisualizationOrchestrator and detail orchestrators.
 
 Seams: FakeUoW / FakeGraphRagRepo for the database, and graphrag's DataReader,
 which reads the index tables from storage.
@@ -6,14 +6,29 @@ which reads the index tables from storage.
 
 import pandas
 import pytest
-from application.commands import GetGraphVisualization
-from application.orchestrators.graph_visualization import build_graph_visualization
+from application.commands import (
+    GetEntityDetail,
+    GetGraphVisualization,
+    GetRelationshipDetail,
+)
+from application.orchestrators.graph_visualization import (
+    build_entity_detail,
+    build_graph_visualization,
+    build_relationship_detail,
+)
 from application.orchestrators.graph_visualization.strategies import graph as graph_module
 from application.orchestrators.graph_visualization.strategies.graph import (
+    EntityDetailOrchestrator,
     GraphVisualizationOrchestrator,
+    RelationshipDetailOrchestrator,
 )
 from domain.enums import RAGStrategy
-from domain.errors import GraphNotIndexedError, UnsupportedError
+from domain.errors import (
+    EntityNotFoundError,
+    GraphNotIndexedError,
+    RelationshipNotFoundError,
+    UnsupportedError,
+)
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 
 
@@ -74,20 +89,7 @@ def _sample_relationships() -> pandas.DataFrame:
     )
 
 
-def _sample_communities() -> pandas.DataFrame:
-    """Build a minimal communities DataFrame matching graphrag parquet output."""
-    return pandas.DataFrame(
-        {
-            "id": ["c0", "c1"],
-            "title": ["Community 0", "Community 1"],
-            "level": [0, 1],
-            "size": [10, 5],
-            "entity_ids": [["e0", "e1"], ["e2"]],
-        }
-    )
-
-
-def _patch_reader(monkeypatch, entities, relationships, communities):
+def _patch_reader(monkeypatch, entities, relationships):
     """Replace the DataReader with a fake that returns the given DataFrames."""
 
     class FakeDataReader:
@@ -100,14 +102,14 @@ def _patch_reader(monkeypatch, entities, relationships, communities):
         async def relationships(self):
             return relationships
 
-        async def communities(self):
-            return communities
-
     monkeypatch.setattr(graph_module, "DataReader", FakeDataReader)
 
 
+# -- GraphVisualizationOrchestrator --
+
+
 async def test_returns_all_graph_data(repo, uow, monkeypatch):
-    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships(), _sample_communities())
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
 
     result = await GraphVisualizationOrchestrator(uow).execute(
         GetGraphVisualization(rag_id=42)
@@ -116,38 +118,32 @@ async def test_returns_all_graph_data(repo, uow, monkeypatch):
     assert repo.requested_rag_ids == [42]
     assert len(result.entities) == 3
     assert len(result.relationships) == 2
-    assert len(result.communities) == 2
+    assert result.total_entities == 3
+    assert result.total_relationships == 2
 
-    # Spot-check entity mapping.
+    # Spot-check entity mapping — description is excluded from visualization.
     entity = result.entities[0]
     assert entity.id == "e0"
     assert entity.title == "Entity0"
     assert entity.type == "PERSON"
-    assert entity.description == "desc0"
     assert entity.degree == 3
     assert entity.community_ids == ["c0"]
+    assert not hasattr(entity, "description")
 
     # Entity with None community_ids should get an empty list.
     assert result.entities[2].community_ids == []
     assert result.entities[2].type is None
-    assert result.entities[2].description is None
 
-    # Spot-check relationship mapping.
+    # Spot-check relationship mapping — description is excluded from visualization.
     relationship = result.relationships[0]
     assert relationship.source == "Entity0"
     assert relationship.target == "Entity1"
     assert relationship.weight == 1.0
-
-    # Spot-check community mapping.
-    community = result.communities[0]
-    assert community.title == "Community 0"
-    assert community.level == 0
-    assert community.size == 10
-    assert community.entity_ids == ["e0", "e1"]
+    assert not hasattr(relationship, "description")
 
 
 async def test_max_entities_limits_and_filters_relationships(repo, uow, monkeypatch):
-    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships(), _sample_communities())
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
 
     result = await GraphVisualizationOrchestrator(uow).execute(
         GetGraphVisualization(rag_id=42, max_entities=2)
@@ -163,13 +159,100 @@ async def test_max_entities_limits_and_filters_relationships(repo, uow, monkeypa
     assert result.relationships[0].source == "Entity0"
     assert result.relationships[0].target == "Entity1"
 
+    # total_relationships counts all relationships before the entity limit filter.
+    assert result.total_relationships == 2
+
+
+# -- Search filter --
+
+
+async def test_search_filters_entities_by_title(uow, monkeypatch):
+    """Search returns only the matched entity and its direct neighbours."""
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    result = await GraphVisualizationOrchestrator(uow).execute(
+        GetGraphVisualization(rag_id=42, search="Entity0")
+    )
+
+    # Entity0 matched directly; Entity1 is connected via r0 (Entity0 -> Entity1).
+    titles = {e.title for e in result.entities}
+    assert titles == {"Entity0", "Entity1"}
+
+    # Only the relationship between Entity0 and Entity1 survives.
+    assert len(result.relationships) == 1
+    assert result.relationships[0].source == "Entity0"
+
+    # Totals reflect the full unfiltered graph.
+    assert result.total_entities == 3
+    assert result.total_relationships == 2
+
+
+async def test_search_is_case_insensitive(uow, monkeypatch):
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    result = await GraphVisualizationOrchestrator(uow).execute(
+        GetGraphVisualization(rag_id=42, search="entity0")
+    )
+
+    titles = {e.title for e in result.entities}
+    assert "Entity0" in titles
+
+
+async def test_search_no_match_returns_empty(uow, monkeypatch):
+    """When search matches nothing, entities and relationships are empty but totals are full."""
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    result = await GraphVisualizationOrchestrator(uow).execute(
+        GetGraphVisualization(rag_id=42, search="nonexistent")
+    )
+
+    assert result.entities == []
+    assert result.relationships == []
+    assert result.total_entities == 3
+    assert result.total_relationships == 2
+
+
+async def test_search_combined_with_max_entities(uow, monkeypatch):
+    """max_entities is applied after the search filter."""
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    # Search "Entity" matches all 3 entities plus their neighbours (all 3).
+    # max_entities=1 then keeps only the top-1 by degree.
+    result = await GraphVisualizationOrchestrator(uow).execute(
+        GetGraphVisualization(rag_id=42, search="Entity", max_entities=1)
+    )
+
+    assert len(result.entities) == 1
+    assert result.entities[0].title == "Entity0"  # highest degree
+
+
+async def test_search_none_skips_filter(uow, monkeypatch):
+    """When search is None, all entities are returned (existing behavior)."""
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    result = await GraphVisualizationOrchestrator(uow).execute(
+        GetGraphVisualization(rag_id=42, search=None)
+    )
+
+    assert len(result.entities) == 3
+
+
+async def test_search_empty_string_skips_filter(uow, monkeypatch):
+    """An empty search string behaves the same as None."""
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    result = await GraphVisualizationOrchestrator(uow).execute(
+        GetGraphVisualization(rag_id=42, search="")
+    )
+
+    assert len(result.entities) == 3
+
 
 async def test_empty_entities_raises_graph_not_indexed(uow, monkeypatch):
     _patch_reader(
         monkeypatch,
         pandas.DataFrame(columns=["id", "title", "type", "description", "degree"]),
         _sample_relationships(),
-        _sample_communities(),
     )
 
     with pytest.raises(GraphNotIndexedError):
@@ -191,9 +274,6 @@ async def test_file_not_found_raises_graph_not_indexed(uow, monkeypatch):
         async def relationships(self):
             raise FileNotFoundError
 
-        async def communities(self):
-            raise FileNotFoundError
-
     monkeypatch.setattr(graph_module, "DataReader", BrokenReader)
 
     with pytest.raises(GraphNotIndexedError):
@@ -205,3 +285,77 @@ async def test_file_not_found_raises_graph_not_indexed(uow, monkeypatch):
 def test_visualization_is_unsupported_for_naive_rags(uow):
     with pytest.raises(UnsupportedError):
         build_graph_visualization(RAGStrategy.NAIVE, uow)
+
+
+# -- EntityDetailOrchestrator --
+
+
+async def test_entity_detail_returns_description(uow, monkeypatch):
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    result = await EntityDetailOrchestrator(uow).execute(
+        GetEntityDetail(rag_id=42, entity_id="e0")
+    )
+
+    assert result.description == "desc0"
+
+
+async def test_entity_detail_returns_none_for_missing_description(uow, monkeypatch):
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    result = await EntityDetailOrchestrator(uow).execute(
+        GetEntityDetail(rag_id=42, entity_id="e2")
+    )
+
+    assert result.description is None
+
+
+async def test_entity_detail_raises_not_found(uow, monkeypatch):
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    with pytest.raises(EntityNotFoundError):
+        await EntityDetailOrchestrator(uow).execute(
+            GetEntityDetail(rag_id=42, entity_id="nonexistent")
+        )
+
+
+def test_entity_detail_is_unsupported_for_naive_rags(uow):
+    with pytest.raises(UnsupportedError):
+        build_entity_detail(RAGStrategy.NAIVE, uow)
+
+
+# -- RelationshipDetailOrchestrator --
+
+
+async def test_relationship_detail_returns_description(uow, monkeypatch):
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    result = await RelationshipDetailOrchestrator(uow).execute(
+        GetRelationshipDetail(rag_id=42, relationship_id="r0")
+    )
+
+    assert result.description == "knows"
+
+
+async def test_relationship_detail_returns_none_for_missing_description(uow, monkeypatch):
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    result = await RelationshipDetailOrchestrator(uow).execute(
+        GetRelationshipDetail(rag_id=42, relationship_id="r1")
+    )
+
+    assert result.description is None
+
+
+async def test_relationship_detail_raises_not_found(uow, monkeypatch):
+    _patch_reader(monkeypatch, _sample_entities(), _sample_relationships())
+
+    with pytest.raises(RelationshipNotFoundError):
+        await RelationshipDetailOrchestrator(uow).execute(
+            GetRelationshipDetail(rag_id=42, relationship_id="nonexistent")
+        )
+
+
+def test_relationship_detail_is_unsupported_for_naive_rags(uow):
+    with pytest.raises(UnsupportedError):
+        build_relationship_detail(RAGStrategy.NAIVE, uow)

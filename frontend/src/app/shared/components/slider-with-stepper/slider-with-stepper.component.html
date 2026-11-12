@@ -1,25 +1,101 @@
 <div class="slider-stepper">
-    <div class="slider-stepper__header">
-        <div class="slider-stepper__label-group">
-            @if (label()) {
-                <app-tooltip
-                    [required]="required()"
-                    [tooltipText]="tooltipText()"
-                    [label]="label()"
-                    [icon]="icon()"
-                />
-            }
+    @if (!inline()) {
+        <div class="slider-stepper__header">
+            <div class="slider-stepper__label-group">
+                @if (label()) {
+                    <app-tooltip
+                        [required]="required()"
+                        [tooltipText]="tooltipText()"
+                        [label]="label()"
+                        [icon]="icon()"
+                    />
+                }
 
-            @if (optional()) {
-                <app-toggle-switch
-                    [ariaLabel]="label() ? 'Enable ' + label() : ''"
-                    [checked]="enabled()"
-                    (checkedChange)="onToggle($event)"
-                />
+                @if (optional()) {
+                    <app-toggle-switch
+                        [ariaLabel]="label() ? 'Enable ' + label() : ''"
+                        [checked]="enabled()"
+                        (checkedChange)="onToggle($event)"
+                    />
+                }
+            </div>
+
+            @if (!optional() || enabled()) {
+                <div class="slider-stepper__controls">
+                    <button
+                        type="button"
+                        class="slider-stepper__btn slider-stepper__btn--minus"
+                        aria-label="Decrease"
+                        matTooltip="Decrease"
+                        (click)="onStepDown()"
+                        [disabled]="isDisabled() || (value() ?? min()) <= min()"
+                    >
+                        <app-svg-icon
+                            icon="minus-fit"
+                            size="12px"
+                        />
+                    </button>
+
+                    <input
+                        type="text"
+                        inputmode="decimal"
+                        class="slider-stepper__value slider-stepper__value-input"
+                        [attr.aria-label]="label() || null"
+                        [matTooltip]="label()"
+                        [value]="displayValue()"
+                        [disabled]="isDisabled()"
+                        (keydown.enter)="onValueInputKeydown($event)"
+                        (blur)="onValueInputChange($event)"
+                    />
+
+                    <button
+                        type="button"
+                        class="slider-stepper__btn slider-stepper__btn--plus"
+                        aria-label="Increase"
+                        matTooltip="Increase"
+                        (click)="onStepUp()"
+                        [disabled]="isDisabled() || (value() ?? min()) >= max()"
+                    >
+                        <app-svg-icon
+                            icon="plus-fit"
+                            size="12px"
+                        />
+                    </button>
+                </div>
             }
         </div>
+    }
 
-        @if (!optional() || enabled()) {
+    @if (!optional() || enabled()) {
+        <div class="slider-stepper__track-wrapper">
+            <div class="slider-stepper__track">
+                <div class="slider-stepper__track-dashed"></div>
+                <div
+                    class="slider-stepper__track-fill"
+                    [style.--slider-progress]="sliderPercentage()"
+                ></div>
+            </div>
+            <input
+                type="range"
+                class="slider-stepper__slider"
+                [attr.aria-label]="label() || null"
+                [matTooltip]="label()"
+                [min]="min()"
+                [max]="max()"
+                step="any"
+                [ngModel]="value() ?? min()"
+                (input)="onSliderInput($event)"
+                (change)="onSliderCommit($event)"
+                (blur)="onTouched()"
+                [disabled]="isDisabled()"
+            />
+            <div
+                class="slider-stepper__thumb"
+                [style.left]="sliderPercentage() + '%'"
+            ></div>
+        </div>
+
+        @if (inline()) {
             <div class="slider-stepper__controls">
                 <button
                     type="button"
@@ -62,34 +138,5 @@
                 </button>
             </div>
         }
-    </div>
-
-    @if (!optional() || enabled()) {
-        <div class="slider-stepper__track-wrapper">
-            <div class="slider-stepper__track">
-                <div class="slider-stepper__track-dashed"></div>
-                <div
-                    class="slider-stepper__track-fill"
-                    [style.--slider-progress]="sliderPercentage()"
-                ></div>
-            </div>
-            <input
-                type="range"
-                class="slider-stepper__slider"
-                [attr.aria-label]="label() || null"
-                [matTooltip]="label()"
-                [min]="min()"
-                [max]="max()"
-                step="any"
-                [ngModel]="value() ?? min()"
-                (input)="onSliderChange($event)"
-                (blur)="onTouched()"
-                [disabled]="isDisabled()"
-            />
-            <div
-                class="slider-stepper__thumb"
-                [style.left]="sliderPercentage() + '%'"
-            ></div>
-        </div>
     }
 </div>

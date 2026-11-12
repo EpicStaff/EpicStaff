@@ -2,10 +2,21 @@ import asyncio
 from typing import Literal
 
 from application import commands
-from application.commands import GetGraphTableData, GetGraphVisualization, GetMetrics, RemoveRag
+from application.commands import (
+    GetEntityDetail,
+    GetGraphTableData,
+    GetGraphVisualization,
+    GetMetrics,
+    GetRelationshipDetail,
+    RemoveRag,
+)
 from application.orchestrators.estimating import build_estimator
 from application.orchestrators.graph_table_data import build_graph_table_data
-from application.orchestrators.graph_visualization import build_graph_visualization
+from application.orchestrators.graph_visualization import (
+    build_entity_detail,
+    build_graph_visualization,
+    build_relationship_detail,
+)
 from application.orchestrators.indexing import build_indexer
 from application.orchestrators.metrics import build_metrics
 from application.orchestrators.prechunking import build_prechunker
@@ -182,11 +193,46 @@ class RagController(Controller):
         rag_id: int,
         uow: AbstractUnitOfWork,
         max_entities: int | None = None,
+        search: str | None = None,
     ) -> schemas.GraphVisualizationOutputSchema:
-        command = GetGraphVisualization(rag_id=rag_id, max_entities=max_entities)
+        command = GetGraphVisualization(rag_id=rag_id, max_entities=max_entities, search=search)
         orchestrator = build_graph_visualization(strategy, uow)
         result = await orchestrator.execute(command)
         return schemas.GraphVisualizationOutputSchema.model_validate(result)
+
+    @get(
+        path="{rag_id:int}/entity/{entity_id:str}/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Entity description detail",
+    )
+    async def entity_detail(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        entity_id: str,
+        uow: AbstractUnitOfWork,
+    ) -> schemas.EntityDetailOutputSchema:
+        command = GetEntityDetail(rag_id=rag_id, entity_id=entity_id)
+        orchestrator = build_entity_detail(strategy, uow)
+        result = await orchestrator.execute(command)
+        return schemas.EntityDetailOutputSchema.model_validate(result)
+
+    @get(
+        path="{rag_id:int}/relationship/{relationship_id:str}/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Relationship description detail",
+    )
+    async def relationship_detail(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        relationship_id: str,
+        uow: AbstractUnitOfWork,
+    ) -> schemas.RelationshipDetailOutputSchema:
+        command = GetRelationshipDetail(rag_id=rag_id, relationship_id=relationship_id)
+        orchestrator = build_relationship_detail(strategy, uow)
+        result = await orchestrator.execute(command)
+        return schemas.RelationshipDetailOutputSchema.model_validate(result)
 
     @delete(
         path="{rag_id:int}/cancel/{operation:str}/",

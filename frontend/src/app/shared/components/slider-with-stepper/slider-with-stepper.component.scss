@@ -230,3 +230,71 @@
         display: none;
     }
 }
+
+// --- Inline modifier ---
+:host(.slider-stepper--inline) {
+    .slider-stepper {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding-bottom: 0;
+
+        &__track-wrapper {
+            flex: 1;
+            min-width: 0;
+        }
+
+        &__controls {
+            flex-shrink: 0;
+        }
+    }
+}
+
+// --- Small modifier ---
+:host(.slider-stepper--sm) {
+    .slider-stepper {
+        padding-bottom: 0;
+
+        &__header {
+            margin-bottom: 0.5rem;
+        }
+
+        &__controls {
+            height: 24px;
+            width: 100px;
+        }
+
+        &__btn {
+            width: 24px;
+            height: 24px;
+        }
+
+        &__track-wrapper {
+            height: 14px;
+        }
+
+        &__slider {
+            height: 14px;
+
+            &::-webkit-slider-thumb {
+                width: 14px;
+                height: 14px;
+                margin-top: -5px;
+            }
+
+            &::-moz-range-thumb {
+                width: 14px;
+                height: 14px;
+            }
+        }
+
+        &__value-input {
+            font-size: 0.875rem;
+        }
+
+        &__track-fill {
+            width: calc(7px + (100% - 14px) * var(--slider-progress, 0) / 100);
+            height: 3px;
+        }
+    }
+}

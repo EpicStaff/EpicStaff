@@ -105,12 +105,34 @@ class KnowledgeClient:
         response = self._request(method="get", url=f"rags/{strategy}/{rag_id}/metrics/")
         return response.json()
 
-    def get_visualization(self, rag_id: int, max_entities: int | None = None) -> dict:
+    def get_visualization(
+        self,
+        rag_id: int,
+        max_entities: int | None = None,
+        search: str | None = None,
+    ) -> dict:
         """Fetch graph visualization data for a graph RAG."""
         url = f"rags/graph/{rag_id}/visualization/"
+        params: dict[str, str | int] = {}
         if max_entities is not None:
-            url = f"{url}?max_entities={max_entities}"
-        response = self._request(method="get", url=url)
+            params["max_entities"] = max_entities
+        if search:
+            params["search"] = search
+        response = self._request(method="get", url=url, params=params)
+        return response.json()
+
+    def get_entity_detail(self, rag_id: int, entity_id: str) -> dict:
+        """Fetch the description of a single entity from the graph index."""
+        response = self._request(
+            method="get", url=f"rags/graph/{rag_id}/entity/{entity_id}/"
+        )
+        return response.json()
+
+    def get_relationship_detail(self, rag_id: int, relationship_id: str) -> dict:
+        """Fetch the description of a single relationship from the graph index."""
+        response = self._request(
+            method="get", url=f"rags/graph/{rag_id}/relationship/{relationship_id}/"
+        )
         return response.json()
 
     def get_table_data(

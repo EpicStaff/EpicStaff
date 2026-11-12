@@ -393,6 +393,16 @@ urlpatterns = [
         name="graph-rag-visualization",
     ),
     path(
+        "graph-rag/<int:pk>/entity/<str:entity_id>/",
+        GraphRagViewSet.as_view({"get": "entity_detail"}),
+        name="graph-rag-entity-detail",
+    ),
+    path(
+        "graph-rag/<int:pk>/relationship/<str:relationship_id>/",
+        GraphRagViewSet.as_view({"get": "relationship_detail"}),
+        name="graph-rag-relationship-detail",
+    ),
+    path(
         "graph-rag/<int:pk>/tables/<str:table_name>/",
         GraphRagViewSet.as_view({"get": "table_data"}),
         name="graph-rag-table-data",

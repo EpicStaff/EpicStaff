@@ -12,6 +12,10 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
     templateUrl: './slider-with-stepper.component.html',
     styleUrls: ['./slider-with-stepper.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '[class.slider-stepper--sm]': 'mod() === "sm"',
+        '[class.slider-stepper--inline]': 'inline()',
+    },
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -28,6 +32,8 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     min = input<number>(0);
     max = input<number>(100);
     step = input<number>(1);
+    mod = input<'md' | 'sm'>('md');
+    inline = input<boolean>(false);
     /** Digits kept after rounding; defaults to the precision of `step`. */
     decimals = input<number | undefined>(undefined);
     optional = input<boolean>(false);
@@ -58,10 +64,18 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
         return ((val - minVal) / (maxVal - minVal)) * 100;
     });
 
-    onSliderChange(event: Event) {
+    /** Updates the visual state during drag without emitting to the parent. */
+    onSliderInput(event: Event) {
         const target = event.target as HTMLInputElement;
-        const newValue = parseFloat(target.value);
-        this.updateValue(this.roundToDecimals(newValue));
+        const newValue = this.roundToDecimals(parseFloat(target.value));
+        this.value.set(newValue);
+    }
+
+    /** Commits the final value on pointer release and notifies the parent. */
+    onSliderCommit(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const newValue = this.roundToDecimals(parseFloat(target.value));
+        this.updateValue(newValue);
     }
 
     onStepDown() {

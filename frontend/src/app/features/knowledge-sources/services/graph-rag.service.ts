@@ -76,11 +76,22 @@ export class GraphRagService {
         return this.http.get<GraphTableData>(`${this.apiUrl}${ragId}/tables/${tableName}/`, { params });
     }
 
-    getVisualizationData(ragId: number, maxEntities?: number): Observable<GraphVisualizationData> {
+    getVisualizationData(ragId: number, maxEntities?: number, search?: string): Observable<GraphVisualizationData> {
         let params = new HttpParams();
         if (maxEntities !== undefined) {
             params = params.set('max_entities', maxEntities.toString());
         }
+        if (search) {
+            params = params.set('search', search);
+        }
         return this.http.get<GraphVisualizationData>(`${this.apiUrl}${ragId}/visualization/`, { params });
+    }
+
+    getEntityDetails(ragId: number, entityId: string): Observable<{ description: string }> {
+        return this.http.get<{ description: string }>(`${this.apiUrl}${ragId}/entity/${entityId}/`);
+    }
+
+    getRelationshipDetails(ragId: number, relationshipId: string): Observable<{ description: string }> {
+        return this.http.get<{ description: string }>(`${this.apiUrl}${ragId}/relationship/${relationshipId}/`);
     }
 }

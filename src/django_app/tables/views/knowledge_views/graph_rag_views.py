@@ -66,6 +66,8 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         "list_documents": Permission.READ,
         "initialize_documents": Permission.UPDATE,
         "visualization": Permission.READ,
+        "entity_detail": Permission.READ,
+        "relationship_detail": Permission.READ,
         "table_data": Permission.READ,
     }
 
@@ -443,9 +445,49 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+        search = request.query_params.get("search")
+
         try:
             with KnowledgeClient() as client:
-                data = client.get_visualization(rag_id=int(pk), max_entities=max_entities)
+                data = client.get_visualization(
+                    rag_id=int(pk), max_entities=max_entities, search=search
+                )
+        except ClientError as e:
+            return Response({"error": e.public_detail}, status=e.status_code)
+
+        return Response(data)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="entity/(?P<entity_id>[^/.]+)",
+    )
+    def entity_detail(self, request, pk=None, entity_id=None):
+        """Proxy entity description lookup to the knowledge_new service."""
+        self._assert_graph_rag_in_active_org(pk)
+
+        try:
+            with KnowledgeClient() as client:
+                data = client.get_entity_detail(rag_id=int(pk), entity_id=entity_id)
+        except ClientError as e:
+            return Response({"error": e.public_detail}, status=e.status_code)
+
+        return Response(data)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="relationship/(?P<relationship_id>[^/.]+)",
+    )
+    def relationship_detail(self, request, pk=None, relationship_id=None):
+        """Proxy relationship description lookup to the knowledge_new service."""
+        self._assert_graph_rag_in_active_org(pk)
+
+        try:
+            with KnowledgeClient() as client:
+                data = client.get_relationship_detail(
+                    rag_id=int(pk), relationship_id=relationship_id
+                )
         except ClientError as e:
             return Response({"error": e.public_detail}, status=e.status_code)
 

@@ -3,11 +3,13 @@ from collections.abc import Callable
 from domain.errors import (
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
+    EntityNotFoundError,
     GraphNotIndexedError,
     GraphRagConfigNotFoundError,
     KnowledgeError,
     NotRunningOperationError,
     RagNotFoundError,
+    RelationshipNotFoundError,
     UnsupportedError,
 )
 from litestar import Request, Response, status_codes
@@ -50,9 +52,11 @@ def registry(*errors: type[Exception]):
     RagNotFoundError,
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
+    EntityNotFoundError,
     GraphNotIndexedError,
     GraphRagConfigNotFoundError,
     NotRunningOperationError,
+    RelationshipNotFoundError,
 )
 def handler_not_found(request: Request, error: Exception) -> Response:
     return create_response(request, status_codes.HTTP_404_NOT_FOUND, "not_found", error)

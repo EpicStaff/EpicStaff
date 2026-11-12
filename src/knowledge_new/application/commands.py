@@ -4,10 +4,12 @@ from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
     "Command",
+    "GetEntityDetail",
     "GetGraphTableData",
     "GetGraphVisualization",
     "GetIndexEstimate",
     "GetMetrics",
+    "GetRelationshipDetail",
     "RemoveRag",
     "RunIndex",
     "RunPrechunk",
@@ -66,6 +68,7 @@ class GetMetrics(Command):
 class GetGraphVisualization(Command):
     rag_id: int
     max_entities: int | None = None
+    search: str | None = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +77,18 @@ class GetGraphTableData(Command):
     table_name: str
     page: int = 1
     page_size: int = 10
+
+
+@dataclass(frozen=True)
+class GetEntityDetail(Command):
+    rag_id: int
+    entity_id: str
+
+
+@dataclass(frozen=True)
+class GetRelationshipDetail(Command):
+    rag_id: int
+    relationship_id: str
 
 
 @dataclass(frozen=True)

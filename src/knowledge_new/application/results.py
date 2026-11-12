@@ -5,13 +5,14 @@ from domain.models import FoundChunk, SearchUsage
 
 __all__ = [
     "EmbeddingEstimate",
+    "EntityDetailResult",
     "GraphTableDataResult",
     "GraphVisualizationResult",
     "IndexEstimateResult",
     "MetricsResult",
+    "RelationshipDetailResult",
     "Result",
     "SearchResult",
-    "VisualizationCommunity",
     "VisualizationEntity",
     "VisualizationRelationship",
 ]
@@ -46,7 +47,6 @@ class VisualizationEntity:
     id: str
     title: str
     type: str | None
-    description: str | None
     degree: int
     community_ids: list[str]
 
@@ -56,17 +56,7 @@ class VisualizationRelationship:
     id: str
     source: str
     target: str
-    description: str | None
     weight: float
-
-
-@dataclass(frozen=True)
-class VisualizationCommunity:
-    id: str
-    title: str
-    level: int
-    size: int
-    entity_ids: list[str]
 
 
 @dataclass(frozen=True)
@@ -82,8 +72,18 @@ class GraphTableDataResult(Result):
 class GraphVisualizationResult(Result):
     entities: list[VisualizationEntity]
     relationships: list[VisualizationRelationship]
-    communities: list[VisualizationCommunity]
     total_entities: int
+    total_relationships: int
+
+
+@dataclass(frozen=True)
+class EntityDetailResult(Result):
+    description: str | None
+
+
+@dataclass(frozen=True)
+class RelationshipDetailResult(Result):
+    description: str | None
 
 
 @dataclass(frozen=True)
