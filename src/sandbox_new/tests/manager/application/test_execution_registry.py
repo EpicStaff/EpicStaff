@@ -74,6 +74,148 @@ def test_an_unknown_execution_raises_not_found(registry):
         registry.get_status("exec-404")
 
 
+def assign(registry: ExecutionRegistry, execution_id: str, *, boot_id: str = "boot-1") -> None:
+    registry.reserve(execution_id)
+    registry.mark_queued(execution_id)
+    registry.mark_assigned(execution_id, boot_id=boot_id)
+
+
+def test_an_assigned_execution_still_reports_queued(registry):
+    assign(registry, "exec-1")
+
+    assert registry.status("exec-1") is ExecutionStatus.QUEUED
+    assert registry.queued_count == 1
+    assert registry.active_count == 1
+
+
+def test_boots_with_assignments_lists_each_run_holding_jobs(registry):
+    assign(registry, "exec-1", boot_id="boot-1")
+    assign(registry, "exec-2", boot_id="boot-2")
+
+    assert registry.boots_with_assignments() == {"boot-1", "boot-2"}
+
+    registry.settle_assignment("exec-2")
+    assert registry.boots_with_assignments() == {"boot-1"}
+
+
+def test_releasing_a_boots_assignments_keeps_them_answering_queued(registry):
+    assign(registry, "exec-1", boot_id="boot-1")
+    assign(registry, "exec-2", boot_id="boot-2")
+
+    released = registry.release_assignments_of_boots({"boot-1"})
+
+    assert [item.execution_id for item in released] == ["exec-1"]
+    assert registry.release_assignments_of_boots({"boot-1"}) == []
+    assert registry.status("exec-1") is ExecutionStatus.QUEUED
+    assert registry.boots_with_assignments() == {"boot-2"}
+
+
+def test_assignments_of_other_worker_runs_are_released(registry):
+    assign(registry, "exec-old", boot_id="boot-1")
+    assign(registry, "exec-current", boot_id="boot-2")
+
+    released = registry.release_assignments_not_from("boot-2")
+
+    assert [item.execution_id for item in released] == ["exec-old"]
+    assert registry.release_assignments_not_from("boot-2") == []
+    assert registry.status("exec-old") is ExecutionStatus.QUEUED
+
+
+def test_a_released_assignment_carries_its_result_routing_hints(registry):
+    registry.reserve("exec-1")
+    registry.mark_queued("exec-1")
+    registry.mark_assigned("exec-1", boot_id="boot-1", session_id=7, reply_to_crew_channel=True)
+
+    released = registry.release_assignments_not_from("boot-2")
+
+    assert released == [("exec-1", 7, True)]
+
+
+def test_an_assignment_unreported_twice_is_released_with_its_hints(registry, clock):
+    registry.reserve("exec-1")
+    registry.mark_queued("exec-1")
+    registry.mark_assigned("exec-1", boot_id="boot-1", session_id=7, reply_to_crew_channel=True)
+    clock.advance(31.0)
+
+    assert registry.release_unreported_assignments("boot-1", set(), min_age=30.0) == []
+    assert registry.release_unreported_assignments("boot-1", set(), min_age=30.0) == [
+        ("exec-1", 7, True)
+    ]
+
+
+def test_a_single_missed_report_is_forgiven_once_the_job_is_reported_again(registry, clock):
+    """A beat composed before the pull response arrived accounts for one miss; the next
+    beat reports the job and must reset the count."""
+    assign(registry, "exec-1")
+    clock.advance(31.0)
+
+    registry.release_unreported_assignments("boot-1", set(), min_age=30.0)
+    registry.release_unreported_assignments("boot-1", {"exec-1"}, min_age=30.0)
+
+    assert registry.release_unreported_assignments("boot-1", set(), min_age=30.0) == []
+
+
+def test_a_reported_assignment_is_kept(registry, clock):
+    assign(registry, "exec-1")
+
+    clock.advance(31.0)
+
+    assert registry.release_unreported_assignments("boot-1", {"exec-1"}, min_age=30.0) == []
+
+
+def test_a_young_unreported_assignment_is_spared(registry, clock):
+    assign(registry, "exec-1")
+
+    clock.advance(29.9)
+
+    assert registry.release_unreported_assignments("boot-1", set(), min_age=30.0) == []
+
+
+def test_a_settled_assignment_answers_queued_until_finish(registry):
+    assign(registry, "exec-1")
+
+    assert registry.settle_assignment("exec-1") is True
+    assert registry.status("exec-1") is ExecutionStatus.QUEUED
+
+    registry.finish("exec-1", ran=True)
+    assert registry.status("exec-1") is ExecutionStatus.DONE
+
+
+def test_settling_an_unassigned_execution_is_refused(registry):
+    assert registry.settle_assignment("exec-404") is False
+
+
+def test_a_settled_assignment_is_no_longer_released_by_its_boots_death(registry):
+    assign(registry, "exec-1")
+    registry.settle_assignment("exec-1")
+
+    assert registry.release_assignments_not_from("boot-2") == []
+
+
+def test_a_finished_assignment_answers_done(registry):
+    assign(registry, "exec-1")
+
+    registry.finish("exec-1", ran=True)
+
+    assert registry.status("exec-1") is ExecutionStatus.DONE
+    assert (registry.active_count, registry.queued_count) == (0, 0)
+
+
+def test_a_forgotten_assignment_is_unknown(registry):
+    assign(registry, "exec-1")
+
+    registry.forget("exec-1")
+
+    assert registry.status("exec-1") is None
+    assert registry.active_count == 0
+
+
+def test_active_count_excluding_leaves_out_an_assigned_execution(registry):
+    assign(registry, "exec-1")
+
+    assert registry.active_count_excluding("exec-1") == 0
+
+
 def test_a_forgotten_execution_is_unknown(registry):
     registry.reserve("exec-1")
     registry.mark_queued("exec-1")

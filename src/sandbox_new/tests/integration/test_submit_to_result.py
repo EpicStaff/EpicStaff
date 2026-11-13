@@ -1,8 +1,9 @@
 """The manager-to-worker seam, end to end in one process.
 
-Real queues, real pipeline, real child interpreter. Fakes only at the true edges: the
-venv repository and the Landlock probe. This is the only test that would catch the
-manager encoding a field the worker does not decode.
+Real queues, a real Litestar app serving the internal endpoints, the worker's real HTTP
+transports over it, real pipeline, real child interpreter. Fakes only at the true
+edges: the venv repository and the Landlock probe. This is the only test that would
+catch the manager encoding a field the worker does not decode.
 """
 
 import asyncio
@@ -11,19 +12,28 @@ import sys
 from pathlib import Path
 
 import fakeredis.aioredis
+import httpx
 import pytest
+from foundation.transport.http import AsyncClient
+from foundation.utils.litestar import di, error_handler
+from litestar import Litestar
+from litestar.datastructures import State
 
+import manager.bootstrap  # noqa: F401  registers the dependency providers and error handlers
 from common.contracts import ExecutionJobMessage, ExecutionResultMessage
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
 from manager.application.registry import ExecutionRegistry
+from manager.application.worker_contact import WorkerContact
 from manager.domain.enums import VenvStatus
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
 from manager.infrastructure.transport.redis_result_publisher import RedisResultPublisher
+from manager.presentation.rest.worker_controller import WorkerController
 from worker.application.orchestrator import ExecutionOrchestrator
+from worker.domain.models import ExecutionResult
 from worker.application.pipeline import Pipeline
 from worker.application.resource_gate import ResourceAdmissionGate
 from worker.application.steps import BuildIsolationPlan, ConfigureStorageStep
@@ -35,6 +45,8 @@ from worker.infrastructure.execution.steps import (
     ResolveVenvStep,
     WrapCodeStep,
 )
+from worker.infrastructure.transport.http_job_source import HttpJobSource
+from worker.infrastructure.transport.http_result_sink import HttpResultSink
 from worker.infrastructure.transport.queue_job_source import QueueJobSource
 from worker.infrastructure.transport.queue_result_sink import QueueResultSink
 from worker.presentation.job_consumer import JobConsumer
@@ -92,13 +104,14 @@ def runtime(tmp_path):
     return {
         "job_queue": asyncio.Queue(),
         "result_queue": asyncio.Queue(),
+        "registry": ExecutionRegistry(),
         "venvs_dir": venvs_dir,
         "executions_dir": executions_dir,
     }
 
 
 def build_manager(uow, runtime) -> JobOrchestrator:
-    registry = ExecutionRegistry()
+    registry = runtime["registry"]
     return JobOrchestrator(
         uow,
         QueueJobDispatcher(runtime["job_queue"]),
@@ -111,7 +124,30 @@ def build_manager(uow, runtime) -> JobOrchestrator:
     )
 
 
-def build_worker(runtime) -> ExecutionOrchestrator:
+def build_seam_client(runtime) -> AsyncClient:
+    """The manager's internal endpoints served in-process, reached over real HTTP."""
+    app = Litestar(
+        route_handlers=[WorkerController],
+        dependencies=di.get_dependencies(),
+        exception_handlers=error_handler.get_handlers(),
+        state=State(
+            {
+                "execution_registry": runtime["registry"],
+                "worker_contact": WorkerContact(),
+                "job_queue": runtime["job_queue"],
+                "result_queue": runtime["result_queue"],
+                "job_failure_sink": QueueJobFailureSink(runtime["result_queue"]),
+            }
+        ),
+    )
+    return AsyncClient(
+        base_url="http://manager",
+        transport=httpx.ASGITransport(app=app),
+        headers={"Authorization": "Bearer internal-test-token", "X-Worker-Boot-Id": "boot-1"},
+    )
+
+
+def build_worker(runtime, result_sink=None) -> ExecutionOrchestrator:
     """The worker pipeline, with only the kernel probe faked out."""
     pipeline = (
         Pipeline()
@@ -139,7 +175,7 @@ def build_worker(runtime) -> ExecutionOrchestrator:
     )
     return ExecutionOrchestrator(
         pipeline,
-        result_sink=QueueResultSink(runtime["result_queue"]),
+        result_sink=result_sink or QueueResultSink(runtime["result_queue"]),
         mask_secrets=True,
     )
 
@@ -167,13 +203,14 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
         reply_to_crew_channel=False,
     )
 
-    job = await QueueJobSource(runtime["job_queue"]).get()
+    client = build_seam_client(runtime)
+    job = await HttpJobSource(client).get()
     assert job.venv_hash == VENV_HASH
     assert job.func_kwargs == {"value": "x"}
     assert job.secrets == {"TOKEN": "s3cret"}
     assert job.queued_at == QUEUED_AT
 
-    await build_worker(runtime).execute(job)
+    await build_worker(runtime, result_sink=HttpResultSink(client)).execute(job)
 
     message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
     assert message.execution_id == EXECUTION_ID
@@ -237,7 +274,7 @@ async def test_storage_credentials_reach_the_worker_unchanged(uow, runtime):
         reply_to_crew_channel=False,
     )
 
-    job = await QueueJobSource(runtime["job_queue"]).get()
+    job = await HttpJobSource(build_seam_client(runtime)).get()
     assert job.storage_credentials.access_key == "AK123"
     assert job.storage_credentials.secret_key == "SK456"
 
@@ -377,3 +414,22 @@ async def test_a_file_one_run_writes_is_not_visible_to_the_next_run(runtime):
     assert writer_result.returncode == 0, writer_result.stderr
     assert reader_result.returncode == 0, reader_result.stderr
     assert json.loads(reader_result.result) is False
+async def test_a_result_larger_than_litestars_default_body_cap_is_accepted(runtime):
+    """Litestar caps request bodies at 10 MB by default, below SANDBOX_MAX_RESULT_SIZE
+    (16 MB) plus stdout and JSON escaping; the worker controller lifts the cap, or a
+    successful large result would come back 413 and be lost."""
+    registry = runtime["registry"]
+    registry.reserve(EXECUTION_ID)
+    registry.mark_queued(EXECUTION_ID)
+    registry.mark_assigned(EXECUTION_ID, boot_id="boot-1")
+    sink = HttpResultSink(
+        build_seam_client(runtime),
+        stop=lambda: pytest.fail("the sink gave up on a result the manager must accept"),
+    )
+    big_result = "x" * (12 * 1024 * 1024)
+
+    await sink.send(ExecutionResult(execution_id=EXECUTION_ID, result=big_result, ran=True))
+
+    message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
+    assert message.execution_id == EXECUTION_ID
+    assert message.result == big_result

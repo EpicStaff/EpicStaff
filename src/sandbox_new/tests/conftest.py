@@ -31,6 +31,9 @@ _TEST_ENVIRONMENT = {
     "STORAGE_USER": "sandbox",
     "STORAGE_PASSWORD": "sandbox",
     "SANDBOX_CUSTOM_LIBRARY_BUCKET": "sandbox-custom-libraries",
+    "SANDBOX_INTERNAL_TOKEN": "internal-test-token",
+    "SANDBOX_HOST": "sandbox_new",
+    "SANDBOX_PORT": "8090",
 }
 
 for _name, _value in _TEST_ENVIRONMENT.items():
@@ -126,7 +129,7 @@ def venvs_dir(tmp_path, monkeypatch):
     ``settings.VENV_STAGING_DIR`` at call time, so patching the module attributes is
     enough; no import-order trickery is needed.
     """
-    import settings
+    from manager import settings
 
     root = tmp_path / "venvs"
     staging = root / "builds"
