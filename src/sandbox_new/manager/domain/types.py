@@ -1,5 +1,6 @@
 from typing import Literal
 
 type LibraryString = str
-# Why a job never reached the worker; reported as the outcome of its BENCH checkpoint.
-type NotRunReason = Literal["venv_failed", "dispatch_failed", "hold_timeout"]
+# Why a job never reached the worker (or never came back from it); reported as the
+# outcome of its BENCH checkpoint.
+type NotRunReason = Literal["venv_failed", "dispatch_failed", "hold_timeout", "worker_lost"]

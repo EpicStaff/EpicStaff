@@ -1,10 +1,12 @@
-"""Consumes dispatched jobs and starts each one when the admission gate allows it.
+"""Consumes dispatched jobs, taking an admission-gate slot before each pull.
 
-The worker's primary (driving) adapter: every job the manager dispatches is already
-gated to a COMPLETED venv, so this pulls it, checks it has not overstayed its queue
-deadline, waits for the admission gate and runs it. Every job ends with a result: one
-that expired in the queue, could not be decoded, or whose run blew up is failed through
-the orchestrator rather than dropped. One bad job or message never ends the loop.
+The worker's primary (driving) adapter. The slot comes first: the pull itself is the
+capacity signal -- the manager counts a waiting long-poll as a free slot -- so a job
+handed to this worker always has a slot waiting and is never parked here against its
+queue deadline. Every job ends with a result: one that expired in the queue, could not
+be decoded, or whose run blew up is failed through the orchestrator rather than
+dropped, and failing it reuses the already-held slot for the next pull. One bad job or
+message never ends the loop.
 
 Messages here are logged with the execution id and the exception type only: an
 exception's text may quote the job's code, secrets or output.
@@ -53,6 +55,18 @@ class JobConsumer:
         self._clock = clock
         self._running: set[asyncio.Task] = set()
         self._executing = 0
+        self._held_ids: set[str] = set()
+
+    def held_execution_ids(self) -> set[str]:
+        """The executions this worker holds right now; the heartbeat reports them.
+
+        A job that will run enters the moment its pull completes and leaves when its
+        run has ended and its result was handed to the sink, so the manager never sees
+        a held job missing from the report. Jobs failed without running (expired,
+        undecodable) are never held: their failure is on its way, and if the manager
+        releases one as worker-lost first, the outcome is still a failure.
+        """
+        return set(self._held_ids)
 
     async def run(self) -> None:
         while True:
@@ -62,38 +76,35 @@ class JobConsumer:
                 logger.error("Worker loop turn failed: {}", type(error).__name__)
 
     async def _start_next(self) -> None:
+        await self._gate.acquire()
         try:
-            job = await self._job_source.get()
-        except UndecodableJobError as error:
-            logger.error("Job {} could not be decoded; failing it", error.execution_id)
-            await self._orchestrator.fail(
-                error.execution_id,
-                _UNDECODABLE_MESSAGE,
-                session_id=error.session_id,
-                reply_to_crew_channel=error.reply_to_crew_channel,
-            )
-            return
-
-        if self._has_expired(job):
-            await self._fail_expired(job)
-            return
-
-        try:
-            # Bounded by the deadline: jobs queue in the order they were queued and share
-            # one timeout, so the job at the head expires first, and waiting past its
-            # deadline would only delay failing it and every expired job queued behind it.
-            await asyncio.wait_for(self._gate.acquire(), timeout=self._time_left(job))
-        except TimeoutError:
-            await self._fail_expired(job)
-            return
-        if self._has_expired(job):
+            job = await self._next_runnable_job()
+        except BaseException:
             self._gate.release()
-            await self._fail_expired(job)
-            return
-
+            raise
+        self._held_ids.add(job.execution_id)
         task = asyncio.create_task(self._run(job))
         self._running.add(task)
         task.add_done_callback(self._running.discard)
+
+    async def _next_runnable_job(self) -> Job:
+        """Pull until a job that may still run; the rest are failed on the held slot."""
+        while True:
+            try:
+                job = await self._job_source.get()
+            except UndecodableJobError as error:
+                logger.error("Job {} could not be decoded; failing it", error.execution_id)
+                await self._orchestrator.fail(
+                    error.execution_id,
+                    _UNDECODABLE_MESSAGE,
+                    session_id=error.session_id,
+                    reply_to_crew_channel=error.reply_to_crew_channel,
+                )
+                continue
+            if self._has_expired(job):
+                await self._fail_expired(job)
+                continue
+            return job
 
     async def _run(self, job: Job) -> None:
         # Counted here, not from `_running`: a burst of jobs creates every task before
@@ -125,6 +136,7 @@ class JobConsumer:
                     type(fail_error).__name__,
                 )
         finally:
+            self._held_ids.discard(job.execution_id)
             self._executing -= 1
             self._gate.release()
 
@@ -134,10 +146,6 @@ class JobConsumer:
     def _has_expired(self, job: Job) -> bool:
         deadline = self._deadline(job)
         return deadline is not None and self._clock() > deadline
-
-    def _time_left(self, job: Job) -> float | None:
-        deadline = self._deadline(job)
-        return None if deadline is None else deadline - self._clock()
 
     async def _fail_expired(self, job: Job) -> None:
         waited = int(self._clock() - job.queued_at)

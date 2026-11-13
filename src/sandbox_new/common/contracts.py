@@ -17,7 +17,19 @@ __all__ = [
     "ExecutionResultMessage",
     "StorageCredentialsMessage",
     "StorageMutationsMessage",
+    "WorkerHeartbeatMessage",
 ]
+
+
+class WorkerHeartbeatMessage(Schema):
+    """The worker's periodic sign of life, with the execution ids it actually holds.
+
+    The manager reconciles its assignments against this list: an assignment the worker
+    does not report lost its pull response on the way and must be failed, since the
+    still-beating run will never go silent.
+    """
+
+    execution_ids: list[str] = Field(default_factory=list)
 
 
 class StorageCredentialsMessage(Schema):
@@ -82,11 +94,14 @@ class ExecutionResultMessage(Schema):
     ran: bool = False
     # The next two only feed the publisher's BENCH checkpoint; neither is published.
     session_id: int | None = None
-    # Set only on a result for a job that never ran: "venv_failed" and "dispatch_failed"
-    # from the manager, "hold_timeout" from the manager for a job held past its hold
-    # deadline, "overloaded" from the worker for a job that expired in its queue.
+    # Set only on a sandbox-generated failure: "venv_failed" and "dispatch_failed" from
+    # the manager, "hold_timeout" from the manager for a job held past its hold deadline,
+    # "overloaded" for a job that expired in its queue (either side), and "worker_lost"
+    # from the manager for a job assigned to a worker run that vanished -- that one may
+    # have partly or fully run before the run died.
     # Spelled out rather than imported: this module must not depend on either side of the
     # seam.
     not_run_reason: (
-        Literal["venv_failed", "dispatch_failed", "hold_timeout", "overloaded"] | None
+        Literal["venv_failed", "dispatch_failed", "hold_timeout", "worker_lost", "overloaded"]
+        | None
     ) = None

@@ -1,6 +1,3 @@
-import common.bootstrap  # noqa: F401  registers the cross-service runtime (queues + runners)
-import manager.bootstrap  # noqa: F401  registers dependencies and lifespan hooks
-import settings
 from common.bootstrap.logging import configure_logging
 from foundation.utils.litestar import di, error_handler, lifespan
 from litestar import Litestar
@@ -11,7 +8,12 @@ from litestar.openapi.plugins import (
     StoplightRenderPlugin,
     SwaggerRenderPlugin,
 )
+
+import manager.bootstrap
+import manager.bootstrap.runtime  # noqa: F401  registers the manager's runtime (queues + runners)
+from manager import settings
 from manager.presentation.rest import controllers
+from manager.presentation.rest.worker_controller import WorkerController
 
 configure_logging()
 
@@ -22,6 +24,7 @@ app = Litestar(
         controllers.ExecutionController,
         controllers.CustomLibraryController,
         controllers.WheelController,
+        WorkerController,
     ],
     on_startup=lifespan.get_startups(),
     on_shutdown=lifespan.get_shutdowns(),

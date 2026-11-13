@@ -1,18 +1,15 @@
-"""Assembles the worker runtime from settings and the shared queues.
+"""Assembles the worker runtime from settings and the transport it is handed.
 
 The composition root for the worker: it wires the execution pipeline (every step in
-order), the queue source/sink, the admission gate and the job consumer. The pipeline is
+order), the admission gate and the job consumer. The transport (the HTTP source/sink in
+the worker process, queue ones in tests) is the caller's choice. The pipeline is
 stateless and reused across jobs -- per-job state lives in the context.
 """
 
-import asyncio
-
-import settings
-from common.contracts import ExecutionJobMessage, ExecutionResultMessage
-
+from worker import settings
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
-from worker.application.ports import AbstractAdmissionGate
+from worker.application.ports import AbstractAdmissionGate, AbstractJobSource, AbstractResultSink
 from worker.application.resource_gate import ResourceAdmissionGate
 from worker.application.steps import BuildIsolationPlan, ConfigureStorageStep
 from worker.infrastructure.admission import HostMetrics
@@ -25,8 +22,6 @@ from worker.infrastructure.execution.steps import (
     WrapCodeStep,
 )
 from worker.infrastructure.isolation.probe import LandlockIsolationProbe
-from worker.infrastructure.transport.queue_job_source import QueueJobSource
-from worker.infrastructure.transport.queue_result_sink import QueueResultSink
 from worker.presentation.job_consumer import JobConsumer
 
 __all__ = ["build_admission_gate", "build_job_consumer", "build_pipeline"]
@@ -77,15 +72,13 @@ def build_admission_gate() -> ResourceAdmissionGate:
 
 def build_job_consumer(
     *,
-    job_queue: asyncio.Queue[ExecutionJobMessage],
-    result_queue: asyncio.Queue[ExecutionResultMessage],
+    job_source: AbstractJobSource,
+    result_sink: AbstractResultSink,
     gate: AbstractAdmissionGate,
 ) -> JobConsumer:
     orchestrator = ExecutionOrchestrator(
         build_pipeline(),
-        result_sink=QueueResultSink(result_queue),
+        result_sink=result_sink,
         mask_secrets=settings.MASK_SECRET,
     )
-    return JobConsumer(
-        QueueJobSource(job_queue), orchestrator, gate, queue_timeout=settings.QUEUE_TIMEOUT
-    )
+    return JobConsumer(job_source, orchestrator, gate, queue_timeout=settings.QUEUE_TIMEOUT)

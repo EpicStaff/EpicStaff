@@ -1,12 +1,12 @@
 from typing import cast
 
-import settings
 from foundation.s3_file_storage import S3FileStorage
 from foundation.utils import task_scheduler
 from foundation.utils.litestar import lifespan
 from litestar import Litestar
 from piccolo.engine import Engine, engine_finder
 
+from manager import settings
 from manager.application.orchestrators import VenvBuildOrchestrator, VenvCRUDOrchestrator
 from manager.domain.models import DEFAULT_VENV_NAME
 from manager.infrastructure.database.unit_of_work import PiccoloUnitOfWork
