@@ -21,6 +21,21 @@ REFUSED_CONVERSION = (
 )
 
 
+def _refused_bracket(path: str) -> str:
+    return (
+        f"Variable path '{path}' is not allowed: a bracket holds either a list index such as "
+        "[0] or one variable path such as [variables.index], with no brackets, signs or '|' "
+        "inside."
+    )
+
+
+def _refused_leading_bracket(path: str) -> str:
+    return (
+        f"Variable path '{path}' is not allowed: it must start with a variable name, such as "
+        "variables.messages[variables.index], not with a bracket."
+    )
+
+
 @pytest.mark.parametrize(
     ("node", "expected"),
     [
@@ -67,6 +82,16 @@ REFUSED_CONVERSION = (
             id="input-map-names-the-path-without-its-default",
         ),
         pytest.param(
+            {"input_map": {"blank": "", "default_only": "|null", "user": "variables.user"}},
+            {
+                "input_map": [
+                    "Input map entry 'blank' has no variable path.",
+                    "Input map entry 'default_only' has no variable path.",
+                ]
+            },
+            id="input-map-entry-without-a-path",
+        ),
+        pytest.param(
             {"output_variable_path": "variables.result|_x"},
             {
                 "output_variable_path": [
@@ -102,6 +127,84 @@ REFUSED_CONVERSION = (
                 ],
             },
             id="classification-table-output-paths",
+        ),
+        pytest.param(
+            {
+                "pre_input_map": {"x": "variables._x|null"},
+                "post_input_map": {"x": "variables.messages[variables._index]"},
+                "prompt_configs": [
+                    {"kind": "system_one", "prompt_text": "{x!r}", "input_map": {"x": "_x"}},
+                    {"kind": "llm", "input_map": {"x": "variables.x"}},
+                ],
+            },
+            {
+                "pre_input_map": [
+                    "Variable path 'variables._x' is not allowed: "
+                    "path segments cannot start with '_'."
+                ],
+                "post_input_map": [
+                    "Variable path 'variables.messages[variables._index]' is not allowed: "
+                    "path segments cannot start with '_'."
+                ],
+                "prompt_configs": [
+                    {
+                        "input_map": [
+                            "Variable path '_x' is not allowed: "
+                            "path segments cannot start with '_'."
+                        ]
+                    },
+                    {},
+                ],
+            },
+            id="classification-table-input-maps",
+        ),
+        pytest.param(
+            {
+                "pre_input_map": {"blank": "", "default_only": "|null"},
+                "prompt_configs": [{"kind": "system_one", "input_map": {"company": ""}}],
+            },
+            {
+                "pre_input_map": [
+                    "Input map entry 'blank' has no variable path.",
+                    "Input map entry 'default_only' has no variable path.",
+                ],
+                "prompt_configs": [
+                    {"input_map": ["Input map entry 'company' has no variable path."]}
+                ],
+            },
+            id="classification-table-input-map-without-a-path",
+        ),
+        pytest.param(
+            {
+                "post_input_map": {
+                    "nested": "variables.m[variables.a[variables.b]]",
+                    "index_in_key": "variables.m[variables.ids[0]]",
+                    "negative": "variables.m[-1]",
+                    "default_in_bracket": "variables.m[variables.i|0]",
+                }
+            },
+            {
+                "post_input_map": [
+                    _refused_bracket("variables.m[variables.a[variables.b]]"),
+                    _refused_bracket("variables.m[variables.ids[0]]"),
+                    _refused_bracket("variables.m[-1]"),
+                    _refused_bracket("variables.m[variables.i"),
+                ]
+            },
+            id="classification-table-input-map-unsupported-brackets",
+        ),
+        pytest.param(
+            {
+                "pre_input_map": {"leading": "[variables.k]|null"},
+                "prompt_configs": [
+                    {"kind": "system_one", "input_map": {"dotted": ".[variables.k]"}}
+                ],
+            },
+            {
+                "pre_input_map": [_refused_leading_bracket("[variables.k]")],
+                "prompt_configs": [{"input_map": [_refused_leading_bracket(".[variables.k]")]}],
+            },
+            id="classification-table-input-map-starting-with-a-bracket",
         ),
         pytest.param(
             {"tasks": [{"instructions": "Fine {topic}"}, {"instructions": "Use {a._b}"}]},
@@ -150,20 +253,39 @@ def test_a_refused_template_or_path_is_reported_on_its_field(node, expected):
             {"input_map": {"user": "variables.users[0].name"}, "output_variable_path": "variables"},
             id="valid-paths",
         ),
-        # Crew resolves these through the classification table's own walker, which yields
-        # None for an underscore segment instead of failing the node.
         pytest.param(
             {
-                "pre_input_map": {"x": "variables._x"},
-                "post_input_map": {"x": "variables._x"},
-                "prompt_configs": [{"input_map": {"x": "variables._x"}}],
+                "pre_input_map": {
+                    "text": "variables.messages[variables.index].text|_none",
+                    "session": "session_id",
+                },
+                "post_input_map": {"node": "system_variables.nodes[node_name].result_node"},
+                "prompt_configs": [{"kind": "system_one", "input_map": {"x": "variables.x|null"}}],
             },
-            id="classification-table-input-maps",
+            id="classification-table-input-maps-with-dynamic-keys",
         ),
         # Crew receives a System One prompt with an empty prompt_text.
         pytest.param(
             {"prompt_configs": [{"kind": "system_one", "prompt_text": "{x!r}"}]},
             id="system-one-prompt-text",
+        ),
+        # Crew reads a prompt's input map only for System One, and the editor cannot clear it.
+        pytest.param(
+            {
+                "prompt_configs": [
+                    {"kind": "llm", "prompt_text": "Rate {x}", "input_map": {"x": "variables._x"}},
+                    {"prompt_text": "Rate {x}", "input_map": {"x": ""}},
+                ]
+            },
+            id="llm-prompt-input-map",
+        ),
+        # Not decided yet for the output map, although crew fails the end node on it.
+        pytest.param({"output_map": {"context": ""}}, id="end-node-output-map-without-a-path"),
+        # A regular node's input map keeps its own rule; only a classification table's
+        # refuses dynamic key brackets.
+        pytest.param(
+            {"input_map": {"x": "variables.m[variables.i]"}},
+            id="regular-input-map-brackets",
         ),
         pytest.param(
             {

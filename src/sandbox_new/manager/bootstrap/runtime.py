@@ -31,7 +31,6 @@ from manager import settings
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
-from manager.application.ports import AbstractUnitOfWork
 from manager.application.registry import ExecutionRegistry
 from manager.application.worker_contact import WorkerContact
 from manager.infrastructure.database.unit_of_work import PiccoloUnitOfWork
@@ -65,7 +64,8 @@ async def start_runtime(app: Litestar) -> None:
     )
     dispatcher = QueueJobDispatcher(job_queue)
     failure_sink = QueueJobFailureSink(result_queue)
-    build_job_orchestrator: Callable[[AbstractUnitOfWork], JobOrchestrator] = partial(
+    # The cryptographer is left to the caller: it comes from the dependency providers.
+    build_job_orchestrator: Callable[..., JobOrchestrator] = partial(
         JobOrchestrator,
         dispatcher=dispatcher,
         holding=holding,
@@ -102,7 +102,12 @@ async def start_runtime(app: Litestar) -> None:
             registry,
         ),
         "held-job releaser": HeldJobReleaser(
-            build_job_orchestrator(PiccoloUnitOfWork()), interval=_RELEASE_INTERVAL_SECONDS
+            build_job_orchestrator(
+                PiccoloUnitOfWork(),
+                # Resolved through the app's provider, so it is the instance requests get.
+                cryptographer=await app.dependencies["cryptographer"](),
+            ),
+            interval=_RELEASE_INTERVAL_SECONDS,
         ),
         "worker-loss sweeper": WorkerLossSweeper(
             registry,

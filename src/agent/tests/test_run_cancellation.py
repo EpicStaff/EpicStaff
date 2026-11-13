@@ -23,6 +23,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from shared.models.agent_service import AgentRequest
 from shared.models.tools import CodeResultData, CodeTaskData
 from shared.redis_streams import StreamEnvelope
+from tests.secret_sealing import agent_cryptographer
 
 REQUEST_KEY = "agent:request:run-a"
 
@@ -167,7 +168,7 @@ async def _run(monkeypatch, run_type: RunType, llm: ScriptedLLM, sandbox: FakeSa
     factory = RunnerFactory(
         RunnerDependencies(
             resolver=AgentResolver(sandbox, mcp_gateway=None),
-            loop=DefaultAgentLoop(llm),
+            loop=DefaultAgentLoop(llm, agent_cryptographer()),
         )
     )
     factory.register(RunType.SINGLE_TASK, SingleTaskRunner)

@@ -9,10 +9,13 @@ from django.db.models.functions import Concat, Substr
 from django.utils import timezone
 from rbac.authorship import record_last_edits, resolve_author
 from rbac.models import Organization
+from src.shared.models import UserAction
 from tables.models import StorageFile, User
 from tables.services.recycle_bin.deleting import record_deleter
 from tables.services.storage_service.path_utils import is_trash_path
 from tables.signals import rows_bulk_created
+from user_audit.recorder import record_user_action, user_audit_hook
+from user_audit.targets import TargetDescription, describe
 
 
 def _name_of(path: str) -> str:
@@ -259,6 +262,11 @@ class StorageFileSync:
 
     @staticmethod
     def on_mkdir(org_id: int, path: str, *, user: object | None = None) -> None:
+        """Create the folder row at `path` and any missing ancestors.
+
+        The folder at `path` is recorded as created, not the ancestors it needed. Pass
+        `user` None when no person asked for it: nothing is recorded then.
+        """
         org = Organization.objects.get(id=org_id)
         author = resolve_author(user)
         folder_path = path.rstrip("/") + "/"
@@ -267,6 +275,10 @@ class StorageFileSync:
             org, [folder_path, *_ancestor_paths(folder_path)], author
         )
         record_last_edits(created_folders, user)
+        if user is not None:
+            for folder in created_folders:
+                if folder.path == folder_path:
+                    record_user_action(action=UserAction.CREATED, org_id=org_id, target=folder)
 
     @staticmethod
     def on_soft_delete(org_id: int, path: str, *, user: object | None) -> SoftDeletedSubtree | None:
@@ -276,7 +288,10 @@ class StorageFileSync:
         is a folder. Every row pointing at a binned row (flow attachments,
         session outputs, surface grants) is hard-deleted: a binned file is
         linked to nothing, and a restore brings it back without its links.
-        `user` is recorded as who deleted each recycle-bin entry the batch makes.
+        `user` is recorded as who deleted each recycle-bin entry the batch makes,
+        and each entry's move to the recycle bin as a user action (not the rows
+        binned under a folder). Pass None when no person asked for it: nothing is
+        recorded then.
         Returns None when nothing live sits at `path`.
         """
         clean_path = path.rstrip("/")
@@ -299,7 +314,13 @@ class StorageFileSync:
             return None
         batch_rows = StorageFile.all_objects.filter(soft_delete_batch=batch)
         _delete_links_to(batch_rows)
-        record_deleter(_bin_entries_of(batch_rows), user, deleted_at=deleted_at)
+        bin_entries = _bin_entries_of(batch_rows)
+        record_deleter(bin_entries, user, deleted_at=deleted_at)
+        if user is not None:
+            for entry in bin_entries:
+                record_user_action(
+                    action=UserAction.MOVED_TO_RECYCLE_BIN, org_id=org_id, target=entry
+                )
         return SoftDeletedSubtree(batch=batch, root_path=root_path)
 
     @staticmethod
@@ -322,6 +343,10 @@ class StorageFileSync:
         parent_path. The moved entry's own row is last edited by `user` and keeps its
         author, or the lack of one; rows beneath a moved folder keep their authors and last
         edits.
+
+        The moved entry is recorded as renamed when only its name changed, else as moved
+        (see `record_transfer`); nothing is recorded for a `user` None, or for a folder with
+        no row of its own.
         """
         with transaction.atomic():
             updated = 0
@@ -333,7 +358,9 @@ class StorageFileSync:
                     parent_path=_parent_of(dst),
                 )
                 if updated:
-                    record_last_edits(StorageFile.objects.filter(org_id=org_id, path=dst), user)
+                    moved_file = StorageFile.objects.filter(org_id=org_id, path=dst)
+                    record_last_edits(moved_file, user)
+                    _record_move(org_id, src, dst, user=user)
 
             if updated == 0:
                 src_prefix = src.rstrip("/") + "/"
@@ -352,6 +379,67 @@ class StorageFileSync:
 
                 StorageFile.objects.bulk_update(moved_rows, ["parent_path", "name"])
                 record_last_edits([row for row in moved_rows if row.path == dst_prefix], user)
+                _record_move(org_id, src_prefix, dst_prefix, user=user)
+
+    @staticmethod
+    @user_audit_hook
+    def record_transfer(
+        action: UserAction,
+        org_id: int,
+        entry_path: str | None,
+        *,
+        source_path: str | None = None,
+        user: object | None,
+    ) -> None:
+        """Record the move, copy or upload that put a storage entry at `entry_path` as a user action.
+
+        Keeps a move's or copy's `source_path` as its previous name. Records nothing for a
+        `user` None, or when no live row sits at `entry_path` (a folder with no row of its
+        own). Best-effort and free with the switch off (`user_audit_hook`): it runs after
+        the object store has committed, so it must never fail the request.
+        """
+        if user is None or entry_path is None:
+            return
+        entry = StorageFile.objects.filter(org_id=org_id, path=entry_path).first()
+        if entry is None:
+            return
+        record_user_action(action=action, org_id=org_id, target=entry, previous_name=source_path)
+
+    @staticmethod
+    @user_audit_hook
+    def describe_entry(org_id: int, path: str) -> TargetDescription | None:
+        """Describe the live entry at `path` for a record written once it is gone, or None
+        when no row sits there. Best-effort and free with the switch off (`user_audit_hook`)."""
+        entry = (
+            StorageFile.objects.filter(org_id=org_id, path=path)
+            .only("pk", "path", "item_type")
+            .first()
+        )
+        return describe(entry) if entry is not None else None
+
+
+@user_audit_hook
+def _record_move(org_id: int, source_path: str, entry_path: str, *, user: object | None) -> None:
+    """Record a move within one org: renamed when the entry kept its folder, else moved."""
+    if _parent_of(source_path) != _parent_of(entry_path):
+        StorageFileSync.record_transfer(
+            UserAction.MOVED, org_id, entry_path, source_path=source_path, user=user
+        )
+        return
+    if user is None:
+        return
+    entry = (
+        StorageFile.objects.filter(org_id=org_id, path=entry_path)
+        .only("pk", "path", "item_type")
+        .first()
+    )
+    if entry is not None:
+        record_user_action(
+            action=UserAction.RENAMED,
+            org_id=org_id,
+            target=entry,
+            previous_name=source_path,
+        )
 
 
 def _insert_skipping_live_paths(rows: list[StorageFile]) -> list[int]:
@@ -390,7 +478,8 @@ def _bin_entries_of(batch_rows: QuerySet) -> list[StorageFile]:
     file or folder; more only when the folder had no row of its own.
     """
     deleted_with_its_folder = batch_rows.filter(path=OuterRef("parent_path"))
-    return list(batch_rows.exclude(Exists(deleted_with_its_folder)).only("pk"))
+    # path and item_type: what describes the entry as a user action (see `describe`).
+    return list(batch_rows.exclude(Exists(deleted_with_its_folder)).only("pk", "path", "item_type"))
 
 
 def _delete_links_to(rows: QuerySet) -> None:

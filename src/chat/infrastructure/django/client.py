@@ -8,7 +8,9 @@ from application.ports import (
     OPERATOR_NAME_MAX_LENGTH,
     AbstractFlowRunner,
     AbstractIdentityProvider,
+    AbstractUserActionRecorder,
     CallerCredentials,
+    DeskAction,
     GraphContract,
     IntrospectedUser,
     RunStatus,
@@ -39,7 +41,11 @@ def _display_name(value: object) -> str | None:
     return value.strip()[:OPERATOR_NAME_MAX_LENGTH]
 
 
-class DjangoClient(AbstractFlowRunner, AbstractIdentityProvider):
+# The user-action audit trail's name for a binding, which operators know as a desk.
+DESK_TARGET_TYPE = "desk"
+
+
+class DjangoClient(AbstractFlowRunner, AbstractIdentityProvider, AbstractUserActionRecorder):
     """Django's REST API over httpx. System-key calls carry `X-Api-Key`; user calls carry the user's JWT."""
 
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
@@ -184,6 +190,21 @@ class DjangoClient(AbstractFlowRunner, AbstractIdentityProvider):
                 start_variables=start_variables,
                 output_map=(end_nodes[0].get("output_map") or {}) if end_nodes else None,
             )
+
+    async def record_desk_action(self, desk_action: DeskAction) -> None:
+        body = {
+            "actor_user_id": desk_action.actor_user_id,
+            "org_id": desk_action.org_id,
+            "action": desk_action.action.value,
+            "target_type": DESK_TARGET_TYPE,
+            "target_id": str(desk_action.desk_id),
+            "target_name": desk_action.desk_name,
+            "previous_name": desk_action.previous_name,
+        }
+        response = await self._request(
+            "POST", "/api/internal/user-actions/", json=body, headers=self._system_headers
+        )
+        self._fail_on_error(response)
 
     async def introspect(self, jwt: str) -> IntrospectedUser | None:
         response = await self._request(

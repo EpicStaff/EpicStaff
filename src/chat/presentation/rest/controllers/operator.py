@@ -28,7 +28,9 @@ MAX_PAGE = 100
 
 def _caller(request: Request, operator: Operator) -> CallerCredentials:
     # chats_guard already resolved this token, so it is present.
-    return CallerCredentials(org_id=operator.org_id, bearer_token=bearer_token(request) or "")
+    return CallerCredentials(
+        org_id=operator.org_id, user_id=operator.user_id, bearer_token=bearer_token(request) or ""
+    )
 
 
 class OperatorController(Controller):
@@ -135,7 +137,7 @@ class OperatorController(Controller):
     async def delete_binding(
         self, binding_id: UUID, operator: Operator, bindings: BindingOrchestrator
     ) -> None:
-        await bindings.delete(binding_id, operator.org_id)
+        await bindings.delete(binding_id, operator.org_id, operator.user_id)
 
     @post(
         path="/bindings/{binding_id:uuid}/rotate-key",
@@ -146,7 +148,7 @@ class OperatorController(Controller):
         self, binding_id: UUID, operator: Operator, bindings: BindingOrchestrator
     ) -> schemas.BindingOutput:
         return schemas.BindingOutput.model_validate(
-            await bindings.rotate_key(binding_id, operator.org_id)
+            await bindings.rotate_key(binding_id, operator.org_id, operator.user_id)
         )
 
     @post(
@@ -158,7 +160,7 @@ class OperatorController(Controller):
         self, binding_id: UUID, operator: Operator, bindings: BindingOrchestrator
     ) -> schemas.BindingOutput:
         return schemas.BindingOutput.model_validate(
-            await bindings.pause(binding_id, operator.org_id)
+            await bindings.pause(binding_id, operator.org_id, operator.user_id)
         )
 
     @post(

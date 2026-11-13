@@ -13,6 +13,8 @@ from tables.services.converter_service import ConverterService
 from tables.services.secrets import secret_resolver, secret_service
 from utils.graph_utils import NodeNameResolver
 
+from tests.sealed_values import open_sealed
+
 QUESTIONS = {"is_engineering": {"type": "noul", "instructions": "Engineering?"}}
 INPUT_MAP = {"company": "variables.company"}
 
@@ -134,7 +136,7 @@ def test_secret_resolver_fills_the_typesafe_key(org, node, typesafe_config):
 
     resolved = secret_resolver.resolve_payload(payload=data, org_id=org.id)
 
-    assert resolved.prompts["company_check"].system_one_config.api_key == "ts-key"
+    assert open_sealed(resolved.prompts["company_check"].system_one_config.api_key) == "ts-key"
     assert data.prompts["company_check"].system_one_config.api_key is None
 
 

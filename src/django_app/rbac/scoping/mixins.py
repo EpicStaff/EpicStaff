@@ -3,7 +3,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 
 from rbac.access.gates import IsSuperadmin
-from rbac.access.org_context import OrgContextService
+from rbac.access.org_context import OrgContextService, cache_active_org_id
 from rbac.authorship import resolve_author
 from rbac.exceptions import BuiltInModelImmutableError
 
@@ -23,8 +23,9 @@ class OrgScopedResolverMixin:
 
     def get_active_org_id(self) -> int:
         if not hasattr(self.request, "_rbac_active_org_id"):
-            self.request._rbac_active_org_id = self._org_context.resolve(
-                request=self.request, view_kwargs=self.kwargs
+            cache_active_org_id(
+                self.request,
+                self._org_context.resolve(request=self.request, view_kwargs=self.kwargs),
             )
         return self.request._rbac_active_org_id
 

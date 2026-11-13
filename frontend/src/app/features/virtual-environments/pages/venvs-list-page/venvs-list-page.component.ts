@@ -8,12 +8,14 @@ import {
     DestroyRef,
     inject,
     Injector,
+    OnInit,
     signal,
     viewChild,
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -23,7 +25,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, takeQueryParams } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -76,7 +78,7 @@ const SEARCH_DEBOUNCE_MS = 300;
     templateUrl: './venvs-list-page.component.html',
     styleUrls: ['./venvs-list-page.component.scss'],
 })
-export class VenvsListPageComponent {
+export class VenvsListPageComponent implements OnInit {
     private readonly venvCards = viewChildren(VenvCardComponent);
     private readonly createButton = viewChild('createButton', { read: ButtonComponent });
 
@@ -143,14 +145,17 @@ export class VenvsListPageComponent {
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly injector = inject(Injector);
+    private readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
 
+    // `?venvId=`, taken from the URL at init and opened after the first load
+    private linkedVenvId: string | undefined;
     private pollSubscription: Subscription | null = null;
     // Dropped before the next request is sent, so a slow answer to an old search cannot
     // land after a newer one and put the wrong list on screen.
     private listSubscription: Subscription | null = null;
 
     constructor() {
-        this.loadVenvs();
         // Typing reloads the list; a sort does so from `applySort`, which needs no debounce.
         toObservable(this.searchTerm)
             .pipe(
@@ -161,6 +166,11 @@ export class VenvsListPageComponent {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe(() => this.loadVenvs());
+    }
+
+    ngOnInit(): void {
+        this.linkedVenvId = takeQueryParams(this.route, this.router, ['venvId']).venvId;
+        this.loadVenvs();
     }
 
     selectTab(tab: VenvsPageTab): void {
@@ -313,6 +323,7 @@ export class VenvsListPageComponent {
                 next: (venvs) => {
                     this.applyVenvs(venvs);
                     this.isLoading.set(false);
+                    this.openLinkedVenv();
                 },
                 error: (error: HttpErrorResponse) => {
                     this.isLoading.set(false);
@@ -320,6 +331,24 @@ export class VenvsListPageComponent {
                     this.toastService.error(extractHttpErrorMessage(error));
                 },
             });
+    }
+
+    /**
+     * `?venvId=` opens that venv as a card click does, once, after the first load; a viewer who cannot edit venvs gets
+     * its card focused (and scrolled to) instead. An unknown id is ignored.
+     */
+    private openLinkedVenv(): void {
+        const venvId = this.linkedVenvId;
+        this.linkedVenvId = undefined;
+        const venv = this.venvs().find((item) => item.id === Number(venvId));
+        if (!venv) return;
+        if (this.canUpdate()) {
+            this.onEdit(venv);
+            return;
+        }
+        const linkedCard = (): VenvCardComponent | undefined =>
+            this.venvCards().find((card) => card.venv().id === venv.id);
+        afterNextRender(() => linkedCard()?.focus(), { injector: this.injector });
     }
 
     /** The deleted card takes its focused Delete button along: the focus moves to the card now in its place. */

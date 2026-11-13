@@ -260,3 +260,29 @@ async def test_underscore_state_path_fails_before_execute_with_a_public_message(
         f"Variable path '{rejected_path}' is not allowed: path segments cannot start with '_'."
     )
     assert captured_logs == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mapped_path", ["", "|null", "|fallback"])
+async def test_input_map_entry_without_a_path_fails_before_execute_with_a_public_message(
+    captured_logs, mapped_path
+):
+    node = RecordingNode(
+        session_id=7,
+        node_name="nopath",
+        stop_event=StopEvent(),
+        input_map={"user": mapped_path},
+    )
+    messages = []
+
+    with pytest.raises(InvalidStatePathError):
+        await node.run(build_state(), writer=messages.append)
+
+    assert node.executed is False
+    error_details = [
+        message.message_data.details
+        for message in messages
+        if message.message_data.message_type == "error"
+    ]
+    assert error_details == ["Input map entry 'user' has no variable path."]
+    assert captured_logs == []

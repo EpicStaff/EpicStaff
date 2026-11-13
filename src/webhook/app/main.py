@@ -4,6 +4,7 @@ import json
 from fastapi import FastAPI
 from fastapi.concurrency import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+from foundation.cryptographer import FernetRotatedCryptographer
 from loguru import logger
 from src.shared.models import WebhookConfigData
 
@@ -15,7 +16,7 @@ from app.services.redis_service import (
     close_redis_connection,
     get_redis_service,
 )
-from app.services.tunnel_registry import TunnelRegistry, get_tunnel_registry
+from app.services.tunnel_registry import TunnelRegistry
 
 # Kept short: Docker kills the container 10s after SIGTERM by default, and uvicorn drains
 # connections before this budget (listener stop plus tunnel unregistering) starts.
@@ -58,7 +59,8 @@ async def lifespan(app: FastAPI):
         logger.exception("Sweeping stale ngrok working directories failed; continuing startup.")
 
     redis_service = await get_redis_service()
-    tunnel_registry = get_tunnel_registry(redis_service=redis_service)
+    tunnel_registry = TunnelRegistry(app.state.cryptographer, redis_service=redis_service)
+    app.state.tunnel_registry = tunnel_registry
 
     redis_listener_task = asyncio.create_task(listen_redis(redis_service, tunnel_registry))
 
@@ -100,6 +102,13 @@ def create_app() -> FastAPI:
     Factory function to create and configure the FastAPI app.
     """
     app = FastAPI(title="WebhookService", lifespan=lifespan)
+    # The one cryptographer for transport-sealed secrets: the webhook route reads it from
+    # here, and the startup hands it to the tunnel registry.
+    app.state.cryptographer = FernetRotatedCryptographer(
+        settings.SECRETS_TRANSPORT_KEY,
+        settings.SECRETS_TRANSPORT_PREVIOUS_KEYS,
+        hkdf_info=settings.SECRETS_TRANSPORT_HKDF_INFO.encode(),
+    )
 
     app.add_middleware(
         CORSMiddleware,

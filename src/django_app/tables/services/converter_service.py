@@ -931,7 +931,7 @@ class ConverterService(metaclass=SingletonMeta):
         auth: WebhookTriggerAuth | None = getattr(trigger, "auth", None)
         if not auth or auth.header_name is None:
             return None
-        secret = secret_resolver.resolve(
+        secret = secret_resolver.resolve_sealed(
             secret_id=auth.secret_id,
             org_id=trigger.org_id,
             context="WebhookTriggerAuth.secret",
@@ -1108,7 +1108,7 @@ class ConverterService(metaclass=SingletonMeta):
         self, ngrok_webhook_config: NgrokWebhookConfig
     ) -> NgrokConfigData:
         auth_token = (
-            secret_resolver.resolve(
+            secret_resolver.resolve_sealed(
                 secret_id=ngrok_webhook_config.auth_token_secret_id,
                 org_id=ngrok_webhook_config.trigger.org_id,
                 context="NgrokWebhookConfig.auth_token",

@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
     AppIncludeExcludeDialogComponent,
     AppIncludeExcludeDialogData,
@@ -29,7 +30,7 @@ import {
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
-import { downloadBlob, isFocusLost, movedToRecycleBinMessage } from '@shared/utils';
+import { downloadBlob, isFocusLost, movedToRecycleBinMessage, takeQueryParams } from '@shared/utils';
 import { map, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
@@ -93,6 +94,8 @@ export class ToolsListComponent implements OnInit {
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
     private readonly port = inject<ToolsListPort<Tool>>(TOOLS_LIST_PORT);
     private readonly importWithReview = inject(ImportWithReviewService);
+    private readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
 
     public readonly viewState = inject(ToolsViewStorageService);
 
@@ -102,6 +105,8 @@ export class ToolsListComponent implements OnInit {
 
     private readonly allTools = signal<Tool[]>([]);
     private readonly usageById = signal<Map<number, GetBulkToolUsageItem>>(new Map());
+    // `?toolId=`, taken from the URL at init and opened after the first load
+    private linkedToolId: string | undefined;
 
     public readonly loadingMessage = computed(() => `Loading ${this.port.entityLabelPlural}...`);
     public readonly emptyMessage = computed(() => `No ${this.port.entityLabelPlural} found.`);
@@ -189,6 +194,7 @@ export class ToolsListComponent implements OnInit {
     }
 
     public ngOnInit(): void {
+        this.linkedToolId = takeQueryParams(this.route, this.router, ['toolId']).toolId;
         this.loadTools();
 
         this.port.createdEvent$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((newTool) => {
@@ -670,6 +676,7 @@ export class ToolsListComponent implements OnInit {
                 next: (tools) => {
                     this.allTools.set(tools);
                     this.isLoaded.set(true);
+                    this.openLinkedTool();
                 },
                 error: (err: HttpErrorResponse) => {
                     this.error.set(
@@ -682,6 +689,14 @@ export class ToolsListComponent implements OnInit {
 
     public reload(): void {
         this.loadTools();
+    }
+
+    /** `?toolId=` opens that tool as a card click does, once, after the first load. An unknown id is ignored. */
+    private openLinkedTool(): void {
+        const toolId = this.linkedToolId;
+        this.linkedToolId = undefined;
+        const tool = toolId == null ? undefined : this.findToolById(Number(toolId));
+        if (tool) this.onConfigure(tool);
     }
 
     private handleStaleResource(err: HttpErrorResponse, defaultMessage: string): void {

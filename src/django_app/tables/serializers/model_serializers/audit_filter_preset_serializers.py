@@ -5,6 +5,8 @@ from tables.validators.audit_filter_body_validator import validate_filter_body_s
 
 
 class AuditFilterPresetSerializer(serializers.ModelSerializer):
+    """A preset of the request's audit domain, which the view passes as `context["domain"]`."""
+
     name = serializers.CharField(max_length=150)
     is_owner = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
@@ -36,7 +38,7 @@ class AuditFilterPresetSerializer(serializers.ModelSerializer):
         return value
 
     def validate_filter_body(self, value):
-        return validate_filter_body_shape(value)
+        return validate_filter_body_shape(value, self.context["domain"])
 
     def validate(self, attrs):
         name = attrs.get("name")
@@ -45,12 +47,17 @@ class AuditFilterPresetSerializer(serializers.ModelSerializer):
 
         request = self.context["request"]
         org_id = resolve_active_org_id(request)
-        qs = AuditFilterPreset.objects.filter(org_id=org_id, created_by=request.user, name=name)
+        qs = AuditFilterPreset.objects.filter(
+            org_id=org_id, created_by=request.user, domain=self.context["domain"], name=name
+        )
         if self.instance is not None:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
             raise serializers.ValidationError({"name": "You already have a preset with this name."})
         return attrs
+
+    def create(self, validated_data):
+        return super().create({**validated_data, "domain": self.context["domain"]})
 
 
 class AuditFilterPresetCopySerializer(serializers.Serializer):

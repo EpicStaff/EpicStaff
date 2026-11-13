@@ -1,5 +1,5 @@
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { signal } from '@angular/core';
+import { NgZone, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { LabelColor, LabelTreeNode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
@@ -219,7 +219,7 @@ describe('LabelDropdownComponent', () => {
 
             pressEscape();
             fixture.detectChanges();
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => TestBed.tick());
 
             expect(fixture.componentInstance.isOpen()).toBe(true);
             expect(panel.querySelector('.add-label-row')).toBeNull();

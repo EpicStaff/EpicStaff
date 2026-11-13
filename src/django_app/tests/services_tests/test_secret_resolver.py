@@ -1,14 +1,23 @@
 import pytest
+from foundation.cryptographer import DecryptDataError
 
 from tables.models import Secret
 from rbac.models import Organization
 from tables.services.secrets import (
+    SecretDecryptionError,
     SecretResolutionError,
+    secret_encryption,
     secret_resolver,
     secret_service,
 )
 from src.shared.models import KnowledgeNodeData
 from tables.services.secrets.secret_resolver import extract_secret_marker_names
+from tests.sealed_values import (
+    SECRET_MARKER_RE,
+    open_sealed,
+    open_sealed_headers,
+    open_sealed_values,
+)
 
 
 @pytest.fixture
@@ -61,6 +70,73 @@ class TestResolveById:
         assert "LLMConfigData.api_key" in message
         assert str(secret.pk) in message
         assert "sk-must-not-appear" not in message
+
+
+@pytest.mark.django_db
+class TestResolveSealed:
+    """Values leaving django_app are sealed with the transport key: never the plaintext,
+    opened by the consumers' transport key, and never by the at-rest key."""
+
+    def test_none_id_returns_none(self, org):
+        assert secret_resolver.resolve_sealed(secret_id=None, org_id=org.id) is None
+
+    def test_sealed_value_is_not_the_plaintext_and_opens_with_the_transport_key(self, org):
+        secret = secret_service.create(text="sk-sealed-1234", org=org, name="sealed-happy")
+
+        sealed = secret_resolver.resolve_sealed(secret_id=secret.pk, org_id=org.id)
+
+        assert sealed != "sk-sealed-1234"
+        assert "sk-sealed-1234" not in sealed
+        assert open_sealed(sealed) == "sk-sealed-1234"
+
+    def test_sealed_value_does_not_open_with_the_at_rest_key(self, org):
+        secret = secret_service.create(text="sk-domain", org=org, name="sealed-domain")
+
+        sealed = secret_resolver.resolve_sealed(secret_id=secret.pk, org_id=org.id)
+
+        with pytest.raises(SecretDecryptionError):
+            secret_encryption.decrypt(encryptedtext=sealed)
+
+    def test_stored_value_does_not_open_with_the_transport_key(self, org):
+        secret = secret_service.create(text="sk-stored", org=org, name="sealed-stored")
+
+        with pytest.raises(DecryptDataError):
+            open_sealed(Secret.objects.get(pk=secret.pk).value)
+
+    def test_foreign_org_secret_is_not_resolvable(self, org, other_org):
+        secret = secret_service.create(text="sk-other-sealed", org=other_org, name="sealed-x")
+
+        with pytest.raises(SecretResolutionError):
+            secret_resolver.resolve_sealed(secret_id=secret.pk, org_id=org.id)
+
+
+@pytest.mark.django_db
+class TestResolveNamedSealed:
+    def test_seals_every_value(self, org):
+        secret_service.create(text="sk-one", org=org, name="SEALED_ONE")
+        secret_service.create(text="sk-two", org=org, name="SEALED_TWO")
+
+        sealed = secret_resolver.resolve_named_sealed(
+            names=["SEALED_ONE", "SEALED_TWO"], org_id=org.id
+        )
+
+        assert sealed.keys() == {"SEALED_ONE", "SEALED_TWO"}
+        assert sealed["SEALED_ONE"] != "sk-one"
+        assert sealed["SEALED_TWO"] != "sk-two"
+        assert open_sealed_values(sealed) == {"SEALED_ONE": "sk-one", "SEALED_TWO": "sk-two"}
+
+    def test_empty_list_returns_empty_dict(self, org):
+        assert secret_resolver.resolve_named_sealed(names=[], org_id=org.id) == {}
+
+    def test_unknown_and_foreign_names_are_omitted(self, org, other_org):
+        secret_service.create(text="sk-mine", org=org, name="SEALED_MINE")
+        secret_service.create(text="sk-theirs", org=other_org, name="SEALED_THEIRS")
+
+        sealed = secret_resolver.resolve_named_sealed(
+            names=["SEALED_MINE", "SEALED_THEIRS", "SEALED_TYPO"], org_id=org.id
+        )
+
+        assert open_sealed_values(sealed) == {"SEALED_MINE": "sk-mine"}
 
 
 @pytest.mark.django_db
@@ -222,8 +298,8 @@ class TestResolvePayload:
 
         resolved = secret_resolver.resolve_payload(payload=payload, org_id=org.id)
 
-        assert resolved.llms[0].config.api_key == "sk-llm-nested"
-        assert resolved.embedder.config.api_key == "sk-embed-nested"
+        assert open_sealed(resolved.llms[0].config.api_key) == "sk-llm-nested"
+        assert open_sealed(resolved.embedder.config.api_key) == "sk-embed-nested"
 
         # Resolution happens on a copy: the caller's object must not have been touched.
         assert payload.llms[0].config.api_key is None
@@ -243,7 +319,7 @@ class TestResolvePayload:
             ),
             org_id=org.id,
         )
-        assert resolved.by_name["a"].api_key == "sk-in-dict"
+        assert open_sealed(resolved.by_name["a"].api_key) == "sk-in-dict"
 
     def test_null_carrier_leaves_slot_none(self, org):
         resolved = secret_resolver.resolve_payload(
@@ -287,7 +363,8 @@ class TestResolvePayload:
         )
 
         dumped = resolved.model_dump_json()
-        assert "sk-dump" in dumped
+        assert resolved.api_key in dumped
+        assert "sk-dump" not in dumped
         assert "api_key_secret_id" not in dumped
 
 
@@ -358,8 +435,17 @@ class TestOrgScopedResolution:
                 payload=LLMConfigData(model="gpt-4o", api_key_secret_id=secret.pk)
             ),
             lambda secret: secret_resolver.resolve_named(names=[secret.name]),
+            lambda secret: secret_resolver.resolve_sealed(secret_id=secret.pk),
+            lambda secret: secret_resolver.resolve_named_sealed(names=[secret.name]),
         ],
-        ids=["resolve", "resolve_many", "resolve_payload", "resolve_named"],
+        ids=[
+            "resolve",
+            "resolve_many",
+            "resolve_payload",
+            "resolve_named",
+            "resolve_sealed",
+            "resolve_named_sealed",
+        ],
     )
     def test_every_lookup_requires_an_org(self, org, call):
         """No caller may opt out of scoping. A default of None meaning 'skip the
@@ -448,7 +534,7 @@ class TestResolveNamed:
 
         resolved = secret_resolver.resolve_payload(payload=payload, org_id=org.id)
 
-        assert resolved.secrets == {"NODE_KEY": "sk-node"}
+        assert open_sealed_values(resolved.secrets) == {"NODE_KEY": "sk-node"}
         # The input object is what gets persisted — it must not have been touched.
         assert payload.secrets == {}
 
@@ -464,11 +550,11 @@ class TestResolveNamed:
 
 @pytest.mark.django_db
 class TestResolveHeaderMarkers:
-    """`epicstaff_secret(<name>)` markers inside the extra_headers dict resolve to
-    plaintext on the payload copy only; the caller's original keeps the markers,
-    so no raw credential ever reaches it."""
+    """`epicstaff_secret(<name>)` markers inside the extra_headers dict are sealed for
+    transport on the payload copy only; the caller's original keeps the markers,
+    so no credential ever reaches it."""
 
-    def test_marker_replaced_with_plaintext(self, org):
+    def test_marker_sealed_for_transport(self, org):
         secret_service.create(text="sk-hdr", org=org, name="AZURE_KEY")
 
         resolved = secret_resolver.resolve_payload(
@@ -478,7 +564,7 @@ class TestResolveHeaderMarkers:
             org_id=org.id,
         )
 
-        assert resolved.extra_headers == {"api-key": "sk-hdr"}
+        assert open_sealed_headers(resolved.extra_headers) == {"api-key": "sk-hdr"}
 
     def test_marker_in_a_template_keeps_surrounding_text(self, org):
         secret_service.create(text="tok-123", org=org, name="BEARER")
@@ -491,7 +577,7 @@ class TestResolveHeaderMarkers:
             org_id=org.id,
         )
 
-        assert resolved.extra_headers == {"Authorization": "Bearer tok-123"}
+        assert open_sealed_headers(resolved.extra_headers) == {"Authorization": "Bearer tok-123"}
 
     def test_many_headers_and_markers_resolve_in_a_single_query(
         self, org, django_assert_num_queries
@@ -511,7 +597,7 @@ class TestResolveHeaderMarkers:
                 org_id=org.id,
             )
 
-        assert resolved.extra_headers == {"A": "v1", "B": "x v2 v1"}
+        assert open_sealed_headers(resolved.extra_headers) == {"A": "v1", "B": "x v2 v1"}
 
     def test_value_without_marker_is_untouched(self, org):
         resolved = secret_resolver.resolve_payload(
@@ -587,8 +673,8 @@ class TestResolveSuffixedHeaderFields:
 
         resolved = secret_resolver.resolve_payload(payload=payload, org_id=org.id)
 
-        assert resolved.embedder_extra_headers == {"X-Emb": "emb-plain"}
-        assert resolved.llm_extra_headers == {"X-Llm": "Bearer llm-plain"}
+        assert open_sealed_headers(resolved.embedder_extra_headers) == {"X-Emb": "emb-plain"}
+        assert open_sealed_headers(resolved.llm_extra_headers) == {"X-Llm": "Bearer llm-plain"}
         assert payload.embedder_extra_headers == {"X-Emb": "epicstaff_secret(EMB_HDR)"}
 
     def test_embedder_config_headers_resolve(self, org):
@@ -602,7 +688,7 @@ class TestResolveSuffixedHeaderFields:
             org_id=org.id,
         )
 
-        assert resolved.extra_headers == {"api-key": "emb-cfg-plain"}
+        assert open_sealed_headers(resolved.extra_headers) == {"api-key": "emb-cfg-plain"}
 
     def test_realtime_rag_headers_resolve(self, org):
         secret_service.create(text="rt-emb-plain", org=org, name="RT_EMB_HDR")
@@ -626,7 +712,7 @@ class TestResolveSuffixedHeaderFields:
 
         resolved = secret_resolver.resolve_payload(payload=payload, org_id=org.id)
 
-        assert resolved.rag_embedder_extra_headers == {"X-Emb": "rt-emb-plain"}
+        assert open_sealed_headers(resolved.rag_embedder_extra_headers) == {"X-Emb": "rt-emb-plain"}
 
     def test_foreign_org_marker_in_a_suffixed_field_is_rejected(self, org, other_org):
         secret_service.create(text="sk-foreign", org=other_org, name="FOREIGN_EMB_HDR")
@@ -649,14 +735,29 @@ class TestResolveSuffixedHeaderFields:
 class TestResolveHeaderMarkersDirectly:
     """The public entry point used where there is no payload model to walk."""
 
-    def test_returns_a_resolved_copy_and_leaves_the_input_alone(self, org):
+    def test_returns_a_sealed_copy_and_leaves_the_input_alone(self, org):
         secret_service.create(text="direct-plain", org=org, name="DIRECT_HDR")
         headers = {"X-Key": "epicstaff_secret(DIRECT_HDR)", "X-Trace": "t"}
 
         resolved = secret_resolver.resolve_header_markers(headers=headers, org_id=org.id)
 
-        assert resolved == {"X-Key": "direct-plain", "X-Trace": "t"}
+        assert open_sealed_headers(resolved) == {"X-Key": "direct-plain", "X-Trace": "t"}
         assert headers == {"X-Key": "epicstaff_secret(DIRECT_HDR)", "X-Trace": "t"}
+
+    def test_marker_keeps_its_syntax_and_holds_a_ciphertext_of_the_plaintext(self, org):
+        secret_service.create(text="tok-sealed", org=org, name="SEALED_HDR")
+
+        resolved = secret_resolver.resolve_header_markers(
+            headers={"Authorization": "Bearer epicstaff_secret(SEALED_HDR) v2"}, org_id=org.id
+        )
+
+        value = resolved["Authorization"]
+        assert value.startswith("Bearer epicstaff_secret(")
+        assert value.endswith(") v2")
+        assert "tok-sealed" not in value
+        assert "SEALED_HDR" not in value
+        [content] = SECRET_MARKER_RE.findall(value)
+        assert open_sealed(content) == "tok-sealed"
 
     @pytest.mark.parametrize("headers", [None, {}])
     def test_empty_input_is_returned_without_a_query(

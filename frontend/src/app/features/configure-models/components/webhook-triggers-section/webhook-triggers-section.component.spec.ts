@@ -5,6 +5,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
 import {
     AuthorshipDetailsDialogService,
     ConfirmationDialogService,
@@ -46,6 +47,7 @@ const TRIGGER_WITHOUT_AUTHORSHIP: WebhookTriggerModel = {
 function configure(canWrite: boolean, triggers: WebhookTriggerModel[], open?: ReturnType<typeof vi.fn>): void {
     TestBed.configureTestingModule({
         providers: [
+            provideRouter([]),
             { provide: WebhookTriggerService, useValue: { list: () => of(triggers), changed$: new Subject<void>() } },
             { provide: ConfirmationDialogService, useValue: {} },
             { provide: ToastService, useValue: {} },
@@ -202,6 +204,7 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
+                provideRouter([]),
                 { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
                 { provide: ConfirmationDialogService, useValue: {} },
                 { provide: ToastService, useValue: {} },
@@ -392,6 +395,43 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
 
         expectEditDialogOpened(open, triggerWithoutId);
         httpMock.expectNone(() => true);
+    });
+});
+
+describe('WebhookTriggersSectionComponent ?triggerId= deep link', () => {
+    async function openAt(
+        url: string,
+        canWrite: boolean
+    ): Promise<{ open: ReturnType<typeof vi.spyOn>; router: Router }> {
+        configure(canWrite, [TRIGGER, TRIGGER_WITHOUT_AUTHORSHIP]);
+        const open = vi
+            .spyOn(TestBed.inject(Dialog), 'open')
+            .mockReturnValue({ closed: of(undefined) } as unknown as DialogRef<unknown, unknown>);
+        const router = TestBed.inject(Router);
+        await router.navigateByUrl(url);
+        const fixture = TestBed.createComponent(WebhookTriggersSectionComponent);
+        fixture.detectChanges();
+        await fixture.whenStable();
+        return { open, router };
+    }
+
+    it('opens the trigger as its Edit button does, and drops the param from the URL', async () => {
+        const { open, router } = await openAt(`/?triggerId=${TRIGGER.id}`, true);
+
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+            WebhookTriggerDialogComponent,
+            expect.objectContaining({ data: { trigger: TRIGGER, readonly: false } })
+        );
+        expect(router.url).toBe('/');
+    });
+
+    it.each([
+        ['for a viewer who cannot edit webhook triggers', `/?triggerId=${TRIGGER.id}`, false],
+        ['for an unknown trigger id', '/?triggerId=999', true],
+    ])('opens nothing %s', async (_case, url, canWrite) => {
+        const { open } = await openAt(url, canWrite);
+
+        expect(open).not.toHaveBeenCalled();
     });
 });
 

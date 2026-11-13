@@ -5,6 +5,7 @@ import os
 import shutil
 
 import pyngrok.process
+from foundation.cryptographer import AbstractCryptographer, CryptographerError
 from loguru import logger
 from pyngrok import conf, installer, ngrok
 from pyngrok.conf import PyngrokConfig
@@ -43,7 +44,27 @@ class NgrokTunnel(AbstractTunnelProvider):
         domain: str | None = None,
         region: str | None = None,
         reconnect_timeout: int = 10,
+        *,
+        cryptographer: AbstractCryptographer,
     ):
+        """Build a tunnel from the transport-sealed ngrok auth token of its config.
+
+        Args:
+            cryptographer: Opens `auth_token`.
+
+        Raises:
+            ValueError: `auth_token` is missing, or is not a transport ciphertext this
+                service can decrypt. The message never carries the token.
+        """
+        if not auth_token:
+            raise ValueError("NgrokTunnel requires an auth_token.")
+        # Opened once, here: a token that cannot be opened fails the registration of its
+        # config instead of every reconnect attempt of a tunnel already in the pool.
+        try:
+            auth_token = cryptographer.decrypt(auth_token)
+        except CryptographerError:
+            raise ValueError("NgrokTunnel auth_token could not be decrypted.") from None
+
         super().__init__(port, auth_token, domain=domain)
         self._host = host
         self._tunnel = None
@@ -53,9 +74,6 @@ class NgrokTunnel(AbstractTunnelProvider):
         self._is_running = False
         self._monitor_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
-
-        if not self._auth_token:
-            raise ValueError("NgrokTunnel requires an auth_token.")
 
         # Private per-instance directory holding the ngrok config and binary. The binary
         # path must stay unique per instance: pyngrok keys its process registry by it.

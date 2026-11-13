@@ -6,6 +6,7 @@ import httpx2
 from fastmcp import Client
 from fastmcp.client.transports import SSETransport, StreamableHttpTransport
 from fastmcp.mcp_config import infer_transport_type_from_url
+from foundation.cryptographer import AbstractCryptographer, CryptographerError
 from mcp.shared._httpx_utils import create_mcp_http_client
 
 from app.exceptions import McpToolError
@@ -68,12 +69,31 @@ def http_error_status(client: Client) -> str | None:
     return http_status_text(code)
 
 
+def open_mcp_auth(data: McpToolData, cryptographer: AbstractCryptographer) -> str | None:
+    """Decrypt ``data.auth``, which arrives sealed with the transport key.
+
+    Empty and None are returned as is. URL userinfo is never sealed and is not handled here.
+
+    Raises:
+        McpToolError: ``data.auth`` cannot be decrypted.
+    """
+    if not data.auth:
+        return data.auth
+    try:
+        return cryptographer.decrypt(data.auth)
+    except CryptographerError:
+        raise McpToolError(f"MCP tool '{data.tool_name}': auth could not be decrypted.") from None
+
+
 class FastMCPClientFactory:
     """Pure Fabrication: builds a fastmcp Client from McpToolData config.
 
     Wraps the fastmcp library behind a stable interface so the rest of the
     code is not coupled to Client construction details.
     """
+
+    def __init__(self, cryptographer: AbstractCryptographer) -> None:
+        self._cryptographer = cryptographer
 
     def create(self, data: McpToolData) -> Client:
         """Build a Client over an explicit HTTP transport.
@@ -83,8 +103,12 @@ class FastMCPClientFactory:
         It is never handed to fastmcp as a raw string: fastmcp would spawn an
         existing .py/.js path as a local process.
 
+        ``data.auth`` arrives sealed with the transport key and is decrypted here with
+        ``open_mcp_auth``; ``data`` itself keeps the sealed value.
+
         Raises:
-            McpToolError: The transport is not an http:// or https:// URL with a host.
+            McpToolError: The transport is not an http:// or https:// URL with a host,
+                or ``data.auth`` cannot be decrypted.
         """
         # Only the scheme and host are checked, not private ranges -- accepted, Won't
         # Fix: an operator/member configures this endpoint and what it points at is
@@ -107,7 +131,7 @@ class FastMCPClientFactory:
         return Client(
             transport=transport_class(url),
             timeout=data.timeout,
-            auth=data.auth or userinfo_auth,
+            auth=open_mcp_auth(data, self._cryptographer) or userinfo_auth,
             init_timeout=data.init_timeout,
         )
 

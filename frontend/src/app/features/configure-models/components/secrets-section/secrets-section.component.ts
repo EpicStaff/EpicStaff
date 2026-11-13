@@ -8,6 +8,8 @@ import {
     DestroyRef,
     inject,
     Injector,
+    input,
+    linkedSignal,
     OnInit,
     signal,
     viewChild,
@@ -92,6 +94,9 @@ const KEPT_LINKS_NOTE =
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SecretsSectionComponent implements OnInit {
+    /** `?search=`, bound from the URL: seeds the search box, as a link to one item does. */
+    readonly search = input<string>();
+
     private readonly dialog = inject(Dialog);
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
@@ -110,7 +115,7 @@ export class SecretsSectionComponent implements OnInit {
         this.permissionsService.can(ResourceCode.Secrets, ActionCode.Delete)
     );
 
-    public readonly searchTerm = signal<string>('');
+    public readonly searchTerm = linkedSignal(() => this.search() ?? '');
     public readonly usedByFilterItems = USED_BY_FILTER_ITEMS;
     public readonly usedByFilter = signal<UsedByFilter>(null);
     public readonly selectedRows = signal<TableRow[]>([]);

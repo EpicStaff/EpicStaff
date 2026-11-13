@@ -9,8 +9,9 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.domains.sessions.index import SESSIONS_INDEX
+from app.domains.user_actions.index import USER_ACTIONS_INDEX
 from app.repositories.opensearch_repository import OpenSearchAuditRepository
-from src.shared.models import SessionAuditEvent
+from src.shared.models import SessionAuditEvent, UserActionEvent
 
 
 def _hit(_id: str, source: dict, sort: list | None = None) -> dict:
@@ -18,15 +19,19 @@ def _hit(_id: str, source: dict, sort: list | None = None) -> dict:
 
 
 class _FakeOpenSearchClient:
-    def __init__(self, hits: list[dict]):
+    def __init__(self, hits: list[dict], aggregations: dict | None = None):
         self._hits = hits
+        self._aggregations = aggregations
         self.last_body: dict | None = None
         self.searched_indices: list[str] = []
 
     async def search(self, index: str, body: dict) -> dict:
         self.last_body = body
         self.searched_indices.append(index)
-        return {"hits": {"hits": self._hits}}
+        response = {"hits": {"hits": self._hits}}
+        if self._aggregations is not None:
+            response["aggregations"] = self._aggregations
+        return response
 
 
 _VALID_SOURCE = {
@@ -146,3 +151,24 @@ async def test_write_batch_routes_each_event_to_its_index(monkeypatch):
         "evt-365": "audit_events-365d-2026.10",
     }
     assert set(record_time_by_id.values()) == {"2026-10-31T23:59:30Z"}
+
+
+@pytest.mark.asyncio
+async def test_distinct_values_is_one_key_ordered_terms_aggregation_without_hits():
+    buckets = [{"key": "agent", "doc_count": 4}, {"key": "flow", "doc_count": 9}]
+    client = _FakeOpenSearchClient([], aggregations={"values": {"buckets": buckets}})
+    repository = OpenSearchAuditRepository(client, USER_ACTIONS_INDEX, UserActionEvent)
+    scope = {"bool": {"filter": [{"term": {"org_id": 1}}]}}
+
+    values = await repository.distinct_values(scope, "target_type", 200)
+
+    assert values == ["agent", "flow"]
+    assert client.searched_indices == ["audit_user_actions-*"]
+    assert client.last_body["query"] == scope
+    assert client.last_body["size"] == 0
+    assert client.last_body["aggs"]["values"]["terms"] == {
+        "field": "target_type",
+        "size": 200,
+        "order": {"_key": "asc"},
+        "exclude": [""],
+    }

@@ -81,6 +81,7 @@ import {
 import { snapshotDeclaresSecrets } from '../../../../features/flows/models/graph-version-preview.model';
 import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
+import { FlowCopyImportFacadeService } from '../../../../features/flows/services/flow-copy-import-facade.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
@@ -281,6 +282,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /** The root instance, as for the live canvas and its panels; the version preview has its own. */
     private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
     private readonly usePermissionRefusal = inject(UsePermissionRefusalService);
+    private readonly flowCopyImport = inject(FlowCopyImportFacadeService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
@@ -2185,6 +2187,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 })
             )
             .subscribe(() => openVersionDialog());
+    }
+
+    public onExportFlow(): void {
+        if (this.hasUnsavedChanges()) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        this.flowCopyImport.exportFlow({ id: this.graph.id, name: this.graph.name });
     }
 
     /**

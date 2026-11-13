@@ -11,6 +11,7 @@ readme = "README.md"
 requires-python = "==3.12.10"
 dependencies = [
     "fastapi==0.141.1",
+    "foundation[cryptographer]",
     "loguru==0.7.3",
     "pydantic==2.13.4",
     "pyngrok==7.4.1",
@@ -42,3 +43,6 @@ asyncio_mode = "auto"
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+foundation = { path = "../foundation", editable = true }

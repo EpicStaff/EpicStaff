@@ -34,6 +34,9 @@ _TEST_ENVIRONMENT = {
     "SANDBOX_INTERNAL_TOKEN": "internal-test-token",
     "SANDBOX_HOST": "sandbox_new",
     "SANDBOX_PORT": "8090",
+    "SECRETS_TRANSPORT_KEY": "sandbox-tests-transport-key",
+    "SECRETS_TRANSPORT_PREVIOUS_KEYS": "none",
+    "SECRETS_TRANSPORT_HKDF_INFO": "epicstaff.secrets.transport.v1",
 }
 
 for _name, _value in _TEST_ENVIRONMENT.items():
@@ -55,6 +58,21 @@ from tests.fakes import (  # noqa: E402
     FakeUVProvider,
     FakeVenvRepository,
 )
+from tests.transport_secrets import TRANSPORT_KEY
+
+
+@pytest.fixture(autouse=True)
+def transport_settings(monkeypatch):
+    """Point the transport settings at the key the tests seal secrets with.
+
+    Patched on ``settings`` rather than left to the environment, so a developer's own key
+    cannot leak in. The service's cryptographer provider reads these when it builds; a
+    sealed value is made with ``tests.transport_secrets.seal``.
+    """
+    from manager import settings
+
+    monkeypatch.setattr(settings, "SECRETS_TRANSPORT_KEY", TRANSPORT_KEY)
+    monkeypatch.setattr(settings, "SECRETS_TRANSPORT_PREVIOUS_KEYS", [])
 
 
 @pytest.fixture

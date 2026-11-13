@@ -1,8 +1,8 @@
 import itertools
 import json
-import re
 from typing import Any
 
+from dotdict import DotDict
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -26,10 +26,12 @@ from src.shared.models.graph_nodes import (
 )
 from src.shared.models.storage_scope import StorageCredentials
 from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SYSTEM_ONE_QUESTIONS_ADAPTER
+from src.shared.state_path import split_state_path_segments
 from src.shared.system_one.adapter import SystemOneError, evaluate
 from src.shared.system_one.json_llm import run_json_llm
+from utils.map_variables import MISSING, split_default, to_plain_data, walk_state_path
 from utils.set_output_variables import set_output_variables
-from utils.state_path import split_state_path
+from utils.state_path import split_dynamic_key_path, split_state_path
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -82,6 +84,37 @@ class ClassificationDecisionTableNodeError(Exception):
     """Custom exception for errors related to ClassificationDecisionTableNode."""
 
 
+def _read_state_path(roots: DotDict, path: str) -> Any:
+    """Read `path` from `roots` with the regular input map grammar, plus dynamic keys.
+
+    A dynamic key (`messages[variables.index]`) is read as a path first, and its value is
+    then used as the key or index. Nested dynamic keys are not supported.
+
+    Returns:
+        The value as plain data, or MISSING when a named segment is absent, the dynamic
+        key's own path included, or when a dynamic key is not a key of the mapping it reads.
+
+    Raises:
+        InvalidStatePathError: A segment starts with `_`, dynamic key paths included, a
+            bracket holds something other than a list index or one variable path, or the
+            path reads something other than plain data.
+        LookupError, TypeError: A list index, written or read from a dynamic key, is not in
+            the value it reads.
+    """
+    fragments = split_dynamic_key_path(path)
+    value = walk_state_path(roots, split_state_path_segments(fragments[0]))
+    for key_path, fragment in zip(fragments[1::2], fragments[2::2], strict=True):
+        if value is MISSING:
+            return MISSING
+        key = _read_state_path(roots, key_path)
+        # A key absent from a mapping is a missing name, so a default covers it, as it
+        # covers the first message of a chat that has no entry yet.
+        if key is MISSING or (isinstance(value, dict) and key not in value):
+            return MISSING
+        value = walk_state_path(value[key], split_state_path_segments(fragment))
+    return MISSING if value is MISSING else to_plain_data(value, path)
+
+
 class ClassificationDecisionTableNodeSubgraph:
     TYPE = "CLASSIFICATION_DECISION_TABLE"
 
@@ -126,75 +159,58 @@ class ClassificationDecisionTableNodeSubgraph:
             # Audit must never break the primary pipeline.
             logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")
 
-    @staticmethod
-    def _resolve_path(path_expr: str, ctx: dict):
-        """Safely resolve a dot/bracket path expression against a context dict.
+    def _resolve_input_map(
+        self, input_map: dict[str, str] | None, state: State, label: str
+    ) -> dict:
+        """Resolve an input map against state like a regular node's, `path|default` included.
 
-        Supports:
-          - dot access:    "variables.chat_id"
-          - bracket access with dynamic key: "variables.messages[variables.index].text"
-          - direct lookup: "session_id"
+        Unlike a regular node, a path that is not found and has no default fails the table
+        instead of passing None. A path may start at `variables`, `system_variables`,
+        `session_id` or `node_name`, and may hold dynamic keys (see `_read_state_path`).
 
-        No eval() is used.
+        Args:
+            label: Names the map in the error, such as "Pre-computation".
+
+        Raises:
+            ClassificationDecisionTableNodeError: A path cannot be read; the message names
+                the entry and its path, never a value.
         """
-
-        # Tokenise into dot-segments and bracket-segments
-        # e.g. "variables.messages[variables.index].text"
-        #   → ["variables", "messages", "[variables.index]", "text"]
-        tokens: list[str] = []
-        for part in re.split(r"\.(?![^\[]*\])", path_expr):
-            # Split bracket sub-expressions within each part
-            sub = re.split(r"(\[[^\]]+\])", part)
-            for s in sub:
-                if s:
-                    tokens.append(s)
-
-        value = None
-        for i, token in enumerate(tokens):
-            if token.startswith("[") and token.endswith("]"):
-                # Bracket access — resolve the inner expression recursively
-                inner = token[1:-1]
-                key = ClassificationDecisionTableNodeSubgraph._resolve_path(inner, ctx)
-                value = value[key]
-            elif i == 0:
-                # First token — look up in context
-                if token in ctx:
-                    value = ctx[token]
-                else:
-                    raise KeyError(f"'{token}' not found in context")
-            else:
-                # Block dunder/underscore tokens: the author-controlled path
-                # could otherwise reach Python internals (e.g. __globals__).
-                if token.startswith("_"):
-                    raise KeyError(f"'{token}' is not an allowed path segment")
-                # Dot access — try getattr, then [] for dict-like objects
-                try:
-                    value = getattr(value, token)
-                except AttributeError:
-                    value = value[token]
-        return value
-
-    def _resolve_input_map(self, input_map: dict[str, str] | None, state: State) -> dict:
-        """Resolve input_map path expressions against state, returning a flat dict of values."""
         if not input_map:
             return {}
 
-        resolve_ctx: dict = {
-            "variables": state["variables"],
-            "system_variables": state.get("system_variables", {}),
-            "session_id": self.session_id,
-            "node_name": self.node_name,
-        }
-
+        roots = DotDict(
+            {
+                "variables": state["variables"],
+                "system_variables": state.get("system_variables", {}),
+                "session_id": self.session_id,
+                "node_name": self.node_name,
+            }
+        )
         resolved: dict = {}
-
-        for local_name, path_expr in input_map.items():
+        for name, mapped_path in input_map.items():
+            entry = f"{label} input map entry '{name}'"
+            path, has_default, default = split_default(mapped_path)
+            # An unfilled editor row arrives as ''. With no segment the walk would return
+            # every root, so the whole state would go to the sandbox or System One provider.
+            if not split_state_path_segments(path):
+                raise ClassificationDecisionTableNodeError(f"{entry} has no variable path.")
             try:
-                resolved[local_name] = self._resolve_path(path_expr, resolve_ctx)
-            except Exception as e:
-                logger.warning(f"Input map resolve failed for '{local_name}' = '{path_expr}': {e}")
-                resolved[local_name] = None
-
+                value = _read_state_path(roots, path)
+            except InvalidStatePathError as error:
+                raise ClassificationDecisionTableNodeError(f"{entry}: {error}") from error
+            except (LookupError, TypeError):
+                raise ClassificationDecisionTableNodeError(
+                    f"{entry}: variable path '{path}' reads a list index that its value "
+                    "does not have."
+                ) from None
+            if value is MISSING:
+                if not has_default:
+                    raise ClassificationDecisionTableNodeError(
+                        f"{entry}: variable path '{path}' was not found and has no default "
+                        f"(write '{path}|null' to allow a missing value)."
+                    )
+                value = default
+            resolved[name] = value
         return resolved
 
     async def _execute_computation(
@@ -213,7 +229,7 @@ class ClassificationDecisionTableNodeSubgraph:
         if output_variable_path:
             split_state_path(output_variable_path)
 
-        inputs = self._resolve_input_map(input_map, state)
+        inputs = self._resolve_input_map(input_map, state, label)
 
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
             python_code_data=python_code,
@@ -475,8 +491,9 @@ def main(**kwargs) -> dict:
                 f"System One entry '{prompt_id}' has no valid questions."
             ) from None
 
-        resolved = self._resolve_input_map(prompt_config.input_map, state)
-        state_sent = json.loads(json.dumps(resolved, default=str))
+        state_sent = self._resolve_input_map(
+            prompt_config.input_map, state, f"Prompt '{prompt_id}'"
+        )
         if all(value is None for value in state_sent.values()):
             raise ClassificationDecisionTableNodeError(
                 f"System One entry '{prompt_id}' has no input values."

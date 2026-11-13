@@ -5,6 +5,7 @@ export const environment = {
     auditorUrl: '/auditor/',
     isChatEnabled: false,
     chatApiUrl: '/chat/',
-    isAuditTrailEnabled: false,
+    isSessionAuditEnabled: false,
+    isUserAuditEnabled: false,
     isPluginsEnabled: false,
 };

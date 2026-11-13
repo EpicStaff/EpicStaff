@@ -1,12 +1,14 @@
 import asyncio
 import json
+from uuid import UUID
 
 import httpx
 
 import pytest
-from application.ports import OPERATOR_NAME_MAX_LENGTH, CallerCredentials
+from application.ports import OPERATOR_NAME_MAX_LENGTH, CallerCredentials, DeskAction
 from domain.errors import FlowForbiddenError, FlowNotFoundError, FlowStartError, InvalidTokenError, NotMemberError, RunNotFoundError, UpstreamUnavailableError
 from infrastructure.django.client import DjangoClient
+from src.shared.models import UserAction
 from tests.fake_django import FakeDjango
 
 CHAT_FLOW = {"org_id": 1, "start_variables": {"variables": {"chat_history": [], "user_message": ""}}, "output_map": {"reply": "variables.reply"}}
@@ -91,7 +93,7 @@ def reader(django):
     django.permissions[("jwt-reader", 1)] = {"chats": ["create"], "flows": ["read"]}
     django.permissions[("jwt-reader", 2)] = {"chats": ["create"], "flows": ["read"]}
     django.permissions[("jwt-chats-only", 1)] = {"chats": ["create", "read", "update", "delete", "use"]}
-    return CallerCredentials(org_id=1, bearer_token="jwt-reader")
+    return CallerCredentials(org_id=1, user_id=1, bearer_token="jwt-reader")
 
 
 async def test_graph_contract_is_read_with_the_callers_token_and_org(client, django, reader):
@@ -107,24 +109,24 @@ async def test_graph_contract_is_read_with_the_callers_token_and_org(client, dja
 async def test_graph_contract_for_another_orgs_graph_is_not_found(client, django, reader):
     django.graphs[5] = CHAT_FLOW
     with pytest.raises(FlowNotFoundError):
-        await client.graph_contract(CallerCredentials(org_id=2, bearer_token="jwt-reader"), graph_id=5)
+        await client.graph_contract(CallerCredentials(org_id=2, user_id=1, bearer_token="jwt-reader"), graph_id=5)
 
 
 async def test_graph_contract_without_flows_read_is_forbidden_whether_or_not_the_graph_exists(client, django, reader):
     django.graphs[5] = CHAT_FLOW
     for graph_id in (5, 999):
         with pytest.raises(FlowForbiddenError):
-            await client.graph_contract(CallerCredentials(org_id=1, bearer_token="jwt-chats-only"), graph_id=graph_id)
+            await client.graph_contract(CallerCredentials(org_id=1, user_id=1, bearer_token="jwt-chats-only"), graph_id=graph_id)
 
 
 async def test_graph_contract_with_a_rejected_token_is_invalid_token(client, django):
     django.graphs[5] = CHAT_FLOW
     with pytest.raises(InvalidTokenError):
-        await client.graph_contract(CallerCredentials(org_id=1, bearer_token="expired"), graph_id=5)
+        await client.graph_contract(CallerCredentials(org_id=1, user_id=1, bearer_token="expired"), graph_id=5)
 
 
 def test_caller_credentials_hide_the_token_in_repr():
-    assert "jwt-reader" not in repr(CallerCredentials(org_id=1, bearer_token="jwt-reader"))
+    assert "jwt-reader" not in repr(CallerCredentials(org_id=1, user_id=1, bearer_token="jwt-reader"))
 
 
 async def test_run_calls_use_the_system_key_not_a_user_token(client, django):
@@ -261,3 +263,22 @@ async def test_a_host_header_override_is_sent(settings):
     request = await _status_request(settings.model_copy(update={"CHAT_DJANGO_URL": "http://django_app:8000", "CHAT_DJANGO_HOST_HEADER": "localhost"}))
     assert request.url.host == "django_app"
     assert request.headers["Host"] == "localhost"
+
+
+async def test_record_desk_action_sends_the_system_key_and_raises_when_refused(settings):
+    seen = []
+
+    def answer(request):
+        seen.append(request)
+        return httpx.Response(204 if len(seen) == 1 else 500)
+
+    client = DjangoClient(settings, transport=httpx.MockTransport(answer))
+    desk_id = UUID("0192f1d2-3c4b-7a5e-8f6d-1a2b3c4d5e6f")
+    record = DeskAction(action=UserAction.RENAMED, org_id=3, actor_user_id=7, desk_id=desk_id, desk_name="Billing", previous_name="Support")
+    await client.record_desk_action(record)
+    with pytest.raises(UpstreamUnavailableError, match="500"):
+        await client.record_desk_action(record)
+    await client.aclose()
+    request = seen[0]
+    assert (request.method, request.url.path, request.headers["X-Api-Key"]) == ("POST", "/api/internal/user-actions/", settings.DJANGO_API_KEY)
+    assert json.loads(request.content) == {"actor_user_id": 7, "org_id": 3, "action": "renamed", "target_type": "desk", "target_id": str(desk_id), "target_name": "Billing", "previous_name": "Support"}

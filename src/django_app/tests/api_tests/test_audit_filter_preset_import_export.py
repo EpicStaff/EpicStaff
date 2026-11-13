@@ -40,7 +40,12 @@ class TestAuditFilterPresetExport:
         data = json.loads(response.content)
         assert data["main_entity"] == EntityType.AUDIT_FILTER_PRESET
         assert data[EntityType.AUDIT_FILTER_PRESET] == [
-            {"id": preset.id, "name": preset.name, "filter_body": preset.filter_body}
+            {
+                "id": preset.id,
+                "name": preset.name,
+                "filter_body": preset.filter_body,
+                "domain": "sessions",
+            }
         ]
 
     def test_bulk_export_returns_envelope_with_all_ids(self, auth_client, preset):
@@ -50,7 +55,12 @@ class TestAuditFilterPresetExport:
         assert response.status_code == 200
         data = json.loads(response.content)
         assert data[EntityType.AUDIT_FILTER_PRESET] == [
-            {"id": preset.id, "name": preset.name, "filter_body": preset.filter_body}
+            {
+                "id": preset.id,
+                "name": preset.name,
+                "filter_body": preset.filter_body,
+                "domain": "sessions",
+            }
         ]
 
     def test_bulk_export_unknown_id_400s(self, auth_client, preset):

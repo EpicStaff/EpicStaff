@@ -1,0 +1,42 @@
+// A target or parent that opens in a new tab, styled like the session link on the Key-Value Tables page. The text
+// ellipsizes and the arrow after it stays visible however narrow the column is.
+.audit-link {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    color: var(--accent-color);
+    text-decoration: none;
+
+    app-svg-icon {
+        flex-shrink: 0;
+    }
+}
+
+// white-space and overflow-wrap still come from the cell, so Expand All Rows wraps the text.
+.audit-link__text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+// user-action tones, in the Sessions status colours
+.audit-action--added {
+    color: var(--color-ks-status-new);
+}
+
+.audit-action--changed {
+    color: var(--color-ks-status-blue);
+}
+
+.audit-action--removed {
+    color: var(--color-ks-status-processing);
+}
+
+.audit-action--destroyed {
+    color: var(--color-ks-status-failed);
+}
+
+.audit-action--alert {
+    color: var(--color-ks-status-warning);
+}

@@ -137,6 +137,47 @@ class UpdateEnvFileTest(unittest.TestCase):
         text = self.env_file.read_text(encoding="utf-8")
         self.assertEqual(envtool.read_env_values(text)["DB_PASSWORD"], "generated")
 
+    def test_old_audit_switch_carries_into_the_session_switch_only(self):
+        schema = {
+            "groups": {
+                "auditor": {
+                    "vars": {
+                        name: {"description": "Switch.", "default": {"prod": False, "dev": True}}
+                        for name in ("SESSION_AUDIT_TRAIL_ENABLED", "USER_AUDIT_TRAIL_ENABLED")
+                    }
+                }
+            }
+        }
+        self.env_file.write_text("AUDIT_TRAIL_ENABLED=true\n", encoding="utf-8")
+
+        added, _ = envtool.update_env_file(schema, "prod", self.env_file, TODAY)
+
+        self.assertEqual(added, ["SESSION_AUDIT_TRAIL_ENABLED", "USER_AUDIT_TRAIL_ENABLED"])
+        values = envtool.read_env_values(self.env_file.read_text(encoding="utf-8"))
+        self.assertEqual(values["SESSION_AUDIT_TRAIL_ENABLED"], "true")
+        # The user trail collects new personal data: the operator opts in to it.
+        self.assertEqual(values["USER_AUDIT_TRAIL_ENABLED"], "False")
+
+    def test_without_the_old_audit_switch_the_new_ones_get_their_default(self):
+        schema = {
+            "groups": {
+                "auditor": {
+                    "vars": {
+                        "USER_AUDIT_TRAIL_ENABLED": {
+                            "description": "Switch.",
+                            "default": {"prod": False, "dev": True},
+                        }
+                    }
+                }
+            }
+        }
+        self.env_file.write_text("# AUDIT_TRAIL_ENABLED=true\n", encoding="utf-8")
+
+        envtool.update_env_file(schema, "prod", self.env_file, TODAY)
+
+        values = envtool.read_env_values(self.env_file.read_text(encoding="utf-8"))
+        self.assertEqual(values["USER_AUDIT_TRAIL_ENABLED"], "False")
+
     def test_summary(self):
         self.assertEqual(envtool.update_summary([], []), "nothing to add")
         self.assertEqual(
@@ -277,7 +318,12 @@ class FeatureProfilesTest(unittest.TestCase):
 
     def test_local_keeps_dev_and_unknown_profiles(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": True, "PLUGINS_ENABLED": False},
+            {
+                "CHAT_ENABLED": False,
+                "SESSION_AUDIT_TRAIL_ENABLED": True,
+                "USER_AUDIT_TRAIL_ENABLED": True,
+                "PLUGINS_ENABLED": False,
+            },
             "mcp,dev,chat",
             local=True,
         )
@@ -285,7 +331,8 @@ class FeatureProfilesTest(unittest.TestCase):
             values,
             {
                 "CHAT_ENABLED": "false",
-                "AUDIT_TRAIL_ENABLED": "true",
+                "SESSION_AUDIT_TRAIL_ENABLED": "true",
+                "USER_AUDIT_TRAIL_ENABLED": "true",
                 "PLUGINS_ENABLED": "false",
                 "COMPOSE_PROFILES": "mcp,dev,auditor",
             },
@@ -293,7 +340,12 @@ class FeatureProfilesTest(unittest.TestCase):
 
     def test_production_with_nothing_enabled_writes_none(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": False},
+            {
+                "CHAT_ENABLED": False,
+                "SESSION_AUDIT_TRAIL_ENABLED": False,
+                "USER_AUDIT_TRAIL_ENABLED": False,
+                "PLUGINS_ENABLED": False,
+            },
             "chat,auditor,plugins",
             local=False,
         )
@@ -301,7 +353,12 @@ class FeatureProfilesTest(unittest.TestCase):
 
     def test_production_drops_the_dev_profile(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": False},
+            {
+                "CHAT_ENABLED": True,
+                "SESSION_AUDIT_TRAIL_ENABLED": False,
+                "USER_AUDIT_TRAIL_ENABLED": False,
+                "PLUGINS_ENABLED": False,
+            },
             "dev,auditor",
             local=False,
         )
@@ -309,11 +366,30 @@ class FeatureProfilesTest(unittest.TestCase):
 
     def test_local_adds_dev_when_missing(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": True},
+            {
+                "CHAT_ENABLED": True,
+                "SESSION_AUDIT_TRAIL_ENABLED": False,
+                "USER_AUDIT_TRAIL_ENABLED": False,
+                "PLUGINS_ENABLED": True,
+            },
             "none",
             local=True,
         )
         self.assertEqual(values["COMPOSE_PROFILES"], "dev,chat,plugins")
+
+    def test_auditor_profile_on_when_either_audit_switch_on(self):
+        for session, user in ((True, False), (False, True), (True, True)):
+            values = envtool.feature_values(
+                {
+                    "CHAT_ENABLED": False,
+                    "SESSION_AUDIT_TRAIL_ENABLED": session,
+                    "USER_AUDIT_TRAIL_ENABLED": user,
+                    "PLUGINS_ENABLED": False,
+                },
+                "none",
+                local=False,
+            )
+            self.assertEqual(values["COMPOSE_PROFILES"], "auditor", (session, user))
 
 
 class ProductionValuesTest(unittest.TestCase):
@@ -415,9 +491,10 @@ class SetupWizardTest(unittest.TestCase):
         return envtool.read_env_values(self.env_file.read_text(encoding="utf-8")), output.getvalue()
 
     def test_local_new_file_asks_only_features(self):
-        values, _ = self.run_setup("dev", ["n", "y", ""])
+        values, _ = self.run_setup("dev", ["n", "y", "y", ""])
         self.assertEqual(values["CHAT_ENABLED"], "false")
-        self.assertEqual(values["AUDIT_TRAIL_ENABLED"], "true")
+        self.assertEqual(values["SESSION_AUDIT_TRAIL_ENABLED"], "true")
+        self.assertEqual(values["USER_AUDIT_TRAIL_ENABLED"], "true")
         self.assertEqual(values["COMPOSE_PROFILES"], "dev,auditor")
         self.assertEqual(values["DB_PASSWORD"], "root_password")
         self.assertEqual(values["PLUGINS_ENABLED"], "false")
@@ -425,7 +502,7 @@ class SetupWizardTest(unittest.TestCase):
             self.assertRegex(values[name], r"^[A-Za-z0-9]{32,}$", name)
 
     def test_local_plugins_use_the_localhost_host_django_accepts(self):
-        values, output = self.run_setup("dev", ["n", "y", "y"])
+        values, output = self.run_setup("dev", ["n", "y", "y", "y"])
         self.assertEqual(values["COMPOSE_PROFILES"], "dev,auditor,plugins")
         self.assertEqual(values["DJANGO_FRONTEND_BASE_URL"], "http://epicstaff.localhost")
         self.assertEqual(values["NGINX_SERVER_NAME"], "epicstaff.localhost")
@@ -435,7 +512,7 @@ class SetupWizardTest(unittest.TestCase):
         values, output = self.run_setup(
             "prod",
             [
-                "https://es.example.com", "1", "n", "n", "y",
+                "https://es.example.com", "1", "n", "n", "n", "y",
                 "plugins.invalid", "example.com", "Plugins.Example.com.", "v1", "1", "n",
             ],
         )  # fmt: skip
@@ -450,7 +527,7 @@ class SetupWizardTest(unittest.TestCase):
         for public_url in ("http://10.0.0.5", "http://es.example.com"):
             self.env_file.unlink(missing_ok=True)
             values, output = self.run_setup(
-                "prod", [public_url, "3", "n", "n", "y", "v1", "1", "n"]
+                "prod", [public_url, "3", "n", "n", "n", "y", "v1", "1", "n"]
             )
             self.assertEqual(values["PLUGINS_ENABLED"], "false", public_url)
             self.assertNotIn("plugins", values["COMPOSE_PROFILES"])
@@ -460,7 +537,7 @@ class SetupWizardTest(unittest.TestCase):
         values, output = self.run_setup(
             "prod",
             [
-                "http://es.localhost", "3", "n", "n", "y",
+                "http://es.localhost", "3", "n", "n", "n", "y",
                 "plugins.example.com", "p.localhost", "v1", "1", "n",
             ],
         )  # fmt: skip
@@ -475,7 +552,7 @@ class SetupWizardTest(unittest.TestCase):
         )
         self.env_file.write_text(text, encoding="utf-8")
         # The dev domain default is valid, so it is not asked again.
-        values, _ = self.run_setup("dev", ["1", "", "", "y"])
+        values, _ = self.run_setup("dev", ["1", "", "", "", "y"])
         self.assertEqual(values["PLUGINS_ENABLED"], "true")
         self.assertEqual(values["COMPOSE_PROFILES"], "dev,chat,auditor,plugins")
         self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "plugins.epicstaff.localhost")
@@ -491,7 +568,8 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_production_new_file(self):
         values, output = self.run_setup(
-            "prod", ["https://es.example.com", "1", "y", "n", "n", "latest", "v1.3.0", "3", "n"]
+            "prod",
+            ["https://es.example.com", "1", "y", "n", "n", "n", "latest", "v1.3.0", "3", "n"],
         )
         self.assertNotRegex(
             self.env_file.read_text(encoding="utf-8"), r"(?m)^# \w+=<enter your value>$"
@@ -511,11 +589,11 @@ class SetupWizardTest(unittest.TestCase):
         self.assertIn("src/nginx/certs", output)
 
     def test_wizard_files_are_private(self):
-        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "n"])
+        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "n"])
         self.assertEqual(self.env_file.stat().st_mode & 0o777, 0o600)
 
     def test_wizard_header_warns_against_plain_regeneration(self):
-        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "n"])
+        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "n"])
         header = self.env_file.read_text(encoding="utf-8").split("\n# Deploy\n")[0]
         self.assertIn("envtool.py --setup", header)
         self.assertIn("overwrites this file", header)
@@ -523,18 +601,19 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_proxy_in_front_points_at_the_proxy_count(self):
         _, behind_proxy = self.run_setup(
-            "prod", ["https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
+            "prod", ["https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertIn("DJANGO_NUM_PROXIES", behind_proxy)
         self.env_file.unlink()
         _, nginx_tls = self.run_setup(
-            "prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "n"]
+            "prod", ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertNotIn("DJANGO_NUM_PROXIES", nginx_tls)
 
     def test_production_advanced_settings(self):
         values, _ = self.run_setup(
-            "prod", ["https://es.example.com", "1", "y", "n", "n", "v1", "1", "y", "3", "3", "1"]
+            "prod",
+            ["https://es.example.com", "1", "y", "n", "n", "n", "v1", "1", "y", "3", "3", "1"],
         )
         self.assertEqual(values["DJANGO_SGI_WORKERS"], "6")
         self.assertEqual(values["DJANGO_DB_POOL_MAX_SIZE"], "15")
@@ -545,7 +624,7 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_production_sizes_the_server_from_its_cpus(self):
         # Chat on, advanced settings declined.
-        answers = ["https://es.example.com", "1", "y", "n", "n", "v1", "1", "n"]
+        answers = ["https://es.example.com", "1", "y", "n", "n", "n", "v1", "1", "n"]
         expected = {
             2: ("1", "1", "Detected 2 CPUs: using the Small server size"),
             4: ("3", "2", "Detected 4 CPUs: using the Medium server size"),
@@ -566,7 +645,7 @@ class SetupWizardTest(unittest.TestCase):
     def test_advanced_settings_keep_the_detected_size_on_enter_and_take_another_choice(self):
         self.cpu_count.return_value = 4
         # Advanced settings opened: server size, then code time limit 30 minutes, logging INFO.
-        opened = ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "y"]
+        opened = ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "y"]
         kept, _ = self.run_setup("prod", [*opened, "", "2", "2"])
         self.assertEqual(kept["DJANGO_SGI_WORKERS"], "3")
         self.env_file.unlink()
@@ -582,7 +661,7 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_local_setup_ignores_the_cpu_count(self):
         self.cpu_count.return_value = 16
-        values, output = self.run_setup("dev", ["n", "y", ""])
+        values, output = self.run_setup("dev", ["n", "y", "y", ""])
         self.assertEqual(values["DJANGO_SGI_WORKERS"], "1")
         self.assertNotIn("CPUs", output)
 
@@ -604,7 +683,8 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_verbose_logging_reminds_to_switch_back(self):
         _, created = self.run_setup(
-            "prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "y", "1", "2", "1"]
+            "prod",
+            ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "y", "1", "2", "1"],
         )
         self.assertIn("back to INFO", created)
         # Tune lists "Keep current" first, so DEBUG is 2 and WARNING is 4.
@@ -642,7 +722,7 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_scheme_mismatch_reasks_the_serving_mode(self):
         values, _ = self.run_setup(
-            "prod", ["http://10.0.0.5", "1", "3", "n", "n", "n", "v1", "1", "n"]
+            "prod", ["http://10.0.0.5", "1", "3", "n", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertEqual(values["NGINX_SSL_MODE"], "off")
         self.assertEqual(values["NGINX_HSTS_ENABLED"], "false")
@@ -650,11 +730,16 @@ class SetupWizardTest(unittest.TestCase):
     def test_change_features_rewrites_only_feature_lines(self):
         envtool.main(["--dev", "--env-file", str(self.env_file)])
         original = self.env_file.read_text(encoding="utf-8").splitlines()
-        _, output = self.run_setup("dev", ["1", "n", "y", ""])
+        _, output = self.run_setup("dev", ["1", "n", "y", "y", ""])
         changed = set(self.env_file.read_text(encoding="utf-8").splitlines()) - set(original)
         self.assertEqual(
             changed,
-            {"CHAT_ENABLED=false", "AUDIT_TRAIL_ENABLED=true", "COMPOSE_PROFILES=dev,auditor"},
+            {
+                "CHAT_ENABLED=false",
+                "SESSION_AUDIT_TRAIL_ENABLED=true",
+                "USER_AUDIT_TRAIL_ENABLED=true",
+                "COMPOSE_PROFILES=dev,auditor",
+            },
         )
         self.assertIn("docker compose stop chat chatdb", output)
         self.assertNotIn("stop auditor", output)
@@ -671,7 +756,8 @@ class SetupWizardTest(unittest.TestCase):
             encoding="utf-8",
         )
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
+            "prod",
+            ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"],
         )
         self.assertEqual(values["REDIS_PASSWORD"], "keepme123")
         self.assertEqual(values["CHAT_DB_USER"], "chat")
@@ -682,7 +768,8 @@ class SetupWizardTest(unittest.TestCase):
     def test_start_over_drops_a_quoted_dev_value(self):
         self.env_file.write_text('DB_PASSWORD="root_password"  # dev\n', encoding="utf-8")
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
+            "prod",
+            ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"],
         )
         self.assertNotIn("root_password", values["DB_PASSWORD"])
         self.assertIn("DB_PASSWORD", output)
@@ -693,15 +780,47 @@ class SetupWizardTest(unittest.TestCase):
         self.env_file.write_text(
             text.replace("\nCHAT_ENABLED=true\n", '\nCHAT_ENABLED="true" # on\n'), encoding="utf-8"
         )
-        _, output = self.run_setup("dev", ["1", "", "", ""])
+        _, output = self.run_setup("dev", ["1", "", "", "", ""])
         self.assertNotIn("out of sync", output)
         self.assertNotIn("docker compose stop", output)
+
+    def dev_file_with(self, **flags: str) -> None:
+        envtool.main(["--dev", "--env-file", str(self.env_file)])
+        text = self.env_file.read_text(encoding="utf-8")
+        for name, value in flags.items():
+            text = text.replace(f"\n{name}=True\n", f"\n{name}={value}\n")
+        self.env_file.write_text(text, encoding="utf-8")
+
+    def test_auditor_services_stop_only_when_both_audit_switches_off(self):
+        self.dev_file_with()
+        # Chat kept; the session switch goes off while the user switch stays on.
+        _, output = self.run_setup("dev", ["1", "", "n", "", ""])
+        self.assertNotIn("stop auditor", output)
+        self.assertIn(
+            "auditor", envtool.read_env_values(self.env_file.read_text())["COMPOSE_PROFILES"]
+        )
+        # Now the user switch goes off too.
+        _, output = self.run_setup("dev", ["1", "", "", "n", ""])
+        self.assertEqual(output.count("docker compose stop auditor opensearch"), 1)
+        self.assertNotIn(
+            "auditor", envtool.read_env_values(self.env_file.read_text())["COMPOSE_PROFILES"]
+        )
+
+    def test_out_of_sync_check_with_two_flags_on_one_profile(self):
+        # One flag on keeps the shared profile legitimately on.
+        self.dev_file_with(SESSION_AUDIT_TRAIL_ENABLED="false")
+        _, output = self.run_setup("dev", ["1", "", "", "", ""])
+        self.assertNotIn("out of sync", output)
+        # Both flags off but the profile still on is a real mismatch.
+        self.dev_file_with(SESSION_AUDIT_TRAIL_ENABLED="false", USER_AUDIT_TRAIL_ENABLED="false")
+        _, output = self.run_setup("dev", ["1", "", "", "", ""])
+        self.assertIn("out of sync", output)
 
     def test_start_over_keeps_a_private_backup_of_the_old_file(self):
         original = "DB_PASSWORD=keepme123\nDB_NAME=custom_db\n"
         self.env_file.write_text(original, encoding="utf-8")
         self.run_setup(
-            "prod", ["4", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
+            "prod", ["4", "y", "https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"]
         )
         backup = self.env_file.with_name(".env.backup.env")
         self.assertEqual(backup.read_text(encoding="utf-8"), original)
@@ -715,7 +834,8 @@ class SetupWizardTest(unittest.TestCase):
             encoding="utf-8",
         )
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
+            "prod",
+            ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "n", "v1", "1", "n"],
         )
         self.assertNotEqual(values["DJANGO_API_KEY"], "epicstaff_realtime_api_key")
         self.assertNotEqual(values["AUDIT_JWT_SECRET"], "keepme123")
@@ -745,7 +865,12 @@ class FakeTerminal(io.StringIO):
 ANSI_CODE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
-ALL_ON = {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": True, "PLUGINS_ENABLED": True}
+ALL_ON = {
+    "CHAT_ENABLED": True,
+    "SESSION_AUDIT_TRAIL_ENABLED": True,
+    "USER_AUDIT_TRAIL_ENABLED": True,
+    "PLUGINS_ENABLED": True,
+}
 
 # Most crewdb connections held outside django_app's web servers:
 #   realtime       15 per REALTIME_SGI_WORKERS, 1 by default (SQLAlchemy's default pool, 5 + 10)
@@ -810,7 +935,12 @@ class AdvancedSettingsTest(unittest.TestCase):
         self.assertEqual(set(levels.values()), {"DEBUG"})
 
     def test_settings_of_disabled_features_are_left_alone(self):
-        all_off = {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": False}
+        all_off = {
+            "CHAT_ENABLED": False,
+            "SESSION_AUDIT_TRAIL_ENABLED": False,
+            "USER_AUDIT_TRAIL_ENABLED": False,
+            "PLUGINS_ENABLED": False,
+        }
         values = envtool.advanced_values("large", "30m", "DEBUG", all_off, real_schema())
         for name in ("CHAT_WORKERS", "CHAT_LOG_LEVEL", "AUDITOR_LOG_LEVEL"):
             self.assertNotIn(name, values)
@@ -860,17 +990,17 @@ class TerminalOutputTest(unittest.TestCase):
         return output.getvalue()
 
     def test_terminal_clears_the_screen_per_question_and_shows_the_answers_so_far(self):
-        output = self.run_setup(["n", "y", ""], {}, FakeTerminal())
-        self.assertEqual(output.count("\x1b[2J"), 4)
+        output = self.run_setup(["n", "y", "y", "y", ""], {}, FakeTerminal())
+        self.assertEqual(output.count("\x1b[2J"), 5)
         self.assertIn("\x1b[32m", output)
         final_screen = ANSI_CODE.sub("", output.split("\x1b[2J\x1b[H")[-1])
         self.assertIn("EpicStaff setup", final_screen)
         self.assertIn("✓ Chat: no", final_screen)
-        self.assertIn("✓ Audit trail: yes", final_screen)
+        self.assertIn("✓ Session audit trail: yes", final_screen)
         self.assertIn("✓ Wrote", final_screen)
 
     def test_no_color_keeps_clearing_but_drops_colours(self):
-        output = self.run_setup(["n", "y", ""], {"NO_COLOR": "1"}, FakeTerminal())
+        output = self.run_setup(["n", "y", "y", "y", ""], {"NO_COLOR": "1"}, FakeTerminal())
         self.assertIn("\x1b[2J", output)
         self.assertEqual(
             ANSI_CODE.sub("", output.replace("\x1b[2J\x1b[H", "")),
@@ -878,7 +1008,7 @@ class TerminalOutputTest(unittest.TestCase):
         )
 
     def test_output_that_is_not_a_terminal_has_no_escape_codes(self):
-        output = self.run_setup(["n", "y", ""], {}, io.StringIO())
+        output = self.run_setup(["n", "y", "y", "y", ""], {}, io.StringIO())
         self.assertNotIn("\x1b", output)
         self.assertIn("✓ Chat: no", output)
 

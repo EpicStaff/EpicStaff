@@ -1,8 +1,10 @@
 import asyncio
 
+from foundation.cryptographer import AbstractCryptographer, FernetRotatedCryptographer
 from foundation.utils.litestar import di
 from litestar.datastructures import State
 
+from manager import settings
 from manager.application.orchestrators import JobOrchestrator
 from manager.application.ports import (
     AbstractFileStorage,
@@ -24,10 +26,25 @@ async def file_storage(state: State) -> AbstractFileStorage:
     return state.custom_library_storage
 
 
+@di.register(use_cache=True, sync_to_thread=False)
+def cryptographer() -> AbstractCryptographer:
+    """Build the cryptographer that opens transport-sealed secrets.
+
+    Cached by Litestar, so the request path and the held-job releaser share one instance.
+    """
+    return FernetRotatedCryptographer(
+        settings.SECRETS_TRANSPORT_KEY,
+        settings.SECRETS_TRANSPORT_PREVIOUS_KEYS,
+        hkdf_info=settings.SECRETS_TRANSPORT_HKDF_INFO.encode(),
+    )
+
+
 @di.register
-async def job_orchestrator(state: State, uow: AbstractUnitOfWork) -> JobOrchestrator:
+async def job_orchestrator(
+    state: State, uow: AbstractUnitOfWork, cryptographer: AbstractCryptographer
+) -> JobOrchestrator:
     """Build the request's orchestrator from the factory the runtime published on startup."""
-    return state.build_job_orchestrator(uow)
+    return state.build_job_orchestrator(uow, cryptographer=cryptographer)
 
 
 @di.register

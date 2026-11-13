@@ -13,6 +13,7 @@ from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from foundation.cryptographer import AbstractCryptographer, CryptographerError
 from litestar.datastructures import UploadFile
 from loguru import logger
 from packaging.utils import InvalidWheelFilename, parse_wheel_filename
@@ -38,6 +39,7 @@ from manager.domain.errors import (
     CustomLibraryNotFoundError,
     CustomLibraryNotPublishedError,
     CustomLibraryStillBuildingError,
+    SecretNotDecryptableError,
     UnsupportedUploadError,
     UVBuildError,
     VenvNotFoundError,
@@ -326,7 +328,12 @@ class JobOrchestrator:
     worker queue is stamped with the moment it was queued; the worker fails it instead
     of running it once it has waited longer than the queue timeout.
 
+    Secrets arrive sealed for transport and are opened here, before the job exists, so
+    everything downstream (holding, the worker queue, the code wrapper and the output
+    scrubber) only ever sees plaintext.
+
     Args:
+        cryptographer: Opens the transport-sealed secret values.
         clock: Monotonic clock for hold deadlines, which never leave this process.
         wall_clock: Clock for `Job.queued_at`, which crosses to the worker and so must
             mean the same thing in another process.
@@ -341,6 +348,7 @@ class JobOrchestrator:
         registry: ExecutionRegistry,
         intake_gate: IntakeGate,
         *,
+        cryptographer: AbstractCryptographer,
         hold_timeout: float,
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
@@ -351,6 +359,7 @@ class JobOrchestrator:
         self.failure_sink = failure_sink
         self.registry = registry
         self.intake_gate = intake_gate
+        self.cryptographer = cryptographer
         self.hold_timeout = hold_timeout
         self.clock = clock
         self.wall_clock = wall_clock
@@ -388,6 +397,8 @@ class JobOrchestrator:
             VenvNotFoundError: `venv_id` names no venv, or there is no default venv.
             SandboxOverloadedError: The sandbox cannot take the job now, or the first
                 submission of this id is still being admitted.
+            SecretNotDecryptableError: A secret value is not a transport ciphertext
+                this sandbox can open.
         """
         self.intake_gate.check_not_in_progress(execution_id)
 
@@ -395,6 +406,10 @@ class JobOrchestrator:
         if known_status is not None:
             logger.info("Execution {} is already known; not enqueued again", execution_id)
             return known_status
+
+        logger.info("BEFORE SECRETS: {}", secrets)
+        secrets = self._open_secrets(execution_id, secrets)
+        logger.info("AFTER SECRETS: {}", secrets)
 
         # Reserved before the first await, so a concurrent re-POST sees the id as known.
         self.registry.reserve(execution_id)
@@ -497,6 +512,22 @@ class JobOrchestrator:
             # Type only: a validation error's text would quote the job's secrets.
             logger.error("Failed to dispatch job {}: {}", job.execution_id, type(error).__name__)
             await self._fail(job, _DISPATCH_FAILED_MESSAGE, not_run_reason="dispatch_failed")
+
+    def _open_secrets(self, execution_id: str, secrets: dict[str, Any]) -> dict[str, str]:
+        opened: dict[str, str] = {}
+        for name, sealed in secrets.items():
+            try:
+                # The wire contract allows any JSON value; only a string can be a ciphertext.
+                if not isinstance(sealed, str):
+                    raise CryptographerError
+                opened[name] = self.cryptographer.decrypt(sealed)
+            except CryptographerError:
+                # The name only: the value, sealed or not, stays out of logs and answers.
+                logger.warning(
+                    "Execution {} rejected: secret {} could not be decrypted", execution_id, name
+                )
+                raise SecretNotDecryptableError(name=name) from None
+        return opened
 
     async def _fail(self, job: Job, message: str, *, not_run_reason: NotRunReason) -> None:
         await self.failure_sink.fail(
