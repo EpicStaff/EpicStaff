@@ -207,7 +207,13 @@ $section-gutter: 22px;
     min-width: 0;
 
     &--stack {
+        flex-direction: row;
+        align-items: flex-end;
         gap: 1rem;
+
+        > .field {
+            flex: 1 1 0;
+        }
     }
 
     &__error {

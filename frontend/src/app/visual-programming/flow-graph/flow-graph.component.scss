@@ -437,6 +437,18 @@
             &.End:not(.f-selected) {
                 fill: var(--slate-215);
             }
+            &.diff-unchanged:not(.f-selected) {
+                fill: var(--gray-590);
+            }
+            &.diff-added:not(.f-selected) {
+                fill: var(--color-diff-added);
+            }
+            &.diff-deleted:not(.f-selected) {
+                fill: var(--color-diff-deleted);
+            }
+            &.diff-changed:not(.f-selected) {
+                fill: var(--color-diff-changed);
+            }
             // Last, so it overrides the node-type colour above.
             &.is-unused:not(.f-selected) {
                 fill: transparent;

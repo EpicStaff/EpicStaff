@@ -16,3 +16,12 @@
     min-height: 0;
     height: 100%;
 }
+
+.code-diff-view__editor ::ng-deep .monaco-editor {
+    --vscode-diffEditor-removedLineBackground: rgb(44, 30, 31);
+    --vscode-diffEditor-removedTextBackground: rgb(74, 34, 36);
+    --vscode-diffEditorGutter-removedLineBackground: rgb(44, 30, 31);
+    --vscode-diffEditor-insertedLineBackground: rgb(30, 44, 31);
+    --vscode-diffEditor-insertedTextBackground: rgb(34, 74, 36);
+    --vscode-diffEditorGutter-insertedLineBackground: rgb(30, 44, 31);
+}

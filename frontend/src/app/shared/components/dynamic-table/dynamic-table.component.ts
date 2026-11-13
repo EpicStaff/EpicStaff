@@ -17,6 +17,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
+import { SelectComponent } from '../select/select.component';
 import { TableColumnDef, TableRow } from './dynamic-table.models';
 
 @Component({
@@ -27,6 +28,7 @@ import { TableColumnDef, TableRow } from './dynamic-table.models';
         DragDropModule,
         AppSvgIconComponent,
         CheckboxComponent,
+        SelectComponent,
         MatTooltipModule,
         TooltipOnOverflowDirective,
     ],

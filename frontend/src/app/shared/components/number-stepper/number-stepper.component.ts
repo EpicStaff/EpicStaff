@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
 import { ControlValueAccessor, FormControl, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
+import { groupThousands } from '@shared/utils';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -117,6 +118,8 @@ export class NumberStepperComponent implements ControlValueAccessor {
         }
         return val.toString();
     });
+
+    protected readonly groups = computed(() => (this.readonly() ? null : groupThousands(this.displayValue())));
 
     canStepDown = computed(() => {
         const val = this.value();
