@@ -65,12 +65,7 @@ import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schem
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
 import { getClassificationTableVisualHeight, TABLE_NODE_WIDTH } from '../../../core/helpers/node-size.util';
-import {
-    getNodeStorageGrants,
-    slotInvolvesStorage,
-    storageGrantLockOf,
-    storageToggleLockOf,
-} from '../../../core/helpers/storage-grants.util';
+import { getNodeStorageGrants, storageGrantLockOf } from '../../../core/helpers/storage-grants.util';
 import { CdtSection, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import {
     ClassificationDecisionTableData,
@@ -345,10 +340,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     protected readonly preStorageGrantLock = computed(() => this.slotLock('pre'));
     /** Why the post-computation code and what steers it may not be edited (see `storageGrantLock`), else `null`. */
     protected readonly postStorageGrantLock = computed(() => this.slotLock('post'));
-    /** Why the pre-computation storage switch may not be turned on (see `storageToggleLock`), else `null`. */
-    protected readonly preStorageToggleLock = computed(() => this.slotToggleLock('pre'));
-    /** Why the post-computation storage switch may not be turned on (see `storageToggleLock`), else `null`. */
-    protected readonly postStorageToggleLock = computed(() => this.slotToggleLock('post'));
     protected readonly isPreReadOnly = computed(() => this.isReadOnly() || this.preStorageGrantLock() !== null);
     protected readonly isPostReadOnly = computed(() => this.isReadOnly() || this.postStorageGrantLock() !== null);
     public readonly preSecretsTooltip = computed(() =>
@@ -756,17 +747,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return storageGrantLockOf(
             getNodeStorageGrants(this.node(), slot),
             (resource, action) => this.permissionsService.can(resource, action),
-            () => this.permissionsService.isActivePermissionsLoaded(),
-            slotInvolvesStorage(this.node(), slot)
-        );
-    }
-
-    private slotToggleLock(slot: 'pre' | 'post'): string | null {
-        return storageToggleLockOf(
-            getNodeStorageGrants(this.node(), slot),
-            (resource, action) => this.permissionsService.can(resource, action),
-            () => this.permissionsService.isActivePermissionsLoaded(),
-            slotInvolvesStorage(this.node(), slot)
+            () => this.permissionsService.isActivePermissionsLoaded()
         );
     }
 

@@ -1,9 +1,8 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
 import { computed, DestroyRef, effect, inject, Injectable, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
-import { downloadBlob, escapeHtml, extractHttpErrorMessage, isClientError, recycleBinNotice } from '@shared/utils';
+import { downloadBlob, escapeHtml, recycleBinNotice } from '@shared/utils';
 import { defer, EMPTY, forkJoin, from, Observable, of, Subject, Subscription } from 'rxjs';
 import { catchError, concatMap, finalize, map, switchMap, toArray } from 'rxjs/operators';
 
@@ -522,12 +521,7 @@ export class StorageTreeFacade {
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe({
                     next: () => this.toastService.success(`"${item.name}" flow assignments updated`),
-                    error: (error: HttpErrorResponse) =>
-                        this.toastService.error(
-                            isClientError(error)
-                                ? extractHttpErrorMessage(error)
-                                : `Failed to update flow assignments for "${item.name}"`
-                        ),
+                    error: () => this.toastService.error(`Failed to update flow assignments for "${item.name}"`),
                 });
         });
     }

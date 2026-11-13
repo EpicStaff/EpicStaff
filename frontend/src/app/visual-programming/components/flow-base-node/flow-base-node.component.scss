@@ -212,15 +212,7 @@
                 border: 1px solid color-mix(in srgb, var(--color-error) 60%, transparent);
             }
 
-            // Amber: file access that was never set, something to review rather than a fault.
-            .caution-badge {
-                background: color-mix(in srgb, var(--color-warning) 15%, transparent);
-                color: var(--color-warning);
-                border: 1px solid color-mix(in srgb, var(--color-warning) 60%, transparent);
-            }
-
-            .llm-warning-badge,
-            .caution-badge {
+            .llm-warning-badge {
                 display: flex;
                 align-items: center;
                 gap: 4px;

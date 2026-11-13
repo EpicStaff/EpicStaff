@@ -253,7 +253,6 @@
                             <app-diff-field-mark [diffField]="'pre_use_storage'">
                                 <app-node-storage-section
                                     [readonly]="isPreReadOnly() || isPreCodeLocked()"
-                                    [lockReason]="preStorageToggleLock()"
                                     [useStorage]="preUseStorage()"
                                     (onToggleChange)="onPreStorageToggle($event)"
                                     (onInsertCode)="insertPreStorageCode($event)"
@@ -266,8 +265,7 @@
                             >
                                 <app-storage-grants-field
                                     formControlName="pre_storage_grants"
-                                    legend="Access when started by a trigger"
-                                    [readonly]="isPreReadOnly()"
+                                    [readonly]="isReadOnly()"
                                 />
                             </app-diff-field-mark>
                         </div>
@@ -369,7 +367,6 @@
                             <app-diff-field-mark [diffField]="'post_use_storage'">
                                 <app-node-storage-section
                                     [readonly]="isPostReadOnly() || isPostCodeLocked()"
-                                    [lockReason]="postStorageToggleLock()"
                                     [useStorage]="postUseStorage()"
                                     (onToggleChange)="onPostStorageToggle($event)"
                                     (onInsertCode)="insertPostStorageCode($event)"
@@ -382,8 +379,7 @@
                             >
                                 <app-storage-grants-field
                                     formControlName="post_storage_grants"
-                                    legend="Access when started by a trigger"
-                                    [readonly]="isPostReadOnly()"
+                                    [readonly]="isReadOnly()"
                                 />
                             </app-diff-field-mark>
                         </div>

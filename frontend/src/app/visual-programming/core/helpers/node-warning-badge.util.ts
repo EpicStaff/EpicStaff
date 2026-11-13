@@ -2,10 +2,10 @@ import { MatTooltip } from '@angular/material/tooltip';
 
 /**
  * One warning a node raises on the canvas. `blocked` is the red "missing reference" style, `warning` the red
- * alert-triangle one, `caution` the amber one for something to review that is not broken.
+ * alert-triangle one.
  */
 export interface NodeWarningBadge {
-    kind: 'warning' | 'blocked' | 'caution';
+    kind: 'warning' | 'blocked';
     label: string;
     tooltip: string;
 }
@@ -32,9 +32,4 @@ export function buildNodeWarningChip(messages: readonly string[]): NodeWarningCh
 /** Lets a node name's tooltip show only when the name is cut off, so a name that fits is not announced twice. */
 export function enableTooltipOnlyWhenTruncated(tooltip: MatTooltip, nameElement: HTMLElement): void {
     tooltip.disabled = nameElement.scrollWidth <= nameElement.clientWidth;
-}
-
-/** A chip is error-styled when any badge behind it is, and amber only when all of them are cautions. */
-export function nodeWarningChipKind(badges: readonly NodeWarningBadge[]): 'warning' | 'caution' {
-    return badges.every((badge) => badge.kind === 'caution') ? 'caution' : 'warning';
 }

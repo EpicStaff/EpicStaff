@@ -246,24 +246,6 @@ describe('ClipboardService paste storage grants', () => {
         expect(copy.storageGrants).toEqual({ read: true, write: false, delete: true });
     });
 
-    it('makes a not-configured copy explicit, with what the user holds, unless they hold all three', () => {
-        const stored = { read: null, write: null, delete: null };
-        const python = canvasNode('python-1', NodeType.PYTHON, { storageGrants: stored });
-
-        const [limited] = pasteAs([ActionCode.Read], python);
-
-        expect(limited.storageGrants).toEqual({ read: true, write: false, delete: false });
-    });
-
-    it('keeps a not-configured copy not configured for a user who holds all three', () => {
-        const stored = { read: null, write: null, delete: null };
-        const python = canvasNode('python-1', NodeType.PYTHON, { storageGrants: stored });
-
-        const [copy] = pasteAs([ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete], python);
-
-        expect(copy.storageGrants).toEqual(stored);
-    });
-
     it('caps each slot of a classification table copy', () => {
         const table = canvasNode('cdt-1', NodeType.CLASSIFICATION_TABLE, {
             preStorageGrants: { read: true, write: false, delete: true },

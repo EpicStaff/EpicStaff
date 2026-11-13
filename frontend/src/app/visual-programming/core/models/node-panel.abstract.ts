@@ -15,12 +15,7 @@ import { notWhitespaceValidator } from '@shared/form-validators';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
-import {
-    getNodeStorageGrants,
-    slotInvolvesStorage,
-    storageGrantLockOf,
-    storageToggleLockOf,
-} from '../helpers/storage-grants.util';
+import { filesReadLockOf, getNodeStorageGrants, storageGrantLockOf } from '../helpers/storage-grants.util';
 import { NodeModel } from './node.model';
 
 /** The backend's `node_name` column length. */
@@ -37,34 +32,37 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     protected readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly grantPermissions = inject(PermissionsService);
     /**
-     * Why the node's code and the fields that steer it may not be edited: the node's saved storage grants
-     * include a permission the user's own role lacks. `null` when nothing locks the node. A classification
-     * decision table has two slots and locks each itself.
+     * Why the node's code and the fields that steer it may not be edited: a box ticked in the node's saved storage
+     * grants needs a Files permission the user's role lacks. `null` when nothing locks the node. The boxes
+     * themselves stay open for unticking. A classification decision table has two slots and locks each itself.
      */
     public readonly storageGrantLock = computed<string | null>(() =>
         storageGrantLockOf(
             getNodeStorageGrants(this.node()),
             (resource, action) => this.grantPermissions.can(resource, action),
-            () => this.grantPermissions.isActivePermissionsLoaded(),
-            slotInvolvesStorage(this.node())
+            () => this.grantPermissions.isActivePermissionsLoaded()
         )
     );
     /**
-     * Why the storage switch may not be turned on: the code has no grants configured, storage is off, and the user
-     * lacks a Files action storage would give it. `null` otherwise. The rest of the panel stays editable.
+     * Why a file extractor or audio transcription may not be changed at all: its code always reads the flow's
+     * attached files and the user lacks Files:Read. `null` for every other node and for a user who holds it.
      */
-    public readonly storageToggleLock = computed<string | null>(() =>
-        storageToggleLockOf(
-            getNodeStorageGrants(this.node()),
+    public readonly filesReadLock = computed<string | null>(() =>
+        filesReadLockOf(
+            this.node().type,
             (resource, action) => this.grantPermissions.can(resource, action),
-            () => this.grantPermissions.isActivePermissionsLoaded(),
-            slotInvolvesStorage(this.node())
+            () => this.grantPermissions.isActivePermissionsLoaded()
         )
     );
-    /** Nothing here can be changed: a read-only editor, a trigger node for a user without Flows:Use, or a storage grant lock. */
-    public readonly isReadOnly = computed(
-        () => this.flowReadOnly.isNodeTypeReadOnly(this.node().type) || this.storageGrantLock() !== null
+    /**
+     * Nothing can be saved: a read-only editor, a trigger node for a user without Flows:Use, or a node the user
+     * may not read the files of. A storage grant lock is not one of these: it still lets the boxes be unticked.
+     */
+    public readonly isEditingBlocked = computed(
+        () => this.flowReadOnly.isNodeTypeReadOnly(this.node().type) || this.filesReadLock() !== null
     );
+    /** Nothing here can be changed but the storage grant boxes, which may still be unticked under a storage grant lock. */
+    public readonly isReadOnly = computed(() => this.isEditingBlocked() || this.storageGrantLock() !== null);
     private lastInitializedNodeId: string | null = null;
 
     node = input.required<T>();
@@ -93,7 +91,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     constructor() {
         // A lock can appear or go after the panel opened (the permissions load late): follow it.
         effect(() => {
-            const isLocked = this.storageGrantLock() !== null;
+            const isLocked = this.storageGrantLock() !== null || this.filesReadLock() !== null;
             untracked(() => {
                 if (!this.form) return;
                 if (isLocked && this.form.enabled) {
@@ -136,7 +134,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
      * invalid form it returns `saveWhenFormInvalid()`: whatever is not saved then is lost.
      */
     public onSave(): T | null {
-        if (this.isReadOnly()) {
+        if (this.isEditingBlocked()) {
             this.flowReadOnly.notifyNodeTypeBlocked(this.node().type);
             return null;
         }
@@ -155,7 +153,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
      * saves nothing (null): the panel stays open with every edit kept, so the user can fix the fields.
      */
     public onSaveSilently(): T | null {
-        if (this.isReadOnly()) return null;
+        if (this.isEditingBlocked()) return null;
         if (!this.form) return null;
         if (this.form.invalid) return null;
         try {
@@ -179,7 +177,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
      * silently dropped.
      */
     public captureForValidation(): T | null {
-        if (this.isReadOnly()) return null;
+        if (this.isEditingBlocked()) return null;
         if (!this.form) return null;
         this.form.markAllAsTouched();
         this.notifyExternalChange();

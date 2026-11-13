@@ -118,16 +118,6 @@
             border: 1px solid color-mix(in srgb, var(--color-error) 60%, transparent);
         }
 
-        // Amber: file access that was never set, something to review rather than a fault.
-        .caution-badge {
-            font-weight: var(--text-caption-weight);
-            font-size: var(--text-caption-size);
-            line-height: var(--text-caption-line-height);
-            background: color-mix(in srgb, var(--color-warning) 15%, transparent);
-            color: var(--color-warning);
-            border: 1px solid color-mix(in srgb, var(--color-warning) 60%, transparent);
-        }
-
         .blocked-badge {
             font-size: 0.6875rem;
             background: var(--red-400-alpha-15);

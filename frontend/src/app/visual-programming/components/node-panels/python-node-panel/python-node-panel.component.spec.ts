@@ -11,7 +11,6 @@ import {
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
     SelectComponent,
-    ToggleSwitchComponent,
 } from '@shared/components';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
@@ -945,26 +944,20 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
     );
 
     describe('changed storage grants', () => {
-        const NOT_CONFIGURED: StorageGrants = { read: null, write: null, delete: null };
+        const EVERYTHING: StorageGrants = { read: true, write: true, delete: true };
 
         it.each([
             {
-                kind: 'granted actions',
+                kind: 'ticked actions',
                 current: { read: true, write: true, delete: false },
-                version: NOT_CONFIGURED,
+                version: EVERYTHING,
                 shown: '[Read, Write]',
             },
             {
                 kind: 'no access',
                 current: { read: false, write: false, delete: false },
-                version: NOT_CONFIGURED,
+                version: EVERYTHING,
                 shown: '[No access]',
-            },
-            {
-                kind: 'not configured',
-                current: NOT_CONFIGURED,
-                version: { read: false, write: false, delete: false },
-                shown: '[Not configured]',
             },
         ])('boxes the whole group and shows the current $kind in the tooltip', ({ current, version, shown }) => {
             const root = open('changed', [change('storage_grants', current, version)]);
@@ -1243,15 +1236,12 @@ describe('PythonNodePanelComponent code that reads secrets', () => {
     });
 });
 
-describe('PythonNodePanelComponent storage grant lock for a not-configured node', () => {
-    const NOT_CONFIGURED: StorageGrants = { read: null, write: null, delete: null };
+describe('PythonNodePanelComponent storage grant lock', () => {
     const ALL_FILES = [ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete];
+    const EVERYTHING: StorageGrants = { read: true, write: true, delete: true };
+    const NOTHING: StorageGrants = { read: false, write: false, delete: false };
 
-    function open(
-        files: ActionCode[],
-        useStorage: boolean,
-        storageGrants: StorageGrants = NOT_CONFIGURED
-    ): PythonNodePanelComponent {
+    function open(files: ActionCode[], storageGrants: StorageGrants): PythonNodePanelComponent {
         TestBed.configureTestingModule({
             providers: [
                 provideLoadedExecutionTimeoutLimits(),
@@ -1271,93 +1261,44 @@ describe('PythonNodePanelComponent storage grant lock for a not-configured node'
         const fixture = TestBed.createComponent(PythonNodePanelComponent);
         fixture.componentRef.setInput('node', {
             ...pythonNode,
-            data: { ...pythonNode.data, secret_ids: [], use_storage: useStorage },
+            data: { ...pythonNode.data, secret_ids: [] },
             storageGrants,
         });
         fixture.detectChanges();
         return fixture.componentInstance;
     }
 
-    it('locks the panel when storage is on and the user lacks a Files action', () => {
-        const panel = open([ActionCode.Read, ActionCode.Create], true);
+    it('locks the panel when a ticked box needs a Files permission the user lacks', () => {
+        const panel = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], EVERYTHING);
 
-        expect(panel.storageGrantLock()).toBe(
-            "This code runs with Files: Update, Files: Delete, which you don't have. Contact an admin to change it."
-        );
+        expect(panel.storageGrantLock()).toContain('Files: Delete');
         expect(panel.isReadOnly()).toBe(true);
         expect(panel.form.disabled).toBe(true);
-        expect(panel.storageToggleLock()).toBeNull();
     });
 
-    it('leaves the panel editable but refuses to turn storage on when storage is off', () => {
-        const panel = open([ActionCode.Read], false);
+    it('still saves a lock-lowering change: unticking Delete, and nothing else', () => {
+        const panel = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], EVERYTHING);
+
+        panel.form.get('storage_grants')!.setValue({ read: true, write: true, delete: false });
+        const saved = panel.onSave();
+
+        expect(saved?.storageGrants).toEqual({ read: true, write: true, delete: false });
+        expect(saved?.node_name).toBe(pythonNode.node_name);
+        expect(saved?.data.code).toBe(pythonNode.data.code);
+    });
+
+    it('does not lock a node whose boxes are all unticked, whatever the role holds', () => {
+        const panel = open([], NOTHING);
 
         expect(panel.storageGrantLock()).toBeNull();
         expect(panel.isReadOnly()).toBe(false);
         expect(panel.form.enabled).toBe(true);
-        expect(panel.storageToggleLock()).toBe(
-            "Storage gives this code Files: Create, Files: Update, Files: Delete, which you don't have. Contact an admin to turn it on."
-        );
     });
 
-    it.each([true, false])('locks nothing for a user holding every Files action (storage on: %s)', (useStorage) => {
-        const panel = open(ALL_FILES, useStorage);
+    it('does not lock a user holding every permission behind the ticked boxes', () => {
+        const panel = open(ALL_FILES, EVERYTHING);
 
+        expect(panel.storageGrantLock()).toBeNull();
         expect(panel.isReadOnly()).toBe(false);
-        expect(panel.storageToggleLock()).toBeNull();
-    });
-
-    it('renders the toggle lock on the real storage section: switch disabled, reason under it', () => {
-        TestBed.configureTestingModule({
-            providers: [
-                provideLoadedExecutionTimeoutLimits(),
-                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
-                {
-                    provide: PermissionsService,
-                    useValue: {
-                        can: (resource: ResourceCode, action: ActionCode) =>
-                            resource === ResourceCode.Files ? action === ActionCode.Read : true,
-                        canEditSecrets: () => true,
-                        isActivePermissionsLoaded: () => true,
-                    },
-                },
-                { provide: VenvsApiService, useValue: { getVenvs: () => of([]) } },
-                { provide: SecretsStorageService, useValue: { namesForIds: () => [] } },
-                { provide: RuffWasmService, useValue: { check: () => Promise.resolve([]) } },
-                { provide: RuffDiagnosticsService, useValue: { setMarkers: () => {}, hasSyntaxErrors: () => false } },
-            ],
-        });
-        TestBed.overrideComponent(PythonNodePanelComponent, {
-            set: {
-                imports: [
-                    CodeEditorComponent,
-                    NodeStorageSectionComponent,
-                    VenvSelectStubComponent,
-                    InputMapStubComponent,
-                ],
-                schemas: [NO_ERRORS_SCHEMA],
-            },
-        });
-        TestBed.overrideComponent(CodeEditorComponent, { set: { template: '', imports: [] } });
-        const fixture = TestBed.createComponent(PythonNodePanelComponent);
-        fixture.componentRef.setInput('node', {
-            ...pythonNode,
-            data: { ...pythonNode.data, secret_ids: [], use_storage: false },
-            storageGrants: NOT_CONFIGURED,
-        });
-        fixture.detectChanges();
-
-        const section = fixture.debugElement.query(By.directive(NodeStorageSectionComponent));
-        expect(section.query(By.directive(ToggleSwitchComponent)).componentInstance.disabled()).toBe(true);
-        expect((section.nativeElement.textContent ?? '').trim()).toContain(
-            "Storage gives this code Files: Create, Files: Update, Files: Delete, which you don't have."
-        );
-    });
-
-    it('leaves a configured node unchanged: explicit no access with storage on does not lock', () => {
-        const panel = open([], true, { read: false, write: false, delete: false });
-
-        expect(panel.isReadOnly()).toBe(false);
-        expect(panel.storageToggleLock()).toBeNull();
     });
 });

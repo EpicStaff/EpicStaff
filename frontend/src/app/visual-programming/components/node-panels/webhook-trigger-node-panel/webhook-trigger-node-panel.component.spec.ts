@@ -4,7 +4,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NO_ERRORS_SCHEMA, Provider, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { ExecutionTimeoutFormField, ToggleSwitchComponent } from '@shared/components';
+import { ExecutionTimeoutFormField } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
@@ -1356,19 +1356,23 @@ describe('WebhookTriggerNodePanelComponent and the Use permission on flows', () 
     );
 });
 
-describe('WebhookTriggerNodePanelComponent storage grant lock for a not-configured node', () => {
+describe('WebhookTriggerNodePanelComponent storage grant lock', () => {
     const ALL_FILES = [ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete];
-    const NOT_CONFIGURED = {
-        storage_grant_read: null,
-        storage_grant_write: null,
-        storage_grant_delete: null,
+    const EVERYTHING: Partial<GetWebhookTriggerNodeRequest> = {
+        storage_grant_read: true,
+        storage_grant_write: true,
+        storage_grant_delete: true,
+    };
+    const NOTHING: Partial<GetWebhookTriggerNodeRequest> = {
+        storage_grant_read: false,
+        storage_grant_write: false,
+        storage_grant_delete: false,
     };
 
-    function open(options: {
-        files: ActionCode[];
-        useStorage: boolean;
-        grants?: Partial<GetWebhookTriggerNodeRequest>;
-    }): ComponentFixture<WebhookTriggerNodePanelComponent> {
+    function open(
+        files: ActionCode[],
+        grants: Partial<GetWebhookTriggerNodeRequest>
+    ): ComponentFixture<WebhookTriggerNodePanelComponent> {
         TestBed.configureTestingModule({
             providers: [
                 provideLoadedExecutionTimeoutLimits(),
@@ -1379,7 +1383,7 @@ describe('WebhookTriggerNodePanelComponent storage grant lock for a not-configur
                     provide: PermissionsService,
                     useValue: {
                         can: (resource: ResourceCode, action: ActionCode) =>
-                            resource === ResourceCode.Files ? options.files.includes(action) : true,
+                            resource === ResourceCode.Files ? files.includes(action) : true,
                         canAny: () => true,
                         canEditSecrets: () => true,
                         isActivePermissionsLoaded: () => true,
@@ -1392,18 +1396,10 @@ describe('WebhookTriggerNodePanelComponent storage grant lock for a not-configur
             ],
         });
         TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
-            set: { imports: [NgTemplateOutlet, NodeStorageSectionComponent], schemas: [NO_ERRORS_SCHEMA] },
+            set: { imports: [NgTemplateOutlet], schemas: [NO_ERRORS_SCHEMA] },
         });
         const fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
-        fixture.componentRef.setInput(
-            'node',
-            mapWebhookTriggerNodeToModel({
-                ...DTO,
-                ...NOT_CONFIGURED,
-                use_storage: options.useStorage,
-                ...options.grants,
-            })
-        );
+        fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel({ ...DTO, ...grants }));
         fixture.detectChanges();
         return fixture;
     }
@@ -1414,47 +1410,37 @@ describe('WebhookTriggerNodePanelComponent storage grant lock for a not-configur
             .map((element) => (element.nativeElement.textContent ?? '').trim());
     }
 
-    function storageSwitchDisabled(fixture: ComponentFixture<WebhookTriggerNodePanelComponent>): boolean {
-        return fixture.debugElement.query(By.directive(ToggleSwitchComponent)).componentInstance.disabled();
-    }
-
-    it('locks the whole panel when storage is on and the user lacks a Files action', () => {
-        const fixture = open({ files: [ActionCode.Read], useStorage: true });
+    it('locks the whole panel when a ticked box needs a Files permission the user lacks', () => {
+        const fixture = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], EVERYTHING);
 
         expect(fixture.componentInstance.isReadOnly()).toBe(true);
         expect(fixture.componentInstance.form.disabled).toBe(true);
-        expect(hints(fixture)).toContain(
-            "This code runs with Files: Create, Files: Update, Files: Delete, which you don't have. Contact an admin to change it."
-        );
+        expect(hints(fixture).join(' ')).toContain("Files: Delete, which you don't have");
     });
 
-    it('keeps the panel editable but the storage switch off when storage is off and the user lacks a Files action', () => {
-        const fixture = open({ files: [ActionCode.Read], useStorage: false });
+    it('still saves unticking Delete from a locked panel, and nothing else', () => {
+        const fixture = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], EVERYTHING);
+        const before = fixture.componentInstance.node();
 
-        expect(fixture.componentInstance.isReadOnly()).toBe(false);
-        expect(fixture.componentInstance.form.enabled).toBe(true);
-        expect(storageSwitchDisabled(fixture)).toBe(true);
-        expect(hints(fixture)).toEqual([
-            "Storage gives this code Files: Create, Files: Update, Files: Delete, which you don't have. Contact an admin to turn it on.",
-        ]);
+        fixture.componentInstance.form.get('storage_grants')!.setValue({ read: true, write: true, delete: false });
+        const saved = fixture.componentInstance.onSave();
+
+        expect(saved?.storageGrants).toEqual({ read: true, write: true, delete: false });
+        expect(saved?.node_name).toBe(before.node_name);
+        expect(saved?.data.python_code.code).toBe(before.data.python_code.code);
     });
 
-    it.each([true, false])('locks nothing for a user holding every Files action (storage on: %s)', (useStorage) => {
-        const fixture = open({ files: ALL_FILES, useStorage });
+    it('does not lock a node whose boxes are all unticked, whatever the role holds', () => {
+        const fixture = open([], NOTHING);
 
         expect(fixture.componentInstance.isReadOnly()).toBe(false);
-        expect(storageSwitchDisabled(fixture)).toBe(false);
         expect(hints(fixture)).toEqual([]);
     });
 
-    it('leaves a configured node as it was: explicit no access with storage on does not lock', () => {
-        const fixture = open({
-            files: [],
-            useStorage: true,
-            grants: { storage_grant_read: false, storage_grant_write: false, storage_grant_delete: false },
-        });
+    it('does not lock a user holding every permission behind the ticked boxes', () => {
+        const fixture = open(ALL_FILES, EVERYTHING);
 
         expect(fixture.componentInstance.isReadOnly()).toBe(false);
-        expect(storageSwitchDisabled(fixture)).toBe(false);
+        expect(hints(fixture)).toEqual([]);
     });
 });

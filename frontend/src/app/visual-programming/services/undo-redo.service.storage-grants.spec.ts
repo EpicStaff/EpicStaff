@@ -12,8 +12,8 @@ function flowOf(node: NodeModel): FlowModel {
     return { nodes: [node], connections: [] };
 }
 
-describe('undoing a file access change on a not-configured node', () => {
-    it('brings the grants back to all null, so a save sends nothing for the node', () => {
+describe('undoing a file access change', () => {
+    it('brings the grants back to what was stored, so a save sends nothing for the node', () => {
         const flowService = TestBed.inject(FlowService);
         const undoRedo = TestBed.inject(UndoRedoService);
         const stored = mapPythonNodeToModel({
@@ -32,9 +32,9 @@ describe('undoing a file access change on a not-configured node', () => {
             created_by: null,
             last_edited_by: null,
             last_edited_at: null,
-            storage_grant_read: null,
-            storage_grant_write: null,
-            storage_grant_delete: null,
+            storage_grant_read: false,
+            storage_grant_write: false,
+            storage_grant_delete: false,
         });
         flowService.setFlow(flowOf(stored));
 
@@ -45,7 +45,7 @@ describe('undoing a file access change on a not-configured node', () => {
         undoRedo.onUndo();
 
         const restored = flowService.nodes()[0];
-        expect(restored.storageGrants).toEqual({ read: null, write: null, delete: null });
+        expect(restored.storageGrants).toEqual({ read: false, write: false, delete: false });
         const diff = getNodeDiff(flowOf(stored), flowOf(restored));
         expect(
             Object.values(diff).flatMap((entry) => [...entry.toCreate, ...entry.toUpdate, ...entry.toDelete])

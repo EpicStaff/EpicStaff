@@ -201,7 +201,6 @@ export const SEMANTIC_PROJECTIONS = {
             instructions: storedText(node.data.instructions ?? ''),
             output_schema: node.data.output_schema ?? {},
             remember_output: node.data.remember_output ?? false,
-            storage_grants: storageGrants(node.storageGrants),
             agent_definition: node.data.agent_definition,
             ...inputOutput(node),
             surface_list: sortedNumbers(node.data.surface_list),
@@ -212,7 +211,6 @@ export const SEMANTIC_PROJECTIONS = {
     [NodeType.AGENT]: {
         project: (node) => ({
             node_name: nodeName(node),
-            storage_grants: storageGrants(node.storageGrants),
             agent_definition: node.data.agent_definition,
             ...inputOutput(node),
             surface_list: sortedNumbers(node.data.surface_list),
@@ -222,19 +220,11 @@ export const SEMANTIC_PROJECTIONS = {
         ignored: INLINE_SURFACE_IGNORED,
     },
     [NodeType.FILE_EXTRACTOR]: {
-        project: (node) => ({
-            node_name: nodeName(node),
-            storage_grants: storageGrants(node.storageGrants),
-            ...inputOutput(node),
-        }),
+        project: (node) => ({ node_name: nodeName(node), ...inputOutput(node) }),
         ignored: {},
     },
     [NodeType.AUDIO_TO_TEXT]: {
-        project: (node) => ({
-            node_name: nodeName(node),
-            storage_grants: storageGrants(node.storageGrants),
-            ...inputOutput(node),
-        }),
+        project: (node) => ({ node_name: nodeName(node), ...inputOutput(node) }),
         ignored: {},
     },
     [NodeType.SUBGRAPH]: {
@@ -380,11 +370,11 @@ function nodeName(node: BaseNodeModel): string {
 }
 
 /**
- * What code may do with the flow's files when a trigger starts the run. A node the server stored no grants for (a
- * version snapshot, an older server) reads as not configured: all three `null`, as a node saved before grants existed.
+ * What code may do with the flow's attached files. A node the server stored no grants for (a version snapshot older
+ * than grants) reads as every box ticked, as the server restores it.
  */
 function storageGrants(grants: StorageGrants | undefined): Projection {
-    return { read: grants?.read ?? null, write: grants?.write ?? null, delete: grants?.delete ?? null };
+    return { read: grants?.read ?? true, write: grants?.write ?? true, delete: grants?.delete ?? true };
 }
 
 function inputOutput(node: BaseNodeModel): Projection {

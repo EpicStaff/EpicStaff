@@ -165,7 +165,6 @@
                     <app-diff-field-mark [diffField]="'use_storage'">
                         <app-node-storage-section
                             [readonly]="isCodeReadOnly()"
-                            [lockReason]="storageToggleLock()"
                             [useStorage]="useStorage()"
                             (onToggleChange)="onStorageToggle($event)"
                             (onInsertCode)="insertStorageCode($event)"
@@ -179,7 +178,7 @@
                     >
                         <app-storage-grants-field
                             formControlName="storage_grants"
-                            [readonly]="isReadOnly()"
+                            [readonly]="isEditingBlocked()"
                         />
                     </app-diff-field-mark>
 

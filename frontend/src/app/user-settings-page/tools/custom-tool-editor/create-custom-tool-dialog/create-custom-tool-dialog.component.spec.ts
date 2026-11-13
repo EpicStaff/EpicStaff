@@ -4,13 +4,11 @@ import { CUSTOM_ELEMENTS_SCHEMA, EnvironmentProviders, Provider } from '@angular
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService, JsonEditorComponent } from '@shared/components';
 import {
-    ActionCode,
     CreatePythonCodeToolPayload,
     ExecutionTimeoutLimits,
     GetExecutionTimeoutLimitsResponse,
     GetPythonCodeToolRequest,
     ResourceCode,
-    StorageGrantLock,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsApiService, SecretsStorageService } from '@shared/services';
 import { of, Subject, throwError } from 'rxjs';
@@ -91,8 +89,7 @@ interface OpenedDialog {
 function openDialog(
     selectedTool: GetPythonCodeToolRequest | null,
     limitsProviders: (Provider | EnvironmentProviders)[] = [provideLoadedExecutionTimeoutLimits()],
-    canUseSecrets = true,
-    permissions: Partial<PermissionsService> = {}
+    canUseSecrets = true
 ): OpenedDialog {
     const customTools: CustomToolsFake = {
         getPythonCodeTools: vi.fn().mockReturnValue(of([])),
@@ -126,7 +123,6 @@ function openDialog(
                     canEditSecrets: () => canUseSecrets,
                     can: (resource: ResourceCode) => resource !== ResourceCode.Secrets || canUseSecrets,
                     canAny: () => true,
-                    ...permissions,
                 },
             },
         ],
@@ -397,124 +393,6 @@ describe('CreateCustomToolDialogComponent save errors', () => {
 
         expect(toast.error).toHaveBeenCalledExactlyOnceWith('Failed to update custom tool. Please try again.');
         expect(bannerText(fixture)).toBe('');
-    });
-});
-
-describe('CreateCustomToolDialogComponent storage grant lock', () => {
-    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
-    afterEach(() => vi.unstubAllGlobals());
-
-    const LOCK: StorageGrantLock = {
-        required_grants: ['read', 'write'],
-        required_permissions: ['Files: Read', 'Files: Create', 'Files: Update'],
-        flow_names: ['Orders flow', 'Billing flow'],
-    };
-
-    /** A user holding exactly these Files actions. */
-    function holding(...actions: ActionCode[]): Partial<PermissionsService> {
-        return {
-            isActivePermissionsLoaded: () => true,
-            can: (resource: ResourceCode, action: ActionCode) =>
-                resource === ResourceCode.Files ? actions.includes(action) : true,
-        };
-    }
-
-    function open(
-        lock: StorageGrantLock | null,
-        permissions: Partial<PermissionsService>
-    ): ReturnType<typeof openDialog> {
-        return openDialog(
-            { ...STORED_TOOL, storage_grant_lock: lock },
-            [provideLoadedExecutionTimeoutLimits()],
-            true,
-            permissions
-        );
-    }
-
-    function lockNote(fixture: ComponentFixture<CreateCustomToolDialogComponent>): string | null {
-        const note = (fixture.nativeElement as HTMLElement).querySelector('app-warning-note');
-        return note ? (note.textContent ?? '').trim() : null;
-    }
-
-    function saveButton(fixture: ComponentFixture<CreateCustomToolDialogComponent>): HTMLElement | null {
-        return (fixture.nativeElement as HTMLElement).querySelector('.header-icon-btn--confirm');
-    }
-
-    it('locks the tool and names every missing permission and flow when the user holds none of them', () => {
-        const { fixture } = open(LOCK, holding());
-
-        expect(lockNote(fixture)).toBe(
-            "This tool runs with Files: Read, Files: Create, Files: Update in flows Orders flow, Billing flow, which you don't have. " +
-                'Contact an admin to change it.'
-        );
-        expect(saveButton(fixture)).toBeNull();
-    });
-
-    it('names only the permissions the user lacks when they hold some of them', () => {
-        const { fixture } = open(LOCK, holding(ActionCode.Read, ActionCode.Create));
-
-        expect(lockNote(fixture)).toContain('Files: Update in flows');
-        expect(lockNote(fixture)).not.toContain('Read');
-        expect(saveButton(fixture)).toBeNull();
-    });
-
-    it('drops the flows part of the note when the server names no flows', () => {
-        const { fixture } = open({ ...LOCK, flow_names: [] }, holding(ActionCode.Read, ActionCode.Create));
-
-        expect(lockNote(fixture)).toBe(
-            "This tool runs with Files: Update, which you don't have. Contact an admin to change it."
-        );
-    });
-
-    it('leaves the tool editable, with no note, when the user holds all the permissions', () => {
-        const { fixture } = open(LOCK, holding(ActionCode.Read, ActionCode.Create, ActionCode.Update));
-
-        expect(lockNote(fixture)).toBeNull();
-        expect(saveButton(fixture)).not.toBeNull();
-    });
-
-    it('leaves the tool editable when it has no lock', () => {
-        const { fixture } = open(null, holding());
-
-        expect(lockNote(fixture)).toBeNull();
-        expect(saveButton(fixture)).not.toBeNull();
-    });
-
-    it('does not save a locked tool', () => {
-        const { fixture, customTools } = open(LOCK, holding());
-
-        fixture.componentInstance.submit();
-
-        expect(customTools.updatePythonCodeToolV2).not.toHaveBeenCalled();
-    });
-
-    it('shows the server message in the banner when it refuses an edit with storage_grant_denied', () => {
-        const { fixture, customTools, toast } = open(
-            LOCK,
-            holding(ActionCode.Read, ActionCode.Create, ActionCode.Update)
-        );
-        const message = 'Editing this tool needs Files: Delete, which flow Orders flow grants to its code.';
-        customTools.updatePythonCodeToolV2.mockReturnValueOnce(
-            throwError(
-                () =>
-                    new HttpErrorResponse({
-                        status: 403,
-                        error: {
-                            status_code: 403,
-                            code: 'storage_grant_denied',
-                            message,
-                            missing_grants: ['delete'],
-                        },
-                    })
-            )
-        );
-
-        fixture.componentInstance.submit();
-        fixture.detectChanges();
-
-        const banner = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('app-error-banner');
-        expect((banner?.textContent ?? '').trim()).toBe(message);
-        expect(toast.error).not.toHaveBeenCalled();
     });
 });
 

@@ -34,6 +34,19 @@ describe('NodeFactoryService', () => {
         expect(created.nodeNumber).toBe(5);
     });
 
+    it('new python node starts with every box false', () => {
+        const created = factory.createNode(NodeType.PYTHON);
+
+        expect(created.storageGrants).toEqual({ read: false, write: false, delete: false });
+    });
+
+    it('gives a node type that has no grants no storage grants', () => {
+        expect(factory.createNode(NodeType.TASK).storageGrants).toBeUndefined();
+        expect(factory.createNode(NodeType.AGENT).storageGrants).toBeUndefined();
+        expect(factory.createNode(NodeType.FILE_EXTRACTOR).storageGrants).toBeUndefined();
+        expect(factory.createNode(NodeType.AUDIO_TO_TEXT).storageGrants).toBeUndefined();
+    });
+
     it.each([NodeType.NOTE, NodeType.START, NodeType.END])('gives a new %s node no number', (type) => {
         expect(factory.createNode(type).nodeNumber).toBeUndefined();
     });

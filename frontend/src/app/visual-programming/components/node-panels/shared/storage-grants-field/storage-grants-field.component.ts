@@ -2,13 +2,11 @@ import { ChangeDetectionStrategy, Component, computed, forwardRef, inject, input
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CheckboxComponent } from '@shared/components';
-import { StorageGrant } from '@shared/models';
+import { StorageGrant } from '@shared/utils';
 
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import {
     canEditStorageGrant,
-    isStorageGrantConfigured,
-    NOT_CONFIGURED_GRANTS_DISABLED_TOOLTIP,
     STORAGE_GRANT_KINDS,
     STORAGE_GRANT_LABELS,
     storageGrantDisabledTooltip,
@@ -25,9 +23,9 @@ interface StorageGrantOption {
 }
 
 /**
- * Read / Write / Delete boxes for what one slot of code may do with the flow's files when a trigger started the
- * run. The value is the slot's grants: `undefined` for a node the server has not stored, all `null` for a node
- * saved before grants existed. The value stays as it is until the user changes a box.
+ * Read / Write / Delete boxes for what one slot of code may do with the flow's attached files in every run. The
+ * value is the slot's grants: `undefined` for a node the server has not stored, shown as every box unticked.
+ * A ticked box can always be unticked; an unticked one can be ticked only with the Files permission behind it.
  */
 @Component({
     selector: 'app-storage-grants-field',
@@ -61,24 +59,16 @@ interface StorageGrantOption {
                     </label>
                 }
             </div>
-            @if (isNotConfigured()) {
-                <p class="storage-grants__hint">Not configured (current behaviour)</p>
-            }
         </fieldset>
     `,
 })
 export class StorageGrantsFieldComponent implements ControlValueAccessor {
-    readonly legend = input('Access when started by a trigger');
+    readonly legend = input('File access');
     /** Nothing may be changed, whatever the user's role allows. */
     readonly readonly = input(false);
 
     private readonly grants = signal<StorageGrants | undefined>(undefined);
     private readonly permissions = inject(PermissionsService);
-
-    protected readonly isNotConfigured = computed(() => {
-        const grants = this.grants();
-        return grants !== undefined && !isStorageGrantConfigured(grants);
-    });
 
     protected readonly options = computed<StorageGrantOption[]>(() => {
         const grants = this.grants();
@@ -91,11 +81,7 @@ export class StorageGrantsFieldComponent implements ControlValueAccessor {
                 label: STORAGE_GRANT_LABELS[kind],
                 checked: grants?.[kind] === true,
                 disabled: this.readonly() || !permitted,
-                tooltip: permitted
-                    ? ''
-                    : this.isNotConfigured()
-                      ? NOT_CONFIGURED_GRANTS_DISABLED_TOOLTIP
-                      : storageGrantDisabledTooltip(kind),
+                tooltip: permitted ? '' : storageGrantDisabledTooltip(kind),
             };
         });
     });

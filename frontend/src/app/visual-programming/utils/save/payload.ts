@@ -409,7 +409,6 @@ export function buildBulkSavePayload(
             output_variable_path: n.output_variable_path || null,
             surface_list: n.data.surface_list ?? [],
             inline_surface: n.data.inline_surface ?? null,
-            ...storageGrantsToPayload(n.storageGrants),
             metadata: toNodeMetadata(n),
         })),
         agent_node_list: nodeItems(nodeDiff.agentNodes, (n) => ({
@@ -421,7 +420,6 @@ export function buildBulkSavePayload(
             surface_list: n.data.surface_list ?? [],
             inline_surface: n.data.inline_surface ?? null,
             tasks: buildAgentTasksPayload(n.data.tasks ?? []),
-            ...storageGrantsToPayload(n.storageGrants),
             metadata: toNodeMetadata(n),
         })),
         file_extractor_node_list: nodeItems(nodeDiff.fileExtractorNodes, (n) => ({
@@ -429,7 +427,6 @@ export function buildBulkSavePayload(
             graph: graphId,
             input_map: n.input_map || {},
             output_variable_path: n.output_variable_path || null,
-            ...storageGrantsToPayload(n.storageGrants),
             metadata: toNodeMetadata(n),
         })),
         audio_transcription_node_list: nodeItems(nodeDiff.audioToTextNodes, (n) => ({
@@ -437,7 +434,6 @@ export function buildBulkSavePayload(
             graph: graphId,
             input_map: n.input_map || {},
             output_variable_path: n.output_variable_path || null,
-            ...storageGrantsToPayload(n.storageGrants),
             metadata: toNodeMetadata(n),
         })),
         end_node_list: nodeItems(nodeDiff.endNodes, (n) => ({

@@ -57,7 +57,7 @@
                         size="1.1rem"
                     ></app-svg-icon>
                 </button>
-                @if (!isReadOnly()) {
+                @if (!isBuiltIn()) {
                     <button
                         *appHasPermission="[ResourceCode.Tools, isEditMode() ? ActionCode.Update : ActionCode.Create]"
                         class="header-icon-btn header-icon-btn--confirm"
@@ -81,10 +81,6 @@
             [message]="errorMessage()"
         />
 
-        @if (storageGrantLockMessage(); as lockMessage) {
-            <app-warning-note class="storage-grant-lock">{{ lockMessage }}</app-warning-note>
-        }
-
         <div
             class="dialog-content"
             [class.right-collapsed]="activeEditor() === ActiveEditor.None"
@@ -94,7 +90,7 @@
                 aria-label="Tool details"
             >
                 <div class="form-section">
-                    @if (isReadOnly()) {
+                    @if (isBuiltIn()) {
                         <div class="readonly-field">
                             <span class="readonly-field__label">Name</span>
                             <p class="readonly-field__value">{{ form.controls.name.value }}</p>
@@ -138,7 +134,7 @@
                     @if (descriptionExpanded()) {
                         <app-textarea
                             class="description-textarea"
-                            [disabled]="isReadOnly()"
+                            [disabled]="isBuiltIn()"
                             formControlName="description"
                             placeholder="Enter tool description..."
                             [rows]="3"
@@ -154,7 +150,7 @@
                     <div class="form-section">
                         <app-node-secrets-field
                             [value]="selectedSecretIds()"
-                            [readonly]="!canEditSecrets() || isStorageGrantLocked()"
+                            [readonly]="!canEditSecrets()"
                             [names]="secretNames()"
                             [tooltipText]="secretsTooltip()"
                             (valueChange)="onSecretsChange($event)"
@@ -395,7 +391,7 @@
                     <div class="form-section">
                         <app-execution-timeout-field
                             [field]="executionTimeoutField"
-                            [readonly]="isReadOnly()"
+                            [readonly]="isBuiltIn()"
                         />
                     </div>
                 }

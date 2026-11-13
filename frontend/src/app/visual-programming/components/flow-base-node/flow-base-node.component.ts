@@ -33,10 +33,8 @@ import {
     buildNodeWarningChip,
     enableTooltipOnlyWhenTruncated,
     NodeWarningBadge,
-    nodeWarningChipKind,
 } from '../../core/helpers/node-warning-badge.util';
-import { FULL_FILE_ACCESS_TOOLTIP, NO_FILE_ACCESS_TOOLTIP } from '../../core/helpers/storage-grants.util';
-import { isTriggerNodeType } from '../../core/helpers/trigger-node-type.util';
+import { NO_FILE_ACCESS_TOOLTIP } from '../../core/helpers/storage-grants.util';
 import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,
@@ -338,44 +336,7 @@ export class FlowBaseNodeComponent implements OnInit {
 
     public readonly noFileAccessTooltip = NO_FILE_ACCESS_TOOLTIP;
 
-    public readonly hasNoFileAccessWhenTriggered = computed(() =>
-        this.flowService.nodeIdsWithoutFileAccess().has(this.node.id)
-    );
-
-    /** The ids' count without this node itself: a trigger that holds grants has its own badge, so it is not counted twice. */
-    private countOtherNodes(ids: ReadonlySet<string>): number {
-        return ids.size - (ids.has(this.node.id) ? 1 : 0);
-    }
-
-    /** How many other nodes get no file access when a trigger starts the flow, shown on a trigger node; `null` when none. */
-    public readonly noFileAccessSummary = computed<string | null>(() => {
-        if (!isTriggerNodeType(this.node.type)) return null;
-        const count = this.countOtherNodes(this.flowService.nodeIdsWithoutFileAccess());
-        return count === 0 ? null : `${count} ${count === 1 ? 'node' : 'nodes'} without file access`;
-    });
-
-    public readonly noFileAccessSummaryTooltip = computed(() => {
-        const count = this.countOtherNodes(this.flowService.nodeIdsWithoutFileAccess());
-        return `${count} ${count === 1 ? 'node has' : 'nodes have'} no file access when this flow is started by a trigger.`;
-    });
-
-    public readonly fullFileAccessTooltip = FULL_FILE_ACCESS_TOOLTIP;
-
-    public readonly hasFullFileAccessWhenTriggered = computed(() =>
-        this.flowService.nodeIdsWithFullFileAccess().has(this.node.id)
-    );
-
-    /** How many other nodes keep full file access because it was never configured, shown on a trigger node; `null` when none. */
-    public readonly fullFileAccessSummary = computed<string | null>(() => {
-        if (!isTriggerNodeType(this.node.type)) return null;
-        const count = this.countOtherNodes(this.flowService.nodeIdsWithFullFileAccess());
-        return count === 0 ? null : `${count} ${count === 1 ? 'node' : 'nodes'} with full file access (not configured)`;
-    });
-
-    public readonly fullFileAccessSummaryTooltip = computed(() => {
-        const count = this.countOtherNodes(this.flowService.nodeIdsWithFullFileAccess());
-        return `${count} ${count === 1 ? 'node has' : 'nodes have'} full file access (not configured) when this flow is started by a trigger.`;
-    });
+    public readonly hasNoFileAccess = computed(() => this.flowService.nodeIdsWithoutFileAccess().has(this.node.id));
 
     public get hasMissingKeyValueTable(): boolean {
         return !!this.keyValueNode && this.keyValueNode.data.key_value_table === null;
@@ -429,7 +390,7 @@ export class FlowBaseNodeComponent implements OnInit {
         if (badges.length === 0) return null;
         if (badges.length === 1) return { ...badges[0], tooltipClass: '' };
         const chip = buildNodeWarningChip(badges.map((badge) => badge.tooltip || badge.label));
-        return { kind: nodeWarningChipKind(badges), ...chip };
+        return { kind: 'warning', ...chip };
     }
 
     private get warningBadges(): NodeWarningBadge[] {
@@ -443,19 +404,8 @@ export class FlowBaseNodeComponent implements OnInit {
         if (this.hasMissingAgentLlm) {
             badges.push({ kind: 'warning', label: 'No LLM', tooltip: this.agentLlmWarningTooltip });
         }
-        if (this.hasNoFileAccessWhenTriggered()) {
+        if (this.hasNoFileAccess()) {
             badges.push({ kind: 'warning', label: 'No file access', tooltip: this.noFileAccessTooltip });
-        }
-        const summary = this.noFileAccessSummary();
-        if (summary) {
-            badges.push({ kind: 'warning', label: summary, tooltip: this.noFileAccessSummaryTooltip() });
-        }
-        if (this.hasFullFileAccessWhenTriggered()) {
-            badges.push({ kind: 'caution', label: 'Full file access', tooltip: this.fullFileAccessTooltip });
-        }
-        const fullAccessSummary = this.fullFileAccessSummary();
-        if (fullAccessSummary) {
-            badges.push({ kind: 'caution', label: fullAccessSummary, tooltip: this.fullFileAccessSummaryTooltip() });
         }
         if (this.hasMissingKeyValueTable) {
             badges.push({

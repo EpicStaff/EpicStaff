@@ -326,53 +326,33 @@ describe('buildFlowDiff', () => {
 
     describe('storage grants', () => {
         const READ_WRITE = { read: true, write: true, delete: false };
-        const NOT_CONFIGURED = { read: null, write: null, delete: null };
+        const EVERYTHING = { read: true, write: true, delete: true };
 
-        // The fixture's version holds no grants, which reads as not configured.
+        // The fixture's version holds no grants, which restores as every box ticked.
         it.each([
             fieldCase(NodeType.PYTHON, UUID.python, (node) => ({ ...node, storageGrants: READ_WRITE }), {
                 path: 'storage_grants',
                 current: READ_WRITE,
-                version: NOT_CONFIGURED,
+                version: EVERYTHING,
             }),
             fieldCase(NodeType.WEBHOOK_TRIGGER, UUID.webhook, (node) => ({ ...node, storageGrants: READ_WRITE }), {
                 path: 'storage_grants',
                 current: READ_WRITE,
-                version: NOT_CONFIGURED,
-            }),
-            fieldCase(NodeType.TASK, UUID.task, (node) => ({ ...node, storageGrants: READ_WRITE }), {
-                path: 'storage_grants',
-                current: READ_WRITE,
-                version: NOT_CONFIGURED,
-            }),
-            fieldCase(NodeType.AGENT, UUID.agent, (node) => ({ ...node, storageGrants: READ_WRITE }), {
-                path: 'storage_grants',
-                current: READ_WRITE,
-                version: NOT_CONFIGURED,
-            }),
-            fieldCase(NodeType.FILE_EXTRACTOR, UUID.fileExtractor, (node) => ({ ...node, storageGrants: READ_WRITE }), {
-                path: 'storage_grants',
-                current: READ_WRITE,
-                version: NOT_CONFIGURED,
-            }),
-            fieldCase(NodeType.AUDIO_TO_TEXT, UUID.audio, (node) => ({ ...node, storageGrants: READ_WRITE }), {
-                path: 'storage_grants',
-                current: READ_WRITE,
-                version: NOT_CONFIGURED,
+                version: EVERYTHING,
             }),
             fieldCase(
                 NodeType.CLASSIFICATION_TABLE,
                 UUID.classificationTable,
                 (node) => ({ ...node, preStorageGrants: READ_WRITE }),
-                { path: 'pre_storage_grants', current: READ_WRITE, version: NOT_CONFIGURED }
+                { path: 'pre_storage_grants', current: READ_WRITE, version: EVERYTHING }
             ),
             fieldCase(
                 NodeType.CLASSIFICATION_TABLE,
                 UUID.classificationTable,
                 (node) => ({ ...node, postStorageGrants: READ_WRITE }),
-                { path: 'post_storage_grants', current: READ_WRITE, version: NOT_CONFIGURED }
+                { path: 'post_storage_grants', current: READ_WRITE, version: EVERYTHING }
             ),
-        ])('$type: granting access on the canvas is a change ($path)', (testCase) => {
+        ])('$type: lowering access on the canvas is a change ($path)', (testCase) => {
             const diff = diffVersion(snapshot, { liveFlow: testCase.edit(loadLive()) });
 
             expect(entryOf(diff, testCase.nodeUuid).fields).toEqual([
@@ -380,27 +360,21 @@ describe('buildFlowDiff', () => {
             ]);
         });
 
-        it('treats a node with no grants and one with all three not configured as the same', () => {
+        it('treats a node with no grants and one with every box ticked as the same', () => {
             const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({
                 ...node,
-                storageGrants: NOT_CONFIGURED,
+                storageGrants: EVERYTHING,
             }));
 
             expect(entryOf(diffVersion(snapshot, { liveFlow }), UUID.python).fields).toEqual([]);
         });
 
-        it('tells explicit no access from not configured', () => {
-            const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({
-                ...node,
-                storageGrants: { read: false, write: false, delete: false },
-            }));
+        it('shows no access as a change from a version that restores every box ticked', () => {
+            const none = { read: false, write: false, delete: false };
+            const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({ ...node, storageGrants: none }));
 
             expect(entryOf(diffVersion(snapshot, { liveFlow }), UUID.python).fields).toEqual([
-                expect.objectContaining({
-                    path: 'storage_grants',
-                    current: { read: false, write: false, delete: false },
-                    version: NOT_CONFIGURED,
-                }),
+                expect.objectContaining({ path: 'storage_grants', current: none, version: EVERYTHING }),
             ]);
         });
     });

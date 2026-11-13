@@ -15,19 +15,6 @@ export interface ArgsSchema {
     required?: string[];
 }
 
-export type StorageGrant = 'read' | 'write' | 'delete';
-
-/**
- * Set when a flow node using this tool carries storage grants (what its code may do with files when a trigger
- * starts the flow): the strongest grant across those nodes. Editing the tool needs the matching permissions.
- */
-export interface StorageGrantLock {
-    required_grants: StorageGrant[];
-    /** Display labels such as "Files: Read". */
-    required_permissions: string[];
-    flow_names: string[];
-}
-
 export interface GetPythonCodeToolRequest extends AuthorshipFields {
     id: number;
     python_code: GetPythonCodeRequest;
@@ -42,7 +29,6 @@ export interface GetPythonCodeToolRequest extends AuthorshipFields {
     labels: number[];
     created_at: string;
     updated_at: string;
-    storage_grant_lock?: StorageGrantLock | null;
 }
 
 export interface CreatePythonCodeToolRequest {

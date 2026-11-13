@@ -8,7 +8,6 @@ import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { mapFieldRowChanges } from '../../../utils/diff';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
-import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 interface InputMapPair {
     key: string;
     value: string;
@@ -20,7 +19,6 @@ interface InputMapPair {
         CustomInputComponent,
         HintMessageComponent,
         InputMapComponent,
-        StorageGrantsFieldComponent,
         ValidationErrorsComponent,
         DiffFieldMarkComponent,
     ],
@@ -51,7 +49,6 @@ export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractor
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
-            storage_grants: [this.node().storageGrants],
         });
 
         this.initializeInputMap(form);
@@ -68,7 +65,6 @@ export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractor
             node_name: this.form.value.node_name,
             input_map: inputMapValue,
             output_variable_path: this.form.value.output_variable_path || null,
-            storageGrants: this.form.get('storage_grants')?.value ?? undefined,
         };
     }
 

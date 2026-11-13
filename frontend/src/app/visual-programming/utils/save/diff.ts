@@ -145,7 +145,6 @@ function toTaskComparable(node: TaskNodeModel): unknown {
         output_variable_path: node.output_variable_path || null,
         surface_list: node.data.surface_list ?? [],
         inline_surface: node.data.inline_surface ?? null,
-        ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
 }
@@ -175,7 +174,6 @@ function toAgentComparable(node: AgentNodeModel): unknown {
                 return aKey.localeCompare(bKey);
             }),
         })),
-        ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
 }
@@ -185,7 +183,6 @@ function toFileExtractorComparable(node: FileExtractorNodeModel): unknown {
         node_name: node.node_name,
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
-        ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
 }
@@ -195,7 +192,6 @@ function toAudioToTextComparable(node: AudioToTextNodeModel): unknown {
         node_name: node.node_name,
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
-        ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
 }

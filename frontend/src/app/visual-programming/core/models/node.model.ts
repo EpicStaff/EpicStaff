@@ -36,9 +36,9 @@ export interface BaseNodeModel {
     nodeNumber?: number;
     isBlocked?: boolean;
     /**
-     * What this node's code may do with the flow's files in a run no person started. At the root and not in
-     * `data` on purpose: python and webhook `data` is sent as the code block, and panels rebuild `data` on
-     * every edit. `undefined` for a node the server has not stored yet.
+     * What this node's code may do with the flow's attached files. At the root and not in `data` on purpose: python
+     * and webhook `data` is sent as the code block, and panels rebuild `data` on every edit. `undefined` for a node
+     * the server has not stored yet and for a type that has no granted code.
      */
     storageGrants?: StorageGrants;
 }

@@ -319,26 +319,20 @@ describe('fieldValueSegments with a display format of its own', () => {
 });
 
 describe('fieldValueSegments of storage grants', () => {
-    const NOT_CONFIGURED = { read: null, write: null, delete: null };
+    const EVERYTHING = { read: true, write: true, delete: true };
 
     it.each<{ case: string; current: unknown; version: unknown; segments: DisplaySegment[] }>([
         {
-            case: 'the granted actions in Read, Write, Delete order',
+            case: 'the ticked actions in Read, Write, Delete order',
             current: { read: true, write: false, delete: true },
-            version: NOT_CONFIGURED,
+            version: EVERYTHING,
             segments: [struck('Read, Delete')],
         },
         {
-            case: 'no access when all three are off',
+            case: 'no access when all three are unticked',
             current: { read: false, write: false, delete: false },
-            version: NOT_CONFIGURED,
+            version: EVERYTHING,
             segments: [struck('No access')],
-        },
-        {
-            case: 'not configured when none is set',
-            current: NOT_CONFIGURED,
-            version: { read: true, write: true, delete: true },
-            segments: [struck('Not configured')],
         },
         {
             case: 'the same grants on both sides',
@@ -351,7 +345,7 @@ describe('fieldValueSegments of storage grants', () => {
     });
 
     it.each(['pre_storage_grants', 'post_storage_grants'] as const)('formats %s the same way', (field) => {
-        expect(fieldValueSegments(field, { read: false, write: true, delete: false }, NOT_CONFIGURED)).toEqual([
+        expect(fieldValueSegments(field, { read: false, write: true, delete: false }, EVERYTHING)).toEqual([
             struck('Write'),
         ]);
     });

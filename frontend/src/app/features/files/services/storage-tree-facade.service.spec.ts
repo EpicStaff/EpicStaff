@@ -1,5 +1,4 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
@@ -627,65 +626,5 @@ describe('StorageTreeFacade delete confirmation', () => {
         deleteFile();
 
         expect(confirm).toHaveBeenCalledTimes(2);
-    });
-});
-
-describe('StorageTreeFacade adding a file to a flow', () => {
-    let facade: StorageTreeFacade;
-    let toast: { success: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> };
-    let addToGraph: ReturnType<typeof vi.fn>;
-
-    beforeEach(() => {
-        toast = { success: vi.fn(), error: vi.fn() };
-        addToGraph = vi.fn();
-        TestBed.configureTestingModule({
-            providers: [
-                StorageTreeFacade,
-                {
-                    provide: StorageApiService,
-                    useValue: {
-                        refreshTick: signal(0),
-                        addToGraph,
-                        removeFromGraph: vi.fn(),
-                    },
-                },
-                { provide: ToastService, useValue: toast },
-                { provide: ConfirmationDialogService, useValue: {} },
-                {
-                    provide: Dialog,
-                    useValue: { open: () => ({ closed: of({ addGraphIds: [3], removeGraphIds: [] }) }) },
-                },
-            ],
-        });
-        facade = TestBed.inject(StorageTreeFacade);
-    });
-
-    function addReportToFlow(): void {
-        facade.onContextAction({ action: 'add-to-flow', item: file('report.txt') });
-    }
-
-    it('shows the server message when the add is refused for missing Files permissions', () => {
-        const message = "This flow runs code with Files: Delete, which you don't have.";
-        addToGraph.mockReturnValue(
-            throwError(
-                () =>
-                    new HttpErrorResponse({
-                        status: 403,
-                        error: { status_code: 403, code: 'storage_grant_denied', message, missing_grants: ['delete'] },
-                    })
-            )
-        );
-
-        addReportToFlow();
-
-        expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
-    });
-
-    it('keeps the generic text for a server failure', () => {
-        addToGraph.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
-
-        addReportToFlow();
-
-        expect(toast.error).toHaveBeenCalledExactlyOnceWith('Failed to update flow assignments for "report.txt"');
     });
 });

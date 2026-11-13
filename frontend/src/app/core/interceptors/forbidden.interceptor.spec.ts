@@ -74,9 +74,9 @@ describe('forbiddenInterceptor', () => {
             );
         }));
 
-    it('does not force a session refresh or toast for a storage_grant_denied 403 (the tool editor shows it)', () =>
+    it('does not force a session refresh or toast for a storage_grant_denied 403 (the flow save handler shows it)', () =>
         new Promise<void>((resolve, reject) => {
-            httpClient.put('/api/python-code-tool/7/', {}).subscribe({
+            httpClient.put('/api/pythonnodes/7/', {}).subscribe({
                 next: () => reject(new Error('expected the request to error')),
                 error: (err: HttpErrorResponse) => {
                     try {
@@ -92,7 +92,7 @@ describe('forbiddenInterceptor', () => {
             });
 
             httpMock
-                .expectOne('/api/python-code-tool/7/')
+                .expectOne('/api/pythonnodes/7/')
                 .flush(
                     { status_code: 403, code: 'storage_grant_denied', message: 'Needs Files: Read.' },
                     { status: 403, statusText: 'Forbidden' }

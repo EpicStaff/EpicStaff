@@ -7,13 +7,9 @@ import { LlmConfigStorageService, SystemOneConfigStorageService } from '@shared/
 import { of } from 'rxjs';
 
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
-import {
-    NO_FILE_ACCESS_TOOLTIP,
-    nodeIdsWithFullFileAccessWhenTriggered,
-    nodeIdsWithoutFileAccessWhenTriggered,
-} from '../../../core/helpers/storage-grants.util';
+import { NO_FILE_ACCESS_TOOLTIP, nodeIdsWithoutFileAccess } from '../../../core/helpers/storage-grants.util';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
-import { ClassificationDecisionTableNodeModel, NodeModel } from '../../../core/models/node.model';
+import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { StorageGrants } from '../../../core/models/storage-grants.model';
 import { FlowService } from '../../../services/flow.service';
 import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
@@ -257,15 +253,12 @@ describe('ClassificationDecisionTableNodeComponent config warnings', () => {
     });
 
     describe('file access badges, through the flow rules', () => {
-        const trigger = { id: 'trigger', type: NodeType.SCHEDULE_TRIGGER } as unknown as NodeModel;
         const NO_ACCESS = { read: false, write: false, delete: false };
-        const NOT_CONFIGURED = { read: null, write: null, delete: null };
-        const POST_NOT_CONFIGURED_TOOLTIP =
-            "Not configured (post-computation): this node's code can read, write and delete the flow's files when the flow is started by a trigger. Set its file access in the node panel.";
+        const SOME_ACCESS = { read: true, write: false, delete: false };
 
         function renderInFlow(slots: {
-            pre?: { code: string; grants: StorageGrants };
-            post?: { code: string; grants: StorageGrants };
+            pre?: { usesStorage: boolean; grants: StorageGrants };
+            post?: { usesStorage: boolean; grants: StorageGrants };
         }): HTMLElement {
             const table = {
                 id: 'classification',
@@ -275,8 +268,8 @@ describe('ClassificationDecisionTableNodeComponent config warnings', () => {
                     table: {
                         prompts: {},
                         condition_groups: [],
-                        pre_computation: { code: slots.pre?.code ?? '' },
-                        post_computation: { code: slots.post?.code ?? '' },
+                        pre_use_storage: slots.pre?.usesStorage ?? false,
+                        post_use_storage: slots.post?.usesStorage ?? false,
                     },
                 },
                 preStorageGrants: slots.pre?.grants,
@@ -284,12 +277,8 @@ describe('ClassificationDecisionTableNodeComponent config warnings', () => {
                 ports: [],
                 size: { width: 330, height: 120 },
             } as unknown as ClassificationDecisionTableNodeModel;
-            const nodes = [trigger, table];
             TestBed.overrideProvider(FlowService, {
-                useValue: {
-                    nodeIdsWithoutFileAccess: () => nodeIdsWithoutFileAccessWhenTriggered(nodes),
-                    nodeIdsWithFullFileAccess: () => nodeIdsWithFullFileAccessWhenTriggered(nodes),
-                },
+                useValue: { nodeIdsWithoutFileAccess: () => nodeIdsWithoutFileAccess([table]) },
             });
             const fixture = TestBed.createComponent(ClassificationDecisionTableNodeComponent);
             fixture.componentRef.setInput('node', table);
@@ -300,56 +289,31 @@ describe('ClassificationDecisionTableNodeComponent config warnings', () => {
             Array.from<HTMLElement>(host.querySelectorAll('.decision-table__header .node-badge'));
         const tooltipOf = (element: HTMLElement): string => getDebugNode(element)!.injector.get(MatTooltip).message;
 
-        it('shows "No file access" for a slot with code whose grants are explicitly all off', () => {
-            const [badge] = badges(renderInFlow({ pre: { code: 'x = 1', grants: NO_ACCESS } }));
+        it('shows "No file access" for a slot that uses storage whose boxes are all unticked', () => {
+            const [badge] = badges(renderInFlow({ pre: { usesStorage: true, grants: NO_ACCESS } }));
 
             expect(badge.textContent!.trim()).toBe('⚠ No file access');
             expect(badge.classList).toContain('file-access-badge');
+            expect(tooltipOf(badge)).toBe(NO_FILE_ACCESS_TOOLTIP);
         });
 
-        it('shows nothing for a slot without code, even when its grants are all off', () => {
-            expect(badges(renderInFlow({ pre: { code: '  ', grants: NO_ACCESS } }))).toEqual([]);
+        it('shows nothing for a slot that does not use storage, even when its boxes are all unticked', () => {
+            expect(badges(renderInFlow({ pre: { usesStorage: false, grants: NO_ACCESS } }))).toEqual([]);
         });
 
-        it('shows an amber "Full file access" for a slot with code whose grants were never configured', () => {
-            const [badge] = badges(renderInFlow({ post: { code: 'y = 2', grants: NOT_CONFIGURED } }));
-
-            expect(badge.textContent!.trim()).toBe('⚠ Full file access');
-            expect(badge.classList).toContain('caution-badge');
-            expect(tooltipOf(badge)).toBe(POST_NOT_CONFIGURED_TOOLTIP);
+        it('shows nothing once a box of the slot is ticked', () => {
+            expect(badges(renderInFlow({ post: { usesStorage: true, grants: SOME_ACCESS } }))).toEqual([]);
         });
 
-        it('stops warning as soon as one box is set, even to false', () => {
-            const configured = { read: false, write: null, delete: null };
-
-            expect(badges(renderInFlow({ pre: { code: 'x = 1', grants: configured } }))).toEqual([]);
-        });
-
-        it('folds an explicit no access in one slot and a never-configured one in the other into a red chip', () => {
-            const [chip] = badges(
+        it('shows one badge when both slots have no file access', () => {
+            const found = badges(
                 renderInFlow({
-                    pre: { code: 'x = 1', grants: NO_ACCESS },
-                    post: { code: 'y = 2', grants: NOT_CONFIGURED },
+                    pre: { usesStorage: true, grants: NO_ACCESS },
+                    post: { usesStorage: true, grants: NO_ACCESS },
                 })
             );
 
-            expect(chip.textContent!.trim()).toBe('⚠ 2 issues');
-            expect(tooltipOf(chip).split('\n')).toEqual([
-                `• ${NO_FILE_ACCESS_TOOLTIP}`,
-                `• ${POST_NOT_CONFIGURED_TOOLTIP}`,
-            ]);
-            expect(chip.classList).toContain('blocked-badge');
-        });
-
-        it('names both slots when both were never configured, in one badge', () => {
-            const [badge] = badges(
-                renderInFlow({
-                    pre: { code: 'x = 1', grants: NOT_CONFIGURED },
-                    post: { code: 'y = 2', grants: NOT_CONFIGURED },
-                })
-            );
-
-            expect(tooltipOf(badge)).toContain('pre-computation and post-computation');
+            expect(found.map((badge) => badge.textContent!.trim())).toEqual(['⚠ No file access']);
         });
     });
 
@@ -358,7 +322,6 @@ describe('ClassificationDecisionTableNodeComponent config warnings', () => {
             TestBed.overrideProvider(FlowService, {
                 useValue: {
                     nodeIdsWithoutFileAccess: () => new Set(noFileAccess ? ['classification'] : []),
-                    nodeIdsWithFullFileAccess: () => new Set<string>(),
                 },
             });
             const fixture = TestBed.createComponent(ClassificationDecisionTableNodeComponent);
