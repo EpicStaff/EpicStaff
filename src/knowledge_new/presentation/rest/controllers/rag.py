@@ -5,13 +5,17 @@ from application import commands
 from application.commands import (
     GetEntityDetail,
     GetGraphTableData,
+    GetGraphTableSummary,
     GetGraphVisualization,
     GetMetrics,
     GetRelationshipDetail,
     RemoveRag,
 )
 from application.orchestrators.estimating import build_estimator
-from application.orchestrators.graph_table_data import build_graph_table_data
+from application.orchestrators.graph_table_data import (
+    build_graph_table_data,
+    build_graph_table_summary,
+)
 from application.orchestrators.graph_visualization import (
     build_entity_detail,
     build_graph_visualization,
@@ -162,6 +166,25 @@ class RagController(Controller):
         return schemas.MetricsOutputSchema.model_validate(result)
 
     @get(
+        path="{rag_id:int}/table-summary/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="List available tables with row counts",
+    )
+    async def table_summary(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        uow: AbstractUnitOfWork,
+    ) -> list[schemas.GraphTableSummaryOutputSchema]:
+        command = GetGraphTableSummary(rag_id=rag_id)
+        orchestrator = build_graph_table_summary(strategy, uow)
+        result = await orchestrator.execute(command)
+        return [
+            schemas.GraphTableSummaryOutputSchema.model_validate(item)
+            for item in result.tables
+        ]
+
+    @get(
         path="{rag_id:int}/tables/{table_name:str}/",
         status_code=status_codes.HTTP_200_OK,
         summary="Paginated parquet table data",
@@ -174,9 +197,14 @@ class RagController(Controller):
         table_name: str,
         page: int = 1,
         page_size: int = 10,
+        search: str | None = None,
     ) -> schemas.GraphTableDataOutputSchema:
         command = GetGraphTableData(
-            rag_id=rag_id, table_name=table_name, page=page, page_size=page_size
+            rag_id=rag_id,
+            table_name=table_name,
+            page=page,
+            page_size=page_size,
+            search=search,
         )
         orchestrator = build_graph_table_data(strategy, uow)
         result = await orchestrator.execute(command)

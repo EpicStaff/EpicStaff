@@ -6,6 +6,7 @@ __all__ = [
     "Command",
     "GetEntityDetail",
     "GetGraphTableData",
+    "GetGraphTableSummary",
     "GetGraphVisualization",
     "GetIndexEstimate",
     "GetMetrics",
@@ -77,6 +78,12 @@ class GetGraphTableData(Command):
     table_name: str
     page: int = 1
     page_size: int = 10
+    search: str | None = None
+
+
+@dataclass(frozen=True)
+class GetGraphTableSummary(Command):
+    rag_id: int
 
 
 @dataclass(frozen=True)

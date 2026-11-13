@@ -403,6 +403,11 @@ urlpatterns = [
         name="graph-rag-relationship-detail",
     ),
     path(
+        "graph-rag/<int:pk>/table-summary/",
+        GraphRagViewSet.as_view({"get": "table_summary"}),
+        name="graph-rag-table-summary",
+    ),
+    path(
         "graph-rag/<int:pk>/tables/<str:table_name>/",
         GraphRagViewSet.as_view({"get": "table_data"}),
         name="graph-rag-table-data",

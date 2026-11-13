@@ -7,6 +7,8 @@ __all__ = [
     "EmbeddingEstimate",
     "EntityDetailResult",
     "GraphTableDataResult",
+    "GraphTableSummaryItem",
+    "GraphTableSummaryResult",
     "GraphVisualizationResult",
     "IndexEstimateResult",
     "MetricsResult",
@@ -66,6 +68,18 @@ class GraphTableDataResult(Result):
     total: int
     page: int
     page_size: int
+
+
+@dataclass(frozen=True)
+class GraphTableSummaryItem:
+    name: str
+    label: str
+    count: int
+
+
+@dataclass(frozen=True)
+class GraphTableSummaryResult(Result):
+    tables: list[GraphTableSummaryItem]
 
 
 @dataclass(frozen=True)

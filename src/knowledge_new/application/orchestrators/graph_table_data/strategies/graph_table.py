@@ -66,6 +66,16 @@ class GraphTableDataOrchestrator(AbstractGraphTableDataOrchestrator):
         # Keep only the fixed columns; missing ones become NaN.
         dataframe = dataframe.reindex(columns=columns)
 
+        if command.search:
+            mask = pandas.Series(False, index=dataframe.index)
+            for column in columns:
+                mask = mask | (
+                    dataframe[column]
+                    .astype(str)
+                    .str.contains(command.search, case=False, na=False)
+                )
+            dataframe = dataframe.loc[mask]
+
         total = len(dataframe)
 
         start = (command.page - 1) * command.page_size

@@ -1,0 +1,57 @@
+<div class="grid-table-wrapper">
+    <!-- Header row -->
+    <div
+        class="grid-table-header"
+        [style.grid-template-columns]="gridTemplateColumns()"
+    >
+        @for (col of columns(); track col) {
+            <div
+                #headerCell
+                class="grid-table-cell"
+            >
+                <span class="grid-table-col-label">{{ formatColumnHeader(col) }}</span>
+                <span
+                    class="grid-table-resize-handle"
+                    (pointerdown)="onResizeStart(col, $event, headerCell)"
+                    (pointermove)="onResizeMove($event)"
+                    (pointerup)="onResizeEnd()"
+                    (pointercancel)="onResizeEnd()"
+                    (lostpointercapture)="onResizeEnd()"
+                ></span>
+            </div>
+        }
+    </div>
+
+    <!-- Body rows -->
+    <div class="grid-table-body">
+        @for (row of rows(); track $index) {
+            <div
+                class="grid-table-row"
+                [class.grid-table-row--clickable]="clickableRows()"
+                [style.grid-template-columns]="gridTemplateColumns()"
+            >
+                @for (col of columns(); track col) {
+                    <div
+                        class="grid-table-cell grid-table-cell--body"
+                        (click)="onCellClick(col, row[col], $event, row)"
+                    >
+                        <span
+                            class="grid-table-cell-text"
+                            [innerHTML]="row[col] | highlight: searchTerm()"
+                        ></span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Cell popover -->
+@if (expandedCell(); as cell) {
+    <div
+        class="grid-table-popover"
+        [style]="cell.style"
+    >
+        <span class="grid-table-popover__text">{{ cell.value }}</span>
+    </div>
+}

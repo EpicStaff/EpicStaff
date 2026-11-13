@@ -85,6 +85,12 @@ class GraphTableDataOutputSchema(BaseSchema):
     page_size: int
 
 
+class GraphTableSummaryOutputSchema(BaseSchema):
+    name: str
+    label: str
+    count: int
+
+
 class IndexEstimateInputSchema(BaseSchema):
     document_ids: frozenset[int]
     chunking_overrides: list[DocumentChunkingOverrideSchema] = Field(default_factory=list)

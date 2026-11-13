@@ -1,6 +1,7 @@
 from .rag import (
     EntityDetailOutputSchema,
     GraphTableDataOutputSchema,
+    GraphTableSummaryOutputSchema,
     GraphVisualizationOutputSchema,
     IndexEstimateInputSchema,
     IndexEstimateOutputSchema,
@@ -16,6 +17,7 @@ from .rag import (
 __all__ = [
     "EntityDetailOutputSchema",
     "GraphTableDataOutputSchema",
+    "GraphTableSummaryOutputSchema",
     "GraphVisualizationOutputSchema",
     "IndexEstimateInputSchema",
     "IndexEstimateOutputSchema",

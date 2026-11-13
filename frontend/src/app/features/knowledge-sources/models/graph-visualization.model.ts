@@ -27,3 +27,9 @@ export interface GraphTableData {
     page: number;
     page_size: number;
 }
+
+export interface GraphTableSummaryItem {
+    name: string;
+    label: string;
+    count: number;
+}

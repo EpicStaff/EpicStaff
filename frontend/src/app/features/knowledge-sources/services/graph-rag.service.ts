@@ -9,7 +9,7 @@ import {
     CreateGraphRagIndexConfigRequest,
 } from '../models/graph-rag.model';
 import { GraphRagDocumentListResponse } from '../models/graph-rag-document.model';
-import { GraphTableData, GraphVisualizationData } from '../models/graph-visualization.model';
+import { GraphTableData, GraphTableSummaryItem, GraphVisualizationData } from '../models/graph-visualization.model';
 
 @Injectable({
     providedIn: 'root',
@@ -71,9 +71,22 @@ export class GraphRagService {
         return this.http.post<void>(`${this.apiUrl}${ragId}/documents/initialize/`, {});
     }
 
-    getTableData(ragId: number, tableName: string, page = 1, pageSize = 10): Observable<GraphTableData> {
-        const params = new HttpParams().set('page', page.toString()).set('page_size', pageSize.toString());
+    getTableData(
+        ragId: number,
+        tableName: string,
+        page = 1,
+        pageSize = 10,
+        search?: string
+    ): Observable<GraphTableData> {
+        let params = new HttpParams().set('page', page.toString()).set('page_size', pageSize.toString());
+        if (search) {
+            params = params.set('search', search);
+        }
         return this.http.get<GraphTableData>(`${this.apiUrl}${ragId}/tables/${tableName}/`, { params });
+    }
+
+    getTableSummary(ragId: number): Observable<GraphTableSummaryItem[]> {
+        return this.http.get<GraphTableSummaryItem[]>(`${this.apiUrl}${ragId}/table-summary/`);
     }
 
     getVisualizationData(ragId: number, maxEntities?: number, search?: string): Observable<GraphVisualizationData> {

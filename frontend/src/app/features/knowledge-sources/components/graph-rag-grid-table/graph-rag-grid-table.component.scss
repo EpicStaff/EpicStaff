@@ -1,0 +1,168 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+}
+
+.grid-table-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-height: 100%;
+    overflow: auto;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+}
+
+// ===== HEADER =====
+.grid-table-header {
+    display: grid;
+    align-items: center;
+    min-height: 2.25rem;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    width: fit-content;
+    min-width: 100%;
+    background: var(--color-background-body);
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+// ===== BODY =====
+.grid-table-body {
+    display: flex;
+    flex-direction: column;
+    width: fit-content;
+    min-width: 100%;
+}
+
+// ===== ROW =====
+.grid-table-row {
+    display: grid;
+    align-items: center;
+    min-height: 2.25rem;
+    width: fit-content;
+    min-width: 100%;
+    transition: background-color 0.15s ease;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    &:nth-child(odd) {
+        background: var(--color-table-row-stripe);
+    }
+
+    &:hover {
+        background: var(--transparent-white-4);
+    }
+
+    &--clickable {
+        cursor: pointer;
+    }
+}
+
+// ===== CELL =====
+.grid-table-cell {
+    display: flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    height: 100%;
+    color: var(--text);
+    min-width: 0;
+    position: relative;
+
+    // Vertical separator between columns
+    + .grid-table-cell {
+        border-left: 1px solid var(--color-divider-subtle);
+    }
+
+    .grid-table-header & {
+        align-self: stretch;
+    }
+
+    &--body {
+        cursor: pointer;
+
+        &:hover {
+            background-color: var(--purple-alpha-15);
+        }
+    }
+}
+
+// ===== HEADER LABEL =====
+.grid-table-col-label {
+    font-size: var(--text-body-bold-size);
+    font-weight: var(--text-body-bold-weight);
+    color: var(--text);
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+// ===== RESIZE HANDLE =====
+.grid-table-resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 8px;
+    z-index: 2;
+    cursor: col-resize;
+    touch-action: none;
+    outline: none;
+
+    &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: -1px;
+        right: 0;
+        width: 2px;
+        background: transparent;
+        transition: background-color 0.15s ease;
+    }
+
+    &:is(:hover, :focus-visible, :active)::after {
+        background: var(--accent-color);
+    }
+}
+
+// ===== CELL TEXT =====
+.grid-table-cell-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+// ===== HIGHLIGHT =====
+:host ::ng-deep mark.data-tables__highlight {
+    background-color: var(--orange-600-alpha-60);
+    color: inherit;
+    padding: 0;
+    border-radius: 2px;
+}
+
+// ===== CELL POPOVER =====
+.grid-table-popover {
+    z-index: 1000;
+    overflow: auto;
+    background-color: var(--color-flow-card-bg);
+    border: 1px solid var(--color-divider-subtle);
+    box-shadow: var(--shadow-raised);
+    padding: 0.375rem 0.75rem;
+
+    &__text {
+        font-size: 0.875rem;
+        color: var(--color-text-primary);
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+}

@@ -136,12 +136,26 @@ class KnowledgeClient:
         return response.json()
 
     def get_table_data(
-        self, rag_id: int, table_name: str, page: int = 1, page_size: int = 10
+        self,
+        rag_id: int,
+        table_name: str,
+        page: int = 1,
+        page_size: int = 10,
+        search: str | None = None,
     ) -> dict:
         """Fetch paginated parquet table data for a graph RAG."""
         url = f"rags/graph/{rag_id}/tables/{table_name}/"
-        params = {"page": page, "page_size": page_size}
+        params: dict = {"page": page, "page_size": page_size}
+        if search:
+            params["search"] = search
         response = self._request(method="get", url=url, params=params)
+        return response.json()
+
+    def get_table_summary(self, rag_id: int) -> list[dict]:
+        """Fetch the list of available tables with their row counts."""
+        response = self._request(
+            method="get", url=f"rags/graph/{rag_id}/table-summary/"
+        )
         return response.json()
 
     def _request(

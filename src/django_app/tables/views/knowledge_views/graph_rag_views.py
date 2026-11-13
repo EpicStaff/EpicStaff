@@ -69,6 +69,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         "entity_detail": Permission.READ,
         "relationship_detail": Permission.READ,
         "table_data": Permission.READ,
+        "table_summary": Permission.READ,
     }
 
     queryset = GraphRag.objects.all()
@@ -399,6 +400,19 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=["get"], url_path="table-summary")
+    def table_summary(self, request, pk=None):
+        """Proxy table summary (list of tables with row counts) from the knowledge_new service."""
+        self._assert_graph_rag_in_active_org(pk)
+
+        try:
+            with KnowledgeClient() as client:
+                data = client.get_table_summary(rag_id=int(pk))
+        except ClientError as e:
+            return Response({"error": e.public_detail}, status=e.status_code)
+
+        return Response(data)
+
     @action(detail=True, methods=["get"], url_path="tables/(?P<table_name>[a-z_]+)")
     def table_data(self, request, pk=None, table_name=None):
         """Proxy paginated parquet table data from the knowledge_new service."""
@@ -406,6 +420,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         page = request.query_params.get("page", "1")
         page_size = request.query_params.get("page_size", "10")
+        search = request.query_params.get("search") or None
 
         try:
             page = int(page)
@@ -423,6 +438,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
                     table_name=table_name,
                     page=page,
                     page_size=page_size,
+                    search=search,
                 )
         except ClientError as e:
             return Response({"error": e.public_detail}, status=e.status_code)
