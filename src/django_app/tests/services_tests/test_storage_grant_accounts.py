@@ -14,9 +14,10 @@ from src.shared.models.graph_nodes import (
     EndNodeData,
     GraphData,
     PythonNodeData,
+    SubGraphData,
 )
 from src.shared.models.sessions import SessionData
-from src.shared.models.storage_scope import StorageAction, StorageGrant
+from src.shared.models.storage_scope import StorageAction, StorageGrant, storage_account_key
 from src.shared.models.tools import PythonCodeData
 from storage_credentials.models import TemporaryStorageAccount
 from storage_credentials.services.session_credential_service import session_credential_service
@@ -137,7 +138,7 @@ def test_a_run_gives_a_node_exactly_its_grants_actions(
     accounts = _issue(session, acme, [grant])
 
     assert accounts.default is None
-    credentials = accounts.by_grant[grant.key]
+    credentials = accounts.by_grant[storage_account_key(grant, 1)]
     policy = _policy_of(gateway, credentials)
     assert _shared_actions_of(policy, session) == expected
     assert _own_actions_of(policy, session) == [GET, PUT, DELETE]
@@ -148,7 +149,7 @@ def test_a_run_gives_a_node_exactly_its_grants_actions(
 def test_a_node_granted_nothing_gets_its_own_folder_only(gateway, acme, session):
     accounts = _issue(session, acme, [StorageGrant()])
 
-    policy = _policy_of(gateway, accounts.by_grant["---"])
+    policy = _policy_of(gateway, accounts.by_grant["---@1"])
     assert _shared_actions_of(policy, session) is None
     assert _own_actions_of(policy, session) == [GET, PUT, DELETE]
 
@@ -176,10 +177,10 @@ def test_ninety_nodes_over_all_combinations_and_no_grant_mint_one_account_per_di
     # exactly what rwd allows, so both share the default account.
     assert len(gateway.created) == 8
     assert TemporaryStorageAccount.objects.filter(session=session).count() == 8
-    assert set(accounts.by_grant) == {grant.key for grant in ALL_GRANTS}
-    assert accounts.by_grant["rwd"] == accounts.default
+    assert set(accounts.by_grant) == {storage_account_key(grant, 1) for grant in ALL_GRANTS}
+    assert accounts.by_grant["rwd@1"] == accounts.default
     for grant in ALL_GRANTS:
-        policy = _policy_of(gateway, accounts.by_grant[grant.key])
+        policy = _policy_of(gateway, accounts.by_grant[storage_account_key(grant, 1)])
         expected = [
             action
             for action, wanted in zip((GET, PUT, DELETE), (grant.read, grant.write, grant.delete))
@@ -191,7 +192,7 @@ def test_ninety_nodes_over_all_combinations_and_no_grant_mint_one_account_per_di
         account.access_key: account.shared_actions
         for account in TemporaryStorageAccount.objects.filter(session=session)
     }
-    assert stored[accounts.by_grant["r-d"].access_key] == ["read", "delete"]
+    assert stored[accounts.by_grant["r-d@1"].access_key] == ["read", "delete"]
     assert stored[accounts.default.access_key] == ["read", "write", "delete"]
 
 
@@ -203,7 +204,7 @@ def test_ninety_nodes_with_one_combination_mint_one_account(gateway, acme, sessi
 
     assert len(gateway.created) == 1
     assert TemporaryStorageAccount.objects.filter(session=session).count() == 1
-    assert list(accounts.by_grant) == [grant.key]
+    assert list(accounts.by_grant) == [storage_account_key(grant, 1)]
 
 
 @pytest.mark.django_db
@@ -285,3 +286,116 @@ def test_a_session_end_reconciles_the_folders_of_all_its_accounts_once(gateway, 
     reconciled = sorted(call.kwargs["prefix"] for call in reconciler.reconcile_tree.call_args_list)
     assert reconciled == ["reports/", f"sessions/{session.pk}/"]
     assert len(gateway.deleted) == 2
+
+
+def _tool_node_data(org_id: int, session_id: int):
+    from src.shared.models.graph_nodes import AgentNodeData
+    from src.shared.models.tools import BaseToolData, PythonCodeToolData
+
+    return AgentNodeData(
+        node_name="agent",
+        input_map={},
+        tools=[
+            BaseToolData(
+                unique_name="python-code-tool:1",
+                data=PythonCodeToolData(
+                    id=1,
+                    name="tool",
+                    description="",
+                    python_code=PythonCodeData(
+                        code="x = 1",
+                        entrypoint="main",
+                        use_storage=True,
+                        storage_allowed_paths=["tool-files/", f"sessions/{session_id}/"],
+                        storage_org_prefix=f"org_{org_id}",
+                        org_id=org_id,
+                    ),
+                ),
+            )
+        ],
+    )
+
+
+def _file_resources(policy: dict) -> set[str]:
+    """Every resource an unconditional Allow statement of the policy names."""
+    return {
+        resource
+        for statement in policy["Statement"]
+        if statement["Effect"] == "Allow" and "Condition" not in statement
+        for resource in statement["Resource"]
+    }
+
+
+@pytest.mark.django_db
+def test_the_same_grant_in_two_flows_gets_two_accounts_each_over_its_own_files(
+    gateway, acme, session
+):
+    grant = StorageGrant(read=True, delete=True)
+    parent = _session_data(session, acme, [grant])
+    child_node = _node("child_node", acme.id, session.pk, grant)
+    child_node.python_code.storage_allowed_paths = ["child-files/", f"sessions/{session.pk}/"]
+    child = GraphData(
+        graph_id=2,
+        name="child",
+        entrypoint="start",
+        end_node=EndNodeData(node_name="end", output_map={}),
+        python_node_list=[child_node],
+    )
+    parent.unique_subgraph_list = [SubGraphData(id=2, data=child)]
+
+    accounts = session_credential_service.issue_session_accounts(
+        session_data=parent, session_orm=session, org=acme
+    )
+
+    assert set(accounts.by_grant) == {"r-d@1", "r-d@2"}
+    parent_files = _file_resources(_policy_of(gateway, accounts.by_grant["r-d@1"]))
+    child_files = _file_resources(_policy_of(gateway, accounts.by_grant["r-d@2"]))
+    assert any("reports" in resource for resource in parent_files)
+    assert not any("child-files" in resource for resource in parent_files)
+    assert any("child-files" in resource for resource in child_files)
+    assert not any("reports" in resource for resource in child_files)
+
+
+@pytest.mark.django_db
+def test_flows_attaching_the_same_files_with_the_same_grant_share_one_account(
+    gateway, acme, session
+):
+    grant = StorageGrant(read=True)
+    parent = _session_data(session, acme, [grant])
+    child_node = _node("child_node", acme.id, session.pk, grant)
+    child = GraphData(
+        graph_id=2,
+        name="child",
+        entrypoint="start",
+        end_node=EndNodeData(node_name="end", output_map={}),
+        python_node_list=[child_node],
+    )
+    parent.unique_subgraph_list = [SubGraphData(id=2, data=child)]
+
+    accounts = session_credential_service.issue_session_accounts(
+        session_data=parent, session_orm=session, org=acme
+    )
+
+    assert len(gateway.created) == 1
+    assert accounts.by_grant["r--@1"] == accounts.by_grant["r--@2"]
+
+
+@pytest.mark.django_db
+def test_the_default_account_covers_only_the_files_of_the_code_without_a_grant(
+    gateway, acme, session
+):
+    session_data = _session_data(
+        session, acme, [StorageGrant(read=True)], agent_node_list=[_tool_node_data(acme.id, session.pk)]
+    )
+
+    accounts = session_credential_service.issue_session_accounts(
+        session_data=session_data, session_orm=session, org=acme
+    )
+
+    default_files = _file_resources(_policy_of(gateway, accounts.default))
+    granted_files = _file_resources(_policy_of(gateway, accounts.by_grant["r--@1"]))
+    assert any("tool-files" in resource for resource in default_files)
+    assert not any("reports" in resource for resource in default_files)
+    assert any("reports" in resource for resource in granted_files)
+    assert not any("tool-files" in resource for resource in granted_files)
+    assert accounts.default.shared_actions == list(StorageAction)

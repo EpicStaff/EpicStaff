@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from src.shared.models.storage_scope import StorageAction
 from storage_credentials.models import TemporaryStorageAccount
 from storage_credentials.services import session_credential_service as service_module
 from storage_credentials.services.session_credential_service import session_credential_service
@@ -66,6 +67,7 @@ def _start(org, user, shared_paths=()) -> str:
         [OWN_FOLDER, *shared_paths],
         org.id,
         own_paths=[OWN_FOLDER],
+        shared_actions=frozenset(StorageAction),
     )
     return result.execution_id
 

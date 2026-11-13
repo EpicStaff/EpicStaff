@@ -31,7 +31,7 @@ from src.shared.models import (
     FileExtractorNodeData,
     AudioTranscriptionNodeData,
 )
-from src.shared.models.storage_scope import StorageCredentials, StorageGrant
+from src.shared.models.storage_scope import StorageCredentials, StorageGrant, storage_account_key
 import asyncio
 import json
 import uuid
@@ -774,10 +774,11 @@ def test_python_nodes_run_with_the_account_of_their_own_grant(mock_services):
         initial_state={},
         storage_credentials=DEFAULT_CREDENTIALS,
         storage_credentials_by_grant={
-            READ_ONLY.key: CREDENTIALS_FOR_READ_ONLY,
-            FULL_ACCESS.key: CREDENTIALS_FOR_FULL_ACCESS,
+            storage_account_key(READ_ONLY, 11): CREDENTIALS_FOR_READ_ONLY,
+            storage_account_key(FULL_ACCESS, 11): CREDENTIALS_FOR_FULL_ACCESS,
         },
         graph=GraphData(
+            graph_id=11,
             name="grants",
             python_node_list=[
                 _granted_python_node("reader", READ_ONLY),
@@ -798,11 +799,11 @@ def test_python_nodes_run_with_the_account_of_their_own_grant(mock_services):
         CREDENTIALS_FOR_READ_ONLY,
         CREDENTIALS_FOR_FULL_ACCESS,
         DEFAULT_CREDENTIALS,
-        DEFAULT_CREDENTIALS,
+        None,
     ]
 
 
-def test_a_session_without_grant_accounts_keeps_running_every_node_with_the_default(mock_services):
+def test_a_node_whose_grant_got_no_account_is_not_given_the_default_one(mock_services):
     executor = RecordingExecutor()
     session_data = SessionData(
         id=902,
@@ -825,12 +826,13 @@ def test_a_session_without_grant_accounts_keeps_running_every_node_with_the_defa
 
     _final_variables(_builder(services, session_id=902).compile_from_schema(session_data), {})
 
-    assert executor.received_storage_credentials == [DEFAULT_CREDENTIALS, DEFAULT_CREDENTIALS]
+    assert executor.received_storage_credentials == [None, DEFAULT_CREDENTIALS]
 
 
 def test_a_node_inside_a_subgraph_runs_with_the_account_of_its_grant(mock_services):
     executor = RecordingExecutor()
     inner_graph = GraphData(
+        graph_id=22,
         name="inner",
         python_node_list=[_granted_python_node("inner_reader", READ_ONLY)],
         edge_list=_chain(["inner_reader"]),
@@ -843,9 +845,13 @@ def test_a_node_inside_a_subgraph_runs_with_the_account_of_its_grant(mock_servic
         audit_retention_days=0,
         initial_state={},
         storage_credentials=DEFAULT_CREDENTIALS,
-        storage_credentials_by_grant={READ_ONLY.key: CREDENTIALS_FOR_READ_ONLY},
+        storage_credentials_by_grant={
+            storage_account_key(READ_ONLY, 22): CREDENTIALS_FOR_READ_ONLY,
+            storage_account_key(READ_ONLY, 11): CREDENTIALS_FOR_FULL_ACCESS,
+        },
         unique_subgraph_list=[SubGraphData(id=1, data=inner_graph, initial_state={})],
         graph=GraphData(
+            graph_id=11,
             name="outer",
             subgraph_node_list=[
                 _subgraph_node_data("sub_node", 1, "variables.sub_output"),
@@ -890,7 +896,9 @@ def test_agent_and_task_nodes_run_with_the_default_account_even_when_grant_accou
     )
     data = session_data(mock_llm_data)
     data.storage_credentials = DEFAULT_CREDENTIALS
-    data.storage_credentials_by_grant = {FULL_ACCESS.key: CREDENTIALS_FOR_FULL_ACCESS}
+    data.storage_credentials_by_grant = {
+        storage_account_key(FULL_ACCESS, data.graph.graph_id): CREDENTIALS_FOR_FULL_ACCESS
+    }
     agent_service = RecordingAgentService()
 
     _final_variables(
@@ -917,8 +925,9 @@ def test_classification_table_slots_run_with_the_account_of_their_own_grant(
         node_data=node_data,
         graph_builder=None,
         stop_event=StopEvent(),
+        graph_id=33,
         storage_credentials=DEFAULT_CREDENTIALS,
-        storage_credentials_by_grant={READ_ONLY.key: CREDENTIALS_FOR_READ_ONLY},
+        storage_credentials_by_grant={storage_account_key(READ_ONLY, 33): CREDENTIALS_FOR_READ_ONLY},
     )
     state = {"variables": DotDict({}), "system_variables": {}}
 
@@ -956,10 +965,11 @@ def test_file_extractor_and_audio_nodes_run_with_the_read_only_account(mock_serv
         initial_state={},
         storage_credentials=DEFAULT_CREDENTIALS,
         storage_credentials_by_grant={
-            READ_ONLY.key: CREDENTIALS_FOR_READ_ONLY,
-            FULL_ACCESS.key: CREDENTIALS_FOR_FULL_ACCESS,
+            storage_account_key(READ_ONLY, 44): CREDENTIALS_FOR_READ_ONLY,
+            storage_account_key(FULL_ACCESS, 44): CREDENTIALS_FOR_FULL_ACCESS,
         },
         graph=GraphData(
+            graph_id=44,
             name="file nodes",
             file_extractor_node_list=[FileExtractorNodeData(node_name="extract", input_map={"file": "variables.file"})],
             audio_transcription_node_list=[

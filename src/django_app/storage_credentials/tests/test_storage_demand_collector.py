@@ -22,7 +22,10 @@ from src.shared.models.graph_nodes import (
 )
 from src.shared.models.sessions import SessionData
 from src.shared.models.tools import BaseToolData, PythonCodeData, PythonCodeToolData
-from storage_credentials.services.storage_demand_collector import collect_storage_demand
+from storage_credentials.services.storage_demand_collector import (
+    collect_storage_demand,
+    collect_storage_grant_demand,
+)
 
 
 def _make_python_code_data(
@@ -716,7 +719,6 @@ def test_complex_graph_with_mixed_storage_and_non_storage_nodes():
 def test_file_nodes_demand_the_fixed_read_only_grant_and_never_the_default_account():
     """File Extractor and Audio to Text carry no grant: their code reads the attached files, no more."""
     from src.shared.models.storage_scope import FILE_NODE_STORAGE_GRANT, StorageGrant
-    from storage_credentials.services.storage_demand_collector import collect_storage_grant_demand
 
     graph = _make_empty_graph()
     scope = {"storage_allowed_paths": ["reports/"], "storage_org_prefix": "org_1", "org_id": 1}
@@ -729,6 +731,103 @@ def test_file_nodes_demand_the_fixed_read_only_grant_and_never_the_default_accou
 
     demand = collect_storage_grant_demand(_make_session_data(graph))
 
-    assert demand.grants == frozenset({StorageGrant(read=True)})
+    assert demand.accounts == {"r--@1": (StorageGrant(read=True), frozenset({"reports/"}))}
     assert FILE_NODE_STORAGE_GRANT == StorageGrant(read=True)
     assert demand.has_ungranted is False
+
+
+def _granted_python_node(name: str, grant, paths: list[str]) -> PythonNodeData:
+    code = _make_python_code_data(
+        use_storage=True, storage_allowed_paths=paths, storage_org_prefix="org_1"
+    )
+    return PythonNodeData(
+        node_name=name,
+        python_code=code.model_copy(update={"storage_grant": grant}),
+        input_map={},
+    )
+
+
+def test_each_grant_is_recorded_under_its_own_flow_with_that_flows_paths():
+    from src.shared.models.storage_scope import StorageGrant
+
+    delete_grant = StorageGrant(read=True, write=True, delete=True)
+    parent = _make_empty_graph()
+    parent.python_node_list = [_granted_python_node("parent_node", StorageGrant(read=True), ["a.txt"])]
+    child = GraphData(
+        graph_id=2,
+        name="child",
+        entrypoint="start",
+        end_node=EndNodeData(node_name="end", output_map={}),
+        python_node_list=[
+            _granted_python_node("child_node", delete_grant, ["b.txt"]),
+            _granted_python_node("sibling_node", delete_grant, ["b.txt"]),
+        ],
+    )
+    session = _make_session_data(parent)
+    session.unique_subgraph_list = [SubGraphData(id=2, data=child)]
+
+    demand = collect_storage_grant_demand(session)
+
+    assert demand.accounts == {
+        "r--@1": (StorageGrant(read=True), frozenset({"a.txt"})),
+        "rwd@2": (delete_grant, frozenset({"b.txt"})),
+    }
+    assert demand.has_ungranted is False
+
+
+def test_the_same_grant_in_two_flows_stays_two_accounts():
+    from src.shared.models.storage_scope import StorageGrant
+
+    grant = StorageGrant(read=True)
+    parent = _make_empty_graph()
+    parent.python_node_list = [_granted_python_node("parent_node", grant, ["a.txt"])]
+    child = GraphData(
+        graph_id=2,
+        name="child",
+        entrypoint="start",
+        end_node=EndNodeData(node_name="end", output_map={}),
+        python_node_list=[_granted_python_node("child_node", grant, ["b.txt"])],
+    )
+    session = _make_session_data(parent)
+    session.unique_subgraph_list = [SubGraphData(id=2, data=child)]
+
+    demand = collect_storage_grant_demand(session)
+
+    assert {key: paths for key, (_, paths) in demand.accounts.items()} == {
+        "r--@1": frozenset({"a.txt"}),
+        "r--@2": frozenset({"b.txt"}),
+    }
+
+
+def test_only_tool_code_is_ungranted_and_it_keeps_its_own_paths():
+    from src.shared.models.storage_scope import StorageGrant
+
+    graph = _make_empty_graph()
+    graph.python_node_list = [_granted_python_node("node", StorageGrant(), ["a.txt"])]
+    graph.agent_node_list = [
+        AgentNodeData(
+            node_name="agent",
+            input_map={},
+            tools=[
+                BaseToolData(
+                    unique_name="python-code-tool:1",
+                    data=PythonCodeToolData(
+                        id=1,
+                        name="tool",
+                        description="",
+                        python_code=_make_python_code_data(
+                            use_storage=True,
+                            storage_allowed_paths=["tool/"],
+                            storage_org_prefix="org_1",
+                        ),
+                    ),
+                )
+            ],
+        )
+    ]
+
+    demand = collect_storage_grant_demand(_make_session_data(graph))
+
+    assert demand.has_ungranted is True
+    assert demand.ungranted_paths == frozenset({"tool/"})
+    assert demand.accounts == {"---@1": (StorageGrant(), frozenset({"a.txt"}))}

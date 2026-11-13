@@ -6,6 +6,9 @@ and a version restore needs every box of the flow it replaces. Exercised over HT
 real services.
 """
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 from django.urls import reverse
 from rest_framework import status
@@ -19,19 +22,31 @@ from tables.import_export.services.partial_export_service import (
     GraphPartialExportService,
     NodeRef,
 )
-from tables.models import Graph, PythonCode
+from storage_credentials.models import TemporaryStorageAccount
+from tables.models import Graph, PythonCode, Session
 from tables.models.graph_models import (
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
     Edge,
     FileExtractorNode,
+    GraphStorageFile,
     PythonNode,
     StartNode,
+    StorageFile,
+    SubGraphNode,
     WebhookTriggerNode,
 )
+from tables.models.webhook_models import WebhookTrigger
+from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_spec import TriggerSpec
 from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.services_tests.test_run_code_storage_credentials import (
+    GATEWAY_PATH,
+    ORG_CREDENTIALS_PATH,
+    FakeStorageGateway,
+)
 
 ALL_PERMISSIONS = Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE | Permission.USE
 ALL_THREE_MESSAGE = (
@@ -500,3 +515,139 @@ def test_a_refused_restore_leaves_the_file_nodes_in_place(file_nodes_flow, no_fi
     _restore(no_files_client, version, file_nodes_flow)
 
     assert _file_node_counts(file_nodes_flow) == (1, 1)
+
+
+# ---- running: every run mints the accounts the saved boxes call for ----
+
+
+@pytest.fixture
+def storage_gateway(settings):
+    settings.STORAGE_BUCKET_NAME = "bucket"
+    fake = FakeStorageGateway()
+    with (
+        patch(GATEWAY_PATH, fake),
+        patch(
+            ORG_CREDENTIALS_PATH,
+            return_value=SimpleNamespace(access_key="org-access", secret_key="org-secret"),
+        ),
+    ):
+        yield fake
+
+
+@pytest.fixture
+def session_manager(monkeypatch):
+    manager = SessionManagerService()
+    monkeypatch.setattr(
+        manager.redis_service,
+        "publish_session_data",
+        lambda *, session_data, org_id, storage_credentials=None, storage_credentials_by_grant=None: 1,
+    )
+    return manager
+
+
+def _flow_with_attached_file(org, name, path, boxes):
+    """A flow with one attached file and one storage-using Python node with `boxes` ticked."""
+    graph = Graph.objects.create(name=name, org=org)
+    start = StartNode.objects.create(graph=graph, variables={})
+    storage_file = StorageFile.objects.create(org=org, path=path, name=path.rsplit("/", 1)[-1])
+    GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
+    node = PythonNode.objects.create(
+        graph=graph, python_code=_code(), use_storage=True, **_flags("", boxes)
+    )
+    Edge.objects.create(graph=graph, start_node_id=start.pk, end_node_id=node.pk)
+    return graph
+
+
+def _parent_of(org, name, child, *, file_path=None):
+    """A flow whose only node is `child` as a sub-flow, optionally with a file attached."""
+    parent = Graph.objects.create(name=name, org=org)
+    start = StartNode.objects.create(graph=parent, variables={})
+    if file_path:
+        storage_file = StorageFile.objects.create(org=org, path=file_path, name=file_path.rsplit("/", 1)[-1])
+        GraphStorageFile.objects.create(graph=parent, storage_file=storage_file)
+    sub_flow_node = SubGraphNode.objects.create(graph=parent, subgraph=child)
+    Edge.objects.create(graph=parent, start_node_id=start.pk, end_node_id=sub_flow_node.pk)
+    return parent
+
+
+def _minted(session) -> set[tuple[tuple[str, ...], tuple[str, ...]]]:
+    """(shared actions, attached folders) of each account the session got, its own folder left out."""
+    return {
+        (
+            tuple(account.shared_actions),
+            tuple(sorted(f for f in account.granted_folders if not f.startswith("sessions/"))),
+        )
+        for account in TemporaryStorageAccount.objects.filter(session=session)
+    }
+
+
+def _run_flow(manager, graph, **run_arguments) -> Session:
+    session_id = manager.run_session(graph_id=graph.pk, variables={}, **run_arguments)
+    return Session.objects.get(pk=session_id)
+
+
+@pytest.mark.django_db
+def test_same_accounts_for_every_way_of_starting(
+    acme,
+    storage_gateway,
+    session_manager,
+    custom_role_user,
+    regular_user,
+    issue_api_key,
+):
+    flow = _flow_with_attached_file(acme, "granted", "reports/a.txt", (True, False, True))
+    webhook_node = WebhookTriggerNode.objects.create(
+        graph=flow,
+        node_name="hook",
+        webhook_trigger=WebhookTrigger.objects.create(path="start-four-ways", org=acme),
+        python_code=_code(),
+    )
+    parent = _parent_of(acme, "parent", flow)
+    no_files_user = custom_role_user(acme, "no-files-runner@example.com", {ResourceType.FLOWS: Permission.USE})
+    viewer = custom_role_user(
+        acme, "viewer-runner@example.com", {ResourceType.FLOWS: Permission.READ | Permission.USE}
+    )
+    _, api_key = issue_api_key(user=regular_user, org=acme)
+
+    by_ui_user = _run_flow(session_manager, flow, user=no_files_user, trigger=TriggerSpec.manual())
+    by_api_key = _run_flow(
+        session_manager, flow, user=regular_user, api_key=api_key, trigger=TriggerSpec.manual()
+    )
+    by_webhook = _run_flow(
+        session_manager, flow, trigger=TriggerSpec.webhook(webhook_node, "start-four-ways")
+    )
+    by_viewers_parent = _run_flow(session_manager, parent, user=viewer, trigger=TriggerSpec.manual())
+
+    expected = {(("read", "delete"), ("reports/a.txt",))}
+    for session in (by_ui_user, by_api_key, by_webhook, by_viewers_parent):
+        assert _minted(session) == expected, session.pk
+
+
+@pytest.mark.django_db
+def test_sub_flow_grant_does_not_reach_parent_files(acme, storage_gateway, session_manager):
+    parent = _flow_with_attached_file(acme, "parent", "reports/a.txt", (True, False, False))
+    child = _flow_with_attached_file(acme, "child", "reports/b.txt", (True, True, True))
+    sub_flow_node = SubGraphNode.objects.create(graph=parent, subgraph=child)
+    Edge.objects.create(
+        graph=parent,
+        start_node_id=parent.python_node_list.get().pk,
+        end_node_id=sub_flow_node.pk,
+    )
+
+    session = _run_flow(session_manager, parent, trigger=TriggerSpec.manual())
+
+    assert _minted(session) == {
+        (("read",), ("reports/a.txt",)),
+        (("read", "write", "delete"), ("reports/b.txt",)),
+    }
+
+
+@pytest.mark.django_db
+def test_unticked_node_gets_no_shared_access(acme, storage_gateway, session_manager):
+    flow = _flow_with_attached_file(acme, "unticked", "reports/a.txt", (False, False, False))
+
+    session = _run_flow(session_manager, flow, trigger=TriggerSpec.manual())
+
+    (account,) = TemporaryStorageAccount.objects.filter(session=session)
+    assert account.shared_actions == []
+    assert account.granted_folders == [f"sessions/{session.pk}/"]

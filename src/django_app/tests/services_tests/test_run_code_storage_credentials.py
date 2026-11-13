@@ -100,7 +100,6 @@ def test_storage_tool_run_gets_credentials_scoped_to_its_own_folder(
         "secret_key": "temp-secret-1",
         "shared_actions": [],
         "own_paths": [f"test-runs/{execution_id}/"],
-        # An empty org: every byte of its quota is free, and it has no bin to purge.
     }
     assert list(_temporary_accounts(execution_id).values_list("access_key", flat=True)) == ["temp-access-1"]
     (minted,) = gateway.created

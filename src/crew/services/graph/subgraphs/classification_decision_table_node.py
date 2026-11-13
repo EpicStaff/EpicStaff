@@ -96,6 +96,7 @@ class ClassificationDecisionTableNodeSubgraph:
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         storage_credentials: StorageCredentials | None = None,
         storage_credentials_by_grant: dict[str, StorageCredentials] | None = None,
+        graph_id: int | None = None,
     ):
         self.node_data = node_data
         self._graph_builder = graph_builder
@@ -108,6 +109,7 @@ class ClassificationDecisionTableNodeSubgraph:
         )
         self.storage_credentials = storage_credentials
         self.storage_credentials_by_grant = storage_credentials_by_grant or {}
+        self.graph_id = graph_id
 
     async def _publish_message(self, graph_message: GraphMessage):
         """Add a GraphMessage directly to the graph message stream.
@@ -225,6 +227,7 @@ class ClassificationDecisionTableNodeSubgraph:
             # Each code slot runs with the account of its own grant.
             storage_credentials=pick_storage_credentials(
                 python_code.storage_grant,
+                self.graph_id,
                 self.storage_credentials,
                 self.storage_credentials_by_grant,
             ),

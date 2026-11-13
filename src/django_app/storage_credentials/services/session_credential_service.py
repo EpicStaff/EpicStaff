@@ -1,7 +1,7 @@
 """Issue, persist, and revoke temporary storage credentials.
 
-Three callers share this module: a graph session (one account reused by all
-storage-demanding nodes in it), a django "Test run" execution (one
+Three callers share this module: a graph session (one account per storage grant and
+flow, reused by the nodes that share them), a django "Test run" execution (one
 per-execution account, no Session involved), and a realtime chat (one
 account reused for the whole voice session). Each mints and persists
 synchronously via `_mint_and_persist`, keyed to its own
@@ -56,11 +56,11 @@ class SessionStorageCredentials:
     """The temporary storage accounts minted for one graph session.
 
     Attributes:
-        default: The account for code with no storage grant of its own. None when no
-            such code needs storage.
-        by_grant: The account of each distinct `StorageGrant.key` used by a storage-using
-            node or code slot. Several keys may share one account when they allow the same
-            actions.
+        default: The account for code with no storage grant of its own (an agent's python
+            tool). None when no such code needs storage.
+        by_grant: The account of each `storage_account_key` (grant and flow) used by a
+            storage-using node or code slot. Several keys may share one account when they
+            allow the same actions on the same files.
     """
 
     default: StorageCredentials | None = None
@@ -68,11 +68,19 @@ class SessionStorageCredentials:
 
 
 @dataclass(frozen=True)
-class _PlannedAccount:
-    """One account about to be minted: what it may do to the shared folders, and its policy."""
+class _AccountRequest:
+    """One account to mint: what it may do to the attached paths, and which paths those are."""
 
     shared_actions: frozenset[StorageAction]
-    shared_folders: frozenset[str]
+    allowed_paths: frozenset[str]
+
+
+@dataclass(frozen=True)
+class _PlannedAccount:
+    """One account about to be minted: its actions, every folder its policy grants, and the policy."""
+
+    shared_actions: frozenset[StorageAction]
+    granted_folders: frozenset[str]
     policy: dict
 
 
@@ -94,17 +102,16 @@ class SessionCredentialService:
     ) -> SessionStorageCredentials:
         """Mint and persist the temporary storage accounts a graph session needs.
 
-        Traverses the session graph to determine if storage access is needed.
-        If yes, mints temporary service accounts in the storage backend scoped
-        to the union of storage_allowed_paths from all storage-demanding nodes,
-        and persists each access_key in TemporaryStorageAccount. The session's own
-        folder (`sessions/<id>/`) allows every action in all of them; the other paths
-        allow only what the account's actions say.
+        Traverses the session graph to determine if storage access is needed. If yes,
+        mints one temporary service account per grant and flow: it allows exactly the
+        grant's actions on the paths attached to that flow, so a sub-flow's grant never
+        reaches its parent's files. Code with no grant (an agent's python tool) gets a
+        default account allowing every action on the paths of that code. The session's
+        own folder (`sessions/<id>/`) allows every action in all of them. Each account is
+        persisted in TemporaryStorageAccount.
 
-        One account is minted per distinct set of actions the nodes' storage grants allow,
-        plus one allowing every action for the code with no grant. They are minted
-        concurrently, at most nine: the eight combinations of read, write and delete, and
-        the ungranted one.
+        Entries that end up with the same actions on the same paths share one account.
+        The accounts are minted concurrently. Nothing here reads who started the run.
 
         Returns:
             The accounts; empty when no node needs storage.
@@ -129,34 +136,31 @@ class SessionCredentialService:
             union_allowed_paths,
             node_declared_org_prefix,
         )
-        all_actions = frozenset(StorageAction)
         demand = collect_storage_grant_demand(session_data)
-        keys_by_set: dict[frozenset[StorageAction], list[str]] = defaultdict(list)
-        for grant in sorted(demand.grants, key=lambda grant: grant.key):
-            keys_by_set[grant.actions].append(grant.key)
-        # A grant that allows every action runs with the default account, which is minted
-        # anyway when some code has no grant: one account per distinct action set.
-        default_keys = keys_by_set.pop(all_actions, []) if demand.has_ungranted else []
-        action_sets = ([all_actions] if demand.has_ungranted else []) + list(keys_by_set)
+        keys_by_request: dict[_AccountRequest, list[str]] = defaultdict(list)
+        default_request = _AccountRequest(frozenset(StorageAction), demand.ungranted_paths)
+        if demand.has_ungranted:
+            keys_by_request[default_request] = []
+        for key, (grant, paths) in sorted(demand.accounts.items()):
+            keys_by_request[_AccountRequest(grant.actions, paths)].append(key)
+        requests = list(keys_by_request)
         credentials = self._mint_accounts(
-            allowed_paths=union_allowed_paths,
+            requests=requests,
             org_id=org.id,
             fk_field="session",
             fk_value=session_orm,
             owner_label=f"session {session_orm.id}",
             own_paths=[f"sessions/{session_orm.id}/"],
-            action_sets=action_sets,
         )
-        default = credentials[0] if demand.has_ungranted else None
-        grant_credentials = credentials[1:] if demand.has_ungranted else credentials
-        by_grant = {
-            key: account
-            for account, keys in zip(grant_credentials, keys_by_set.values(), strict=True)
-            for key in keys
-        }
-        if default is not None:
-            by_grant.update(dict.fromkeys(default_keys, default))
-        return SessionStorageCredentials(default=default, by_grant=by_grant)
+        credentials_by_request = dict(zip(requests, credentials, strict=True))
+        return SessionStorageCredentials(
+            default=credentials_by_request[default_request] if demand.has_ungranted else None,
+            by_grant={
+                key: credentials_by_request[request]
+                for request, keys in keys_by_request.items()
+                for key in keys
+            },
+        )
 
     def issue_for_test_run(
         self,
@@ -165,10 +169,14 @@ class SessionCredentialService:
         org_id: int,
         *,
         own_paths: list[str],
+        shared_actions: frozenset[StorageAction],
     ) -> StorageCredentials:
         """Mint and persist temporary storage credentials for a django "Test run"
         execution. Unlike `issue_for_session`, the caller has already determined
         `use_storage=True`, so this always mints (never returns None).
+
+        `shared_actions` is what the code may do to `storage_allowed_paths` outside
+        `own_paths`: the saved grant of a tested node, none for bare tool code.
 
         Raises:
             CredentialScopeValidationError: If the given scope is missing,
@@ -182,6 +190,7 @@ class SessionCredentialService:
             fk_value=python_code_result,
             owner_label=f"test-run {python_code_result.execution_id}",
             own_paths=own_paths,
+            shared_actions=shared_actions,
         )
 
     def issue_for_realtime_chat(
@@ -206,6 +215,7 @@ class SessionCredentialService:
             fk_value=realtime_agent_chat,
             owner_label=f"realtime chat {realtime_agent_chat.id}",
             own_paths=[],
+            shared_actions=frozenset(StorageAction),
         )
 
     def _mint_and_persist(
@@ -217,37 +227,33 @@ class SessionCredentialService:
         fk_value,
         owner_label: str,
         own_paths: list[str],
+        shared_actions: frozenset[StorageAction],
     ) -> StorageCredentials:
-        """Mint and persist the one account of a test run or a realtime chat.
-
-        The account allows every action on the attached folders; see `_mint_accounts`.
-        """
+        """Mint and persist the one account of a test run or a realtime chat; see `_mint_accounts`."""
         return self._mint_accounts(
-            allowed_paths=allowed_paths,
+            requests=[_AccountRequest(shared_actions, frozenset(allowed_paths))],
             org_id=org_id,
             fk_field=fk_field,
             fk_value=fk_value,
             owner_label=owner_label,
             own_paths=own_paths,
-            action_sets=[frozenset(StorageAction)],
         )[0]
 
     def _mint_accounts(
         self,
         *,
-        allowed_paths: list[str],
+        requests: list[_AccountRequest],
         org_id: int,
         fk_field: str,
         fk_value,
         owner_label: str,
         own_paths: list[str],
-        action_sets: list[frozenset[StorageAction]],
     ) -> list[StorageCredentials]:
         """Shared mint + persist body for all three `issue_for_*` entry points.
 
-        Mints one account per entry of `action_sets`, all over the same folders and
-        concurrently, and returns their credentials in the same order. Every account of
-        a call belongs to the same owner and is persisted with its own actions.
+        Mints one account per entry of `requests` concurrently, and returns their
+        credentials in the same order. Every account of a call belongs to the same owner
+        and is persisted with its own actions and folders.
 
         Not best-effort: any failure here -- minting or persisting -- raises
         `TemporaryCredentialIssueError`, and the caller's own execution does not
@@ -264,25 +270,26 @@ class SessionCredentialService:
         `storage_org_prefix` unable to reach another org's objects.
 
         `own_paths` are the run's own folders, computed by the caller and never read
-        from node data; they always allow every action. The rest of `allowed_paths`
-        allow the account's entry of `action_sets`. An account with none of them has the
-        shared folders left out, and the run still gets its own folders.
+        from node data; they always allow every action. The rest of a request's
+        `allowed_paths` allow only its `shared_actions`. A request with none of them has
+        the shared folders left out, and the run still gets its own folders.
 
         Raises:
-            CredentialScopeValidationError: `allowed_paths` is empty or escapes
+            CredentialScopeValidationError: A request's `allowed_paths` is empty or escapes
                 the org prefix, or nothing is left to grant because an account may
                 do nothing to the shared folders and the run has no folder of its own.
             TemporaryPolicyTooLargeError: too many files are attached for one policy.
             TemporaryCredentialIssueError: minting or persisting failed.
         """
-        scoped_folders = credential_scope_validator.validate(
-            org_id=org_id,
-            storage_org_prefix=org_storage_prefix(org_id),
-            storage_allowed_paths=allowed_paths,
-            own_paths=own_paths,
-        )
         planned: list[_PlannedAccount] = []
-        for shared_actions in action_sets:
+        for request in requests:
+            shared_actions = request.shared_actions
+            scoped_folders = credential_scope_validator.validate(
+                org_id=org_id,
+                storage_org_prefix=org_storage_prefix(org_id),
+                storage_allowed_paths=sorted(request.allowed_paths),
+                own_paths=own_paths,
+            )
             shared_folders = scoped_folders.shared
             if not shared_actions:
                 logger.info(
@@ -302,7 +309,9 @@ class SessionCredentialService:
                 shared_actions=shared_actions,
                 own_folders=set(scoped_folders.own),
             )
-            planned.append(_PlannedAccount(shared_actions, shared_folders, policy))
+            planned.append(
+                _PlannedAccount(shared_actions, scoped_folders.own | shared_folders, policy)
+            )
 
         try:
             org_creds = org_credential_store.get(org_id=org_id)
@@ -345,9 +354,7 @@ class SessionCredentialService:
                     access_key=access_key,
                     issued_at=timezone.now(),
                     shared_actions=[action.value for action in shared_action_list],
-                    granted_folders=self._org_relative_grants(
-                        org_id, scoped_folders.own | account.shared_folders
-                    ),
+                    granted_folders=self._org_relative_grants(org_id, account.granted_folders),
                     **{fk_field: fk_value},
                 )
                 persisted_keys.add(access_key)
@@ -536,7 +543,7 @@ class SessionCredentialService:
         """Shared revoke + delete body for all three `revoke_for_*` entry points.
 
         Revokes every account of the owner: a graph session has several when its nodes
-        carry different storage grants. Deletes each `TemporaryStorageAccount` row only
+        carry different storage grants or live in flows with different files. Deletes each `TemporaryStorageAccount` row only
         after the backend confirms the service account is gone, so a failed revocation
         leaves that row for the manager's cleanup job to retry; the others are still
         revoked.

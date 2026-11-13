@@ -125,6 +125,7 @@ class SessionGraphBuilder:
         node_data: ClassificationDecisionTableNodeData,
         storage_credentials: StorageCredentials | None = None,
         storage_credentials_by_grant: dict[str, StorageCredentials] | None = None,
+        graph_id: int | None = None,
     ) -> str:
         subgraph_builder = StateGraph(State)
         builder = ClassificationDecisionTableNodeSubgraph(
@@ -135,6 +136,7 @@ class SessionGraphBuilder:
             redis_service=self.redis_service,
             storage_credentials=storage_credentials,
             storage_credentials_by_grant=storage_credentials_by_grant or {},
+            graph_id=graph_id,
         )
         subgraph: CompiledStateGraph = builder.build()
 
@@ -358,6 +360,7 @@ class SessionGraphBuilder:
                 node_data=ct_node_data,
                 storage_credentials=session_data.storage_credentials,
                 storage_credentials_by_grant=session_data.storage_credentials_by_grant,
+                graph_id=schema.graph_id,
             )
 
         for subgraph_node_data in schema.subgraph_node_list:

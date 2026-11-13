@@ -8,10 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field
 class StorageAction(StrEnum):
     """What a run's code may do to the files attached to it (outside its own folders).
 
-    Derived by django from the acting identity's FILES permissions: READ needs
-    FILES:READ; WRITE needs READ plus both FILES:CREATE and FILES:UPDATE, because
-    storage cannot tell creating an object from overwriting one; DELETE needs READ
-    plus FILES:DELETE.
+    Ticked per node as a `StorageGrant`. Whoever ticks an action must hold the FILES
+    permissions behind it: READ needs FILES:READ; WRITE needs both FILES:CREATE and
+    FILES:UPDATE, because storage cannot tell creating an object from overwriting one;
+    DELETE needs FILES:DELETE.
     """
 
     READ = "read"
@@ -20,12 +20,12 @@ class StorageAction(StrEnum):
 
 
 class StorageGrant(BaseModel):
-    """What one code-running node may do to the files attached to its flow in an unattended run.
+    """What one code-running node may do to the files attached to its flow.
 
-    Set per node (or per code slot of a node) by whoever configured the flow. A run
-    with no identity of its own (schedule, webhook and Telegram triggers) gets
-    exactly these actions on the attached files; a node with no grant (None) keeps
-    the run's default access.
+    Set per node (or per code slot of a node) by whoever configured the flow. Every run
+    of the flow, however it was started, gives the node's code exactly these actions on
+    the attached files; code with no grant (None, as in an agent's python tool) runs
+    with the session's default account.
     """
 
     read: bool = False
@@ -65,6 +65,15 @@ class StorageGrant(BaseModel):
         return cls(read=key[0] == "r", write=key[1] == "w", delete=key[2] == "d")
 
 
+def storage_account_key(grant: StorageGrant, graph_id: int | None) -> str:
+    """Identifier of the account a grant gets in one flow, the same in django and crew.
+
+    The flow is part of the key because an account reaches only the files attached to the
+    flow its node lives in.
+    """
+    return f"{grant.key}@{graph_id}"
+
+
 # What File Extractor and Audio to Text nodes run with: they carry no grant of their own
 # and only read the flow's attached files.
 FILE_NODE_STORAGE_GRANT = StorageGrant(read=True)
@@ -87,7 +96,7 @@ class StorageCredentials(BaseModel):
     shared_actions: list[StorageAction] | None = None
     """Actions the account allows on the allowed paths outside `own_paths`.
 
-    Mirrors the acting identity's permissions so `epicstaff_storage` can refuse an
+    Mirrors the grant the account was minted for so `epicstaff_storage` can refuse an
     operation before calling storage. None means the issuer did not narrow them, and the
     library keeps its path-only checks.
     """
@@ -136,8 +145,8 @@ class StorageScopedData(BaseModel):
     storage_grant: StorageGrant | None = None
     """The grant of the node or code slot that owns this code; None when it has none.
 
-    Picks which of the session's temporary accounts this code runs with (see
-    `SessionData.storage_credentials_by_grant`).
+    Picks which of the session's temporary accounts this code runs with, together with
+    the id of its flow (see `SessionData.storage_credentials_by_grant`).
     """
 
     model_config = ConfigDict(from_attributes=True)

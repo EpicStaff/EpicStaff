@@ -3,7 +3,12 @@
 import pytest
 from shared.models.graph_nodes import GraphData, PythonNodeData
 from shared.models.sessions import SessionData
-from shared.models.storage_scope import StorageAction, StorageCredentials, StorageGrant
+from shared.models.storage_scope import (
+    StorageAction,
+    StorageCredentials,
+    StorageGrant,
+    storage_account_key,
+)
 from shared.models.tools import PythonCodeData
 from shared.models.tools import CodeTaskData
 
@@ -98,6 +103,14 @@ def test_every_combination_has_its_own_key_and_survives_the_key_round_trip():
 
     assert len({grant.key for grant in grants}) == 8
     assert all(StorageGrant.from_key(grant.key) == grant for grant in grants)
+
+
+def test_account_key_names_the_grant_and_the_flow():
+    grant = StorageGrant(read=True, delete=True)
+
+    assert storage_account_key(grant, 7) == "r-d@7"
+    assert storage_account_key(grant, 8) != storage_account_key(grant, 7)
+    assert storage_account_key(grant, None) == "r-d@None"
 
 
 def test_grant_actions_are_the_flags_that_are_on():

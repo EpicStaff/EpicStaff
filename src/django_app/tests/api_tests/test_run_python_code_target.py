@@ -10,7 +10,7 @@ store."""
 
 import pytest
 from django.utils import timezone
-from src.shared.models.storage_scope import StorageCredentials
+from src.shared.models.storage_scope import StorageAction, StorageCredentials
 from storage_credentials.services.session_credential_service import session_credential_service
 
 from rbac.models import OrganizationUser
@@ -30,9 +30,16 @@ def minted_credentials(monkeypatch):
     """Stand in for minting a test run's storage credentials; records each scope asked for."""
     requested_scopes = []
 
-    def issue_for_test_run(*, python_code_result, storage_allowed_paths, org_id, own_paths):
+    def issue_for_test_run(
+        *, python_code_result, storage_allowed_paths, org_id, own_paths, shared_actions
+    ):
         requested_scopes.append(
-            {"storage_allowed_paths": storage_allowed_paths, "org_id": org_id, "own_paths": own_paths}
+            {
+                "storage_allowed_paths": storage_allowed_paths,
+                "org_id": org_id,
+                "own_paths": own_paths,
+                "shared_actions": shared_actions,
+            }
         )
         return StorageCredentials(access_key="test-access-key", secret_key="test-secret-key")
 
@@ -111,6 +118,7 @@ class TestPythonNodeTarget:
                 "storage_allowed_paths": task["storage_allowed_paths"],
                 "org_id": acme.id,
                 "own_paths": [f"test-runs/python_node-{node.id}/"],
+                "shared_actions": frozenset(),
             }
         ]
         assert task["global_kwargs"]["org_id"] == acme.id
@@ -122,6 +130,20 @@ class TestPythonNodeTarget:
         assert result.org_id == acme.id
         assert result.created_by == member_only
         assert result.status == PythonCodeResult.Status.PENDING
+
+    def test_test_run_gets_the_actions_of_the_nodes_saved_grant(
+        self, acme_client, acme_graph, attached_file, sandbox_intake, minted_credentials
+    ):
+        node = _python_node(acme_graph, use_storage=True)
+        PythonNode.objects.filter(pk=node.pk).update(
+            storage_grant_read=True, storage_grant_write=True, storage_grant_delete=False
+        )
+
+        response = _run_target(acme_client, "python_node", node.id)
+
+        assert response.status_code == 200, response.data
+        [requested] = minted_credentials
+        assert requested["shared_actions"] == {StorageAction.READ, StorageAction.WRITE}
 
     def test_storage_node_without_attached_files_still_gets_its_folder(
         self, acme_client, acme_graph, sandbox_intake, minted_credentials
@@ -209,6 +231,7 @@ class TestWebhookTriggerNodeTarget:
                 "storage_allowed_paths": task["storage_allowed_paths"],
                 "org_id": acme.id,
                 "own_paths": [f"test-runs/webhook_trigger_node-{node.id}/"],
+                "shared_actions": frozenset(),
             }
         ]
         assert task["global_kwargs"]["org_id"] == acme.id

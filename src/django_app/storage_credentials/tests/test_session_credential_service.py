@@ -400,6 +400,7 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
             storage_allowed_paths=["test-runs/exec-org-prefix/"],
             org_id=self.org.id,
             own_paths=["test-runs/exec-org-prefix/"],
+            shared_actions=frozenset(StorageAction),
         )
 
         assert credentials.access_key == "test_run_key"
@@ -459,6 +460,7 @@ class TestTemporaryCredentialExpiration(TestCase):
             storage_allowed_paths=["test-runs/exec-ttl/"],
             org_id=self.org.id,
             own_paths=[],
+            shared_actions=frozenset(StorageAction),
         )
 
     def test_ttl_sets_the_lifetime_and_zero_or_less_means_none(self, mock_gateway_class, mock_org_store):
@@ -495,6 +497,7 @@ class TestScopeValidationRejectsBadPaths(TestCase):
             storage_allowed_paths=storage_allowed_paths,
             org_id=self.org.id,
             own_paths=[],
+            shared_actions=frozenset(StorageAction),
         )
 
     def test_bad_paths_are_rejected_before_storage_is_contacted(self, mock_gateway_class, mock_org_store):
