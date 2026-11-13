@@ -28,7 +28,8 @@ env_bool() {
 # <<< env_bool
 
 
-APP_DIR="/home/developer/EpicStaff"
+# Set per server in the self-hosted runner's .env (e.g. APP_DIR=/opt/EpicStaff).
+APP_DIR="${APP_DIR:?APP_DIR is not set: add it to the .env of the self-hosted runner}"
 COMPOSE_DIR="$APP_DIR/src"
 COMPOSE_FILE="docker-compose.yaml"
 NUKE_DB=${NUKE_DB:-false}
