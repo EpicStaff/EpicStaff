@@ -367,8 +367,9 @@ services:
     logging: *bounded-logs
     restart: unless-stopped
     networks:
+      # Deliberately NOT on sandbox-network: that network carries the worker that runs
+      # user code, and nothing on it needs Redis (the legacy sandbox's pub/sub did).
       - backend-network
-      - sandbox-network
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redis_data:/data
