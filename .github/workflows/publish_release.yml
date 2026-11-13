@@ -59,7 +59,7 @@ jobs:
   publish-release:
     name: Publish GitHub Release
     needs: [resolve, build-images]
-    runs-on: self-hosted
+    runs-on: ubuntu-24.04
     # id-token: write is what keyless cosign signing of the release files needs;
     # contents: write is the release upload. Job-level permissions replace the
     # workflow-level set, so both are listed.
