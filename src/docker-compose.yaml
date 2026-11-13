@@ -1198,7 +1198,7 @@ services:
     container_name: sandbox_new
     build:
       context: .
-      dockerfile: ./sandbox_new/Dockerfile
+      dockerfile: ./sandbox_new/Dockerfile.manager
     command: ./entrypoint.sh
     init: true
     networks:
@@ -1250,12 +1250,13 @@ services:
       - ALL
 
   sandbox_worker:
+    image: ghcr.io/epicstaff/sandbox_worker:${IMAGE_TAG:?}
     logging: *bounded-logs
     restart: unless-stopped
     container_name: sandbox_worker
     build:
       context: .
-      dockerfile: ./sandbox_new/Dockerfile
+      dockerfile: ./sandbox_new/Dockerfile.worker
     command: ./worker_entrypoint.sh
     init: true
     networks:

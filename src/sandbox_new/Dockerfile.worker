@@ -1,3 +1,10 @@
+# The sandbox WORKER image: the only container that runs user code. It pulls jobs
+# from the manager over HTTP and has no server, no database and no Redis, so no
+# uvicorn port, no piccolo config and no runtime uv (venvs arrive built, on the
+# shared volume). What it does carry: the tools' runtime deps (ffmpeg, git), the
+# unprivileged user the code drops to, and iptables for the per-uid egress
+# firewall (worker/infrastructure/isolation/egress_firewall.py).
+
 # --- Stage 1: Builder ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
@@ -25,9 +32,6 @@ ENV UV_NO_BUILD=1 \
 
 WORKDIR /app/src
 
-RUN apt-get update && apt-get install -y ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy only dependency descriptors first (better layer caching)
 COPY ./sandbox_new/pyproject.toml ./sandbox_new/uv.lock ./sandbox/
 COPY ./foundation /app/src/foundation
@@ -45,18 +49,13 @@ COPY ./shared /app/src/shared
 # --- Stage 2: Runtime ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
 
-# git is required by the GitHub search tool, which clones repositories.
-RUN apt-get update && apt-get install -y ffmpeg git \
+# ffmpeg and git are runtime deps of user code and the built-in tools (the GitHub
+# search tool clones repositories); iptables installs the per-uid egress firewall
+# at startup.
+RUN apt-get update && apt-get install -y ffmpeg git iptables \
     && rm -rf /var/lib/apt/lists/*
 
-# uv is needed at RUNTIME, not just at build: the manager builds every per-job
-# virtualenv by shelling out to `uv` (UVProvider). The builder-stage uv lives in
-# the builder's system python and is not part of the copied /app, so install it
-# into the runtime image too.
-RUN pip install --no-cache-dir uv==0.11.21
-
-# Create the non-root user that child subprocesses (pip, venv creation, and
-# user code execution) run as.
+# Create the non-root user the user-code child drops to.
 RUN useradd --system --no-create-home --uid 1000 sandboxuser
 
 # Copy built app from builder
@@ -66,11 +65,8 @@ COPY --from=builder /app /app
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PICCOLO_CONF=manager.infrastructure.database.config \
-    UV_PYTHON_DOWNLOADS=never \
-    UV_CACHE_DIR=/tmp/uv_cache
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app/src/sandbox
 
-RUN chmod +x ./entrypoint.sh
+RUN chmod +x ./worker_entrypoint.sh
