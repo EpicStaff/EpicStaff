@@ -346,18 +346,21 @@ class SessionCredentialService:
         credentials: list[StorageCredentials] = []
         persisted_keys: set[str] = set()
         try:
+            issued_at = timezone.now()
+            rows: list[TemporaryStorageAccount] = []
             for account, (access_key, secret_key) in zip(planned, minted, strict=True):
                 shared_action_list = [
                     action for action in StorageAction if action in account.shared_actions
                 ]
-                TemporaryStorageAccount.objects.create(
-                    access_key=access_key,
-                    issued_at=timezone.now(),
-                    shared_actions=[action.value for action in shared_action_list],
-                    granted_folders=self._org_relative_grants(org_id, account.granted_folders),
-                    **{fk_field: fk_value},
+                rows.append(
+                    TemporaryStorageAccount(
+                        access_key=access_key,
+                        issued_at=issued_at,
+                        shared_actions=[action.value for action in shared_action_list],
+                        granted_folders=self._org_relative_grants(org_id, account.granted_folders),
+                        **{fk_field: fk_value},
+                    )
                 )
-                persisted_keys.add(access_key)
                 credentials.append(
                     StorageCredentials(
                         access_key=access_key,
@@ -366,6 +369,10 @@ class SessionCredentialService:
                         own_paths=sorted(own_paths),
                     )
                 )
+            # One INSERT: it either persists every row or none, so a failure leaves every
+            # minted account for `_revoke_unpersisted`.
+            TemporaryStorageAccount.objects.bulk_create(rows)
+            persisted_keys.update(row.access_key for row in rows)
             logger.info(
                 "Persisted {} temporary storage account(s) for {}", len(credentials), owner_label
             )
@@ -543,10 +550,11 @@ class SessionCredentialService:
         """Shared revoke + delete body for all three `revoke_for_*` entry points.
 
         Revokes every account of the owner: a graph session has several when its nodes
-        carry different storage grants or live in flows with different files. Deletes each `TemporaryStorageAccount` row only
-        after the backend confirms the service account is gone, so a failed revocation
-        leaves that row for the manager's cleanup job to retry; the others are still
-        revoked.
+        carry different storage grants or live in flows with different files. The accounts
+        of one organization are revoked together, with one credential lookup and one
+        gateway. Deletes the `TemporaryStorageAccount` rows, in one query, only for the
+        accounts the backend confirms are gone, so a failed revocation leaves that row for
+        the manager's cleanup job to retry; the others are still revoked.
 
         `org_id_path` is an ORM lookup from `TemporaryStorageAccount` to the owning
         organization. It is resolved in the same query as the row via `F()`, so a
@@ -572,31 +580,48 @@ class SessionCredentialService:
             logger.debug("No temporary storage account found for {}", owner_label)
             return
 
+        accounts_by_org: dict[int, list[TemporaryStorageAccount]] = {}
+        for account in accounts:
+            if account.owner_org_id is None:
+                logger.error(
+                    "Cannot revoke temporary storage account for {}: no owning organization "
+                    "reachable via {}. Leaving the row for cleanup.",
+                    owner_label,
+                    org_id_path,
+                )
+                continue
+            accounts_by_org.setdefault(account.owner_org_id, []).append(account)
+
         # What the run wrote is synced into the file index once, over every folder any of
         # its accounts could write to: the accounts differ in the shared folders they got.
         granted_folders = self._union_of_granted_folders(accounts)
         synced = False
-        for account in accounts:
+        for org_id, org_accounts in accounts_by_org.items():
             try:
-                if account.owner_org_id is None:
-                    logger.error(
-                        "Cannot revoke temporary storage account for {}: no owning organization "
-                        "reachable via {}. Leaving the row for cleanup.",
-                        owner_label,
-                        org_id_path,
-                    )
-                    continue
-
                 if not synced:
-                    self._sync_run_storage(
-                        account, account.owner_org_id, owner_label, granted_folders
-                    )
+                    self._sync_run_storage(org_accounts[0], org_id, owner_label, granted_folders)
                     synced = True
-                self.revoke(access_key=account.access_key, org_id=account.owner_org_id)
-                logger.info("Revoked temporary storage account for {}", owner_label)
-
-                account.delete()
-                logger.debug("Deleted temporary storage account record for {}", owner_label)
+                org_creds = org_credential_store.get(org_id=org_id)
+                revoked_keys = set(
+                    asyncio.run(
+                        self._delete_service_accounts(
+                            org_creds=org_creds,
+                            access_keys=[account.access_key for account in org_accounts],
+                        )
+                    )
+                )
+                logger.info(
+                    "Revoked {} temporary storage account(s) for {}", len(revoked_keys), owner_label
+                )
+                confirmed_pks = [
+                    account.pk for account in org_accounts if account.access_key in revoked_keys
+                ]
+                TemporaryStorageAccount.objects.filter(pk__in=confirmed_pks).delete()
+                logger.debug(
+                    "Deleted {} temporary storage account record(s) for {}",
+                    len(confirmed_pks),
+                    owner_label,
+                )
             except Exception as error:
                 logger.warning(
                     "Failed to revoke temporary storage credentials for {}: {}", owner_label, error

@@ -241,28 +241,19 @@ def test_a_failed_mint_among_several_revokes_the_ones_that_succeeded(gateway, ac
 
 
 @pytest.mark.django_db
-def test_every_minted_key_without_a_row_is_revoked_when_persisting_fails(gateway, acme, session):
+def test_every_minted_key_is_revoked_when_persisting_fails(gateway, acme, session):
     from storage_credentials.exceptions import TemporaryCredentialIssueError
 
-    real_create = TemporaryStorageAccount.objects.create
-    calls = []
-
-    def second_row_fails(**kwargs):
-        calls.append(kwargs["access_key"])
-        if len(calls) == 2:
-            raise RuntimeError("database down")
-        return real_create(**kwargs)
-
-    with patch.object(TemporaryStorageAccount.objects, "create", side_effect=second_row_fails):
+    with patch.object(
+        TemporaryStorageAccount.objects, "bulk_create", side_effect=RuntimeError("database down")
+    ):
         with pytest.raises(TemporaryCredentialIssueError):
             _issue(session, acme, [StorageGrant(read=True), StorageGrant(write=True), StorageGrant(delete=True)],
             )
 
-    # The first has its row (the session's end revokes it); the other two have none.
-    assert sorted(gateway.deleted) == ["temp-access-2", "temp-access-3"]
-    assert list(TemporaryStorageAccount.objects.values_list("access_key", flat=True)) == [
-        "temp-access-1"
-    ]
+    # The rows go in one statement, so none persisted: every minted account is revoked.
+    assert sorted(gateway.deleted) == ["temp-access-1", "temp-access-2", "temp-access-3"]
+    assert not TemporaryStorageAccount.objects.exists()
 
 
 @pytest.mark.django_db

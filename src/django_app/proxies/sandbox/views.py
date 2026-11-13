@@ -103,6 +103,8 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
 
         Changing the libraries of a venv that code declaring secrets runs in needs
         secrets:USE (`check_venv_write`), checked before anything is sent to the sandbox.
+        Likewise for the storage grants of that code. A change that leaves the libraries
+        as they are, a rename, needs neither.
 
         Raises:
             Http404: No venv with this id in the active org.
@@ -119,7 +121,11 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
         )
         # The libraries of a venv are part of what code run with a storage grant executes.
         check_venv_storage_grant_write(
-            GrantActor.for_request(request), binding, org_id=self.get_active_org_id()
+            GrantActor.for_request(request),
+            binding,
+            request.data,
+            org_id=self.get_active_org_id(),
+            read_current_libs=lambda: service.retrieve(binding).get("libs"),
         )
         venv = service.update(binding, request.data)
         return Response(self._as_response(venv, binding))

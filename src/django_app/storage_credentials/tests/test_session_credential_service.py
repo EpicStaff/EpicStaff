@@ -244,7 +244,7 @@ class TestIssueForSessionWithStorage(TestCase):
         session_data = self._storage_session_data(self.session.id)
 
         with mock.patch(
-            "storage_credentials.models.TemporaryStorageAccount.objects.create",
+            "storage_credentials.models.TemporaryStorageAccount.objects.bulk_create",
             side_effect=Exception("DB write failed: Key (access_key)=(test_access) already exists"),
         ):
             with pytest.raises(TemporaryCredentialIssueError) as exc_info:

@@ -394,7 +394,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
      * keeps every edit; an invalid test payload edit is left out and reported, as on close.
      */
     public onSaveClick(): void {
-        if (this.isReadOnly() || this.isSaving() || !this.form) return;
+        if (this.isEditingBlocked() || this.isSaving() || !this.form) return;
         if (this.form.invalid) {
             this.form.markAllAsTouched();
             return;

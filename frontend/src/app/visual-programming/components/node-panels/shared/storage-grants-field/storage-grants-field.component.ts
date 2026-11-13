@@ -49,6 +49,7 @@ interface StorageGrantOption {
                         [class.storage-grants__option--disabled]="option.disabled"
                         [matTooltip]="option.tooltip"
                         matTooltipPosition="above"
+                        [attr.tabindex]="option.tooltip ? 0 : null"
                     >
                         <app-checkbox
                             [checked]="option.checked"
@@ -56,6 +57,9 @@ interface StorageGrantOption {
                             (changed)="onToggle(option.kind, $event)"
                         />
                         {{ option.label }}
+                        @if (option.tooltip) {
+                            <span class="visually-hidden">{{ option.tooltip }}</span>
+                        }
                     </label>
                 }
             </div>

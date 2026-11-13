@@ -1430,6 +1430,20 @@ describe('WebhookTriggerNodePanelComponent storage grant lock', () => {
         expect(saved?.data.python_code.code).toBe(before.data.python_code.code);
     });
 
+    it("saves unticking Delete from a locked panel through the shell's Save", () => {
+        const fixture = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], EVERYTHING);
+        const requestSaveNode = vi
+            .spyOn(TestBed.inject(SidePanelService), 'requestSaveNode')
+            .mockImplementation(() => undefined);
+
+        fixture.componentInstance.form.get('storage_grants')!.setValue({ read: true, write: true, delete: false });
+        fixture.componentInstance.onSaveClick();
+
+        expect(requestSaveNode).toHaveBeenCalledTimes(1);
+        const savedNode = requestSaveNode.mock.calls[0][0] as WebhookTriggerNodeModel;
+        expect(savedNode.storageGrants).toEqual({ read: true, write: true, delete: false });
+    });
+
     it('does not lock a node whose boxes are all unticked, whatever the role holds', () => {
         const fixture = open([], NOTHING);
 

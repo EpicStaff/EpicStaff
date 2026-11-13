@@ -121,9 +121,10 @@ def build_temporary_policy(
     owning org's prefix, validated by `CredentialScopeValidator` before this is
     called). `own_folders` are the run's own folders and get every action.
     `shared_folders` are the files attached to the run and get only
-    `shared_actions`, which django takes from the storage grant of the node: user code
-    holds these credentials and can call S3 directly, so the policy is what enforces them. READ maps to s3:GetObject plus ListBucket on
-    the prefixes, WRITE to s3:PutObject, DELETE to s3:DeleteObject. Empty
+    `shared_actions`, which django takes from the storage grant of the node. User code
+    holds these credentials and can call S3 directly, so the policy is what enforces
+    them. READ maps to s3:GetObject plus ListBucket on the prefixes, WRITE to
+    s3:PutObject, DELETE to s3:DeleteObject. Empty
     `shared_actions` leaves the shared folders out of the policy altogether.
 
     The explicit Deny statement (4) is not optional hardening -- without it,

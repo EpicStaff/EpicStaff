@@ -262,8 +262,9 @@ class GraphVersioningService:
         # Restoring replaces every node, and the grants of the version are capped to what the
         # user may hand out (`apply_snapshot_to_graph`), so a version from before grants, whose
         # missing boxes read as ticked, restores for a user who lacks one of them, with that
-        # box off. What the restore still needs is the boxes of the flow as it is: replacing a
-        # node's code is a steering change, which needs every box the node has ticked.
+        # box off. What the restore still needs is stricter than the steering rule: every box
+        # ticked anywhere in the current flow. A restore replaces every node's code, so the
+        # restorer must hold every grant the flow's code currently runs with.
         required = actions_granted_in_flows([graph.id])
         # A call with no acting user is internal (the restore endpoint always has one) and
         # has no one whose permissions could be short.

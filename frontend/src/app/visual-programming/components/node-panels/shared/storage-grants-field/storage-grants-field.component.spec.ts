@@ -69,6 +69,15 @@ describe('StorageGrantsFieldComponent', () => {
         expect(boxes(fixture).map((box) => box.disabled)).toEqual([false, true, true]);
     });
 
+    it('lets a keyboard or screen reader user reach why a box cannot be ticked', () => {
+        const fixture = render([ActionCode.Read], NOTHING);
+        const options: HTMLLabelElement[] = Array.from(fixture.nativeElement.querySelectorAll('label'));
+
+        expect(options.map((option) => option.getAttribute('tabindex'))).toEqual([null, '0', '0']);
+        expect(options[0].querySelector('.visually-hidden')).toBeNull();
+        expect(options[2].querySelector('.visually-hidden')?.textContent).toContain('Files: Delete');
+    });
+
     it('enables every box for a role that holds all the files permissions', () => {
         const fixture = render(ALL_FILES_ACTIONS, NOTHING);
 

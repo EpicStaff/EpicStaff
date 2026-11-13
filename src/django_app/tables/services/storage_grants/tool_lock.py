@@ -1,7 +1,8 @@
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from src.shared.models.storage_scope import StorageAction
+from tables.services.secrets.secret_use_checks import _installed
 from tables.services.storage_grants.actor import GrantActor
 from tables.services.storage_grants.flags import GrantFlags
 from tables.services.storage_grants.flow_checks import assert_actor_holds
@@ -53,8 +54,26 @@ def grant_lock_for_venv(binding, org_id: int) -> ToolGrantLock | None:
     return _merge_locks(locks)
 
 
-def check_venv_write(actor: GrantActor | None, binding, *, org_id: int) -> None:
-    """Refuse an edit of a virtualenv that code run with a grant uses, unless the actor holds that grant."""
+def check_venv_write(
+    actor: GrantActor | None,
+    binding,
+    data: dict,
+    *,
+    org_id: int,
+    read_current_libs: Callable[[], list],
+) -> None:
+    """Refuse a change of a virtualenv's libraries that code run with a grant uses, unless the actor holds that grant.
+
+    Only the libraries are locked: a write that leaves them as they are, a rename for
+    one, needs nothing. The current libraries live in the sandbox, so `read_current_libs`
+    is called only for a venv such code runs in. Libraries are compared as the secrets
+    check compares them.
+    """
+    if "libs" not in data:
+        return
     lock = grant_lock_for_venv(binding, org_id)
-    if lock is not None:
-        assert_actor_holds(actor, lock.actions)
+    if lock is None:
+        return
+    if _installed(read_current_libs()) == _installed(data["libs"]):
+        return
+    assert_actor_holds(actor, lock.actions)

@@ -52,7 +52,10 @@ def venv(acme):
 
 @pytest.fixture
 def upstream():
-    with patch("proxies.sandbox.services.VenvService.update", return_value={"libs": ["x"]}) as update:
+    with (
+        patch("proxies.sandbox.services.VenvService.update", return_value={"libs": ["x"]}) as update,
+        patch("proxies.sandbox.services.VenvService.retrieve", return_value={"libs": []}),
+    ):
         yield update
 
 
@@ -70,6 +73,26 @@ def test_changing_a_venv_that_ticked_code_runs_in_needs_those_boxes(
     assert refused.status_code == status.HTTP_403_FORBIDDEN
     assert refused.data["message"] == READ_AND_WRITE
     assert allowed.status_code == status.HTTP_200_OK, allowed.content
+    assert upstream.call_count == 1
+
+
+@pytest.mark.django_db
+def test_renaming_a_venv_that_ticked_code_runs_in_needs_no_boxes_but_its_libraries_do(
+    flow, venv, editor, upstream
+):
+    PythonNode.objects.create(
+        graph=flow,
+        python_code=PythonCode.objects.create(code="x", venv=venv),
+        storage_grant_read=True,
+        storage_grant_write=True,
+        storage_grant_delete=True,
+    )
+
+    renamed = editor.patch(f"/api/venvs/{venv.pk}/", {"name": "renamed"}, format="json")
+    changed = editor.patch(f"/api/venvs/{venv.pk}/", {"libs": ["requests"]}, format="json")
+
+    assert renamed.status_code == status.HTTP_200_OK, renamed.content
+    assert changed.status_code == status.HTTP_403_FORBIDDEN
     assert upstream.call_count == 1
 
 
