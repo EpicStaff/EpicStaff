@@ -1,5 +1,4 @@
 import hmac
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from foundation.cryptographer import CryptographerError
@@ -25,7 +24,6 @@ router = APIRouter()
 async def handle_webhook(
     request: Request,
     custom_path: str,
-    payload: dict[str, Any],
     redis: RedisService = Depends(get_redis_service),
     registry: TunnelRegistry = Depends(get_tunnel_registry),
 ):
@@ -81,10 +79,27 @@ async def handle_webhook(
         f"AUTH: '{auth.kind}' strategy matched."
     )
 
+    # Body is read only after authentication so that anonymous callers cannot force the
+    # service to buffer and parse a large request body on the single asyncio event loop.
+    try:
+        body = await request.json()
+    except ValueError as e:
+        # request.json() runs json.loads over the raw bytes: malformed JSON raises
+        # JSONDecodeError and a body that is not valid UTF-8 raises UnicodeDecodeError.
+        # Both subclass ValueError, so this one clause turns either into a 400.
+        logger.warning(f"Webhook PATH: {custom_path} | CONFIG ID: {config_id} | invalid JSON body.")
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from e
+
+    if not isinstance(body, dict):
+        logger.warning(
+            f"Webhook PATH: {custom_path} | CONFIG ID: {config_id} | body is not a JSON object."
+        )
+        raise HTTPException(status_code=400, detail="Webhook body must be a JSON object")
+
     try:
         await redis.publish_webhook(
             path=custom_path,
-            payload=payload,
+            payload=body,
             config_id=config_id,
         )
     except NoWebhookSubscriberError as e:
