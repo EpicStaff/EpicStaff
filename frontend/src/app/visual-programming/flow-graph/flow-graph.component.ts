@@ -104,7 +104,11 @@ import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
 import { ClipboardData, ClipboardService, PasteResult } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowDiffStateService } from '../services/flow-diff-state.service';
-import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from '../services/flow-readonly.service';
+import {
+    FILE_NODES_NEED_FILES_READ_MESSAGE,
+    FlowReadOnlyService,
+    TRIGGER_NODES_NEED_USE_MESSAGE,
+} from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { KeyValueEntryDraftsService } from '../services/key-value-entry-drafts.service';
 import { KeymapService } from '../services/keymap.service';
@@ -975,20 +979,26 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             ? snapPointToGrid(this.toFlowPosition(this.mouseCursorPosition))
             : { x: 0, y: 0 };
 
-        const isTriggerBlocked = (node: NodeModel): boolean => this.flowReadOnly.isNodeTypeReadOnly(node.type);
+        const isFileNodeBlocked = (node: NodeModel): boolean => this.flowReadOnly.needsFilesRead(node.type);
+        const isTriggerBlocked = (node: NodeModel): boolean =>
+            !isFileNodeBlocked(node) && this.flowReadOnly.isNodeTypeReadOnly(node.type);
         const isSecretCodeBlocked = (node: NodeModel): boolean =>
             this.flowReadOnly.isSecretCodeLocked(codeSecretIds(node));
         const { skippedNodeCount } = this.insertNodes(
             clipboardData,
             pastePosition,
-            (node) => !isTriggerBlocked(node) && !isSecretCodeBlocked(node)
+            (node) => !isFileNodeBlocked(node) && !isTriggerBlocked(node) && !isSecretCodeBlocked(node)
         );
         if (skippedNodeCount > 0) {
+            const fileNodeCount = clipboardData.nodes.filter(isFileNodeBlocked).length;
             const triggerCount = clipboardData.nodes.filter(isTriggerBlocked).length;
-            const secretCodeCount = skippedNodeCount - triggerCount;
+            const secretCodeCount = skippedNodeCount - triggerCount - fileNodeCount;
             const reasons = [
                 triggerCount > 0
                     ? `${triggerCount} trigger node${triggerCount > 1 ? 's were' : ' was'} not pasted. ${TRIGGER_NODES_NEED_USE_MESSAGE}`
+                    : null,
+                fileNodeCount > 0
+                    ? `${fileNodeCount} node${fileNodeCount > 1 ? 's were' : ' was'} not pasted. ${FILE_NODES_NEED_FILES_READ_MESSAGE}`
                     : null,
                 secretCodeCount > 0
                     ? `${secretCodeCount} node${secretCodeCount > 1 ? 's were' : ' was'} not pasted. ${SECRET_CODE_COPY_NEEDS_USE_MESSAGE}`
@@ -1729,9 +1739,20 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 },
             },
             position,
-            () => true
+            (node) => !this.flowReadOnly.needsFilesRead(node.type)
         );
         setTimeout(() => this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false), 0);
+
+        const skippedFileNodeCount = imported.nodes.filter((node) =>
+            this.flowReadOnly.needsFilesRead(node.type)
+        ).length;
+        if (skippedFileNodeCount > 0) {
+            this.toastService.warning(
+                `${skippedFileNodeCount} node${skippedFileNodeCount > 1 ? 's were' : ' was'} not imported. ${FILE_NODES_NEED_FILES_READ_MESSAGE}`,
+                6000,
+                'bottom-right'
+            );
+        }
 
         // An import never carries a subgraph's target flow, so its subgraph nodes come in blocked.
         const blockedCount = imported.nodes.filter((node) => node.type === NodeType.SUBGRAPH && node.isBlocked).length;

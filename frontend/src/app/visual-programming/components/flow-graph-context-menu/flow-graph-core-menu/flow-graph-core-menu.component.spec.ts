@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { GetMeResponse, NodeType, ResourceCode } from '@shared/models';
+import { ActionCode, GetMeResponse, NodeType, ResourceCode } from '@shared/models';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
@@ -35,7 +35,7 @@ describe('FlowGraphCoreMenuComponent', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({ providers: [provideHttpClient()] });
-        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE });
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE, [ResourceCode.Files]: [ActionCode.Read] });
         fixture = TestBed.createComponent(FlowGraphCoreMenuComponent);
         fixture.detectChanges();
     });
@@ -142,7 +142,7 @@ describe('FlowGraphCoreMenuComponent', () => {
     it('hides the trigger nodes, and only them, from a user who may update but not run flows', () => {
         const offeredWithRun = itemLabels();
 
-        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_USE });
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_USE, [ResourceCode.Files]: [ActionCode.Read] });
         fixture.detectChanges();
 
         expect(groupTitles()).toEqual(['Data & Code', 'Agents', 'Logic', 'Other']);
@@ -151,6 +151,20 @@ describe('FlowGraphCoreMenuComponent', () => {
                 (label) => !['Schedule Trigger', 'Webhook Trigger', 'Telegram Trigger'].includes(label ?? '')
             )
         );
+    });
+    it('hides File Extractor and Audio to text, and only them, from a user without Files:Read', () => {
+        const offeredWithFiles = itemLabels();
+
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE, [ResourceCode.Files]: [ActionCode.Create] });
+        fixture.detectChanges();
+
+        expect(offeredWithFiles).toContain('File Extractor');
+        expect(offeredWithFiles).toContain('Audio to text');
+        expect(itemLabels()).toEqual(
+            offeredWithFiles.filter((label) => !['File Extractor', 'Audio to text'].includes(label ?? ''))
+        );
+        search('file');
+        expect(itemLabels()).toEqual([]);
     });
 });
 
@@ -184,7 +198,7 @@ describe('FlowGraphCoreMenuComponent key hint', () => {
                 { provide: PLATFORM_IS_MAC, useValue: isMac },
             ],
         });
-        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE });
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE, [ResourceCode.Files]: [ActionCode.Read] });
         fixture = TestBed.createComponent(FlowGraphCoreMenuComponent);
         fixture.detectChanges();
     }
