@@ -5,8 +5,9 @@ and still opens what was sealed under a key listed as previous after a rotation.
 """
 
 import pytest
-import settings
 from foundation.cryptographer import DecryptDataError, FernetRotatedCryptographer
+
+from manager import settings
 from manager.bootstrap import di as manager_di
 
 from tests.transport_secrets import TRANSPORT_HKDF_INFO, seal, seal_with_foreign_key

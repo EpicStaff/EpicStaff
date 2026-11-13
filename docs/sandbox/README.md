@@ -24,20 +24,23 @@ This folder records how that works and why it was built this way. The decisions 
 | [0007](adr/0007-producer-clients-per-service.md) | Each producer owns its sandbox client |
 | [0008](adr/0008-every-path-ends-in-a-result.md) | Every path ends in a result; a dead runner restarts the process |
 | [0009](adr/0009-benchmark-checkpoints.md) | BENCH checkpoints and a gate-state sample |
+| [0010](adr/0010-split-manager-and-worker-containers.md) | Manager and worker in two containers; the worker pulls jobs over HTTP |
 
 ## The request path
 
 ```mermaid
 flowchart LR
     P["Producer<br/>crew, agent, realtime<br/>(SandboxClient)"]
-    subgraph S["sandbox_new (one process)"]
+    subgraph S["sandbox_new (manager container)"]
         G["Intake gate<br/>run cap, free slot,<br/>predicted wait"]
-        R["Execution registry<br/>held, queued, done 60 s"]
+        R["Execution registry<br/>held, queued, assigned, done 60 s"]
         H["Held jobs<br/>own cap, hold deadline"]
         Q["Run queue<br/>queue deadline"]
-        W["Run gate<br/>floor, CPU, memory"]
-        X["Worker"]
         C["Result consumer<br/>publish, then finish"]
+    end
+    subgraph WK["sandbox_worker container"]
+        W["Run gate<br/>floor, CPU, memory"]
+        X["Execution pipeline"]
     end
     B["Redis pub/sub<br/>result channel"]
 
@@ -47,7 +50,10 @@ flowchart LR
     G -- "venv building" --> H
     G -- "venv built" --> Q
     H -- "venv built" --> Q
-    Q --> W --> X --> C
+    W -. "GET /worker/jobs<br/>long-poll, bearer token + boot id" .-> Q
+    W --> X
+    X -. "POST /worker/results" .-> C
+    WK -. "POST /worker/heartbeat<br/>every 10 s" .-> R
     C --> B --> P
     C -- "finish(id)" --> R
     P -. "GET /executions/{id}<br/>every 30 s" .-> R
@@ -106,12 +112,14 @@ sequenceDiagram
     participant S as sandbox_new
     P->>S: POST /executions
     S-->>P: 202 queued
-    Note over S: process dies (or its result is dropped on pub/sub)
+    Note over S: manager dies (or its result is dropped on pub/sub)
     Note over S: Docker restarts it with an empty registry
     P->>S: GET /executions/{id}
     S-->>P: 404
     Note over P: node fails: "The sandbox lost the execution"
 ```
+
+When the worker container dies instead, the manager keeps its registry: the restarted worker's new boot id makes the manager fail every job assigned to the old run within seconds. A worker that hangs, or never comes back, is caught by silence: it heartbeats every 10 s (any authenticated contact counts), and a sweeper fails the assigned jobs of a run silent for over 60 s -- and, when no worker at all has made contact for that long, drains and fails the dispatch queue too. Jobs are never timed against their own duration: a legitimate run may take hours. Every one of these paths publishes a failed result with "Sandbox worker was lost; the job may not have finished." ([0010](adr/0010-split-manager-and-worker-containers.md)).
 
 ## Settings
 
@@ -119,20 +127,21 @@ All are set in `src/env.yaml`, which generates `src/.env.example`.
 
 | Setting | Default | Read by | Meaning |
 | --- | --- | --- | --- |
-| `SANDBOX_QUEUE_TIMEOUT` | 120s | sandbox_new, crew, agent, realtime | How long a job may wait in the run queue; the intake prediction limit; the producers' 503 retry budget |
+| `SANDBOX_QUEUE_TIMEOUT` | 120s | sandbox_new, sandbox_worker, crew, agent, realtime | How long a job may wait in the run queue (enforced by the manager's sweeper and on the worker's pull); the intake prediction limit; the producers' 503 retry budget |
 | `SANDBOX_MAX_ACCEPTED_EXECUTIONS` | 1000 | sandbox_new | Queued or running executions accepted at once (set from the benchmark) |
 | `SANDBOX_MAX_HELD_EXECUTIONS` | 100 | sandbox_new | Executions waiting for a venv build |
 | `SANDBOX_HOLD_TIMEOUT` | 30m | sandbox_new | How long an execution may wait for its venv build |
-| `SANDBOX_MIN_CONCURRENT_EXECUTIONS` | 0 | sandbox_new | Run floor; 0 means the CPUs the container may use |
-| `SANDBOX_MAX_CONCURRENT_EXECUTIONS` | 256 | sandbox_new | Hard cap on running executions |
-| `SANDBOX_CPU_ADMIT_THRESHOLD` | 85 | sandbox_new | Host CPU % above which nothing starts beyond the floor |
-| `SANDBOX_MEMORY_ADMIT_THRESHOLD` | 80 | sandbox_new | Container memory % above which nothing starts beyond the floor |
+| `SANDBOX_MIN_CONCURRENT_EXECUTIONS` | 0 | sandbox_worker | Run floor; 0 means the CPUs the container may use |
+| `SANDBOX_MAX_CONCURRENT_EXECUTIONS` | 256 | sandbox_worker | Hard cap on running executions |
+| `SANDBOX_CPU_ADMIT_THRESHOLD` | 85 | sandbox_worker | Host CPU % above which nothing starts beyond the floor |
+| `SANDBOX_MEMORY_ADMIT_THRESHOLD` | 80 | sandbox_worker | Container memory % above which nothing starts beyond the floor |
 | `CREW_CODE_RESULT_TIMEOUT`, `AGENT_CODE_RESULT_TIMEOUT`, `REALTIME_CODE_RESULT_TIMEOUT` | 40m | crew, agent, realtime | Backstop: the longest a producer waits for a result |
+| `SANDBOX_INTERNAL_TOKEN` | generated | sandbox_new, sandbox_worker | Shared secret the worker presents on `/worker/*`; job payloads carry plaintext secrets, so the pull endpoint must not be open |
 
 ## Invariants
 
-- **Exactly one sandbox process.** The run queue and the execution registry live in one process's memory. `entrypoint.sh` runs uvicorn with `--workers 1`; never add workers or replicas without first replacing this state (see [0001](adr/0001-http-intake-and-pubsub-results.md)).
-- **No process-local value crosses the seam.** Messages in `common/contracts.py` must keep their meaning if the manager and the worker are split into separate processes. The queue time travels as `queued_at`, a wall-clock timestamp, never as a monotonic reading ([0005](adr/0005-queue-deadlines-owned-by-the-sandbox.md)).
+- **Exactly one manager process and one worker process.** The run queue, the execution registry and held jobs live in the manager's memory. `entrypoint.sh` runs uvicorn with `--workers 1`, and the worker container runs one pull loop; never add replicas of either without first replacing this state (see [0001](adr/0001-http-intake-and-pubsub-results.md), [0010](adr/0010-split-manager-and-worker-containers.md)).
+- **No process-local value crosses the seam.** The manager and the worker are separate containers, so messages in `common/contracts.py` carry no process-local values. The queue time travels as `queued_at`, a wall-clock timestamp, never as a monotonic reading ([0005](adr/0005-queue-deadlines-owned-by-the-sandbox.md)).
 - **Secrets stay in RAM.** Job payloads carry plaintext secrets and storage credentials. They are never written to Redis or disk, and logs carry ids and exception types only.
 
 ## Layers
@@ -148,6 +157,6 @@ sandbox_new follows a hexagonal layout: decisions live in `application`, the out
 | --- | --- |
 | Admission policy (intake gate, run gate) | `manager/application/intake.py`, `worker/application/resource_gate.py` |
 | Reading CPU and memory | `worker/infrastructure/admission/host_metrics.py`, behind the `AbstractHostMetrics` port |
-| Loops that push the application (result consumer, held-job releaser) | `manager/presentation/` |
-| Gate-state sampling for the benchmark | `common/observability/gate_sampler.py`, typed on protocols, not on either side's classes |
-| Wiring and runner supervision | `common/bootstrap/lifespan.py` |
+| Loops that push the application (result consumer, held-job releaser, worker-loss sweeper) | `manager/presentation/` |
+| Gate-state sampling for the benchmark | `manager/presentation/intake_sampler.py` (`sandbox_intake`) and `worker/presentation/run_gate_sampler.py` (`sandbox_gate`), each typed on protocols |
+| Wiring and runner supervision | `manager/bootstrap/runtime.py` (manager), `worker/main.py` (worker), `common/runner.py` (supervision) |

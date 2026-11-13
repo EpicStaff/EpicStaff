@@ -18,6 +18,7 @@ The error handlers are the real ones, so a test can assert the status a rejected
 actually gets rather than the one the controller hoped for.
 """
 
+import asyncio
 from functools import partial
 
 import pytest
@@ -32,6 +33,7 @@ from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
 from manager.application.ports import AbstractUnitOfWork
 from manager.application.registry import ExecutionRegistry
+from manager.application.worker_contact import WorkerContact
 from manager.bootstrap import di as manager_di
 from manager.presentation.rest.controllers import (
     CustomLibraryController,
@@ -39,6 +41,7 @@ from manager.presentation.rest.controllers import (
     VenvController,
     WheelController,
 )
+from manager.presentation.rest.worker_controller import WorkerController
 from tests.fakes import FakeJobDispatcher, FakeJobFailureSink
 
 # Small, so a test reaches either cap with a few reservations.
@@ -59,12 +62,30 @@ def registry(clock) -> ExecutionRegistry:
 
 
 @pytest.fixture
+def worker_contact(clock) -> WorkerContact:
+    return WorkerContact(clock=clock)
+
+
+@pytest.fixture
+def job_queue() -> asyncio.Queue:
+    return asyncio.Queue()
+
+
+@pytest.fixture
+def result_queue() -> asyncio.Queue:
+    return asyncio.Queue()
+
+
+@pytest.fixture
 def runtime_state(
     dispatcher: FakeJobDispatcher,
     holding: JobHoldingRegistry,
     failure_sink: FakeJobFailureSink,
     registry: ExecutionRegistry,
+    worker_contact: WorkerContact,
     file_storage,
+    job_queue: asyncio.Queue,
+    result_queue: asyncio.Queue,
 ) -> State:
     intake_gate = IntakeGate(
         registry,
@@ -87,7 +108,11 @@ def runtime_state(
             "build_job_orchestrator": build_job_orchestrator,
             "intake_gate": intake_gate,
             "execution_registry": registry,
+            "worker_contact": worker_contact,
             "custom_library_storage": file_storage,
+            "job_queue": job_queue,
+            "result_queue": result_queue,
+            "job_failure_sink": failure_sink,
         }
     )
 
@@ -103,6 +128,7 @@ def client(uow, runtime_state):
             ExecutionController,
             CustomLibraryController,
             WheelController,
+            WorkerController,
         ],
         dependencies={
             **di.get_dependencies(),

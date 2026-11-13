@@ -12,7 +12,8 @@ import sys
 import pytest
 from loguru import logger
 
-import settings
+from common import settings
+from common.bootstrap.logging import _drop_seam_access_lines
 from common.bootstrap.logging import INTERCEPTED, configure_logging
 
 BENCH_LEVEL = 15
@@ -72,3 +73,28 @@ def test_info_level_writes_no_checkpoints(configure_logging_at, capsys):
     logger.log(BENCH_LEVEL, "bench {checkpoint}", checkpoint="exec_start")
 
     assert "exec_start" not in capsys.readouterr().err
+def access_record(path: str, status: int) -> logging.LogRecord:
+    """A record shaped the way uvicorn.access emits them: args = (client, method, path, http, status)."""
+    return logging.LogRecord(
+        name="uvicorn.access",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg='%s - "%s %s HTTP/%s" %d',
+        args=("127.0.0.1:1", "GET", path, "1.1", status),
+        exc_info=None,
+    )
+
+
+def test_successful_seam_access_lines_are_dropped():
+    assert _drop_seam_access_lines(access_record("/worker/heartbeat", 204)) is False
+    assert _drop_seam_access_lines(access_record("/worker/jobs", 200)) is False
+
+
+def test_refused_seam_access_lines_are_kept():
+    """A 401 on the job endpoints is someone probing for payloads with secrets."""
+    assert _drop_seam_access_lines(access_record("/worker/jobs", 401)) is True
+
+
+def test_other_access_lines_are_kept():
+    assert _drop_seam_access_lines(access_record("/executions", 200)) is True

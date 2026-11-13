@@ -31,6 +31,9 @@ _TEST_ENVIRONMENT = {
     "STORAGE_USER": "sandbox",
     "STORAGE_PASSWORD": "sandbox",
     "SANDBOX_CUSTOM_LIBRARY_BUCKET": "sandbox-custom-libraries",
+    "SANDBOX_INTERNAL_TOKEN": "internal-test-token",
+    "SANDBOX_HOST": "sandbox_new",
+    "SANDBOX_PORT": "8090",
     "SECRETS_TRANSPORT_KEY": "sandbox-tests-transport-key",
     "SECRETS_TRANSPORT_PREVIOUS_KEYS": "none",
     "SECRETS_TRANSPORT_HKDF_INFO": "epicstaff.secrets.transport.v1",
@@ -66,7 +69,7 @@ def transport_settings(monkeypatch):
     cannot leak in. The service's cryptographer provider reads these when it builds; a
     sealed value is made with ``tests.transport_secrets.seal``.
     """
-    import settings
+    from manager import settings
 
     monkeypatch.setattr(settings, "SECRETS_TRANSPORT_KEY", TRANSPORT_KEY)
     monkeypatch.setattr(settings, "SECRETS_TRANSPORT_PREVIOUS_KEYS", [])
@@ -144,7 +147,7 @@ def venvs_dir(tmp_path, monkeypatch):
     ``settings.VENV_STAGING_DIR`` at call time, so patching the module attributes is
     enough; no import-order trickery is needed.
     """
-    import settings
+    from manager import settings
 
     root = tmp_path / "venvs"
     staging = root / "builds"
