@@ -20,7 +20,7 @@ from tables.models import OpenAIRealtimeConfig, PythonCode, PythonCodeTool, Real
 from tables.models.graph_models import StorageFile
 from tables.services.converter_service import ConverterService
 
-from .test_run_code_storage_credentials import GATEWAY_PATH, ORG_CREDENTIALS_PATH, FakeStorageGateway
+from tests.storage_credential_fixtures import GATEWAY_PATH, ORG_CREDENTIALS_PATH, FakeStorageGateway
 
 
 @pytest.fixture

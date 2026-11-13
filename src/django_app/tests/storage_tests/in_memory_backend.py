@@ -214,6 +214,16 @@ class InMemoryStorageBackend(AbstractStorageBackend):
             objects.append((key, len(content), modified.isoformat()))
         return objects
 
+    def total_size(self, prefix: str) -> int:
+        full_prefix = self._full_path(prefix)
+        if not full_prefix.endswith("/"):
+            full_prefix += "/"
+        return sum(
+            len(content)
+            for key, (content, _) in self._objects.items()
+            if key.startswith(full_prefix)
+        )
+
     def list_(self, prefix: str) -> list[FileListItem]:
         full_prefix = self._full_path(prefix)
         if full_prefix and not full_prefix.endswith("/"):

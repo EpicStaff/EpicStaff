@@ -1,4 +1,5 @@
 from tables.exceptions import CustomAPIExeption
+from tables.services.run_admission import RunAdmissionRefusedError
 
 
 class StorageCredentialError(CustomAPIExeption):
@@ -82,3 +83,16 @@ class TemporaryCredentialListError(TemporaryCredentialError):
 
     default_detail = "We couldn't retrieve the list of active file storage sessions."
     default_code = "temporary_credential_list_error"
+
+
+class OrganizationStorageFullError(RunAdmissionRefusedError):
+    """The organization's stored bytes are over its quota, so no run gets storage credentials."""
+
+    status_code = 409
+    default_code = "organization_storage_full"
+    default_detail = (
+        "Your organization's file storage is full. Free up space or empty the recycle bin, "
+        "then run again. Some stored data may not appear as files; if freeing space does "
+        "not help, contact an administrator."
+    )
+    log_key = "organization_storage_full"

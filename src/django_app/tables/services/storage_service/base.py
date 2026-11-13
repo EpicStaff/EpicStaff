@@ -180,3 +180,12 @@ class AbstractStorageBackend(ABC):
 
         Folder marker keys (ending in '/') and '.keep' files are excluded.
         """
+
+    @abstractmethod
+    def total_size(self, prefix: str) -> int:
+        """Sum the sizes of every object under prefix, folder markers and the parts of
+        unfinished multipart uploads included.
+
+        Pages through the listing with a running sum, so memory does not grow with the
+        number of objects.
+        """

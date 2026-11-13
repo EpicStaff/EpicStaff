@@ -13,6 +13,7 @@ from rbac.models.enums import Permission, ResourceType
 from tables.services.storage_service.upload import admission, archive_upload, file_upload
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.manager import StorageManager
+from tests.storage_credential_fixtures import gateway  # noqa: F401
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
 

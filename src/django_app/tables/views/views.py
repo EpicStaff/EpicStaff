@@ -874,6 +874,9 @@ class InitRealtimeAPIView(APIView):
                 user_id=user_id,
                 org_id=org_id,
             )
+        except RunAdmissionRefusedError:
+            # A refusal at mint (storage full) is the caller's 409, like the admission above.
+            raise
         except Exception as e:
             logger.exception(
                 f"Error occurred while creating realtime agent for agent_definition_id {agent_definition_id}"
