@@ -1202,6 +1202,7 @@ services:
     init: true
     networks:
       - backend-network
+      - sandbox-network
     # Not django_app: it is the other way round now. A django_app data migration
     # moves the libraries Python code used to carry into venvs through this API,
     # so this service and its own migrations have to be up before django_app runs.
@@ -1226,11 +1227,53 @@ services:
       SANDBOX_CUSTOM_LIBRARY_BUCKET: ${SANDBOX_CUSTOM_LIBRARY_BUCKET:?}
       SANDBOX_HOST: ${SANDBOX_HOST:?}
       SANDBOX_PORT: ${SANDBOX_PORT:?}
+      SANDBOX_INTERNAL_TOKEN: ${SANDBOX_INTERNAL_TOKEN:?}
       SANDBOX_DEBUG: ${SANDBOX_DEBUG:?}
       SANDBOX_LOG_LEVEL: ${SANDBOX_LOG_LEVEL:?}
       SANDBOX_DB_USER: ${SANDBOX_DB_USER:?}
       SANDBOX_DB_PASSWORD: ${SANDBOX_DB_PASSWORD:?}
       SANDBOX_DB_SCHEMA: ${SANDBOX_DB_SCHEMA:?}
+      SANDBOX_VENVS_DIR: ${SANDBOX_VENVS_DIR:?}
+      SANDBOX_MAX_EXECUTION_TIMEOUT: ${SANDBOX_MAX_EXECUTION_TIMEOUT:?}
+      SANDBOX_DEFAULT_EXECUTION_TIMEOUT: ${SANDBOX_DEFAULT_EXECUTION_TIMEOUT:?}
+      SANDBOX_QUEUE_TIMEOUT: ${SANDBOX_QUEUE_TIMEOUT:?}
+      SANDBOX_MAX_ACCEPTED_EXECUTIONS: ${SANDBOX_MAX_ACCEPTED_EXECUTIONS:?}
+      SANDBOX_MAX_HELD_EXECUTIONS: ${SANDBOX_MAX_HELD_EXECUTIONS:?}
+      SANDBOX_HOLD_TIMEOUT: ${SANDBOX_HOLD_TIMEOUT:?}
+    volumes:
+      - sandbox_venvs:${SANDBOX_VENVS_DIR:?}
+    mem_limit: "1g"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  sandbox_worker:
+    logging: *bounded-logs
+    restart: unless-stopped
+    container_name: sandbox_worker
+    build:
+      context: .
+      dockerfile: ./sandbox_new/Dockerfile
+    command: ./worker_entrypoint.sh
+    init: true
+    networks:
+      - sandbox-network
+    depends_on:
+      sandbox_new:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    environment:
+      <<: *docker-env
+      STORAGE_SSL: ${STORAGE_SSL:?}
+      STORAGE_HOST: ${STORAGE_HOST:?}
+      STORAGE_PORT: ${STORAGE_PORT:?}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?}
+      SANDBOX_HOST: ${SANDBOX_HOST:?}
+      SANDBOX_PORT: ${SANDBOX_PORT:?}
+      SANDBOX_INTERNAL_TOKEN: ${SANDBOX_INTERNAL_TOKEN:?}
+      SANDBOX_LOG_LEVEL: ${SANDBOX_LOG_LEVEL:?}
       SANDBOX_VENVS_DIR: ${SANDBOX_VENVS_DIR:?}
       SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
       SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
@@ -1239,16 +1282,13 @@ services:
       SANDBOX_MAX_EXECUTION_TIMEOUT: ${SANDBOX_MAX_EXECUTION_TIMEOUT:?}
       SANDBOX_DEFAULT_EXECUTION_TIMEOUT: ${SANDBOX_DEFAULT_EXECUTION_TIMEOUT:?}
       SANDBOX_QUEUE_TIMEOUT: ${SANDBOX_QUEUE_TIMEOUT:?}
-      SANDBOX_MAX_ACCEPTED_EXECUTIONS: ${SANDBOX_MAX_ACCEPTED_EXECUTIONS:?}
-      SANDBOX_MAX_HELD_EXECUTIONS: ${SANDBOX_MAX_HELD_EXECUTIONS:?}
-      SANDBOX_HOLD_TIMEOUT: ${SANDBOX_HOLD_TIMEOUT:?}
       SANDBOX_MIN_CONCURRENT_EXECUTIONS: ${SANDBOX_MIN_CONCURRENT_EXECUTIONS:?}
       SANDBOX_MAX_CONCURRENT_EXECUTIONS: ${SANDBOX_MAX_CONCURRENT_EXECUTIONS:?}
       SANDBOX_CPU_ADMIT_THRESHOLD: ${SANDBOX_CPU_ADMIT_THRESHOLD:?}
       SANDBOX_MEMORY_ADMIT_THRESHOLD: ${SANDBOX_MEMORY_ADMIT_THRESHOLD:?}
       SANDBOX_MAX_RESULT_SIZE: ${SANDBOX_MAX_RESULT_SIZE:?}
     volumes:
-      - sandbox_venvs:${SANDBOX_VENVS_DIR:?}
+      - sandbox_venvs:${SANDBOX_VENVS_DIR:?}:ro
     mem_limit: "2g"
     # Same hardening as the old sandbox: the root parent needs just enough to
     # drop the user-code child to sandboxuser, chown per-exec dirs, and kill its
