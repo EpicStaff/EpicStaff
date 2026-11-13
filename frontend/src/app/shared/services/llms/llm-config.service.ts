@@ -6,6 +6,7 @@ import {
     BulkDeleteResponse,
     CreateLLMConfigRequest,
     GetLlmConfigRequest,
+    LlmConfigTimeoutLimits,
     ResourceCode,
     UpdateLLMConfigRequest,
 } from '@shared/models';
@@ -78,6 +79,10 @@ export class LLMConfigService {
         return this.http.put<GetLlmConfigRequest>(`${this.apiUrl}${configData.id}/`, configData, {
             headers: this.headers,
         });
+    }
+
+    getTimeoutLimits(): Observable<LlmConfigTimeoutLimits> {
+        return this.http.get<LlmConfigTimeoutLimits>(`${this.configService.apiUrl}llm-config-timeout-limits/`);
     }
 
     bulkDelete(ids: number[], options: BulkDeleteOptions = {}): Observable<BulkDeleteResponse> {

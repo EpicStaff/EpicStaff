@@ -4,6 +4,7 @@ import {
     BulkDeleteTarget,
     CreateLLMConfigRequest,
     GetLlmConfigRequest,
+    LlmConfigTimeoutLimits,
     UpdateLLMConfigRequest,
 } from '@shared/models';
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
@@ -19,6 +20,8 @@ export class LlmConfigStorageService implements StorageService, BulkDeleteTarget
     private readonly llmConfigService = inject(LLMConfigService);
 
     private configsRequest$?: Observable<GetLlmConfigRequest[]>;
+    /** Shared by every caller for the session; dropped on failure, so the next caller asks again. */
+    private timeoutLimitsRequest$?: Observable<LlmConfigTimeoutLimits>;
 
     private configsSignal = signal<GetLlmConfigRequest[]>([]);
     private configsLoaded = signal<boolean>(false);
@@ -76,6 +79,11 @@ export class LlmConfigStorageService implements StorageService, BulkDeleteTarget
         );
     }
 
+    getTimeoutLimits(): Observable<LlmConfigTimeoutLimits> {
+        this.timeoutLimitsRequest$ ??= this.llmConfigService.getTimeoutLimits().pipe(shareReplay(1));
+        return this.timeoutLimitsRequest$;
+    }
+
     previewBulkDelete(ids: number[]): Observable<BulkDeleteResponse> {
         return this.llmConfigService.bulkDelete(ids, { dryRun: true });
     }
@@ -100,6 +108,7 @@ export class LlmConfigStorageService implements StorageService, BulkDeleteTarget
         this.configsSignal.set([]);
         this.configsLoaded.set(false);
         this.configsRequest$ = undefined;
+        this.timeoutLimitsRequest$ = undefined;
     }
 
     private mergeConfigsIntoCache(incoming: GetLlmConfigRequest[]): void {

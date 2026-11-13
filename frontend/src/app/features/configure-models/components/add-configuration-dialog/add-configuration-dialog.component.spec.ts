@@ -4,7 +4,7 @@ import { Component, forwardRef, input, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { JsonEditorFormFieldComponent } from '@shared/components';
-import { EmbeddingConfig, LLMModel, ReasoningEffort } from '@shared/models';
+import { EmbeddingConfig, LlmConfigTimeoutLimits, LLMModel, ReasoningEffort } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
@@ -51,6 +51,7 @@ describe('AddConfigurationDialogComponent embedding extra headers and LLM pricin
                     provide: LlmConfigStorageService,
                     useValue: {
                         createConfig: createLlmConfig,
+                        getTimeoutLimits: () => EMPTY,
                         configs: signal([]),
                         getAllConfigs: () => of([]),
                     } as unknown as LlmConfigStorageService,
@@ -254,7 +255,8 @@ interface TabStorages {
 async function render(
     getModelById: (id: number) => Observable<LLMModel> = getCachedModelById,
     createConfig: ReturnType<typeof vi.fn> = vi.fn(() => EMPTY),
-    tabStorages: TabStorages = {}
+    tabStorages: TabStorages = {},
+    timeoutLimits: Observable<LlmConfigTimeoutLimits> = EMPTY
 ): Promise<{
     fixture: ComponentFixture<AddConfigurationDialogComponent>;
     createConfig: ReturnType<typeof vi.fn>;
@@ -272,6 +274,7 @@ async function render(
                 provide: LlmConfigStorageService,
                 useValue: {
                     createConfig,
+                    getTimeoutLimits: () => timeoutLimits,
                     configs: signal([]),
                     getAllConfigs: () => of([]),
                 } as unknown as LlmConfigStorageService,
@@ -728,5 +731,123 @@ describe('AddConfigurationDialogComponent voice tab', () => {
 
         expect(createLlmConfig).not.toHaveBeenCalled();
         expect(close).toHaveBeenCalledWith(true);
+    });
+});
+
+const TIMEOUT_LIMITS: LlmConfigTimeoutLimits = { min_seconds: 1, max_seconds: 3600 };
+
+function timeoutField(fixture: ComponentFixture<AddConfigurationDialogComponent>): HTMLElement {
+    return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('app-input-number')).find(
+        (field) => field.textContent!.includes('Timeout (seconds)')
+    )!;
+}
+
+/** Types into the Timeout field as a user would; an empty string clears it. */
+function typeTimeout(fixture: ComponentFixture<AddConfigurationDialogComponent>, value: string): void {
+    const timeoutInput = timeoutField(fixture).querySelector('input')!;
+    timeoutInput.value = value;
+    timeoutInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+}
+
+function timeoutMarkedInvalid(fixture: ComponentFixture<AddConfigurationDialogComponent>): boolean {
+    return timeoutField(fixture).querySelector('input')!.getAttribute('aria-invalid') === 'true';
+}
+
+function timeoutErrorText(fixture: ComponentFixture<AddConfigurationDialogComponent>): string {
+    return timeoutField(fixture).parentElement!.querySelector('app-validation-errors')!.textContent!.trim();
+}
+
+describe('AddConfigurationDialogComponent LLM timeout limits', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    async function renderWithLimits(
+        timeoutLimits: Observable<LlmConfigTimeoutLimits>
+    ): Promise<{ fixture: ComponentFixture<AddConfigurationDialogComponent>; createConfig: ReturnType<typeof vi.fn> }> {
+        const { fixture, createConfig } = await render(
+            getCachedModelById,
+            vi.fn(() => EMPTY),
+            {},
+            timeoutLimits
+        );
+        await pickModel(fixture, PLAIN_MODEL_ID);
+        return { fixture, createConfig };
+    }
+
+    function submit(fixture: ComponentFixture<AddConfigurationDialogComponent>): void {
+        fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
+    }
+
+    it.each([
+        { typed: '3601', error: 'Max value is 3600.' },
+        { typed: '0.5', error: 'Min value is 1.' },
+    ])('refuses a timeout of $typed seconds outside the server limits', async ({ typed, error }) => {
+        const { fixture, createConfig } = await renderWithLimits(of(TIMEOUT_LIMITS));
+
+        typeTimeout(fixture, typed);
+        submit(fixture);
+
+        expect(createConfig).not.toHaveBeenCalled();
+        expect(timeoutMarkedInvalid(fixture)).toBe(true);
+        expect(timeoutErrorText(fixture)).toBe(error);
+    });
+
+    it.each([
+        { typed: '3600', seconds: 3600 },
+        { typed: '1', seconds: 1 },
+    ])('creates the config with a timeout of $typed seconds on a server limit', async ({ typed, seconds }) => {
+        const { fixture, createConfig } = await renderWithLimits(of(TIMEOUT_LIMITS));
+
+        typeTimeout(fixture, typed);
+        submit(fixture);
+
+        expect(timeoutMarkedInvalid(fixture)).toBe(false);
+        expect(createConfig).toHaveBeenCalledWith(expect.objectContaining({ timeout: seconds }));
+    });
+
+    it('creates the config with an empty timeout, as before the limits came from the server', async () => {
+        const { fixture, createConfig } = await renderWithLimits(of(TIMEOUT_LIMITS));
+
+        typeTimeout(fixture, '');
+        submit(fixture);
+
+        expect(createConfig).toHaveBeenCalledWith(expect.objectContaining({ timeout: null }));
+    });
+
+    it.each([
+        { case: 'before the server limits arrive', timeoutLimits: new Subject<LlmConfigTimeoutLimits>() },
+        { case: 'when the server limits fail to load', timeoutLimits: throwError(() => new Error('offline')) },
+    ])('leaves the maximum to the backend $case', async ({ timeoutLimits }) => {
+        const { fixture, createConfig } = await renderWithLimits(timeoutLimits);
+
+        typeTimeout(fixture, '100000');
+        submit(fixture);
+
+        expect(timeoutMarkedInvalid(fixture)).toBe(false);
+        expect(createConfig).toHaveBeenCalledWith(expect.objectContaining({ timeout: 100000 }));
+    });
+
+    it('still refuses a timeout under 1 second before the server limits arrive', async () => {
+        const { fixture, createConfig } = await renderWithLimits(new Subject<LlmConfigTimeoutLimits>());
+
+        typeTimeout(fixture, '0.5');
+        submit(fixture);
+
+        expect(createConfig).not.toHaveBeenCalled();
+        expect(timeoutErrorText(fixture)).toBe('Min value is 1.');
+    });
+
+    it('refuses a timeout typed before the server limits arrive once they turn out to exclude it', async () => {
+        const timeoutLimits = new Subject<LlmConfigTimeoutLimits>();
+        const { fixture, createConfig } = await renderWithLimits(timeoutLimits);
+        typeTimeout(fixture, '100000');
+
+        timeoutLimits.next(TIMEOUT_LIMITS);
+        submit(fixture);
+
+        expect(createConfig).not.toHaveBeenCalled();
+        expect(timeoutErrorText(fixture)).toBe('Max value is 3600.');
     });
 });

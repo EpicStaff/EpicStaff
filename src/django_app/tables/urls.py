@@ -40,6 +40,7 @@ from tables.views.knowledge_views.search_config_views import (
     GraphRagSuggestParamsView,
     NaiveRagSuggestParamsView,
 )
+from tables.views.llm_config_timeout_limits_views import LLMConfigTimeoutLimitsAPIView
 from tables.views.model_view_sets import (
     AgentLabelViewSet,
     AgentNodeTaskViewSet,
@@ -243,6 +244,11 @@ urlpatterns = [
         "execution-timeout-limits/",
         ExecutionTimeoutLimitsAPIView.as_view(),
         name="execution_timeout_limits",
+    ),
+    path(
+        "llm-config-timeout-limits/",
+        LLMConfigTimeoutLimitsAPIView.as_view(),
+        name="llm_config_timeout_limits",
     ),
     path("quickstart/apply/", QuickstartApplyView.as_view(), name="quickstart_apply"),
     path("quickstart/", QuickstartView.as_view(), name="quickstart"),

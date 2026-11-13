@@ -30,7 +30,7 @@ import {
 import { DEFAULT_STEP_SIZE, TOKEN_PRICE_HINT } from '@shared/constants';
 import { EnterSubmitDirective } from '@shared/directives';
 import { pricePairValidator } from '@shared/form-validators';
-import { CreateEmbeddingConfigRequest, ModelTypes, ReasoningEffort } from '@shared/models';
+import { CreateEmbeddingConfigRequest, LlmConfigTimeoutLimits, ModelTypes, ReasoningEffort } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
 import { extractFieldErrorMessages, extractHttpErrorMessage, isClientError, perMillionToPerToken } from '@shared/utils';
 import { map, merge, startWith } from 'rxjs';
@@ -90,6 +90,8 @@ export class AddConfigurationDialogComponent implements OnInit {
     isSubmitting = signal(false);
     /** The server's refusal of the last LLM or embedding save; the realtime form keeps its own. */
     errorMessage = signal<string | null>(null);
+    /** Null until the deployment's limits load, or if they fail to: then only the minimum is checked here. */
+    protected readonly timeoutLimits = signal<LlmConfigTimeoutLimits | null>(null);
     // The realtime and System One tabs' forms save themselves; their progress counts as this dialog's.
     protected readonly isSaving = computed(
         () =>
@@ -200,11 +202,15 @@ export class AddConfigurationDialogComponent implements OnInit {
             response_format: [null],
             seed: [null, [Validators.min(-2147483648), Validators.max(2147483647)]],
             extra_headers: [{}],
-            timeout: [120, [Validators.min(1), Validators.max(600)]],
+            timeout: [120, [Validators.min(1)]],
             reasoning_effort: this.reasoningEffortControl,
             is_visible: [true],
             pricing: this.pricingGroup,
         });
+        this.llmStorage
+            .getTimeoutLimits()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({ next: (limits) => this.applyTimeoutLimits(limits), error: () => {} });
 
         this.llmForm
             .get('extra_headers')
@@ -289,6 +295,13 @@ export class AddConfigurationDialogComponent implements OnInit {
                     this.toast.error(message);
                 },
             });
+    }
+
+    private applyTimeoutLimits(limits: LlmConfigTimeoutLimits): void {
+        this.timeoutLimits.set(limits);
+        const timeout = this.llmForm.controls['timeout'];
+        timeout.setValidators([Validators.min(limits.min_seconds), Validators.max(limits.max_seconds)]);
+        timeout.updateValueAndValidity();
     }
 
     private submitEmbedding(): void {

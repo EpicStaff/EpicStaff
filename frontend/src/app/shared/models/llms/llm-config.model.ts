@@ -83,3 +83,9 @@ export interface UpdateLLMConfigRequest {
     output_cost_per_token?: number | null;
     tags?: Tag[];
 }
+
+/** `GET llm-config-timeout-limits/`: the bounds of an LLM config's `timeout`, in seconds, set per deployment. */
+export interface LlmConfigTimeoutLimits {
+    min_seconds: number;
+    max_seconds: number;
+}
