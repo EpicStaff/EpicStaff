@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { TabButtonComponent } from '@shared/components';
 
 import { CollectionsStorageService } from '../../services/collections-storage.service';
@@ -11,7 +12,7 @@ export type GraphRagTab = 'configuration' | 'visualization' | 'data-tables';
     selector: 'app-graph-rag-tabbed-view',
     templateUrl: './graph-rag-tabbed-view.component.html',
     styleUrls: ['./graph-rag-tabbed-view.component.scss'],
-    imports: [TabButtonComponent, GraphRagVisualizationComponent, GraphRagDataTablesComponent],
+    imports: [TabButtonComponent, MatTooltip, GraphRagVisualizationComponent, GraphRagDataTablesComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphRagTabbedViewComponent {
