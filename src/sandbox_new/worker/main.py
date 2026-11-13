@@ -21,6 +21,8 @@ from loguru import logger
 
 from worker import settings
 from worker.bootstrap.di import build_admission_gate, build_job_consumer
+from worker.infrastructure.execution.privileges import SANDBOX_UID
+from worker.infrastructure.isolation import egress_firewall
 from worker.infrastructure.transport.http_job_source import HttpJobSource
 from worker.infrastructure.transport.http_result_sink import HttpResultSink
 from worker.presentation.heartbeat import Heartbeat
@@ -30,6 +32,16 @@ from worker.presentation.run_gate_sampler import RunGateSampler
 async def main() -> None:
     boot_id = str(uuid.uuid4())
     logger.info("Sandbox worker starting; boot id {}", boot_id)
+    if settings.BLOCK_PRIVATE_NETWORK:
+        # Fail closed: a worker that cannot confine user code must not take jobs.
+        # The raised error ends the process, and the restart loop makes it visible.
+        egress_firewall.apply(SANDBOX_UID)
+        logger.info("Egress firewall installed for uid {}", SANDBOX_UID)
+    else:
+        logger.warning(
+            "SANDBOX_BLOCK_PRIVATE_NETWORK is off: user code can reach the Docker "
+            "host, the LAN and cloud metadata"
+        )
     client = AsyncClient(
         base_url=settings.MANAGER_URL,
         headers={

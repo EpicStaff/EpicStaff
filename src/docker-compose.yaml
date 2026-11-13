@@ -1276,6 +1276,7 @@ services:
       SANDBOX_INTERNAL_TOKEN: ${SANDBOX_INTERNAL_TOKEN:?}
       SANDBOX_LOG_LEVEL: ${SANDBOX_LOG_LEVEL:?}
       SANDBOX_VENVS_DIR: ${SANDBOX_VENVS_DIR:?}
+      SANDBOX_BLOCK_PRIVATE_NETWORK: ${SANDBOX_BLOCK_PRIVATE_NETWORK:?}
       SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
       SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
       SANDBOX_REQUIRE_SIGNAL_ISOLATION: ${SANDBOX_REQUIRE_SIGNAL_ISOLATION:?}
@@ -1305,6 +1306,7 @@ services:
       - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
       - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
       - KILL  # signal the dropped-privilege child's process group on timeout.
+      - NET_ADMIN  # install the per-uid egress firewall at startup. User code drops to sandboxuser and never holds it.
 
 volumes:
   sandbox_venvs:

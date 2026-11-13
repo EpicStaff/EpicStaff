@@ -38,6 +38,10 @@ if MAX_RESULT_SIZE is None or MAX_RESULT_SIZE <= 0:
 
 # Defaults are the confining value: a missing setting must not unconfine the sandbox.
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET", True)
+# Installs the per-uid egress firewall at startup; see worker/infrastructure/isolation/
+# egress_firewall.py. Fail closed: with this on, a worker that cannot install it (no
+# iptables, no CAP_NET_ADMIN) refuses to start.
+BLOCK_PRIVATE_NETWORK = env.bool("SANDBOX_BLOCK_PRIVATE_NETWORK", True)
 BLOCK_NETWORK = env.bool("SANDBOX_BLOCK_NETWORK", True)
 REQUIRE_ISOLATION = env.bool("SANDBOX_REQUIRE_ISOLATION", True)
 REQUIRE_SIGNAL_ISOLATION = env.bool("SANDBOX_REQUIRE_SIGNAL_ISOLATION", True)
