@@ -1,8 +1,9 @@
 """Storage grants across copy, export/import, partial import and version snapshots.
 
-Every path that carries a flow's nodes keeps the grant flags (NULL stays NULL), lowers
-the ones the acting user may not hand out, and a version restore needs every grant it
-applies or discards. Exercised over HTTP with the real services.
+Every path that carries a flow's nodes keeps the grant flags, reads a flag that an old
+file or version does not carry as ticked, lowers the ones the acting user may not hand out,
+and a version restore needs every box of the flow it replaces. Exercised over HTTP with the
+real services.
 """
 
 import pytest
@@ -20,14 +21,12 @@ from tables.import_export.services.partial_export_service import (
 )
 from tables.models import Graph, PythonCode
 from tables.models.graph_models import (
-    AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
     Edge,
     FileExtractorNode,
     PythonNode,
     StartNode,
-    TaskNode,
     WebhookTriggerNode,
 )
 from tests.custom_role_fixtures import *  # noqa: F401,F403
@@ -53,10 +52,6 @@ def _code():
 MODELS = (
     PythonNode,
     WebhookTriggerNode,
-    FileExtractorNode,
-    AudioTranscriptionNode,
-    AgentNode,
-    TaskNode,
     ClassificationDecisionTableNode,
 )
 
@@ -64,10 +59,6 @@ MODELS = (
 LIST_KEYS = {
     "PythonNode": "python_node_list",
     "WebhookTriggerNode": "webhook_trigger_node_list",
-    "FileExtractorNode": "file_extractor_node_list",
-    "AudioTranscriptionNode": "audio_transcription_node_list",
-    "AgentNode": "agent_node_list",
-    "TaskNode": "task_node_list",
     "ClassificationDecisionTableNode": "classification_decision_table_node_list",
 }
 
@@ -100,10 +91,6 @@ def source(acme):
         WebhookTriggerNode.objects.create(
             graph=graph, node_name="hook", python_code=_code(), **_flags("", (False, True, False))
         ),
-        FileExtractorNode.objects.create(graph=graph, **_flags("", (False, False, True))),
-        AudioTranscriptionNode.objects.create(graph=graph, **_flags("", (True, True, False))),
-        AgentNode.objects.create(graph=graph, **_flags("", (True, False, True))),
-        TaskNode.objects.create(graph=graph, **_flags("", (False, True, True))),
         ClassificationDecisionTableNode.objects.create(
             graph=graph,
             pre_python_code=_code(),
@@ -113,6 +100,16 @@ def source(acme):
         ),
     ]
     Edge.objects.create(graph=graph, start_node_id=start.pk, end_node_id=nodes[0].pk)
+    return graph
+
+
+@pytest.fixture
+def file_nodes_flow(acme):
+    """A flow whose only content is a File Extractor and an Audio to Text node."""
+    graph = Graph.objects.create(name="file-nodes-flow", org=acme)
+    StartNode.objects.create(graph=graph, variables={})
+    FileExtractorNode.objects.create(graph=graph)
+    AudioTranscriptionNode.objects.create(graph=graph)
     return graph
 
 
@@ -177,8 +174,6 @@ def _partial_import(client, source, target):
             (EntityType.WEBHOOK_TRIGGER_NODE, source.webhook_trigger_node_list.all()),
             (EntityType.FILE_EXTRACTOR_NODE, source.file_extractor_node_list.all()),
             (EntityType.AUDIO_TRANSCRIPTION_NODE, source.audio_transcription_node_list.all()),
-            (EntityType.AGENT_NODE, source.agent_node_list.all()),
-            (EntityType.TASK_NODE, source.task_node_list.all()),
             (
                 EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
                 source.classification_decision_table_node_list.all(),
@@ -233,22 +228,19 @@ def test_every_flag_survives_every_path_when_the_user_may_hand_it_out(
     result = PATHS[path](admin_client, source, target)
 
     assert _flag_state(result) == original
-    assert any(
-        value is None for rows in original.values() for row in rows for _, value in row
-    ), "the flow must hold a not configured node for this to prove NULL stays NULL"
+    flags = {value for rows in original.values() for row in rows for _, value in row}
+    assert flags == {True, False}, "the flow must hold ticked and unticked boxes"
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("path", list(PATHS))
-def test_flags_the_user_may_not_hand_out_are_lowered_and_a_not_configured_slot_is_not_left_open(
+def test_flags_the_user_may_not_hand_out_are_lowered(
     path, source, target, no_files_client
 ):
     result = PATHS[path](no_files_client, source, target)
 
     state = _flag_state(result)
     flags = [value for rows in state.values() for row in rows for _, value in row]
-    # A not configured node runs with every action, so a user who may hand out none of
-    # them cannot leave one behind: it becomes explicit and all off.
     assert set(flags) == {False}
 
 
@@ -269,26 +261,46 @@ def test_a_partial_import_lowers_only_what_the_user_lacks(
     }
 
 
+def _without_grant_keys(data: dict) -> dict:
+    """The export `data` as a file written before grants existed would hold it."""
+    for graph_data in data[EntityType.GRAPH]:
+        for node_data in graph_data["nodes"]:
+            for key in [key for key in node_data if "storage_grant_" in key]:
+                del node_data[key]
+    return data
+
+
+def _import_legacy_file(client, graph):
+    response = client.post(
+        reverse("graphs-import-entity"),
+        {
+            "file": data_to_json_file(
+                data=_without_grant_keys(_export(graph)), filename="legacy.json"
+            )
+        },
+        format="multipart",
+    )
+    assert response.status_code == status.HTTP_200_OK, response.content
+    return Graph.objects.latest("pk")
+
+
 @pytest.mark.django_db
-@pytest.mark.parametrize("path", ["copy", "export_import"])
-def test_a_not_configured_node_becomes_what_a_partial_holder_may_hand_out(
-    path, source, target, make_files_client
+def test_an_old_export_without_grant_keys_reads_as_ticked_then_capped(
+    source, make_files_client, admin_client
 ):
     reader = make_files_client(Permission.READ)
 
-    result = PATHS[path](reader, source, target)
+    by_admin = _import_legacy_file(admin_client, source)
+    by_reader = _import_legacy_file(reader, source)
 
-    unconfigured = [
-        node
-        for node in result.python_node_list.all()
-        if not node.storage_grant_write and not node.storage_grant_delete
-    ]
-    assert (True, False, False) in [
-        (n.storage_grant_read, n.storage_grant_write, n.storage_grant_delete) for n in unconfigured
-    ]
-    assert not PythonNode.objects.filter(
-        graph=result, storage_grant_read__isnull=True
-    ).exists()
+    assert [
+        (n.storage_grant_read, n.storage_grant_write, n.storage_grant_delete)
+        for n in by_admin.python_node_list.all()
+    ] == [(True, True, True)] * 2
+    assert [
+        (n.storage_grant_read, n.storage_grant_write, n.storage_grant_delete)
+        for n in by_reader.python_node_list.all()
+    ] == [(True, False, False)] * 2
 
 
 @pytest.fixture
@@ -316,20 +328,16 @@ def test_the_grants_are_loaded_with_the_flow(source, admin_client):
     response = admin_client.get(reverse("graphs-detail", args=[source.id]))
 
     assert response.status_code == status.HTTP_200_OK
-    python_nodes = response.data["python_node_list"]
     assert sorted(
         (node["storage_grant_read"], node["storage_grant_write"], node["storage_grant_delete"])
-        for node in python_nodes
-        if node["storage_grant_read"] is not None
-    ) == [(True, False, False)]
-    assert any(node["storage_grant_read"] is None for node in python_nodes)
+        for node in response.data["python_node_list"]
+    ) == [(False, False, False), (True, False, False)]
     cdt = response.data["classification_decision_table_node_list"][0]
     assert (cdt["pre_storage_grant_read"], cdt["post_storage_grant_read"]) == (True, False)
-    assert response.data["agent_node_list"][0]["storage_grant_delete"] is True
 
 
 @pytest.mark.django_db
-def test_restoring_a_version_needs_every_grant_it_applies_and_discards(
+def test_restoring_a_version_needs_every_box_the_flow_has_ticked(
     source, admin_client, no_files_client
 ):
     version = GraphVersioningService().save_version(graph=source, name="v1")
@@ -376,9 +384,6 @@ def test_another_orgs_version_is_a_404_before_any_grant_check(
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-ALL_FILES = Permission.READ | Permission.CREATE | Permission.UPDATE | Permission.DELETE
-
-
 @pytest.fixture
 def legacy_flow(acme):
     legacy = Graph.objects.create(name="legacy-flow", org=acme)
@@ -388,74 +393,110 @@ def legacy_flow(acme):
 
 
 @pytest.mark.django_db
-def test_restoring_not_configured_over_not_configured_needs_no_files_grant(
+def test_a_version_from_before_grants_restores_for_a_partial_holder_with_the_boxes_capped(
     legacy_flow, make_files_client
 ):
     version = GraphVersioningService().save_version(graph=legacy_flow, name="legacy")
-    reader = make_files_client(Permission.READ)
+    for node_data in version.snapshot["nodes"]:
+        for key in [key for key in node_data if "storage_grant_" in key]:
+            del node_data[key]
+    version.save(update_fields=["snapshot"])
+    member_like = make_files_client(Permission.READ | Permission.CREATE | Permission.UPDATE)
 
-    response = _restore(reader, version, legacy_flow)
+    response = _restore(member_like, version, legacy_flow)
 
     assert response.status_code == status.HTTP_200_OK, response.content
     node = PythonNode.objects.get(graph=legacy_flow)
     assert (node.storage_grant_read, node.storage_grant_write, node.storage_grant_delete) == (
-        None,
-        None,
-        None,
+        True,
+        True,
+        False,
     )
+
+
+# ---- file nodes: Files: Read to create them, on every path that carries a flow ----
+
+
+FILE_NODES_NEED_READ = (
+    "Creating or changing a node that reads the flow's files requires Files: Read, "
+    "which you don't have. Contact an admin to change it."
+)
+
+
+def _file_node_counts(graph) -> tuple[int, int]:
+    return graph.file_extractor_node_list.count(), graph.audio_transcription_node_list.count()
 
 
 @pytest.mark.django_db
-def test_restoring_not_configured_over_an_explicit_slot_needs_all_three_grants(
-    legacy_flow, make_files_client
+@pytest.mark.parametrize("path", ["copy", "export_import", "create_from_version"])
+def test_a_flow_with_file_nodes_needs_files_read_to_copy_import_or_branch_from_a_version(
+    path, file_nodes_flow, target, no_files_client, make_files_client
 ):
-    version = GraphVersioningService().save_version(graph=legacy_flow, name="legacy")
-    PythonNode.objects.filter(graph=legacy_flow).update(**_flags("", (True, False, False)))
     reader = make_files_client(Permission.READ)
-    everything = make_files_client(ALL_FILES)
+    flows_before = Graph.objects.count()
 
-    refused = _restore(reader, version, legacy_flow)
-    allowed = _restore(everything, version, legacy_flow)
+    refused_by = None
+    try:
+        PATHS[path](no_files_client, file_nodes_flow, target)
+    except AssertionError as error:
+        refused_by = str(error)
+    result = PATHS[path](reader, file_nodes_flow, target)
 
-    assert refused.status_code == status.HTTP_403_FORBIDDEN
-    assert refused.data["code"] == "storage_grant_denied"
-    assert refused.data["message"] == (
-        "This code runs with Files: Create, Files: Update, Files: Delete, which you don't have. "
-        "Contact an admin to change it."
+    assert refused_by is not None and "403" in refused_by
+    assert "Files: Read" in refused_by
+    assert _file_node_counts(result) == (1, 1)
+    assert Graph.objects.count() == flows_before + 1
+
+
+@pytest.mark.django_db
+def test_a_partial_import_of_file_nodes_needs_files_read(
+    file_nodes_flow, target, no_files_client, make_files_client
+):
+    reader = make_files_client(Permission.READ)
+    refs = [
+        NodeRef(entity_type=EntityType.FILE_EXTRACTOR_NODE, node_id=n.pk)
+        for n in file_nodes_flow.file_extractor_node_list.all()
+    ]
+    result = GraphPartialExportService(entity_registry).export(
+        refs, org_id=file_nodes_flow.org_id, policy=UNRESTRICTED_EXPORT_POLICY
     )
+    url = reverse("graphs-partial-import", args=[target.id])
+
+    def attempt(client):
+        return client.post(
+            url,
+            {"file": data_to_json_file(data=result.data, filename="nodes.json")},
+            format="multipart",
+        )
+
+    refused = attempt(no_files_client)
+    allowed = attempt(reader)
+
+    assert refused.status_code == status.HTTP_403_FORBIDDEN, refused.content
+    assert refused.data["message"] == FILE_NODES_NEED_READ
     assert allowed.status_code == status.HTTP_200_OK, allowed.content
-    assert PythonNode.objects.get(graph=legacy_flow).storage_grant_read is None
 
 
 @pytest.mark.django_db
-def test_restoring_not_configured_over_an_explicit_node_added_since_needs_no_extra_grant(
-    legacy_flow, make_files_client
+def test_restoring_a_version_with_file_nodes_needs_files_read(
+    file_nodes_flow, no_files_client, make_files_client
 ):
-    version = GraphVersioningService().save_version(graph=legacy_flow, name="legacy")
-    PythonNode.objects.create(
-        graph=legacy_flow, python_code=_code(), **_flags("", (False, False, False))
-    )
+    version = GraphVersioningService().save_version(graph=file_nodes_flow, name="files")
     reader = make_files_client(Permission.READ)
 
-    response = _restore(reader, version, legacy_flow)
+    refused = _restore(no_files_client, version, file_nodes_flow)
+    allowed = _restore(reader, version, file_nodes_flow)
 
-    assert response.status_code == status.HTTP_200_OK, response.content
+    assert refused.status_code == status.HTTP_403_FORBIDDEN, refused.content
+    assert refused.data["message"] == FILE_NODES_NEED_READ
+    assert allowed.status_code == status.HTTP_200_OK, allowed.content
+    assert _file_node_counts(file_nodes_flow) == (1, 1)
 
 
 @pytest.mark.django_db
-def test_restoring_not_configured_over_an_explicit_slot_is_matched_per_node(
-    legacy_flow, make_files_client
-):
-    other = PythonNode.objects.create(
-        graph=legacy_flow, python_code=_code(), **_flags("", (False, False, False))
-    )
-    version = GraphVersioningService().save_version(graph=legacy_flow, name="two-nodes")
-    PythonNode.objects.filter(pk=other.pk).update(storage_grant_read=None, storage_grant_write=None, storage_grant_delete=None)
-    PythonNode.objects.exclude(pk=other.pk).update(**_flags("", (False, False, False)))
-    reader = make_files_client(Permission.READ)
+def test_a_refused_restore_leaves_the_file_nodes_in_place(file_nodes_flow, no_files_client):
+    version = GraphVersioningService().save_version(graph=file_nodes_flow, name="files")
 
-    response = _restore(reader, version, legacy_flow)
+    _restore(no_files_client, version, file_nodes_flow)
 
-    # The version holds the legacy node's slot as not configured, and the flow now has an
-    # explicit slot on that same node (same number), so the restore widens it.
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert _file_node_counts(file_nodes_flow) == (1, 1)

@@ -28,9 +28,9 @@ class StorageGrantCheckedViewSetMixin:
     def _check_storage_grant(self, instance, serializer) -> None:
         check_storage_grant_write(
             GrantActor.for_request(self.request),
+            serializer.Meta.model,
             instance,
             serializer.validated_data,
-            model=serializer.Meta.model,
         )
 
     def _assert_parent_in_active_org_first(self, serializer) -> None:

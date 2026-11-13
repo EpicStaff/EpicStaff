@@ -51,7 +51,7 @@ from tables.services.secrets.secret_use_checks import (
     check_telegram_trigger_node_write,
     check_webhook_trigger_node_write,
 )
-from tables.services.storage_grants.slots import STORAGE_GRANT_SLOTS
+from tables.services.storage_grants.slots import FILE_NODE_MODELS, STORAGE_GRANT_SLOTS
 from tables.services.storage_grants.write_checks import (
     StorageGrantCheck,
     storage_grant_check_for,
@@ -79,14 +79,15 @@ class NodeTypeConfig:
     # The node's `check_<entity>_write` from secret_use_checks, for a node type whose
     # writes can need secrets:USE. Called with the validated data before the save.
     secret_use_check: SecretUseCheck | None = None
-    # The node's storage grant write check, set for every model in STORAGE_GRANT_SLOTS
-    # without being named here: a node type that carries grants cannot be saved unchecked.
+    # The node's storage grant write check, set for every model in STORAGE_GRANT_SLOTS and
+    # FILE_NODE_MODELS without being named here: a node type that carries grants, or reads
+    # the flow's files, cannot be saved unchecked.
     storage_grant_check: StorageGrantCheck | None = field(default=None, init=False)
 
     def __post_init__(self):
         if self.saveable_factory is None:
             self.saveable_factory = _DEFAULT_FACTORY
-        if self.model_class in STORAGE_GRANT_SLOTS:
+        if self.model_class in STORAGE_GRANT_SLOTS or self.model_class in FILE_NODE_MODELS:
             self.storage_grant_check = storage_grant_check_for(self.model_class)
 
 

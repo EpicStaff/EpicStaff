@@ -31,24 +31,13 @@ from tables.models.knowledge_models.graphrag_models import AgentGraphRag
 from tables.models.label_models import Label
 
 
-class StorageReadGrantField(models.Model):
-    """Whether this node's code may read the flow's attached files.
-
-    A node created without it gets False; the migration ticked it for existing nodes.
-    """
-
-    storage_grant_read = models.BooleanField(default=False)
-
-    class Meta:
-        abstract = True
-
-
-class StorageGrantFields(StorageReadGrantField):
+class StorageGrantFields(models.Model):
     """What this node's code may do to the flow's attached files: read, write, delete.
 
     A node created without them gets all False; the migration ticked them for existing nodes.
     """
 
+    storage_grant_read = models.BooleanField(default=False)
     storage_grant_write = models.BooleanField(default=False)
     storage_grant_delete = models.BooleanField(default=False)
 
@@ -275,9 +264,7 @@ class KnowledgeNode(GraphAuthorModel, BaseNode, NodeIdentityMixin, SoftDeleteFie
         ]
 
 
-class FileExtractorNode(
-    GraphAuthorModel, StorageReadGrantField, BaseNode, NodeIdentityMixin, SoftDeleteFields
-):
+class FileExtractorNode(GraphAuthorModel, BaseNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="file_extractor_node_list"
     )
@@ -319,9 +306,7 @@ class KeyValueNode(GraphAuthorModel, BaseNode, NodeIdentityMixin, SoftDeleteFiel
         ]
 
 
-class AudioTranscriptionNode(
-    GraphAuthorModel, StorageReadGrantField, BaseNode, NodeIdentityMixin, SoftDeleteFields
-):
+class AudioTranscriptionNode(GraphAuthorModel, BaseNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="audio_transcription_node_list"
     )

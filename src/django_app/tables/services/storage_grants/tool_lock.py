@@ -45,11 +45,9 @@ def grant_lock_for_venv(binding, org_id: int) -> ToolGrantLock | None:
         )
         rows = site.model.objects.filter(
             graph__org_id=org_id, **{f"{site.code_field}__venv": binding}
-        ).values("graph__name", slot.use_storage_field, *slot.flag_names)
+        ).values("graph__name", *slot.flag_names)
         for row in rows:
-            granted = GrantFlags.of(row, slot).held_for_lock(
-                uses_storage=row[slot.use_storage_field]
-            )
+            granted = GrantFlags.of(row, slot).granted
             if granted:
                 locks.append(ToolGrantLock(granted, (row["graph__name"],)))
     return _merge_locks(locks)

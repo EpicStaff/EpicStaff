@@ -711,3 +711,24 @@ def test_complex_graph_with_mixed_storage_and_non_storage_nodes():
     assert needs_storage is True
     assert set(union_paths) == {"path1", "path2"}
     assert org_prefix == "org_1"
+
+
+def test_file_nodes_demand_the_fixed_read_only_grant_and_never_the_default_account():
+    """File Extractor and Audio to Text carry no grant: their code reads the attached files, no more."""
+    from src.shared.models.storage_scope import FILE_NODE_STORAGE_GRANT, StorageGrant
+    from storage_credentials.services.storage_demand_collector import collect_storage_grant_demand
+
+    graph = _make_empty_graph()
+    scope = {"storage_allowed_paths": ["reports/"], "storage_org_prefix": "org_1", "org_id": 1}
+    graph.file_extractor_node_list = [
+        FileExtractorNodeData(node_name="extract", input_map={}, **scope)
+    ]
+    graph.audio_transcription_node_list = [
+        AudioTranscriptionNodeData(node_name="transcribe", input_map={}, **scope)
+    ]
+
+    demand = collect_storage_grant_demand(_make_session_data(graph))
+
+    assert demand.grants == frozenset({StorageGrant(read=True)})
+    assert FILE_NODE_STORAGE_GRANT == StorageGrant(read=True)
+    assert demand.has_ungranted is False

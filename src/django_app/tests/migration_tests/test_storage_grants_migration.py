@@ -2,7 +2,7 @@
 
 Invariants: a node that existed before the columns gets every box ticked, so its runs
 keep today's access, and a node created afterwards starts with every box unticked. File
-Extractor and Audio to Text have a read box only; agent and task nodes have none. A
+Extractor, Audio to Text, agent and task nodes have no grant at all. A
 temporary account's session link stops being one-to-one, so a session can hold one
 account per distinct grant.
 """
@@ -79,11 +79,6 @@ def test_existing_grant_nodes_get_every_box(migrated):
     for name in ("python", "webhook"):
         assert [getattr(stored(name), flag) for flag in CODE_NODE_FLAGS] == [True, True, True]
     assert [getattr(stored("cdt"), flag) for flag in CDT_FLAGS] == [True] * 6
-    for name in ("file_extractor", "audio"):
-        node = stored(name)
-        assert node.storage_grant_read is True
-        assert not hasattr(node, "storage_grant_write")
-        assert not hasattr(node, "storage_grant_delete")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -98,15 +93,13 @@ def test_new_grant_nodes_start_with_none(migrated):
     for name in ("python", "webhook"):
         assert [getattr(created(name), flag) for flag in CODE_NODE_FLAGS] == [False] * 3
     assert [getattr(created("cdt"), flag) for flag in CDT_FLAGS] == [False] * 6
-    assert created("file_extractor").storage_grant_read is False
-    assert created("audio").storage_grant_read is False
 
 
 @pytest.mark.django_db(transaction=True)
-def test_agent_and_task_nodes_have_no_grant(migrated):
+def test_agent_task_and_file_nodes_have_no_grant(migrated):
     new_apps, _, _ = migrated
 
-    for model_name in ("AgentNode", "TaskNode"):
+    for model_name in ("AgentNode", "TaskNode", "FileExtractorNode", "AudioTranscriptionNode"):
         model = new_apps.get_model("tables", model_name)
         assert not [field.name for field in model._meta.fields if "storage_grant" in field.name]
 

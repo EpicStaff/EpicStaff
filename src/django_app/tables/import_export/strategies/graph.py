@@ -42,6 +42,8 @@ from tables.services.node_number_service import NodeNumberService, source_order_
 from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
 from tables.services.storage_grants.actor import grant_actor_for
 from tables.services.storage_grants.capping import cap_grant_data
+from tables.services.storage_grants.slots import FILE_NODE_MODELS
+from tables.services.storage_grants.write_checks import assert_can_write_file_node
 
 # Every reverse relation on Graph that holds its content (nodes, notes, edges).
 GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list")
@@ -386,7 +388,6 @@ class GraphStrategy(EntityImportExportStrategy):
         *,
         keep_node_uuids: bool,
         preserve_node_numbers: bool = False,
-        cap_grants: bool = True,
     ) -> IDMapper:
         """Create a graph's nodes and edges from exported data.
 
@@ -403,9 +404,6 @@ class GraphStrategy(EntityImportExportStrategy):
             preserve_node_numbers: Keep each node's stored number (version restore).
                 When false, the nodes are numbered from the graph's counter in
                 source order. See `_create_nodes` for the numbers that cannot be kept.
-            cap_grants: Cap each node's storage grants to what `user` may hand
-                out. False stores them as given, for a caller that has already
-                checked that `user` may apply exactly this data (version restore).
         """
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
@@ -422,7 +420,6 @@ class GraphStrategy(EntityImportExportStrategy):
             user,
             keep_node_uuids=keep_node_uuids,
             preserve_node_numbers=preserve_node_numbers,
-            cap_grants=cap_grants,
         )
 
         # Pass 2: create edges with remapped node IDs,
@@ -462,7 +459,6 @@ class GraphStrategy(EntityImportExportStrategy):
         *,
         keep_node_uuids: bool,
         preserve_node_numbers: bool = False,
-        cap_grants: bool = True,
     ) -> list:
         supported_nodes = self._supported_nodes(
             sorted(
@@ -497,10 +493,12 @@ class GraphStrategy(EntityImportExportStrategy):
             node_uuid = node_data.pop("uuid", None)
 
             strategy = entity_registry.get_strategy(entity_type)
-            if cap_grants:
-                node_data = cap_grant_data(
-                    node_data, grant_actor, model=strategy.serializer_class.Meta.model
-                )
+            node_model = strategy.serializer_class.Meta.model
+            # A user is checked for creating a node that reads the flow's files; an import
+            # with no acting user is internal and has no one whose permissions could be short.
+            if user is not None and node_model in FILE_NODE_MODELS:
+                assert_can_write_file_node(grant_actor)
+            node_data = cap_grant_data(node_data, grant_actor, model=node_model)
 
             # Node strategies resolve their parent graph via
             # id_mapper.get_or_none(GRAPH, node_data["graph"]). For a full-graph

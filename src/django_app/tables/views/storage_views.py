@@ -49,11 +49,6 @@ from tables.serializers.storage_serializers import (
     StorageUploadLimitsResponseSerializer,
     StorageUsageRequestSerializer,
 )
-from tables.services.storage_grants.actor import GrantActor
-from tables.services.storage_grants.flow_checks import (
-    actions_granted_in_flows,
-    assert_actor_holds,
-)
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.dataclasses import FolderInfo
@@ -447,9 +442,6 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         missing = set(requested_graph_ids) - set(graph_ids)
         if missing:
             raise ValidationError({"graph_ids": f"Graphs not found: {sorted(missing)}"})
-        # Attaching a file lets every unattended node of the flow that is granted access
-        # reach it, so it needs every permission any of those nodes is granted.
-        assert_actor_holds(GrantActor.for_request(request), actions_granted_in_flows(graph_ids))
 
         results = []
 

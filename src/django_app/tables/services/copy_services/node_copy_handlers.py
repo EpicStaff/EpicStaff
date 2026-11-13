@@ -45,6 +45,16 @@ from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.secrets.secret_use_service import SecretActor
 from tables.services.storage_grants.actor import grant_actor_for
 from tables.services.storage_grants.capping import copied_grant_fields
+from tables.services.storage_grants.write_checks import assert_can_write_file_node
+
+
+def _assert_can_copy_file_node(user, graph: Graph) -> None:
+    """Copying a File Extractor or Audio to Text node creates one, so it needs Files: Read.
+
+    A copy with no acting user is internal and has no one whose permissions could be short.
+    """
+    if user is not None:
+        assert_can_write_file_node(grant_actor_for(user, graph))
 
 
 def copy_start_node(
@@ -83,11 +93,11 @@ def copy_graph_note(
 def copy_file_extractor_node(
     graph: Graph, node: FileExtractorNode, user, node_number: int | None, actor: SecretActor | None
 ) -> FileExtractorNode:
+    _assert_can_copy_file_node(user, graph)
     return FileExtractorNode.objects.create(
         graph=graph,
         node_number=node_number,
         created_by=resolve_author(user),
-        **copied_grant_fields(node, grant_actor_for(user, graph)),
         **get_base_node_fields(node),
     )
 
@@ -121,11 +131,11 @@ def copy_audio_transcription_node(
     node_number: int | None,
     actor: SecretActor | None,
 ) -> AudioTranscriptionNode:
+    _assert_can_copy_file_node(user, graph)
     return AudioTranscriptionNode.objects.create(
         graph=graph,
         node_number=node_number,
         created_by=resolve_author(user),
-        **copied_grant_fields(node, grant_actor_for(user, graph)),
         **get_base_node_fields(node),
     )
 
@@ -388,7 +398,6 @@ def copy_task_node(
         instructions=node.instructions,
         output_schema=node.output_schema,
         remember_output=node.remember_output,
-        **copied_grant_fields(node, grant_actor_for(user, graph)),
         **get_base_node_fields(node),
     )
     new_node.surface_list.set(node.surface_list.all())
@@ -404,7 +413,6 @@ def copy_agent_node(
         node_number=node_number,
         created_by=resolve_author(user),
         agent_definition=node.agent_definition,
-        **copied_grant_fields(node, grant_actor_for(user, graph)),
         **get_base_node_fields(node),
     )
     new_node.surface_list.set(node.surface_list.all())

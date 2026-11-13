@@ -1240,10 +1240,6 @@ class GraphVersioningManager:
             # The restored nodes are the version's nodes, so a diff can match them.
             keep_node_uuids=True,
             preserve_node_numbers=True,
-            # The restore service has already required every grant the snapshot applies,
-            # and a not configured slot only replaces one that is not configured either,
-            # so nothing is lowered here.
-            cap_grants=False,
         )
 
         return node_mapper

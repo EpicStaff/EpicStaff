@@ -1059,7 +1059,6 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
-            storage_grant=storage_grant_of(file_extractor_node),
         )
 
     def convert_key_value_node_to_pydantic(
@@ -1101,7 +1100,6 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
-            storage_grant=storage_grant_of(audio_transcription_node),
         )
 
     def convert_subgraph_node_to_pydantic(

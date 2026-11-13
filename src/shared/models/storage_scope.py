@@ -65,6 +65,11 @@ class StorageGrant(BaseModel):
         return cls(read=key[0] == "r", write=key[1] == "w", delete=key[2] == "d")
 
 
+# What File Extractor and Audio to Text nodes run with: they carry no grant of their own
+# and only read the flow's attached files.
+FILE_NODE_STORAGE_GRANT = StorageGrant(read=True)
+
+
 class StorageCredentials(BaseModel):
     """Temporary storage service account credentials.
 

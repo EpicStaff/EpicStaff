@@ -11,9 +11,7 @@ from unittest.mock import patch
 
 import pytest
 from src.shared.models.graph_nodes import (
-    AgentNodeData,
     EndNodeData,
-    FileExtractorNodeData,
     GraphData,
     PythonNodeData,
 )
@@ -206,52 +204,6 @@ def test_ninety_nodes_with_one_combination_mint_one_account(gateway, acme, sessi
     assert len(gateway.created) == 1
     assert TemporaryStorageAccount.objects.filter(session=session).count() == 1
     assert list(accounts.by_grant) == [grant.key]
-
-
-@pytest.mark.django_db
-def test_agent_and_file_nodes_count_through_their_own_grants(gateway, acme, session):
-    tool_code = PythonCodeData(
-        code="x = 1",
-        entrypoint="main",
-        use_storage=True,
-        storage_allowed_paths=["reports/", f"sessions/{session.pk}/"],
-        storage_org_prefix=f"org_{acme.id}",
-        org_id=acme.id,
-    )
-    from src.shared.models.tools import BaseToolData, PythonCodeToolData
-
-    agent = AgentNodeData(
-        node_name="agent",
-        storage_grant=StorageGrant(read=True),
-        tools=[
-            BaseToolData(
-                unique_name="python-code-tool:1",
-                data=PythonCodeToolData(
-                    id=1, name="t", description="d", python_code=tool_code
-                ),
-            )
-        ],
-    )
-    extractor = FileExtractorNodeData(
-        node_name="extractor",
-        input_map={},
-        storage_allowed_paths=["reports/", f"sessions/{session.pk}/"],
-        storage_org_prefix=f"org_{acme.id}",
-        org_id=acme.id,
-        storage_grant=StorageGrant(delete=True),
-    )
-    session_data = _session_data(
-        session, acme, [], agent_node_list=[agent], file_extractor_node_list=[extractor]
-    )
-
-    accounts = session_credential_service.issue_session_accounts(
-        session_data=session_data,
-        session_orm=session,
-        org=acme,
-    )
-
-    assert set(accounts.by_grant) == {"r--", "--d"}
-    assert accounts.default is None
 
 
 @pytest.mark.django_db

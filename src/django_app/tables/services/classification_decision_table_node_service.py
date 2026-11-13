@@ -100,9 +100,9 @@ class ClassificationDecisionTableNodeService:
         check_cdt_node_write(actor_from_request(request), instance, serializer.validated_data)
         check_storage_grant_write(
             GrantActor.for_request(request) if request is not None else None,
+            ClassificationDecisionTableNode,
             instance,
             serializer.validated_data,
-            model=ClassificationDecisionTableNode,
         )
 
         node = serializer.save()

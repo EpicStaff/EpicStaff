@@ -37,7 +37,7 @@ from src.shared.models import (
     SessionData,
     SubGraphData,
 )
-from src.shared.models.storage_scope import StorageCredentials
+from src.shared.models.storage_scope import FILE_NODE_STORAGE_GRANT, StorageCredentials
 
 
 class SessionGraphBuilder:
@@ -310,7 +310,7 @@ class SessionGraphBuilder:
                 storage_org_prefix=file_extractor_node_data.storage_org_prefix,
                 org_id=file_extractor_node_data.org_id,
                 storage_credentials=storage_credentials_for(
-                    session_data, file_extractor_node_data.storage_grant
+                    session_data, FILE_NODE_STORAGE_GRANT
                 ),
             )
             self.add_node(file_extractor_node)
@@ -340,7 +340,7 @@ class SessionGraphBuilder:
                 storage_org_prefix=audio_transcription_node_data.storage_org_prefix,
                 org_id=audio_transcription_node_data.org_id,
                 storage_credentials=storage_credentials_for(
-                    session_data, audio_transcription_node_data.storage_grant
+                    session_data, FILE_NODE_STORAGE_GRANT
                 ),
             )
             self.add_node(audio_transcription_node)

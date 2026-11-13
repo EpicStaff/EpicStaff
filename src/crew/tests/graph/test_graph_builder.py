@@ -28,6 +28,8 @@ from src.shared.models import (
     TaskNodeData,
     SubGraphData,
     SubGraphNodeData,
+    FileExtractorNodeData,
+    AudioTranscriptionNodeData,
 )
 from src.shared.models.storage_scope import StorageCredentials, StorageGrant
 import asyncio
@@ -928,3 +930,47 @@ def test_classification_table_slots_run_with_the_account_of_their_own_grant(
     asyncio.run(run_slots())
 
     assert executor.received_storage_credentials == [CREDENTIALS_FOR_READ_ONLY, DEFAULT_CREDENTIALS]
+
+
+def test_file_extractor_and_audio_nodes_run_with_the_read_only_account(mock_services, monkeypatch):
+    from services.graph import graph_builder
+
+    created_nodes = []
+
+    class RecordingFileExtractor(graph_builder.FileContentExtractorNode):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            created_nodes.append(self)
+
+    class RecordingAudioTranscription(graph_builder.AudioTranscriptionNode):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            created_nodes.append(self)
+
+    monkeypatch.setattr(graph_builder, "FileContentExtractorNode", RecordingFileExtractor)
+    monkeypatch.setattr(graph_builder, "AudioTranscriptionNode", RecordingAudioTranscription)
+    session_data = SessionData(
+        id=905,
+        org_id=1,
+        audit_retention_days=0,
+        initial_state={},
+        storage_credentials=DEFAULT_CREDENTIALS,
+        storage_credentials_by_grant={
+            READ_ONLY.key: CREDENTIALS_FOR_READ_ONLY,
+            FULL_ACCESS.key: CREDENTIALS_FOR_FULL_ACCESS,
+        },
+        graph=GraphData(
+            name="file nodes",
+            file_extractor_node_list=[FileExtractorNodeData(node_name="extract", input_map={"file": "variables.file"})],
+            audio_transcription_node_list=[
+                AudioTranscriptionNodeData(node_name="transcribe", input_map={"file": "variables.file"})
+            ],
+            edge_list=_chain(["extract", "transcribe"]),
+            entrypoint="extract",
+            end_node=None,
+        ),
+    )
+
+    _builder(mock_services, session_id=905).compile_from_schema(session_data)
+
+    assert [node.storage_credentials for node in created_nodes] == [CREDENTIALS_FOR_READ_ONLY] * 2

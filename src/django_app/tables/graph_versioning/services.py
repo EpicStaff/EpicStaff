@@ -3,7 +3,6 @@ from typing import TypedDict
 
 from django.db import transaction
 from rbac.authorship import record_last_edit
-from src.shared.models.storage_scope import StorageAction
 
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.import_export.constants import IMPORT_VERSION
@@ -15,11 +14,7 @@ from tables.models import (
 from tables.services.storage_grants.actor import GrantActor
 from tables.services.storage_grants.flow_checks import (
     actions_granted_in_flows,
-    actions_granted_in_snapshot,
     assert_actor_holds,
-    flow_has_unconfigured_storage_slot,
-    snapshot_has_unconfigured_storage_slot,
-    snapshot_unconfigures_explicit_slot,
 )
 
 # Graph-level ``metadata`` in snapshots saved before the secret FKs landed can carry node data
@@ -264,25 +259,12 @@ class GraphVersioningService:
         Graph.increment_version_if_current(pk=graph.pk, expected=expected_save_version)
 
         prepared = self._prepare(version)
-        # Restoring replaces every node, so it hands out the grants of the version and
-        # discards those of the flow as it is: the user must hold both sets. A slot of the
-        # version that is not configured runs with every action, so where it replaces an
-        # explicit slot of the flow it needs all three: the restore is refused rather than
-        # lowering it. Over a slot that is not configured either, it hands out nothing new,
-        # unless that slot touches storage (File Extractor, Audio transcription, a code slot
-        # with storage on, an agent or task node reaching a Python tool with storage on):
-        # such a slot runs with every action and the restore swaps what it does, so a
-        # not-configured storage slot on either side needs all three, like the edit lock.
-        snapshot_nodes = prepared.filtered_snapshot["nodes"]
-        required = actions_granted_in_snapshot(snapshot_nodes) | actions_granted_in_flows(
-            [graph.id]
-        )
-        if snapshot_unconfigures_explicit_slot(snapshot_nodes, graph.id):
-            required |= frozenset(StorageAction)
-        if flow_has_unconfigured_storage_slot(graph.id) or snapshot_has_unconfigured_storage_slot(
-            snapshot_nodes
-        ):
-            required |= frozenset(StorageAction)
+        # Restoring replaces every node, and the grants of the version are capped to what the
+        # user may hand out (`apply_snapshot_to_graph`), so a version from before grants, whose
+        # missing boxes read as ticked, restores for a user who lacks one of them, with that
+        # box off. What the restore still needs is the boxes of the flow as it is: replacing a
+        # node's code is a steering change, which needs every box the node has ticked.
+        required = actions_granted_in_flows([graph.id])
         # A call with no acting user is internal (the restore endpoint always has one) and
         # has no one whose permissions could be short.
         if user is not None:

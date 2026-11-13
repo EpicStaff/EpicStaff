@@ -28,19 +28,26 @@ class StorageGrantDeniedError(PermissionDenied):
 
     @classmethod
     def for_actor(
-        cls, actor: GrantActor | None, missing, *, change: bool = False
+        cls, actor: GrantActor | None, missing, *, change: bool = False, file_node: bool = False
     ) -> "StorageGrantDeniedError":
         """The refusal of `actor` lacking a permission behind each of the actions `missing`."""
         permissions = (
             permissions_behind(missing) if actor is None else actor.missing_permissions(missing)
         )
-        return cls(missing, permissions, change=change)
+        return cls(missing, permissions, change=change, file_node=file_node)
 
-    def __init__(self, missing, missing_permissions, *, change: bool = False):
+    def __init__(
+        self, missing, missing_permissions, *, change: bool = False, file_node: bool = False
+    ):
         self.missing = frozenset(missing)
         self.missing_permissions = list(missing_permissions)
         labels = describe_permissions(self.missing_permissions)
-        if change:
+        if file_node:
+            message = (
+                f"Creating or changing a node that reads the flow's files requires {labels}, "
+                "which you don't have. Contact an admin to change it."
+            )
+        elif change:
             message = (
                 f"Changing the files this code can access requires {labels}, which you "
                 "don't have. Contact an admin to change it."

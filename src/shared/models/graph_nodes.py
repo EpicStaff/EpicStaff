@@ -6,7 +6,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from .agent_service import CollectionSpec, S3FileSpec
 from .ai_providers import LLMData
 from .knowledge import RagSearchConfig
-from .storage_scope import StorageGrant, StorageScopedData
+from .storage_scope import StorageScopedData
 from .surfaces import CombinedSurfaceData
 from .system_one import PromptKind, SystemOneConfigData, SystemOneQuestion
 from .tools import BaseToolData, PythonCodeData
@@ -47,8 +47,6 @@ class FileExtractorNodeData(StorageScopedData):
     output_variable_path: str | None = None
     use_storage: bool = True
     """File extractor nodes always require storage access."""
-    storage_grant: StorageGrant = Field(default_factory=StorageGrant)
-    """Read only: a file extractor never writes or deletes."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,8 +68,6 @@ class AudioTranscriptionNodeData(StorageScopedData):
     output_variable_path: str | None = None
     use_storage: bool = True
     """Audio transcription nodes always require storage access."""
-    storage_grant: StorageGrant = Field(default_factory=StorageGrant)
-    """Read only: an audio transcription node never writes or deletes."""
 
     model_config = ConfigDict(from_attributes=True)
 

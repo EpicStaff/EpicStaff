@@ -58,16 +58,10 @@ def test_ticked_boxes_are_stored_as_given(model, slot, graph):
     assert [getattr(node, name) for name in slot.flag_names] == list(values)
 
 
-@pytest.mark.parametrize("model", [FileExtractorNode, AudioTranscriptionNode])
-def test_file_extractor_and_audio_have_a_read_box_only(model):
-    field_names = {field.name for field in model._meta.fields}
-
-    assert "storage_grant_read" in field_names
-    assert not {"storage_grant_write", "storage_grant_delete"} & field_names
-
-
-@pytest.mark.parametrize("model", [AgentNode, TaskNode])
-def test_agent_and_task_nodes_have_no_grant(model):
+@pytest.mark.parametrize(
+    "model", [AgentNode, TaskNode, FileExtractorNode, AudioTranscriptionNode]
+)
+def test_agent_task_and_file_nodes_have_no_grant(model):
     assert not [field.name for field in model._meta.fields if "storage_grant" in field.name]
 
 
@@ -105,7 +99,5 @@ def test_every_grant_model_is_listed_for_the_tests_above():
     assert set(STORAGE_GRANT_SLOTS) == {
         PythonNode,
         WebhookTriggerNode,
-        FileExtractorNode,
-        AudioTranscriptionNode,
         ClassificationDecisionTableNode,
     }

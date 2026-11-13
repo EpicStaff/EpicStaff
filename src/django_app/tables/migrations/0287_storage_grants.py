@@ -42,16 +42,6 @@ class Migration(migrations.Migration):
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='fileextractornode',
-            name='storage_grant_read',
-            field=models.BooleanField(default=True),
-        ),
-        migrations.AddField(
-            model_name='audiotranscriptionnode',
-            name='storage_grant_read',
-            field=models.BooleanField(default=True),
-        ),
-        migrations.AddField(
             model_name='classificationdecisiontablenode',
             name='pre_storage_grant_read',
             field=models.BooleanField(default=True),
@@ -109,16 +99,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='webhooktriggernode',
             name='storage_grant_delete',
-            field=models.BooleanField(default=False),
-        ),
-        migrations.AlterField(
-            model_name='fileextractornode',
-            name='storage_grant_read',
-            field=models.BooleanField(default=False),
-        ),
-        migrations.AlterField(
-            model_name='audiotranscriptionnode',
-            name='storage_grant_read',
             field=models.BooleanField(default=False),
         ),
         migrations.AlterField(

@@ -12,7 +12,11 @@ from src.shared.models.graph_nodes import (
     GraphData,
 )
 from src.shared.models.sessions import SessionData
-from src.shared.models.storage_scope import StorageGrant, StorageScopedData
+from src.shared.models.storage_scope import (
+    FILE_NODE_STORAGE_GRANT,
+    StorageGrant,
+    StorageScopedData,
+)
 from src.shared.models.tools import BaseToolData, PythonCodeToolData
 
 
@@ -59,8 +63,9 @@ class StorageGrantDemand:
 def collect_storage_grant_demand(session_data: SessionData) -> StorageGrantDemand:
     """Traverse the session graph and its subgraphs for the grants of their storage-using code.
 
-    A python node, webhook trigger, classification decision table slot, file extractor or
-    audio transcription node counts through its own grant; an agent or task node counts
+    A python node, webhook trigger or classification decision table slot counts through its
+    own grant; a file extractor or audio transcription node through the fixed read-only
+    `FILE_NODE_STORAGE_GRANT`; an agent or task node counts
     once through its grant for all of its python tools that use storage.
     """
     collector = _walk(session_data)
@@ -96,10 +101,10 @@ class _StorageDemandWalker:
             self._check_storage_scoped(node.python_code)
 
         for node in graph.file_extractor_node_list:
-            self._check_storage_scoped(node)
+            self._check_storage_scoped(node, FILE_NODE_STORAGE_GRANT)
 
         for node in graph.audio_transcription_node_list:
-            self._check_storage_scoped(node)
+            self._check_storage_scoped(node, FILE_NODE_STORAGE_GRANT)
 
         for node in graph.classification_decision_table_node_list:
             if node.pre_python_code:
