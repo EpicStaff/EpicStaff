@@ -1,3 +1,5 @@
+import { groupThousands } from '@shared/utils';
+
 import { AuditFieldCatalog, AuditLookupOptions, catalogFieldOptions } from '../models/audit-domain.models';
 import {
     AuditCondition,
@@ -220,7 +222,8 @@ function describeTokens(tokens: AuditNumberFilter): AuditFilterChip | null {
         return null;
     }
     const operator = TOKEN_OPERATOR_LABELS[tokens.op] ?? OPERATOR_LABELS[tokens.op] ?? tokens.op;
-    return operatorChip('tokens', 'Tokens', operator, tokens.value);
+    const value = groupThousands(tokens.value) ?? tokens.value;
+    return operatorChip('tokens', 'Tokens', operator, value);
 }
 
 function describeMatchScope(scope: AuditMatchScopeState): string | null {
