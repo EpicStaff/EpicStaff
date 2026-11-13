@@ -19,6 +19,7 @@ from tables.models.realtime_models import (
 )
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from tests.voice_recording_files import wav_upload
 
 
 @pytest.fixture
@@ -204,12 +205,6 @@ def test_conversation_recording_cross_org_list_excludes_other_org(
     assert returned_ids == {own.id}
 
 
-def _fake_audio_file():
-    from django.core.files.uploadedfile import SimpleUploadedFile
-
-    return SimpleUploadedFile("clip.wav", b"fake-audio-bytes", content_type="audio/wav")
-
-
 @pytest.mark.django_db
 def test_conversation_recording_create_rejects_direct_ref_to_other_orgs_chat(
     client_org_admin, org_b
@@ -223,7 +218,7 @@ def test_conversation_recording_create_rejects_direct_ref_to_other_orgs_chat(
         {
             "rt_agent_chat": other_chat.id,
             "recording_type": ConversationRecording.RecordingType.INBOUND,
-            "file": _fake_audio_file(),
+            "file": wav_upload(),
         },
         format="multipart",
     )
@@ -244,7 +239,7 @@ def test_conversation_recording_create_rejects_connection_key_of_other_orgs_chat
         {
             "connection_key": other_chat.connection_key,
             "recording_type": ConversationRecording.RecordingType.INBOUND,
-            "file": _fake_audio_file(),
+            "file": wav_upload(),
         },
         format="multipart",
     )
@@ -254,8 +249,10 @@ def test_conversation_recording_create_rejects_connection_key_of_other_orgs_chat
 
 @pytest.mark.django_db
 def test_conversation_recording_create_allowed_for_own_orgs_chat(
-    client_org_admin, org_a
+    client_org_admin, org_a, settings, tmp_path_factory
 ):
+    # The test transaction's rollback does not remove a stored recording file.
+    settings.MEDIA_ROOT = str(tmp_path_factory.mktemp("media"))
     own_chat = _chat(org_a)
 
     resp = client_org_admin.post(
@@ -263,7 +260,7 @@ def test_conversation_recording_create_allowed_for_own_orgs_chat(
         {
             "rt_agent_chat": own_chat.id,
             "recording_type": ConversationRecording.RecordingType.INBOUND,
-            "file": _fake_audio_file(),
+            "file": wav_upload(),
         },
         format="multipart",
     )
@@ -283,7 +280,7 @@ def test_conversation_recording_create_denied_for_member(client_member, org_a):
         {
             "rt_agent_chat": own_chat.id,
             "recording_type": ConversationRecording.RecordingType.INBOUND,
-            "file": _fake_audio_file(),
+            "file": wav_upload(),
         },
         format="multipart",
     )

@@ -8,6 +8,8 @@ gave it, and Django's recording/end API sits behind an httpx MockTransport.
 import asyncio
 import base64
 import json
+from email.parser import BytesParser
+from email.policy import HTTP
 
 import httpx
 import pytest
@@ -142,7 +144,7 @@ def _service(twilio, factory=None, **overrides) -> tuple[VoiceCallService, FakeF
         django_api_base_url="http://django_app:8000/api",
         django_api_key="test-key",
         initial_message=None,
-        **{"max_call_duration_seconds": 10, **overrides},
+        **{"max_call_duration_seconds": 10, "max_recording_audio_bytes": 1000, **overrides},
     )
     return service, factory
 
@@ -227,6 +229,52 @@ async def test_both_recordings_and_the_call_end_are_saved_before_execute_returns
     ]
     assert _end_call(django)["connection_key"] == "test_key"
     assert _end_call(django)["end_reason"] == "completed"
+
+
+def _uploaded_recordings(requests) -> dict[str, bytes]:
+    """The WAV file of each recording uploaded to Django, by recording type."""
+    recordings = {}
+    for request in requests:
+        if not request.url.path.endswith("/conversation-recordings/"):
+            continue
+        form = BytesParser(policy=HTTP).parsebytes(
+            f"Content-Type: {request.headers['content-type']}\r\n\r\n".encode() + request.content
+        )
+        fields = {
+            part.get_param("name", header="content-disposition"): part.get_payload(decode=True)
+            for part in form.iter_parts()
+        }
+        recordings[fields["recording_type"].decode()] = fields["file"]
+    return recordings
+
+
+async def test_a_recording_stops_at_its_audio_limit_and_keeps_the_audio_before_it(
+    django, captured_log_messages
+):
+    """django_app refuses a file above its limit, so a long call keeps its first part rather than nothing."""
+    factory = FakeFactory()
+    # Exactly the limit: nothing is dropped, so nothing is reported for outbound.
+    agent_audio = {"type": "response.audio.delta", "delta": base64.b64encode(b"\x09" * 5).decode()}
+    twilio = ScriptedTwilio(
+        [
+            _start(),
+            _media(b"\x01\x02\x03"),
+            _media(b"\x04\x05\x06"),
+            _media(b"\x07\x08\x09"),
+            lambda: factory.provider.emit(agent_audio),
+        ]
+    )
+    service, _ = _service(twilio, factory, max_recording_audio_bytes=5)
+
+    await service.execute()
+
+    recordings = _uploaded_recordings(django)
+    # The audio follows the 44-byte WAV header.
+    assert recordings["inbound"][44:] == b"\x01\x02\x03\x04\x05"
+    assert recordings["outbound"][44:] == b"\x09" * 5
+    truncation_warnings = [message for message in captured_log_messages if "is not recorded" in message]
+    assert len(truncation_warnings) == 1
+    assert "inbound" in truncation_warnings[0]
 
 
 async def test_call_is_ended_after_the_max_duration(django, monkeypatch):

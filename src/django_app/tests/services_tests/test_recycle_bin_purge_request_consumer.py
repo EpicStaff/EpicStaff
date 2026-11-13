@@ -10,6 +10,7 @@ from src.shared.redis_streams import (
 from tables.services.recycle_bin import purge_request_consumer as consumer_module
 from tables.services.recycle_bin.purge_request_consumer import RecycleBinPurgeRequestConsumer
 from tables.services.recycle_bin.purge_service import PurgeService
+from tables.services.voice_recording_retention_service import VoiceRecordingRetentionService
 from utils.logger import logger
 
 # The consumer closes stale database connections around each purge.
@@ -235,4 +236,74 @@ def test_run_recreates_the_group_and_serves_new_requests_after_the_stream_is_del
         consumer.run()
 
     assert len(purge_calls) == 1
+    assert _pending_count(redis_client) == 0
+
+
+@pytest.fixture
+def retention_calls(monkeypatch):
+    """Replaces the retention (tested in test_voice_recording_retention.py) and records each run."""
+    calls = []
+
+    def fake_delete_expired(*args, **kwargs):
+        calls.append(1)
+        return 4
+
+    monkeypatch.setattr(VoiceRecordingRetentionService, "delete_expired", fake_delete_expired)
+    return calls
+
+
+def test_a_backlog_of_requests_also_runs_the_voice_recording_retention_once(
+    redis_client, purge_calls, retention_calls, logged
+):
+    consumer = _consumer(redis_client)
+    for day in range(1, 4):
+        _request_purge(redis_client, requested_at=f"2026-01-0{day}T03:00:00+00:00")
+
+    consumer.process_new(block_milliseconds=None)
+
+    assert len(retention_calls) == 1
+    assert any(
+        "Voice recording retention finished: 4 recording(s) deleted" in record["message"]
+        for record in logged
+    )
+
+
+@pytest.mark.parametrize(
+    ("failing_service", "failing_method", "error_message", "survivor"),
+    [
+        (PurgeService, "purge_expired", "Recycle bin purge failed", "retention_calls"),
+        (
+            VoiceRecordingRetentionService,
+            "delete_expired",
+            "Voice recording retention failed",
+            "purge_calls",
+        ),
+    ],
+    ids=["recycle-bin-fails", "retention-fails"],
+)
+def test_one_failing_daily_job_does_not_stop_the_other(
+    request,
+    redis_client,
+    monkeypatch,
+    logged,
+    purge_calls,
+    retention_calls,
+    failing_service,
+    failing_method,
+    error_message,
+    survivor,
+):
+    def fails(*args, **kwargs):
+        raise RuntimeError("database is down")
+
+    monkeypatch.setattr(failing_service, failing_method, fails)
+    consumer = _consumer(redis_client)
+    _request_purge(redis_client)
+
+    consumer.process_new(block_milliseconds=None)
+
+    assert len(request.getfixturevalue(survivor)) == 1
+    assert any(
+        record["level"].name == "ERROR" and error_message in record["message"] for record in logged
+    )
     assert _pending_count(redis_client) == 0

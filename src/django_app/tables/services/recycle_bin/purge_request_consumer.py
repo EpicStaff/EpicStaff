@@ -1,4 +1,8 @@
-"""Runs the recycle-bin purge when manager asks for it through a Redis stream.
+"""Runs the daily purges when manager asks for them through a Redis stream.
+
+Each request runs the recycle-bin purge, then the voice-recording retention: both are
+daily expiry jobs, so they share manager's clock instead of a second stream, consumer
+group and worker process. A failure of one is logged and does not stop the other.
 
 Manager owns the daily clock and adds one entry per run. All django_app containers read
 the stream through one consumer group, so a request reaches exactly one of them.
@@ -27,6 +31,7 @@ from src.shared.redis_streams import (
     RECYCLE_BIN_PURGE_STREAM,
 )
 from tables.services.recycle_bin.purge_service import PurgeService
+from tables.services.voice_recording_retention_service import VoiceRecordingRetentionService
 from utils.logger import logger
 
 READ_BLOCK_MILLISECONDS = 5000
@@ -42,7 +47,10 @@ PENDING_BATCH_SIZE = 100
 
 
 class RecycleBinPurgeRequestConsumer:
-    """Reads purge requests through one consumer group and runs the purge for each batch."""
+    """Reads purge requests through one consumer group and runs the daily purge for each batch.
+
+    The daily purge covers the recycle bin and voice-recording retention.
+    """
 
     def __init__(
         self,
@@ -154,23 +162,14 @@ class RecycleBinPurgeRequestConsumer:
             if fields and RECYCLE_BIN_PURGE_REQUESTED_AT_FIELD in fields
         ]
         logger.info(
-            "Recycle bin purge started for {} request(s), requested at {}",
+            "Daily purge (recycle bin, voice-recording retention) started for {} request(s), "
+            "requested at {}",
             len(entries),
             requested_at,
         )
         try:
-            close_old_connections()
-            counts = PurgeService.purge_expired()
-            if counts:
-                logger.info(
-                    "Recycle bin purge finished: {} row(s) purged ({})",
-                    sum(counts.values()),
-                    counts,
-                )
-            else:
-                logger.info("Recycle bin purge finished: nothing to purge")
-        except Exception:
-            logger.exception("Recycle bin purge failed")
+            self._purge_recycle_bin()
+            self._delete_expired_voice_recordings()
         finally:
             try:
                 close_old_connections()
@@ -178,6 +177,34 @@ class RecycleBinPurgeRequestConsumer:
                 logger.exception("Closing stale database connections failed")
             finally:
                 self._acknowledge([entry_id for entry_id, _fields in entries])
+
+    @staticmethod
+    def _purge_recycle_bin() -> None:
+        try:
+            close_old_connections()
+            counts = PurgeService.purge_expired()
+        except Exception:
+            logger.exception("Recycle bin purge failed")
+            return
+        if counts:
+            logger.info(
+                "Recycle bin purge finished: {} row(s) purged ({})",
+                sum(counts.values()),
+                counts,
+            )
+        else:
+            logger.info("Recycle bin purge finished: nothing to purge")
+
+    @staticmethod
+    def _delete_expired_voice_recordings() -> None:
+        try:
+            # Fresh connections, so one the recycle-bin purge broke cannot fail this step.
+            close_old_connections()
+            deleted = VoiceRecordingRetentionService.delete_expired()
+        except Exception:
+            logger.exception("Voice recording retention failed")
+            return
+        logger.info("Voice recording retention finished: {} recording(s) deleted", deleted)
 
     def _acknowledge(self, entry_ids: list[str]) -> None:
         self.redis_client.xack(

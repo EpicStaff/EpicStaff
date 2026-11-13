@@ -15,6 +15,7 @@ class TablesConfig(AppConfig):
         from rbac.governance.organization_deletion import register_participant
 
         import tables.import_export.version_conversions.convertions
+        import tables.signals.conversation_recording_signals
         import tables.signals.graph_signals
         import tables.signals.naive_rag_signals
         import tables.signals.profile_signals

@@ -3,6 +3,7 @@ from rbac.identity.first_setup_mode import FirstSetupMode
 from src.shared import humanize
 from src.shared.envtools import Env
 from src.shared.retention import load_retention_policy
+from src.shared.voice_recording import load_max_call_duration_seconds, max_recording_bytes
 
 from django_app.settings import BASE_DIR, env
 
@@ -122,6 +123,12 @@ MAX_UPLOAD_TOTAL_SIZE = env.byte_size("DJANGO_MAX_UPLOAD_TOTAL_SIZE")
 MAX_ARCHIVE_ENTRIES = env.int("DJANGO_MAX_ARCHIVE_ENTRIES")
 MAX_ARCHIVE_UNCOMPRESSED_SIZE = env.byte_size("DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE")
 
+try:
+    # Largest voice recording accepted from any caller: see src/shared/voice_recording.py.
+    MAX_RECORDING_BYTES = max_recording_bytes(load_max_call_duration_seconds(env))
+except ValueError as error:
+    raise ImproperlyConfigured(str(error)) from error
+
 ORG_STORAGE_QUOTA = env.byte_size("DJANGO_ORG_STORAGE_QUOTA")
 MAX_STREAM_UPLOAD_FILE_SIZE = env.byte_size("DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE")
 MAX_ARCHIVE_FILE_SIZE = env.byte_size("DJANGO_MAX_ARCHIVE_FILE_SIZE")
@@ -184,6 +191,27 @@ def read_recycle_bin_retention_days(environment: Env) -> int:
 
 # Days a deleted item stays in the recycle bin before the purge job removes it for good.
 RECYCLE_BIN_RETENTION_DAYS = read_recycle_bin_retention_days(env)
+
+
+def read_voice_recording_retention_days(environment: Env) -> int:
+    """Read DJANGO_VOICE_RECORDING_RETENTION_DAYS, the days a voice-call recording is kept.
+
+    Only a whole number of at least 1 is accepted: recordings are always deleted in the
+    end, so there is no 0 for "keep forever", and `none` would leave the daily job
+    without a cutoff.
+    """
+    message = "DJANGO_VOICE_RECORDING_RETENTION_DAYS must be a whole number, at least 1."
+    try:
+        days = environment.int("DJANGO_VOICE_RECORDING_RETENTION_DAYS")
+    except ValueError as error:
+        raise ImproperlyConfigured(message) from error
+    if days is None or days < 1:
+        raise ImproperlyConfigured(message)
+    return days
+
+
+# Days a voice-call recording is kept before the daily job deletes it, row and file.
+VOICE_RECORDING_RETENTION_DAYS = read_voice_recording_retention_days(env)
 
 try:
     RETENTION_POLICY = load_retention_policy(env)

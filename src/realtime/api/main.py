@@ -662,6 +662,7 @@ async def _voice_stream_handler(
         django_api_key=config.DJANGO_API_KEY,
         initial_message=first_msg,
         max_call_duration_seconds=config.MAX_CALL_DURATION_SECONDS,
+        max_recording_audio_bytes=config.MAX_RECORDING_AUDIO_BYTES,
     )
     await service.execute()
 

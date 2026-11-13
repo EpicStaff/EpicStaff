@@ -3,6 +3,11 @@ from pathlib import Path
 
 from src.shared import humanize
 from src.shared.envtools import Env
+from src.shared.voice_recording import (
+    WAV_HEADER_BYTES,
+    load_max_call_duration_seconds,
+    max_recording_bytes,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -31,7 +36,9 @@ CODE_RESULT_CHANNEL = env.str("CODE_RESULT_CHANNEL")
 
 CONNECTION_KEY_TTL_SECONDS = humanize.to_time("5m")
 STREAM_TOKEN_TTL_SECONDS = humanize.to_time("2m")
-MAX_CALL_DURATION_SECONDS = humanize.to_time("30m")
+MAX_CALL_DURATION_SECONDS = load_max_call_duration_seconds(env)
+# Raw audio one call direction may buffer, so its WAV file fits the size django_app accepts.
+MAX_RECORDING_AUDIO_BYTES = max_recording_bytes(MAX_CALL_DURATION_SECONDS) - WAV_HEADER_BYTES
 
 # Off by default: `realtime_session_item` has no retention and is readable with the org's
 # voice permission, and turning this on writes one row per audio frame.

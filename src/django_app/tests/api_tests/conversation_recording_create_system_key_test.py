@@ -10,6 +10,7 @@ from tables.models.realtime_models import (
     RealtimeAgentChat,
 )
 from tests.fixtures import *  # noqa: F401,F403
+from tests.voice_recording_files import wav_upload
 
 
 def _make_realtime_agent(agent, org):
@@ -22,12 +23,6 @@ def _make_chat(rt_agent, connection_key="conn-under-test"):
     return RealtimeAgentChat.objects.create(
         rt_agent=rt_agent, connection_key=connection_key
     )
-
-
-def _fake_audio_file():
-    from django.core.files.uploadedfile import SimpleUploadedFile
-
-    return SimpleUploadedFile("clip.wav", b"fake-audio-bytes", content_type="audio/wav")
 
 
 @pytest.mark.django_db
@@ -47,6 +42,11 @@ class TestConversationRecordingCreateSystemKey:
     API-key callers, mirroring `RealtimeAgentChatViewSet.end`'s trust model;
     a self-issued USER key still goes through the normal parent-org check."""
 
+    @pytest.fixture(autouse=True)
+    def media_root(self, settings, tmp_path_factory):
+        # The test transaction's rollback does not remove a stored recording file.
+        settings.MEDIA_ROOT = str(tmp_path_factory.mktemp("media"))
+
     def _url(self):
         return reverse("conversationrecording-list")
 
@@ -64,7 +64,7 @@ class TestConversationRecordingCreateSystemKey:
                 "connection_key": chat.connection_key,
                 "recording_type": ConversationRecording.RecordingType.INBOUND,
                 "duration_seconds": "5.25",
-                "file": _fake_audio_file(),
+                "file": wav_upload(),
             },
             format="multipart",
         )
@@ -89,7 +89,7 @@ class TestConversationRecordingCreateSystemKey:
             data={
                 "connection_key": chat.connection_key,
                 "recording_type": ConversationRecording.RecordingType.OUTBOUND,
-                "file": _fake_audio_file(),
+                "file": wav_upload(),
             },
             format="multipart",
         )
@@ -114,7 +114,7 @@ class TestConversationRecordingCreateSystemKey:
             data={
                 "connection_key": chat.connection_key,
                 "recording_type": ConversationRecording.RecordingType.INBOUND,
-                "file": _fake_audio_file(),
+                "file": wav_upload(),
             },
             format="multipart",
         )
