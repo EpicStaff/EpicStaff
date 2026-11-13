@@ -407,9 +407,7 @@ class JobOrchestrator:
             logger.info("Execution {} is already known; not enqueued again", execution_id)
             return known_status
 
-        logger.info("BEFORE SECRETS: {}", secrets)
         secrets = self._open_secrets(execution_id, secrets)
-        logger.info("AFTER SECRETS: {}", secrets)
 
         # Reserved before the first await, so a concurrent re-POST sees the id as known.
         self.registry.reserve(execution_id)
