@@ -200,6 +200,12 @@ A failing rule returns `400 Bad Request` with a structured error (see §8).
     "run_mode": "once" | "repeat" | null,
     "timezone": "Europe/Kyiv",                 // always present, defaults to "UTC"
     "start_date_time": "2026-04-09T12:00:00",  // naive ISO in `timezone` above
+    "next_run_date_time": "2026-04-09T12:00:00", // read-only, naive ISO; null when none
+    "missed_run_at": null,                     // read-only, naive ISO; start time of a
+                                               // once-mode run that was missed because
+                                               // the scheduler was down. Set together with
+                                               // is_active=false; cleared on reactivation
+                                               // or any schedule change.
     "interval": {                              // null when run_mode="once" or draft
       "every": 1,
       "unit": "seconds" | "minutes" | "hours" | "days" | "weeks" | "months",
@@ -272,6 +278,8 @@ Server behavior:
 
 - `is_active: false → true` resets `current_runs` to 0.
 - Any change to `max_runs` also resets `current_runs` to 0.
+- Reactivation or any change to the schedule configuration clears
+  `schedule.missed_run_at`.
 
 ### 5.2 Example — flip off without touching schedule
 
