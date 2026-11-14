@@ -815,9 +815,6 @@ class ScheduleTriggerNode(
     max_runs = models.IntegerField(null=True, blank=True)
     current_runs = models.IntegerField(default=0)
     next_run_date_time = models.DateTimeField(null=True, blank=True)
-    # Set when a once-mode run was skipped because the scheduler was down at its
-    # start time; cleared when the schedule is reconfigured or reactivated.
-    missed_run_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         default_manager_name = "objects"
@@ -839,7 +836,6 @@ class ScheduleTriggerNode(
             "node_number",
             "current_runs",
             "next_run_date_time",
-            "missed_run_at",
         ]
         data = {
             f.name: str(getattr(self, f.attname))

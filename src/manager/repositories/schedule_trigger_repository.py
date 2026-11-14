@@ -10,7 +10,7 @@ class ScheduleTriggerNodeRepository:
     """Read schedule nodes via raw SQL through SQLAlchemy async.
 
     Read-only: writes to tables_scheduletriggernode go through Django
-    (Manager publishes 'run_session'/'deactivate'/'missed' on schedule_channel).
+    (Manager publishes 'deactivate'/'run_session' on schedule_channel).
     """
 
     def __init__(self, session_factory=None):

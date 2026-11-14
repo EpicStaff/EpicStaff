@@ -22,10 +22,8 @@ name is read from the `SCHEDULE_CHANNEL` env var (default:
 Channel directionality (enforced by code, documented for sanity):
 
 - **Django → Manager**: `node_update` (every `post_save`/`post_delete` echo).
-- **Manager → Django**: `run_session` (job fired), `deactivate` (once-mode
-  fired or APScheduler auto-removed the job, e.g. `end_date` reached) and
-  `missed` (a once-mode run was missed because Manager was not running at its
-  start time — see §5.5).
+- **Manager → Django**: `run_session` (job fired) and `deactivate` (once-mode
+  fired or APScheduler auto-removed the job, e.g. `end_date` reached).
 
 Each side ignores the actions intended for the other direction (Django skips
 its own `node_update` echoes; Manager only listens to `node_update`).
@@ -54,7 +52,6 @@ Persisted in Django (`tables_scheduletriggernode`). One row per node.
 | `end_date_time` | datetime, nullable | Required when `end_type="on_date"`. Stored in UTC. |
 | `max_runs` | int, nullable | Required when `end_type="after_n_runs"`. |
 | `current_runs` | int | Read-only counter maintained by the service. Reset to 0 on reactivation or `max_runs` change. Excluded from `content_hash` so runtime increments don't invalidate client-held hashes. |
-| `missed_run_at` | datetime, nullable | Read-only. The start time of a once-mode run that was missed (§5.5); set together with `is_active=False`. Cleared on reactivation or any change to the schedule configuration, reset on import and copy, excluded from `content_hash`. |
 
 The model exposes `RunMode`, `TimeUnit`, and `EndType` as `TextChoices`.
 
@@ -393,43 +390,8 @@ the job itself. The global `EVENT_JOB_REMOVED` listener
    gone and `node_id` was removed from `self.schedule_nodes`,
    `remove_schedule` logs a debug message and exits idempotently.
 
-Together with §5.5 these are the only paths where Manager itself initiates
-the `is_active=False` write — all others are initiated by Django.
-
-### 5.5 Missed once-mode run
-
-If a once-mode node's start time passes while Manager is down (by more than
-the 30 s `misfire_grace_time`), APScheduler skips the run on startup and
-removes the job; `execute_schedule` never runs, and `_on_job_removed` stays
-silent because once-mode jobs are pre-marked in `_manual_removals`.
-APScheduler reports the skip as `EVENT_JOB_MISSED`, handled by
-`_on_job_missed`:
-
-1. The event carries only the job id and the job is already gone, so Manager
-   keeps its own `_once_jobs` (`job_id → node_id`) map, filled by
-   `add_schedule` and drained by `remove_schedule`. Missed ticks of repeat
-   schedules are not in the map and are ignored.
-2. For a once-mode job Manager logs a WARNING and publishes
-   `{"action": "missed", "node_id": N, "scheduled_at": "<ISO 8601 UTC>"}`.
-3. Django's `ScheduleTriggerService.mark_missed` locks the row
-   (`SELECT FOR UPDATE`) and, if the node is still an active once-mode node
-   whose `start_date_time` equals `scheduled_at`, sets `is_active=False`,
-   `next_run_date_time=None`, `missed_run_at=scheduled_at` via `.save()`.
-   A node the user changed in the meantime is left untouched. The
-   `post_save` echo makes Manager drop the node.
-4. Pub/sub drops a message nobody is subscribed to, and Django is often still
-   starting when Manager reports misses right after its own start (on a host
-   reboot `restart: unless-stopped` ignores `depends_on`). Manager therefore
-   keeps the miss in `_pending_missed` and, every
-   `SCHEDULE_LISTENER_RECONNECT_DELAY_SECONDS`, rereads the active nodes and
-   republishes until the DB shows the node is no longer an active once-mode
-   node starting at `scheduled_at`. Only the first republish is logged at
-   INFO. The receiver count returned by `PUBLISH` cannot serve as the
-   acknowledgement: Manager itself is subscribed to `schedule_channel`.
-
-The UI shows a warning on the node when `schedule.missed_run_at` is set. A
-once-mode node activated with a start time already more than 30 s in the
-past takes the same path.
+This is the only path where Manager itself initiates the `is_active=False`
+write — all others are initiated by Django.
 
 6. Invariants
 -------------
@@ -462,7 +424,7 @@ past takes the same path.
   coordinated changes in both `_flat_schedule_payload` (Django) and
   `ScheduleTriggerNodeRepository.get_all_active_schedule_nodes()` (Manager).
 - Channel direction is enforced: `node_update` is Django→Manager only,
-  `deactivate`, `run_session` and `missed` are Manager→Django only. Django's
+  `deactivate` and `run_session` are Manager→Django only. Django's
   `redis_pubsub` skips its own `node_update` echo; Manager's listener
   ignores anything that isn't `node_update`.
 - `handle_schedule_trigger` must run under `@transaction.atomic` with

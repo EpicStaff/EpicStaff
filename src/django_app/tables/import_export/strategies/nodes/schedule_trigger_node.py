@@ -25,8 +25,8 @@ class ScheduleTriggerNodeStrategy(EntityImportExportStrategy):
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> ScheduleTriggerNode:
         graph_id = id_mapper.get_or_none(EntityType.GRAPH, data.pop("graph", None))
-        # Activation state (is_active / current_runs / next_run_date_time /
-        # missed_run_at) is reset by the serializer's create() so an imported flow never starts
+        # Activation state (is_active / current_runs / next_run_date_time) is
+        # reset by the serializer's create() so an imported flow never starts
         # firing on its own.
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)

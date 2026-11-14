@@ -75,12 +75,6 @@
                             <span class="next-run-label">Next run:</span>
                             <span class="next-run-value">{{ formattedNextRun() }}</span>
                         </div>
-                        @if (formattedMissedRun(); as missedRun) {
-                            <app-warning-note class="missed-run-note">
-                                Scheduled run on {{ missedRun }} was missed — the scheduler service was unavailable. The
-                                schedule was switched off.
-                            </app-warning-note>
-                        }
 
                         <!-- Timezone -->
                         <div class="field-col-full">

@@ -4,15 +4,14 @@ import { GetScheduleTriggerNodeRequest } from '../../core/models/schedule-trigge
 
 /**
  * What the backend changes on a schedule trigger by itself, without anyone editing the node: it turns
- * a finished schedule off, moves its next run, counts its runs, and records a run-once start it missed
- * (switching that schedule off). Read from the schedule trigger endpoint while the node's panel is open.
+ * a finished schedule off, moves its next run and counts its runs. Read from the schedule trigger
+ * endpoint while the node's panel is open.
  */
 export interface ScheduleTriggerRuntimeState {
     /** Left out to keep the active flag as it is. */
     isActive?: boolean;
     nextRunDateTime: string | null;
     currentRuns: number;
-    missedRunAt: string | null;
 }
 
 export function toScheduleTriggerRuntimeState(
@@ -23,7 +22,6 @@ export function toScheduleTriggerRuntimeState(
         ...(includeIsActive ? { isActive: dto.is_active } : {}),
         nextRunDateTime: dto.schedule?.next_run_date_time ?? null,
         currentRuns: dto.current_runs,
-        missedRunAt: dto.schedule?.missed_run_at ?? null,
     };
 }
 
@@ -38,7 +36,6 @@ export function withScheduleTriggerRuntimeState(
             isActive: state.isActive ?? node.data.isActive,
             nextRunDateTime: state.nextRunDateTime,
             currentRuns: state.currentRuns,
-            missedRunAt: state.missedRunAt,
         },
     };
 }
@@ -58,11 +55,7 @@ export function withGraphScheduleTriggerRuntimeState(
                       ...row,
                       is_active: state.isActive ?? row.is_active,
                       current_runs: state.currentRuns,
-                      schedule: row.schedule && {
-                          ...row.schedule,
-                          next_run_date_time: state.nextRunDateTime,
-                          missed_run_at: state.missedRunAt,
-                      },
+                      schedule: row.schedule && { ...row.schedule, next_run_date_time: state.nextRunDateTime },
                   }
         ),
     };

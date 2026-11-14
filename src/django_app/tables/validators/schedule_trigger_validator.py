@@ -128,9 +128,6 @@ class ScheduleTriggerInputParser:
             "next_run_date_time": ScheduleTriggerValidator.format_utc_to_local_naive_iso(
                 next_run, tz_name
             ),
-            "missed_run_at": ScheduleTriggerValidator.format_utc_to_local_naive_iso(
-                instance.missed_run_at, tz_name
-            ),
             "interval": interval,
             "end": {
                 "type": instance.end_type,

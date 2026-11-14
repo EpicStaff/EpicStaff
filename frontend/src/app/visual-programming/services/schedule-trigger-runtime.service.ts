@@ -18,7 +18,7 @@ export interface ScheduleTriggerRuntimeUpdate {
 
 /**
  * Brings what the backend changed on a schedule trigger by itself (a finished schedule turned off, its
- * next run, its run count, a missed run-once start) into the editor without it counting as the user's edit. The canvas node and
+ * next run, its run count) into the editor without it counting as the user's edit. The canvas node and
  * the dirty-tracking baseline are updated together here; the saved graph the save diff starts from
  * belongs to the flows page, which applies each `updates$` item to it with
  * `withGraphScheduleTriggerRuntimeState`. Otherwise the next save would send the schedule as changed,

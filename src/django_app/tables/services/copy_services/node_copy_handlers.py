@@ -251,7 +251,6 @@ def copy_schedule_trigger_node(
         is_active=False,
         current_runs=0,
         next_run_date_time=None,
-        missed_run_at=None,
     )
 
 

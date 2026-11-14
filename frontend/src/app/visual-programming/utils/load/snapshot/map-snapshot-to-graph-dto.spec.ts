@@ -101,13 +101,6 @@ describe('mapSnapshotToGraphDto', () => {
         }
     });
 
-    it('reports no missed run for a schedule, since a preview never runs', () => {
-        const graphDto = mapSnapshotToGraphDto(snapshot, secretsByName);
-
-        const [schedule] = graphDto.schedule_trigger_node_list;
-        expect(schedule.schedule).toHaveProperty('missed_run_at', null);
-    });
-
     it('gives a node of an old version without a uuid a null one', () => {
         const withoutUuids: GraphVersionSnapshot = {
             ...snapshot,

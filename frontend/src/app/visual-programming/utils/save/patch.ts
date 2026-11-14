@@ -208,14 +208,13 @@ function patchWithBackendIds(
 
     const scheduleDataByBackendId = new Map<
         number,
-        { nextRunDateTime: string | null; isActive: boolean; currentRuns: number; missedRunAt: string | null }
+        { nextRunDateTime: string | null; isActive: boolean; currentRuns: number }
     >();
     for (const sn of responseGraph.schedule_trigger_node_list ?? []) {
         scheduleDataByBackendId.set(sn.id, {
             nextRunDateTime: sn.schedule?.next_run_date_time ?? null,
             isActive: sn.is_active,
             currentRuns: sn.current_runs,
-            missedRunAt: sn.schedule?.missed_run_at ?? null,
         });
     }
 
@@ -254,8 +253,6 @@ function patchWithBackendIds(
                         nextRunDateTime: scheduleData.nextRunDateTime ?? patched.data.nextRunDateTime,
                         isActive: scheduleData.isActive,
                         currentRuns: scheduleData.currentRuns,
-                        // Taken as is: the backend clears it on a save that re-enables or reschedules the node.
-                        missedRunAt: scheduleData.missedRunAt,
                     },
                 };
             }
