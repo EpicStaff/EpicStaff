@@ -13,6 +13,7 @@ import {
     ClassificationDecisionTableNodeModel,
     DecisionTableNodeModel,
     NodeModel,
+    ScheduleTriggerNodeModel,
 } from '../core/models/node.model';
 import { CustomPortId, ViewPort } from '../core/models/port.model';
 import { FlowService } from './flow.service';
@@ -147,6 +148,9 @@ export class ClipboardService {
             // Task ids belong to the source node's rows: sent with the copy, a task's context would link
             // to the source's tasks, and the save would never give the copy's tasks their own ids.
             this.resetAgentTaskIds(oldNode.type, newData);
+            // The copy is a new schedule: it must not fire until the user turns it on, and the source's runs,
+            // next run and missed run are not its own.
+            this.resetScheduleRuntimeState(oldNode.type, newData);
 
             const newPorts: ViewPort[] = generatePortsForNode(newNodeId, oldNode.type, newData);
 
@@ -273,6 +277,16 @@ export class ClipboardService {
                 }))
                 .filter((ref) => ref.tempId != null),
         }));
+    }
+
+    private resetScheduleRuntimeState(type: NodeType, data: NodeModel['data'] | null): void {
+        if (type !== NodeType.SCHEDULE_TRIGGER || !data) return;
+
+        const scheduleData = data as ScheduleTriggerNodeModel['data'];
+        scheduleData.isActive = false;
+        scheduleData.currentRuns = 0;
+        scheduleData.nextRunDateTime = null;
+        scheduleData.missedRunAt = null;
     }
 
     private regenerateCdtSectionIds(type: NodeType, data: NodeModel['data'] | null): void {
