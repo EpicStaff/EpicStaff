@@ -59,6 +59,12 @@ export interface GetScheduleBlock {
     timezone: string;
     start_date_time: string | null;
     next_run_date_time: string | null;
+    /**
+     * Read-only. When a run-once schedule's start time passed while the scheduler was unavailable: that start time,
+     * as a naive ISO datetime in the schedule's timezone. The backend then also switches the node off. Cleared by
+     * the backend when the node is re-enabled or its schedule is edited. Never sent back.
+     */
+    missed_run_at: string | null;
     interval: GetScheduleIntervalBlock | null;
     end: GetScheduleEndBlock;
 }
@@ -110,4 +116,6 @@ export interface ScheduleTriggerNodeData {
     currentRuns?: number;
     timezone: string;
     nextRunDateTime?: string | null;
+    /** Read-only, from the backend: the start time of a run-once schedule that was missed (`missed_run_at`). */
+    missedRunAt?: string | null;
 }
