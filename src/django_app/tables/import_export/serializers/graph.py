@@ -189,4 +189,5 @@ class ScheduleTriggerNodeImportSerializer(BaseNodeImportSerializer):
         validated_data["is_active"] = False
         validated_data["current_runs"] = 0
         validated_data["next_run_date_time"] = None
+        validated_data["missed_run_at"] = None
         return super().create(validated_data)

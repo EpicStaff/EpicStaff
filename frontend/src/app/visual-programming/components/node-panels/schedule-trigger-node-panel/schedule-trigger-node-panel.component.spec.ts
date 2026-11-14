@@ -318,3 +318,118 @@ describe('ScheduleTriggerNodePanelComponent refresh from the backend', () => {
         fixture.destroy();
     });
 });
+
+describe('ScheduleTriggerNodePanelComponent missed run warning', () => {
+    const MISSED_RUN_TEXT =
+        'Scheduled run on 14.10.2026 at 09:00 was missed — the scheduler service was unavailable. ' +
+        'The schedule was switched off.';
+
+    function textOf(element: Element): string {
+        return (element.textContent ?? '').replace(/\s+/g, ' ').trim();
+    }
+
+    function missedRunWarnings(fixture: { nativeElement: HTMLElement }): string[] {
+        return Array.from(fixture.nativeElement.querySelectorAll('app-warning-note'))
+            .map(textOf)
+            .filter((text) => text.includes('was missed'));
+    }
+
+    function nextRunText(fixture: { nativeElement: HTMLElement }): string {
+        return textOf(fixture.nativeElement.querySelector('.next-run-value')!);
+    }
+
+    describe('from the node the panel opens with', () => {
+        function open(missedRunAt: string | null) {
+            TestBed.configureTestingModule({
+                providers: [
+                    provideHttpClient(),
+                    // Never called: the node has no backendId.
+                    { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
+                ],
+            });
+            grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE });
+            const fixture = TestBed.createComponent(ScheduleTriggerNodePanelComponent);
+            fixture.componentRef.setInput('node', {
+                ...unsavedScheduleNode,
+                data: { ...unsavedScheduleNode.data, isActive: false, nextRunDateTime: null, missedRunAt },
+            });
+            fixture.detectChanges();
+            return fixture;
+        }
+
+        it('says which run was missed, dated as "Next run" is, while "Next run" shows no time', () => {
+            const fixture = open('2026-10-14T09:00:00');
+
+            expect(missedRunWarnings(fixture)).toEqual([MISSED_RUN_TEXT]);
+            expect(nextRunText(fixture)).toBe('—');
+            fixture.destroy();
+        });
+
+        it('shows no warning when no run was missed', () => {
+            const fixture = open(null);
+
+            expect(missedRunWarnings(fixture)).toEqual([]);
+            expect(nextRunText(fixture)).toBe('—');
+            fixture.destroy();
+        });
+    });
+
+    describe('from the node read back from the backend', () => {
+        const [storedSchedule] = liveGraph.schedule_trigger_node_list;
+        const scheduleUrl = (request: { url: string }): boolean =>
+            request.url.endsWith(`schedule-trigger-nodes/${storedSchedule.id}/`);
+
+        function withMissedRunAt(missedRunAt: string | null) {
+            return {
+                ...storedSchedule,
+                is_active: missedRunAt === null && storedSchedule.is_active,
+                schedule: { ...storedSchedule.schedule!, next_run_date_time: null, missed_run_at: missedRunAt },
+            };
+        }
+
+        function openAndReadBack(loadedMissedRunAt: string | null, readBackMissedRunAt: string | null) {
+            TestBed.configureTestingModule({
+                providers: [
+                    provideHttpClient(),
+                    provideHttpClientTesting(),
+                    { provide: ToastService, useValue: { info: vi.fn() } },
+                ],
+            });
+            grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE });
+            const loadedFlow = buildFlowModelFromGraphDto({
+                ...liveGraph,
+                schedule_trigger_node_list: [withMissedRunAt(loadedMissedRunAt)],
+            });
+            TestBed.inject(FlowService).setFlow(loadedFlow);
+            TestBed.inject(SavedFlowStateService).setSavedFlow(cloneFlowState(loadedFlow));
+            const scheduleNode = loadedFlow.nodes.find(
+                (node): node is ScheduleTriggerNodeModel => node.type === NodeType.SCHEDULE_TRIGGER
+            )!;
+
+            const fixture = TestBed.createComponent(ScheduleTriggerNodePanelComponent);
+            fixture.componentRef.setInput('node', scheduleNode);
+            fixture.detectChanges();
+            const shownBeforeReadBack = missedRunWarnings(fixture);
+            TestBed.inject(HttpTestingController).expectOne(scheduleUrl).flush(withMissedRunAt(readBackMissedRunAt));
+            fixture.detectChanges();
+            return { fixture, shownBeforeReadBack };
+        }
+
+        it('hides the warning once the backend no longer reports the missed run', () => {
+            const { fixture, shownBeforeReadBack } = openAndReadBack('2026-10-14T09:00:00', null);
+
+            expect(shownBeforeReadBack).toEqual([MISSED_RUN_TEXT]);
+            expect(missedRunWarnings(fixture)).toEqual([]);
+            fixture.destroy();
+        });
+
+        it('shows the warning when the backend reports a run missed since the flow was loaded', () => {
+            const { fixture, shownBeforeReadBack } = openAndReadBack(null, '2026-10-14T09:00:00');
+
+            expect(shownBeforeReadBack).toEqual([]);
+            expect(missedRunWarnings(fixture)).toEqual([MISSED_RUN_TEXT]);
+            expect(nextRunText(fixture)).toBe('—');
+            fixture.destroy();
+        });
+    });
+});

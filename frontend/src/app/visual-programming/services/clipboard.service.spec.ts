@@ -3,9 +3,10 @@ import { ICurrentSelection } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 
 import { ConnectionModel } from '../core/models/connection.model';
-import { AgentNodeModel, NodeModel } from '../core/models/node.model';
+import { AgentNodeModel, NodeModel, ScheduleTriggerNodeModel } from '../core/models/node.model';
 import { mapPythonNodeToModel } from '../utils/load/nodes/python-node.mapper';
-import { LIVE_NODE_UUID, livePython } from '../utils/testing/live-graph.fixture';
+import { mapScheduleTriggerNodeToModel } from '../utils/load/nodes/schedule-trigger-node.mapper';
+import { LIVE_NODE_UUID, liveGraph, livePython } from '../utils/testing/live-graph.fixture';
 import { ClipboardService } from './clipboard.service';
 import { FlowService } from './flow.service';
 
@@ -144,6 +145,47 @@ describe('ClipboardService paste', () => {
         expect([draft.tempId, review.tempId, publish.tempId]).not.toContain('source-draft');
         expect(review.contextRefs).toEqual([{ tempId: draft.tempId }]);
         expect(publish.contextRefs).toEqual([{ tempId: review.tempId }]);
+    });
+
+    describe('schedule trigger runtime state', () => {
+        const runtimeState = {
+            isActive: true,
+            currentRuns: 3,
+            nextRunDateTime: '2026-10-15T09:00:00',
+            missedRunAt: '2026-10-14T09:00:00',
+        };
+
+        function runningSchedule(): ScheduleTriggerNodeModel {
+            const [storedSchedule] = liveGraph.schedule_trigger_node_list;
+            const node = mapScheduleTriggerNodeToModel(storedSchedule);
+            return { ...node, data: { ...node.data, ...runtimeState } };
+        }
+
+        it("starts a pasted schedule switched off, with none of its source's runs, next run or missed run", () => {
+            const source = runningSchedule();
+
+            const [copy] = copyAndPaste(source);
+
+            expect((copy as ScheduleTriggerNodeModel).data).toEqual({
+                ...source.data,
+                isActive: false,
+                currentRuns: 0,
+                nextRunDateTime: null,
+                missedRunAt: null,
+            });
+            const sourceOnCanvas = flowService
+                .nodes()
+                .find((node) => node.id === source.id) as ScheduleTriggerNodeModel;
+            expect(sourceOnCanvas.data).toEqual(expect.objectContaining(runtimeState));
+        });
+
+        it('leaves the same fields of another node type as they are', () => {
+            const python = canvasNode('python-1', NodeType.PYTHON, { data: { ...runtimeState } } as Partial<NodeModel>);
+
+            const [copy] = copyAndPaste(python);
+
+            expect(copy.data).toEqual(expect.objectContaining(runtimeState));
+        });
     });
 
     describe('decision table next-node refs', () => {

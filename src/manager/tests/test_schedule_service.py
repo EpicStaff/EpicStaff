@@ -5,7 +5,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 import settings
+from apscheduler.events import EVENT_JOB_MISSED
 from fakeredis import FakeAsyncRedis
+from helpers.logger import logger
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from services.redis_service import RedisService
@@ -157,8 +159,10 @@ def _scheduled_nodes(service: ScheduleService) -> dict[int, ScheduleTriggerNodeP
 
 
 async def _stop_listener_and_scheduler(service: ScheduleService):
-    service.listener_task.cancel()
-    await asyncio.gather(service.listener_task, return_exceptions=True)
+    background_tasks = [service.listener_task, service.missed_retry_task]
+    for task in background_tasks:
+        task.cancel()
+    await asyncio.gather(*background_tasks, return_exceptions=True)
     service.scheduler.shutdown(wait=False)
 
 
@@ -425,3 +429,381 @@ async def test_repeat_schedule_publishes_deactivate_once_its_end_date_passes(
     assert {"action": "run_session", "node_id": 11} in published
     assert published[-1] == {"action": "deactivate", "node_id": 11}
     assert published.count({"action": "deactivate", "node_id": 11}) == 1
+
+
+# A once-mode run whose start passed more than the 30 s misfire grace while the
+# Manager was down is skipped by APScheduler. Django must hear about it as a
+# 'missed' signal, repeated until the DB shows it was applied, so the node does
+# not stay active forever without ever running.
+
+MISFIRE_GRACE = timedelta(seconds=30)
+# Published by a test at a phase boundary: everything after it on the channel
+# was published after that boundary. The service ignores it like any other
+# non-node_update message.
+PHASE_MARKER = {"action": "test_phase_marker"}
+
+
+def _missed_signal(node_id: int, scheduled_at: datetime) -> dict:
+    return {"action": "missed", "node_id": node_id, "scheduled_at": scheduled_at.isoformat()}
+
+
+def _start_beyond_misfire_grace() -> datetime:
+    return (datetime.now(UTC) - MISFIRE_GRACE - timedelta(minutes=2)).replace(microsecond=0)
+
+
+def _missed_node_ids(actions: list[dict]) -> list[int]:
+    return [action["node_id"] for action in actions if action["action"] == "missed"]
+
+
+def _includes_missed_of(*node_ids: int):
+    return lambda actions: set(node_ids) <= set(_missed_node_ids(actions))
+
+
+async def _read_actions_until(subscription, condition, timeout: float = 2.0) -> list[dict]:
+    """Read published actions until condition(actions read so far) holds.
+
+    The timeout only bounds a failing test; a passing one returns as soon as the
+    condition holds.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    actions = []
+    while not condition(actions):
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            raise AssertionError(f"condition not met in time; actions read: {actions}")
+        message = await subscription.get_message(
+            ignore_subscribe_messages=True, timeout=min(remaining, 0.05)
+        )
+        if message is not None:
+            actions.append(json.loads(message["data"]))
+    return actions
+
+
+async def _drain_actions(subscription) -> list[dict]:
+    """Return every action already delivered to the subscription, without waiting."""
+    actions = []
+    while (
+        message := await subscription.get_message(ignore_subscribe_messages=True, timeout=0)
+    ) is not None:
+        actions.append(json.loads(message["data"]))
+    return actions
+
+
+async def _publish_phase_marker(redis_service: RedisService):
+    await redis_service.aioredis_client.publish(settings.SCHEDULE_CHANNEL, json.dumps(PHASE_MARKER))
+
+
+def _split_at_phase_markers(actions: list[dict]) -> list[list[dict]]:
+    phases = [[]]
+    for action in actions:
+        if action == PHASE_MARKER:
+            phases.append([])
+        else:
+            phases[-1].append(action)
+    return phases
+
+
+async def _wait_for_complete_retry_ticks(repository: FakeScheduleRepository, count: int):
+    """Wait until count retry ticks have both started and finished after this call.
+
+    Each tick reads the repository once and the ticks run one after another, so
+    tick N has finished once tick N + 1 reads the repository. Only usable while
+    a 'missed' signal is pending: a tick with nothing pending reads nothing.
+    """
+    calls_before = repository.calls
+    await _wait_until(lambda: repository.calls >= calls_before + count + 1)
+
+
+async def _start_with_missed_once_nodes(
+    service: ScheduleService, subscription, *once_nodes: ScheduleTriggerNodePayload
+):
+    """Start the service on a DB holding once-nodes whose runs were missed."""
+    service.repository = FakeScheduleRepository(list(once_nodes))
+    await service.start()
+    published = await _read_actions_until(
+        subscription, _includes_missed_of(*(node.id for node in once_nodes))
+    )
+    for node in once_nodes:
+        assert _missed_signal(node.id, node.start_date_time) in published
+
+
+@pytest_asyncio.fixture
+async def unstarted_schedule_service(redis_service):
+    service = ScheduleService(redis_service=redis_service)
+    yield service
+    if service.scheduler.running:
+        service.scheduler.shutdown(wait=False)
+
+
+@pytest.fixture
+def republish_logs():
+    records = []
+    handler_id = logger.add(
+        lambda message: records.append(message.record["level"].name),
+        level="DEBUG",
+        filter=lambda record: "republishing 'missed'" in record["message"],
+    )
+    yield records
+    logger.remove(handler_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("start_age", "expected_actions"),
+    [
+        (timedelta(seconds=5), ["run_session", "deactivate"]),
+        (MISFIRE_GRACE + timedelta(minutes=2), ["missed"]),
+    ],
+    ids=["within-misfire-grace-runs", "beyond-misfire-grace-is-missed"],
+)
+async def test_once_node_registered_before_scheduler_start_runs_or_reports_missed(
+    unstarted_schedule_service, schedule_channel_subscription, start_age, expected_actions
+):
+    start = (datetime.now(UTC) - start_age).replace(microsecond=0)
+    # The order ScheduleService.start uses: load nodes from the DB, then start APScheduler.
+    await unstarted_schedule_service.add_schedule(_once_node(20, start))
+    unstarted_schedule_service.scheduler.start()
+
+    published = await _published_actions(schedule_channel_subscription, timeout=1.0)
+
+    assert [message["action"] for message in published] == expected_actions
+
+
+@pytest.mark.asyncio
+async def test_missed_once_run_reports_its_scheduled_time_in_utc(
+    unstarted_schedule_service, schedule_channel_subscription
+):
+    start = _start_beyond_misfire_grace()
+    await unstarted_schedule_service.add_schedule(_once_node(21, start))
+    unstarted_schedule_service.scheduler.start()
+
+    published = await _published_actions(schedule_channel_subscription, timeout=1.0)
+
+    assert published == [_missed_signal(21, start)]
+    assert published[0]["scheduled_at"].endswith("+00:00")
+
+
+@pytest.mark.asyncio
+async def test_missed_ticks_of_a_repeat_schedule_are_not_reported(
+    schedule_service, schedule_channel_subscription
+):
+    missed_job_ids = []
+    schedule_service.scheduler.add_listener(
+        lambda event: missed_job_ids.append(event.job_id), EVENT_JOB_MISSED
+    )
+    overdue_tick = _start_beyond_misfire_grace()
+    await schedule_service.add_schedule(_repeat_node(22))
+    # The event loop was blocked past the tick, as on a suspended host.
+    schedule_service.scheduler.modify_job("schedule_22", next_run_time=overdue_tick)
+    # Due later than node 22's tick, so APScheduler handles it after that tick:
+    # its 'missed' signal arrives after anything node 22 would have published.
+    later_missed_once_node = _once_node(32, overdue_tick + timedelta(seconds=10))
+    await schedule_service.add_schedule(later_missed_once_node)
+
+    schedule_service.scheduler.resume()
+    published = await _read_actions_until(schedule_channel_subscription, _includes_missed_of(32))
+
+    assert missed_job_ids == ["schedule_22", "schedule_32"]
+    assert published == [_missed_signal(32, later_missed_once_node.start_date_time)]
+    assert 22 in _scheduled_nodes(schedule_service)
+
+
+@pytest.mark.asyncio
+async def test_once_node_removed_before_its_run_is_processed_reports_nothing(
+    schedule_service, schedule_channel_subscription
+):
+    start = _start_beyond_misfire_grace()
+    await schedule_service.add_schedule(_once_node(23, start))
+    # Due later than node 23, so its 'missed' signal arrives after anything
+    # node 23 would have published.
+    later_missed_once_node = _once_node(33, start + timedelta(seconds=10))
+    await schedule_service.add_schedule(later_missed_once_node)
+    await schedule_service.remove_schedule(23)
+
+    schedule_service.scheduler.resume()
+    published = await _read_actions_until(schedule_channel_subscription, _includes_missed_of(33))
+
+    assert published == [_missed_signal(33, later_missed_once_node.start_date_time)]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_after_a_missed_once_run_does_not_schedule_it_again(
+    unstarted_schedule_service, schedule_channel_subscription
+):
+    once_node = _once_node(24, _start_beyond_misfire_grace())
+    await unstarted_schedule_service.add_schedule(once_node)
+    unstarted_schedule_service.scheduler.start()
+    assert await _read_actions_until(schedule_channel_subscription, _includes_missed_of(24)) == [
+        _missed_signal(24, once_node.start_date_time)
+    ]
+    # Django has not applied the 'missed' signal yet, so the node is still active.
+    unstarted_schedule_service.repository = FakeScheduleRepository([once_node])
+
+    await unstarted_schedule_service.reconcile_schedules_with_db()
+
+    assert 24 not in _scheduled_nodes(unstarted_schedule_service)
+    # A job re-added for node 24 is due earlier than this one, so APScheduler
+    # would report it again before this node's 'missed' signal.
+    later_missed_once_node = _once_node(34, once_node.start_date_time + timedelta(seconds=10))
+    await unstarted_schedule_service.add_schedule(later_missed_once_node)
+    assert await _read_actions_until(schedule_channel_subscription, _includes_missed_of(34)) == [
+        _missed_signal(34, later_missed_once_node.start_date_time)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_missed_signal_is_repeated_while_the_db_still_shows_the_node_active(
+    redis_service, schedule_channel_subscription, no_reconnect_delay
+):
+    once_node = _once_node(25, _start_beyond_misfire_grace())
+    service = ScheduleService(redis_service=redis_service)
+    try:
+        await _start_with_missed_once_nodes(service, schedule_channel_subscription, once_node)
+        await _publish_phase_marker(redis_service)
+        await _wait_for_complete_retry_ticks(service.repository, 2)
+    finally:
+        await _stop_listener_and_scheduler(service)
+
+    _, republished = _split_at_phase_markers(await _drain_actions(schedule_channel_subscription))
+    assert len(republished) >= 2
+    assert all(message == _missed_signal(25, once_node.start_date_time) for message in republished)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "db_state_after_miss",
+    [
+        lambda node: [],
+        lambda node: [
+            node.model_copy(update={"start_date_time": node.start_date_time + timedelta(days=1)})
+        ],
+        lambda node: [_repeat_node(node.id)],
+    ],
+    ids=["switched-off-or-deleted", "start-changed", "switched-to-repeat"],
+)
+async def test_missed_signal_stops_once_the_db_no_longer_shows_that_run(
+    redis_service, schedule_channel_subscription, no_reconnect_delay, db_state_after_miss
+):
+    once_node = _once_node(26, _start_beyond_misfire_grace())
+    # Stays unacknowledged, so the retry loop keeps reading the DB and publishing.
+    still_missed_node = _once_node(36, once_node.start_date_time + timedelta(seconds=10))
+    service = ScheduleService(redis_service=redis_service)
+    try:
+        await _start_with_missed_once_nodes(
+            service, schedule_channel_subscription, once_node, still_missed_node
+        )
+        settled_repository = FakeScheduleRepository(
+            [*db_state_after_miss(once_node), still_missed_node]
+        )
+        service.repository = settled_repository
+        # Ticks that read the previous DB state have finished once the new one is read.
+        await _wait_until(lambda: settled_repository.calls >= 1)
+        await _publish_phase_marker(redis_service)
+        await _wait_for_complete_retry_ticks(settled_repository, 2)
+    finally:
+        await _stop_listener_and_scheduler(service)
+
+    _, after_db_settled = _split_at_phase_markers(
+        await _drain_actions(schedule_channel_subscription)
+    )
+    assert 36 in _missed_node_ids(after_db_settled)
+    assert 26 not in _missed_node_ids(after_db_settled)
+
+
+@pytest.mark.asyncio
+async def test_missed_signal_survives_an_unreadable_db_and_is_repeated_once_readable(
+    redis_service, schedule_channel_subscription, no_reconnect_delay
+):
+    once_node = _once_node(27, _start_beyond_misfire_grace())
+    service = ScheduleService(redis_service=redis_service)
+    try:
+        await _start_with_missed_once_nodes(service, schedule_channel_subscription, once_node)
+        unreadable_repository = FakeScheduleRepository(None)
+        service.repository = unreadable_repository
+        await _wait_until(lambda: unreadable_repository.calls >= 1)
+        await _publish_phase_marker(redis_service)
+        await _wait_for_complete_retry_ticks(unreadable_repository, 2)
+        await _publish_phase_marker(redis_service)
+        readable_repository = FakeScheduleRepository([once_node])
+        service.repository = readable_repository
+        await _wait_for_complete_retry_ticks(readable_repository, 1)
+    finally:
+        await _stop_listener_and_scheduler(service)
+
+    _, while_unreadable, once_readable = _split_at_phase_markers(
+        await _drain_actions(schedule_channel_subscription)
+    )
+    assert while_unreadable == []
+    assert _missed_signal(27, once_node.start_date_time) in once_readable
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("django_update", "update_applied"),
+    [
+        (
+            lambda node: _node_update_message(
+                "update",
+                node.model_copy(update={"start_date_time": datetime.now(UTC) + timedelta(hours=1)}),
+            ),
+            # APScheduler removed the missed run's job; the update registers a new one.
+            lambda service, node: node.id in _scheduled_nodes(service),
+        ),
+        (
+            lambda node: _node_update_message(
+                "update", node.model_copy(update={"is_active": False})
+            ),
+            lambda service, node: node.id not in service.schedule_nodes,
+        ),
+        (
+            lambda node: json.dumps(
+                {"action": "node_update", "data": {"action": "delete", "node": {"id": node.id}}}
+            ),
+            lambda service, node: node.id not in service.schedule_nodes,
+        ),
+    ],
+    ids=["rescheduled", "switched-off", "deleted"],
+)
+async def test_node_update_from_django_stops_the_missed_signal_even_before_the_db_shows_it(
+    redis_service, schedule_channel_subscription, no_reconnect_delay, django_update, update_applied
+):
+    once_node = _once_node(28, _start_beyond_misfire_grace())
+    # Stays unacknowledged, so the retry loop keeps reading the DB and publishing.
+    still_missed_node = _once_node(38, once_node.start_date_time + timedelta(seconds=10))
+    service = ScheduleService(redis_service=redis_service)
+    try:
+        # The DB read keeps returning both nodes as they were when the runs were missed.
+        await _start_with_missed_once_nodes(
+            service, schedule_channel_subscription, once_node, still_missed_node
+        )
+        await redis_service.aioredis_client.publish(
+            settings.SCHEDULE_CHANNEL, django_update(once_node)
+        )
+        await _wait_until(lambda: update_applied(service, once_node))
+        # A tick that checked node 28 before the update arrived may still be publishing.
+        await _wait_for_complete_retry_ticks(service.repository, 1)
+        await _publish_phase_marker(redis_service)
+        await _wait_for_complete_retry_ticks(service.repository, 2)
+    finally:
+        await _stop_listener_and_scheduler(service)
+
+    _, after_update = _split_at_phase_markers(await _drain_actions(schedule_channel_subscription))
+    assert 38 in _missed_node_ids(after_update)
+    assert 28 not in _missed_node_ids(after_update)
+
+
+@pytest.mark.asyncio
+async def test_first_republish_of_a_miss_logs_at_info_and_later_ones_at_debug(
+    redis_service, schedule_channel_subscription, no_reconnect_delay, republish_logs
+):
+    once_node = _once_node(29, _start_beyond_misfire_grace())
+    service = ScheduleService(redis_service=redis_service)
+    try:
+        await _start_with_missed_once_nodes(service, schedule_channel_subscription, once_node)
+        await _wait_until(lambda: len(republish_logs) >= 3)
+    finally:
+        await _stop_listener_and_scheduler(service)
+
+    assert republish_logs[0] == "INFO"
+    assert set(republish_logs[1:]) == {"DEBUG"}
