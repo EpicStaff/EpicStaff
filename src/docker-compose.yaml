@@ -70,6 +70,16 @@ x-bounded-logs: &bounded-logs
     max-size: "10m"
     max-file: "5"
 
+# Our own service images run as uid 1000 and need no capability, so they get none, and
+# no-new-privileges keeps a setuid binary from giving one back. The root filesystem is
+# read-only: each service mounts its own /tmp, and its volumes are its only other writable paths.
+x-hardened: &hardened
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+
 #x-communication-env: &communication_env
 #  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
 #  COMMUNICATION_BROKER_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
@@ -84,7 +94,37 @@ x-bounded-logs: &bounded-logs
 #  COMMUNICATION_STORAGE_NAME: ${COMMUNICATION_STORAGE_NAME}
 
 services:
+  # The service images run as uid 1000. Volumes that earlier root images created stay
+  # root-owned (Docker copies image ownership only into a new, empty volume), so this
+  # one-shot hands them to uid 1000 before their services start. It changes only entries
+  # that are wrong, so later runs do nearly nothing. -h changes a symlink itself, never
+  # what it points at. DAC_READ_SEARCH lets it into 0700 directories owned by uid 1000.
+  # The volumes may be in use (an up against a running stack): -ignore_readdir_race keeps a
+  # file deleted mid-walk from failing the run and blocking the dependents.
+  volume-permissions:
+    logging: *bounded-logs
+    restart: "no"
+    image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
+    container_name: volume-permissions
+    user: "0"
+    read_only: true
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+    volumes:
+      - media_data:/volumes/media_data
+      - plugin_spa:/volumes/plugin_spa
+      - auditor_data:/volumes/auditor_data
+    command: [find, /volumes/media_data, /volumes/plugin_spa, /volumes/auditor_data,
+              -ignore_readdir_race, "(", "!", -uid, "1000", -o, "!", -gid, "1000", ")", -exec, chown, -h, "1000:1000", "{}", "+"]
+
   django_app:
+    <<: *hardened
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
@@ -215,7 +255,10 @@ services:
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
       PLUGINS_DEV_API_PORT: ${PLUGINS_DEV_API_PORT:?}
     volumes:
-      - media_data:/app/media
+      - media_data:/app/src/django_app/media
+      # On disk, not tmpfs: request bodies over FILE_UPLOAD_MAX_MEMORY_SIZE spool here, up to
+      # one plugin package (PLUGINS_MAX_PACKAGE_MB) twice per upload.
+      - django_app_tmp:/tmp
       # Approved plugins' SPA files, published here and served by epicstaff-nginx (read-only).
       - plugin_spa:/srv/plugin-spa
     networks:
@@ -224,6 +267,8 @@ services:
           - djangoapp
           - django
     depends_on:
+      volume-permissions:
+        condition: service_completed_successfully
       crewdb:
         condition: service_healthy
       redis:
@@ -239,6 +284,9 @@ services:
       retries: 100
 
   realtime:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/realtime:${IMAGE_TAG:?}
@@ -284,6 +332,9 @@ services:
         condition: service_started
 
   manager:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/manager:${IMAGE_TAG:?}
@@ -310,6 +361,8 @@ services:
     tty: true
     stdin_open: true
     depends_on:
+      volume-permissions:
+        condition: service_completed_successfully
       crewdb:
         condition: service_healthy
       redis:
@@ -406,6 +459,9 @@ services:
       start_period: 5s
 
   crew:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/crew:${IMAGE_TAG:?}
@@ -592,6 +648,9 @@ services:
       - frontend-network
 
   webhook:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?}
@@ -890,6 +949,8 @@ services:
     volumes:
       - auditor_data:/app/export_data
     depends_on:
+      volume-permissions:
+        condition: service_completed_successfully
       opensearch:
         condition: service_started
       redis:
@@ -902,6 +963,9 @@ services:
       start_period: 5s
 
   knowledge_new:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     container_name: ${INSTANCE_PREFIX?}knowledge_new
@@ -936,6 +1000,9 @@ services:
   # COMPOSE_PROFILES includes "chat"; CHAT_ENABLED=true then exposes the feature in nginx and the UI.
   # Nothing outside the profile may depend_on them, or a stack without chat would not start.
   chat:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     image: ghcr.io/epicstaff/chat:${IMAGE_TAG:?}
     build:
       context: .
@@ -1302,6 +1369,7 @@ volumes:
   auditor_data: {}
   chat_pgdata: {}
   plugin_spa: {}
+  django_app_tmp: {}
   es_plugins_data: {}
   plugins_pgdata: {}
   plugin_egress_policy: {}

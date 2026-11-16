@@ -89,6 +89,12 @@ RUN set -eux; \
 COPY ./webhook .
 COPY ./shared /app/src/shared
 
+# Code and venv stay root-owned (read-only for the runtime user).
+RUN groupadd --system --gid 1000 app \
+ && useradd --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+USER app
+
 EXPOSE 8000
 
 CMD ["python", "run.py"]
