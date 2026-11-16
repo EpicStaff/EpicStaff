@@ -55,6 +55,19 @@ class ComposeTest(unittest.TestCase):
         violations = check.check_compose({"docker-compose.yaml": lines})
         self.assertEqual(len(violations), len(lines))
 
+    def test_prefixed_container_names_pass(self):
+        lines = [
+            "    container_name: ${INSTANCE_PREFIX?}crewdb",
+            '    container_name: "${INSTANCE_PREFIX?}volume-permissions"',
+            "  #   container_name: sandbox",
+        ]
+        self.assertEqual(check.check_container_names({"docker-compose.yaml": lines}), [])
+
+    def test_a_container_name_without_the_instance_prefix_is_caught(self):
+        lines = ["    container_name: volume-permissions", "    container_name: ${OTHER?}crewdb"]
+        violations = check.check_container_names({"docker-compose.yaml": lines})
+        self.assertEqual(len(violations), len(lines))
+
     def test_every_stack_compose_file_is_checked_and_lab_files_are_not(self):
         checked = [
             "src/docker-compose.yaml",

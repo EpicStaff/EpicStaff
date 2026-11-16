@@ -38,6 +38,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 COMPOSE_FILE_RE = re.compile(r"(^|/)docker-compose[^/]*\.ya?ml$")
+# The stack's own compose files: every container they name may run twice on one host.
+STACK_COMPOSE_FILE_RE = re.compile(r"^src/docker-compose[^/]*\.ya?ml$")
+CONTAINER_NAME_RE = re.compile(r"^\s*container_name:\s*[\"']?(?P<name>\S*?)[\"']?\s*$")
+INSTANCE_PREFIX = "${INSTANCE_PREFIX?}"
 # ${...} and $VAR not preceded by another $ (which escapes it from compose).
 COMPOSE_BRACED_RE = re.compile(r"(?<!\$)\$\{([^}]*)\}")
 COMPOSE_BARE_RE = re.compile(r"(?<!\$)\$([A-Za-z_][A-Za-z0-9_]*)")
@@ -123,6 +127,16 @@ def check_compose(files: Files) -> list[str]:
             expressions = COMPOSE_BRACED_RE.findall(line)
             bare = COMPOSE_BARE_RE.findall(COMPOSE_BRACED_RE.sub("", line))
             if bare or not all(map(is_required_interpolation, expressions)):
+                violations.append(f"{path}:{number}: {line.strip()}")
+    return violations
+
+
+def check_container_names(files: Files) -> list[str]:
+    violations = []
+    for path, lines in files.items():
+        for number, line in enumerate(lines, start=1):
+            match = CONTAINER_NAME_RE.match(line)
+            if match and not match.group("name").startswith(INSTANCE_PREFIX):
                 violations.append(f"{path}:{number}: {line.strip()}")
     return violations
 
@@ -228,6 +242,12 @@ def main() -> int:
             check_compose(matching(files, COMPOSE_FILE_RE)),
             "Write ${VAR:?} and put the default in src/env.yaml (then run "
             "python scripts/envtool.py --env-file .env.example).",
+        ),
+        report(
+            "container name without the instance prefix",
+            check_container_names(matching(files, STACK_COMPOSE_FILE_RE)),
+            "Write container_name: ${INSTANCE_PREFIX?}<name>, so a second instance on the same "
+            "host gets its own container.",
         ),
         report(
             "ad-hoc boolean parsing of an environment variable in Python",

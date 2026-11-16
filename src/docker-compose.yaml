@@ -105,7 +105,7 @@ services:
     logging: *bounded-logs
     restart: "no"
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
-    container_name: volume-permissions
+    container_name: ${INSTANCE_PREFIX?}volume-permissions
     user: "0"
     read_only: true
     network_mode: none
