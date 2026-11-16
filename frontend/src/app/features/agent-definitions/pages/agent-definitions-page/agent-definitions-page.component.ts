@@ -38,7 +38,7 @@ import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-age
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
-import { AgentDefinition } from '../../models/agent-definition.model';
+import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../models/agent-definition.model';
 import { ExplorerSectionId, GroupAssignTarget } from '../../models/explorer.model';
 import { CreateSurfaceRequest } from '../../models/surface.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryConfig, SurfaceCategoryId } from '../../models/surface-category.model';
@@ -403,6 +403,48 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             });
         }
         this.hasUnsavedChanges.set(false);
+    }
+
+    onSelectedInstructionList(instructionList: AgentInstruction[]): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.updateInstructionList(agentId, instructionList);
+    }
+
+    onCreateSurfaceForSelected(event: { body: CreateSurfaceRequest; place: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.createSurfaceForAgent(agentId, event.body, event.place);
+    }
+
+    onSetSharedForSelected(event: { surfaceIds: number[]; category: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.setSharedSurfacesInCategory(event.surfaceIds, agentId, event.category);
+    }
+
+    onDropSharedForSelected(event: { surfaceId: number; category: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.dropSharedSurfaceOnAgent(event.surfaceId, agentId, event.category);
+    }
+
+    onSetSurfacePlacesForSelected(event: { surfaceId: number; places: AgentSurfacePlace[] }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.setSurfacePlaces(event.surfaceId, agentId, event.places);
+    }
+
+    onDetachSurfaceForSelected(surfaceId: number): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.detachSurfaceFromAgent(surfaceId, agentId);
+    }
+
+    onMakeAgentSpecificCopyForSelected(surfaceId: number): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.makeAgentSpecificCopy(surfaceId, agentId);
     }
 
     onCreateSurface(body: CreateSurfaceRequest): void {

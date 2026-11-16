@@ -122,5 +122,11 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 WORKDIR /app/src/knowledge
 
+# Code and venv stay root-owned (read-only for the runtime user).
+RUN groupadd --system --gid 1000 app \
+ && useradd --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+USER app
+
 # Run module
 CMD uvicorn main:app --host 0.0.0.0 --port ${KNOWLEDGE_PORT:?}
