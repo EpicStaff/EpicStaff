@@ -542,6 +542,7 @@ class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
     # [IsAuthenticated()] for reads, [IsAuthenticated(), IsSuperadmin()]
     # for writes. Reads are intentionally global-readable — the frontend
     # lists providers here (LLMProvidersService.getProviders).
+    uses_organization_context = False
     queryset = Provider.objects.all()
     serializer_class = ProviderSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1884,6 +1885,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         methods=["post"],
         url_path="end",
         permission_classes=[IsSystemApiKeyAuthenticated],
+        uses_organization_context=False,
     )
     @not_a_user_change
     def end(self, request):
@@ -2004,6 +2006,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
         methods=["get"],
         url_path="lookup-by-token",
         permission_classes=[IsSystemApiKeyAuthenticated],
+        uses_organization_context=False,
     )
     def lookup_by_token(self, request):
         """Resolve a channel by its unique `token`, unscoped by org.

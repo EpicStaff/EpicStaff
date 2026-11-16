@@ -5,26 +5,13 @@ Principle-level descriptions only; detailed behavior is documented in
 docs/rbac/roles_and_permissions.md.
 """
 
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, OpenApiResponse
+from drf_spectacular.utils import OpenApiResponse
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
 from rbac.serializers.permissions import (
     CatalogResponseSerializer,
     MyOrgsPermissionsResponseSerializer,
     PermissionsMeResponseSerializer,
-)
-
-_ORG_HEADER_REQUIRED = OpenApiParameter(
-    name="X-Organization-Id",
-    location=OpenApiParameter.HEADER,
-    type=OpenApiTypes.INT,
-    required=True,
-    description=(
-        "Active organization id — the response is scoped to this org. "
-        "Required for everyone, superadmins included (it selects which org "
-        "to report on)."
-    ),
 )
 
 PERMISSIONS_CATALOG_GET = {
@@ -46,7 +33,6 @@ PERMISSIONS_ME_GET = {
         "X-Organization-Id. `permissions` maps resource_type → action codes, "
         'or is "*" for a superadmin.'
     ),
-    "parameters": [_ORG_HEADER_REQUIRED],
     "responses": {
         200: PermissionsMeResponseSerializer,
         400: OpenApiResponse(

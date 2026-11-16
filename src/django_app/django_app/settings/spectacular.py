@@ -10,7 +10,6 @@ SPECTACULAR_SETTINGS = {
         "drf_spectacular.hooks.postprocess_schema_enums",
         "django_app.spectacular_hooks.add_stream_upload_postprocessing_hook",
         "django_app.spectacular_hooks.assign_tags_postprocessing_hook",
-        "django_app.spectacular_hooks.add_org_header_postprocessing_hook",
     ],
     "ENUM_NAME_OVERRIDES": {
         "SourceCollectionStatusEnum": "tables.models.knowledge_models.collection_models.SourceCollection.SourceCollectionStatus",
