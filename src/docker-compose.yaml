@@ -91,7 +91,7 @@ services:
     build:
       context: .
       dockerfile: ./django_app/Dockerfile.dj
-    container_name: django_app
+    container_name: ${INSTANCE_PREFIX?}django_app
     # The graph message stream consumer is named after the hostname; a fixed one lets a
     # recreated container resume the entries its predecessor left unacknowledged at once.
     hostname: django_app
@@ -242,7 +242,7 @@ services:
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/realtime:${IMAGE_TAG:?}
-    container_name: realtime
+    container_name: ${INSTANCE_PREFIX?}realtime
     build:
       context: .
       dockerfile: ./realtime/Dockerfile.realtime
@@ -290,7 +290,7 @@ services:
     build:
       context: .
       dockerfile: ./manager/Dockerfile.man
-    container_name: manager_container
+    container_name: ${INSTANCE_PREFIX?}manager_container
     environment:
       <<: [*docker-env, *database-env, *redis-env, *communication-env, *retention-env]
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
@@ -330,7 +330,7 @@ services:
     build:
       context: ./crewdb
       dockerfile: Dockerfile.crewdb
-    container_name: crewdb
+    container_name: ${INSTANCE_PREFIX?}crewdb
     # max_connections: Postgres's default of 100 is too few for django_app, which holds up to
     # DJANGO_SGI_WORKERS x DJANGO_DB_POOL_MAX_SIZE + 8 next to the ~50 of the other services:
     # 6 x 15 + 8 + 50 = 148 with the production defaults, of the 197 left after Postgres's 3
@@ -372,7 +372,7 @@ services:
 
   redis:
     image: redis:8.10.3@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
-    container_name: redis
+    container_name: ${INSTANCE_PREFIX?}redis
     logging: *bounded-logs
     restart: unless-stopped
     networks:
@@ -412,7 +412,7 @@ services:
     build:
       context: .
       dockerfile: ./crew/Dockerfile.crew
-    container_name: crew
+    container_name: ${INSTANCE_PREFIX?}crew
     environment:
       <<: [*docker-env, *redis-env, *communication-env]
       CREW_LOG_LEVEL: ${CREW_LOG_LEVEL:?}
@@ -516,7 +516,7 @@ services:
 
   storage:
     image: rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
-    container_name: storage
+    container_name: ${INSTANCE_PREFIX?}storage
     environment:
       RUSTFS_ACCESS_KEY: ${STORAGE_USER:?}
       RUSTFS_SECRET_KEY: ${STORAGE_PASSWORD:?}
@@ -538,7 +538,7 @@ services:
 
   storage-init:
     image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
-    container_name: storage-init
+    container_name: ${INSTANCE_PREFIX?}storage-init
     networks:
       - backend-network
     depends_on:
@@ -578,7 +578,7 @@ services:
       context: ../frontend
       dockerfile: Dockerfile.fe
       target: production
-    container_name: epicstaff-frontend
+    container_name: ${INSTANCE_PREFIX?}epicstaff-frontend
     environment:
       API_URL: ${API_URL:?}
       REALTIME_API_URL: ${REALTIME_API_URL:?}
@@ -595,7 +595,7 @@ services:
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?}
-    container_name: webhook
+    container_name: ${INSTANCE_PREFIX?}webhook
     build:
       context: .
       dockerfile: ./webhook/Dockerfile
@@ -629,10 +629,14 @@ services:
 
   epicstaff-nginx:
     image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
-    container_name: epicstaff-nginx
+    container_name: ${INSTANCE_PREFIX?}epicstaff-nginx
+    # Long syntax: `docker compose config --no-interpolate` (src/nginx/tests/check_templates.sh)
+    # still shows each container port, which it cannot read out of "${VAR}:80".
     ports:
-      - "80:80"
-      - "443:443"
+      - target: 80
+        published: ${NGINX_HTTP_PORT:?}
+      - target: 443
+        published: ${NGINX_HTTPS_PORT:?}
     environment:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?}
       NGINX_SSL_MODE: ${NGINX_SSL_MODE:?}
@@ -762,7 +766,7 @@ services:
   # See settings/email.py's EMAIL_HOST comment for the full rationale — do
   # not remove this gate or give DJANGO_EMAIL_HOST a live prod default.
   mailpit:
-    container_name: mailpit
+    container_name: ${INSTANCE_PREFIX?}mailpit
     image: axllent/mailpit:v1.33.1@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
     profiles: ["dev"]
     ports:
@@ -774,7 +778,7 @@ services:
 
   agent:
     image: ghcr.io/epicstaff/agent:${IMAGE_TAG:?}
-    container_name: agent
+    container_name: ${INSTANCE_PREFIX?}agent
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
@@ -820,7 +824,7 @@ services:
     logging: *bounded-logs
     restart: unless-stopped
     image: opensearchproject/opensearch:2.19.1@sha256:72fe2fc84be8295906b8efca020b46c58ed45c8da60cd9b8b49e1991e38e89a4
-    container_name: opensearch
+    container_name: ${INSTANCE_PREFIX?}opensearch
     profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
     environment:
@@ -855,7 +859,7 @@ services:
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:?}
-    container_name: auditor
+    container_name: ${INSTANCE_PREFIX?}auditor
     profiles: ["auditor"]
     build:
       context: .
@@ -900,7 +904,7 @@ services:
   knowledge_new:
     logging: *bounded-logs
     restart: unless-stopped
-    container_name: knowledge_new
+    container_name: ${INSTANCE_PREFIX?}knowledge_new
     image: ghcr.io/epicstaff/knowledge_new:${IMAGE_TAG:?}
     build:
       context: .
@@ -936,7 +940,7 @@ services:
     build:
       context: .
       dockerfile: ./chat/Dockerfile
-    container_name: chat
+    container_name: ${INSTANCE_PREFIX?}chat
     hostname: chat
     profiles: ["chat"]
     environment:
@@ -1004,7 +1008,7 @@ services:
   chatdb:
     # Same major as crewdb (ankane/pgvector v0.5.1 is Postgres 15); no extensions needed here.
     image: postgres:15@sha256:c961aa287d8698297cb26cdfadfbe9fd2cbaf77e53cfffe9636e8d8a1e4d842c
-    container_name: chatdb
+    container_name: ${INSTANCE_PREFIX?}chatdb
     profiles: ["chat"]
     environment:
       POSTGRES_USER: ${CHAT_DB_USER:?}
@@ -1031,7 +1035,7 @@ services:
     build:
       context: .
       dockerfile: ./es_plugins/Dockerfile
-    container_name: es_plugins
+    container_name: ${INSTANCE_PREFIX?}es_plugins
     hostname: es_plugins
     profiles: ["plugins"]
     user: root
@@ -1119,7 +1123,7 @@ services:
   # own socket (plugins_db/pg_hba.conf). See docs/plugins/operator/enable-plugins.md.
   plugins_db:
     image: postgres:17.11@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
-    container_name: plugins_db
+    container_name: ${INSTANCE_PREFIX?}plugins_db
     hostname: plugins_db
     profiles: ["plugins"]
     # reserved_connections: slots only plugins_admin (pg_use_reserved_connections) may take once
@@ -1161,7 +1165,7 @@ services:
     build:
       context: ./plugins_egress
       dockerfile: Dockerfile
-    container_name: plugins_egress
+    container_name: ${INSTANCE_PREFIX?}plugins_egress
     hostname: plugins_egress
     profiles: ["plugins"]
     read_only: true
@@ -1206,7 +1210,7 @@ services:
     image: ghcr.io/epicstaff/sandbox_new:${IMAGE_TAG:?}
     logging: *bounded-logs
     restart: unless-stopped
-    container_name: sandbox_new
+    container_name: ${INSTANCE_PREFIX?}sandbox_new
     build:
       context: .
       dockerfile: ./sandbox_new/Dockerfile
@@ -1278,14 +1282,20 @@ services:
       - KILL  # signal the dropped-privilege child's process group on timeout.
 
 volumes:
+  # External, so a `docker compose down -v` never deletes them; INSTANCE_PREFIX keeps each
+  # instance on its own copy when several run on one Docker host.
   sandbox_venvs:
     external: true
+    name: ${INSTANCE_PREFIX?}sandbox_venvs
   crew_pgdata:
     external: true
+    name: ${INSTANCE_PREFIX?}crew_pgdata
   media_data:
     external: true
+    name: ${INSTANCE_PREFIX?}media_data
   opensearch_data:
     external: true
+    name: ${INSTANCE_PREFIX?}opensearch_data
   redis_data: {}
   code_instances: {}
   rustfs_data: {}
