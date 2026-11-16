@@ -159,7 +159,7 @@ def _scheduled_nodes(service: ScheduleService) -> dict[int, ScheduleTriggerNodeP
 
 
 async def _stop_listener_and_scheduler(service: ScheduleService):
-    background_tasks = [service.listener_task, service.missed_retry_task]
+    background_tasks = [service.listener_task, service.pending_signal_retry_task]
     for task in background_tasks:
         task.cancel()
     await asyncio.gather(*background_tasks, return_exceptions=True)
@@ -509,7 +509,7 @@ async def _wait_for_complete_retry_ticks(repository: FakeScheduleRepository, cou
 
     Each tick reads the repository once and the ticks run one after another, so
     tick N has finished once tick N + 1 reads the repository. Only usable while
-    a 'missed' signal is pending: a tick with nothing pending reads nothing.
+    a signal is pending: a tick with nothing pending reads nothing.
     """
     calls_before = repository.calls
     await _wait_until(lambda: repository.calls >= calls_before + count + 1)
@@ -528,6 +528,54 @@ async def _start_with_missed_once_nodes(
         assert _missed_signal(node.id, node.start_date_time) in published
 
 
+def _ended_repeat_node(
+    node_id: int,
+    unit: str = "minutes",
+    every: int = 1,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> ScheduleTriggerNodePayload:
+    """A repeat node whose end, by default, passed while the Manager was down."""
+    now = datetime.now(UTC).replace(microsecond=0)
+    return ScheduleTriggerNodePayload(
+        id=node_id,
+        node_name=f"ended-{node_id}",
+        graph=1,
+        is_active=True,
+        run_mode="repeat",
+        start_date_time=start or now - timedelta(hours=1),
+        every=every,
+        unit=unit,
+        end_type="on_date",
+        end_date_time=end or now - timedelta(minutes=1),
+    )
+
+
+def _deactivate_signal(node_id: int) -> dict:
+    return {"action": "deactivate", "node_id": node_id}
+
+
+def _deactivated_node_ids(actions: list[dict]) -> list[int]:
+    return [action["node_id"] for action in actions if action["action"] == "deactivate"]
+
+
+def _includes_deactivate_of(*node_ids: int):
+    return lambda actions: set(node_ids) <= set(_deactivated_node_ids(actions))
+
+
+async def _start_with_ended_repeat_nodes(
+    service: ScheduleService, subscription, *ended_nodes: ScheduleTriggerNodePayload
+):
+    """Start the service on a DB that still shows ended repeat nodes as active."""
+    service.repository = FakeScheduleRepository(list(ended_nodes))
+    await service.start()
+    published = await _read_actions_until(
+        subscription, _includes_deactivate_of(*(node.id for node in ended_nodes))
+    )
+    for node in ended_nodes:
+        assert _deactivate_signal(node.id) in published
+
+
 @pytest_asyncio.fixture
 async def unstarted_schedule_service(redis_service):
     service = ScheduleService(redis_service=redis_service)
@@ -542,7 +590,7 @@ def republish_logs():
     handler_id = logger.add(
         lambda message: records.append(message.record["level"].name),
         level="DEBUG",
-        filter=lambda record: "republishing 'missed'" in record["message"],
+        filter=lambda record: "; republishing '" in record["message"],
     )
     yield records
     logger.remove(handler_id)
@@ -794,16 +842,295 @@ async def test_node_update_from_django_stops_the_missed_signal_even_before_the_d
 
 
 @pytest.mark.asyncio
-async def test_first_republish_of_a_miss_logs_at_info_and_later_ones_at_debug(
-    redis_service, schedule_channel_subscription, no_reconnect_delay, republish_logs
+@pytest.mark.parametrize(
+    ("pending_node", "start_with_pending_signal"),
+    [
+        (lambda: _once_node(29, _start_beyond_misfire_grace()), _start_with_missed_once_nodes),
+        (lambda: _ended_repeat_node(39), _start_with_ended_repeat_nodes),
+    ],
+    ids=["missed", "deactivate"],
+)
+async def test_first_republish_of_a_pending_signal_logs_at_info_and_later_ones_at_debug(
+    redis_service,
+    schedule_channel_subscription,
+    no_reconnect_delay,
+    republish_logs,
+    pending_node,
+    start_with_pending_signal,
 ):
-    once_node = _once_node(29, _start_beyond_misfire_grace())
     service = ScheduleService(redis_service=redis_service)
     try:
-        await _start_with_missed_once_nodes(service, schedule_channel_subscription, once_node)
+        await start_with_pending_signal(service, schedule_channel_subscription, pending_node())
         await _wait_until(lambda: len(republish_logs) >= 3)
     finally:
         await _stop_listener_and_scheduler(service)
 
     assert republish_logs[0] == "INFO"
     assert set(republish_logs[1:]) == {"DEBUG"}
+
+
+# A repeat schedule's end can pass while the Manager is down. APScheduler would
+# store such a job paused, without any event, so the node would stay active
+# forever. The Manager switches it off with a 'deactivate' instead, repeated
+# until the DB shows it was applied, like an end reached while it runs.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("unit", "every", "start_from_now", "end_from_now"),
+    [
+        ("seconds", 1, -timedelta(hours=1), -timedelta(minutes=1)),
+        ("minutes", 1, -timedelta(hours=1), -timedelta(minutes=1)),
+        ("hours", 1, -timedelta(hours=1), -timedelta(minutes=1)),
+        ("days", 1, -timedelta(hours=1), -timedelta(minutes=1)),
+        ("days", 2, -timedelta(hours=1), -timedelta(minutes=1)),
+        ("weeks", 1, -timedelta(hours=1), -timedelta(minutes=1)),
+        ("weeks", 2, -timedelta(hours=1), -timedelta(minutes=1)),
+        ("months", 1, -timedelta(hours=1), -timedelta(minutes=1)),
+        # Next weekly match is six days away, after an end that is still ahead.
+        ("weeks", 1, -timedelta(days=1), timedelta(days=3)),
+    ],
+    ids=[
+        "seconds-interval-end-passed",
+        "minutes-interval-end-passed",
+        "hours-interval-end-passed",
+        "daily-cron-end-passed",
+        "days-interval-end-passed",
+        "weekly-cron-end-passed",
+        "every-other-week-cron-end-passed",
+        "monthly-cron-end-passed",
+        "weekly-cron-next-match-after-future-end",
+    ],
+)
+async def test_repeat_schedule_without_a_fire_time_left_at_startup_is_switched_off(
+    unstarted_schedule_service,
+    schedule_channel_subscription,
+    unit,
+    every,
+    start_from_now,
+    end_from_now,
+):
+    now = datetime.now(UTC).replace(microsecond=0)
+    node = _ended_repeat_node(
+        40, unit=unit, every=every, start=now + start_from_now, end=now + end_from_now
+    )
+    # The order ScheduleService.start uses: load nodes from the DB, then start APScheduler.
+    await unstarted_schedule_service.add_schedule(node)
+    unstarted_schedule_service.scheduler.start()
+
+    published = await _read_actions_until(schedule_channel_subscription, _includes_deactivate_of(40))
+
+    assert published == [_deactivate_signal(40)]
+    assert _scheduled_nodes(unstarted_schedule_service) == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("end_after_last_fire", "registered"),
+    [(timedelta(0), True), (-timedelta(seconds=1), False)],
+    ids=["end-at-the-fire-time", "end-just-before-it"],
+)
+async def test_repeat_schedule_is_registered_only_while_a_fire_time_is_on_or_before_its_end(
+    schedule_service, end_after_last_fire, registered
+):
+    only_fire_time = (datetime.now(UTC) + timedelta(hours=1)).replace(microsecond=0)
+    node = _ended_repeat_node(
+        41, every=5, start=only_fire_time, end=only_fire_time + end_after_last_fire
+    )
+
+    await schedule_service.add_schedule(node)
+
+    assert (41 in _scheduled_nodes(schedule_service)) is registered
+
+
+@pytest.mark.asyncio
+async def test_update_leaving_a_live_schedule_without_a_fire_time_removes_its_job_and_switches_it_off(
+    schedule_service, schedule_channel_subscription
+):
+    now = datetime.now(UTC).replace(microsecond=0)
+    live_node = _ended_repeat_node(42, end=now + timedelta(hours=1))
+    await schedule_service.add_schedule(live_node)
+
+    await schedule_service.add_schedule(
+        live_node.model_copy(update={"end_date_time": now - timedelta(minutes=1)})
+    )
+
+    assert await _published_actions(schedule_channel_subscription) == [_deactivate_signal(42)]
+    assert 42 not in _scheduled_nodes(schedule_service)
+
+
+@pytest.mark.asyncio
+async def test_deactivate_for_an_end_reached_while_running_is_repeated_until_acknowledged(
+    redis_service, schedule_channel_subscription, no_reconnect_delay
+):
+    now = datetime.now(UTC)
+    ending_node = _ended_repeat_node(
+        43, unit="seconds", start=now - timedelta(seconds=10), end=now + timedelta(seconds=1)
+    )
+    service = ScheduleService(redis_service=redis_service)
+    # The DB keeps showing the node active: Django has not applied the signal.
+    service.repository = FakeScheduleRepository([ending_node])
+    try:
+        await service.start()
+        await _read_actions_until(
+            schedule_channel_subscription, _includes_deactivate_of(43), timeout=3.0
+        )
+        await _publish_phase_marker(redis_service)
+        await _wait_for_complete_retry_ticks(service.repository, 2)
+    finally:
+        await _stop_listener_and_scheduler(service)
+
+    _, republished = _split_at_phase_markers(await _drain_actions(schedule_channel_subscription))
+    assert len(republished) >= 2
+    assert all(message == _deactivate_signal(43) for message in republished)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "db_state_after_signal",
+    [
+        lambda node: [],
+        lambda node: [
+            node.model_copy(update={"end_date_time": datetime.now(UTC) + timedelta(days=1)})
+        ],
+    ],
+    ids=["switched-off-or-deleted", "end-extended"],
+)
+async def test_deactivate_signal_stops_once_the_db_no_longer_needs_it(
+    redis_service, schedule_channel_subscription, no_reconnect_delay, db_state_after_signal
+):
+    ended_node = _ended_repeat_node(44)
+    # Stays unacknowledged, so the retry loop keeps reading the DB and publishing.
+    still_ended_node = _ended_repeat_node(54)
+    service = ScheduleService(redis_service=redis_service)
+    try:
+        await _start_with_ended_repeat_nodes(
+            service, schedule_channel_subscription, ended_node, still_ended_node
+        )
+        settled_repository = FakeScheduleRepository(
+            [*db_state_after_signal(ended_node), still_ended_node]
+        )
+        service.repository = settled_repository
+        # Ticks that read the previous DB state have finished once the new one is read.
+        await _wait_until(lambda: settled_repository.calls >= 1)
+        await _publish_phase_marker(redis_service)
+        await _wait_for_complete_retry_ticks(settled_repository, 2)
+    finally:
+        await _stop_listener_and_scheduler(service)
+
+    _, after_db_settled = _split_at_phase_markers(
+        await _drain_actions(schedule_channel_subscription)
+    )
+    assert 54 in _deactivated_node_ids(after_db_settled)
+    assert 44 not in _deactivated_node_ids(after_db_settled)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("django_update", "update_applied"),
+    [
+        (
+            lambda node: _node_update_message(
+                "update",
+                node.model_copy(update={"end_date_time": datetime.now(UTC) + timedelta(days=1)}),
+            ),
+            lambda service, node: node.id in _scheduled_nodes(service),
+        ),
+        (
+            lambda node: _node_update_message(
+                "update", node.model_copy(update={"is_active": False})
+            ),
+            lambda service, node: node.id not in service._pending_signals,
+        ),
+        (
+            lambda node: json.dumps(
+                {"action": "node_update", "data": {"action": "delete", "node": {"id": node.id}}}
+            ),
+            lambda service, node: node.id not in service._pending_signals,
+        ),
+    ],
+    ids=["end-extended", "switched-off", "deleted"],
+)
+async def test_node_update_from_django_stops_the_deactivate_signal_even_before_the_db_shows_it(
+    redis_service, schedule_channel_subscription, no_reconnect_delay, django_update, update_applied
+):
+    ended_node = _ended_repeat_node(45)
+    # Stays unacknowledged, so the retry loop keeps reading the DB and publishing.
+    still_ended_node = _ended_repeat_node(55)
+    service = ScheduleService(redis_service=redis_service)
+    try:
+        # The DB read keeps returning both nodes as they were when they ended.
+        await _start_with_ended_repeat_nodes(
+            service, schedule_channel_subscription, ended_node, still_ended_node
+        )
+        await redis_service.aioredis_client.publish(
+            settings.SCHEDULE_CHANNEL, django_update(ended_node)
+        )
+        await _wait_until(lambda: update_applied(service, ended_node))
+        # A tick that checked node 45 before the update arrived may still be publishing.
+        await _wait_for_complete_retry_ticks(service.repository, 1)
+        await _publish_phase_marker(redis_service)
+        await _wait_for_complete_retry_ticks(service.repository, 2)
+    finally:
+        await _stop_listener_and_scheduler(service)
+
+    _, after_update = _split_at_phase_markers(await _drain_actions(schedule_channel_subscription))
+    assert 55 in _deactivated_node_ids(after_update)
+    assert 45 not in _deactivated_node_ids(after_update)
+
+
+@pytest.fixture
+def warning_logs():
+    records = []
+    handler_id = logger.add(
+        lambda message: records.append(message.record["message"]), level="WARNING"
+    )
+    yield records
+    logger.remove(handler_id)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_while_a_deactivate_is_pending_publishes_and_warns_nothing_more(
+    schedule_service, schedule_channel_subscription, warning_logs
+):
+    ended_node = _ended_repeat_node(46)
+    await schedule_service.add_schedule(ended_node)
+    assert await _read_actions_until(
+        schedule_channel_subscription, _includes_deactivate_of(46)
+    ) == [_deactivate_signal(46)]
+    # Django has not applied the signal yet, so the node is still active.
+    schedule_service.repository = FakeScheduleRepository([ended_node])
+    warning_logs.clear()
+
+    await schedule_service.reconcile_schedules_with_db()
+
+    assert await _published_actions(schedule_channel_subscription) == []
+    assert warning_logs == []
+    assert 46 not in _scheduled_nodes(schedule_service)
+
+
+@pytest.mark.asyncio
+async def test_deactivate_after_a_once_mode_run_is_published_once_not_repeated(
+    redis_service, schedule_channel_subscription, no_reconnect_delay
+):
+    fired_node = _once_node(47, (datetime.now(UTC) - timedelta(seconds=5)).replace(microsecond=0))
+    # Stays unacknowledged, so the retry loop keeps reading the DB and publishing.
+    missed_node = _once_node(57, _start_beyond_misfire_grace())
+    service = ScheduleService(redis_service=redis_service)
+    # The DB keeps showing the fired node active, as if Django had not applied it yet.
+    service.repository = FakeScheduleRepository([fired_node, missed_node])
+    try:
+        await service.start()
+        published = await _read_actions_until(
+            schedule_channel_subscription,
+            lambda actions: 47 in _deactivated_node_ids(actions) and 57 in _missed_node_ids(actions),
+        )
+        await _publish_phase_marker(redis_service)
+        await _wait_for_complete_retry_ticks(service.repository, 2)
+    finally:
+        await _stop_listener_and_scheduler(service)
+
+    assert {"action": "run_session", "node_id": 47} in published
+    _, after_run = _split_at_phase_markers(await _drain_actions(schedule_channel_subscription))
+    assert 57 in _missed_node_ids(after_run)
+    assert all(action["node_id"] != 47 for action in after_run)

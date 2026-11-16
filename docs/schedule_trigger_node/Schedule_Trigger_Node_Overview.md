@@ -23,9 +23,10 @@ Channel directionality (enforced by code, documented for sanity):
 
 - **Django → Manager**: `node_update` (every `post_save`/`post_delete` echo).
 - **Manager → Django**: `run_session` (job fired), `deactivate` (once-mode
-  fired or APScheduler auto-removed the job, e.g. `end_date` reached) and
-  `missed` (a once-mode run was missed because Manager was not running at its
-  start time — see §5.5).
+  fired, APScheduler auto-removed the job because `end_date` was reached, or
+  the schedule's end had already passed when Manager added the job — see §5.6)
+  and `missed` (a once-mode run was missed because Manager was not running at
+  its start time — see §5.5).
 
 Each side ignores the actions intended for the other direction (Django skips
 its own `node_update` echoes; Manager only listens to `node_update`).
@@ -338,6 +339,8 @@ schedule_channel_handler (Django pubsub)
         │                           (see 5.3)
         │
         ├─ action=="deactivate"   → ScheduleTriggerService.deactivate_node:
+        │                           (row locked; a repeat node with a fire time
+        │                            left is skipped as stale, see 5.4)
         │                           ScheduleTriggerNode.is_active=False via .save()
         │                           → post_save fires
         │                           → Redis node_update{is_active:false}
@@ -380,7 +383,7 @@ sees the `node_update{is_active:false}` echo and drops the job there.
 ### 5.4 Auto-deactivation at `end_date_time`
 
 For a `repeat` node with `end_type="on_date"`, APScheduler's trigger
-eventually returns `None` on the next fire attempt, and APScheduler removes
+eventually has no fire time left before the end, and APScheduler removes
 the job itself. The global `EVENT_JOB_REMOVED` listener
 (`_on_job_removed`) fires:
 
@@ -388,13 +391,31 @@ the job itself. The global `EVENT_JOB_REMOVED` listener
    replace/remove).
 2. Otherwise reverse-lookup `job_id → node_id` via `self.schedule_nodes`,
    pop the entry, and publish `{"action": "deactivate", "node_id": N}`.
-3. Django receives `deactivate`, sets `is_active=False` via `.save()`, the
-   resulting `post_save` re-enters Manager — but since the job is already
-   gone and `node_id` was removed from `self.schedule_nodes`,
-   `remove_schedule` logs a debug message and exits idempotently.
+   Django may be restarting at that moment, so the `deactivate` is kept in
+   `_pending_signals` and republished until the DB acknowledges it, exactly
+   as in §5.5 step 4: the node is no longer active, or its schedule has a
+   fire time left again (the user extended it). A `node_update` for the node
+   (`add_schedule` / `remove_schedule`) also drops it. While it is pending, a
+   reconcile re-adds the node, finds no fire time left (§5.6) and leaves the
+   pending signal as it is.
+3. Django's `deactivate_node` locks the row (`SELECT FOR UPDATE`). An
+   already inactive node is a no-op. A `repeat` node whose
+   `_compute_next_run_date_time` is not `None` is left untouched: the signal
+   is stale (the user extended the schedule after Manager sent it, and a
+   republish arrived after the edit). Otherwise it sets `is_active=False`
+   via `.save()`, the resulting `post_save` re-enters Manager — but since the
+   job is already gone and `node_id` was removed from `self.schedule_nodes`,
+   `remove_schedule` drops the pending signal, logs a debug message and
+   exits idempotently. A once-mode `deactivate` (sent after a fire, §5.2) is
+   applied without that check.
 
-Together with §5.5 these are the only paths where Manager itself initiates
-the `is_active=False` write — all others are initiated by Django.
+This path only covers a schedule that runs out of fire times while the job
+is registered. A schedule that ran out while Manager was down (or a node
+activated with an end already in the past) never produces
+`EVENT_JOB_REMOVED` — see §5.6.
+
+Together with §5.5 and §5.6 these are the only paths where Manager itself
+initiates the `is_active=False` write — all others are initiated by Django.
 
 ### 5.5 Missed once-mode run
 
@@ -420,16 +441,57 @@ APScheduler reports the skip as `EVENT_JOB_MISSED`, handled by
 4. Pub/sub drops a message nobody is subscribed to, and Django is often still
    starting when Manager reports misses right after its own start (on a host
    reboot `restart: unless-stopped` ignores `depends_on`). Manager therefore
-   keeps the miss in `_pending_missed` and, every
-   `SCHEDULE_LISTENER_RECONNECT_DELAY_SECONDS`, rereads the active nodes and
-   republishes until the DB shows the node is no longer an active once-mode
-   node starting at `scheduled_at`. Only the first republish is logged at
-   INFO. The receiver count returned by `PUBLISH` cannot serve as the
-   acknowledgement: Manager itself is subscribed to `schedule_channel`.
+   keeps the miss in `_pending_signals` (`node_id → PendingScheduleSignal`)
+   and, every `SCHEDULE_LISTENER_RECONNECT_DELAY_SECONDS`, rereads the active
+   nodes and republishes until the DB shows the node is no longer an active
+   once-mode node starting at `scheduled_at`. Only the first republish of a
+   signal is logged at INFO, later ones at DEBUG. The receiver count returned
+   by `PUBLISH` cannot serve as the acknowledgement: Manager itself is
+   subscribed to `schedule_channel`. A `node_update` from Django for the node
+   (`add_schedule` / `remove_schedule`) also drops the pending signal.
 
 The UI shows a warning on the node when `schedule.missed_run_at` is set. A
 once-mode node activated with a start time already more than 30 s in the
 past takes the same path.
+
+### 5.6 Schedule that ended while Manager was down
+
+If a `repeat` node's last fire time before its `end_date_time` passes while
+Manager is down, the node
+is still `is_active=true` when Manager starts. APScheduler's `add_job`
+computes the first run time as `trigger.get_next_fire_time(None, now)`,
+which is `None` for an exhausted trigger, and stores the job **paused**:
+it never fires and no `EVENT_JOB_REMOVED` follows, so §5.4 never runs.
+
+`add_schedule` therefore checks the trigger itself before registering a job
+(the check cannot read `job.next_run_time`: during
+`load_schedules_from_django` the scheduler is not started yet and the run
+time is only computed at start). When the trigger has no fire time left
+before its end — not only when the end itself is past: a weekly schedule
+whose next match is after a future end has none either —
+`_switch_off_ended_schedule`:
+
+1. Removes the node's job if one exists (an update may replace a live job),
+   marked manual so `_on_job_removed` stays silent, and stops tracking it.
+2. Logs a WARNING and publishes `{"action": "deactivate", "node_id": N}`.
+   Django's `ScheduleTriggerService.deactivate_node` sets `is_active=False`
+   (with the stale-signal guard of §5.4 step 3); its `post_save` echo
+   reaches `remove_schedule`. No `missed_run_at` is recorded for repeat
+   schedules.
+3. Keeps the `deactivate` in `_pending_signals` and republishes it the same
+   way as a miss (§5.5 step 4) until the DB shows the node is no longer
+   active, or its schedule has a fire time left again (the user changed it).
+
+A once-mode node never takes this path: a `DateTrigger` returns its run
+date for any `now` on the first call, so a passed once-mode start goes
+through misfire handling (§5.5). A `repeat` node activated with an
+`end_date_time` already in the past is switched off the same way.
+
+`reconcile_schedules_with_db` sees such a node as active without a job and
+calls `add_schedule` for it on every reconcile until Django switches it off;
+while its `deactivate` is pending that only logs at DEBUG — the retry loop
+does the republishing. The reconcile summary counts such a node as "not
+registered", not as "added or replaced".
 
 6. Invariants
 -------------
@@ -448,7 +510,8 @@ past takes the same path.
 - `self.schedule_nodes` in Manager is **the source of truth for currently
   scheduled jobs** from Manager's perspective. It must be kept in sync with
   APScheduler's internal job store: populated by `add_schedule`, drained by
-  `remove_schedule` and `_on_job_removed`.
+  `remove_schedule` and `_on_job_removed`. A node whose schedule has no run
+  left is not in it (§5.6).
 - `_manual_removals` is a **one-shot** set: every flag pushed in must be
   popped on the next matching `EVENT_JOB_REMOVED`. If you add a flag but
   never triggered a removal (e.g. `scheduler.add_job` raised), discard the
@@ -461,6 +524,10 @@ past takes the same path.
   the nested HTTP `schedule` block; changing the flat keys requires
   coordinated changes in both `_flat_schedule_payload` (Django) and
   `ScheduleTriggerNodeRepository.get_all_active_schedule_nodes()` (Manager).
+- Every Manager→Django signal that Manager may repeat must be idempotent and
+  ignore a stale copy on the Django side: `mark_missed` checks the node is
+  still a once-mode node starting at `scheduled_at`, `deactivate_node`
+  checks a repeat node has no fire time left. Both lock the row first.
 - Channel direction is enforced: `node_update` is Django→Manager only,
   `deactivate`, `run_session` and `missed` are Manager→Django only. Django's
   `redis_pubsub` skips its own `node_update` echo; Manager's listener

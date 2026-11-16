@@ -53,22 +53,44 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
             node.next_run_date_time = next_run
         return node
 
+    @transaction.atomic
     def deactivate_node(self, node_id: int) -> None:
-        """Flip is_active=False via .save() so post_save publishes node_update
-        back to Manager — QuerySet.update() would skip the signal and leave
-        Manager unaware via the standard update path.
+        """Switch off a node on Manager's 'deactivate' signal.
+
+        Manager sends it after a once-mode run fired, and for a repeat schedule
+        with no fire time left before its end. It repeats the repeat-mode signal
+        until the node's DB state acknowledges it, so this must be idempotent and
+        must not act on a stale signal: a repeat node whose schedule has a fire
+        time left again (the user extended it after Manager sent the signal) is
+        left untouched. Once-mode nodes are switched off unconditionally. The row
+        lock waits for a concurrent user edit to commit, so that check sees the
+        edit instead of overwriting it.
+
+        Saves via .save() so post_save publishes node_update back to Manager —
+        QuerySet.update() would skip the signal and leave Manager unaware via the
+        standard update path.
         """
-        node = ScheduleTriggerNode.objects.filter(id=node_id).first()
+        node = ScheduleTriggerNode.objects.select_for_update().filter(id=node_id).first()
         if node is None:
-            logger.warning(f"[ScheduleTriggerService] Node {node_id} not found for deactivation")
+            logger.warning("[ScheduleTriggerService] Node {} not found for deactivation", node_id)
             return
         if not node.is_active:
-            logger.info(f"[ScheduleTriggerService] Node {node_id} already inactive")
+            logger.info("[ScheduleTriggerService] Node {} already inactive", node_id)
             return
+        if node.run_mode == ScheduleTriggerNode.RunMode.REPEAT:
+            next_run = self._compute_next_run_date_time(node)
+            if next_run is not None:
+                logger.info(
+                    "[ScheduleTriggerService] Node {}: schedule has a fire time left ({}), "
+                    "ignoring stale deactivate",
+                    node_id,
+                    next_run.isoformat(),
+                )
+                return
         node.is_active = False
         node.next_run_date_time = None
         node.save(update_fields=["is_active", "next_run_date_time", "updated_at"])
-        logger.info(f"[ScheduleTriggerService] Node {node_id} deactivated")
+        logger.info("[ScheduleTriggerService] Node {} deactivated", node_id)
 
     @transaction.atomic
     def mark_missed(self, node_id: int, scheduled_at: datetime) -> None:

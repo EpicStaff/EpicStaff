@@ -9,54 +9,16 @@ reactivates or reconfigures the schedule, and kept on edits that do not touch it
 
 import json
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-import fakeredis
 import pytest
-from django.conf import settings
 
 from tables.models.graph_models import ScheduleTriggerNode
-from tables.services import redis_pubsub
 from tables.services.schedule_trigger_service import ScheduleTriggerService
-from tables.signals import schedule_signals
+from tests.schedule_channel_fixtures import *  # noqa: F401,F403
+from tests.schedule_channel_fixtures import published_messages
 
 MISSED_START = datetime(2026, 11, 10, 9, 0, tzinfo=UTC)
-
-
-@pytest.fixture
-def manager_channel(monkeypatch):
-    """Subscription to what Django publishes for the Manager on the schedule channel."""
-    redis_client = fakeredis.FakeRedis(decode_responses=True)
-    monkeypatch.setattr(
-        schedule_signals, "RedisService", lambda: SimpleNamespace(redis_client=redis_client)
-    )
-    subscription = redis_client.pubsub()
-    subscription.subscribe(settings.SCHEDULE_CHANNEL)
-    # Consume the subscribe confirmation so only published messages remain.
-    subscription.get_message(timeout=1)
-    yield subscription
-    subscription.close()
-
-
-def _published(subscription) -> list[dict]:
-    messages = []
-    while (message := subscription.get_message(timeout=0.05)) is not None:
-        messages.append(json.loads(message["data"]))
-    return messages
-
-
-@pytest.fixture
-def schedule_pubsub(monkeypatch):
-    monkeypatch.setattr(
-        redis_pubsub.RedisPubSub,
-        "_create_redis_client",
-        lambda self: fakeredis.FakeRedis(decode_responses=True),
-    )
-    # The handler calls close_old_connections(), which would drop the test's
-    # transactional DB connection.
-    monkeypatch.setattr(redis_pubsub, "close_old_connections", lambda: None)
-    yield redis_pubsub.RedisPubSub()
 
 
 def _active_once_node(graph, start=MISSED_START, **overrides) -> ScheduleTriggerNode:
@@ -91,7 +53,7 @@ def test_missed_run_switches_the_node_off_and_records_when_it_was_due(
     assert node.next_run_date_time is None
     assert node.missed_run_at == MISSED_START
     # The Manager learns the node is off through the usual node_update echo.
-    published = _published(manager_channel)
+    published = published_messages(manager_channel)
     assert [
         (message["data"]["action"], message["data"]["node"]["id"]) for message in published
     ] == [("update", node.id)]
@@ -142,14 +104,14 @@ def test_missed_signal_for_a_run_the_node_no_longer_has_changes_nothing(
         ScheduleTriggerService().mark_missed(node.id, MISSED_START)
 
     assert ScheduleTriggerNode.objects.values().get(pk=node.pk) == before
-    assert _published(manager_channel) == []
+    assert published_messages(manager_channel) == []
 
 
 @pytest.mark.django_db
 def test_missed_signal_for_an_unknown_node_is_ignored(manager_channel):
     ScheduleTriggerService().mark_missed(999_999, MISSED_START)
 
-    assert _published(manager_channel) == []
+    assert published_messages(manager_channel) == []
 
 
 @pytest.mark.django_db

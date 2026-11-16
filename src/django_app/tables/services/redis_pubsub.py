@@ -487,8 +487,10 @@ class RedisPubSub:
           - 'run_session' → start a session via ScheduleTriggerService
             (guard checks + run_session + increment_runs — all atomic)
           - 'deactivate'  → set is_active=False (published by Manager after a
-            once-mode fire or when APScheduler auto-removes a job, e.g. when
-            end_date is reached)
+            once-mode fire, and for a repeat schedule with no fire time left
+            before its end; Manager repeats the latter until the DB shows it
+            applied, so a repeat node whose schedule has a fire time left again
+            ignores it as stale)
           - 'missed'      → set is_active=False and record missed_run_at
             (published by Manager when a once-mode run time passed while the
             scheduler was not running, so the run was skipped)
