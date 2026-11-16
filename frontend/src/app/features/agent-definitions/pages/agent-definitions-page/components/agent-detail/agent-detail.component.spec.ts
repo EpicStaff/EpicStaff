@@ -268,6 +268,13 @@ describe('AgentDetailComponent Create Agent tour anchors', () => {
         expect(labelOf(host, CREATE_AGENT_TOUR_ANCHORS.agentName)).toContain('Agent Name');
     });
 
+    it('puts the cursor in the name field when creating', async () => {
+        const host = render({ agent: null, isCreating: true });
+        await new Promise((resolve) => setTimeout(resolve));
+
+        expect(document.activeElement).toBe(host.querySelector('input[aria-label="Agent Name"]'));
+    });
+
     it("leaves a saved agent's name field unmarked: the tour must not take it for the draft's", () => {
         const host = render({ agent: AGENT, isCreating: false });
 
