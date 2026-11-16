@@ -7,8 +7,10 @@
 # bytes in KNOWLEDGE_ARCHIVE_MAX_BYTES. A value Django would refuse, none (Django refuses it for
 # this setting), and 0 or a negative number (no cap, to nginx) stop the container (exit 64).
 knowledge_archive_size=$(printf '%s' "${DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE-}" \
-  | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+  | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+# Units in any case: awk lower-cases the value before matching it.
 knowledge_archive_bytes=$(printf '%s\n' "$knowledge_archive_size" | awk '
+  { $0 = tolower($0) }
   /^[+]?[0-9]+(_[0-9]+)*$/ { gsub(/[+_]/, ""); printf "%.0f", $0; exit }
   match($0, /^[0-9]+(\.[0-9]+)?[[:space:]]*/) {
     number = substr($0, 1, RLENGTH)
