@@ -381,6 +381,9 @@ jobs:
       - name: Test the checker
         run: python3 .github/scripts/test_check_env_conventions.py
 
+      - name: Test the deploy script
+        run: python3 .github/scripts/test_deploy.py
+
       - name: Environment variable conventions
         run: python3 .github/scripts/check_env_conventions.py
 
