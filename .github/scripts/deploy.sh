@@ -30,6 +30,9 @@ env_bool() {
 
 # Set per server in the self-hosted runner's .env (e.g. APP_DIR=/opt/EpicStaff).
 APP_DIR="${APP_DIR:?APP_DIR is not set: add it to the .env of the self-hosted runner}"
+# Optional systemd slice (e.g. epicstaff-dev.slice): every container of this deploy runs in it,
+# so the slice's CPU and memory ceiling caps the instance as a whole.
+EPICSTAFF_SLICE=${EPICSTAFF_SLICE:-}
 COMPOSE_DIR="$APP_DIR/src"
 COMPOSE_FILE="docker-compose.yaml"
 NUKE_DB=${NUKE_DB:-false}
@@ -64,6 +67,21 @@ fi
 # With chat on, set CHAT_PUBLIC_BASE_URL in deploy.env too: its dev default is http://localhost.
 DC="docker compose --env-file .env --env-file deploy.env -f $COMPOSE_FILE"
 
+if [ -n "$EPICSTAFF_SLICE" ]; then
+  # Generated from the service list on every deploy, so a new service is capped without editing anything.
+  SLICE_OVERRIDE=$(mktemp --suffix=.json)
+  trap 'rm -f "$SLICE_OVERRIDE"' EXIT
+  $DC config --services | python3 -c 'import json, sys; print(json.dumps({"services": {service: {"cgroup_parent": sys.argv[1]} for service in sys.stdin.read().split()}}))' "$EPICSTAFF_SLICE" > "$SLICE_OVERRIDE"
+  DC="$DC -f $SLICE_OVERRIDE"
+  echo ">> containers run in $EPICSTAFF_SLICE"
+fi
+
+# Names as compose resolves them (INSTANCE_PREFIX applied), so a reset never touches another
+# instance's volumes on a shared host.
+VOLUMES_JSON=$($DC config --format json)
+EXTERNAL_VOLUMES=$(printf '%s' "$VOLUMES_JSON" | python3 -c 'import json, sys; print("\n".join(volume["name"] for volume in json.load(sys.stdin).get("volumes", {}).values() if volume.get("external")))')
+CREW_PGDATA_VOLUME=$(printf '%s' "$VOLUMES_JSON" | python3 -c 'import json, sys; print(json.load(sys.stdin)["volumes"]["crew_pgdata"]["name"])')
+
 echo ">> docker compose down"
 $DC down --remove-orphans
 
@@ -72,8 +90,8 @@ if [ "$nuke_db" = true ]; then
   if [ -f "./nuke_db.sh" ]; then
     bash ./nuke_db.sh
   else
-    docker volume rm crew_pgdata || true
-    docker volume create crew_pgdata
+    docker volume rm "$CREW_PGDATA_VOLUME" || true
+    docker volume create "$CREW_PGDATA_VOLUME"
   fi
 else
   echo ">> Skipping database reset (data preserved)."
@@ -85,12 +103,14 @@ $DC pull
 failed=0
 
 echo ">> ensuring external volumes exist"
-docker volume inspect opensearch_data >/dev/null 2>&1 || docker volume create opensearch_data
+for volume in $EXTERNAL_VOLUMES; do
+  docker volume inspect "$volume" >/dev/null 2>&1 || docker volume create "$volume"
+done
 
 echo ">> docker compose up"
 $DC up -d --remove-orphans || failed=1
 
-sleep 60
+sleep "${DEPLOY_SETTLE_SECONDS:-60}"
 
 echo ">> checking for crashed containers"
 # A crash-looping container (restart: always) is "restarting", not "exited", and a
