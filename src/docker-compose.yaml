@@ -980,8 +980,6 @@ services:
 
   knowledge_new:
     <<: *hardened
-    tmpfs:
-      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     container_name: ${INSTANCE_PREFIX?}knowledge_new
@@ -989,6 +987,10 @@ services:
     build:
       context: .
       dockerfile: ./knowledge_new/Dockerfile
+    volumes:
+      # On disk, not tmpfs: a GraphRAG index import spools its whole archive here (up to
+      # DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE) and unpacks its document tables to rewrite them.
+      - knowledge_new_tmp:/tmp
     networks:
       - backend-network
     depends_on:
@@ -1386,6 +1388,7 @@ volumes:
   chat_pgdata: {}
   plugin_spa: {}
   django_app_tmp: {}
+  knowledge_new_tmp: {}
   es_plugins_data: {}
   plugins_pgdata: {}
   plugin_egress_policy: {}
