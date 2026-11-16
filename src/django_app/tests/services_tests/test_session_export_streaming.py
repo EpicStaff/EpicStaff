@@ -141,7 +141,11 @@ def test_queries_do_not_grow_with_the_number_of_sessions(
     many_queries = _exported_queries(exporter, acme, many, export_format)
 
     assert many_queries == few_queries
-    assert few_queries <= 20
+    # Starting the job (6); running it (9: claim, reload, two permission re-checks of two
+    # queries each, selection count, finish, older-archive rotation); reading the sessions
+    # (6: root ids, three levels of sub-sessions, the sessions, the message cursor); and the
+    # test's reload of the finished job (1).
+    assert few_queries <= 22
 
 
 def test_json_export_holds_every_sub_session_after_its_parent_tree(exporter, acme, flow, subflow):

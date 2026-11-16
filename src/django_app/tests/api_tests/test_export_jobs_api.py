@@ -19,6 +19,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from rbac.models.enums import Permission, ResourceType
+from rest_framework_simplejwt.tokens import AccessToken
 from tables.models import (
     ClassificationDecisionTableNode,
     Graph,
@@ -244,8 +245,6 @@ def test_an_export_job_is_queued_with_its_request_and_name(
         acme.id,
         exporter.id,
     )
-    # Started from a session, not with an API key.
-    assert job.api_key_id is None
     assert job.request == stored_request
     assert job.display_name == display_name
     assert enqueued == [job.id]
@@ -518,6 +517,31 @@ def test_an_export_job_started_with_a_user_api_key_keeps_the_key(
     assert response.status_code == 202, response.content
     job = TransferJob.objects.get(pk=response.json()["job_id"])
     assert (job.created_by_id, job.api_key_id) == (exporter.id, api_key.id)
+
+
+@pytest.mark.parametrize(
+    "make_case",
+    [
+        pytest.param(_python_tool_case, id="export-jobs action"),
+        pytest.param(_flow_nodes_case, id="flow partial-export-jobs action"),
+    ],
+)
+def test_an_export_job_started_with_a_jwt_keeps_no_api_key(
+    api_client, exporter, acme, enqueued, make_case
+):
+    # A real bearer token, not force_authenticate: the request's auth is then the
+    # access token, which must not be stored as the job's API key.
+    url, body, _stored_request, _display_name = make_case(acme, exporter)
+    api_client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(exporter)}",
+        HTTP_X_ORGANIZATION_ID=str(acme.id),
+    )
+
+    response = api_client.post(url, body, format="json")
+
+    assert response.status_code == 202, response.content
+    job = TransferJob.objects.get(pk=response.json()["job_id"])
+    assert (job.created_by_id, job.api_key_id) == (exporter.id, None)
 
 
 def test_a_system_api_key_is_refused_before_any_session_is_selected(
