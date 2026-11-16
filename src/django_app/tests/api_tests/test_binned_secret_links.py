@@ -25,6 +25,7 @@ from tests.api_tests.test_secret_use_fk_fields import (  # noqa: F401  -- fixtur
     realtime_config_pointing_at_secret_a,
     realtime_transcription_config_pointing_at_secret_a,
     secret_b,
+    system_one_config_pointing_at_secret_a,
     telegram_trigger_node_pointing_at_secret_a,
     twilio_channel_pointing_at_secret_a,
 )

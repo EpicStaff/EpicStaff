@@ -25,7 +25,7 @@ import { SelectComponent } from '../select/select.component';
 import { SelectTriggerDirective } from '../select/select-trigger.directive';
 import { AppTableActionVariant, AppTableColumnDef, AppTableRowAction, TableRow } from './table.model';
 import { AppTableCellDirective } from './table-cell.directive';
-import { fitColumnWidths } from './table-fit-columns';
+import { distributeWidths, fitColumnWidths, WidthClaim } from './table-fit-columns';
 import {
     clampColumnWidth,
     MAX_COLUMN_WIDTH,
@@ -37,6 +37,21 @@ import {
 
 const CHECKBOX_COLUMN_WIDTH = '2rem';
 const RESIZE_KEYBOARD_STEP = 16;
+/**
+ * From this many shown columns besides the end-pinned ones (the checkbox column not counted) the columns are
+ * resizable. With fewer, the first one fills the width the end-pinned ones leave, so there is nothing to resize.
+ */
+const MIN_RESIZABLE_COLUMN_COUNT = 2;
+/** Widest share of the table's visible width a resizable column takes, so the other columns stay in reach. */
+const MAX_COLUMN_SHARE = 0.5;
+/**
+ * A track that takes a share of the spare width: `<n>fr` (captures n), or `minmax(<min>, <n>fr)` with a px, rem or em
+ * min (captures min and n). A bare `<n>fr` gets MIN_COLUMN_WIDTH as its minimum. Other `fr` forms are left to the grid
+ * and are not held to the cap.
+ */
+const FLEXIBLE_TRACK = /^(?:(\d*\.?\d+)fr|minmax\(\s*(\d*\.?\d+(?:px|rem|em))\s*,\s*(\d*\.?\d+)fr\s*\))$/;
+/** The browsers' default font size, for when none can be read. */
+const DEFAULT_FONT_SIZE = 16;
 /** An end-pinned column with this width is as wide as its widest cell. */
 const CONTENT_SIZED_WIDTH = 'max-content';
 /** A width that neither grows nor shrinks with the table, e.g. '200px' or '2rem'. */
@@ -106,9 +121,12 @@ export class AppTableComponent {
     hasExternalFilter = input<boolean>(false);
     /**
      * Opts in to user-customized columns: every column that isn't `pinned` can be hidden (through an
-     * `<app-table-column-picker>`), and every column but an end-pinned one resized by dragging its header edge. The
-     * choices are kept in localStorage under this key, so give each table its own. `null` (default) keeps the columns
-     * as defined.
+     * `<app-table-column-picker>`), and every column but an end-pinned one resized by dragging its header edge, while
+     * two or more columns show besides the end-pinned ones. Each resizable column is held to half the table's visible
+     * width (only the column that fills the spare width stretches past it, when nothing else needs the space); the cap
+     * is per column, not for the pinned columns together.
+     * The choices are kept in localStorage under this key, so give each table its own. `null` (default) keeps the
+     * columns as defined.
      */
     layoutKey = input<string | null>(null);
 
@@ -125,7 +143,6 @@ export class AppTableComponent {
     private readonly tableHeader = viewChild<ElementRef<HTMLElement>>('tableHeader');
 
     protected readonly minColumnWidth = MIN_COLUMN_WIDTH;
-    protected readonly maxColumnWidth = MAX_COLUMN_WIDTH;
     protected readonly resizeHandleTooltip = 'Drag to resize. Double-click to fit all columns to the screen.';
 
     private readonly selectedIds = signal<Set<unknown>>(new Set());
@@ -136,6 +153,11 @@ export class AppTableComponent {
     private readonly layout = linkedSignal<TableLayout>(() => readTableLayout(this.layoutKey()));
     /** Rendered px width of each resizable column, kept current by a ResizeObserver. */
     private readonly renderedWidths = signal<Record<string, number>>({});
+    /**
+     * The wrapper's clientWidth, kept current by a ResizeObserver: the visible width of the table, not its scrollable
+     * one, so widening a column does not raise the cap it is held to. 0 until measured.
+     */
+    private readonly containerWidth = signal(0);
     private readonly horizontalScroll = signal<HorizontalScroll>({
         scrollLeft: 0,
         overflow: 0,
@@ -170,6 +192,50 @@ export class AppTableComponent {
     readonly hideableColumns = computed<AppTableColumnDef[]>(() =>
         this.customizable() ? this.columns().filter((col) => this.isHideable(col)) : []
     );
+
+    /**
+     * Columns resize only in a customizable table showing two or more columns besides the end-pinned ones. With
+     * fewer, stored widths are not applied either: the first column fills the width beside the end-pinned ones, which
+     * keep their own.
+     */
+    private readonly resizeEnabled = computed(
+        () =>
+            this.customizable() &&
+            this.displayedColumns().filter((col) => col.pinned !== 'end').length >= MIN_RESIZABLE_COLUMN_COUNT
+    );
+
+    /** Widest a resizable column renders, by drag, keyboard, fit, from storage or as its share of the spare width. */
+    protected readonly maxColumnWidth = computed(() => this.columnWidthCap(this.containerWidth()));
+
+    /** The cap holds once the table's visible width is measured, and only while its columns are resizable. */
+    private readonly capApplies = computed(() => this.resizeEnabled() && this.containerWidth() > 0);
+
+    /**
+     * While the cap applies, the px width of each column whose track takes an `fr` share (see FLEXIBLE_TRACK): sized
+     * the way CSS sizes `fr` tracks, by weight from the visible width less every other track, never under the track's
+     * minimum, but held to the cap. CSS allows no `fr` inside `min()`, so the grid can't do it itself. Below the cap
+     * the columns keep the proportions their `fr` weights give them. Reads the definitions, the stored widths and the
+     * measured visible width, never the rendered column widths, so rendering the result can't feed back into it.
+     */
+    private readonly flexibleWidths = computed<Record<string, number>>(() => {
+        const wrapper = this.wrapper()?.nativeElement;
+        if (!this.capApplies() || !wrapper) return {};
+        const claims: (WidthClaim & { key: string })[] = [];
+        let fixedWidth = this.selectable() ? this.lengthInPx(CHECKBOX_COLUMN_WIDTH, wrapper) : 0;
+        for (const col of this.displayedColumns()) {
+            const track = col.pinned === 'end' ? this.endPinnedWidth(col) : this.definedTrack(col);
+            const flexible = col.pinned === 'end' ? null : FLEXIBLE_TRACK.exec(track);
+            if (flexible) {
+                const min = flexible[2] ? Math.ceil(this.lengthInPx(flexible[2], wrapper)) : MIN_COLUMN_WIDTH;
+                claims.push({ key: col.key, base: 0, min, weight: Number(flexible[1] ?? flexible[3]) });
+            } else {
+                fixedWidth += this.lengthInPx(track, wrapper);
+            }
+        }
+        const available = Math.floor(this.containerWidth() - fixedWidth);
+        const widths = distributeWidths(claims, available, this.maxColumnWidth());
+        return Object.fromEntries(claims.map((claim, index) => [claim.key, widths[index]]));
+    });
 
     readonly visibleHideableKeys = computed<string[]>(() =>
         this.displayedColumns()
@@ -290,6 +356,17 @@ export class AppTableComponent {
                 })
             );
             keyByCell.forEach((_key, cell) => observer.observe(cell));
+            onCleanup(() => observer.disconnect());
+        });
+
+        // The column width cap follows the table's visible width, which changes with the window.
+        effect((onCleanup) => {
+            const wrapper = this.wrapper()?.nativeElement;
+            if (!wrapper || !this.customizable() || typeof ResizeObserver === 'undefined') return;
+            // Measured now as well, so a stored width never paints a first frame above the cap.
+            this.containerWidth.set(wrapper.clientWidth);
+            const observer = new ResizeObserver(() => this.containerWidth.set(wrapper.clientWidth));
+            observer.observe(wrapper);
             onCleanup(() => observer.disconnect());
         });
 
@@ -423,17 +500,24 @@ export class AppTableComponent {
         if (this.selectable()) cols.push(CHECKBOX_COLUMN_WIDTH);
         const columns = this.displayedColumns();
         const filler = this.fillerColumn();
-        const tracks = columns.map((col) =>
-            col.pinned === 'end' ? this.endPinnedWidth(col) : (this.resizedWidth(col) ?? col.width ?? '1fr')
-        );
-        // Only once the user has sized the other columns: until then the space is shared out as defined.
-        const othersFixed = columns.every(
-            (col) =>
-                col === filler ||
-                col.pinned === 'end' ||
-                this.resizedWidth(col) !== undefined ||
-                (col.pinned === 'start' && FIXED_LENGTH.test(col.width ?? ''))
-        );
+        const flexibleWidths = this.flexibleWidths();
+        const tracks = columns.map((col) => {
+            if (col.pinned === 'end') return this.endPinnedWidth(col);
+            const flexibleWidth = flexibleWidths[col.key];
+            return flexibleWidth === undefined ? this.definedTrack(col) : `${flexibleWidth}px`;
+        });
+        // Only once the user has sized the other columns: until then the space is shared out as defined. Under the cap
+        // the `fr` shares are already worked out in px, so the filler takes what is left: the px lost to rounding, or
+        // the width every capped column leaves.
+        const othersFixed =
+            this.capApplies() ||
+            columns.every(
+                (col) =>
+                    col === filler ||
+                    col.pinned === 'end' ||
+                    this.resizedWidth(col) !== undefined ||
+                    (col.pinned === 'start' && FIXED_LENGTH.test(col.width ?? ''))
+            );
         columns.forEach((col, index) => {
             const track = tracks[index];
             cols.push(col === filler && othersFixed && FIXED_LENGTH.test(track) ? `minmax(${track}, 1fr)` : track);
@@ -471,7 +555,7 @@ export class AppTableComponent {
 
     /** A start-pinned column stays sticky while resized; an end-pinned one keeps its width. */
     isResizable(col: AppTableColumnDef): boolean {
-        return this.customizable() && col.pinned !== 'end';
+        return this.resizeEnabled() && col.pinned !== 'end';
     }
 
     onWrapperScroll(): void {
@@ -526,12 +610,14 @@ export class AppTableComponent {
     }
 
     /**
-     * The px width a column's resize separator reports: the stored one, else the rendered one; null until known. The
-     * filler column may render wider than stored, so its rendered width comes first.
+     * The px width a column's resize separator reports: the stored one, else the rendered one, either held to the cap;
+     * null until known. The filler column may render wider than stored, so its rendered width comes first.
      */
     columnWidth(key: string): number | null {
-        const stored = this.layout().widths[key];
-        const rendered = this.renderedWidths()[key];
+        const maxWidth = this.maxColumnWidth();
+        const capped = (width: number | undefined) => (width === undefined ? undefined : Math.min(width, maxWidth));
+        const stored = capped(this.layout().widths[key]);
+        const rendered = capped(this.renderedWidths()[key]);
         return (this.fillerColumn()?.key === key ? (rendered ?? stored) : (stored ?? rendered)) ?? null;
     }
 
@@ -603,11 +689,12 @@ export class AppTableComponent {
             ...columns.map((col, index) => (col.pinned === 'end' ? header[index] : null)),
         ].reduce((sum, cell) => sum + (cell?.getBoundingClientRect().width ?? 0), 0);
         const contentWidths = this.measureContentWidths(rows, resizableIndexes);
-        const fitted = fitColumnWidths(contentWidths, wrapper.clientWidth - fixedWidth);
+        const maxWidth = this.columnWidthCap(wrapper.clientWidth);
+        const fitted = fitColumnWidths(contentWidths, wrapper.clientWidth - fixedWidth, maxWidth);
         const widths = Object.fromEntries(
             resizableIndexes.map((columnIndex, position) => [
                 columns[columnIndex].key,
-                clampColumnWidth(fitted[position]),
+                clampColumnWidth(fitted[position], maxWidth),
             ])
         );
         this.layout.update((layout) => ({ ...layout, widths: { ...layout.widths, ...widths } }));
@@ -742,10 +829,37 @@ export class AppTableComponent {
         if (Object.keys(next).some((key) => next[key] !== current[key])) this.contentSizedWidths.set(next);
     }
 
-    /** The stored px width of a resized column, as a grid track; end-pinned columns are never resized. */
+    /**
+     * The stored px width of a resized column, held to the cap, as a grid track. The cap applies on render rather than
+     * to the stored value, so a width stored in a wider window comes back when the window grows again. End-pinned
+     * columns are never resized, and no stored width applies while the table shows too few columns to resize.
+     */
     private resizedWidth(col: AppTableColumnDef): string | undefined {
-        const width = col.pinned === 'end' ? undefined : this.layout().widths[col.key];
-        return width ? `${width}px` : undefined;
+        const width = this.isResizable(col) ? this.layout().widths[col.key] : undefined;
+        return width ? `${Math.min(width, this.maxColumnWidth())}px` : undefined;
+    }
+
+    /**
+     * Half the table's visible width, never under MIN_COLUMN_WIDTH nor over MAX_COLUMN_WIDTH; MAX_COLUMN_WIDTH while the
+     * width is not measured yet.
+     */
+    private columnWidthCap(containerWidth: number): number {
+        if (containerWidth <= 0) return MAX_COLUMN_WIDTH;
+        return clampColumnWidth(Math.floor(containerWidth * MAX_COLUMN_SHARE));
+    }
+
+    /** The grid track of a column that is not end-pinned, before the cap: its stored width, else its defined one. */
+    private definedTrack(col: AppTableColumnDef): string {
+        return this.resizedWidth(col) ?? col.width ?? '1fr';
+    }
+
+    /** A px, rem or em length in px; 0 for anything else (`auto`, an unmeasured `max-content`), which claims no width. */
+    private lengthInPx(length: string, element: HTMLElement): number {
+        const unit = FIXED_LENGTH.exec(length)?.[1];
+        if (!unit) return 0;
+        const fontSizeOf = (target: Element) => parseFloat(getComputedStyle(target).fontSize) || DEFAULT_FONT_SIZE;
+        const factor = unit === 'px' ? 1 : fontSizeOf(unit === 'rem' ? element.ownerDocument.documentElement : element);
+        return parseFloat(length) * factor;
     }
 
     private measureHorizontalScroll(): void {
@@ -775,7 +889,7 @@ export class AppTableComponent {
     }
 
     private setColumnWidth(key: string, width: number): void {
-        const clamped = clampColumnWidth(width);
+        const clamped = clampColumnWidth(width, this.maxColumnWidth());
         this.layout.update((layout) => ({ ...layout, widths: { ...layout.widths, [key]: clamped } }));
     }
 
@@ -791,14 +905,15 @@ export class AppTableComponent {
      */
     private freezeColumnWidths(fixFiller: boolean): void {
         const rendered = this.renderedWidths();
+        const maxWidth = this.maxColumnWidth();
         const fillerKey = this.fillerColumn()?.key;
         const frozenKeys = this.displayedColumns()
             .filter((col) => !col.pinned && col.key !== fillerKey && rendered[col.key] !== undefined)
             .map((col) => col.key);
-        const frozen = Object.fromEntries(frozenKeys.map((key) => [key, clampColumnWidth(rendered[key])]));
+        const frozen = Object.fromEntries(frozenKeys.map((key) => [key, clampColumnWidth(rendered[key], maxWidth)]));
         const filler =
             fixFiller && fillerKey && rendered[fillerKey] !== undefined
-                ? { [fillerKey]: clampColumnWidth(rendered[fillerKey]) }
+                ? { [fillerKey]: clampColumnWidth(rendered[fillerKey], maxWidth) }
                 : {};
         this.layout.update((layout) => ({ ...layout, widths: { ...frozen, ...layout.widths, ...filler } }));
     }

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, LlmLibraryModel, ResourceCode } from '@shared/models';
 
 import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
@@ -17,6 +17,7 @@ export interface LlmLibraryCardViewDetailsEvent {
     imports: [
         MatTooltipModule,
         HasPermissionDirective,
+        TooltipOnOverflowDirective,
         AppSvgIconComponent,
         CheckboxComponent,
         ConfigCardMoreMenuComponent,

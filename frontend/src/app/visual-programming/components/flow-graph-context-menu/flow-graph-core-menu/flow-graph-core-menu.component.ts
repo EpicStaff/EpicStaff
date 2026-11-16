@@ -69,7 +69,7 @@ const MAC_KEY_GAP = '\u2009';
                                         aria-label="Place note with selected area"
                                         matTooltip="Place note with selected area"
                                         matTooltipPosition="right"
-                                        (click)="onAreaNoteClicked()"
+                                        (click)="$event.stopPropagation(); onAreaNoteClicked()"
                                     >
                                         <i
                                             class="ti ti-capture"

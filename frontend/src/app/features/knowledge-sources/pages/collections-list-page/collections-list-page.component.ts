@@ -1,10 +1,12 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
 import { FetchErrorStateComponent, SpinnerComponent } from '@shared/components';
 import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { SidebarWidthService } from '@shared/services';
+import { takeQueryParams } from '@shared/utils';
 import { finalize, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
@@ -36,6 +38,11 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
     private pollingService = inject(KnowledgeSourcesPollingService);
     private deepLinkService = inject(ChunkDeepLinkService);
     private toastService = inject(ToastService);
+    private readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
+    // `?collection=&rag=`, taken from the URL at init and applied after the first load. A chunk link (all four params)
+    // opens its own way and leaves them in the URL.
+    private collectionLink: Partial<Record<'collection' | 'rag', string>> = {};
 
     isLoading = signal<boolean>(true);
     error = signal<string | null>(null);
@@ -46,6 +53,9 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
 
     ngOnInit(): void {
         this.deepLinkService.initFromUrl();
+        if (this.deepLinkService.pending() === null) {
+            this.collectionLink = takeQueryParams(this.route, this.router, ['collection', 'rag']);
+        }
         this.getCollections();
         this.pollingService.startPagePolling();
     }
@@ -62,12 +72,15 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
             .getCollections(true)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                finalize(() => {
-                    this.isLoading.set(false);
-                    this.handleDeepLink();
-                })
+                finalize(() => this.isLoading.set(false))
             )
             .subscribe({
+                // Links are followed only once the list has loaded: never after a failed load, nor after the page was
+                // left mid-load (when `finalize` still runs).
+                next: () => {
+                    this.handleDeepLink();
+                    this.applyCollectionLink();
+                },
                 error: () => this.error.set('Failed to load knowledge sources.'),
             });
     }
@@ -122,6 +135,31 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
                     this.deepLinkService.consume();
                     this.deepLinkService.clearUrl();
                 },
+            });
+    }
+
+    /** `?collection=` selects that collection; `&rag=` also opens that naive RAG's configuration. Unknown ids are ignored. */
+    private applyCollectionLink(): void {
+        const { collection, rag } = this.collectionLink;
+        this.collectionLink = {};
+        const collectionId = Number(collection);
+        if (!this.collections().some((candidate) => candidate.collection_id === collectionId)) return;
+        this.collectionsStorageService.setSelectedCollectionId(collectionId);
+        if (rag == null) return;
+        const ragId = Number(rag);
+        this.collectionsStorageService
+            .getFullCollection(collectionId)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (fullCollection) => {
+                    // Naive and graph RAG ids are separate sequences: only a naive RAG of this collection opens.
+                    const isNaiveRag = fullCollection?.rag_configurations.some(
+                        (config) => config.rag_id === ragId && config.rag_type === 'naive'
+                    );
+                    if (isNaiveRag) this.openDeepLinkDialog(collectionId, ragId);
+                },
+                // The collection stays selected; its own pane reports a failed load.
+                error: () => undefined,
             });
     }
 

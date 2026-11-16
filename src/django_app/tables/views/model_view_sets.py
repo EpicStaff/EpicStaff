@@ -69,11 +69,11 @@ from rest_framework.exceptions import (
 from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
 )
-from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from src.shared.models import UserAction
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.constants.decision_table_constants import (
     CONDITION_GROUP_INPUT_FIELDS,
@@ -140,7 +140,7 @@ from tables.models import (
     SubGraphNode,
     TaskNode,
 )
-from tables.models.audit_filter_preset_models import AuditFilterPreset
+from tables.models.audit_filter_preset_models import AuditFilterPreset, AuditPresetDomain
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.flow_filter_preset_models import FlowFilterPreset
 from tables.models.graph_models import (
@@ -338,6 +338,7 @@ from tables.services.twilio_service import TwilioService, TwilioServiceError
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.swagger_schemas.audit_filter_preset_schemas import (
     AUDIT_FILTER_PRESET_COPY,
+    AUDIT_FILTER_PRESET_DOMAIN,
     AUDIT_FILTER_PRESET_EXPORT_ALL,
     AUDIT_FILTER_PRESET_EXPORT_ONE,
     AUDIT_FILTER_PRESET_IMPORT,
@@ -422,7 +423,11 @@ from tables.views.secret_use import (
     SecretUseCheckedViewSetMixin,
 )
 from tables.views.storage_grants import StorageGrantCheckedViewSetMixin
+from user_audit.context import mark_request_handled
+from user_audit.read_only import not_a_user_change, reads_only
+from user_audit.recorder import record_copy, record_user_action
 from utils.logger import logger
+from utils.pagination import DefaultLimitOffsetPagination
 
 redis_service = RedisService()
 
@@ -770,6 +775,8 @@ class PythonCodeToolViewSet(
         if not body.is_valid():
             return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
         ids = body.validated_data["ids"]
+        # Each binned tool records itself; a request that binned none records nothing.
+        mark_request_handled()
 
         with transaction.atomic():
             # Built-in tools are silently excluded, never rejected — they are
@@ -789,6 +796,7 @@ class PythonCodeToolViewSet(
 
     @extend_schema(**PYTHON_CODE_TOOL_USAGE_POST)
     @action(detail=False, methods=["post"], url_path="usage")
+    @reads_only
     def usage(self, request):
         return self._usage_response(request, PythonCodeTool)
 
@@ -806,6 +814,7 @@ class PythonCodeToolViewSet(
 
     @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
     @action(detail=False, methods=["post"], url_path="bulk-export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1030,6 +1039,7 @@ class GraphViewSet(
         )
 
     @action(detail=False, methods=["post"], url_path="bulk-export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1050,6 +1060,7 @@ class GraphViewSet(
 
     @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
     @action(detail=True, methods=["post"], url_path="partial-export")
+    @reads_only
     def partial_export(self, request, pk=None):
         serializer = GraphNodesPartialExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1374,6 +1385,9 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     bulk_delete=extend_schema(**GRAPH_VERSION_BULK_DELETE_POST),
 )
 class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet):
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = GraphVersion.objects.none()
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -1417,6 +1431,9 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
             name=write_serializer.validated_data["name"],
             description=write_serializer.validated_data.get("description", ""),
         )
+        # Recorded here, not in the service: a restore's backup version and an imported
+        # flow's version are part of the restore or import that request records.
+        record_user_action(action=UserAction.CREATED, org_id=graph.org_id, target=version)
 
         return Response(
             GraphVersionReadSerializer(version).data,
@@ -1873,6 +1890,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         url_path="end",
         permission_classes=[IsSystemApiKeyAuthenticated],
     )
+    @not_a_user_change
     def end(self, request):
         """Mark a RealtimeAgentChat as ended.
 
@@ -2478,6 +2496,7 @@ class ClassificationDecisionTableNodeModelViewSet(
         ),
     )
     @action(detail=True, methods=["post"], url_path="explain")
+    @reads_only
     def explain(self, request, pk=None):
         serializer = CdtExplainRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -2639,6 +2658,8 @@ class McpToolViewSet(
         if not body.is_valid():
             return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
         ids = body.validated_data["ids"]
+        # Each binned tool records itself; a request that binned none records nothing.
+        mark_request_handled()
 
         with transaction.atomic():
             # McpTool has no built-in concept — every matching id is deletable.
@@ -2651,6 +2672,7 @@ class McpToolViewSet(
 
     @extend_schema(**MCP_TOOL_USAGE_POST)
     @action(detail=False, methods=["post"], url_path="usage")
+    @reads_only
     def usage(self, request):
         return self._usage_response(request, McpTool)
 
@@ -2668,6 +2690,7 @@ class McpToolViewSet(
 
     @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
     @action(detail=False, methods=["post"], url_path="bulk-export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -3054,6 +3077,7 @@ class SecretViewSet(
         return Response(secret_usage_service.summary(secret=secret, effective=effective))
 
 
+@extend_schema(**AUDIT_FILTER_PRESET_DOMAIN)
 class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     """
     Saved audit-search filters of the active org, each private to its author
@@ -3065,17 +3089,25 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     The author may share a preset (`is_shared: true`); un-sharing is rejected
     by the serializer.
 
-    Gated entirely on AUDIT:read, same as browsing itself - presets are a
+    Every request works on one audit domain, `?domain=` (default `sessions`,
+    anything else but `user_actions` is a 400 before any row is read): it
+    lists, creates, copies, exports and imports only that domain's presets.
+
+    Gated entirely on the domain's own read bit - AUDIT:read for sessions,
+    USER_AUDIT:read for user_actions, same as browsing each tab - presets are a
     convenience over audit data, not audit data itself, so every action
     (including create/update/destroy/copy/export/import) maps to READ rather
     than the CREATE/UPDATE/DELETE bits DEFAULT_ACTION_MAP would otherwise
-    require - which were never granted for the `audit` resource type (see
+    require - which were never granted for either audit resource type (see
     rbac/access/builtin_roles.json: Org Admin only has READ+EXPORT).
     """
 
     # Presets belong to a person, so a plugin service account never reaches them.
     permission_classes = [IsAuthenticated, DenyPluginCredential, HasOrgPermission]
-    rbac_resource_type = ResourceType.AUDIT
+    _domain_resource_types = {
+        AuditPresetDomain.SESSIONS: ResourceType.AUDIT,
+        AuditPresetDomain.USER_ACTIONS: ResourceType.USER_AUDIT,
+    }
     rbac_action_map = {
         "list": Permission.READ,
         "retrieve": Permission.READ,
@@ -3106,8 +3138,26 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
     _author_only_actions = frozenset({"update", "partial_update", "destroy"})
 
+    @property
+    def domain(self) -> str:
+        domain = self.request.query_params.get("domain", AuditPresetDomain.SESSIONS)
+        if domain not in AuditPresetDomain.values:
+            raise DRFValidationError(
+                {"domain": f"Must be one of: {', '.join(AuditPresetDomain.values)}."}
+            )
+        return domain
+
+    @property
+    def rbac_resource_type(self) -> ResourceType:
+        # Read by HasOrgPermission before anything else, so an invalid domain 400s
+        # before any permission or data lookup.
+        return self._domain_resource_types[self.domain]
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "domain": self.domain}
+
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().filter(domain=self.domain)
         if self.action in self._author_only_actions:
             return queryset.filter(created_by=self.request.user)
         return queryset.filter(Q(is_shared=True) | Q(created_by=self.request.user))
@@ -3125,6 +3175,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             created_by=request.user,
             is_shared=serializer.validated_data["is_shared"],
         )
+        record_copy(preset, clone)
         return Response(self.get_serializer(clone).data, status=201)
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ONE)
@@ -3136,6 +3187,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ALL)
     @action(detail=False, methods=["post"], url_path="export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -3162,6 +3214,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             user=request.user,
             settings=ImportSettings(),
             org_id=self.get_active_org_id(),
+            domain=self.domain,
         )
         return Response(summary, status=status.HTTP_200_OK)
 
@@ -3248,6 +3301,7 @@ class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewse
         return Response(KeyValueTableService().usage(self.get_object()))
 
     @action(detail=True, methods=["post"], url_path="entries/lookup")
+    @reads_only
     def lookup_entries(self, request, pk=None):
         table = self.get_object()
         serializer = KeyValueKeysSerializer(data=request.data)
@@ -3256,8 +3310,8 @@ class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewse
         return Response({key: asdict(item) for key, item in result.items()})
 
 
-class KeyValueTableEntryPagination(LimitOffsetPagination):
-    """Caps `?limit=` so one request can't force a worker to load every entry of a table."""
+class KeyValueTableEntryPagination(DefaultLimitOffsetPagination):
+    """Tighter cap than the project default: every entry on a page renders a value preview."""
 
     max_limit = 100
 

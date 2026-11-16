@@ -42,8 +42,8 @@ export interface OrgAssignment {
 }
 
 interface RoleChip {
-    roleId: number;
     roleName: string;
+    roleIds: Set<number>;
     orgCount: number;
 }
 
@@ -93,23 +93,25 @@ export class StepAssignToOrgComponent implements OnInit, OnDestroy {
     selectionIds = computed(() => [...this.selectedOrgIds()], { equal: haveSameIds });
     readonly hasInvalidRow = computed(() => this.selectedOrganizations().some((r) => r['role'] == null));
 
-    /** Chips grouped by role: one chip per distinct role across all selected orgs. */
+    /** Chips grouped by role name: one chip per distinct role name across all selected orgs. */
     readonly roleChips = computed<RoleChip[]>(() => {
-        const countByRole = new Map<number, RoleChip>();
+        const countByName = new Map<string, RoleChip>();
 
         for (const row of this.selectedOrganizations()) {
             const roleId = row['role'] as number | null;
             if (roleId == null) continue;
 
-            const existing = countByRole.get(roleId);
+            const roleName = this.roleNameById(roleId);
+            const existing = countByName.get(roleName);
             if (existing) {
+                existing.roleIds.add(roleId);
                 existing.orgCount++;
             } else {
-                countByRole.set(roleId, { roleId, roleName: this.roleNameById(roleId), orgCount: 1 });
+                countByName.set(roleName, { roleName, roleIds: new Set([roleId]), orgCount: 1 });
             }
         }
 
-        return [...countByRole.values()];
+        return [...countByName.values()];
     });
 
     /** The subset of roleChips hidden by the overflow container — shown in the overflow dropdown. */
@@ -129,15 +131,16 @@ export class StepAssignToOrgComponent implements OnInit, OnDestroy {
         return (row) => (row['name'] as string)?.toLowerCase().includes(term);
     });
 
-    /** Tooltip text per chip: comma-joined org names currently assigned to that role. */
-    readonly chipTooltips = computed<Map<number, string>>(() => {
-        const tooltips = new Map<number, string>();
+    /** Tooltip text per chip: comma-joined org names currently assigned to that role name. */
+    readonly chipTooltips = computed<Map<string, string>>(() => {
+        const tooltips = new Map<string, string>();
         for (const row of this.selectedOrganizations()) {
             const roleId = row['role'] as number | null;
             if (roleId == null) continue;
-            const existing = tooltips.get(roleId);
+            const roleName = this.roleNameById(roleId);
+            const existing = tooltips.get(roleName);
             const orgName = row['name'] as string;
-            tooltips.set(roleId, existing ? `${existing}, ${orgName}` : orgName);
+            tooltips.set(roleName, existing ? `${existing}, ${orgName}` : orgName);
         }
         return tooltips;
     });
@@ -284,10 +287,10 @@ export class StepAssignToOrgComponent implements OnInit, OnDestroy {
         this.closeOverflowMenu();
     }
 
-    protected removeChip(roleId: number): void {
+    protected removeChip(roleIds: Set<number>): void {
         const orgIdsToRemove = new Set(
             this.selectedOrganizations()
-                .filter((r) => r['role'] === roleId)
+                .filter((r) => roleIds.has(r['role'] as number))
                 .map((r) => r['id'] as number)
         );
         this.recentlyRemovedOrgIds = orgIdsToRemove;

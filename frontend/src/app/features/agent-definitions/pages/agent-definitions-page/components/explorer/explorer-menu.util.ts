@@ -1,5 +1,7 @@
 import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
+import { Surface } from '../../../../models/surface.model';
 import { BranchTreeNode } from '../../../../models/tree-node.model';
 import { ExplorerMenuItem, ExplorerMenuSubject } from './explorer-context-menu/explorer-menu.model';
 
@@ -153,6 +155,31 @@ export function agentsSectionMenuItems(): ExplorerMenuItem[] {
             action: ActionCode.Export,
         },
     ];
+}
+
+/**
+ * Copying an agent copies the surfaces it owns too, so the server then also requires Surfaces:Create
+ * and refuses the whole copy without it.
+ */
+export function canDuplicateAgent(
+    agentId: number,
+    surfaces: readonly Surface[],
+    permissions: Pick<PermissionsService, 'can'>
+): boolean {
+    if (!permissions.can(ResourceCode.Agents, ActionCode.Create)) return false;
+    const ownsSurface = surfaces.some((surface) => surface.owner_agent === agentId);
+    return !ownsSurface || permissions.can(ResourceCode.Surfaces, ActionCode.Create);
+}
+
+/** Whether the user may pick this item of the node's menu; Duplicate on an agent also needs `canDuplicateAgent`. */
+export function isTreeNodeMenuItemAllowed(
+    node: BranchTreeNode,
+    item: ExplorerMenuItem,
+    surfaces: readonly Surface[],
+    permissions: Pick<PermissionsService, 'can'>
+): boolean {
+    if (node.kind === 'agent' && item.id === 'duplicate') return canDuplicateAgent(node.agentId, surfaces, permissions);
+    return permissions.can(item.resource, item.action);
 }
 
 export function treeNodeMenuItems(node: BranchTreeNode): ExplorerMenuItem[] {

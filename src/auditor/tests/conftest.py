@@ -10,3 +10,7 @@ os.environ.setdefault("REDIS_USER", "test")
 os.environ.setdefault("REDIS_PORT", "6379")
 os.environ.setdefault("REDIS_PASSWORD", "")
 os.environ.setdefault("AUDITOR_REDIS_DB", "1")
+# Both audit domains are mounted by default in the suite; tests that need one off
+# build their own registry with enabled_domains.
+os.environ.setdefault("SESSION_AUDIT_TRAIL_ENABLED", "true")
+os.environ.setdefault("USER_AUDIT_TRAIL_ENABLED", "true")

@@ -24,8 +24,11 @@ landing on the real root cause:
 """
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 
+from agents.models import AgentDefinition, Surface
+from agents.services.agent_definition_copy_service import AgentDefinitionCopyService
 from tables.graph_versioning.services import GraphVersioningService
 from tables.models import Graph
 from tables.models.mcp_models import McpTool
@@ -48,6 +51,13 @@ def _make_python_code_tool(org, name="RaceTool") -> PythonCodeTool:
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     return PythonCodeTool.objects.create(
         name=name, description="desc", python_code=code, org=org
+    )
+
+
+def _make_superadmin(email: str):
+    # Cloning owned surfaces needs CREATE on surfaces; a superadmin holds every permission.
+    return get_user_model().objects.create_user(
+        email=email, password="StrongPass123!", is_superadmin=True
     )
 
 
@@ -223,6 +233,65 @@ def test_concurrent_create_graph_from_same_version_get_unique_names():
         "VersionedFlow from v1 #3",
         "VersionedFlow from v1 #4",
     }
+
+
+# ---- (b3) an agent copy names the agent and every surface it owns; agent and
+# surface names share the advisory-lock key space, so copies taking those locks
+# in different orders could deadlock ----
+
+
+@pytest.mark.django_db(transaction=True)
+def test_agent_concurrent_copies_of_same_source_get_unique_names():
+    org = Organization.objects.create(name="Org AgentSameSourceLock")
+    source = AgentDefinition.objects.create(org=org, name="ConcurrentAgent")
+    Surface.objects.create(org=org, name="ConcurrentNotes", owner_agent=source)
+    user = _make_superadmin("agent-same-source@example.com")
+
+    def _copy() -> tuple[str, str]:
+        new_agent = AgentDefinitionCopyService().copy(source, org_id=org.id, user=user)
+        return new_agent.name, Surface.objects.get(owner_agent=new_agent).name
+
+    outcomes = run_concurrently([_copy for _ in range(4)])
+
+    for outcome in outcomes:
+        assert not isinstance(outcome, Exception), outcome
+    assert {agent_name for agent_name, _ in outcomes} == {
+        "ConcurrentAgent #2",
+        "ConcurrentAgent #3",
+        "ConcurrentAgent #4",
+        "ConcurrentAgent #5",
+    }
+    assert {surface_name for _, surface_name in outcomes} == {
+        "ConcurrentNotes #2",
+        "ConcurrentNotes #3",
+        "ConcurrentNotes #4",
+        "ConcurrentNotes #5",
+    }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_agent_copies_locking_crossed_name_families_do_not_deadlock():
+    org = Organization.objects.create(name="Org AgentCrossedLock")
+    # Each agent owns a surface named like the other agent: unsorted lock
+    # acquisition would take "Alpha" then "Beta" in one copy and the reverse
+    # in the other.
+    alpha = AgentDefinition.objects.create(org=org, name="Alpha")
+    beta = AgentDefinition.objects.create(org=org, name="Beta")
+    Surface.objects.create(org=org, name="Beta", owner_agent=alpha)
+    Surface.objects.create(org=org, name="Alpha", owner_agent=beta)
+    user = _make_superadmin("agent-crossed-lock@example.com")
+
+    outcomes = run_concurrently(
+        [
+            lambda: AgentDefinitionCopyService().copy(alpha, org_id=org.id, user=user).name,
+            lambda: AgentDefinitionCopyService().copy(beta, org_id=org.id, user=user).name,
+        ]
+        * 2
+    )
+
+    for outcome in outcomes:
+        assert not isinstance(outcome, Exception), outcome
+    assert set(outcomes) == {"Alpha #2", "Alpha #3", "Beta #2", "Beta #3"}
 
 
 # ---- (c) fallback 400 path: a forced/unrelated collision still raises

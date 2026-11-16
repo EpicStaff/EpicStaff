@@ -4,18 +4,31 @@ from dataclasses import dataclass
 
 @dataclass
 class EntityMapping:
+    """How one entity of the file landed. `replaced` is a created entity written over an
+    existing row in place (a flow imported by uuid with replace on); the summary still
+    counts it as created."""
+
     old_id: int
     new_id: int
     was_created: bool
+    replaced: bool = False
 
 
 class IDMapper:
     def __init__(self):
         self._mappings: dict[str, dict[int, EntityMapping]] = defaultdict(dict)
 
-    def map(self, entity_type: str, old_id: int, new_id: int, was_created: bool = True):
+    def map(
+        self,
+        entity_type: str,
+        old_id: int,
+        new_id: int,
+        was_created: bool = True,
+        *,
+        replaced: bool = False,
+    ):
         self._mappings[entity_type][old_id] = EntityMapping(
-            old_id=old_id, new_id=new_id, was_created=was_created
+            old_id=old_id, new_id=new_id, was_created=was_created, replaced=replaced
         )
 
     def get(self, entity_type: str, old_id: int) -> int:
@@ -34,6 +47,10 @@ class IDMapper:
         if entity_type not in self._mappings or old_id not in self._mappings[entity_type]:
             raise ValueError(f"No mapping found for {entity_type}:{old_id}")
         return self._mappings[entity_type][old_id].was_created
+
+    def was_replaced(self, entity_type: str, old_id: int) -> bool:
+        mapping = self._mappings[entity_type].get(old_id)
+        return mapping is not None and mapping.replaced
 
     def get_created_count(self, entity_type: str) -> int:
         return sum(1 for mapping in self._mappings[entity_type].values() if mapping.was_created)

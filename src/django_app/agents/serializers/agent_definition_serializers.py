@@ -17,6 +17,27 @@ from agents.services.surface_service import AgentDefinitionSurfaceService
 from agents.validators.surface_validator import SurfaceValidator
 
 
+class _StrictCharField(serializers.CharField):
+    """A CharField that rejects numbers instead of turning them into strings."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail("invalid")
+        return super().to_internal_value(data)
+
+
+class AgentDefinitionCopyRequestSerializer(serializers.Serializer):
+    name = _StrictCharField(
+        required=False,
+        allow_null=True,
+        max_length=AgentDefinition._meta.get_field("name").max_length,
+        help_text=(
+            "Name for the copy, trimmed. Omitted or null: the source's name. A taken "
+            'name gets the next free " #N" suffix.'
+        ),
+    )
+
+
 class AgentDefaultSurfaceReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgentDefaultSurface

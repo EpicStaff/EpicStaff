@@ -81,6 +81,7 @@ import {
 import { snapshotDeclaresSecrets } from '../../../../features/flows/models/graph-version-preview.model';
 import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
+import { FlowCopyImportFacadeService } from '../../../../features/flows/services/flow-copy-import-facade.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
@@ -161,6 +162,7 @@ import { withGraphScheduleTriggerRuntimeState } from '../../../../visual-program
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
 import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/utils/validation/execution-timeout.validator';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
+import { buildCurlCommand } from './build-curl-command';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { PREVIEW_BLOCKED_MESSAGES } from './components/header/flow-header.constants';
 import { FlowSaveStatus } from './components/header/flow-save-status.model';
@@ -283,6 +285,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /** The root instance, as for the live canvas and its panels; the version preview has its own. */
     private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
     private readonly usePermissionRefusal = inject(UsePermissionRefusalService);
+    private readonly flowCopyImport = inject(FlowCopyImportFacadeService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
@@ -358,9 +361,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /** The version shown instead of the live canvas; null while editing the live flow. */
     public readonly previewedVersion = signal<GraphVersionDto | null>(null);
     public readonly isPreviewing = computed(() => this.previewedVersion() !== null);
-    /** The header's save status chip; none while previewing a version. */
+    /** The header's save status chip; none while previewing a version or for a user who cannot edit the flow. */
     protected readonly saveStatus = computed<FlowSaveStatus | null>(() => {
-        if (this.isPreviewing()) return null;
+        if (this.isPreviewing() || this.flowReadOnly.isReadOnly()) return null;
         if (this.isSaving() || this.sidePanelService.savingNodeId() !== null) return 'saving';
         const connection = this.wsService.connectionStatus();
         if (connection === 'lost') return 'connection-lost';
@@ -1685,30 +1688,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const apiUrl = this.configService.apiUrl;
 
         if (flowUuid && startNodeInitialState) {
-            const curlCommand = this.generateCurlCommand(flowUuid, startNodeInitialState, apiUrl);
+            const curlCommand = buildCurlCommand(flowUuid, startNodeInitialState, apiUrl);
             this.copyToClipboard(curlCommand);
             this.toastService.success('cURL command copied to clipboard!');
         } else {
             this.toastService.error('Unable to generate cURL: Missing flow ID or start node data');
         }
-    }
-
-    private generateCurlCommand(flowUuid: string, variables: Record<string, unknown>, apiUrl: string): string {
-        const payload = JSON.stringify(
-            {
-                graph_uuid: flowUuid,
-                variables: variables,
-            },
-            null,
-            2
-        );
-
-        return `curl \\
-  -H "Content-Type: application/json" \\
-  -H "Accept: application/json" \\
-  -X POST \\
-  -d '${payload}' \\
-  ${apiUrl}run-session/`;
     }
 
     private async copyToClipboard(text: string): Promise<void> {
@@ -2231,6 +2216,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 })
             )
             .subscribe(() => openVersionDialog());
+    }
+
+    public onExportFlow(): void {
+        if (this.hasUnsavedChanges()) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        this.flowCopyImport.exportFlow({ id: this.graph.id, name: this.graph.name });
     }
 
     /**

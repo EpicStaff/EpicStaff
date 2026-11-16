@@ -19,12 +19,18 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
 from tables.views.audit_token_views import AuditTokenView
+from user_audit.views import ServiceUserActionView
 
 from .yasg import urlpatterns as doc_urls
 
 urlpatterns = [
     path("", include("rbac.urls")),
     path("api/audit/token/", AuditTokenView.as_view(), name="audit_token"),
+    path(
+        "api/internal/user-actions/",
+        ServiceUserActionView.as_view(),
+        name="internal-user-actions",
+    ),
     path("api/", include("tables.urls")),
     path("api/", include("agents.urls")),
     path("api/", include("proxies.urls")),

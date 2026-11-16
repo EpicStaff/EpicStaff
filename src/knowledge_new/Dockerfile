@@ -3,9 +3,11 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 
 # Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
 # sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
-# never executes arbitrary Python code. A service that gains a dependency with
-# no Linux wheel will fail the build rather than silently regain source
-# execution.
+# never executes arbitrary Python code. foundation is the one audited
+# exception: a first-party local path dependency with no wheel of its own,
+# carved out via UV_NO_BINARY_PACKAGE below. It is pure Python, so it still
+# needs no compiler. A service that gains a dependency with no Linux wheel will
+# fail the build rather than silently regain source execution.
 #
 # UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
 # interpreter instead of using the digest-pinned base image above, silently
@@ -19,6 +21,7 @@ RUN pip install --no-cache-dir uv==0.11.21
 # `regex`, pulled by nltk) look CWD-local and get blocked. Keeping it a sibling
 # of the app dir avoids that while a single `COPY /app` still carries both.
 ENV UV_NO_BUILD=1 \
+    UV_NO_BINARY_PACKAGE=foundation \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
@@ -31,6 +34,7 @@ WORKDIR /app/src
 
 # Copy only dependency descriptors first (better layer caching)
 COPY ./knowledge_new/pyproject.toml ./knowledge_new/uv.lock ./knowledge/
+COPY ./foundation /app/src/foundation
 
 WORKDIR /app/src/knowledge
 

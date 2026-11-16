@@ -20,6 +20,7 @@ from tables.models.graph_models import GraphStorageFile, StorageFile, WebhookTri
 from tables.services.secrets import secret_service
 from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.sealed_values import open_sealed_values
 
 URL = "/api/run-python-code/"
 PLAINTEXT = "sk-target-run-abc123"
@@ -183,7 +184,7 @@ class TestPythonNodeTarget:
 
         assert response.status_code == 200, response.data
         [task] = _submitted_tasks(sandbox_intake)
-        assert task["secrets"] == {"TARGET_KEY": PLAINTEXT}
+        assert open_sealed_values(task["secrets"]) == {"TARGET_KEY": PLAINTEXT}
 
     def test_undeclared_secret_is_rejected_before_anything_is_written(
         self, acme_client, acme, acme_graph, sandbox_intake
@@ -442,7 +443,7 @@ class TestTriggerNodeCodeNeedsRun:
         custom_role_client,
         acme,
         acme_graph,
-        redis_client_mock,
+        sandbox_intake,
         named_by,
         flows_permissions,
         expected_status,
@@ -458,17 +459,17 @@ class TestTriggerNodeCodeNeedsRun:
         assert response.status_code == expected_status, response.data
         if expected_status == 403:
             assert response.data["code"] == "permission_denied"
-            assert not redis_client_mock.publish.call_args_list
+            assert not sandbox_intake.bodies
             assert not PythonCodeResult.objects.exists()
         else:
-            assert len(redis_client_mock.publish.call_args_list) == 1
+            assert len(sandbox_intake.bodies) == 1
             assert PythonCodeResult.objects.get(
                 execution_id=response.data["execution_id"]
             ).python_code_id == node.python_code_id
 
     @pytest.mark.parametrize("named_by", NAMED_BY)
     def test_python_node_code_needs_no_use(
-        self, custom_role_client, acme, acme_graph, redis_client_mock, named_by
+        self, custom_role_client, acme, acme_graph, sandbox_intake, named_by
     ):
         client = custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "code-python")
         node = _python_node(acme_graph, use_storage=False)
@@ -479,7 +480,7 @@ class TestTriggerNodeCodeNeedsRun:
 
     @pytest.mark.parametrize("named_by", NAMED_BY)
     def test_superadmin_needs_no_role(
-        self, org_client_as, superadmin, acme, acme_graph, redis_client_mock, named_by
+        self, org_client_as, superadmin, acme, acme_graph, sandbox_intake, named_by
     ):
         node = _plain_webhook_trigger_node(acme_graph)
 
@@ -488,7 +489,7 @@ class TestTriggerNodeCodeNeedsRun:
         assert response.status_code == 200, response.data
 
     def test_trigger_target_without_use_is_denied_before_the_lookup(
-        self, custom_role_client, acme, redis_client_mock
+        self, custom_role_client, acme, sandbox_intake
     ):
         """The slot type alone decides the USE gate, so the 403 says nothing about the id."""
         client = custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "code-no-use")
@@ -499,7 +500,7 @@ class TestTriggerNodeCodeNeedsRun:
         assert response.data["code"] == "permission_denied"
 
     def test_foreign_trigger_code_by_python_code_id_stays_not_found_without_use(
-        self, custom_role_client, acme, beta_graph, redis_client_mock
+        self, custom_role_client, acme, beta_graph, sandbox_intake
     ):
         """By `python_code_id` the USE gate runs after the visibility check, so another
         org's trigger code is the endpoint's usual "does not exist", not the USE 403."""
@@ -510,4 +511,4 @@ class TestTriggerNodeCodeNeedsRun:
 
         assert response.status_code == 400, response.data
         assert "does not exist" in response.data["message"]
-        assert not redis_client_mock.publish.call_args_list
+        assert not sandbox_intake.bodies

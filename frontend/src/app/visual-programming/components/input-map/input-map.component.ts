@@ -33,7 +33,7 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, HelpTooltipComponent, ToggleSwitchComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
-import { formatNodeLabel } from '@shared/utils';
+import { formatNodeLabel, generateUuid } from '@shared/utils';
 import { filter, Subscription } from 'rxjs';
 import { distinctUntilChanged, finalize } from 'rxjs/operators';
 
@@ -45,6 +45,7 @@ import { SidePanelService } from '../../services/side-panel.service';
 import { MapKeyChange } from '../../utils/diff';
 import { DiffFieldMarkComponent } from '../diff-field-mark/diff-field-mark.component';
 import { DiffTooltipSide, sideAwayFrom } from '../diff-field-mark/diff-mark-tooltip.component';
+import { InputMapRow, isUnfinishedInputMapRow } from './input-map-rows';
 import { PickerItem } from './var-picker-flat.component';
 import {
     buildVariablePickerItems,
@@ -131,6 +132,9 @@ export class InputMapComponent implements OnInit, OnChanges {
      */
     private readonly diffTooltipSide = signal<DiffTooltipSide>('above');
 
+    protected readonly missingPathMessage = 'Choose a variable path, or remove this row.';
+
+    private readonly missingPathMessageIdPrefix = `input-map-missing-path-${generateUuid()}`;
     private readonly destroyRef = inject(DestroyRef);
     private readonly removeButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeButton');
     private readonly addButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
@@ -249,6 +253,18 @@ export class InputMapComponent implements OnInit, OnChanges {
      */
     protected cellTooltipPosition(onChangedRow = false): DiffTooltipSide {
         return onChangedRow ? sideAwayFrom(this.diffTooltipSide()) : 'above';
+    }
+
+    /**
+     * Whether a named row without a variable path says so. Only stored rows can have one: the path input keeps at least
+     * `variables.` (all fields). It does not block saving.
+     */
+    protected showsMissingPath(pair: AbstractControl): boolean {
+        return isUnfinishedInputMapRow(pair.value as InputMapRow);
+    }
+
+    protected missingPathMessageId(index: number): string {
+        return `${this.missingPathMessageIdPrefix}-${index}`;
     }
 
     hasNoMeaningfulPairs(): boolean {

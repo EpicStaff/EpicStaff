@@ -2,6 +2,7 @@ from typing import Any
 
 from django.db import transaction
 from loguru import logger
+from src.shared.models import UserAction
 from src.shared.models.knowledge_new import ChunkingConfig
 from tables.constants.knowledge_constants import (
     FILE_TYPE_SPECIFIC_STRATEGIES,
@@ -23,7 +24,11 @@ from tables.models.knowledge_models import (
     NaiveRagPreviewChunk,
     SourceCollection,
 )
-from tables.services.knowledge_services.collection_last_edit import record_collection_edits
+from tables.services.knowledge_services.collection_last_edit import (
+    record_collection_edits,
+    record_rag_change,
+)
+from user_audit.recorder import record_user_action
 
 
 class NaiveRagService:
@@ -179,6 +184,9 @@ class NaiveRagService:
         Create new NaiveRag or update existing one.
         Creates BaseRagType + NaiveRag in one transaction.
 
+        Records a created RAG as a `created` user action under its collection, and an
+        embedder change as the collection `updated`; an unchanged RAG records nothing.
+
         Args:
             collection_id: ID of source collection
             embedder_id: ID of embedder to use
@@ -196,9 +204,13 @@ class NaiveRagService:
             embedder_before = rag.embedder_id
             rag = cls._update_rag(rag, collection, embedder)
             changed = rag.embedder_id != embedder_before
+            record_rag_change(collection, changed=changed)
         else:
             rag = cls._create_rag(collection, embedder)
             changed = True
+            record_user_action(
+                action=UserAction.CREATED, org_id=collection.org_id, target=rag, parent=collection
+            )
         if changed:
             record_collection_edits([collection_id], user)
 
@@ -473,7 +485,8 @@ class NaiveRagService:
         Args:
             naive_rag_id: ID of NaiveRag (for validation)
             data: Data to update document config.
-            user: Acting user, recorded as the collection's last editor if a config changed
+            user: Acting user, recorded as the collection's last editor if a config changed;
+                the collection is recorded as updated then (see `record_rag_change`)
 
         Returns:
             Dict with:
@@ -534,6 +547,7 @@ class NaiveRagService:
             if rag_updated_fields:
                 rag.save(update_fields=rag_updated_fields)
             record_collection_edits([rag.base_rag_type.source_collection_id], user)
+        record_rag_change(rag.base_rag_type.source_collection, changed=bool(total_updated_configs))
 
         updated = len(total_updated_configs)
         unupdated = len(total_unupdated_configs)
@@ -649,7 +663,8 @@ class NaiveRagService:
         Args:
             naive_rag_id: ID of NaiveRag (for validation)
             config_ids: List of config IDs to delete
-            user: Acting user, recorded as the collection's last editor if a config was deleted
+            user: Acting user, recorded as the collection's last editor if a config was deleted;
+                the collection is recorded as updated then (see `record_rag_change`)
 
         Returns:
             dict with deletion info
@@ -678,6 +693,7 @@ class NaiveRagService:
         NaiveRagService.sync_rag_status_after_config_removal(rag)
         if found_ids:
             record_collection_edits([rag.base_rag_type.source_collection_id], user)
+        record_rag_change(rag.base_rag_type.source_collection, changed=bool(found_ids))
         deleted = len(found_ids)
         logger.info(f"Bulk deleted {deleted} document configs: {found_ids}")
 

@@ -89,30 +89,8 @@ export class AgentDefinitionsApiService {
         return this.http.post<Record<string, unknown>>(`${this.baseUrl}import/`, form);
     }
 
-    // no backend "copy" endpoint. Client-side: clone fields + new name.
-    copy(source: AgentDefinition, newName: string): Observable<AgentDefinition> {
-        const body: CreateAgentDefinitionRequest = {
-            name: newName,
-            instruction_list: source.instruction_list,
-            description: source.description,
-            llm_config: source.llm_config,
-            // The API rejects a fallback without a primary, e.g. after the primary config was deleted.
-            fallback_llm_config: source.llm_config == null ? null : source.fallback_llm_config,
-            fcm_llm_config: source.fcm_llm_config,
-            default_surfaces: source.default_surfaces,
-            group: source.group,
-            metadata: source.metadata,
-            max_iter: source.max_iter,
-            max_rpm: source.max_rpm,
-            max_execution_time: source.max_execution_time,
-            cache: source.cache,
-            max_retry_limit: source.max_retry_limit,
-            default_temperature: source.default_temperature,
-            max_tool_calls: source.max_tool_calls,
-            tool_timeout: source.tool_timeout,
-            max_consecutive_failures: source.max_consecutive_failures,
-            schema_max_retries: source.schema_max_retries,
-        };
-        return this.create(body);
+    /** The server clones the agent with its owned surfaces and names the copy ("X #2", "X #3", ...). */
+    copy(id: number): Observable<AgentDefinition> {
+        return this.http.post<AgentDefinition>(`${this.baseUrl}${id}/copy/`, {}, { headers: this.httpHeaders });
     }
 }

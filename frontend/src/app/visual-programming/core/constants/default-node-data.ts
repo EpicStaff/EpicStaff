@@ -12,6 +12,24 @@ import { TaskNodeData } from '../models/task-node.model';
  */
 export const MISSING_END_OUTPUT_MAP: Readonly<Record<string, string>> = Object.freeze({ context: 'variables.context' });
 
+/**
+ * The Start node variables the Start dialog shows (and writes into the node on close) when a node has none. The version
+ * diff counts empty variables as these. A new Start node starts with empty variables (`createStartNode`). Deep-frozen:
+ * consumers read it, never change it.
+ */
+export const DEFAULT_INITIAL_STATE: Readonly<Record<string, unknown>> = Object.freeze({
+    variables: Object.freeze({ context: null }),
+    persistent_variables: Object.freeze({ user: Object.freeze([]), organization: Object.freeze([]) }),
+});
+
+/**
+ * Whether Start node variables are set: a plain object with at least one key. Anything else (`{}`, `null`, an array)
+ * the Start dialog shows as `DEFAULT_INITIAL_STATE`, and the version diff counts as it.
+ */
+export function isSetInitialState(state: unknown): state is Readonly<Record<string, unknown>> {
+    return state !== null && typeof state === 'object' && !Array.isArray(state) && Object.keys(state).length > 0;
+}
+
 /** The Key-Value node mode when none is set. */
 export const DEFAULT_KEY_VALUE_MODE: KeyValueMode = 'read';
 

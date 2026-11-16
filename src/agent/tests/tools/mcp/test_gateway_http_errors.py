@@ -27,6 +27,7 @@ from mcp.types import INTERNAL_ERROR
 from shared.models.tools import McpToolData
 
 from tests.log_capture import capture_logs_at, log_line_starting_with
+from tests.secret_sealing import agent_cryptographer, seal
 
 
 @dataclass(frozen=True)
@@ -109,7 +110,9 @@ def _always(status: int) -> Responder:
     return lambda http_method, request: (status, {"error": "invalid_token"})
 
 
-def _legacy_server_whose_tool_call_fails(http_method: str, request: dict) -> tuple[int, dict | None]:
+def _legacy_server_whose_tool_call_fails(
+    http_method: str, request: dict
+) -> tuple[int, dict | None]:
     """A handshake-era server: it refuses the server/discover probe with a 400, then
     answers tools/call with a JSON-RPC internal error over HTTP 200."""
     if http_method != "POST":
@@ -184,12 +187,14 @@ def _assert_no_url_secret(text: str) -> None:
 
 def _tool_data(url: str) -> McpToolData:
     return McpToolData(
-        transport=url, tool_name="search", auth=_SECRET_TOKEN, timeout=5, init_timeout=5
+        transport=url, tool_name="search", auth=seal(_SECRET_TOKEN), timeout=5, init_timeout=5
     )
 
 
 async def _run(operation: str, data: McpToolData) -> str:
-    gateway = McpToolGateway(FastMCPClientFactory(), describe_cache_ttl_s=300)
+    gateway = McpToolGateway(
+        FastMCPClientFactory(agent_cryptographer()), agent_cryptographer(), describe_cache_ttl_s=300
+    )
     with pytest.raises(McpToolError) as error_info:
         if operation == "describe":
             await gateway.describe(data)
@@ -321,9 +326,7 @@ async def test_streamable_http_redirect_names_only_the_target_origin(operation, 
             url = _url_with_secrets(base_url, f"/mcp/{_PATH_SECRET}")
             message = await _run(operation, _tool_data(url))
 
-    assert message.startswith(
-        f"{prefix} for tool_name=search: Redirect to {base_url} not followed"
-    )
+    assert message.startswith(f"{prefix} for tool_name=search: Redirect to {base_url} not followed")
     _assert_no_url_secret(message)
     # The SDK also logs the redirect itself.
     assert any(line.startswith(f"Redirect to {base_url} not followed") for line in logs)
@@ -348,7 +351,9 @@ async def test_the_server_receives_the_authorization_the_url_and_token_imply(
 ):
     async with _http_server(_always(401)) as (base_url, authorizations):
         url = base_url.replace("http://", f"http://{userinfo}@") + "/mcp"
-        await _run("describe", _tool_data(url).model_copy(update={"auth": token}))
+        await _run(
+            "describe", _tool_data(url).model_copy(update={"auth": seal(token) if token else None})
+        )
 
     assert set(authorizations) == {expected_authorization}
 
@@ -374,7 +379,11 @@ async def test_an_init_timeout_of_zero_means_no_limit():
     app = _server_with_tool("search", _lookup).http_app(transport="sse", path="/sse")
     async with _serving(app, lifespan="on") as base_url:
         data = _tool_data(f"{base_url}/sse").model_copy(update={"init_timeout": 0})
-        gateway = McpToolGateway(FastMCPClientFactory(), describe_cache_ttl_s=300)
+        gateway = McpToolGateway(
+            FastMCPClientFactory(agent_cryptographer()),
+            agent_cryptographer(),
+            describe_cache_ttl_s=300,
+        )
         described = await gateway.describe(data)
 
     assert described.input_schema["required"] == ["query"]
@@ -385,7 +394,11 @@ async def test_a_tool_call_may_run_longer_than_init_timeout(transport, path):
     app = _server_with_tool("search", _search_slowly).http_app(transport=transport, path=path)
     async with _serving(app, lifespan="on") as base_url:
         data = _tool_data(f"{base_url}{path}").model_copy(update={"init_timeout": 0.5})
-        gateway = McpToolGateway(FastMCPClientFactory(), describe_cache_ttl_s=300)
+        gateway = McpToolGateway(
+            FastMCPClientFactory(agent_cryptographer()),
+            agent_cryptographer(),
+            describe_cache_ttl_s=300,
+        )
         output = await gateway.call(data, {})
 
     assert output == '{"result": "done"}'

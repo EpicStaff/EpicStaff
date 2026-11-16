@@ -40,6 +40,7 @@ def _is_line_breaking_character(character: str) -> bool:
     """
     return unicodedata.category(character) in _LINE_BREAKING_CATEGORIES
 
+
 _FILE_OPERATION_DESCRIPTIONS = {
     "list": "list: see this file in directory listings",
     "view": "view: read the contents",

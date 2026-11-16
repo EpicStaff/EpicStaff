@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable
 
 from tables.import_export.constants import IMPORT_VERSION
@@ -41,10 +42,17 @@ class VersionConverter:
             - All other keys are preserved/transformed by the convertion chain
         Raises
             - UnsupportedImportVersionError:
+                - if data["version"] is not a whole number
                 - if data["version"] > IMPORT_VERSION
                 - if no convertion path exists for an intermediate version
         """
         version = data.get("version", 1)  # old files default to v1
+
+        # bool is a subclass of int: `"version": true` must not import as version 1.
+        if not isinstance(version, int) or isinstance(version, bool):
+            raise UnsupportedImportVersionError(
+                f"File version must be a whole number, got {json.dumps(version)}"
+            )
 
         if version > IMPORT_VERSION:
             raise UnsupportedImportVersionError(

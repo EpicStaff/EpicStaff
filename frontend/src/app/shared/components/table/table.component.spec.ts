@@ -9,9 +9,12 @@ import { AppTableCellDirective } from './table-cell.directive';
 
 /**
  * jsdom has no ResizeObserver: a stub one lets a spec report the rendered width of each observed header cell, by
- * its label.
+ * its label, and resize the table's wrapper to a given visible width.
  */
-function stubResizeObserver(): (widthsByLabel: Record<string, number>) => void {
+function stubResizeObserver(): {
+    reportWidths: (widthsByLabel: Record<string, number>) => void;
+    resizeWrapper: (element: HTMLElement, clientWidth: number) => void;
+} {
     const observers: { observed: Element[]; callback: (entries: Partial<ResizeObserverEntry>[]) => void }[] = [];
     vi.stubGlobal(
         'ResizeObserver',
@@ -23,10 +26,12 @@ function stubResizeObserver(): (widthsByLabel: Record<string, number>) => void {
             observe(target: Element): void {
                 this.observed.push(target);
             }
-            disconnect(): void {}
+            disconnect(): void {
+                this.observed.length = 0;
+            }
         }
     );
-    return (widthsByLabel) => {
+    const reportWidths = (widthsByLabel: Record<string, number>) => {
         const observer = observers
             .filter((candidate) => candidate.observed.some((target) => target.classList.contains('table-cell')))
             .at(-1)!;
@@ -39,6 +44,14 @@ function stubResizeObserver(): (widthsByLabel: Record<string, number>) => void {
                 }))
         );
     };
+    const resizeWrapper = (element: HTMLElement, clientWidth: number) => {
+        const wrapper = element.querySelector<HTMLElement>('.table-wrapper')!;
+        Object.defineProperty(wrapper, 'clientWidth', { value: clientWidth, configurable: true });
+        observers
+            .filter((observer) => observer.observed.includes(wrapper))
+            .forEach((observer) => observer.callback([{ target: wrapper }]));
+    };
+    return { reportWidths, resizeWrapper };
 }
 
 function renderTable(columns: AppTableColumnDef[]) {
@@ -435,8 +448,146 @@ describe('AppTableComponent customizable columns', () => {
         expect(handle('Owner')!.getAttribute('aria-valuenow')).toBe('96');
     });
 
+    describe('with the table 1000px wide', () => {
+        function renderAtWidth(storedWidths: Record<string, number>, columns: AppTableColumnDef[] = COLUMNS) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ visibility: {}, widths: storedWidths }));
+            const { reportWidths, resizeWrapper } = stubResizeObserver();
+            const rendered = render(LAYOUT_KEY, columns);
+            const resizeTo = (clientWidth: number) => {
+                resizeWrapper(rendered.element, clientWidth);
+                rendered.fixture.detectChanges();
+            };
+            resizeTo(1000);
+            return { ...rendered, resizeTo, reportWidths };
+        }
+
+        /**
+         * Name takes what the others leave; Owner is stored at 500px; Sessions and Audit, both `1fr`, share the
+         * 1000 - 200 - 500 - 130 = 170px left.
+         */
+        const OWNER_AT_CAP = 'minmax(200px, 1fr) 500px 85px 85px 130px';
+
+        it.each([
+            [
+                'dragged far right',
+                (ownerHandle: HTMLElement) => {
+                    ownerHandle.setPointerCapture = () => undefined;
+                    ownerHandle.dispatchEvent(new PointerEvent('pointerdown', { clientX: 0, button: 0 }));
+                    ownerHandle.dispatchEvent(new PointerEvent('pointermove', { clientX: 3000 }));
+                    ownerHandle.dispatchEvent(new PointerEvent('pointerup'));
+                },
+            ],
+            [
+                'widened from the keyboard',
+                (ownerHandle: HTMLElement) =>
+                    ownerHandle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })),
+            ],
+        ])('stops a column %s at half the visible width', (_case, widen) => {
+            const { fixture, handle, gridTemplate } = renderAtWidth({ owner: 496 });
+
+            widen(handle('Owner')!);
+            fixture.detectChanges();
+
+            expect(gridTemplate()).toBe(OWNER_AT_CAP);
+            expect(handle('Owner')!.getAttribute('aria-valuenow')).toBe('500');
+            expect(handle('Owner')!.getAttribute('aria-valuemax')).toBe('500');
+            expect(storedLayout()).toEqual({ visibility: {}, widths: { owner: 500 } });
+        });
+
+        it('renders a stored width wider than half the visible width at half, and resizes on from there', () => {
+            const { handle, gridTemplate, pressOnHandle } = renderAtWidth({ owner: 1200 });
+
+            expect(gridTemplate()).toBe(OWNER_AT_CAP);
+            expect(handle('Owner')!.getAttribute('aria-valuenow')).toBe('500');
+
+            pressOnHandle('Owner', 'ArrowLeft');
+            expect(handle('Owner')!.getAttribute('aria-valuenow')).toBe('484');
+        });
+
+        it.each([
+            // 1601 - 200 - 800 - 130 = 471px for Sessions and Audit, the odd px to the first.
+            ['grows', 1601, '800px 236px 235px'],
+            ['grows past the stored width', 4000, '1200px 1235px 1235px'],
+            // Name, Owner and Actions alone are wider than the table: Sessions and Audit keep their minimum and it scrolls.
+            ['shrinks', 600, '300px 80px 80px'],
+            ['shrinks so far that half is under the 80px minimum', 100, '80px 80px 80px'],
+        ])('moves the cap with the visible width when the window %s', (_case, clientWidth, scrollingTracks) => {
+            const { gridTemplate, resizeTo } = renderAtWidth({ owner: 1200 });
+
+            resizeTo(clientWidth);
+
+            expect(gridTemplate()).toBe(`minmax(200px, 1fr) ${scrollingTracks} 130px`);
+        });
+
+        it('with two columns, lets the first fill the width beside Actions and offers no resize handle', () => {
+            const { fixture, element, handle, gridTemplate } = renderAtWidth({ name: 900, owner: 300 });
+            expect(gridTemplate()).toBe('minmax(500px, 1fr) 300px 80px 80px 130px');
+
+            fixture.componentInstance.setVisibleColumns([]);
+            fixture.detectChanges();
+
+            expect(gridTemplate()).toBe('minmax(200px, 1fr) 130px');
+            expect(element.querySelector('.resize-handle')).toBeNull();
+
+            fixture.componentInstance.setVisibleColumns(['owner']);
+            fixture.detectChanges();
+
+            expect(gridTemplate()).toBe('minmax(500px, 1fr) 300px 130px');
+            expect(handle('Name')).not.toBeNull();
+        });
+
+        describe('columns sized by fr weight', () => {
+            const WEIGHTED_COLUMNS: AppTableColumnDef[] = [
+                { key: 'name', label: 'Name', width: '200px', pinned: 'start' },
+                { key: 'admin', label: 'Admin', width: 'minmax(100px, 2fr)' },
+                { key: 'members', label: 'Members', width: 'minmax(80px, 1fr)' },
+                { key: 'actions', label: 'Actions', width: '100px', pinned: 'end' },
+            ];
+
+            it.each([
+                // 900 - 200 - 100 = 600px shared 2:1; the cap is 450.
+                ['keeps the 2:1 proportion while no column reaches the cap', 900, '400px 200px'],
+                // 1500 - 300 = 1200px would give Admin 800; held to 750, it leaves the rest to Members.
+                ['holds the 2fr column at the cap and gives the rest to the other', 1500, '750px 450px'],
+                // 1000 - 300 = 700px shared 2:1. Growing each from its minimum instead would give 447px and 253px.
+                ['shares by weight from zero, as the grid does, not from the minimums', 1000, '467px 233px'],
+            ])('%s', (_case, clientWidth, flexibleTracks) => {
+                const { gridTemplate, resizeTo } = renderAtWidth({}, WEIGHTED_COLUMNS);
+
+                resizeTo(clientWidth);
+
+                expect(gridTemplate()).toBe(`minmax(200px, 1fr) ${flexibleTracks} 100px`);
+            });
+        });
+
+        it('never reports a width above the cap, and the first key press moves a column by one step', () => {
+            const { fixture, handle, reportWidths, pressOnHandle } = renderAtWidth({});
+            // Wider than the cap, as a column laid out before the cap was known would be.
+            reportWidths({ Name: 800, Owner: 733 });
+            fixture.detectChanges();
+            const valueNow = (label: string) => Number(handle(label)!.getAttribute('aria-valuenow'));
+            expect(valueNow('Name')).toBe(500);
+            expect(valueNow('Owner')).toBe(500);
+            expect(handle('Owner')!.getAttribute('aria-valuemax')).toBe('500');
+
+            pressOnHandle('Owner', 'ArrowLeft');
+
+            expect(valueNow('Owner')).toBe(484);
+        });
+
+        it('applies the cap from the first render, before the wrapper reports a resize', () => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ visibility: {}, widths: { owner: 1200 } }));
+            stubResizeObserver();
+            vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000);
+
+            const { gridTemplate } = render();
+
+            expect(gridTemplate()).toBe(OWNER_AT_CAP);
+        });
+    });
+
     it('reports the rendered width and fixes every resizable column in px on the first resize', () => {
-        const reportWidths = stubResizeObserver();
+        const { reportWidths } = stubResizeObserver();
         const { fixture, handle, gridTemplate, pressOnHandle } = render();
         reportWidths({ Name: 200, Owner: 300, Sessions: 150, Audit: 151 });
         fixture.detectChanges();
@@ -454,7 +605,7 @@ describe('AppTableComponent customizable columns', () => {
     });
 
     it('keeps the shown columns at their width when one is hidden, and stretches the first column instead', () => {
-        const reportWidths = stubResizeObserver();
+        const { reportWidths } = stubResizeObserver();
         const { fixture, gridTemplate } = render();
         reportWidths({ Name: 200, Owner: 300, Sessions: 150, Audit: 151 });
 
@@ -473,7 +624,7 @@ describe('AppTableComponent customizable columns', () => {
             STORAGE_KEY,
             JSON.stringify({ visibility: {}, widths: { owner: 300, sessions: 150, audit: 151 } })
         );
-        const reportWidths = stubResizeObserver();
+        const { reportWidths } = stubResizeObserver();
         const { fixture, gridTemplate } = render();
         expect(gridTemplate()).toBe('minmax(200px, 1fr) 300px 150px 151px 130px');
         reportWidths({ Name: 420, Owner: 300, Sessions: 150, Audit: 151 });
@@ -494,7 +645,7 @@ describe('AppTableComponent customizable columns', () => {
             STORAGE_KEY,
             JSON.stringify({ visibility: {}, widths: { owner: 300, sessions: 150, audit: 151 } })
         );
-        const reportWidths = stubResizeObserver();
+        const { reportWidths } = stubResizeObserver();
         const { fixture, handle, gridTemplate } = render();
         reportWidths({ Name: 420, Owner: 300, Sessions: 150, Audit: 151 });
         fixture.detectChanges();
@@ -845,7 +996,7 @@ class FitColumnsHostComponent {
         { key: 'sessions', label: 'Sessions' },
         { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
     ];
-    readonly rows: TableRow[] = [
+    rows: TableRow[] = [
         { id: 1, name: 'Alexandra Smith-Johnson', owner: 'Bo' },
         { id: 2, name: 'Al', owner: 'Ed' },
     ];
@@ -859,17 +1010,18 @@ describe('AppTableComponent fit columns to the table', () => {
 
     /**
      * jsdom does no layout. A cell sized to `max-content` measures 10px per character of its text plus 24px of
-     * padding; any other cell (the end-pinned Actions one) measures 130px. The wrapper is 600px wide.
+     * padding; any other cell (the end-pinned Actions one) measures 130px. The wrapper is 600px wide unless given.
      */
-    function render() {
+    function render(clientWidth = 600, rows?: TableRow[]) {
         vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
             const width = this.style.width === 'max-content' ? (this.textContent ?? '').trim().length * 10 + 24 : 130;
             return { width } as DOMRect;
         });
         const fixture = TestBed.createComponent(FitColumnsHostComponent);
+        if (rows) fixture.componentInstance.rows = rows;
         fixture.detectChanges();
         const element = fixture.nativeElement as HTMLElement;
-        Object.defineProperty(element.querySelector('.table-wrapper'), 'clientWidth', { value: 600 });
+        Object.defineProperty(element.querySelector('.table-wrapper'), 'clientWidth', { value: clientWidth });
         const handle = (label: string) =>
             element.querySelector<HTMLElement>(`.resize-handle[aria-label="Resize ${label} column"]`)!;
         const gridTemplate = () => element.querySelector<HTMLElement>('.table-header')!.style.gridTemplateColumns;
@@ -900,6 +1052,17 @@ describe('AppTableComponent fit columns to the table', () => {
             visibility: {},
             widths: { name: 265, owner: 91, sessions: 114 },
         });
+    });
+
+    it('fits no column wider than half the table, and shares what it leaves among the others', () => {
+        const { fixture, handle, gridTemplate } = render(1000, [{ id: 1, name: 'A'.repeat(60), owner: 'Bo' }]);
+
+        handle('Owner').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        fixture.detectChanges();
+
+        // Content: Name 624, held to 500; Owner 80; Sessions 104. 1000 - 130 (Actions) = 870 leaves 186px for the
+        // two below the cap, 93 each.
+        expect(gridTemplate()).toBe('minmax(500px, 1fr) 173px 197px 130px');
     });
 
     it('leaves no cell sized to its content after measuring', () => {

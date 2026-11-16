@@ -1169,9 +1169,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         if (node.type === NodeType.NOTE) {
-            if (this.flowReadOnly.isReadOnly()) {
-                return;
-            }
             this.openNoteDialog(node as GraphNoteModel);
         } else if (node.type === NodeType.START) {
             const startNode = node as StartNodeModel;
@@ -1210,6 +1207,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const data: NoteEditDialogData = {
             node: noteNode,
             authorship: this.nodeAuthorshipStore.authorshipOf(noteNode),
+            readonly: this.flowReadOnly.isReadOnly(),
         };
         const dialogRef = this.dialog.open(NoteEditDialogComponent, {
             data,
@@ -1242,9 +1240,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     }
 
-    /** Double-clicking the note body opens the note edit dialog. */
+    /** Double-clicking the note body opens the note edit dialog (readonly when the flow is readonly). */
     public onNoteDoubleClick(node: NodeModel): void {
-        if (this.flowReadOnly.isReadOnly()) return;
         if (node.type !== NodeType.NOTE) return;
         this.openNoteDialog(node as GraphNoteModel);
     }

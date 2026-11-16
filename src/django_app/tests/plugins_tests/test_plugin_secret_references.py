@@ -359,6 +359,7 @@ GUARDED_REFERENCES = [
     (secret_use_checks.check_llm_config_write, lambda secret: {"api_key_secret": secret}, "api_key_secret_id"),
     (secret_use_checks.check_embedding_config_write, lambda secret: {"api_key_secret": secret}, "api_key_secret_id"),
     (secret_use_checks.check_realtime_config_write, lambda secret: {"api_key_secret": secret}, "api_key_secret_id"),
+    (secret_use_checks.check_system_one_config_write, lambda secret: {"api_key_secret": secret}, "api_key_secret_id"),
     (
         secret_use_checks.check_realtime_transcription_config_write,
         lambda secret: {"api_key_secret": secret},

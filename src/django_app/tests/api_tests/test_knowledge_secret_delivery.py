@@ -1,5 +1,5 @@
-"""Indexing publishes resolved plaintext while the caller's object keeps neither
-plaintext nor Secret id.
+"""Indexing publishes resolved values sealed for transport while the caller's object
+keeps neither a resolved value nor a Secret id.
 
 The knowledge service has no SECRET_KEY and no HTTP route to Django, so a Secret
 id would be unresolvable there; Django must resolve at the publish boundary.
@@ -15,6 +15,7 @@ from rbac.models import Organization
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_service
 from tables.services.secrets.exceptions import SecretResolutionError
+from tests.sealed_values import open_sealed
 
 
 @pytest.fixture
@@ -42,7 +43,7 @@ def service(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_publish_rag_indexing_sends_plaintext(org_a, service):
+def test_publish_rag_indexing_sends_the_sealed_key(org_a, service):
     instance, client = service
     secret = secret_service.create(text="sk-embedder-live", org=org_a, name="emb-key")
 
@@ -55,13 +56,14 @@ def test_publish_rag_indexing_sends_plaintext(org_a, service):
     )
 
     published = json.loads(client.publish.call_args.kwargs["message"])
-    assert published["embedder_api_key"] == "sk-embedder-live"
+    assert published["embedder_api_key"] != "sk-embedder-live"
+    assert open_sealed(published["embedder_api_key"]) == "sk-embedder-live"
     assert "embedder_api_key_secret_id" not in published
 
 
 @pytest.mark.django_db
-def test_the_unresolved_message_never_holds_plaintext(org_a):
-    """resolve_payload deep-copies, so only the published copy carries plaintext."""
+def test_the_unresolved_message_never_holds_the_key(org_a):
+    """resolve_payload deep-copies, so only the published copy carries the sealed key."""
     secret = secret_service.create(text="sk-copy-check", org=org_a, name="copy-key")
     message = ProcessRagIndexingMessage(
         rag_id=1,
@@ -74,7 +76,7 @@ def test_the_unresolved_message_never_holds_plaintext(org_a):
 
     resolved = secret_resolver.resolve_payload(payload=message, org_id=org_a.id)
 
-    assert resolved.embedder_api_key == "sk-copy-check"
+    assert open_sealed(resolved.embedder_api_key) == "sk-copy-check"
     assert message.embedder_api_key is None
 
 

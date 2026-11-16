@@ -2,6 +2,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { ConfirmationDialogService } from '@shared/components';
 import { Secret } from '@shared/models';
 import { of } from 'rxjs';
@@ -113,6 +115,39 @@ function bulkDeleteButton(fixture: ComponentFixture<SecretsSectionComponent>): H
 function shownNames(fixture: ComponentFixture<SecretsSectionComponent>): string[] {
     return Array.from(host(fixture).querySelectorAll('.secrets-section__name'), (name) => name.textContent!.trim());
 }
+
+describe('SecretsSectionComponent ?search=', () => {
+    async function namesShownAt(url: string): Promise<string[]> {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                provideRouter(
+                    [{ path: 'settings/secrets', component: SecretsSectionComponent }],
+                    withComponentInputBinding()
+                ),
+                { provide: ConfigService, useValue: { apiUrl: API_URL } },
+                { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
+            ],
+        });
+        const harness = await RouterTestingHarness.create();
+        await harness.navigateByUrl(url);
+        answerListLoad(TestBed.inject(HttpTestingController), [OPENAI, ANTHROPIC, SLACK]);
+        harness.detectChanges();
+        return Array.from(harness.routeNativeElement!.querySelectorAll('.secrets-section__name'), (name) =>
+            name.textContent!.trim()
+        );
+    }
+
+    it('narrows the list to the secrets matching the text, as typing it in the search box does', async () => {
+        expect(await namesShownAt('/settings/secrets?search=slack')).toEqual(['Slack token']);
+    });
+
+    it('lists every secret without it', async () => {
+        expect(await namesShownAt('/settings/secrets')).toHaveLength(3);
+    });
+});
 
 describe('SecretsSectionComponent bulk delete', () => {
     it('deletes the rest when one secret was already deleted elsewhere, then shows the fresh list with nothing ticked', () => {

@@ -63,52 +63,42 @@ def test_allows_tar_archive_format(validator):
     assert validator.is_unsupported_archive("data.tar") is False
 
 
-# --- scan_archive_for_executables ---
+# --- executables inside archives ---
 
 
-def test_scan_finds_executables_in_zip(validator):
+def _zip_with(entries):
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("ok.txt", "safe")
-        zf.writestr("evil.sh", "#!/bin/bash")
-    buf.seek(0)
-    blocked = validator.scan_archive_for_executables(buf)
-    assert blocked == ["evil.sh"]
+        for name, data in entries:
+            zf.writestr(name, data)
+    return buf.getvalue()
 
 
-def test_scan_finds_executables_in_tar(validator):
+def _tar_with(entries):
     buf = BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tf:
-        for name, data in [("ok.txt", b"safe"), ("evil.bat", b"@echo off")]:
+        for name, data in entries:
             info = tarfile.TarInfo(name=name)
             info.size = len(data)
             tf.addfile(info, BytesIO(data))
-    buf.seek(0)
-    blocked = validator.scan_archive_for_executables(buf)
-    assert blocked == ["evil.bat"]
+    return buf.getvalue()
 
 
-def test_scan_returns_empty_for_clean_archive(validator):
-    buf = BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("readme.txt", "hello")
-        zf.writestr("data.csv", "a,b,c")
-    buf.seek(0)
-    assert validator.scan_archive_for_executables(buf) == []
+@pytest.mark.parametrize(
+    ("archive_name", "build", "executable"),
+    [("bundle.zip", _zip_with, "evil.sh"), ("bundle.tar", _tar_with, "evil.bat")],
+)
+def test_validate_names_only_the_executable_archive_members(
+    validator, archive_name, build, executable
+):
+    content = build([("ok.txt", b"safe"), (executable, b"@echo off")])
 
+    with pytest.raises(ValidationError) as exc_info:
+        validator.validate([SimpleUploadedFile(archive_name, content)])
 
-def test_scan_returns_empty_for_non_archive(validator):
-    buf = BytesIO(b"just plain text, not an archive")
-    assert validator.scan_archive_for_executables(buf) == []
-
-
-def test_scan_resets_file_position(validator):
-    buf = BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("a.txt", "data")
-    buf.seek(0)
-    validator.scan_archive_for_executables(buf)
-    assert buf.tell() == 0
+    error_msg = str(exc_info.value)
+    assert f"contains executable files: {executable}" in error_msg
+    assert "ok.txt" not in error_msg
 
 
 # --- validate ---
@@ -138,7 +128,7 @@ def test_validate_rejects_archive_containing_executables(validator):
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("hack.sh", "#!/bin/bash")
-    # A real upload, so .size/.read/.seek behave as scan_archive_* expects
+    # A real upload, so .size/.read/.seek behave as validate() expects
     f = SimpleUploadedFile("bundle.zip", buf.getvalue())
 
     with pytest.raises(ValidationError, match="executable files"):

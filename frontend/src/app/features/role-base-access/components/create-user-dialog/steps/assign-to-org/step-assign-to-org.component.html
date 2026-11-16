@@ -8,12 +8,12 @@
                 appOverflowItems
                 #chipOverflow="overflowItems"
             >
-                @for (chip of roleChips(); track chip.roleId) {
+                @for (chip of roleChips(); track chip.roleName) {
                     <span
                         appOverflowItem
                         [appOverflowLabel]="chip.roleName"
                         class="role-chip"
-                        [matTooltip]="chipTooltips().get(chip.roleId) ?? ''"
+                        [matTooltip]="chipTooltips().get(chip.roleName) ?? ''"
                         matTooltipPosition="above"
                     >
                         {{ chip.roleName }}
@@ -21,7 +21,7 @@
                         <button
                             class="chip-close"
                             [attr.aria-label]="'Remove ' + chip.roleName + ' role'"
-                            (click)="removeChip(chip.roleId); $event.stopPropagation()"
+                            (click)="removeChip(chip.roleIds); $event.stopPropagation()"
                         >
                             <app-svg-icon
                                 icon="x"
@@ -117,10 +117,10 @@
 
 <ng-template #overflowDropdown>
     <div class="overflow-menu">
-        @for (chip of hiddenChips(); track chip.roleId) {
+        @for (chip of hiddenChips(); track chip.roleName) {
             <div
                 class="overflow-menu__item"
-                [matTooltip]="chipTooltips().get(chip.roleId) ?? ''"
+                [matTooltip]="chipTooltips().get(chip.roleName) ?? ''"
                 matTooltipPosition="above"
             >
                 <span class="overflow-menu__name">{{ chip.roleName }}</span>
@@ -128,7 +128,7 @@
                 <button
                     class="chip-close"
                     [attr.aria-label]="'Remove ' + chip.roleName + ' role'"
-                    (click)="removeChip(chip.roleId); closeOverflowMenu(); $event.stopPropagation()"
+                    (click)="removeChip(chip.roleIds); closeOverflowMenu(); $event.stopPropagation()"
                 >
                     <app-svg-icon
                         icon="x"

@@ -83,6 +83,8 @@ KNOWN_SKIPS = {
     "ModelSerializer",
     "PolymorphicProxySerializer",
     "SecretUsageCountListSerializer",
+    # A list wrapper: needs a child to instantiate; its child carries only a StorageFile field.
+    "SurfaceStorageItemListSerializer",
 }
 
 #: The number of Secret-targeting field occurrences Check 1 discovers today. A floor,

@@ -1,5 +1,7 @@
 from collections.abc import Callable
 
+import settings
+from foundation.cryptographer import AbstractCryptographer, FernetRotatedCryptographer
 from infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 from litestar.di import Provide
 
@@ -42,3 +44,12 @@ def uow() -> SQLAlchemyUnitOfWork:
 @register(use_cache=True, sync_to_thread=False)
 def task_register() -> TaskRegister:
     return TaskRegister()
+
+
+@register(use_cache=True, sync_to_thread=False)
+def cryptographer() -> AbstractCryptographer:
+    return FernetRotatedCryptographer(
+        settings.SECRETS_TRANSPORT_KEY,
+        settings.SECRETS_TRANSPORT_PREVIOUS_KEYS,
+        hkdf_info=settings.SECRETS_TRANSPORT_HKDF_INFO.encode(),
+    )

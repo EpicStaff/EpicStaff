@@ -12,6 +12,7 @@ __all__ = [
     "RagInProcessingError",
     "RagNotFoundError",
     "RepositoryError",
+    "SecretDecryptError",
     "UnsupportedError",
 ]
 
@@ -41,6 +42,10 @@ class ChunkingError(KnowledgeError):
 
 class EmbeddingError(KnowledgeError):
     default_message = "{embedder} failed to embed text."
+
+
+class SecretDecryptError(KnowledgeError):
+    default_message = "Could not decrypt {field}: it is not a value sealed with the transport key."
 
 
 class RepositoryError(KnowledgeError):

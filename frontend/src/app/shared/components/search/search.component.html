@@ -1,6 +1,7 @@
 <div
     class="search"
     [ngClass]="'search--mod-' + mod()"
+    [class.search--toolbar]="appearance() === 'toolbar'"
     [style.width]="width()"
 >
     <app-svg-icon

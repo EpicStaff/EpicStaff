@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd /home/developer/EpicStaff
+          cd "${APP_DIR:?APP_DIR is not set: add it to the .env of the self-hosted runner}"
           
           echo ">> Starting database reset on ${{ github.event.inputs.target_server }}..."
           

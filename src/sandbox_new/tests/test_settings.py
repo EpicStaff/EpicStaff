@@ -15,6 +15,7 @@ environment.
 import importlib
 
 import pytest
+from foundation.utils.env import EnvironmentBlankError
 
 import settings
 
@@ -157,3 +158,36 @@ def test_log_level_accepts_every_loguru_level_and_bench(
 def test_an_unknown_log_level_refuses_startup(reload_settings_with_env, configured):
     with pytest.raises(ValueError, match="SANDBOX_LOG_LEVEL"):
         reload_settings_with_env(SANDBOX_LOG_LEVEL=configured)
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        ("none", []),
+        ("", []),
+        ("old-key-0001", ["old-key-0001"]),
+        (" old-key-0001 , ,old-key-0002 ,", ["old-key-0001", "old-key-0002"]),
+    ],
+    ids=["none", "empty", "one", "padded-with-empty-items"],
+)
+def test_previous_transport_keys_are_split_stripped_and_empty_items_dropped(
+    reload_settings_with_env, configured, expected
+):
+    previous_keys = reload_settings_with_env(
+        SECRETS_TRANSPORT_PREVIOUS_KEYS=configured
+    ).SECRETS_TRANSPORT_PREVIOUS_KEYS
+
+    assert previous_keys == expected
+
+
+@pytest.mark.parametrize("configured", ["", "   ", "none"])
+def test_a_blank_transport_key_refuses_startup(reload_settings_with_env, configured):
+    with pytest.raises(EnvironmentBlankError, match="SECRETS_TRANSPORT_KEY"):
+        reload_settings_with_env(SECRETS_TRANSPORT_KEY=configured)
+
+
+def test_a_short_transport_key_is_accepted(reload_settings_with_env):
+    """django_app owns the length rule; the sandbox only refuses a blank key."""
+    reloaded = reload_settings_with_env(SECRETS_TRANSPORT_KEY="short")
+
+    assert reloaded.SECRETS_TRANSPORT_KEY == "short"

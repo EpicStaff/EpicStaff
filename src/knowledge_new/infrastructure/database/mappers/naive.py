@@ -77,6 +77,7 @@ def search_rows_to_found_chunks(rows, similarity_threshold: float) -> list[Found
             similarity=round(r.similarity, 4),
             text=r.text,
             source=r.file_name or "",
+            document_id=r.naive_rag_document_id,
         )
         for r in rows
         if r.similarity >= similarity_threshold

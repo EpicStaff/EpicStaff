@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from tables.models.base_models import copied_field_values
 
 from agents.models.surface_models import (
     AgentInlineSurfaceGraphBasicSearchConfig,
@@ -96,12 +98,81 @@ AGENT_INLINE_SURFACE_CONTENT = SurfaceContentModels(
 )
 
 
+# SurfaceKnowledge's optional one-to-one search configs use the same
+# related_name on every surface family; `content_attr` picks the matching model
+# class off the SurfaceContentModels bundle.
+_SEARCH_CONFIG_RELATED_NAMES = (
+    ("naive_search_config", "naive_config"),
+    ("graph_basic_search_config", "graph_basic_config"),
+    ("graph_local_search_config", "graph_local_config"),
+    ("graph_global_search_config", "graph_global_config"),
+    ("graph_drift_search_config", "graph_drift_config"),
+)
+
+
 class SurfaceContentService:
-    """Delete-all + bulk-create replacement of a surface's content rows.
+    """Replace or copy a surface's content rows (tools, storage items, knowledge).
 
     Parameterized by `SurfaceContentModels` so the same logic serves both the
     catalog `Surface` and the per-node `InlineSurface` families.
     """
+
+    @staticmethod
+    def copy_content(source_parent, new_parent, content: SurfaceContentModels, *, org_id) -> None:
+        """Copy every live content row of `source_parent` onto `new_parent`.
+
+        Tool and collection links are re-linked to the same rows, not cloned. Storage
+        items pointing at a file outside `org_id` are skipped, so a copy never grants
+        access to another organization's file.
+        """
+        source_owner = {content.parent_field: source_parent}
+        new_owner = {content.parent_field: new_parent}
+
+        # Re-linked rows are passed by id, so no row is fetched just to copy its key.
+        for tool in content.python_tool.objects.filter(**source_owner):
+            content.python_tool.objects.create(
+                python_tool_id=tool.python_tool_id, mode=tool.mode, **new_owner
+            )
+
+        for tool in content.mcp_tool.objects.filter(**source_owner):
+            content.mcp_tool.objects.create(
+                mcp_tool_id=tool.mcp_tool_id, mode=tool.mode, **new_owner
+            )
+
+        for item in content.storage_item.objects.filter(
+            **source_owner, storage_file__org_id=org_id
+        ):
+            content.storage_item.objects.create(
+                storage_file_id=item.storage_file_id,
+                can_list=item.can_list,
+                can_view=item.can_view,
+                can_edit=item.can_edit,
+                can_delete=item.can_delete,
+                **new_owner,
+            )
+
+        search_config_names = [related_name for related_name, _ in _SEARCH_CONFIG_RELATED_NAMES]
+        for knowledge in content.knowledge.objects.filter(**source_owner).select_related(
+            *search_config_names
+        ):
+            new_knowledge = content.knowledge.objects.create(
+                collection_id=knowledge.collection_id, **new_owner
+            )
+            SurfaceContentService._copy_knowledge_search_configs(knowledge, new_knowledge, content)
+
+    @staticmethod
+    def _copy_knowledge_search_configs(
+        source_knowledge, new_knowledge, content: SurfaceContentModels
+    ) -> None:
+        for related_name, content_attr in _SEARCH_CONFIG_RELATED_NAMES:
+            try:
+                config = getattr(source_knowledge, related_name)
+            except ObjectDoesNotExist:
+                continue
+
+            config_model = getattr(content, content_attr)
+            values = copied_field_values(config, exclude={"surface_knowledge"})
+            config_model.objects.create(surface_knowledge=new_knowledge, **values)
 
     @staticmethod
     def replace_python_tools(parent, items, content: SurfaceContentModels):

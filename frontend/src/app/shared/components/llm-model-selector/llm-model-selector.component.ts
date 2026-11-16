@@ -129,6 +129,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                             <input
                                 type="text"
                                 [ngModel]="searchTerm()"
+                                [ngModelOptions]="{ standalone: true }"
                                 (ngModelChange)="searchTerm.set($event)"
                                 placeholder="Search models..."
                                 aria-label="Search models"

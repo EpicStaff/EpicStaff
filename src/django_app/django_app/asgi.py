@@ -21,15 +21,29 @@ from channels.security.websocket import AllowedHostsOriginValidator
 from plugins.ownership.request_scope import PluginRequestScopeASGI
 from rbac.models.enums import ResourceType
 from tables.graph_collab.ws_auth import TicketAuthMiddleware
-from tables.views.storage_upload_stream_view import UPLOAD_STREAM_PATH, upload_stream_app
+from tables.views.storage_upload_stream_view import (
+    UPLOAD_STREAM_ACTION,
+    UPLOAD_STREAM_PATH,
+    upload_stream_app,
+)
+from tables.views.storage_views import StorageAPIView
+from user_audit.middleware import UserActionASGI
 
 from django_app.forwarding_headers import DropUnderscoreForwardingHeadersMiddleware
 from django_app.routing import websocket_urlpatterns
 
 # The upload stream bypasses Django's middleware, so a plugin service account's upload gets
-# its request scope (ownership of the files, the activity event) here instead.
+# its request scope (ownership of the files, the activity event) here instead, and a user's
+# upload its user-action context and record. Nested in the same order as MIDDLEWARE.
 upload_stream = PluginRequestScopeASGI(
-    upload_stream_app, resource_type=ResourceType.FILES.value, route=UPLOAD_STREAM_PATH.lstrip("/")
+    UserActionASGI(
+        upload_stream_app,
+        view_class=StorageAPIView,
+        action=UPLOAD_STREAM_ACTION,
+        route=UPLOAD_STREAM_PATH.lstrip("/"),
+    ),
+    resource_type=ResourceType.FILES.value,
+    route=UPLOAD_STREAM_PATH.lstrip("/"),
 )
 
 

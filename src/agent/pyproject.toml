@@ -9,7 +9,7 @@ authors = [
 requires-python = "==3.12.10"
 dependencies = [
     "fastmcp==4.1.6",
-    "foundation",
+    "foundation[cryptographer]",
     "jsonschema==4.26.0",
     "litellm==1.108.1",
     "loguru==0.7.3",

@@ -335,6 +335,18 @@ def test_reimporting_into_the_source_org_reuses_the_llm_config(
 
 
 @pytest.mark.django_db
+def test_reimporting_into_another_org_reuses_the_llm_config(acme_client, beta_client, beta, agent):
+    exported = _export(acme_client, agent).content
+
+    _import(beta_client, exported)
+    resp = _import(beta_client, exported)
+
+    assert resp.status_code == 200, resp.content
+    assert LLMConfig.objects.filter(org=beta).count() == 1
+    assert resp.json()["LLMConfig"]["reused"]["count"] == 1
+
+
+@pytest.mark.django_db
 def test_bulk_exported_file_imports_every_agent(acme_client, beta_client, beta, agent, second_agent):
     exported = _bulk_export(acme_client, [agent.id, second_agent.id]).content
 

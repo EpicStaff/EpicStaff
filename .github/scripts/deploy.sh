@@ -28,7 +28,8 @@ env_bool() {
 # <<< env_bool
 
 
-APP_DIR="/home/developer/EpicStaff"
+# Set per server in the self-hosted runner's .env (e.g. APP_DIR=/opt/EpicStaff).
+APP_DIR="${APP_DIR:?APP_DIR is not set: add it to the .env of the self-hosted runner}"
 COMPOSE_DIR="$APP_DIR/src"
 COMPOSE_FILE="docker-compose.yaml"
 NUKE_DB=${NUKE_DB:-false}
@@ -59,7 +60,7 @@ fi
 
 # deploy.env stays last so the server's overrides win. envtool.py --dev turns the chat service
 # and the audit trail on (COMPOSE_PROFILES=dev,chat,auditor, CHAT_ENABLED=true,
-# AUDIT_TRAIL_ENABLED=true); override the profile and its flag in deploy.env to turn one off.
+# SESSION_AUDIT_TRAIL_ENABLED=true, USER_AUDIT_TRAIL_ENABLED=true); override the profile and its flag in deploy.env to turn one off.
 # With chat on, set CHAT_PUBLIC_BASE_URL in deploy.env too: its dev default is http://localhost.
 DC="docker compose --env-file .env --env-file deploy.env -f $COMPOSE_FILE"
 

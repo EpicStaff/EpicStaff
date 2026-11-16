@@ -13,7 +13,6 @@ class with its own singleton.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -47,6 +46,7 @@ from src.shared.system_one.adapter import SYSTEM_ONE_ADAPTERS, SystemOneError
 from src.shared.system_one.llm_adapter import LlmSystemOneAdapter
 from src.shared.system_one.openai_adapter import OpenAIDecisionsAdapter
 from src.shared.system_one.typesafe_adapter import TypeSafeAdapter
+from utils.map_variables import map_variables_to_input
 from utils.singleton_meta import SingletonMeta
 
 
@@ -814,47 +814,299 @@ async def test_exit_in_expression_is_reported_against_its_row(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Path resolution safety
+# Input map path resolution
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_path_resolves_legitimate_dot_and_bracket_paths():
-    # Legitimate dot, direct lookup, and bracket paths stay working.
-    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
-    ctx = {
-        "variables": DotDict(
-            {
-                "chat_id": "abc",
-                "index": 1,
-                "messages": [DotDict({"text": "first"}), DotDict({"text": "second"})],
-            }
+_NOOP_CODE = PythonCodeData(code="def main(**inputs):\n    return None", entrypoint="main")
+
+INPUT_MAP_VARIABLES = {
+    "user": {"name": "Ann"},
+    "index": 1,
+    "messages": [{"text": "first"}, {"text": "second"}],
+    "attr_name": "_domain_key",
+    "_domain_key": "domain value",
+    "by_name": {"Bob": 1},
+    "big_index": 5,
+}
+
+
+async def run_pre_computation_input_map(monkeypatch, input_map: dict, **node_overrides):
+    """Run a table whose pre-computation maps `input_map`; return sandbox inputs, result, Redis."""
+    calls = record_run_code(monkeypatch)
+    node_data = make_node_data(next_error_node="error_node").model_copy(
+        update={"pre_python_code": _NOOP_CODE, "pre_input_map": input_map, **node_overrides}
+    )
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+    result = await subgraph.ainvoke(make_state(INPUT_MAP_VARIABLES))
+    return calls, result, redis_service
+
+
+def error_details(redis_service: MagicMock) -> list[str]:
+    return [
+        message["details"]
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mapped_path", "expected"),
+    [
+        pytest.param("variables.missing|null", None, id="null-default"),
+        pytest.param("variables.missing|None", None, id="none-default-any-case"),
+        pytest.param("variables.missing|true", True, id="true-default"),
+        pytest.param("variables.missing|FALSE", False, id="false-default-any-case"),
+        pytest.param("variables.missing|0", 0, id="digits-default"),
+        pytest.param("variables.missing|text", "text", id="text-default"),
+        pytest.param("variables.missing|-1", "-1", id="signed-number-default-is-text"),
+        pytest.param("variables.missing|a|b", "a|b", id="default-runs-to-the-end"),
+        pytest.param("variables.user.missing.deeper|7", 7, id="default-for-missing-parent"),
+        pytest.param("variables.user.name|fallback", "Ann", id="found-value-wins-over-default"),
+        pytest.param("variables.user", {"name": "Ann"}, id="nested-value-as-plain-data"),
+        pytest.param("variables.messages[1].text", "second", id="literal-index"),
+    ],
+)
+async def test_input_map_path_reads_the_same_as_in_a_regular_node(
+    monkeypatch, mapped_path, expected
+):
+    calls, result, _ = await run_pre_computation_input_map(monkeypatch, {"value": mapped_path})
+
+    assert calls == [{"value": expected}]
+    assert result_node(result) == END
+    regular_node_input = map_variables_to_input(
+        DotDict(INPUT_MAP_VARIABLES), {"value": mapped_path}
+    )
+    assert regular_node_input == {"value": expected}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mapped_path", "expected"),
+    [
+        pytest.param("variables.messages[variables.index].text", "second", id="dynamic-index"),
+        # The key comes from flow data and is looked up as an item, never as an attribute,
+        # so an underscore in it is not refused.
+        pytest.param("variables[variables.attr_name]", "domain value", id="dynamic-key"),
+        pytest.param(
+            "variables.messages[variables.missing].text|null", None, id="missing-dynamic-key"
         ),
-        "session_id": 42,
-    }
+        pytest.param(
+            "variables.by_name[variables.user.name].inbox|null",
+            None,
+            id="dynamic-key-not-in-the-mapping-takes-the-default",
+        ),
+        pytest.param(
+            "variables.nope[variables.index]|null",
+            None,
+            id="missing-name-before-a-dynamic-key-takes-the-default",
+        ),
+        pytest.param("session_id", 1, id="session-id-root"),
+        pytest.param("node_name", "cdt_node", id="node-name-root"),
+        pytest.param(
+            "system_variables.nodes.cdt_node.execution_order", 0, id="system-variables-root"
+        ),
+    ],
+)
+async def test_input_map_path_reads_table_only_roots_and_dynamic_keys(
+    monkeypatch, mapped_path, expected
+):
+    calls, result, _ = await run_pre_computation_input_map(monkeypatch, {"value": mapped_path})
 
-    assert resolve("variables.chat_id", ctx) == "abc"
-    assert resolve("session_id", ctx) == 42
-    assert resolve("variables.messages[variables.index].text", ctx) == "second"
+    assert calls == [{"value": expected}]
+    assert result_node(result) == END
 
 
-def test_resolve_path_rejects_dunder_dot_token():
-    # A dunder dot token must not reach Python internals.
-    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
-    ctx = {"variables": DotDict({"chat_id": "abc"})}
-
-    with pytest.raises(KeyError):
-        resolve("variables.__class__", ctx)
-    with pytest.raises(KeyError):
-        resolve("variables.__class__.__init__.__globals__", ctx)
+def _not_found(path: str) -> str:
+    return (
+        f"Pre-computation input map entry 'value': variable path '{path}' was not found and "
+        f"has no default (write '{path}|null' to allow a missing value)."
+    )
 
 
-def test_resolve_path_allows_bracket_access_to_underscore_domain_key():
-    # Bracket access is item lookup, not getattr — an underscore domain key
-    # must still resolve rather than be over-blocked.
-    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
-    ctx = {"variables": DotDict({"attr_name": "_secret", "_secret": "leak"})}
+def _missing_index(path: str) -> str:
+    return (
+        f"Pre-computation input map entry 'value': variable path '{path}' reads a list index "
+        "that its value does not have."
+    )
 
-    assert resolve("variables[variables.attr_name]", ctx) == "leak"
+
+def _refused_bracket(path: str) -> str:
+    return (
+        f"Pre-computation input map entry 'value': Variable path '{path}' is not allowed: a "
+        "bracket holds either a list index such as [0] or one variable path such as "
+        "[variables.index], with no brackets, signs or '|' inside."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mapped_path", "expected_error"),
+    [
+        pytest.param("variables.missing", _not_found("variables.missing"), id="missing"),
+        pytest.param(
+            "variables.user.missing.deeper",
+            _not_found("variables.user.missing.deeper"),
+            id="missing-parent",
+        ),
+        pytest.param("unknown.value", _not_found("unknown.value"), id="unknown-root"),
+        pytest.param(
+            "variables.messages[variables.missing].text",
+            _not_found("variables.messages[variables.missing].text"),
+            id="missing-dynamic-key-path",
+        ),
+        # A default covers a missing name or mapping key, not a missing list index.
+        pytest.param(
+            "variables.messages[5].text|null",
+            _missing_index("variables.messages[5].text"),
+            id="index-out-of-range",
+        ),
+        pytest.param(
+            "variables.messages[variables.big_index].text|null",
+            _missing_index("variables.messages[variables.big_index].text"),
+            id="dynamic-index-out-of-range",
+        ),
+        pytest.param(
+            "variables.by_name[variables.user.name]",
+            _not_found("variables.by_name[variables.user.name]"),
+            id="dynamic-key-not-in-the-mapping",
+        ),
+        # With no segment the whole state would be read; a default does not rescue it.
+        pytest.param(
+            "",
+            "Pre-computation input map entry 'value' has no variable path.",
+            id="empty-path",
+        ),
+        pytest.param(
+            "|null",
+            "Pre-computation input map entry 'value' has no variable path.",
+            id="empty-path-with-default",
+        ),
+        pytest.param(
+            "variables.__class__|null",
+            "Pre-computation input map entry 'value': Variable path 'variables.__class__' is "
+            "not allowed: path segments cannot start with '_'.",
+            id="underscore-segment",
+        ),
+        pytest.param(
+            "variables.messages[variables._index]",
+            "Pre-computation input map entry 'value': Variable path "
+            "'variables.messages[variables._index]' is not allowed: path segments cannot "
+            "start with '_'.",
+            id="underscore-segment-in-dynamic-key",
+        ),
+        pytest.param(
+            "variables.update",
+            "Pre-computation input map entry 'value': Variable path 'variables.update' reads a "
+            "built-in method instead of flow data: either the path goes past a text, number or "
+            "list value, or a segment is named like a method (such as 'items' or 'update') — "
+            "rename that variable.",
+            id="method",
+        ),
+    ],
+)
+async def test_unreadable_input_map_path_routes_to_the_error_node_without_a_sandbox_call(
+    monkeypatch, mapped_path, expected_error
+):
+    calls, result, redis_service = await run_pre_computation_input_map(
+        monkeypatch, {"value": mapped_path}
+    )
+
+    assert calls == []
+    assert error_details(redis_service) == [expected_error]
+    assert result_node(result) == "error_node"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mapped_path", "refused_path"),
+    [
+        pytest.param(
+            "variables.messages[variables.by_name[variables.user.name]]",
+            "variables.messages[variables.by_name[variables.user.name]]",
+            id="nested-dynamic-key",
+        ),
+        pytest.param(
+            "variables.messages[variables.ids[0]]",
+            "variables.messages[variables.ids[0]]",
+            id="index-inside-a-dynamic-key",
+        ),
+        pytest.param("variables.messages[-1]", "variables.messages[-1]", id="negative-index"),
+        # The default starts at the first '|', so the bracket is left open.
+        pytest.param(
+            "variables.messages[variables.index|0]",
+            "variables.messages[variables.index",
+            id="default-inside-a-bracket",
+        ),
+    ],
+)
+async def test_unsupported_bracket_in_an_input_map_path_is_refused(
+    monkeypatch, mapped_path, refused_path
+):
+    calls, result, redis_service = await run_pre_computation_input_map(
+        monkeypatch, {"value": mapped_path}
+    )
+
+    assert calls == []
+    assert error_details(redis_service) == [_refused_bracket(refused_path)]
+    assert result_node(result) == "error_node"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mapped_path", ["[variables.k]|null", ".[variables.k]"])
+@pytest.mark.parametrize("root_name", ["variables", "system_variables"])
+async def test_input_map_path_starting_with_a_dynamic_key_is_refused(
+    monkeypatch, mapped_path, root_name
+):
+    # Otherwise the value of `variables.k`, which may come from a webhook, picks a whole root.
+    calls = record_run_code(monkeypatch)
+    node_data = make_node_data(next_error_node="error_node").model_copy(
+        update={"pre_python_code": _NOOP_CODE, "pre_input_map": {"value": mapped_path}}
+    )
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    result = await subgraph.ainvoke(make_state({"k": root_name, "secret": "flow data"}))
+
+    path = mapped_path.split("|")[0]
+    assert calls == []
+    assert error_details(redis_service) == [
+        f"Pre-computation input map entry 'value': Variable path '{path}' is not allowed: it "
+        "must start with a variable name, such as variables.messages[variables.index], not "
+        "with a bracket."
+    ]
+    assert result_node(result) == "error_node"
+
+
+@pytest.mark.asyncio
+async def test_unreadable_input_map_path_without_an_error_node_ends_the_table(monkeypatch):
+    calls, result, redis_service = await run_pre_computation_input_map(
+        monkeypatch, {"value": "variables.missing"}, next_error_node=None
+    )
+
+    assert calls == []
+    assert error_details(redis_service) == [_not_found("variables.missing")]
+    assert result_node(result) == END
+
+
+@pytest.mark.asyncio
+async def test_unreadable_post_computation_input_map_path_routes_to_the_error_node(monkeypatch):
+    calls = record_run_code(monkeypatch)
+    node_data = make_node_data(
+        condition_groups=[row(0, next_node="matched")], next_error_node="error_node"
+    ).model_copy(
+        update={"post_python_code": _NOOP_CODE, "post_input_map": {"value": "variables.missing"}}
+    )
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert calls == []
+    assert error_details(redis_service) == [
+        "Post-computation input map entry 'value': variable path 'variables.missing' was not "
+        "found and has no default (write 'variables.missing|null' to allow a missing value)."
+    ]
+    assert result_node(result) == "error_node"
 
 
 @pytest.mark.asyncio
@@ -1182,10 +1434,18 @@ async def test_the_message_carries_provider_model_version_state_and_raw_result(
             id="empty-input-map",
         ),
         pytest.param(
-            {"input_map": {"company": "variables.missing"}},
+            {"input_map": {"company": "variables.missing|null"}},
             None,
             "Error in condition 'row0': System One entry 'company_check' has no input values.",
             id="every-input-value-is-none",
+        ),
+        pytest.param(
+            {"input_map": {"company": "variables.missing"}},
+            None,
+            "Error in condition 'row0': Prompt 'company_check' input map entry 'company': "
+            "variable path 'variables.missing' was not found and has no default "
+            "(write 'variables.missing|null' to allow a missing value).",
+            id="missing-path-without-default",
         ),
         pytest.param(
             {},
@@ -1221,24 +1481,18 @@ async def test_a_failing_system_one_entry_takes_the_error_path_with_our_own_mess
 
 
 @pytest.mark.asyncio
-async def test_input_map_missing_path_and_datetime_still_go_out(monkeypatch):
-    # Called directly: a datetime in the state already breaks the session messages
-    # of a full run, so only this step is under test.
+async def test_system_one_input_map_sends_the_default_of_a_missing_path(monkeypatch, sandbox):
     adapter = FakeSystemOneAdapter()
     monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", adapter)
-    when = datetime(2026, 1, 1, 12, 30, tzinfo=UTC)
-    node_data = system_one_node(input_map={"a": "variables.missing", "b": "variables.when"})
-    node = ClassificationDecisionTableNodeSubgraph(
-        session_id=1,
-        node_data=node_data,
-        graph_builder=StateGraph(State),
-        stop_event=StopEvent(),
-        redis_service=recording_redis_service(),
+    node_data = system_one_node(
+        input_map={"region": "variables.region|null", "company": "variables.company"}
     )
+    subgraph, _ = build_subgraph_with_redis(node_data)
 
-    await node._execute_prompt("company_check", make_state({"when": when}))
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
 
-    assert adapter.states == [{"a": None, "b": str(when)}]
+    assert adapter.states == [{"region": None, "company": "Acme"}]
+    assert result_node(result) == "eng_branch"
 
 
 @pytest.mark.asyncio

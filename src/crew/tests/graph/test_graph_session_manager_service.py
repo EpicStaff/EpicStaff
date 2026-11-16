@@ -643,7 +643,7 @@ async def test_session_stopped_while_queued_is_audited_as_skipped(service, monke
 def audit_client(monkeypatch):
     client = RecordingAuditClient()
     writer = SessionAuditWriter(client)
-    monkeypatch.setattr(session_audit_provider, "AUDIT_TRAIL_ENABLED", True)
+    monkeypatch.setattr(session_audit_provider, "SESSION_AUDIT_TRAIL_ENABLED", True)
     monkeypatch.setattr(session_audit_provider, "get_session_audit_writer", lambda: writer)
     monkeypatch.setattr(
         "services.graph.graph_session_manager_service.get_session_audit_writer", lambda: writer

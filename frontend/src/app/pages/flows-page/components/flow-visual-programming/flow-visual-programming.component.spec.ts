@@ -264,6 +264,7 @@ describe('FlowVisualProgrammingComponent', () => {
     let queryParamMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
     /** A signal, so FlowReadOnlyService's computed re-reads it when a test revokes Flows:Update. */
     let canUpdateFlows: WritableSignal<boolean>;
+    let connectionStatus: WritableSignal<string>;
     let runGraph: Record<string, ReturnType<typeof vi.fn>>;
     let runSessionSse: { stopStream: ReturnType<typeof vi.fn>; startStream: ReturnType<typeof vi.fn> };
     let isStreaming: ReturnType<typeof signal<boolean>>;
@@ -278,6 +279,7 @@ describe('FlowVisualProgrammingComponent', () => {
         explanationsApi = { saveExplanations: vi.fn() };
         FlowGraphStubComponent.instances = [];
         canUpdateFlows = signal(true);
+        connectionStatus = signal('connected');
         flowsApi = {
             getGraphById: vi.fn().mockReturnValue(of(graphDto())),
             getGraphsLight: vi.fn().mockReturnValue(of([])),
@@ -364,7 +366,7 @@ describe('FlowVisualProgrammingComponent', () => {
                     provide: GraphCollaborationWsService,
                     useValue: {
                         editors: signal([]),
-                        connectionStatus: signal('connected'),
+                        connectionStatus,
                         graphSaved$: new Subject(),
                         connect: vi.fn(),
                         disconnect: vi.fn(),
@@ -439,6 +441,36 @@ describe('FlowVisualProgrammingComponent', () => {
             nodes: flow.nodes.map((node) => ({ ...node, position: { x: 4242, y: 0 } })),
         });
     }
+
+    describe('save status chip in the header', () => {
+        function saveStatusShown(): unknown {
+            fixture.detectChanges();
+            const header = fixture.debugElement.query(By.directive(FlowHeaderStubComponent))
+                .componentInstance as FlowHeaderStubComponent;
+            return header.saveStatus();
+        }
+
+        it.each([
+            ['connected', 'saved'],
+            ['reconnecting', 'reconnecting'],
+            ['lost', 'connection-lost'],
+        ])('shows an editor the status while the connection is %s', (connection, expectedStatus) => {
+            connectionStatus.set(connection);
+
+            expect(saveStatusShown()).toBe(expectedStatus);
+        });
+
+        // Without Flows:Update nothing can be saved, so "Saved" would claim something the user can't do.
+        it.each(['connected', 'reconnecting', 'lost'])(
+            'shows nothing to a user who cannot edit the flow while the connection is %s',
+            (connection) => {
+                canUpdateFlows.set(false);
+                connectionStatus.set(connection);
+
+                expect(saveStatusShown()).toBeNull();
+            }
+        );
+    });
 
     describe('version preview', () => {
         function preview(): HTMLElement | null {
