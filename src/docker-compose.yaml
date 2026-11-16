@@ -140,8 +140,8 @@ services:
       <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *retention-env, *secrets-encryption-env, *secrets-transport-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
-      DB_USER: ${DB_USER:?}
-      DB_PASSWORD: ${DB_PASSWORD:?}
+      DJANGO_DB_USER: ${DJANGO_DB_USER:?}
+      DJANGO_DB_PASSWORD: ${DJANGO_DB_PASSWORD:?}
       # Role names only: apply_service_grants grants these roles, which crewdb creates,
       # their table privileges after migrate.
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
@@ -397,6 +397,8 @@ services:
       POSTGRES_HOST: ${DB_HOST:?}
       POSTGRES_PORT: ${DB_PORT:?}
       PGDATA: ${PGDATA:?}
+      DJANGO_DB_USER: ${DJANGO_DB_USER:?}
+      DJANGO_DB_PASSWORD: ${DJANGO_DB_PASSWORD:?}
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
       MANAGER_DB_PASSWORD: ${MANAGER_DB_PASSWORD:?}
       KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
