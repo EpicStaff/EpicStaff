@@ -1,3 +1,4 @@
+import functools
 import logging
 import types
 
@@ -11,6 +12,8 @@ pytest.importorskip(
 
 from domain.enums import SlotEnum  # noqa: E402
 from graphrag.logger.standard_logging import init_loggers  # noqa: E402
+from graphrag_llm.config import ModelConfig, RetryConfig  # noqa: E402
+from infrastructure.database.mappers import graph as graph_mapper  # noqa: E402
 from infrastructure.database.mappers.graph import (  # noqa: E402
     graph_rag_orm_to_graphrag_config,
     graph_rag_orm_to_pricing_config,
@@ -190,7 +193,7 @@ def test_completion_call_args_drop_malformed_logit_bias():
 
 
 def test_cache_lives_in_object_storage_of_this_rag_and_is_shared_by_both_slots():
-    """A reindex into the other slot must find the answers the first slot cached."""
+    # A reindex into the other slot must find the answers the first slot cached.
     rag = _make_fake_rag(rag_id=42)
 
     slot_a = graph_rag_orm_to_graphrag_config(rag, slot=SlotEnum.A)
@@ -220,7 +223,7 @@ def _change_embedding_model(rag):
     ids=["llm_model", "temperature", "embedding_model"],
 )
 def test_changing_a_model_setting_starts_a_new_cache(change):
-    """graphrag's cache key is the prompt alone, so a new model must not get old answers."""
+    # graphrag's cache key is the prompt alone, so a new model must not get old answers.
     rag = _make_fake_rag(rag_id=42)
     before = graph_rag_orm_to_graphrag_config(rag, slot=SlotEnum.A).cache.storage.prefix
 
@@ -231,10 +234,24 @@ def test_changing_a_model_setting_starts_a_new_cache(change):
     assert after.startswith("graphrag/rag_42/cache/")
 
 
+def test_a_graphrag_default_that_changes_no_answer_keeps_the_cache(monkeypatch):
+    rag = _make_fake_rag(rag_id=42)
+    before = graph_rag_orm_to_graphrag_config(rag, slot=SlotEnum.A).cache.storage.prefix
+
+    # Stands in for a graphrag upgrade that changes the retry and metrics defaults.
+    upgraded_model_config = functools.partial(
+        ModelConfig, retry=RetryConfig(max_retries=7), metrics=None
+    )
+    monkeypatch.setattr(graph_mapper, "ModelConfig", upgraded_model_config)
+    after = graph_rag_orm_to_graphrag_config(rag, slot=SlotEnum.A).cache.storage.prefix
+
+    assert after == before
+
+
 def test_graphrag_log_reaches_the_root_logger_once_and_writes_no_file(
     tmp_path, monkeypatch, caplog, capsys
 ):
-    """The working directory is read-only; graphrag's log must go to the container log only."""
+    # The working directory is read-only; graphrag's log must go to the container log only.
     monkeypatch.chdir(tmp_path)
     config = graph_rag_orm_to_graphrag_config(_make_fake_rag(), slot=SlotEnum.A)
 

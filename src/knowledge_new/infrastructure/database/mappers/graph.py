@@ -90,10 +90,17 @@ def _build_embedding_model(embedder_config: ORMEmbeddingConfig) -> ModelConfig:
     )
 
 
+_ANSWER_CHANGING_MODEL_FIELDS = {"model_provider", "model", "api_base", "api_version", "call_args"}
+
+
 def _cache_subdir(*models: ModelConfig) -> str:
     # graphrag keys a cached answer on the prompt alone, never on the model or its call
     # arguments, so the models' settings name the cache: changing either starts a new one.
-    settings_json = json.dumps([model.model_dump(mode="json") for model in models], sort_keys=True)
+    # Cached answers are reused until a model setting changes (graphrag never expires them).
+    settings_json = json.dumps(
+        [model.model_dump(mode="json", include=_ANSWER_CHANGING_MODEL_FIELDS) for model in models],
+        sort_keys=True,
+    )
     return "cache/" + hashlib.sha256(settings_json.encode()).hexdigest()[:16]
 
 

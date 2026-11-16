@@ -99,12 +99,15 @@ services:
   # one-shot hands them to uid 1000 before their services start. It changes only entries
   # that are wrong, so later runs do nearly nothing. -h changes a symlink itself, never
   # what it points at. DAC_READ_SEARCH lets it into 0700 directories owned by uid 1000.
+  # The volumes may be in use (an up against a running stack): -ignore_readdir_race keeps a
+  # file deleted mid-walk from failing the run and blocking the dependents.
   volume-permissions:
     logging: *bounded-logs
     restart: "no"
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
     container_name: volume-permissions
     user: "0"
+    read_only: true
     network_mode: none
     security_opt:
       - no-new-privileges:true
@@ -118,7 +121,7 @@ services:
       - plugin_spa:/volumes/plugin_spa
       - auditor_data:/volumes/auditor_data
     command: [find, /volumes/media_data, /volumes/plugin_spa, /volumes/auditor_data,
-              "(", "!", -uid, "1000", -o, "!", -gid, "1000", ")", -exec, chown, -h, "1000:1000", "{}", "+"]
+              -ignore_readdir_race, "(", "!", -uid, "1000", -o, "!", -gid, "1000", ")", -exec, chown, -h, "1000:1000", "{}", "+"]
 
   django_app:
     <<: *hardened

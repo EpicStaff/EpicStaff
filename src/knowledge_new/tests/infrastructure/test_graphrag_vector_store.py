@@ -30,15 +30,21 @@ def test_create_index_leaves_no_temporary_files(tmp_path, lance_temp_dir):
 
 
 def test_create_index_makes_the_same_empty_table_as_graphrag(tmp_path, lance_temp_dir):
-    ours = _store(S3LanceDBVectorStore, tmp_path / "ours")
-    graphrags = _store(LanceDBVectorStore, tmp_path / "graphrag")
+    our_store = _store(S3LanceDBVectorStore, tmp_path / "ours")
+    graphrag_store = _store(LanceDBVectorStore, tmp_path / "graphrag")
 
-    ours.create_index()
-    graphrags.create_index()
+    our_store.create_index()
+    graphrag_store.create_index()
 
-    assert ours.document_collection.schema == graphrags.document_collection.schema
-    assert ours.document_collection.count_rows() == 0
-    assert ours.document_collection.list_indices() == graphrags.document_collection.list_indices()
+    # graphrag's own store leaks there: proves the fixture redirects lance, and fails once
+    # upstream fixes the leak.
+    assert list(lance_temp_dir.iterdir()) != []
+    assert our_store.document_collection.schema == graphrag_store.document_collection.schema
+    assert our_store.document_collection.count_rows() == 0
+    assert (
+        our_store.document_collection.list_indices()
+        == graphrag_store.document_collection.list_indices()
+    )
 
 
 def test_documents_loaded_after_create_index_are_found(tmp_path, lance_temp_dir):

@@ -2,6 +2,9 @@
 
 set -e  # Exit immediately if a command exits with a non-zero status\
 
+# /tmp is a volume, so a killed worker's spill files outlive it; find logs what it can't delete.
+find /tmp -mindepth 1 -delete || true
+
 # >>> env_bool
 # Strict boolean environment flag, accepting exactly the values Env.bool accepts
 # (src/shared/envtools.py). Copied verbatim into every script that needs it;
