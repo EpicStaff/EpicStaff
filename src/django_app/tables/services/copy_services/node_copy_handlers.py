@@ -177,7 +177,6 @@ def copy_webhook_trigger_node(
         node_name=node.node_name,
         webhook_trigger=node.webhook_trigger,
         python_code=new_code,
-        use_storage=node.use_storage,
         **copied_grant_fields(node, grant_actor_for(user, graph)),
         metadata=node.metadata,
         test_payload=node.test_payload,
@@ -331,8 +330,6 @@ def copy_classification_decision_table_node(
         default_next_node_id=node.default_next_node_id,
         next_error_node_id=node.next_error_node_id,
         metadata=node.metadata,
-        pre_use_storage=node.pre_use_storage,
-        post_use_storage=node.post_use_storage,
         **copied_grant_fields(node, grant_actor_for(user, graph)),
     )
 

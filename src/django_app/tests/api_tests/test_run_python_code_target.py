@@ -76,9 +76,9 @@ def attached_file(acme, acme_graph):
     return storage_file
 
 
-def _python_node(graph, *, use_storage, code="def main(): return 1"):
+def _python_node(graph, code="def main(): return 1"):
     python_code = PythonCode.objects.create(code=code, entrypoint="main")
-    return PythonNode.objects.create(graph=graph, python_code=python_code, use_storage=use_storage)
+    return PythonNode.objects.create(graph=graph, python_code=python_code)
 
 
 def _run_target(client, target_type, target_id, variables=None):
@@ -101,7 +101,7 @@ class TestPythonNodeTarget:
         sandbox_intake,
         minted_credentials,
     ):
-        node = _python_node(acme_graph, use_storage=True)
+        node = _python_node(acme_graph)
 
         response = _run_target(acme_client, "python_node", node.id, {"x": 1})
 
@@ -135,7 +135,7 @@ class TestPythonNodeTarget:
     def test_test_run_gets_the_actions_of_the_nodes_saved_grant(
         self, acme_client, acme_graph, attached_file, sandbox_intake, minted_credentials
     ):
-        node = _python_node(acme_graph, use_storage=True)
+        node = _python_node(acme_graph)
         PythonNode.objects.filter(pk=node.pk).update(
             storage_grant_read=True, storage_grant_write=True, storage_grant_delete=False
         )
@@ -149,7 +149,7 @@ class TestPythonNodeTarget:
     def test_storage_node_without_attached_files_still_gets_its_folder(
         self, acme_client, acme_graph, sandbox_intake, minted_credentials
     ):
-        node = _python_node(acme_graph, use_storage=True)
+        node = _python_node(acme_graph)
 
         response = _run_target(acme_client, "python_node", node.id)
 
@@ -157,26 +157,13 @@ class TestPythonNodeTarget:
         [task] = _submitted_tasks(sandbox_intake)
         assert task["storage_allowed_paths"] == [f"test-runs/python_node-{node.id}/"]
 
-    def test_node_without_storage_sends_no_storage_fields(
-        self, acme_client, acme, acme_graph, attached_file, sandbox_intake
-    ):
-        node = _python_node(acme_graph, use_storage=False)
-
-        response = _run_target(acme_client, "python_node", node.id)
-
-        assert response.status_code == 200, response.data
-        [task] = _submitted_tasks(sandbox_intake)
-        assert task["use_storage"] is False
-        assert task["storage_allowed_paths"] == []
-        assert task["storage_org_prefix"] is None
-        assert task["global_kwargs"]["org_id"] == acme.id
 
     def test_declared_secret_reaches_the_sandbox_message(
-        self, acme_client, acme, acme_graph, sandbox_intake
+        self, acme_client, acme, acme_graph, sandbox_intake, minted_credentials
     ):
         secret = secret_service.create(text=PLAINTEXT, org=acme, name="TARGET_KEY")
         node = _python_node(
-            acme_graph, use_storage=False, code='def main(): return get_secret("TARGET_KEY")'
+            acme_graph, code='def main(): return get_secret("TARGET_KEY")'
         )
         node.python_code.secrets.set([secret])
 
@@ -191,7 +178,7 @@ class TestPythonNodeTarget:
     ):
         secret_service.create(text=PLAINTEXT, org=acme, name="TARGET_KEY")
         node = _python_node(
-            acme_graph, use_storage=True, code='def main(): return get_secret("TARGET_KEY")'
+            acme_graph, code='def main(): return get_secret("TARGET_KEY")'
         )
 
         response = _run_target(acme_client, "python_node", node.id)
@@ -202,10 +189,10 @@ class TestPythonNodeTarget:
         assert not PythonCodeResult.objects.exists()
 
 
-def _webhook_trigger_node(graph, *, use_storage):
+def _webhook_trigger_node(graph):
     python_code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     return WebhookTriggerNode.objects.create(
-        graph=graph, node_name="webhook_entry", python_code=python_code, use_storage=use_storage
+        graph=graph, node_name="webhook_entry", python_code=python_code
     )
 
 
@@ -214,7 +201,7 @@ class TestWebhookTriggerNodeTarget:
     def test_storage_node_gets_attached_files_and_its_test_run_folder(
         self, acme_client, acme, acme_graph, attached_file, sandbox_intake, minted_credentials
     ):
-        node = _webhook_trigger_node(acme_graph, use_storage=True)
+        node = _webhook_trigger_node(acme_graph)
 
         response = _run_target(acme_client, "webhook_trigger_node", node.id)
 
@@ -241,19 +228,6 @@ class TestWebhookTriggerNodeTarget:
             execution_id=response.data["execution_id"]
         ).python_code_id == node.python_code_id
 
-    def test_node_without_storage_sends_no_storage_fields(
-        self, acme_client, acme, acme_graph, attached_file, sandbox_intake
-    ):
-        node = _webhook_trigger_node(acme_graph, use_storage=False)
-
-        response = _run_target(acme_client, "webhook_trigger_node", node.id)
-
-        assert response.status_code == 200, response.data
-        [task] = _submitted_tasks(sandbox_intake)
-        assert task["use_storage"] is False
-        assert task["storage_allowed_paths"] == []
-        assert task["storage_org_prefix"] is None
-        assert task["global_kwargs"]["org_id"] == acme.id
 
 
 @pytest.mark.django_db
@@ -271,10 +245,16 @@ class TestSandboxRefusesTheSubmission:
         ids=["refused", "full"],
     )
     def test_the_result_is_marked_error_instead_of_staying_pending(
-        self, acme_client, acme_graph, sandbox_intake, status_code, expected_stderr
+        self,
+        acme_client,
+        acme_graph,
+        sandbox_intake,
+        minted_credentials,
+        status_code,
+        expected_stderr,
     ):
         sandbox_intake.status_code = status_code
-        node = _python_node(acme_graph, use_storage=False)
+        node = _python_node(acme_graph)
 
         response = _run_target(acme_client, "python_node", node.id)
 
@@ -289,7 +269,7 @@ class TestSandboxRefusesTheSubmission:
 @pytest.mark.django_db
 class TestTargetLookupIsOrgScoped:
     def test_node_of_another_org_is_not_found(self, acme_client, beta_graph, sandbox_intake):
-        node = _python_node(beta_graph, use_storage=True)
+        node = _python_node(beta_graph)
 
         response = _run_target(acme_client, "python_node", node.id)
 
@@ -315,7 +295,7 @@ class TestTargetLookupIsOrgScoped:
         assert sandbox_intake.bodies == []
 
     def test_soft_deleted_node_is_not_found(self, acme_client, acme_graph, sandbox_intake):
-        node = _python_node(acme_graph, use_storage=True)
+        node = _python_node(acme_graph)
         PythonNode.all_objects.filter(pk=node.pk).update(
             active=False, soft_deleted_at=timezone.now()
         )
@@ -341,7 +321,7 @@ class TestTargetLookupIsOrgScoped:
         OrganizationUser.objects.create(user=viewer, org=acme, role=role_viewer)
         client = client_as(viewer)
         client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-        node = _python_node(acme_graph, use_storage=True)
+        node = _python_node(acme_graph)
 
         response = _run_target(client, "python_node", node.id)
 
@@ -354,7 +334,7 @@ class TestRequestShape:
     def test_both_target_and_python_code_id_is_rejected(
         self, acme_client, acme_graph, sandbox_intake
     ):
-        node = _python_node(acme_graph, use_storage=False)
+        node = _python_node(acme_graph)
 
         response = acme_client.post(
             URL,
@@ -376,7 +356,7 @@ class TestRequestShape:
         assert "exactly one" in response.data["message"]
 
     def test_unknown_target_type_is_rejected(self, acme_client, acme_graph, sandbox_intake):
-        node = _python_node(acme_graph, use_storage=False)
+        node = _python_node(acme_graph)
 
         response = _run_target(acme_client, "agent_node", node.id)
 
@@ -387,7 +367,7 @@ class TestRequestShape:
     def test_legacy_python_code_id_runs_bare_code_without_storage(
         self, acme_client, acme_graph, attached_file, sandbox_intake
     ):
-        node = _python_node(acme_graph, use_storage=True)
+        node = _python_node(acme_graph)
 
         response = acme_client.post(
             URL, {"python_code_id": node.python_code_id, "variables": {"x": 1}}, format="json"
@@ -444,6 +424,7 @@ class TestTriggerNodeCodeNeedsRun:
         acme,
         acme_graph,
         sandbox_intake,
+        minted_credentials,
         named_by,
         flows_permissions,
         expected_status,
@@ -472,7 +453,7 @@ class TestTriggerNodeCodeNeedsRun:
         self, custom_role_client, acme, acme_graph, sandbox_intake, named_by
     ):
         client = custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "code-python")
-        node = _python_node(acme_graph, use_storage=False)
+        node = _python_node(acme_graph)
 
         response = _run_code_of(client, node, named_by)
 

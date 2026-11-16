@@ -699,6 +699,14 @@ class SessionManagerService(metaclass=SingletonMeta):
         # Read once per graph from the Graph row, never from node or tool config:
         # it becomes the X-Organization-Id header of sandbox callback tools.
         org_id = graph.org_id
+        # Read once per graph: every code node below gets the storage of its graph.
+        attached_storage_paths = (
+            cv.attached_storage_paths(graph.pk)
+            if python_node_list
+            or webhook_trigger_node_list
+            or classification_decision_table_node_list
+            else None
+        )
 
         python_node_data_list = [
             cv.convert_python_node_to_pydantic(
@@ -707,6 +715,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 graph_id=graph.pk,
                 session_id=session.pk if session else None,
                 org_id=org_id,
+                attached_storage_paths=attached_storage_paths,
             )
             for item in python_node_list
         ]
@@ -721,6 +730,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 graph_id=graph.pk,
                 session_id=session.pk if session else None,
                 org_id=org_id,
+                attached_storage_paths=attached_storage_paths,
             )
             for item in webhook_trigger_node_list
         ]
@@ -850,6 +860,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                     graph_id=graph.pk,
                     session_id=session.pk if session else None,
                     org_id=org_id,
+                    attached_storage_paths=attached_storage_paths,
                 )
             )
 

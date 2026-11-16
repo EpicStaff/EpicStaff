@@ -552,7 +552,7 @@ def _flow_with_attached_file(org, name, path, boxes):
     storage_file = StorageFile.objects.create(org=org, path=path, name=path.rsplit("/", 1)[-1])
     GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
     node = PythonNode.objects.create(
-        graph=graph, python_code=_code(), use_storage=True, **_flags("", boxes)
+        graph=graph, python_code=_code(), **_flags("", boxes)
     )
     Edge.objects.create(graph=graph, start_node_id=start.pk, end_node_id=node.pk)
     return graph
@@ -618,7 +618,8 @@ def test_same_accounts_for_every_way_of_starting(
     )
     by_viewers_parent = _run_flow(session_manager, parent, user=viewer, trigger=TriggerSpec.manual())
 
-    expected = {(("read", "delete"), ("reports/a.txt",))}
+    # The webhook node has no box ticked: its account reaches only the session's own folder.
+    expected = {((), ()), (("read", "delete"), ("reports/a.txt",))}
     for session in (by_ui_user, by_api_key, by_webhook, by_viewers_parent):
         assert _minted(session) == expected, session.pk
 

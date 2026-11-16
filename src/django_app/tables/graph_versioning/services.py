@@ -112,6 +112,12 @@ class GraphVersioningService:
         source_graph = version.graph
         prepared = self._prepare(version)
         warnings = list(prepared.filter_warnings)
+        warnings.extend(
+            self._manager.storage_grant_capped_warnings(
+                prepared.filtered_snapshot["nodes"],
+                GrantActor.for_user(user, source_graph.org_id),
+            )
+        )
 
         graph_name = prepared.converted_snapshot.get("name", "Flow")
         new_graph, node_mapper = self._manager.create_graph_from_snapshot(
@@ -271,6 +277,12 @@ class GraphVersioningService:
         if user is not None:
             assert_actor_holds(GrantActor.for_user(user, graph.org_id), required)
         warnings = list(prepared.filter_warnings)
+        # Before applying: recreating the nodes consumes the snapshot's node dicts.
+        warnings.extend(
+            self._manager.storage_grant_capped_warnings(
+                prepared.filtered_snapshot["nodes"], GrantActor.for_user(user, graph.org_id)
+            )
+        )
 
         auto_backup_id = None
         if backup:

@@ -39,7 +39,6 @@ export interface CustomPythonCode {
     name: string;
     code: string;
     entrypoint: string;
-    use_storage?: boolean;
     secret_ids?: number[];
     secret_names?: string[];
     venv_id?: number | null;

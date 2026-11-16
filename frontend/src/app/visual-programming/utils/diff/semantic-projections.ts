@@ -153,7 +153,6 @@ export const SEMANTIC_PROJECTIONS = {
             node_name: nodeName(node),
             // Only here: the webhook and table load mappers drop the venv, so their models never hold one.
             python_code: { ...pythonCode(node.data, context), venv_id: node.data.venv_id ?? null },
-            use_storage: node.data.use_storage ?? false,
             storage_grants: storageGrants(node.storageGrants),
             ...inputOutput(node),
         }),
@@ -163,7 +162,6 @@ export const SEMANTIC_PROJECTIONS = {
         project: (node, context) => ({
             node_name: nodeName(node),
             python_code: pythonCode(node.data.python_code, context),
-            use_storage: node.data.use_storage ?? false,
             storage_grants: storageGrants(node.storageGrants),
             webhook_trigger: node.data.webhook_trigger,
         }),
@@ -304,7 +302,6 @@ export const SEMANTIC_PROJECTIONS = {
                     },
                     context
                 ),
-                pre_use_storage: table.pre_use_storage ?? false,
                 pre_storage_grants: storageGrants(node.preStorageGrants),
                 post_computation: computation(
                     table.post_computation,
@@ -315,7 +312,6 @@ export const SEMANTIC_PROJECTIONS = {
                     },
                     context
                 ),
-                post_use_storage: table.post_use_storage ?? false,
                 post_storage_grants: storageGrants(node.postStorageGrants),
                 condition_groups: keyedBy(
                     comparedConditionGroups(NodeType.CLASSIFICATION_TABLE, table.condition_groups ?? []),

@@ -102,3 +102,39 @@ def test_restoring_over_a_node_with_delete_ticked_is_refused_for_a_member(
         _restore(pre_grant_version, member_only)
 
     assert _stored_flags(flow) == (True, True, True)
+
+
+@pytest.fixture
+def old_version_with_switch(flow):
+    """A version saved while the storage switch existed: the node carries it next to ticked boxes."""
+
+    def _make(switch):
+        version = GraphVersioningService().save_version(graph=flow, name="with-switch")
+        for node in version.snapshot["nodes"]:
+            if "storage_grant_delete" in node:
+                node.update(_flags(True, True, True))
+                if switch is not None:
+                    node["use_storage"] = switch
+        version.save(update_fields=["snapshot"])
+        return version
+
+    return _make
+
+
+@pytest.mark.django_db
+def test_restoring_a_snapshot_whose_switch_was_off_leaves_every_box_off(
+    flow, old_version_with_switch, admin_acme
+):
+    _restore(old_version_with_switch(False), admin_acme)
+
+    assert _stored_flags(flow) == (False, False, False)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("switch", [True, None])
+def test_restoring_a_snapshot_whose_switch_was_on_or_missing_keeps_its_boxes(
+    flow, old_version_with_switch, admin_acme, switch
+):
+    _restore(old_version_with_switch(switch), admin_acme)
+
+    assert _stored_flags(flow) == (True, True, True)

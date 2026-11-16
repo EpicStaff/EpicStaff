@@ -34,7 +34,6 @@ import {
     enableTooltipOnlyWhenTruncated,
     NodeWarningBadge,
 } from '../../core/helpers/node-warning-badge.util';
-import { NO_FILE_ACCESS_TOOLTIP } from '../../core/helpers/storage-grants.util';
 import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,
@@ -334,10 +333,6 @@ export class FlowBaseNodeComponent implements OnInit {
         };
     }
 
-    public readonly noFileAccessTooltip = NO_FILE_ACCESS_TOOLTIP;
-
-    public readonly hasNoFileAccess = computed(() => this.flowService.nodeIdsWithoutFileAccess().has(this.node.id));
-
     public get hasMissingKeyValueTable(): boolean {
         return !!this.keyValueNode && this.keyValueNode.data.key_value_table === null;
     }
@@ -403,9 +398,6 @@ export class FlowBaseNodeComponent implements OnInit {
         }
         if (this.hasMissingAgentLlm) {
             badges.push({ kind: 'warning', label: 'No LLM', tooltip: this.agentLlmWarningTooltip });
-        }
-        if (this.hasNoFileAccess()) {
-            badges.push({ kind: 'warning', label: 'No file access', tooltip: this.noFileAccessTooltip });
         }
         if (this.hasMissingKeyValueTable) {
             badges.push({

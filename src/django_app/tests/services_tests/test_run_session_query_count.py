@@ -34,10 +34,10 @@ SECRET_NAME = "query-count-key"
 # before anything is written and again just before the publish: one query each
 # while no plugin grant of the organization is inactive. It also includes the
 # savepoint (SAVEPOINT, RELEASE) the warnings are saved in after the publish.
-RUN_SESSION_QUERY_COUNT = 67
+RUN_SESSION_QUERY_COUNT = 68
 
 
-def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -> PythonNode:
+def _python_node(graph: Graph, node_name: str, secret=None) -> PythonNode:
     if secret is None:
         code = "def main(**kwargs):\n    return 1\n"
     else:
@@ -45,9 +45,7 @@ def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -
     python_code = PythonCode.objects.create(code=code, entrypoint="main")
     if secret is not None:
         python_code.secrets.set([secret])
-    return PythonNode.objects.create(
-        graph=graph, python_code=python_code, node_name=node_name, use_storage=use_storage
-    )
+    return PythonNode.objects.create(graph=graph, python_code=python_code, node_name=node_name)
 
 
 def _webhook_trigger_node(graph: Graph, node_name: str) -> WebhookTriggerNode:
@@ -101,7 +99,7 @@ def representative_graph(org, secret, subgraph):
     )
     start = StartNode.objects.create(graph=graph, variables={"variables": {}})
     first_python = _python_node(graph, "first_python", secret=secret)
-    second_python = _python_node(graph, "second_python", secret=secret, use_storage=True)
+    second_python = _python_node(graph, "second_python", secret=secret)
     subgraph_node = SubGraphNode.objects.create(
         graph=graph, subgraph=subgraph, node_name="nested_flow"
     )
@@ -170,9 +168,9 @@ def test_payload_carries_org_and_secrets_read_from_the_graph_rows(
     for python_code in python_nodes.values():
         assert python_code.org_id == org_id
         assert python_code.secret_names == [SECRET_NAME]
-    assert python_nodes["first_python"].storage_org_prefix is None
-    assert python_nodes["second_python"].storage_org_prefix == f"org_{org_id}"
-    assert python_nodes["second_python"].storage_allowed_paths == [f"sessions/{session_id}/"]
+    for python_code in python_nodes.values():
+        assert python_code.storage_org_prefix == f"org_{org_id}"
+        assert python_code.storage_allowed_paths == [f"sessions/{session_id}/"]
 
     [subgraph_data] = session_data.unique_subgraph_list
     assert subgraph_data.id == subgraph.pk

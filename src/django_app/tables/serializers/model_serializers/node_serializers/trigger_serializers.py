@@ -95,7 +95,6 @@ class WebhookTriggerNodeSerializer(
             "graph",
             "python_code",
             "webhook_trigger",
-            "use_storage",
             "storage_grant_read",
             "storage_grant_write",
             "storage_grant_delete",

@@ -190,7 +190,6 @@ class PythonNode(
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="python_node_list")
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
     test_input = models.JSONField(default=dict, blank=True)
-    use_storage = models.BooleanField(default=False)
 
     class Meta:
         default_manager_name = "objects"
@@ -669,7 +668,6 @@ class WebhookTriggerNode(
         related_name="webhook_trigger_nodes",
     )
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
-    use_storage = models.BooleanField(default=False)
 
     class Meta:
         default_manager_name = "objects"
@@ -897,8 +895,6 @@ class ClassificationDecisionTableNode(
     post_output_variable_path = models.CharField(
         max_length=512, null=True, default=None, blank=True
     )
-    pre_use_storage = models.BooleanField(default=False)
-    post_use_storage = models.BooleanField(default=False)
     # One grant per code slot (see StorageGrantFields).
     pre_storage_grant_read = models.BooleanField(default=False)
     pre_storage_grant_write = models.BooleanField(default=False)

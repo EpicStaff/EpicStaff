@@ -207,8 +207,11 @@ const FIELD_CASES: FieldCase[] = [
     fieldCase(
         NodeType.WEBHOOK_TRIGGER,
         UUID.webhook,
-        (node) => ({ ...node, data: { ...node.data, use_storage: true } }),
-        { path: 'use_storage', current: true, version: false }
+        (node) => ({
+            ...node,
+            data: { ...node.data, python_code: { ...node.data.python_code, code: 'def main(): return 1' } },
+        }),
+        { path: 'python_code.code', current: 'def main(): return 1', version: 'def main(): pass' }
     ),
     fieldCase(
         NodeType.TELEGRAM_TRIGGER,
@@ -1068,12 +1071,6 @@ describe('buildFlowDiff', () => {
             expect(entry.fields).toEqual([]);
             expect(entry.status).toBe('unchanged');
         });
-    });
-
-    it('reads a webhook of a version saved before the storage flag as storage off', () => {
-        const oldVersion = withSnapshotNode(snapshot, ID.webhook, { use_storage: undefined });
-
-        expect(entryOf(diffVersion(oldVersion), UUID.webhook).status).toBe('unchanged');
     });
 
     it.each([

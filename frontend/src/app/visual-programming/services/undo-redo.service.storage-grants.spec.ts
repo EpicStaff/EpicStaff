@@ -27,7 +27,6 @@ describe('undoing a file access change', () => {
             test_input: {},
             output_variable_path: null,
             metadata: {},
-            use_storage: false,
             created_at: '2026-01-01T00:00:00Z',
             created_by: null,
             last_edited_by: null,

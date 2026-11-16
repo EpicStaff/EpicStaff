@@ -47,21 +47,17 @@ PYTHON_CODE_STEERING_FIELDS: tuple[str, ...] = ("code", "entrypoint", "global_kw
 # changes: the write check, the import and copy caps, the flow-wide requirements and
 # the bulk save all read this table.
 STORAGE_GRANT_SLOTS: dict[type, tuple[GrantSlot, ...]] = {
-    PythonNode: (
-        GrantSlot(steering_fields=("input_map", "use_storage"), code_fields=("python_code",)),
-    ),
-    WebhookTriggerNode: (
-        GrantSlot(steering_fields=("use_storage",), code_fields=("python_code",)),
-    ),
+    PythonNode: (GrantSlot(steering_fields=("input_map",), code_fields=("python_code",)),),
+    WebhookTriggerNode: (GrantSlot(code_fields=("python_code",)),),
     ClassificationDecisionTableNode: (
         GrantSlot(
             prefix="pre_",
-            steering_fields=("pre_input_map", "pre_use_storage"),
+            steering_fields=("pre_input_map",),
             code_fields=("pre_python_code",),
         ),
         GrantSlot(
             prefix="post_",
-            steering_fields=("post_input_map", "post_use_storage"),
+            steering_fields=("post_input_map",),
             code_fields=("post_python_code",),
         ),
     ),

@@ -46,7 +46,7 @@ import {
     shownCodeDiffs,
 } from '../../code-diff-view/code-diff-view.testing';
 import { provideChangesTabDiff } from '../../missing-reference-note/missing-reference-note.testing';
-import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
@@ -764,7 +764,7 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         expect(withoutCode.data.table.pre_computation?.execution_timeout).toBe(300);
         expect(sentPreComputation(withoutCode)).toBeNull();
 
-        panel.insertPreStorageCode('from epicstaff_storage import storage');
+        panel.onPreCodeChange('x = 1');
 
         const withCode = panel.onSaveSilently()!;
         expect(withCode.data.table.pre_computation?.execution_timeout).toBe(300);
@@ -782,8 +782,14 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
 describe('ClassificationDecisionTableNodePanelComponent — storage grant lock per slot', () => {
     let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
 
-    /** A user holding exactly these Files actions (and everything outside Files). */
-    function open(files: ActionCode[]): void {
+    /**
+     * A user holding exactly these Files actions (and everything outside Files). The backend holds the node with its
+     * grants unless `neverSaved`; `canvasPreGrants` are the pre-code boxes on the canvas when they differ from it.
+     */
+    function open(
+        files: ActionCode[],
+        options: { neverSaved?: boolean; canvasPreGrants?: { read: boolean; write: boolean; delete: boolean } } = {}
+    ): void {
         configurePanelTestBed({
             providers: [
                 {
@@ -803,9 +809,14 @@ describe('ClassificationDecisionTableNodePanelComponent — storage grant lock p
             preStorageGrants: { read: false, write: true, delete: false },
             postStorageGrants: { read: true, write: false, delete: false },
         };
-        TestBed.inject(FlowService).setFlow({ nodes: [node], connections: [] });
+        const canvasNode = options.canvasPreGrants ? { ...node, preStorageGrants: options.canvasPreGrants } : node;
+        TestBed.inject(FlowService).setFlow({ nodes: [canvasNode], connections: [] });
+        TestBed.inject(SavedFlowStateService).setSavedFlow({
+            nodes: options.neverSaved ? [] : [node],
+            connections: [],
+        });
         fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
-        fixture.componentRef.setInput('node', node);
+        fixture.componentRef.setInput('node', canvasNode);
         fixture.detectChanges();
     }
 
@@ -823,17 +834,17 @@ describe('ClassificationDecisionTableNodePanelComponent — storage grant lock p
         return fixture.debugElement.query(By.directive(CodeEditorStubComponent)).componentInstance.readOnly();
     }
 
-    function storageSwitchReadOnly(): boolean {
-        return fixture.debugElement.query(By.directive(NodeStorageSectionComponent)).componentInstance.readonly();
+    function storageBoxesReadOnly(): boolean {
+        return fixture.debugElement.query(By.directive(StorageGrantsFieldComponent)).componentInstance.readonly();
     }
 
-    it('locks the pre-code slot, its code editor and its storage switch when the user lacks Write', () => {
+    it('locks the pre-code slot code editor but leaves its storage boxes shown and editable when the user lacks Write', () => {
         open([ActionCode.Read]);
         showTab('precomputation');
 
         expect(banner()).toContain("Files: Create, Files: Update, which you don't have");
         expect(editorReadOnly()).toBe(true);
-        expect(storageSwitchReadOnly()).toBe(true);
+        expect(storageBoxesReadOnly()).toBe(false);
     });
 
     it('leaves the post-code slot editable when only the pre-code slot exceeds the permissions', () => {
@@ -842,7 +853,7 @@ describe('ClassificationDecisionTableNodePanelComponent — storage grant lock p
 
         expect(banner()).toBeNull();
         expect(editorReadOnly()).toBe(false);
-        expect(storageSwitchReadOnly()).toBe(false);
+        expect(storageBoxesReadOnly()).toBe(false);
     });
 
     it('locks neither slot for a user who holds every permission', () => {
@@ -851,7 +862,24 @@ describe('ClassificationDecisionTableNodePanelComponent — storage grant lock p
 
         expect(banner()).toBeNull();
         expect(editorReadOnly()).toBe(false);
-        expect(storageSwitchReadOnly()).toBe(false);
+        expect(storageBoxesReadOnly()).toBe(false);
+    });
+
+    it('keeps the pre-code slot locked, asking to save first, while the canvas boxes are unticked but not saved', () => {
+        open([ActionCode.Read], { canvasPreGrants: { read: false, write: false, delete: false } });
+        showTab('precomputation');
+
+        expect(banner()).toContain('Save your file access changes first');
+        expect(editorReadOnly()).toBe(true);
+        expect(storageBoxesReadOnly()).toBe(false);
+    });
+
+    it('locks no slot of a node that was never saved', () => {
+        open([ActionCode.Read], { neverSaved: true });
+        showTab('precomputation');
+
+        expect(banner()).toBeNull();
+        expect(editorReadOnly()).toBe(false);
     });
 });
 
@@ -960,7 +988,7 @@ describe('ClassificationDecisionTableNodePanelComponent — the pre- and post-co
             flagged: ['Pre-computation (restore changes this tab)'],
         },
         {
-            changed: changeOf('post_use_storage', false, true),
+            changed: changeOf('post_computation.code', 'a', 'b'),
             flagged: ['Post-computation (restore changes this tab)'],
         },
         {
@@ -996,11 +1024,6 @@ describe('ClassificationDecisionTableNodePanelComponent — the pre- and post-co
             tab: 'postcomputation' as const,
             change: changeOf('post_computation.execution_timeout', 30, 120),
             description: 'Current canvas: 00:00:30',
-        },
-        {
-            tab: 'postcomputation' as const,
-            change: changeOf('post_use_storage', true, false),
-            description: 'Current canvas: on',
         },
     ])('marks the changed $change.field on its tab, with the current canvas value', ({ tab, change, description }) => {
         const root = open(tab, { status: 'changed', fields: [change] }, false);
@@ -1302,42 +1325,36 @@ describe('ClassificationDecisionTableNodePanelComponent — code that reads secr
         ).readOnly();
     }
 
-    function storageReadOnly(): boolean {
-        return (
-            fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
-                .componentInstance as NodeStorageSectionComponent
-        ).readonly();
-    }
-
     function showsLockHint(): boolean {
         return (fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE) ?? false;
     }
 
-    it('locks only the block whose code reads secrets, with its storage toggle, without Secrets:Use', () => {
+    it('locks only the block whose code reads secrets without Secrets:Use', () => {
         open(false);
 
         showTab('precomputation');
-        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([true, true, true]);
+        expect([codeEditorReadOnly(), showsLockHint()]).toEqual([true, true]);
 
         showTab('postcomputation');
-        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([false, false, false]);
+        expect([codeEditorReadOnly(), showsLockHint()]).toEqual([false, false]);
     });
 
     it('leaves both blocks editable with Secrets:Use', () => {
         open(true);
 
         showTab('precomputation');
-        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([false, false, false]);
+        expect([codeEditorReadOnly(), showsLockHint()]).toEqual([false, false]);
     });
 
-    it('locks the storage toggles in a version preview', () => {
+    it('locks the storage boxes in a version preview', () => {
         configurePanelTestBed({ isPreview: true });
         fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
         fixture.componentRef.setInput('node', tableNode());
         fixture.detectChanges();
 
         showTab('postcomputation');
-        expect(storageReadOnly()).toBe(true);
+        const boxes = fixture.debugElement.query(By.directive(StorageGrantsFieldComponent));
+        expect(boxes.componentInstance.readonly()).toBe(true);
     });
 });
 

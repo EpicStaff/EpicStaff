@@ -106,7 +106,6 @@ import {
     ROUTE_DIFF_FIELDS,
 } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
-import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { routeTargetFormat } from '../shared/diff/route-target-format';
 import { NodeSaveErrorsComponent } from '../shared/node-save-errors/node-save-errors.component';
 import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
@@ -150,7 +149,6 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         ButtonComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
-        NodeStorageSectionComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
         JsonEditorComponent,
@@ -198,11 +196,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.postCodeDiff() ? null : 'post_computation.code'
     );
     /** Changes tab of a version preview: a restore changes something shown on the tab, which flags its link. */
-    protected readonly preComputationChanged = computed(() =>
-        changesAnyFieldIn(this.panelDiff(), ['pre_computation', 'pre_use_storage'])
-    );
+    protected readonly preComputationChanged = computed(() => changesAnyFieldIn(this.panelDiff(), ['pre_computation']));
     protected readonly postComputationChanged = computed(() =>
-        changesAnyFieldIn(this.panelDiff(), ['post_computation', 'post_use_storage'])
+        changesAnyFieldIn(this.panelDiff(), ['post_computation'])
     );
     /** Any change of a prompt: the diff names a prompt and its fields by its item (`prompts[]`, `prompts[].prompt_text`). */
     protected readonly promptsChanged = computed(() => changesAnyFieldIn(this.panelDiff(), ['prompts[]']));
@@ -331,8 +327,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public postCode: string = '';
     protected preExecutionTimeout!: ExecutionTimeoutFormField;
     protected postExecutionTimeout!: ExecutionTimeoutFormField;
-    public preUseStorage = signal(false);
-    public postUseStorage = signal(false);
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
     public readonly canEditSecrets = computed(
         () => !this.isReadOnly() && this.permissionsService.canEditSecrets(ResourceCode.Flows)
@@ -358,8 +352,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
               : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
     );
     /**
-     * A block's code reads secrets and the user lacks Secrets:Use: that code and its storage toggle (which edits
-     * the code) are locked, the rest is not.
+     * A block's code reads secrets and the user lacks Secrets:Use: that code is locked, the rest is not.
      */
     protected readonly isPreCodeLocked = computed(
         () =>
@@ -590,8 +583,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         this.preCode = preComp.code || '';
         this.postCode = postComp.code || '';
-        this.preUseStorage.set(tableData.pre_use_storage ?? false);
-        this.postUseStorage.set(tableData.post_use_storage ?? false);
         this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
         this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
@@ -683,9 +674,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         const tableData: ClassificationDecisionTableData = {
             pre_computation_code: this.preCode,
-            pre_use_storage: this.preUseStorage(),
             post_computation_code: this.postCode,
-            post_use_storage: this.postUseStorage(),
             pre_computation: {
                 // Keeps the stored fields the panel does not edit (entrypoint, global_kwargs).
                 ...currentNode.data.table?.pre_computation,
@@ -745,10 +734,12 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     private slotLock(slot: 'pre' | 'post'): string | null {
+        const savedNode = this.savedFlowStateService.savedNode(this.node().id);
         return storageGrantLockOf(
-            getNodeStorageGrants(this.node(), slot),
+            savedNode ? getNodeStorageGrants(savedNode, slot) : undefined,
             (resource, action) => this.permissionsService.can(resource, action),
-            () => this.permissionsService.isActivePermissionsLoaded()
+            () => this.permissionsService.isActivePermissionsLoaded(),
+            getNodeStorageGrants(this.node(), slot)
         );
     }
 
@@ -1167,13 +1158,11 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             preExecutionTimeout: this.preExecutionTimeout.value,
             preInputMap: this.serializeInputMap('pre_input_map'),
             preOutputVariablePath: this.form.value.pre_output_variable_path || null,
-            preUseStorage: this.preUseStorage(),
             postCode: this.postCode,
             postLibraries: [],
             postExecutionTimeout: this.postExecutionTimeout.value,
             postInputMap: this.serializeInputMap('post_input_map'),
             postOutputVariablePath: this.form.value.post_output_variable_path || null,
-            postUseStorage: this.postUseStorage(),
             defaultLlmConfig: this.form.value.default_llm_config || null,
             conditionGroups: this.conditionGroups(),
             prompts: this.prompts(),
@@ -1270,56 +1259,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.postCode = code;
         this.notifyExternalChange();
         this.codeChange$.next();
-    }
-
-    // ── Storage toggle handlers ──
-
-    public onPreStorageToggle(value: boolean): void {
-        this.preUseStorage.set(value);
-        this.codeChange$.next();
-    }
-
-    public onPostStorageToggle(value: boolean): void {
-        this.postUseStorage.set(value);
-        this.codeChange$.next();
-    }
-
-    public insertPreStorageCode(code: string): void {
-        if (!this.preCode.includes('epicstaff_storage')) {
-            this.preCode = code + '\n\n' + this.preCode;
-            this.notifyExternalChange();
-            this.codeChange$.next();
-            this.cdr.markForCheck();
-        }
-    }
-
-    public removePreStorageCode(code: string): void {
-        const prefix = code + '\n\n';
-        if (this.preCode.startsWith(prefix)) {
-            this.preCode = this.preCode.slice(prefix.length);
-            this.notifyExternalChange();
-            this.codeChange$.next();
-            this.cdr.markForCheck();
-        }
-    }
-
-    public insertPostStorageCode(code: string): void {
-        if (!this.postCode.includes('epicstaff_storage')) {
-            this.postCode = code + '\n\n' + this.postCode;
-            this.notifyExternalChange();
-            this.codeChange$.next();
-            this.cdr.markForCheck();
-        }
-    }
-
-    public removePostStorageCode(code: string): void {
-        const prefix = code + '\n\n';
-        if (this.postCode.startsWith(prefix)) {
-            this.postCode = this.postCode.slice(prefix.length);
-            this.notifyExternalChange();
-            this.codeChange$.next();
-            this.cdr.markForCheck();
-        }
     }
 
     public onPreSecretsChange(values: number[]): void {

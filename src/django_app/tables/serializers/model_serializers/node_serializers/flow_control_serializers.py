@@ -281,8 +281,6 @@ class ClassificationDecisionTableNodeSerializer(
             "post_python_code",
             "post_input_map",
             "post_output_variable_path",
-            "pre_use_storage",
-            "post_use_storage",
             "pre_storage_grant_read",
             "pre_storage_grant_write",
             "pre_storage_grant_delete",

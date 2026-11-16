@@ -39,7 +39,6 @@ import { InputMapComponent } from '../../input-map/input-map.component';
 import { inputMapFromRows } from '../../input-map/input-map-rows';
 import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
-import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { parseTestInputValues, PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
@@ -72,7 +71,6 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         InputMapComponent,
         CodeEditorComponent,
         PythonTerminalComponent,
-        NodeStorageSectionComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
         ValidationErrorsComponent,
@@ -92,7 +90,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly graphId = input<number | null>(null);
     private readonly inputMap = viewChild(InputMapComponent);
     public readonly isFormCollapsed = signal<boolean>(false);
-    public readonly useStorage = signal<boolean>(false);
     protected readonly leftColumnWidth = createColumnWidthState('python-node', 406);
     /**
      * Changes tab of a version preview: what a restore does to each Input List row. The input map is diffed as
@@ -327,7 +324,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             ...raw,
             test_input: testInput.map((p) => ({ key: p.key, value: '' })),
             secret_ids: [...this.selectedSecretIds()].sort(),
-            use_storage: this.useStorage(),
         };
         return JSON.stringify(stripped);
     }
@@ -366,32 +362,9 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.sidePanelService.triggerAutosave();
     }
 
-    onStorageToggle(value: boolean): void {
-        this.useStorage.set(value);
-        this.sidePanelService.triggerAutosave();
-    }
-
-    insertStorageCode(code: string): void {
-        if (!this.pythonCode.includes('epicstaff_storage')) {
-            this.pythonCode = code + '\n\n' + this.pythonCode;
-            this.formDirtyTick.update((v) => v + 1);
-        }
-        this.sidePanelService.triggerAutosave();
-    }
-
-    removeStorageCode(code: string): void {
-        const prefix = code + '\n\n';
-        if (this.pythonCode.startsWith(prefix)) {
-            this.pythonCode = this.pythonCode.slice(prefix.length);
-            this.formDirtyTick.update((v) => v + 1);
-            this.sidePanelService.triggerAutosave();
-        }
-    }
-
     initializeForm(): FormGroup {
         this.codeTestRun.reset();
 
-        this.useStorage.set(this.node().data.use_storage ?? false);
         this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
 
         this.executionTimeout = new ExecutionTimeoutFormField(
@@ -464,7 +437,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 // A stored entrypoint is kept: the backend refuses changing it for code that reads secrets.
                 entrypoint: this.node().data.entrypoint || 'main',
                 venv_id: this.form.value.venv ?? null,
-                use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
                 secret_names: this.secretNames(),
                 execution_timeout: this.executionTimeout.value,
@@ -573,7 +545,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         );
     }
 
-    /** The code, secrets, storage flag or execution timeout in the panel are not the ones the backend stores. */
+    /** The code, secrets or execution timeout in the panel are not the ones the backend stores. */
     private differsFromSaved(savedNode: PythonNode): boolean {
         this.formDirtyTick();
         if (!this.form) return true;
@@ -582,7 +554,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         const current = pythonCodeSignature(this.pythonCode, this.selectedSecretIds());
         return (
             saved !== current ||
-            (savedNode.use_storage ?? false) !== this.useStorage() ||
             this.executionTimeoutLimits.secondsToRun(savedCode.execution_timeout) !==
                 this.executionTimeoutLimits.secondsToRun(this.executionTimeout.value)
         );

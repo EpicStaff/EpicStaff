@@ -6,12 +6,7 @@ import {
     StorageGrant,
 } from '@shared/utils';
 
-import {
-    ClassificationDecisionTableNodeModel,
-    NodeModel,
-    PythonNodeModel,
-    WebhookTriggerNodeModel,
-} from '../models/node.model';
+import { ClassificationDecisionTableNodeModel, NodeModel } from '../models/node.model';
 import {
     CdtStorageGrantFields,
     StorageGrantFields,
@@ -36,9 +31,6 @@ const STORAGE_GRANT_NODE_TYPES: ReadonlySet<NodeType> = new Set([
 
 /** The node types whose code always reads the flow's attached files, so changing them needs Files:Read. */
 const FLOW_FILE_READING_NODE_TYPES: ReadonlySet<NodeType> = new Set([NodeType.FILE_EXTRACTOR, NodeType.AUDIO_TO_TEXT]);
-
-/** Shown on a node whose code runs with no access to the flow's attached files. */
-export const NO_FILE_ACCESS_TOOLTIP = 'This node has no access to the flow’s files.';
 
 /** Shown on a file extractor or audio transcription panel that the user may not change. */
 export const FILES_READ_LOCK_MESSAGE =
@@ -150,20 +142,32 @@ function storageGrantLockMessage(missing: readonly ActionCode[]): string {
     return `This code runs with ${permissions}, which you don't have. You can only untick its file access; contact an admin to change anything else.`;
 }
 
+/** Shown instead of the usual lock note while the canvas boxes differ from the saved ones: the server still holds the saved ones. */
+export const STORAGE_GRANT_LOCK_SAVE_FIRST_MESSAGE = 'Save your file access changes first, then you can edit the code.';
+
+function sameStorageGrants(first: StorageGrants | undefined, second: StorageGrants | undefined): boolean {
+    return STORAGE_GRANT_KINDS.every((kind) => (first?.[kind] ?? false) === (second?.[kind] ?? false));
+}
+
 /**
- * The note that locks a slot's code and its steering fields, or `null`: a ticked box needs a permission the user's
- * own role lacks. The boxes stay enabled for unticking. While the user's permissions are not loaded nothing locks,
- * the server decides.
+ * The note that locks a slot's code and its steering fields, or `null`: a box ticked in the saved grants (what the
+ * server holds) needs a permission the user's own role lacks. The boxes stay enabled for unticking. While the user's
+ * permissions are not loaded nothing locks, the server decides. `canvasGrants` are the boxes as they stand on the
+ * canvas: when they differ from the saved ones the note tells the user to save first.
  */
 export function storageGrantLockOf(
-    grants: StorageGrants | undefined,
+    savedGrants: StorageGrants | undefined,
     can: PermissionCheck,
-    arePermissionsLoaded: () => boolean
+    arePermissionsLoaded: () => boolean,
+    canvasGrants: StorageGrants | undefined = savedGrants
 ): string | null {
-    if (!grants || !arePermissionsLoaded()) return null;
-    const ticked = STORAGE_GRANT_KINDS.filter((kind) => grants[kind]);
+    if (!savedGrants || !arePermissionsLoaded()) return null;
+    const ticked = STORAGE_GRANT_KINDS.filter((kind) => savedGrants[kind]);
     const missing = missingStorageGrantActions(ticked, (action) => can(ResourceCode.Files, action));
-    return missing.length ? storageGrantLockMessage(missing) : null;
+    if (!missing.length) return null;
+    return sameStorageGrants(savedGrants, canvasGrants)
+        ? storageGrantLockMessage(missing)
+        : STORAGE_GRANT_LOCK_SAVE_FIRST_MESSAGE;
 }
 
 /**
@@ -201,33 +205,4 @@ export function capNodeStorageGrants<T extends NodeModel>(node: T, can: Permissi
     return hasStorageGrantsForNodeType(node.type)
         ? { ...node, storageGrants: capStorageGrants(node.storageGrants, can) }
         : node;
-}
-
-function slotUsesStorage(node: NodeModel, slot: StorageGrantSlot): boolean {
-    switch (node.type) {
-        case NodeType.PYTHON:
-            return (node as PythonNodeModel).data?.use_storage === true;
-        case NodeType.WEBHOOK_TRIGGER:
-            return (node as WebhookTriggerNodeModel).data?.use_storage === true;
-        case NodeType.CLASSIFICATION_TABLE: {
-            const table = (node as ClassificationDecisionTableNodeModel).data?.table;
-            if (slot === 'pre') return table?.pre_use_storage === true;
-            if (slot === 'post') return table?.post_use_storage === true;
-            return false;
-        }
-        default:
-            return false;
-    }
-}
-
-/** The slots of a node that use storage while every box of their grants is false: the code sees no attached files. */
-export function noFileAccessSlots(node: NodeModel): StorageGrantSlot[] {
-    if (!hasStorageGrantsForNodeType(node.type)) return [];
-    const slots: StorageGrantSlot[] = node.type === NodeType.CLASSIFICATION_TABLE ? ['pre', 'post'] : ['main'];
-    return slots.filter((slot) => slotUsesStorage(node, slot) && hasNoStorageAccess(getNodeStorageGrants(node, slot)));
-}
-
-/** The ids of the nodes whose code uses storage but has no access to the flow's attached files, in every run. */
-export function nodeIdsWithoutFileAccess(nodes: readonly NodeModel[]): ReadonlySet<string> {
-    return new Set(nodes.filter((node) => noFileAccessSlots(node).length > 0).map((node) => node.id));
 }

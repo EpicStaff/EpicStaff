@@ -316,4 +316,59 @@ describe('VenvDialogComponent library rows', () => {
         expect(TestBed.inject(ToastService).error).toHaveBeenCalledExactlyOnceWith(message);
         expect(close).not.toHaveBeenCalled();
     });
+
+    describe('libraries lock', () => {
+        const lock =
+            "Code that runs in this virtual environment has Files: Delete, which you don't have. You can rename it, but not change its libraries.";
+        const requests: VenvLib = {
+            name: 'requests',
+            version: '1.5',
+            specification: '>=1.0',
+            description: null,
+            is_custom: false,
+        };
+
+        function hint(): HTMLElement | null {
+            return (fixture.nativeElement as HTMLElement).querySelector('app-hint-message');
+        }
+
+        function addButton(): HTMLButtonElement | null {
+            return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.venv-dialog__add-lib');
+        }
+
+        it('shows the explanation and makes the libraries read-only when the venv is locked', () => {
+            open({ venv: { ...storedVenv([requests]), libs_lock: lock } });
+
+            expect(hint()?.textContent?.trim()).toBe(lock);
+            expect(cell(0, 'Library name').disabled).toBe(true);
+            expect(cell(0, 'Version').disabled).toBe(true);
+            expect(cell(0, 'Specification').disabled).toBe(true);
+            expect(
+                (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+                    'button[aria-label="Remove library"]'
+                )?.disabled
+            ).toBe(true);
+            expect(addButton()?.hidden).toBe(true);
+        });
+
+        it.each([null, undefined])('keeps the libraries editable when libs_lock is %s', (libsLock) => {
+            open({ venv: { ...storedVenv([requests]), libs_lock: libsLock } });
+
+            expect(hint()).toBeNull();
+            expect(cell(0, 'Version').disabled).toBe(false);
+            expect(addButton()?.hidden).toBe(false);
+        });
+
+        it('still saves a rename of a locked venv, without sending the libraries', () => {
+            open({ venv: { ...storedVenv([requests]), libs_lock: lock } });
+            nameVenv('ml renamed');
+
+            save();
+
+            const request = httpMock.expectOne(`${VENVS_URL}7/`);
+            expect(request.request.method).toBe('PATCH');
+            expect(request.request.body).toEqual({ name: 'ml renamed' });
+            request.flush({ ...storedVenv([requests]), name: 'ml renamed', libs_lock: lock });
+        });
+    });
 });

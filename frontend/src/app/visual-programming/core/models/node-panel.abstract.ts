@@ -15,6 +15,7 @@ import { notWhitespaceValidator } from '@shared/form-validators';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
+import { SavedFlowStateService } from '../../services/saved-flow-state.service';
 import { filesReadLockOf, getNodeStorageGrants, storageGrantLockOf } from '../helpers/storage-grants.util';
 import { NodeModel } from './node.model';
 
@@ -31,18 +32,22 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     protected destroyRef = inject(DestroyRef);
     protected readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly grantPermissions = inject(PermissionsService);
+    private readonly grantSavedFlowState = inject(SavedFlowStateService);
     /**
      * Why the node's code and the fields that steer it may not be edited: a box ticked in the node's saved storage
-     * grants needs a Files permission the user's role lacks. `null` when nothing locks the node. The boxes
+     * grants (as last sent to the backend, not the canvas node, which can hold an unsaved untick) needs a Files
+     * permission the user's role lacks. `null` when nothing locks the node or it was never saved. The boxes
      * themselves stay open for unticking. A classification decision table has two slots and locks each itself.
      */
-    public readonly storageGrantLock = computed<string | null>(() =>
-        storageGrantLockOf(
-            getNodeStorageGrants(this.node()),
+    public readonly storageGrantLock = computed<string | null>(() => {
+        const savedNode = this.grantSavedFlowState.savedNode(this.node().id);
+        return storageGrantLockOf(
+            savedNode ? getNodeStorageGrants(savedNode) : undefined,
             (resource, action) => this.grantPermissions.can(resource, action),
-            () => this.grantPermissions.isActivePermissionsLoaded()
-        )
-    );
+            () => this.grantPermissions.isActivePermissionsLoaded(),
+            getNodeStorageGrants(this.node())
+        );
+    });
     /**
      * Why a file extractor or audio transcription may not be changed at all: its code always reads the flow's
      * attached files and the user lacks Files:Read. `null` for every other node and for a user who holds it.

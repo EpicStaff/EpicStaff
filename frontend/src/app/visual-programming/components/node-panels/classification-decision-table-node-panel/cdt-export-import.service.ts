@@ -61,11 +61,9 @@ export interface CdtExportData {
     pre_python_code: CdtExportPythonCode;
     pre_input_map: Record<string, string>;
     pre_output_variable_path: string | null;
-    pre_use_storage: boolean;
     post_python_code: CdtExportPythonCode;
     post_input_map: Record<string, string>;
     post_output_variable_path: string | null;
-    post_use_storage: boolean;
     default_llm_config: number | null;
     condition_groups: CdtExportConditionGroup[];
     prompt_configs: CdtExportPromptConfig[];
@@ -120,13 +118,11 @@ export class CdtExportImportService {
             this.csvRow(['pre_python_code_code', data.pre_python_code?.code ?? '']),
             this.csvRow(['pre_python_code_libraries', JSON.stringify(data.pre_python_code?.libraries ?? [])]),
             this.csvRow(['pre_python_code_execution_timeout', String(data.pre_python_code?.execution_timeout ?? '')]),
-            this.csvRow(['pre_use_storage', String(data.pre_use_storage ?? false)]),
             this.csvRow(['post_input_map', JSON.stringify(data.post_input_map ?? {})]),
             this.csvRow(['post_output_variable_path', data.post_output_variable_path ?? '']),
             this.csvRow(['post_python_code_code', data.post_python_code?.code ?? '']),
             this.csvRow(['post_python_code_libraries', JSON.stringify(data.post_python_code?.libraries ?? [])]),
             this.csvRow(['post_python_code_execution_timeout', String(data.post_python_code?.execution_timeout ?? '')]),
-            this.csvRow(['post_use_storage', String(data.post_use_storage ?? false)]),
             this.csvRow(['default_llm_config', data.default_llm_config == null ? '' : String(data.default_llm_config)]),
         ].join('\n');
 
@@ -253,7 +249,6 @@ export class CdtExportImportService {
                 },
                 pre_input_map: this.asStringRecord(obj['pre_input_map']),
                 pre_output_variable_path: this.asNullableString(obj['pre_output_variable_path']),
-                pre_use_storage: this.asBoolean(obj['pre_use_storage']),
                 post_python_code: {
                     code: this.asString(postCode['code']),
                     libraries: this.asStringArray(postCode['libraries']),
@@ -261,7 +256,6 @@ export class CdtExportImportService {
                 },
                 post_input_map: this.asStringRecord(obj['post_input_map']),
                 post_output_variable_path: this.asNullableString(obj['post_output_variable_path']),
-                post_use_storage: this.asBoolean(obj['post_use_storage']),
                 default_llm_config: this.asNullableNumber(obj['default_llm_config']),
                 condition_groups: conditionGroups,
                 prompt_configs: promptConfigs,
@@ -278,11 +272,9 @@ export class CdtExportImportService {
                 pre_python_code: { code: '', libraries: [] },
                 pre_input_map: {},
                 pre_output_variable_path: null,
-                pre_use_storage: false,
                 post_python_code: { code: '', libraries: [] },
                 post_input_map: {},
                 post_output_variable_path: null,
-                post_use_storage: false,
                 default_llm_config: null,
                 condition_groups: [],
                 prompt_configs: [],
@@ -347,7 +339,6 @@ export class CdtExportImportService {
             },
             pre_input_map: this.asStringRecord(node['pre_input_map']),
             pre_output_variable_path: this.asNullableString(node['pre_output_variable_path']),
-            pre_use_storage: this.asBoolean(node['pre_use_storage']),
             post_python_code: {
                 code: this.asString(rawPostCode['code']),
                 libraries: this.asString(rawPostCode['libraries'])
@@ -357,7 +348,6 @@ export class CdtExportImportService {
             },
             post_input_map: this.asStringRecord(node['post_input_map']),
             post_output_variable_path: this.asNullableString(node['post_output_variable_path']),
-            post_use_storage: this.asBoolean(node['post_use_storage']),
             default_llm_config: this.asNullableNumber(node['default_llm_config']),
             condition_groups: conditionGroups,
             prompt_configs: promptConfigs,
@@ -372,13 +362,11 @@ export class CdtExportImportService {
         preExecutionTimeout?: number;
         preInputMap: Record<string, string>;
         preOutputVariablePath: string | null;
-        preUseStorage: boolean;
         postCode: string;
         postLibraries: string[];
         postExecutionTimeout?: number;
         postInputMap: Record<string, string>;
         postOutputVariablePath: string | null;
-        postUseStorage: boolean;
         defaultLlmConfig: number | null;
         conditionGroups: ConditionGroup[];
         prompts: Record<string, PromptConfig>;
@@ -393,7 +381,6 @@ export class CdtExportImportService {
             },
             pre_input_map: input.preInputMap ?? {},
             pre_output_variable_path: input.preOutputVariablePath ?? null,
-            pre_use_storage: input.preUseStorage ?? false,
             post_python_code: {
                 code: input.postCode ?? '',
                 libraries: input.postLibraries ?? [],
@@ -401,7 +388,6 @@ export class CdtExportImportService {
             },
             post_input_map: input.postInputMap ?? {},
             post_output_variable_path: input.postOutputVariablePath ?? null,
-            post_use_storage: input.postUseStorage ?? false,
             default_llm_config: input.defaultLlmConfig ?? null,
             condition_groups: (input.conditionGroups ?? []).map((group, index) => ({
                 group_name: group.group_name ?? '',

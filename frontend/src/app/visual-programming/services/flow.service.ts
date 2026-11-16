@@ -10,7 +10,6 @@ import {
     generatePortsForDecisionTableNode,
     parsePortId,
 } from '../core/helpers/helpers';
-import { nodeIdsWithoutFileAccess } from '../core/helpers/storage-grants.util';
 import { ConnectionModel } from '../core/models/connection.model';
 import { ConditionGroup, DecisionTableNode } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
@@ -63,9 +62,6 @@ export class FlowService {
 
     public readonly nodes = computed(() => this.flowSignal().nodes);
     public readonly connections = computed(() => this.flowSignal().connections);
-
-    /** The nodes whose code uses storage but has every file access box unticked, so it sees none of the attached files. */
-    public readonly nodeIdsWithoutFileAccess = computed(() => nodeIdsWithoutFileAccess(this.nodes()));
 
     public readonly noteNodes = computed(() => this.nodes().filter((node) => node.type === NodeType.NOTE));
 

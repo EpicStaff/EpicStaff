@@ -109,16 +109,6 @@
                         />
                     </app-diff-field-mark>
 
-                    <app-diff-field-mark [diffField]="'use_storage'">
-                        <app-node-storage-section
-                            [readonly]="isCodeReadOnly()"
-                            [useStorage]="useStorage()"
-                            (onToggleChange)="onStorageToggle($event)"
-                            (onInsertCode)="insertStorageCode($event)"
-                            (onRemoveCode)="removeStorageCode($event)"
-                        ></app-node-storage-section>
-                    </app-diff-field-mark>
-
                     <app-diff-field-mark
                         [diffField]="'storage_grants'"
                         [diffGroup]="true"

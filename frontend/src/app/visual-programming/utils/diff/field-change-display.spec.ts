@@ -242,7 +242,7 @@ describe('codeChangeFor', () => {
 });
 
 describe('changesAnyFieldIn', () => {
-    const PRE_COMPUTATION_TAB: FieldName[] = ['pre_computation', 'pre_use_storage'];
+    const PRE_COMPUTATION_TAB: FieldName[] = ['pre_computation'];
     const changeOf = (field: FieldName, path: string = field): FieldChange => ({
         path,
         field,
@@ -254,10 +254,8 @@ describe('changesAnyFieldIn', () => {
     it.each([
         { changed: changeOf('pre_computation.code'), expected: true },
         { changed: changeOf('pre_computation.execution_timeout'), expected: true },
-        { changed: changeOf('pre_use_storage'), expected: true },
         { changed: changeOf('pre_computation'), expected: true },
         { changed: changeOf('post_computation.code'), expected: false },
-        { changed: changeOf('post_use_storage'), expected: false },
         { changed: changeOf('node_name'), expected: false },
     ])('is $expected when a restore changes $changed.field', ({ changed, expected }) => {
         const diff = { status: 'changed' as const, fields: [changed], missingReferences: [] };

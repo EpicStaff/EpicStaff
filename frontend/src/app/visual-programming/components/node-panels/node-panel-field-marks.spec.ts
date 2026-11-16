@@ -181,12 +181,6 @@ const FIELD_CASES: FieldCase[] = [
     },
     {
         panel: WEBHOOK,
-        change: fieldChange('use_storage', true, false),
-        marked: 'app-node-storage-section',
-        tooltip: '[on]',
-    },
-    {
-        panel: WEBHOOK,
         change: fieldChange('webhook_trigger', 5, 77),
         marked: 'webhook_trigger',
         tooltip: '[old-hook (ngrok)]',

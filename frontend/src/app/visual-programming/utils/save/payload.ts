@@ -215,7 +215,6 @@ function buildCdtNodePayload(
             : null,
         pre_input_map: preComp?.input_map ?? tableData.pre_input_map ?? {},
         pre_output_variable_path: preComp?.output_variable_path || tableData.pre_output_variable_path || null,
-        pre_use_storage: tableData.pre_use_storage ?? false,
         ...storageGrantsToPayload(node.preStorageGrants, 'pre'),
         post_python_code: isPythonCodeBlockSaved(postCodeValue, postSecretIds)
             ? {
@@ -228,7 +227,6 @@ function buildCdtNodePayload(
             : null,
         post_input_map: postComp?.input_map ?? tableData.post_input_map ?? {},
         post_output_variable_path: postComp?.output_variable_path || tableData.post_output_variable_path || null,
-        post_use_storage: tableData.post_use_storage ?? false,
         ...storageGrantsToPayload(node.postStorageGrants, 'post'),
         prompt_configs: Object.entries(tableData.prompts ?? {}).map(
             ([key, cfg]) =>
@@ -385,14 +383,12 @@ export function buildBulkSavePayload(
             metadata: toNodeMetadata(n),
         })),
         python_node_list: nodeItems(nodeDiff.pythonNodes, (n) => {
-            const { use_storage, ...pythonCode } = n.data;
             return {
                 node_name: n.node_name,
                 graph: graphId,
-                python_code: pythonCode,
+                python_code: n.data,
                 input_map: n.input_map || {},
                 output_variable_path: n.output_variable_path || null,
-                use_storage: use_storage ?? false,
                 test_input: n.test_input ?? {},
                 ...storageGrantsToPayload(n.storageGrants),
                 metadata: toNodeMetadata(n),
@@ -458,7 +454,6 @@ export function buildBulkSavePayload(
             webhook_trigger_path: '',
             webhook_trigger: n.data.webhook_trigger,
             test_payload: n.data.test_payload ?? {},
-            use_storage: n.data.use_storage ?? false,
             ...storageGrantsToPayload(n.storageGrants),
             metadata: toNodeMetadata(n),
         })),

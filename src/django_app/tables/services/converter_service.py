@@ -225,23 +225,36 @@ class ConverterService(metaclass=SingletonMeta):
             .values_list("storage_file__path", flat=True)
         )
 
+    def attached_storage_paths(self, graph_id: int) -> list[str]:
+        """Return the paths of the files and folders attached to a graph.
+
+        A caller converting several nodes of one graph reads this once and hands it to
+        each conversion as `attached_storage_paths`, so the number of queries does not
+        grow with the number of nodes.
+        """
+        return self._resolve_allowed_paths_for_graph(graph_id)
+
     def _resolve_storage_scope(
         self,
         graph_id: int | None,
         org_id: int | None,
-        use_storage: bool,
         extra_paths: list[str],
+        attached_storage_paths: list[str] | None = None,
     ) -> tuple[list[str] | None, str | None]:
         """Return `(storage_allowed_paths, storage_org_prefix)` for one code slot.
 
         Allowed paths are the graph's attached files followed by `extra_paths`, the
         folders the run itself may write to (`sessions/<id>/` in a real run). Both
-        are None when the slot does not use storage or there is no graph to scope
-        it by, which means no storage credentials are minted for this run.
+        are None when there is no graph to scope the slot by. Flow-node code always uses
+        storage, so its callers must pass the graph. `attached_storage_paths` are the graph's
+        attached paths when the caller has them already; they are read from the graph
+        when omitted.
         """
-        if not use_storage or graph_id is None:
+        if graph_id is None:
             return None, None
-        allowed_paths = self._resolve_allowed_paths_for_graph(graph_id) + extra_paths
+        if attached_storage_paths is None:
+            attached_storage_paths = self._resolve_allowed_paths_for_graph(graph_id)
+        allowed_paths = attached_storage_paths + extra_paths
         return allowed_paths, self.storage_prefix_for_org(org_id)
 
     @staticmethod
@@ -708,12 +721,12 @@ class ConverterService(metaclass=SingletonMeta):
     def _convert_code_slot(
         self,
         python_code: PythonCode,
-        use_storage: bool,
         graph_id: int | None,
         session_id: int | None,
         extra_storage_paths: list[str] | None,
         org_id: int | None,
         storage_grant: StorageGrant | None = None,
+        attached_storage_paths: list[str] | None = None,
     ) -> PythonCodeData:
         org_id = self._org_id_for_graph(graph_id, org_id)
         writable_paths = list(extra_storage_paths or [])
@@ -722,13 +735,13 @@ class ConverterService(metaclass=SingletonMeta):
         storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
             graph_id=graph_id,
             org_id=org_id,
-            use_storage=use_storage,
             extra_paths=writable_paths,
+            attached_storage_paths=attached_storage_paths,
         )
 
         return self.convert_python_code_to_pydantic(
             python_code=python_code,
-            use_storage=use_storage,
+            use_storage=True,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
@@ -744,6 +757,7 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         extra_storage_paths: list[str] | None = None,
         org_id: int | None = None,
+        attached_storage_paths: list[str] | None = None,
     ) -> PythonNodeData:
         """Convert a python node into the data a run sends to the sandbox.
 
@@ -754,15 +768,17 @@ class ConverterService(metaclass=SingletonMeta):
                 session, such as a test-mode run's own folder.
             org_id: `Graph.org_id` of `graph_id` when the caller already loaded
                 the graph row; read from the graph when omitted.
+            attached_storage_paths: `attached_storage_paths(graph_id)` when the caller
+                already read it; read from the graph when omitted.
         """
         python_code_data = self._convert_code_slot(
             python_code=python_node.python_code,
-            use_storage=python_node.use_storage,
             graph_id=graph_id,
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
             org_id=org_id,
             storage_grant=storage_grant_of(python_node),
+            attached_storage_paths=attached_storage_paths,
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),
@@ -800,6 +816,7 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
         org_id: int | None = None,
+        attached_storage_paths: list[str] | None = None,
     ):
         condition_groups = [
             ClassificationConditionGroupData(
@@ -853,46 +870,28 @@ class ConverterService(metaclass=SingletonMeta):
                 llm_data=llm_data,
             )
 
-        org_id = self._org_id_for_graph(graph_id, org_id)
-
-        pre_storage_allowed_paths = None
-        pre_storage_org_prefix = None
-        if node.pre_use_storage and graph_id is not None:
-            pre_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            if session_id is not None:
-                pre_storage_allowed_paths.append(f"sessions/{session_id}/")
-            pre_storage_org_prefix = self.storage_prefix_for_org(org_id)
-
-        post_storage_allowed_paths = None
-        post_storage_org_prefix = None
-        if node.post_use_storage and graph_id is not None:
-            post_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            if session_id is not None:
-                post_storage_allowed_paths.append(f"sessions/{session_id}/")
-            post_storage_org_prefix = self.storage_prefix_for_org(org_id)
-
         pre_python_code_data = None
         if node.pre_python_code is not None:
-            pre_python_code_data = self.convert_python_code_to_pydantic(
-                node.pre_python_code,
-                use_storage=node.pre_use_storage,
-                storage_allowed_paths=pre_storage_allowed_paths,
-                storage_org_prefix=pre_storage_org_prefix,
+            pre_python_code_data = self._convert_code_slot(
+                python_code=node.pre_python_code,
+                graph_id=graph_id,
                 session_id=session_id,
+                extra_storage_paths=None,
                 org_id=org_id,
                 storage_grant=storage_grant_of(node, prefix="pre_"),
+                attached_storage_paths=attached_storage_paths,
             )
 
         post_python_code_data = None
         if node.post_python_code is not None:
-            post_python_code_data = self.convert_python_code_to_pydantic(
-                node.post_python_code,
-                use_storage=node.post_use_storage,
-                storage_allowed_paths=post_storage_allowed_paths,
-                storage_org_prefix=post_storage_org_prefix,
+            post_python_code_data = self._convert_code_slot(
+                python_code=node.post_python_code,
+                graph_id=graph_id,
                 session_id=session_id,
+                extra_storage_paths=None,
                 org_id=org_id,
                 storage_grant=storage_grant_of(node, prefix="post_"),
+                attached_storage_paths=attached_storage_paths,
             )
 
         return ClassificationDecisionTableNodeData(
@@ -960,6 +959,7 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         extra_storage_paths: list[str] | None = None,
         org_id: int | None = None,
+        attached_storage_paths: list[str] | None = None,
     ) -> WebhookTriggerNodeData:
         """Convert a webhook trigger node into the data a run sends to the sandbox.
 
@@ -970,15 +970,17 @@ class ConverterService(metaclass=SingletonMeta):
                 session, such as a test-mode run's own folder.
             org_id: `Graph.org_id` of `graph_id` when the caller already loaded
                 the graph row; read from the graph when omitted.
+            attached_storage_paths: `attached_storage_paths(graph_id)` when the caller
+                already read it; read from the graph when omitted.
         """
         python_code_data = self._convert_code_slot(
             python_code=webhook_trigger_node.python_code,
-            use_storage=webhook_trigger_node.use_storage,
             graph_id=graph_id,
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
             org_id=org_id,
             storage_grant=storage_grant_of(webhook_trigger_node),
+            attached_storage_paths=attached_storage_paths,
         )
         return WebhookTriggerNodeData(
             node_name=resolver(webhook_trigger_node.id),

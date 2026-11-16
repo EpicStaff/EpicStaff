@@ -7,10 +7,8 @@ import { LlmConfigStorageService, SystemOneConfigStorageService } from '@shared/
 import { of } from 'rxjs';
 
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
-import { NO_FILE_ACCESS_TOOLTIP, nodeIdsWithoutFileAccess } from '../../../core/helpers/storage-grants.util';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
-import { StorageGrants } from '../../../core/models/storage-grants.model';
 import { FlowService } from '../../../services/flow.service';
 import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
@@ -252,78 +250,8 @@ describe('ClassificationDecisionTableNodeComponent config warnings', () => {
         expect(messagesFor({ check: llmPrompt(null) })).toEqual([LLM_MESSAGE]);
     });
 
-    describe('file access badges, through the flow rules', () => {
-        const NO_ACCESS = { read: false, write: false, delete: false };
-        const SOME_ACCESS = { read: true, write: false, delete: false };
-
-        function renderInFlow(slots: {
-            pre?: { usesStorage: boolean; grants: StorageGrants };
-            post?: { usesStorage: boolean; grants: StorageGrants };
-        }): HTMLElement {
-            const table = {
-                id: 'classification',
-                type: NodeType.CLASSIFICATION_TABLE,
-                node_name: 'Route',
-                data: {
-                    table: {
-                        prompts: {},
-                        condition_groups: [],
-                        pre_use_storage: slots.pre?.usesStorage ?? false,
-                        post_use_storage: slots.post?.usesStorage ?? false,
-                    },
-                },
-                preStorageGrants: slots.pre?.grants,
-                postStorageGrants: slots.post?.grants,
-                ports: [],
-                size: { width: 330, height: 120 },
-            } as unknown as ClassificationDecisionTableNodeModel;
-            TestBed.overrideProvider(FlowService, {
-                useValue: { nodeIdsWithoutFileAccess: () => nodeIdsWithoutFileAccess([table]) },
-            });
-            const fixture = TestBed.createComponent(ClassificationDecisionTableNodeComponent);
-            fixture.componentRef.setInput('node', table);
-            fixture.detectChanges();
-            return fixture.nativeElement;
-        }
-        const badges = (host: HTMLElement): HTMLElement[] =>
-            Array.from<HTMLElement>(host.querySelectorAll('.decision-table__header .node-badge'));
-        const tooltipOf = (element: HTMLElement): string => getDebugNode(element)!.injector.get(MatTooltip).message;
-
-        it('shows "No file access" for a slot that uses storage whose boxes are all unticked', () => {
-            const [badge] = badges(renderInFlow({ pre: { usesStorage: true, grants: NO_ACCESS } }));
-
-            expect(badge.textContent!.trim()).toBe('⚠ No file access');
-            expect(badge.classList).toContain('file-access-badge');
-            expect(tooltipOf(badge)).toBe(NO_FILE_ACCESS_TOOLTIP);
-        });
-
-        it('shows nothing for a slot that does not use storage, even when its boxes are all unticked', () => {
-            expect(badges(renderInFlow({ pre: { usesStorage: false, grants: NO_ACCESS } }))).toEqual([]);
-        });
-
-        it('shows nothing once a box of the slot is ticked', () => {
-            expect(badges(renderInFlow({ post: { usesStorage: true, grants: SOME_ACCESS } }))).toEqual([]);
-        });
-
-        it('shows one badge when both slots have no file access', () => {
-            const found = badges(
-                renderInFlow({
-                    pre: { usesStorage: true, grants: NO_ACCESS },
-                    post: { usesStorage: true, grants: NO_ACCESS },
-                })
-            );
-
-            expect(found.map((badge) => badge.textContent!.trim())).toEqual(['⚠ No file access']);
-        });
-    });
-
     describe('header badge', () => {
-        function render(noFileAccess: boolean, prompts: Record<string, PromptConfig>): HTMLElement {
-            TestBed.overrideProvider(FlowService, {
-                useValue: {
-                    nodeIdsWithoutFileAccess: () => new Set(noFileAccess ? ['classification'] : []),
-                },
-            });
+        function render(prompts: Record<string, PromptConfig>): HTMLElement {
             const fixture = TestBed.createComponent(ClassificationDecisionTableNodeComponent);
             fixture.componentRef.setInput('node', {
                 ...nodeWith(prompts),
@@ -341,31 +269,18 @@ describe('ClassificationDecisionTableNodeComponent config warnings', () => {
         const tooltipOf = (element: HTMLElement): string => getDebugNode(element)!.injector.get(MatTooltip).message;
 
         it('shows no badge without warnings', () => {
-            expect(badges(render(false, { check: llmPrompt(2) }))).toEqual([]);
+            expect(badges(render({ check: llmPrompt(2) }))).toEqual([]);
         });
 
         it('shows the errors alone as one badge in the header', () => {
-            const [badge] = badges(render(false, { check: llmPrompt(null) }));
+            const [badge] = badges(render({ check: llmPrompt(null) }));
 
             expect(badge.textContent!.trim()).toBe('⚠ 1 issue');
             expect(tooltipOf(badge)).toBe('1. LLM config is missing or was deleted.');
         });
 
-        it('shows the missing file access alone as one badge in the header', () => {
-            const [badge] = badges(render(true, { check: llmPrompt(2) }));
-
-            expect(badge.textContent!.trim()).toBe('⚠ No file access');
-        });
-
-        it('folds the errors and the missing file access into one chip, each message on its own bulleted line', () => {
-            const found = badges(render(true, { check: llmPrompt(null) }));
-
-            expect(found.map((badge) => badge.textContent!.trim())).toEqual(['⚠ 2 issues']);
-            expect(tooltipOf(found[0]).split('\n')).toEqual([`• ${LLM_MESSAGE}.`, `• ${NO_FILE_ACCESS_TOOLTIP}`]);
-        });
-
-        it('lists several errors one bulleted line each in one chip, with no file access involved', () => {
-            const found = badges(render(false, { first: llmPrompt(null), second: systemOnePrompt(null) }));
+        it('lists several errors one bulleted line each in one chip', () => {
+            const found = badges(render({ first: llmPrompt(null), second: systemOnePrompt(null) }));
 
             expect(found.map((badge) => badge.textContent!.trim())).toEqual(['⚠ 2 issues']);
             expect(tooltipOf(found[0]).split('\n')).toEqual([`• ${LLM_MESSAGE}.`, `• ${SYSTEM_ONE_MESSAGE}.`]);
@@ -373,18 +288,18 @@ describe('ClassificationDecisionTableNodeComponent config warnings', () => {
         });
 
         it('makes the badge focusable and described by its tooltip text, keeping its visible label', () => {
-            const [badge] = badges(render(true, { check: llmPrompt(null) }));
+            const [badge] = badges(render({ check: llmPrompt(null) }));
 
             TestBed.tick();
             const description = document.getElementById(badge.getAttribute('aria-describedby')!);
             expect(badge.getAttribute('tabindex')).toBe('0');
             expect(badge.hasAttribute('aria-label')).toBe(false);
-            expect(badge.textContent!.trim()).toBe('⚠ 2 issues');
+            expect(badge.textContent!.trim()).toBe('⚠ 1 issue');
             expect(description!.textContent).toBe(tooltipOf(badge));
         });
 
         it('shows the full name on hover only when it is cut off', () => {
-            const label = render(true, { check: llmPrompt(null) }).querySelector('.title__label') as HTMLElement;
+            const label = render({ check: llmPrompt(null) }).querySelector('.title__label') as HTMLElement;
             Object.defineProperty(label, 'clientWidth', { value: 100, configurable: true });
             Object.defineProperty(label, 'scrollWidth', { value: 300, configurable: true });
             label.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));

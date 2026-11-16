@@ -275,19 +275,23 @@ class SessionCredentialService:
         the shared folders left out, and the run still gets its own folders.
 
         Raises:
-            CredentialScopeValidationError: A request's `allowed_paths` is empty or escapes
-                the org prefix, or nothing is left to grant because an account may
-                do nothing to the shared folders and the run has no folder of its own.
+            CredentialScopeValidationError: A request has neither `allowed_paths` nor an
+                own folder, or a path escapes the org prefix, or nothing is left to grant
+                because an account may do nothing to the shared folders and the run has
+                no folder of its own.
             TemporaryPolicyTooLargeError: too many files are attached for one policy.
             TemporaryCredentialIssueError: minting or persisting failed.
         """
         planned: list[_PlannedAccount] = []
         for request in requests:
             shared_actions = request.shared_actions
+            # The run's own folders count as paths of the request: code in a sub-flow
+            # with no attached files has no paths of its own, and still runs with the
+            # session's folder.
             scoped_folders = credential_scope_validator.validate(
                 org_id=org_id,
                 storage_org_prefix=org_storage_prefix(org_id),
-                storage_allowed_paths=sorted(request.allowed_paths),
+                storage_allowed_paths=sorted({*request.allowed_paths, *own_paths}),
                 own_paths=own_paths,
             )
             shared_folders = scoped_folders.shared

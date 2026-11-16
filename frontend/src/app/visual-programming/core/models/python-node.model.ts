@@ -13,6 +13,5 @@ export interface PythonNode extends AuthorshipFields, NodeIdentityDto, NumberedN
     test_input: Record<string, string | number | boolean>;
     output_variable_path: string | null;
     metadata: Record<string, unknown>;
-    use_storage?: boolean;
     created_at: string;
 }

@@ -10,8 +10,8 @@ import {
     FILES_READ_LOCK_MESSAGE,
     filesReadLockOf,
     newNodeStorageGrants,
-    nodeIdsWithoutFileAccess,
     PermissionCheck,
+    STORAGE_GRANT_LOCK_SAVE_FIRST_MESSAGE,
     storageGrantLockOf,
     storageGrantsFromDto,
     toggleStorageGrant,
@@ -96,6 +96,20 @@ describe('storage grant lock', () => {
 
     it('does not lock while the permissions are not loaded yet', () => {
         expect(storageGrantLockOf(ALL, roleWith(), () => false)).toBeNull();
+    });
+
+    it('asks to save first when the canvas boxes differ from the saved ones that lock', () => {
+        const role = roleWith(ActionCode.Read, ActionCode.Create, ActionCode.Update);
+
+        expect(storageGrantLockOf(ALL, role, loaded, { read: true, write: true, delete: false })).toBe(
+            STORAGE_GRANT_LOCK_SAVE_FIRST_MESSAGE
+        );
+    });
+
+    it('does not ask to save first when the saved boxes do not lock', () => {
+        const role = roleWith(ActionCode.Read, ActionCode.Create, ActionCode.Update);
+
+        expect(storageGrantLockOf({ read: true, write: true, delete: false }, role, loaded, NONE)).toBeNull();
     });
 });
 
@@ -205,46 +219,5 @@ describe('storageGrantsFromDto', () => {
 
     it('returns nothing when the server sent none of the columns', () => {
         expect(storageGrantsFromDto({})).toBeUndefined();
-    });
-});
-
-describe('nodes flagged as having no file access', () => {
-    const withData = (type: NodeType, data: object, extra: Partial<NodeModel> = {}) =>
-        node('n', type, { data, ...extra } as Partial<NodeModel>);
-
-    it('flags a python node that uses storage with every box false, with no trigger needed', () => {
-        const python = withData(NodeType.PYTHON, { use_storage: true }, { id: 'py', storageGrants: NONE });
-
-        expect([...nodeIdsWithoutFileAccess([python])]).toEqual(['py']);
-    });
-
-    it('does not flag a node that does not use storage, or has a box ticked', () => {
-        const nodes = [
-            withData(NodeType.PYTHON, { use_storage: false }, { id: 'unused', storageGrants: NONE }),
-            withData(NodeType.WEBHOOK_TRIGGER, { use_storage: true }, { id: 'some', storageGrants: ALL }),
-            withData(NodeType.PYTHON, { use_storage: true }, { id: 'absent' }),
-        ];
-
-        expect(nodeIdsWithoutFileAccess(nodes).size).toBe(0);
-    });
-
-    it('ignores node types that have no granted code', () => {
-        const end = node('end', NodeType.END, { storageGrants: NONE });
-
-        expect(nodeIdsWithoutFileAccess([end]).size).toBe(0);
-    });
-
-    it('flags a classification table by the slot that uses storage, not by one that does not', () => {
-        const table = (preUsesStorage: boolean, postUsesStorage: boolean): ClassificationDecisionTableNodeModel =>
-            ({
-                id: 'cdt',
-                type: NodeType.CLASSIFICATION_TABLE,
-                data: { table: { pre_use_storage: preUsesStorage, post_use_storage: postUsesStorage } },
-                preStorageGrants: NONE,
-                postStorageGrants: ALL,
-            }) as unknown as ClassificationDecisionTableNodeModel;
-
-        expect(nodeIdsWithoutFileAccess([table(true, false)]).has('cdt')).toBe(true);
-        expect(nodeIdsWithoutFileAccess([table(false, true)]).has('cdt')).toBe(false);
     });
 });

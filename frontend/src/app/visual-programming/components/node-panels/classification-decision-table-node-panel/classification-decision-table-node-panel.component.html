@@ -250,15 +250,6 @@
                                     label="Pre-computation execution timeout"
                                 />
                             </app-diff-field-mark>
-                            <app-diff-field-mark [diffField]="'pre_use_storage'">
-                                <app-node-storage-section
-                                    [readonly]="isPreReadOnly() || isPreCodeLocked()"
-                                    [useStorage]="preUseStorage()"
-                                    (onToggleChange)="onPreStorageToggle($event)"
-                                    (onInsertCode)="insertPreStorageCode($event)"
-                                    (onRemoveCode)="removePreStorageCode($event)"
-                                ></app-node-storage-section>
-                            </app-diff-field-mark>
                             <app-diff-field-mark
                                 [diffField]="'pre_storage_grants'"
                                 [diffGroup]="true"
@@ -363,15 +354,6 @@
                                     [readonly]="isPostReadOnly()"
                                     label="Post-computation execution timeout"
                                 />
-                            </app-diff-field-mark>
-                            <app-diff-field-mark [diffField]="'post_use_storage'">
-                                <app-node-storage-section
-                                    [readonly]="isPostReadOnly() || isPostCodeLocked()"
-                                    [useStorage]="postUseStorage()"
-                                    (onToggleChange)="onPostStorageToggle($event)"
-                                    (onInsertCode)="insertPostStorageCode($event)"
-                                    (onRemoveCode)="removePostStorageCode($event)"
-                                ></app-node-storage-section>
                             </app-diff-field-mark>
                             <app-diff-field-mark
                                 [diffField]="'post_storage_grants'"

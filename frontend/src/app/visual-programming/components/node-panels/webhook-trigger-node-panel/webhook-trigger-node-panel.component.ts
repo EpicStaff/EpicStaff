@@ -42,7 +42,6 @@ import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.compo
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
-import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonTerminalComponent } from '../python-node-panel/python-terminal/python-terminal.component';
 import { webhookTriggerNameFormat } from '../shared/diff/webhook-trigger-name-format';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
@@ -74,7 +73,6 @@ export const RUN_PYTHON_CODE_LABEL = 'Run python code';
         CodeEditorComponent,
         ClipboardModule,
         NodeSecretsFieldComponent,
-        NodeStorageSectionComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
         ValidationErrorsComponent,
@@ -110,8 +108,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     private readonly triggerSelect = viewChild(WebhookTriggerSelectComponent);
 
     public readonly isFormCollapsed = signal<boolean>(false);
-    /** Whether the code gets the flow's file storage (`epicstaff_storage`). */
-    public readonly useStorage = signal<boolean>(false);
     protected readonly expandedPane = signal<WebhookExpandedPane>('code');
     /**
      * Changes tab of a version preview, widened panel: the changed code, shown as a diff while the big pane holds
@@ -265,26 +261,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.notifyExternalChange();
     }
 
-    onStorageToggle(value: boolean): void {
-        this.useStorage.set(value);
-        this.notifyExternalChange();
-    }
-
-    /** Puts the storage import and API summary on top of the code, unless the code already uses storage. */
-    insertStorageCode(code: string): void {
-        if (this.pythonCode.includes('epicstaff_storage')) return;
-        this.pythonCode = code + '\n\n' + this.pythonCode;
-        this.notifyExternalChange();
-    }
-
-    /** Takes out the storage header `insertStorageCode` added, when the code still starts with it. */
-    removeStorageCode(code: string): void {
-        const prefix = code + '\n\n';
-        if (!this.pythonCode.startsWith(prefix)) return;
-        this.pythonCode = this.pythonCode.slice(prefix.length);
-        this.notifyExternalChange();
-    }
-
     /** Runs the stored code alone, as a webhook delivery of the test payload would call it. */
     protected runPythonCode(): void {
         if (!this.canRunNode()) return;
@@ -332,7 +308,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.pythonCode = this.node().data.python_code.code || '';
         this.initialPythonCode = this.pythonCode;
         this.selectedSecretIds.set(this.node().data.python_code.secret_ids ?? []);
-        this.useStorage.set(this.node().data.use_storage ?? false);
         this.testPayload.reset(formatTestPayload(this.node().data.test_payload ?? {}));
         // The panel is reused when another webhook node is selected: a run of the previous one stops, and
         // the terminal starts hidden and empty.
@@ -362,7 +337,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
                     execution_timeout: this.executionTimeout.value,
                 },
                 test_payload: this.testPayload.payloadToSave(this.node().data.test_payload),
-                use_storage: this.useStorage(),
             },
         };
     }
@@ -413,7 +387,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.copied.set(true);
     }
 
-    /** The code, secrets, storage flag or execution timeout in the panel are not the ones the backend has stored. */
+    /** The code, secrets or execution timeout in the panel are not the ones the backend has stored. */
     private differsFromSaved(savedNode: GetWebhookTriggerNodeRequest): boolean {
         this.dirtyCheckTick();
         if (!this.form) return true;
@@ -421,7 +395,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         const saved = pythonCodeSignature(savedCode.code, toSecretIds(savedCode.secrets));
         return (
             saved !== pythonCodeSignature(this.pythonCode, this.selectedSecretIds()) ||
-            (savedNode.use_storage ?? false) !== this.useStorage() ||
             this.executionTimeoutLimits.secondsToRun(savedCode.execution_timeout) !==
                 this.executionTimeoutLimits.secondsToRun(this.executionTimeout.value)
         );

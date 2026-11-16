@@ -516,6 +516,27 @@ class TestScopeValidationRejectsBadPaths(TestCase):
                     python_code_result=self.python_code_result
                 ).exists()
 
+    def test_a_run_with_an_own_folder_and_no_attached_paths_is_granted_only_its_own_folder(
+        self, mock_gateway_class, mock_org_store
+    ):
+        org_creds = mock.MagicMock()
+        org_creds.access_key = "org_access_key"
+        org_creds.secret_key = "org_secret_key"
+        mock_org_store.get.return_value = org_creds
+        gateway = _stub_gateway(mock_gateway_class, "own_folder_key")
+
+        session_credential_service.issue_for_test_run(
+            python_code_result=self.python_code_result,
+            storage_allowed_paths=[],
+            org_id=self.org.id,
+            own_paths=["sessions/9/"],
+            shared_actions=frozenset(StorageAction),
+        )
+
+        assert _object_resources(_minted_policy(gateway)) == [
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/sessions/9/*"
+        ]
+
     def test_absolute_path_is_confined_to_the_org_prefix(
         self, mock_gateway_class, mock_org_store
     ):

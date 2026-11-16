@@ -225,7 +225,6 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
         webhook_trigger_path: '',
         webhook_trigger: node.data.webhook_trigger,
         test_payload: node.data.test_payload ?? {},
-        use_storage: node.data.use_storage ?? false,
         ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
@@ -363,13 +362,11 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
         pre_input_map: tableData?.pre_computation?.input_map || tableData?.pre_input_map || {},
         pre_output_variable_path:
             tableData?.pre_computation?.output_variable_path || tableData?.pre_output_variable_path || null,
-        pre_use_storage: tableData?.pre_use_storage ?? false,
         ...storageGrantsToPayload(node.preStorageGrants, 'pre'),
         post_computation_code: postCode,
         post_input_map: tableData?.post_computation?.input_map || tableData?.post_input_map || {},
         post_output_variable_path:
             tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
-        post_use_storage: tableData?.post_use_storage ?? false,
         ...storageGrantsToPayload(node.postStorageGrants, 'post'),
         pre_secret_ids: [...(tableData?.pre_computation?.secret_ids || [])].sort(),
         post_secret_ids: [...(tableData?.post_computation?.secret_ids || [])].sort(),

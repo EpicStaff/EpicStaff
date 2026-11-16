@@ -122,3 +122,46 @@ def test_each_code_slot_of_a_classification_table_is_capped_on_its_own():
 
     assert [capped[f"pre_{name}"] for name in FLAGS] == [True, False, False]
     assert [capped[f"post_{name}"] for name in FLAGS] == [False, False, False]
+
+
+@pytest.mark.parametrize("off", [False, 0, "false", "False", "0", "off", "no", "f"])
+def test_a_slot_whose_retired_switch_is_off_has_every_box_off(off):
+    data = {"use_storage": off, **dict.fromkeys(FLAGS, True)}
+
+    capped = _cap(data, EVERYTHING)
+
+    assert [capped[name] for name in FLAGS] == [False, False, False]
+    assert "use_storage" not in capped
+
+
+@pytest.mark.parametrize("on", [True, 1, "true", "on", None])
+def test_a_slot_whose_retired_switch_is_on_or_null_follows_the_usual_rules(on):
+    data = {"use_storage": on, "storage_grant_write": False}
+
+    capped = _cap(data, EVERYTHING)
+
+    assert [capped[name] for name in FLAGS] == [True, False, True]
+    assert "use_storage" not in capped
+
+
+def test_a_switch_that_is_off_also_clears_boxes_that_are_missing():
+    capped = _cap({"use_storage": False}, EVERYTHING)
+
+    assert [capped[name] for name in FLAGS] == [False, False, False]
+
+
+def test_the_retired_switch_of_each_classification_slot_clears_only_that_slot():
+    data = {"pre_use_storage": False, "post_use_storage": True}
+
+    capped = _cap(data, EVERYTHING, model=ClassificationDecisionTableNode)
+
+    assert [capped[f"pre_{name}"] for name in FLAGS] == [False, False, False]
+    assert [capped[f"post_{name}"] for name in FLAGS] == [True, True, True]
+    assert "pre_use_storage" not in capped
+    assert "post_use_storage" not in capped
+
+
+def test_the_switch_of_a_model_without_grants_is_left_alone():
+    data = {"use_storage": False}
+
+    assert _cap(data, EVERYTHING, model=FileExtractorNode) == data

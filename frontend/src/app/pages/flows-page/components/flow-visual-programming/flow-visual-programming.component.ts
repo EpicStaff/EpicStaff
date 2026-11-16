@@ -2322,9 +2322,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private onVersionRestored(graphId: number, response: GraphRestoreResponse): Observable<void> {
         if (response.warnings.length > 0) {
-            this.toastService.warning(
-                `Version restored with ${response.warnings.length} warning(s): some dependencies have since been deleted`
-            );
+            const isCapped = (warning: { type: string }) => warning.type === 'storage_grant_capped';
+            const hasCapped = response.warnings.some(isCapped);
+            const hasOther = !response.warnings.every(isCapped);
+            const cappedText =
+                "some storage permissions were unticked because you don't have the matching Files permissions";
+            const otherText = 'some dependencies have since been deleted';
+            const details =
+                hasCapped && hasOther ? `${otherText}, and ${cappedText}` : hasCapped ? cappedText : otherText;
+            this.toastService.warning(`Version restored with ${response.warnings.length} warning(s): ${details}`);
         } else {
             this.toastService.success('Version restored successfully');
         }

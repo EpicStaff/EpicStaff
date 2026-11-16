@@ -81,7 +81,7 @@ KINDS = [
         lambda graph, flags: WebhookTriggerNode.objects.create(
             graph=graph, node_name="hook", python_code=_code(), **flags
         ),
-        {"use_storage": True},
+        {"python_code": OTHER_CODE},
         {"node_name": "hook", "python_code": CODE, "metadata": {}},
     ),
     Kind(
@@ -196,7 +196,10 @@ def _bulk(client, kind, graph, node, fields):
 
 
 def _stored(node, name):
-    return getattr(type(node).objects.get(pk=node.pk), name)
+    value = getattr(type(node).objects.get(pk=node.pk), name)
+    if isinstance(value, PythonCode):
+        return {"code": value.code, "entrypoint": value.entrypoint}
+    return value
 
 
 def _steer(entry, client, kind, flow, node):
@@ -489,7 +492,6 @@ def test_member_bulk_save_of_unchanged_flow_succeeds(flow, member_client):
         "graph": flow.pk,
         "python_code": CODE,
         "input_map": node.input_map,
-        "use_storage": node.use_storage,
         **_flags("", (True, True, True)),
         "node_name": "renamed",
     }

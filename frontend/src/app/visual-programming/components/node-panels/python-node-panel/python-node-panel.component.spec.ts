@@ -37,6 +37,7 @@ import { StorageGrants } from '../../../core/models/storage-grants.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { FlowService } from '../../../services/flow.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
+import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { FieldChange, FieldName, NodeDiffStatus } from '../../../utils/diff';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
@@ -50,7 +51,6 @@ import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.co
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { provideChangesTabDiff } from '../../missing-reference-note/missing-reference-note.testing';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
-import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import {
     NODE_SAVING_MESSAGE,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
@@ -122,7 +122,6 @@ const STORED_NODE: PythonNode = {
     test_input: { count: '3' },
     output_variable_path: null,
     metadata: {},
-    use_storage: false,
     created_at: '2026-01-01T00:00:00Z',
     created_by: null,
     last_edited_by: null,
@@ -204,49 +203,36 @@ describe('PythonNodePanelComponent test run', () => {
         expect(blocker()).toBeNull();
     });
 
-    describe('after toggling storage', () => {
-        it('blocks the run until the node is saved, instead of running with the stored flag', () => {
-            open();
-
-            panel.onStorageToggle(true);
-            panel.onRunTest({ count: '3' });
-
-            expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
-            expect(runService.runPythonCode).not.toHaveBeenCalled();
-        });
+    describe('after editing the code', () => {
+        const EDITED_CODE = 'def main(count): return count + 1';
+        const storedWithEditedCode: PythonNode = {
+            ...STORED_NODE,
+            python_code: { ...STORED_NODE.python_code, code: EDITED_CODE },
+        };
 
         it('says the node is being saved while its save is in flight', () => {
             open();
-            panel.onStorageToggle(true);
+            panel.onPythonCodeChange(EDITED_CODE);
 
             TestBed.inject(SidePanelService).markNodeSaving(panel.node().id);
 
             expect(blocker()).toBe(NODE_SAVING_MESSAGE);
         });
 
-        it('runs once the stored node has the new flag', () => {
+        it('runs once the stored node has the new code', () => {
             open();
-            panel.onStorageToggle(true);
+            panel.onPythonCodeChange(EDITED_CODE);
 
-            bindStoredGraph({ ...STORED_NODE, use_storage: true });
+            bindStoredGraph(storedWithEditedCode);
             panel.onRunTest({ count: '3' });
 
             expect(blocker()).toBeNull();
             expect(runService.runPythonCode).toHaveBeenCalledTimes(1);
         });
 
-        it('clears when the toggle is undone', () => {
-            open();
-
-            panel.onStorageToggle(true);
-            panel.onStorageToggle(false);
-
-            expect(blocker()).toBeNull();
-        });
-
-        it('offers Save when the panel is reopened with a toggle that only reached the flow', () => {
+        it('offers Save when the panel is reopened with code that only reached the flow', () => {
             const autosaved = mapPythonNodeToModel(STORED_NODE);
-            open({ ...autosaved, data: { ...autosaved.data, use_storage: true } });
+            open({ ...autosaved, data: { ...autosaved.data, code: EDITED_CODE } });
 
             expect(panel.isDirty()).toBe(false);
             expect(panel.needsSave()).toBe(true);
@@ -285,17 +271,20 @@ describe('PythonNodePanelComponent test run', () => {
         expect(panel.needsSave()).toBe(false);
     });
 
-    it('runs again after the Save round trip of a storage toggle', () => {
+    it('runs again after the Save round trip of a code edit', () => {
         open();
         const sidePanelService = TestBed.inject(SidePanelService);
-        panel.onStorageToggle(true);
+        panel.onPythonCodeChange('def main(count): return count + 1');
         expect(panel.isDirty()).toBe(true);
 
         // What the flows page does for the shell's Save: mark it saving, take the saved graph, clear the mark.
         sidePanelService.markNodeSaving(panel.node().id);
         TestBed.tick();
         expect(blocker()).toBe(NODE_SAVING_MESSAGE);
-        bindStoredGraph({ ...STORED_NODE, use_storage: true });
+        bindStoredGraph({
+            ...STORED_NODE,
+            python_code: { ...STORED_NODE.python_code, code: 'def main(count): return count + 1' },
+        });
         sidePanelService.clearNodeSaving();
         TestBed.tick();
 
@@ -779,7 +768,6 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
                     InputMapComponent,
                     NodeSecretsFieldComponent,
                     ExecutionTimeoutFieldComponent,
-                    NodeStorageSectionComponent,
                     StorageGrantsFieldComponent,
                     DiffFieldMarkComponent,
                     CodeDiffViewComponent,
@@ -865,15 +853,6 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
             badgeOn: '.execution-timeout__group',
             label: 'app-tooltip',
             drawnBox: null,
-        },
-        // A toggle has no value box: its row, label included, is boxed.
-        {
-            change: change('use_storage', false, true),
-            marked: 'app-node-storage-section',
-            badgeOn: '.storage-header',
-            label: null,
-            // The row stays a flex row; only the box is drawn around it.
-            drawnBox: { marked: { paddingTop: '8px' }, plain: { paddingTop: '0' } },
         },
     ];
 
@@ -1197,12 +1176,7 @@ describe('PythonNodePanelComponent code that reads secrets', () => {
         });
         TestBed.overrideComponent(PythonNodePanelComponent, {
             set: {
-                imports: [
-                    CodeEditorComponent,
-                    NodeStorageSectionComponent,
-                    VenvSelectStubComponent,
-                    InputMapStubComponent,
-                ],
+                imports: [CodeEditorComponent, VenvSelectStubComponent, InputMapStubComponent],
                 schemas: [NO_ERRORS_SCHEMA],
             },
         });
@@ -1212,13 +1186,12 @@ describe('PythonNodePanelComponent code that reads secrets', () => {
         fixture.detectChanges();
     }
 
-    function locks(): { codeEditor: boolean; venv: boolean; storage: boolean; hint: boolean } {
+    function locks(): { codeEditor: boolean; venv: boolean; hint: boolean } {
         const query = <T>(type: new (...args: never[]) => T): T =>
             fixture.debugElement.query(By.directive(type)).componentInstance as T;
         return {
             codeEditor: query(CodeEditorComponent).readOnly,
             venv: query(VenvSelectStubComponent).readonly(),
-            storage: query(NodeStorageSectionComponent).readonly(),
             hint: (fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE) ?? false,
         };
     }
@@ -1226,13 +1199,13 @@ describe('PythonNodePanelComponent code that reads secrets', () => {
     it('locks the code, venv and storage toggle, saying why, for a user without Secrets:Use', () => {
         open(false);
 
-        expect(locks()).toEqual({ codeEditor: true, venv: true, storage: true, hint: true });
+        expect(locks()).toEqual({ codeEditor: true, venv: true, hint: true });
     });
 
     it('leaves them editable, with no hint, for a user with Secrets:Use', () => {
         open(true);
 
-        expect(locks()).toEqual({ codeEditor: false, venv: false, storage: false, hint: false });
+        expect(locks()).toEqual({ codeEditor: false, venv: false, hint: false });
     });
 });
 
@@ -1241,7 +1214,12 @@ describe('PythonNodePanelComponent storage grant lock', () => {
     const EVERYTHING: StorageGrants = { read: true, write: true, delete: true };
     const NOTHING: StorageGrants = { read: false, write: false, delete: false };
 
-    function open(files: ActionCode[], storageGrants: StorageGrants): PythonNodePanelComponent {
+    /** `savedGrants` are what the backend holds (`null`: the node was never saved); `storageGrants` are the canvas node's. */
+    function open(
+        files: ActionCode[],
+        storageGrants: StorageGrants,
+        savedGrants: StorageGrants | null = storageGrants
+    ): PythonNodePanelComponent {
         TestBed.configureTestingModule({
             providers: [
                 provideLoadedExecutionTimeoutLimits(),
@@ -1259,11 +1237,16 @@ describe('PythonNodePanelComponent storage grant lock', () => {
         });
         TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
         const fixture = TestBed.createComponent(PythonNodePanelComponent);
-        fixture.componentRef.setInput('node', {
+        const canvasNode = {
             ...pythonNode,
             data: { ...pythonNode.data, secret_ids: [] },
             storageGrants,
+        };
+        TestBed.inject(SavedFlowStateService).setSavedFlow({
+            nodes: savedGrants ? [{ ...canvasNode, storageGrants: savedGrants }] : [],
+            connections: [],
         });
+        fixture.componentRef.setInput('node', canvasNode);
         fixture.detectChanges();
         return fixture.componentInstance;
     }
@@ -1300,5 +1283,45 @@ describe('PythonNodePanelComponent storage grant lock', () => {
 
         expect(panel.storageGrantLock()).toBeNull();
         expect(panel.isReadOnly()).toBe(false);
+    });
+
+    it('stays locked, asking to save first, when the canvas boxes are unticked but the backend still holds them', () => {
+        const panel = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], NOTHING, EVERYTHING);
+
+        expect(panel.storageGrantLock()).toBe('Save your file access changes first, then you can edit the code.');
+        expect(panel.isReadOnly()).toBe(true);
+        expect(panel.form.disabled).toBe(true);
+    });
+
+    it('does not lock a node that was never saved, even with ticked boxes the role lacks', () => {
+        const panel = open([], EVERYTHING, null);
+
+        expect(panel.storageGrantLock()).toBeNull();
+        expect(panel.isReadOnly()).toBe(false);
+    });
+
+    it('does not lock once the saved grants no longer hold the box the role lacks', () => {
+        const panel = open(
+            [ActionCode.Read, ActionCode.Create, ActionCode.Update],
+            { read: true, write: true, delete: false },
+            { read: true, write: true, delete: false }
+        );
+
+        expect(panel.storageGrantLock()).toBeNull();
+        expect(panel.form.enabled).toBe(true);
+    });
+
+    it('unlocks without reopening once the unticked boxes are saved', () => {
+        const unticked = { read: true, write: true, delete: false };
+        const panel = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], unticked, EVERYTHING);
+
+        TestBed.inject(SavedFlowStateService).setSavedFlow({
+            nodes: [{ ...panel.node(), storageGrants: unticked }],
+            connections: [],
+        });
+        TestBed.tick();
+
+        expect(panel.storageGrantLock()).toBeNull();
+        expect(panel.form.enabled).toBe(true);
     });
 });

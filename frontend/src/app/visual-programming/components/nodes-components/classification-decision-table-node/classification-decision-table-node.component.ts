@@ -1,14 +1,5 @@
 import { CommonModule, NgStyle } from '@angular/common';
-import {
-    ChangeDetectionStrategy,
-    Component,
-    computed,
-    DestroyRef,
-    EventEmitter,
-    inject,
-    Input,
-    Output,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, EventEmitter, inject, Input, Output } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -22,7 +13,6 @@ import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.dir
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { buildNodeWarningChip, enableTooltipOnlyWhenTruncated } from '../../../core/helpers/node-warning-badge.util';
-import { NO_FILE_ACCESS_TOOLTIP } from '../../../core/helpers/storage-grants.util';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
@@ -33,7 +23,6 @@ import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../../services/flow-settings.service';
 
 interface CdtHeaderBadge {
-    kind: 'errors' | 'file-access';
     label: string;
     tooltip: string;
     tooltipClass: string;
@@ -119,10 +108,6 @@ export class ClassificationDecisionTableNodeComponent {
         return node ? formatNodeLabel(node) : idOrName;
     }
 
-    readonly noFileAccessTooltip = NO_FILE_ACCESS_TOOLTIP;
-
-    readonly hasNoFileAccess = computed(() => this.flowService.nodeIdsWithoutFileAccess().has(this.node.id));
-
     get title(): string {
         return this.node.node_name || 'Classification Table';
     }
@@ -200,26 +185,16 @@ export class ClassificationDecisionTableNodeComponent {
     }
 
     /**
-     * The one badge the header shows: a lone group of errors, or the missing file access, or a chip when there are
-     * several messages (every error plus the file access), listing them one per line; `null` when there is none.
+     * The one badge the header shows: the lone error, or a chip listing the messages one per line when there are
+     * several; `null` when there is none.
      */
     protected get headerBadge(): CdtHeaderBadge | null {
         const errors = this.errorMessages.map((message) => `${message}.`);
-        const hasNoFileAccess = this.hasNoFileAccess();
-        const messages = hasNoFileAccess ? [...errors, this.noFileAccessTooltip] : errors;
-        if (messages.length >= 2) {
-            return { kind: 'errors', ...buildNodeWarningChip(messages) };
+        if (errors.length >= 2) {
+            return buildNodeWarningChip(errors);
         }
         if (errors.length > 0) {
-            return { kind: 'errors', label: this.errorsBadgeLabel, tooltip: this.errorsTooltip, tooltipClass: '' };
-        }
-        if (hasNoFileAccess) {
-            return {
-                kind: 'file-access',
-                label: 'No file access',
-                tooltip: this.noFileAccessTooltip,
-                tooltipClass: '',
-            };
+            return { label: this.errorsBadgeLabel, tooltip: this.errorsTooltip, tooltipClass: '' };
         }
         return null;
     }

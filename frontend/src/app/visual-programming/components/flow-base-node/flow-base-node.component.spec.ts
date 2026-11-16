@@ -9,7 +9,6 @@ import { AgentDefinitionsApiService } from '../../../features/agent-definitions/
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { GraphVersionSnapshot } from '../../../features/flows/models/graph-version-preview.model';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
-import { NO_FILE_ACCESS_TOOLTIP } from '../../core/helpers/storage-grants.util';
 import { KeyValueMode } from '../../core/models/key-value-node.model';
 import { NodeModel, SubGraphNodeModel } from '../../core/models/node.model';
 import { FlowService } from '../../services/flow.service';
@@ -70,7 +69,7 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         );
     const tooltipOf = (element: HTMLElement): string => getDebugNode(element)!.injector.get(MatTooltip).message;
 
-    function render(node: NodeModel, readOnly = false, noFileAccessNodeIds: string[] = []): void {
+    function render(node: NodeModel, readOnly = false): void {
         TestBed.configureTestingModule({
             providers: [
                 { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(readOnly) } },
@@ -89,7 +88,6 @@ describe('FlowBaseNodeComponent key-value summary', () => {
                 },
             ],
         });
-        vi.spyOn(TestBed.inject(FlowService), 'nodeIdsWithoutFileAccess').mockReturnValue(new Set(noFileAccessNodeIds));
         fixture = TestBed.createComponent(FlowBaseNodeComponent);
         fixture.componentRef.setInput('node', node);
         fixture.detectChanges();
@@ -165,34 +163,15 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         expect(tooltipOf(headerBadges()[0])).toBe('Select a table in the node panel');
     });
 
-    it('folds several warnings into one chip that counts them and lists every message on its own bulleted line', () => {
-        render(NO_TABLE_NODE, false, [NO_TABLE_NODE.id]);
-
-        expect(headerBadges().map((badge) => badge.textContent!.trim())).toEqual(['2 issues']);
-        expect(tooltipOf(headerBadges()[0])).toBe(
-            [`• ${NO_FILE_ACCESS_TOOLTIP}`, '• Select a table in the node panel'].join('\n')
-        );
-        expect(getDebugNode(headerBadges()[0])!.injector.get(MatTooltip).tooltipClass).toBe('multiline-tooltip');
-    });
-
-    it('shows a node with no file access as one "No file access" badge with its tooltip', () => {
-        render(KEY_VALUE_NODE, false, [KEY_VALUE_NODE.id]);
-
-        const [badge] = headerBadges();
-        expect(badge.textContent!.trim()).toBe('No file access');
-        expect(tooltipOf(badge)).toBe(NO_FILE_ACCESS_TOOLTIP);
-        expect(headerBadges()).toHaveLength(1);
-    });
-
     it('makes a badge focusable and described by its tooltip text, keeping its visible label', () => {
-        render(NO_TABLE_NODE, false, [NO_TABLE_NODE.id]);
+        render(NO_TABLE_NODE);
 
         TestBed.tick();
         const [chip] = headerBadges();
         const description = document.getElementById(chip.getAttribute('aria-describedby')!);
         expect(chip.getAttribute('tabindex')).toBe('0');
         expect(chip.hasAttribute('aria-label')).toBe(false);
-        expect(chip.textContent!.trim()).toBe('2 issues');
+        expect(chip.textContent!.trim()).toBe('No table');
         expect(description!.textContent).toBe(tooltipOf(chip));
     });
 

@@ -57,7 +57,6 @@ export const FIELD_DISPLAY = {
     'python_code.venv_id': { label: 'Venv', kind: 'entityRef' },
     'python_code.secret_names': { label: 'Secrets' },
     'python_code.execution_timeout': { label: 'Execution timeout', format: clockDuration },
-    use_storage: { label: 'Use storage' },
     storage_grants: { label: 'File access', format: storageGrantsText },
     webhook_trigger: { label: 'Webhook trigger', kind: 'entityRef' },
     telegram_bot_api_key_secret_id: { label: 'Bot API key secret', kind: 'entityRef' },
@@ -120,7 +119,6 @@ export const FIELD_DISPLAY = {
     'pre_computation.output_variable_path': { label: 'Pre-computation output variable path' },
     'pre_computation.secret_names': { label: 'Pre-computation secrets' },
     'pre_computation.execution_timeout': { label: 'Pre-computation execution timeout', format: clockDuration },
-    pre_use_storage: { label: 'Pre-computation uses storage' },
     pre_storage_grants: {
         label: 'Pre-computation file access',
         format: storageGrantsText,
@@ -131,7 +129,6 @@ export const FIELD_DISPLAY = {
     'post_computation.output_variable_path': { label: 'Post-computation output variable path' },
     'post_computation.secret_names': { label: 'Post-computation secrets' },
     'post_computation.execution_timeout': { label: 'Post-computation execution timeout', format: clockDuration },
-    post_use_storage: { label: 'Post-computation uses storage' },
     post_storage_grants: {
         label: 'Post-computation file access',
         format: storageGrantsText,
