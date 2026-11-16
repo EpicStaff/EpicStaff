@@ -24,8 +24,12 @@ fi
 
 # Without ON_ERROR_STOP psql exits 0 after a failed statement, so a role that was
 # never created would still let setup finish and report healthy.
+# Setup runs as the superuser, and the django and knowledge roles may create objects in public:
+# with public on the search_path, a function they plant there (a format() overload, say) would
+# run with superuser rights. So only pg_catalog is searched, and public objects are named in full.
 setup_psql() {
-    psql -X -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" "$@"
+    PGOPTIONS="-c search_path=pg_catalog,pg_temp" \
+        psql -X -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" "$@"
 }
 
 # Role, schema and database names are spliced into the SQL below as both literals
@@ -77,7 +81,7 @@ GRANT USAGE, CREATE ON SCHEMA public TO "${django_user}";
 GRANT CREATE ON DATABASE "${TARGET_DB}" TO "${django_user}";
 
 -- pgvector 0.5.1 is not a trusted extension: only a superuser can create it.
-CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS vector SCHEMA public;
 EOF
     echo "[django] Role ready: ${django_user}"
 }
@@ -281,8 +285,8 @@ drop_legacy_auto_grant_triggers() {
     setup_psql <<EOF
 DROP EVENT TRIGGER IF EXISTS auto_grant_on_create_table;
 DROP EVENT TRIGGER IF EXISTS auto_grant_on_create_sequence;
-DROP FUNCTION IF EXISTS auto_grant_table_permissions();
-DROP FUNCTION IF EXISTS auto_grant_sequence_permissions();
+DROP FUNCTION IF EXISTS public.auto_grant_table_permissions();
+DROP FUNCTION IF EXISTS public.auto_grant_sequence_permissions();
 EOF
 }
 
