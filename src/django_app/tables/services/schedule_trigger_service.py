@@ -19,8 +19,7 @@ if TYPE_CHECKING:
     from tables.services.session_manager_service import SessionManagerService
 
 
-# Columns that define when a schedule fires. Changing any of them replaces the
-# schedule a recorded missed run belonged to.
+# Fields that define when a schedule fires; changing one clears a recorded missed run.
 _SCHEDULE_CONFIG_FIELDS = (
     "run_mode",
     "timezone",
@@ -55,27 +54,19 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
 
     @transaction.atomic
     def deactivate_node(self, node_id: int) -> None:
-        """Switch off a node on Manager's 'deactivate' signal.
+        """Flip is_active=False via .save() so post_save publishes node_update
+        back to Manager — QuerySet.update() would skip the signal and leave
+        Manager unaware via the standard update path.
 
-        Manager sends it after a once-mode run fired, and for a repeat schedule
-        with no fire time left before its end. It repeats the repeat-mode signal
-        until the node's DB state acknowledges it, so this must be idempotent and
-        must not act on a stale signal: a repeat node whose schedule has a fire
-        time left again (the user extended it after Manager sent the signal) is
-        left untouched. Once-mode nodes are switched off unconditionally. The row
-        lock waits for a concurrent user edit to commit, so that check sees the
-        edit instead of overwriting it.
-
-        Saves via .save() so post_save publishes node_update back to Manager —
-        QuerySet.update() would skip the signal and leave Manager unaware via the
-        standard update path.
+        Manager repeats the signal for a repeat schedule, so a repeat node that
+        has a fire time left again (the user extended it) treats it as stale.
         """
         node = ScheduleTriggerNode.objects.select_for_update().filter(id=node_id).first()
         if node is None:
-            logger.warning("[ScheduleTriggerService] Node {} not found for deactivation", node_id)
+            logger.warning(f"[ScheduleTriggerService] Node {node_id} not found for deactivation")
             return
         if not node.is_active:
-            logger.info("[ScheduleTriggerService] Node {} already inactive", node_id)
+            logger.info(f"[ScheduleTriggerService] Node {node_id} already inactive")
             return
         if node.run_mode == ScheduleTriggerNode.RunMode.REPEAT:
             next_run = self._compute_next_run_date_time(node)
@@ -90,25 +81,15 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
         node.is_active = False
         node.next_run_date_time = None
         node.save(update_fields=["is_active", "next_run_date_time", "updated_at"])
-        logger.info("[ScheduleTriggerService] Node {} deactivated", node_id)
+        logger.info(f"[ScheduleTriggerService] Node {node_id} deactivated")
 
     @transaction.atomic
     def mark_missed(self, node_id: int, scheduled_at: datetime) -> None:
         """Switch off a once-mode node whose run Manager missed, and record when it was due.
 
-        Manager reports a miss when the run time passed while it was not running,
-        and repeats the signal until the node's DB state acknowledges it, so this
-        must be idempotent. Saves via .save() so post_save publishes node_update
-        back to Manager, which then drops the node from its tracking.
-
-        The signal is ignored when the node is no longer a once-mode schedule
-        starting at scheduled_at: the user changed the schedule after the miss,
-        so the signal is about a schedule that no longer exists. The row lock
-        waits for a concurrent user edit to commit, so that check sees the edit
-        instead of overwriting it.
-
-        Args:
-            scheduled_at: Timezone-aware run time that was missed.
+        Idempotent, since Manager repeats the signal; ignored when the node no longer
+        starts at scheduled_at (the user changed it). Saves via .save() so post_save
+        publishes node_update back to Manager.
         """
         node = ScheduleTriggerNode.objects.select_for_update().filter(id=node_id).first()
         if node is None:
