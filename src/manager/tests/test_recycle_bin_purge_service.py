@@ -9,9 +9,11 @@ from helpers.logger import logger
 from services.recycle_bin_purge_service import RecycleBinPurgeService
 from services.redis_service import RedisService
 from src.shared.redis_streams import (
+    RECYCLE_BIN_PURGE_JOB_FIELD,
     RECYCLE_BIN_PURGE_REQUESTED_AT_FIELD,
     RECYCLE_BIN_PURGE_STREAM,
     RECYCLE_BIN_PURGE_STREAM_MAXLEN,
+    STORAGE_MEASUREMENT_JOB,
 )
 
 TIMEZONE = ZoneInfo("Europe/Kyiv")
@@ -105,6 +107,71 @@ async def test_redis_error_on_fire_is_logged_not_raised(purge_service, redis_ser
     sink_id = logger.add(messages.append, level="ERROR")
     try:
         await purge_service.request_purge()
+    finally:
+        logger.remove(sink_id)
+
+    assert any("redis is down" in str(message) for message in messages)
+
+
+# --- The hourly storage measurement shares the stream ------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("minute", "now_local", "expected_fire_local"),
+    [
+        (0, datetime(2026, 1, 10, 12, 10, tzinfo=TIMEZONE), datetime(2026, 1, 10, 13, 0)),
+        (0, datetime(2026, 1, 10, 23, 59, tzinfo=TIMEZONE), datetime(2026, 1, 11, 0, 0)),
+        (15, datetime(2026, 1, 10, 12, 10, tzinfo=TIMEZONE), datetime(2026, 1, 10, 12, 15)),
+    ],
+    ids=["next-hour", "past-midnight", "at-the-purge-minute"],
+)
+async def test_the_measurement_fires_every_hour_at_the_purge_minute(
+    redis_service, minute, now_local, expected_fire_local
+):
+    service = RecycleBinPurgeService(redis_service=redis_service, timezone=TIMEZONE, minute=minute)
+    try:
+        await service.start()
+
+        job = service.scheduler.get_job("storage_measurement")
+        fire_time = job.trigger.get_next_fire_time(None, now_local)
+    finally:
+        service.stop()
+
+    assert fire_time.replace(tzinfo=None) == expected_fire_local
+    assert (job.coalesce, job.max_instances) == (True, 1)
+
+
+@pytest.mark.asyncio
+async def test_a_measurement_fire_adds_one_entry_naming_its_job(purge_service, redis_service):
+    await purge_service.request_storage_measurement()
+
+    ((_entry_id, fields),) = await redis_service.aioredis_client.xrange(RECYCLE_BIN_PURGE_STREAM)
+    assert fields[RECYCLE_BIN_PURGE_JOB_FIELD] == STORAGE_MEASUREMENT_JOB
+    assert datetime.fromisoformat(fields[RECYCLE_BIN_PURGE_REQUESTED_AT_FIELD]).tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_a_purge_entry_names_no_job(purge_service, redis_service):
+    """django_app runs an entry without a job field as the purge."""
+    await purge_service.request_purge()
+
+    ((_entry_id, fields),) = await redis_service.aioredis_client.xrange(RECYCLE_BIN_PURGE_STREAM)
+    assert RECYCLE_BIN_PURGE_JOB_FIELD not in fields
+
+
+@pytest.mark.asyncio
+async def test_redis_error_on_a_measurement_fire_is_logged_not_raised(
+    purge_service, redis_service, monkeypatch
+):
+    async def failing_xadd(*args, **kwargs):
+        raise ConnectionError("redis is down")
+
+    monkeypatch.setattr(redis_service.aioredis_client, "xadd", failing_xadd)
+    messages = []
+    sink_id = logger.add(messages.append, level="ERROR")
+    try:
+        await purge_service.request_storage_measurement()
     finally:
         logger.remove(sink_id)
 

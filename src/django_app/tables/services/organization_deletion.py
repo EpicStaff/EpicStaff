@@ -100,6 +100,7 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "tables.PythonCodeToolConfig",
         "tables.PythonCodeResult",
         "tables.StorageFile",
+        "tables.OrganizationStorageUsage",
         # The swept ConversationRecording DB row -- its audio file is already
         # counted via the "storage_files" external artifact.
         "tables.ConversationRecording",

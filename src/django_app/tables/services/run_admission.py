@@ -4,7 +4,9 @@ Every path that starts work on an organization's flows, agents, voice channels o
 code calls `assert_run_admitted` before it writes or publishes anything: no session row, no
 result row, no Redis message. Interactive callers let the refusal propagate, so the caller
 gets a 409 envelope; triggers have no caller to tell and log it with
-`log_trigger_refusal_once`.
+`log_trigger_refusal_once`. One refusal comes later: `OrganizationStorageFullError` is raised
+when storage credentials are minted, after the session or result row exists, not by a
+registered check.
 
 Other apps add reasons to refuse a run without `tables` importing them: implement
 `RunAdmissionCheck`, raise a subclass of `RunAdmissionRefusedError`, and register the check
@@ -61,6 +63,8 @@ class RunAdmissionRefusedError(CustomAPIExeption):
     """A run was refused before it started.
 
     Never raised directly: each check raises its own subclass with its own code and message.
+    `OrganizationStorageFullError` is the exception: it is raised at the storage credential
+    mint, after the session or result row exists, not by a registered check.
 
     Attributes:
         log_key: Stable text naming the cause of the refusal. Equal for the same cause, so a

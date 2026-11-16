@@ -16,7 +16,12 @@ from tables.clients import SandboxExecutionClient
 from tables.exceptions import CodeRunTargetNotFoundError
 from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.services.code_run_targets import CODE_RUN_TARGETS, storage_path_for_test_run
-from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
+from tables.services.run_admission import (
+    RunAdmissionRefusedError,
+    RunKind,
+    RunSubject,
+    assert_run_admitted,
+)
 from tables.services.secrets import (
     UndeclaredSecretError,
     parse_secret_names,
@@ -120,6 +125,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             storage_allowed_paths=storage_allowed_paths,
             org_id=organization_id,
         )
+        # After the mint, so a refused run evicts nothing.
+        self._evict_oldest_results(organization_id)
         if not ok:
             return execution_id
 
@@ -223,6 +230,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             storage_allowed_paths=resolved.storage_allowed_paths,
             org_id=resolved.org_id,
         )
+        # After the mint, so a refused run evicts nothing.
+        self._evict_oldest_results(organization_id)
         if not ok:
             return execution_id
 
@@ -271,6 +280,9 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         """Mint storage credentials if needed. Returns (credentials, ok);
         ok=False means the execution already failed (ERROR, best-effort revoke)
         and the caller should return `execution_id` without building anything.
+
+        Raises:
+            RunAdmissionRefusedError: Minting refused the run; the pending result is deleted.
         """
         try:
             return (
@@ -282,6 +294,9 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 ),
                 True,
             )
+        except RunAdmissionRefusedError:
+            python_code_result.delete()
+            raise
         except StorageCredentialError:
             self._fail_execution(
                 execution_id=execution_id,
@@ -335,7 +350,6 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             created_by=resolve_author(user),
             python_code=python_code,
         )
-        self._evict_oldest_results(organization_id)
         return python_code_result
 
     def _issue_storage_credentials_if_needed(

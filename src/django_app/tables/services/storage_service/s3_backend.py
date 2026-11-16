@@ -243,6 +243,27 @@ class S3StorageBackend(AbstractStorageBackend):
                 objects.append((key, obj["Size"], obj["LastModified"].isoformat()))
         return objects
 
+    def total_size(self, prefix: str) -> int:
+        full_prefix = self._full_path(prefix)
+        if not full_prefix.endswith("/"):
+            full_prefix += "/"
+        paginator = self.client.get_paginator("list_objects_v2")
+        total = 0
+        for page in paginator.paginate(Bucket=self.bucket_name, Prefix=full_prefix):
+            # Every object, markers included: an empty marker adds nothing, and one with
+            # content holds bytes like any file.
+            total += sum(obj["Size"] for obj in page.get("Contents", []))
+        # Parts of an unfinished multipart upload are stored but never listed as objects.
+        uploads = self.client.get_paginator("list_multipart_uploads")
+        parts = self.client.get_paginator("list_parts")
+        for page in uploads.paginate(Bucket=self.bucket_name, Prefix=full_prefix):
+            for upload in page.get("Uploads", []):
+                for parts_page in parts.paginate(
+                    Bucket=self.bucket_name, Key=upload["Key"], UploadId=upload["UploadId"]
+                ):
+                    total += sum(part["Size"] for part in parts_page.get("Parts", []))
+        return total
+
     def list_(self, prefix: str) -> list[FileListItem]:
         full_prefix = self._full_path(prefix)
         if full_prefix and not full_prefix.endswith("/"):

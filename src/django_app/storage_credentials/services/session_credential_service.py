@@ -24,9 +24,14 @@ from rbac.models import Organization
 from src.shared.models.sessions import SessionData
 from src.shared.models.storage_scope import StorageCredentials
 from tables.models import PythonCodeResult, RealtimeAgentChat, Session
+from tables.services.storage_service.quota import is_over_quota
+from tables.services.storage_service.usage_measurement import request_measurement
 
 from storage_credentials.clients.minio_admin_client import StorageAdminGateway
-from storage_credentials.exceptions import TemporaryCredentialIssueError
+from storage_credentials.exceptions import (
+    OrganizationStorageFullError,
+    TemporaryCredentialIssueError,
+)
 from storage_credentials.models import TemporaryStorageAccount
 from storage_credentials.policies import build_temporary_policy
 from storage_credentials.resource_names import org_storage_prefix
@@ -53,6 +58,7 @@ class SessionCredentialService:
             None otherwise.
 
         Raises:
+            OrganizationStorageFullError: If the organization is over its storage quota.
             CredentialScopeValidationError: If the collected scope is missing,
             malformed, or escapes the org's own prefix.
             TemporaryCredentialIssueError: If minting or DB persistence fails.
@@ -88,6 +94,7 @@ class SessionCredentialService:
         `use_storage=True`, so this always mints (never returns None).
 
         Raises:
+            OrganizationStorageFullError: If the organization is over its storage quota.
             CredentialScopeValidationError: If the given scope is missing,
             malformed, or escapes the org's own prefix.
             TemporaryCredentialIssueError: If minting or DB persistence fails.
@@ -108,6 +115,7 @@ class SessionCredentialService:
         call within it (mirrors `issue_for_session`'s one-per-session reuse).
 
         Raises:
+            OrganizationStorageFullError: If the organization is over its storage quota.
             CredentialScopeValidationError: If the given scope is missing,
             malformed, or escapes the org's own prefix.
             TemporaryCredentialIssueError: If minting or DB persistence fails.
@@ -138,11 +146,22 @@ class SessionCredentialService:
         agree; deriving it here is what makes a tampered or stale node-level
         `storage_org_prefix` unable to reach another org's objects.
 
+        Nothing is minted for an organization over its storage quota: run code writes
+        straight to the store, past the upload quota check. Every mint extends the
+        organization's deadline for the hourly store measurement, which counts those writes.
+
         Raises:
+            OrganizationStorageFullError: the organization is over its storage quota.
             CredentialScopeValidationError: `allowed_paths` is empty or escapes
                 the org prefix.
             TemporaryCredentialIssueError: minting or persisting failed.
         """
+        if is_over_quota(org_id):
+            logger.info(
+                "Refused storage credentials for {}: org {} is over quota", owner_label, org_id
+            )
+            raise OrganizationStorageFullError()
+
         scoped_folders = credential_scope_validator.validate(
             org_id=org_id,
             storage_org_prefix=org_storage_prefix(org_id),
@@ -161,6 +180,11 @@ class SessionCredentialService:
                 error,
             )
             raise TemporaryCredentialIssueError() from error
+
+        # Before the mint, so a crash after it cannot leave minted keys unmeasured. Inside a
+        # caller's transaction (a schedule trigger) a rollback undoes this deadline along with
+        # the TemporaryStorageAccount row, while the minted keys stay valid until their TTL.
+        request_measurement(org_id)
 
         ttl_hours = settings.STORAGE_TEMP_CREDENTIALS_TTL_HOURS
         expiration = timedelta(hours=ttl_hours) if ttl_hours > 0 else None

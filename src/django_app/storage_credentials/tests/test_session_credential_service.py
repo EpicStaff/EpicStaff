@@ -13,55 +13,20 @@ from django.test import TestCase, override_settings
 from django.conf import settings
 
 from rbac.models import Organization
-from src.shared.models.graph_nodes import EndNodeData, GraphData, PythonNodeData
 from src.shared.models.sessions import SessionData
 from src.shared.models.storage_scope import StorageCredentials
-from src.shared.models.tools import PythonCodeData
 from storage_credentials.exceptions import (
     CredentialScopeValidationError,
     TemporaryCredentialIssueError,
 )
 from storage_credentials.models import TemporaryStorageAccount
 from storage_credentials.services.session_credential_service import session_credential_service
+from storage_credentials.tests.session_data_builders import (
+    make_graph,
+    make_session_data,
+    make_storage_python_node,
+)
 from tables.models import Graph, PythonCodeResult, RealtimeAgentChat, Session
-
-
-def _make_graph(python_node_list: list[PythonNodeData] | None = None) -> GraphData:
-    """A minimal valid GraphData, optionally carrying python nodes."""
-    return GraphData(
-        graph_id=1,
-        name="test_graph",
-        entrypoint="start",
-        end_node=EndNodeData(node_name="end", output_map={}),
-        python_node_list=python_node_list or [],
-    )
-
-
-def _make_storage_python_node(
-    node_name: str = "storage_python",
-    storage_allowed_paths: list[str] | None = None,
-    storage_org_prefix: str = "org_123",
-    org_id: int | None = None,
-) -> PythonNodeData:
-    """A python node whose code demands storage access."""
-    return PythonNodeData(
-        node_name=node_name,
-        python_code=PythonCodeData(
-            venv_name="test",
-            code="x = 1",
-            entrypoint="main",
-            libraries=[],
-            use_storage=True,
-            storage_allowed_paths=storage_allowed_paths or ["test_path/"],
-            storage_org_prefix=storage_org_prefix,
-            org_id=org_id,
-        ),
-        input_map={},
-    )
-
-
-def _make_session_data(session_id: int, graph: GraphData) -> SessionData:
-    return SessionData(id=session_id, org_id=1, audit_retention_days=0, graph=graph, unique_subgraph_list=[])
 
 
 def _stub_gateway(mock_gateway_class, access_key: str = "minted_key") -> mock.AsyncMock:
@@ -122,7 +87,7 @@ class TestIssueForSessionNoStorage(TestCase):
 
     def test_issue_for_session_no_storage_returns_none(self):
         """Session without storage-demanding nodes should return None."""
-        session_data = _make_session_data(self.session.id, _make_graph())
+        session_data = make_session_data(self.session.id, make_graph())
 
         result = session_credential_service.issue_for_session(
             session_data=session_data, session_orm=self.session, org=self.org
@@ -132,7 +97,7 @@ class TestIssueForSessionNoStorage(TestCase):
 
     def test_no_temporary_account_created_when_not_needed(self):
         """Verify no TemporaryStorageAccount row is created for sessions without storage."""
-        session_data = _make_session_data(self.session.id, _make_graph())
+        session_data = make_session_data(self.session.id, make_graph())
 
         session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
 
@@ -150,9 +115,9 @@ class TestIssueForSessionWithStorage(TestCase):
         )
 
     def _storage_session_data(self, session_id: int) -> SessionData:
-        return _make_session_data(
+        return make_session_data(
             session_id,
-            _make_graph([_make_storage_python_node(org_id=self.org.id)]),
+            make_graph([make_storage_python_node(org_id=self.org.id)]),
         )
 
     @staticmethod
@@ -203,21 +168,21 @@ class TestIssueForSessionWithStorage(TestCase):
         self._stub_org_credentials(mock_org_store)
         mock_build_policy.return_value = {}
 
-        graph = _make_graph(
+        graph = make_graph(
             [
-                _make_storage_python_node(
+                make_storage_python_node(
                     node_name="node_a",
                     storage_allowed_paths=["path_a/"],
                     org_id=self.org.id,
                 ),
-                _make_storage_python_node(
+                make_storage_python_node(
                     node_name="node_b",
                     storage_allowed_paths=["path_b/"],
                     org_id=self.org.id,
                 ),
             ]
         )
-        session_data = _make_session_data(self.session.id, graph)
+        session_data = make_session_data(self.session.id, graph)
 
         session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
 
@@ -335,11 +300,11 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
         self._stub_org_credentials(mock_org_store)
         gateway = _stub_gateway(mock_gateway_class, "session_key")
 
-        session_data = _make_session_data(
+        session_data = make_session_data(
             self.session.id,
-            _make_graph(
+            make_graph(
                 [
-                    _make_storage_python_node(
+                    make_storage_python_node(
                         storage_allowed_paths=["flow_files/"], org_id=self.org.id
                     )
                 ]
@@ -360,11 +325,11 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
         self._stub_org_credentials(mock_org_store)
         gateway = _stub_gateway(mock_gateway_class, "hostile_prefix_key")
 
-        session_data = _make_session_data(
+        session_data = make_session_data(
             self.session.id,
-            _make_graph(
+            make_graph(
                 [
-                    _make_storage_python_node(
+                    make_storage_python_node(
                         storage_allowed_paths=["victim_files/"],
                         storage_org_prefix="org_999",
                         org_id=self.org.id,
