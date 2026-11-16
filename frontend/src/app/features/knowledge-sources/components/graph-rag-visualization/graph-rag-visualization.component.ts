@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -44,14 +45,10 @@ import {
 import { isGraphNotIndexedError } from '../../helpers/graph-not-indexed-error.util';
 import { GraphVisualizationData, VisualizationEntity } from '../../models/graph-visualization.model';
 import { GraphRagService } from '../../services/graph-rag.service';
-import {
-    DRAG_REHEAT_ALPHA,
-    INITIAL_LAYOUT_SPREAD,
-    SIMULATION_CHARGE_STRENGTH,
-    SIMULATION_LINK_DISTANCE,
-} from './graph-scene.constants';
-import { GraphEdge, GraphNode } from './graph-scene.model';
+import { DRAG_REHEAT_ALPHA } from './graph-scene.constants';
+import { ForceLayoutNode, GraphEdge, GraphNode } from './graph-scene.model';
 import { GraphSceneService } from './graph-scene.service';
+import { createLayoutSimulation, getLayoutStartPositions } from './graph-scene.utils';
 
 /**
  * - `no-matches`: the request succeeded but returned no entities (search with no hits, or an empty graph).
@@ -66,11 +63,10 @@ interface EntityTypeFilter {
     color: string;
 }
 
-interface SimulationNode {
+interface SimulationNode extends ForceLayoutNode {
     index: number;
     x: number;
     y: number;
-    z?: number;
     fx?: number | null;
     fy?: number | null;
     fz?: number | null;
@@ -87,6 +83,7 @@ interface SimulationNode {
         FetchErrorStateComponent,
         FormsModule,
         LoadingSpinnerComponent,
+        MatTooltip,
         ResizableSidebarDirective,
         SearchComponent,
         SliderWithStepperComponent,
@@ -110,6 +107,15 @@ export class GraphRagVisualizationComponent implements OnInit {
     readonly maxEntities = signal(GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES);
     readonly searchTerm = signal('');
     readonly labelsVisible = signal(false);
+    /** Clusters nodes around their top-level community and colors them by it. */
+    readonly groupByCommunity = signal(false);
+    /** Entities of the graph currently drawn. */
+    private readonly drawnEntities = signal<VisualizationEntity[]>([]);
+    /**
+     * False when no drawn entity has a community — the backend sends empty `community_ids` when it cannot read the
+     * communities (an older index, or a read during re-indexing), and grouping would only gray every node.
+     */
+    readonly hasCommunities = computed(() => this.drawnEntities().some((entity) => entity.community_ids.length > 0));
     readonly selectedNodeIndex = signal<number | null>(null);
     readonly selectedEdgeIndex = signal<number | null>(null);
     readonly hoveredNodeTitle = signal<string | null>(null);
@@ -366,6 +372,12 @@ export class GraphRagVisualizationComponent implements OnInit {
         }
     }
 
+    onToggleGroupByCommunity(enabled: boolean): void {
+        this.groupByCommunity.set(enabled);
+        this.sceneService.setColorByCommunity(enabled);
+        void this.startSimulation();
+    }
+
     onTypeFilterChange(filterIndex: number, checked: boolean): void {
         this.entityTypeFilters.update((filters) => {
             const updated = [...filters];
@@ -472,6 +484,13 @@ export class GraphRagVisualizationComponent implements OnInit {
         this.totalEntityCount.set(data.total_entities);
         this.relationshipCount.set(data.total_relationships);
 
+        this.drawnEntities.set(data.entities);
+        if (this.groupByCommunity() && !this.hasCommunities()) {
+            // The switch is disabled now, so it must not stay on with every node grayed out.
+            this.groupByCommunity.set(false);
+            this.sceneService.setColorByCommunity(false);
+        }
+
         this.sceneService.buildGraph(data.entities, data.relationships);
         if (this.sceneService.isSceneInitialized()) {
             // Keep the renderer and camera; swap the meshes in place and re-run the layout.
@@ -529,25 +548,24 @@ export class GraphRagVisualizationComponent implements OnInit {
         }
 
         const nodes = this.sceneService.getNodes();
-        const edges = this.sceneService.getEdges();
         const is3D = this.is3D();
-
-        const simNodes: SimulationNode[] = nodes.map((node) => ({
+        const startPositions = getLayoutStartPositions(nodes, is3D);
+        const simNodes: SimulationNode[] = nodes.map((node, nodeIndex) => ({
             index: node.index,
-            x: node.x,
-            y: node.y,
-            z: is3D ? (Math.random() - 0.5) * INITIAL_LAYOUT_SPREAD : undefined,
+            ...startPositions[nodeIndex],
         }));
-        const simLinks = edges.map((edge) => ({ source: edge.sourceIndex, target: edge.targetIndex }));
+        const graph = {
+            links: this.sceneService.getEdges(),
+            communityIds: nodes.map((node) => node.communityId),
+            nodeRadii: nodes.map((node) => node.radius),
+        };
+        const layoutOptions = { dimensions: is3D ? 3 : 2, groupByCommunity: this.groupByCommunity() } as const;
 
         // d3's timer schedules a frame per tick; outside the zone it does not trigger change detection.
         const simulation = this.ngZone.runOutsideAngular(() =>
-            d3
-                .forceSimulation(simNodes, is3D ? 3 : 2)
-                .force('link', d3.forceLink(simLinks).distance(SIMULATION_LINK_DISTANCE))
-                .force('charge', d3.forceManyBody().strength(SIMULATION_CHARGE_STRENGTH))
-                .force('center', d3.forceCenter(0, 0, is3D ? 0 : undefined))
-                .on('tick', () => this.sceneService.updateNodePositions(simNodes))
+            createLayoutSimulation(d3, simNodes, graph, layoutOptions).on('tick', () =>
+                this.sceneService.updateNodePositions(simNodes)
+            )
         );
 
         this.simNodes = simNodes;

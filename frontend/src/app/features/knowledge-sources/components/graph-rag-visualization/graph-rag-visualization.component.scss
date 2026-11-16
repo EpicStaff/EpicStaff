@@ -29,6 +29,10 @@
         display: flex;
         height: 24px;
         gap: 0.75rem;
+
+        &--disabled {
+            cursor: not-allowed;
+        }
     }
 
     &__toolbar-label {

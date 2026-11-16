@@ -62,7 +62,6 @@ def _write_graph(directory, entity_count: int) -> None:
                 "type": ["ORG"] * entity_count,
                 "description": ["d"] * entity_count,
                 "degree": list(range(entity_count)),
-                "community_ids": [[] for _ in range(entity_count)],
             }
         ),
     )

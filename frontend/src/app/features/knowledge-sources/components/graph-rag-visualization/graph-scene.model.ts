@@ -10,11 +10,26 @@ export interface GraphNode {
     type: string | null;
     description: string | null;
     degree: number;
+    /** Top-level community the entity belongs to; null when it has none. */
+    communityId: string | null;
     x: number;
     y: number;
     z: number;
+    /** Color by entity type. */
     color: ColorTuple;
+    /** Color by community, used while nodes are grouped by community. */
+    communityColor: ColorTuple;
     radius: number;
+}
+
+/** A node as the force simulation sees it; `z`/`vz` stay unset in two dimensions. */
+export interface ForceLayoutNode {
+    x?: number;
+    y?: number;
+    z?: number;
+    vx?: number;
+    vy?: number;
+    vz?: number;
 }
 
 export interface GraphEdge {

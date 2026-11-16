@@ -29,6 +29,25 @@ export const TYPE_COLORS: readonly string[] = [
     '#76ff03', // vivid lime
 ];
 
+/**
+ * Community colors are generated, not picked from a palette, because a graph can have far more communities
+ * than any palette has entries. The hue comes from the id's hash stepped by the golden angle, so ids that hash
+ * to neighboring values (sequential ids such as "1", "2", "3") still land on well-separated hues.
+ */
+export const COMMUNITY_HUE_STEP_DEGREES = 137.508;
+export const COMMUNITY_COLOR_SATURATION = 0.85;
+export const COMMUNITY_COLOR_LIGHTNESS = 0.55;
+/**
+ * Hue band no community is drawn in, so none looks like the yellow search highlight (HIGHLIGHT_COLOR, about 56°).
+ * Wider than yellow itself: in 3D, NODE_3D_BRIGHTNESS doubles every channel and clamps, which turns oranges and
+ * yellow-greens yellow as well.
+ */
+export const COMMUNITY_EXCLUDED_HUE_START_DEGREES = 20;
+export const COMMUNITY_EXCLUDED_HUE_END_DEGREES = 100;
+
+/** Neutral gray for nodes without a community in community color mode — reads as "unassigned", not as a community. */
+export const NO_COMMUNITY_COLOR: ColorTuple = [0.45, 0.45, 0.5];
+
 export const HIGHLIGHT_COLOR: ColorTuple = [1.0, 0.95, 0.2]; // yellow highlight
 export const DIMMED_ALPHA = 0.15;
 export const LABEL_FONT_SIZE = 24;
@@ -101,8 +120,11 @@ export const NODE_3D_OPACITY = 0.75;
 /** Specular highlight sharpness of 3D nodes (Phong shininess). */
 export const NODE_3D_SHININESS = 40;
 
-/** Edge opacity (0..1). Lower = more transparent connections. */
-export const EDGE_OPACITY = 0.6;
+/**
+ * Edge opacity (0..1). Lower = more transparent connections. Low, so dense hubs stay readable; highlighted edges
+ * stay at full strength because the opaque highlight lines are drawn over them.
+ */
+export const EDGE_OPACITY = 0.25;
 
 /** Edge width as a fraction of the smallest node's radius. */
 export const EDGE_WIDTH_RATIO = 0.1;
@@ -129,7 +151,18 @@ export const INITIAL_LAYOUT_SPREAD = 200;
 
 /** Force-layout tuning: target edge length and node repulsion (negative = nodes push each other apart). */
 export const SIMULATION_LINK_DISTANCE = 40;
-export const SIMULATION_CHARGE_STRENGTH = -50;
+export const SIMULATION_CHARGE_STRENGTH = -150;
+/** Gap the layout keeps between the surfaces of two nodes, in world units, so no node is drawn over another. */
+export const SIMULATION_COLLISION_PADDING = 2;
+
+/**
+ * Community grouping: each tick a node's velocity moves by `(centroid − position) × strength × alpha`, toward
+ * the current centroid of its community. Below 1, so a node never overshoots its centroid in one tick.
+ */
+export const COMMUNITY_CLUSTER_STRENGTH = 0.2;
+
+/** Multiplier on the strength of links between two different communities while grouping, so clusters pull apart. */
+export const INTER_COMMUNITY_LINK_STRENGTH_FACTOR = 0.1;
 
 /** Simulation energy restored when a node is grabbed, so the layout reacts to the drag. */
 export const DRAG_REHEAT_ALPHA = 0.3;

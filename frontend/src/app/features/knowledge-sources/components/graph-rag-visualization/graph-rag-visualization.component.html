@@ -38,6 +38,22 @@
                 />
             </div>
 
+            <!-- The tooltip sits on the wrapper: a disabled switch gets no pointer events -->
+            <div
+                class="visualization__toolbar-control"
+                [class.visualization__toolbar-control--disabled]="!hasCommunities()"
+                matTooltip="This graph has no communities to group by"
+                [matTooltipDisabled]="hasCommunities()"
+            >
+                <span class="visualization__toolbar-label">Group by Community</span>
+                <app-toggle-switch
+                    ariaLabel="Group by community"
+                    [checked]="groupByCommunity()"
+                    [disabled]="!hasCommunities()"
+                    (checkedChange)="onToggleGroupByCommunity($event)"
+                />
+            </div>
+
             <div class="visualization__slider">
                 <span class="visualization__toolbar-label">Displayed Entities</span>
                 <app-slider-with-stepper
@@ -100,10 +116,13 @@
                                         (changed)="onTypeFilterChange($index, $event)"
                                         [ariaLabel]="filter.label"
                                     />
-                                    <span
-                                        class="visualization__filter-color"
-                                        [style.background-color]="filter.color"
-                                    ></span>
+                                    <!-- Nodes are colored by community while grouped, so type swatches would mislead -->
+                                    @if (!groupByCommunity()) {
+                                        <span
+                                            class="visualization__filter-color"
+                                            [style.background-color]="filter.color"
+                                        ></span>
+                                    }
                                     <span class="visualization__filter-label">{{ filter.label }}</span>
                                 </div>
                             }

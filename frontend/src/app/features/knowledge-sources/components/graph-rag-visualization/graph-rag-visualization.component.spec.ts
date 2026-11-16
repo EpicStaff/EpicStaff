@@ -5,6 +5,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component, Injectable } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 
 import { ConfigService } from '../../../../services/config';
@@ -39,6 +40,11 @@ function buildVisualizationData(entityCount = 3, totalEntities = entityCount): G
     };
 }
 
+/** What the backend sends when it cannot read the communities: every entity with empty `community_ids`. */
+function withoutCommunities(data: GraphVisualizationData): GraphVisualizationData {
+    return { ...data, entities: data.entities.map((entity) => ({ ...entity, community_ids: [] })) };
+}
+
 function emptyVisualizationData(): GraphVisualizationData {
     return { entities: [], relationships: [], total_entities: 0, total_relationships: 0 };
 }
@@ -52,6 +58,8 @@ function emptyVisualizationData(): GraphVisualizationData {
 class FakeGraphSceneService extends GraphSceneService {
     initSceneCalls = 0;
     refreshGraphCalls = 0;
+    /** The node color mode the scene was last told to paint. */
+    paintsByCommunity = false;
     private sceneInitialized = false;
     private resolveDependencies: () => void = () => {};
     private readonly dependencies = new Promise<void>((resolve) => (this.resolveDependencies = resolve));
@@ -75,6 +83,11 @@ class FakeGraphSceneService extends GraphSceneService {
 
     override refreshGraph(): void {
         this.refreshGraphCalls++;
+    }
+
+    override setColorByCommunity(enabled: boolean): void {
+        this.paintsByCommunity = enabled;
+        super.setColorByCommunity(enabled);
     }
 
     override dispose(): void {
@@ -279,6 +292,95 @@ describe('GraphRagVisualizationComponent', () => {
             fixture.detectChanges();
 
             expect(typeFilterCheckboxes().every((checkbox) => !checkbox.disabled)).toBe(true);
+        });
+    });
+
+    describe('group by community', () => {
+        function groupByCommunitySwitch(): HTMLInputElement {
+            const control = Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll('.visualization__toolbar-control')
+            ).find((element) => element.textContent?.includes('Group by Community'));
+            return control!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+        }
+
+        function typeSwatchCount(): number {
+            return (fixture.nativeElement as HTMLElement).querySelectorAll('.visualization__filter-color').length;
+        }
+
+        function groupByCommunityTooltip(): MatTooltip {
+            return fixture.debugElement
+                .queryAll(By.directive(MatTooltip))
+                .map((element) => element.injector.get(MatTooltip))
+                .find((tooltip) => tooltip.message === 'This graph has no communities to group by')!;
+        }
+
+        it('starts ungrouped, colored by type, with a type color swatch next to every entity type', () => {
+            flushInitial(buildVisualizationData(4));
+
+            expect(groupByCommunitySwitch().checked).toBe(false);
+            expect(getSceneService().paintsByCommunity).toBe(false);
+            expect(typeSwatchCount()).toBe(2);
+        });
+
+        it('names the switch for assistive technology', () => {
+            flushInitial();
+
+            expect(groupByCommunitySwitch().getAttribute('aria-label')).toBe('Group by community');
+        });
+
+        it('colors nodes by community and hides the type swatches while grouped, keeping the type filters usable', () => {
+            flushInitial(buildVisualizationData(4));
+
+            groupByCommunitySwitch().click();
+            fixture.detectChanges();
+
+            expect(groupByCommunitySwitch().checked).toBe(true);
+            expect(getSceneService().paintsByCommunity).toBe(true);
+            expect(typeSwatchCount()).toBe(0);
+            expect(typeFilterCheckboxes().length).toBe(2);
+            expect(typeFilterCheckboxes().every((checkbox) => !checkbox.disabled)).toBe(true);
+        });
+
+        it('returns to type colors and swatches when ungrouped', () => {
+            flushInitial(buildVisualizationData(4));
+
+            groupByCommunitySwitch().click();
+            fixture.detectChanges();
+            groupByCommunitySwitch().click();
+            fixture.detectChanges();
+
+            expect(groupByCommunitySwitch().checked).toBe(false);
+            expect(getSceneService().paintsByCommunity).toBe(false);
+            expect(typeSwatchCount()).toBe(2);
+        });
+
+        it('disables the switch and explains why when no entity has a community', () => {
+            flushInitial(withoutCommunities(buildVisualizationData(4)));
+
+            expect(groupByCommunitySwitch().disabled).toBe(true);
+            expect(groupByCommunityTooltip().disabled).toBe(false);
+        });
+
+        it('offers the switch without the explanation when the graph has communities', () => {
+            flushInitial(buildVisualizationData(4));
+
+            expect(groupByCommunitySwitch().disabled).toBe(false);
+            expect(groupByCommunityTooltip().disabled).toBe(true);
+        });
+
+        it('ungroups when a reload brings a graph without communities', () => {
+            flushInitial(buildVisualizationData(4));
+            groupByCommunitySwitch().click();
+            fixture.detectChanges();
+
+            enterDisplayedEntities('2');
+            expectVisualizationRequest({ max_entities: '2' }).flush(withoutCommunities(buildVisualizationData(2)));
+            fixture.detectChanges();
+
+            expect(groupByCommunitySwitch().checked).toBe(false);
+            expect(groupByCommunitySwitch().disabled).toBe(true);
+            expect(getSceneService().paintsByCommunity).toBe(false);
+            expect(typeSwatchCount()).toBe(2);
         });
     });
 

@@ -1,8 +1,7 @@
 import asyncio
-from collections.abc import Sized
 
-import numpy
 import pandas
+import pyarrow
 from application.commands import (
     GetEntityDetail,
     GetGraphVisualization,
@@ -24,27 +23,12 @@ from application.results import (
 from domain.enums import GraphOutputTableEnum
 from domain.errors import EntityNotFoundError, GraphNotIndexedError, RelationshipNotFoundError
 from graphrag_storage import Storage
+from loguru import logger
 
-_ENTITY_COLUMNS = ["id", "title", "type", "degree", "community_ids"]
+_ENTITY_COLUMNS = ["id", "title", "type", "degree"]
 _RELATIONSHIP_COLUMNS = ["id", "source", "target", "weight"]
+_COMMUNITY_COLUMNS = ["community", "level", "entity_ids"]
 _DETAIL_COLUMNS = ["id", "description"]
-
-
-def _to_str_list(value: object) -> list[str]:
-    """Safely convert a parquet list column value to a list of strings.
-
-    Parquet list columns may arrive as numpy arrays, Python lists, None, or
-    scalar NaN — bare truthiness checks on numpy arrays raise ValueError.
-    """
-    if value is None:
-        return []
-    if isinstance(value, float) and pandas.isna(value):
-        return []
-    if isinstance(value, numpy.ndarray):
-        return [str(v) for v in value]
-    if isinstance(value, Sized):
-        return [str(v) for v in value]
-    return []
 
 
 async def _read_index_table(
@@ -64,6 +48,29 @@ def _require_table(
     if dataframe is None:
         raise GraphNotIndexedError(rag_id=rag_id)
     return dataframe.reindex(columns=columns)
+
+
+async def _read_communities(storage: Storage, rag_id: int) -> pandas.DataFrame:
+    """Return the communities table, or an empty one when it cannot be used.
+
+    Communities only group the graph: without them the entities are still drawable, so
+    an absent, unreadable or incomplete table means "no communities", not an error.
+    """
+    try:
+        communities = await read_output_table(
+            storage, GraphOutputTableEnum.COMMUNITIES, _COMMUNITY_COLUMNS
+        )
+    except pyarrow.ArrowInvalid as error:
+        # A first index run and an update run rewrite the active slot's files in place
+        # (graphrag's file storage truncates, then writes), so a concurrent read can
+        # see a torn file. The next request reads it whole.
+        logger.warning(
+            "Ignoring unreadable communities table of RAG(id={}): {}", rag_id, str(error)
+        )
+        communities = None
+    if communities is None or set(_COMMUNITY_COLUMNS) - set(communities.columns):
+        return pandas.DataFrame(columns=_COMMUNITY_COLUMNS)
+    return communities
 
 
 def _matching_descriptions(dataframe: pandas.DataFrame, record_id: str) -> list[object]:
@@ -128,9 +135,37 @@ def _keep_top_entities(
     return entities, relationships
 
 
+def _community_ids_by_entity(
+    communities: pandas.DataFrame, entity_ids: set[str]
+) -> dict[str, list[str]]:
+    """Map each of `entity_ids` that is in a community to its community ids, top level first.
+
+    graphrag's entities table has no community column: membership is the `entity_ids`
+    list on each communities row. Level 0 is the coarsest Leiden level, so sorting by
+    level puts the top-level community first. An entity in no community is absent.
+    """
+    # explode unpacks the numpy arrays parquet list columns decode to, and turns an
+    # empty or missing list into NaN, which the isin filter drops.
+    memberships = communities.explode("entity_ids")
+    memberships = memberships[memberships["entity_ids"].isin(entity_ids)]
+    # A null community id would otherwise reach the response as the text "nan", and
+    # a column holding one decodes as float: the int cast keeps "10" from being "10.0".
+    memberships = memberships.dropna(subset=["community"])
+    memberships = memberships.sort_values(["level", "community"])
+    return (
+        memberships["community"]
+        .astype("int64")
+        .astype(str)
+        .groupby(memberships["entity_ids"], sort=False)
+        .agg(list)
+        .to_dict()
+    )
+
+
 def _build_visualization(
     entities: pandas.DataFrame,
     relationships: pandas.DataFrame,
+    communities: pandas.DataFrame,
     search: str | None,
     max_entities: int,
 ) -> GraphVisualizationResult:
@@ -144,6 +179,8 @@ def _build_visualization(
     if search:
         entities, relationships = _keep_search_matches(entities, relationships, search)
     entities, relationships = _keep_top_entities(entities, relationships, max_entities)
+    # Mapped after the cap, so only the entities in the response are grouped.
+    community_ids = _community_ids_by_entity(communities, set(entities["id"].astype(str)))
 
     return GraphVisualizationResult(
         entities=[
@@ -152,7 +189,7 @@ def _build_visualization(
                 title=str(record["title"]),
                 type=record["type"] if pandas.notna(record["type"]) else None,
                 degree=record["degree"],
-                community_ids=_to_str_list(record["community_ids"]),
+                community_ids=community_ids.get(str(record["id"]), []),
             )
             for record in entities.to_dict("records")
         ],
@@ -173,7 +210,7 @@ def _build_visualization(
 class GraphVisualizationOrchestrator(AbstractGraphVisualizationOrchestrator):
     async def on_execute(self, command: GetGraphVisualization) -> GraphVisualizationResult:
         storage = await open_graph_output_storage(self.uow, command.rag_id)
-        # A TaskGroup cancels the other download as soon as one fails. Missing tables
+        # A TaskGroup cancels the other downloads as soon as one fails. Missing tables
         # are judged after it, so GraphNotIndexedError is not wrapped in an ExceptionGroup.
         async with asyncio.TaskGroup() as task_group:
             entities_task = task_group.create_task(
@@ -184,6 +221,7 @@ class GraphVisualizationOrchestrator(AbstractGraphVisualizationOrchestrator):
                     storage, GraphOutputTableEnum.RELATIONSHIPS, _RELATIONSHIP_COLUMNS
                 )
             )
+            communities_task = task_group.create_task(_read_communities(storage, command.rag_id))
         entities = _require_table(entities_task.result(), _ENTITY_COLUMNS, command.rag_id)
         relationships = _require_table(
             relationships_task.result(), _RELATIONSHIP_COLUMNS, command.rag_id
@@ -196,6 +234,7 @@ class GraphVisualizationOrchestrator(AbstractGraphVisualizationOrchestrator):
             _build_visualization,
             entities,
             relationships,
+            communities_task.result(),
             command.search,
             command.max_entities,
         )

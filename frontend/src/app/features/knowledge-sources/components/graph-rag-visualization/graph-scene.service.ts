@@ -68,7 +68,7 @@ import {
     TYPE_COLORS,
 } from './graph-scene.constants';
 import { ColorTuple, GraphEdge, GraphNode, OrbitControlsLike, SceneResources } from './graph-scene.model';
-import { hexToRgb, stableHash } from './graph-scene.utils';
+import { getCommunityColor, hexToRgb, stableHash } from './graph-scene.utils';
 
 @Injectable()
 export class GraphSceneService {
@@ -92,6 +92,8 @@ export class GraphSceneService {
     private titleToIndex = new Map<string, number>();
     private is3D = false;
     private labelsVisible = false;
+    /** When true, nodes are colored by community instead of by entity type. */
+    private colorByCommunity = false;
 
     private highlightedIndices: Set<number> | null = null;
     private searchHighlightIndices: Set<number> | null = null;
@@ -132,6 +134,8 @@ export class GraphSceneService {
             this.titleToIndex.set(entity.title, index);
             const colorHex = entity.type ? TYPE_COLORS[stableHash(entity.type) % TYPE_COLORS.length] : TYPE_COLORS[0];
             const radius = NODE_MIN_RADIUS + (entity.degree / maxDegree) * (NODE_MAX_RADIUS - NODE_MIN_RADIUS);
+            // Ordered by hierarchy level, so the first id is the top-level community.
+            const communityId = entity.community_ids[0] ?? null;
 
             return {
                 id: entity.id,
@@ -140,10 +144,12 @@ export class GraphSceneService {
                 type: entity.type,
                 description: null,
                 degree: entity.degree,
+                communityId,
                 x: (Math.random() - 0.5) * INITIAL_LAYOUT_SPREAD,
                 y: (Math.random() - 0.5) * INITIAL_LAYOUT_SPREAD,
                 z: 0,
                 color: hexToRgb(colorHex),
+                communityColor: getCommunityColor(communityId),
                 radius,
             };
         });
@@ -597,6 +603,13 @@ export class GraphSceneService {
         this.requestRender();
     }
 
+    /** Color nodes by community (true) or by entity type (false). Search highlight and dimming still apply on top. */
+    setColorByCommunity(enabled: boolean): void {
+        this.colorByCommunity = enabled;
+        this.updateInstanceColors();
+        this.requestRender();
+    }
+
     /** Raycast to find which node is under the given screen coordinates. Returns node index or -1. */
     pickNode(screenX: number, screenY: number, container: HTMLElement): number {
         if (!this.resources) return -1;
@@ -922,15 +935,16 @@ export class GraphSceneService {
 
     private getNodeColor(nodeIndex: number): ColorTuple {
         const node = this.nodes[nodeIndex];
+        const baseColor = this.colorByCommunity ? node.communityColor : node.color;
         if (this.searchHighlightIndices !== null) {
-            return this.searchHighlightIndices.has(nodeIndex) ? HIGHLIGHT_COLOR : node.color;
+            return this.searchHighlightIndices.has(nodeIndex) ? HIGHLIGHT_COLOR : baseColor;
         }
         if (this.highlightedIndices !== null) {
             return this.highlightedIndices.has(nodeIndex)
                 ? HIGHLIGHT_COLOR
-                : [node.color[0] * DIMMED_ALPHA, node.color[1] * DIMMED_ALPHA, node.color[2] * DIMMED_ALPHA];
+                : [baseColor[0] * DIMMED_ALPHA, baseColor[1] * DIMMED_ALPHA, baseColor[2] * DIMMED_ALPHA];
         }
-        return node.color;
+        return baseColor;
     }
 
     private updateInstanceColors(): void {

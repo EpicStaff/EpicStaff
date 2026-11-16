@@ -54,7 +54,22 @@ def _sample_entities(count: int = 3) -> pandas.DataFrame:
             "type": ["PERSON", "ORG", None],
             "description": [f"desc{i}" if i < 2 else None for i in range(count)],
             "degree": list(range(count, 0, -1)),
-            "community_ids": [["c0"], ["c0", "c1"], None],
+        }
+    )
+
+
+def _sample_communities() -> pandas.DataFrame:
+    """Build a communities DataFrame matching graphrag parquet output.
+
+    Rows are deliberately not in level order. e1 sits in one community per level,
+    e0 only in the top level, e2 in none.
+    """
+    return pandas.DataFrame(
+        {
+            "community": [32, 10, 21],
+            "level": [2, 0, 1],
+            "parent": [21, -1, 10],
+            "entity_ids": [["e1"], ["e0", "e1"], ["e1"]],
         }
     )
 
@@ -74,9 +89,10 @@ def _sample_relationships() -> pandas.DataFrame:
 
 @pytest.fixture
 def indexed_graph(tmp_path):
-    """Write the sample entities and relationships as the index output."""
+    """Write the sample entities, relationships and communities as the index output."""
     write_table(tmp_path, "entities", _sample_entities())
     write_table(tmp_path, "relationships", _sample_relationships())
+    write_table(tmp_path, "communities", _sample_communities())
 
 
 # -- GraphVisualizationOrchestrator --
@@ -96,16 +112,96 @@ async def test_returns_all_graph_data(repo, uow, indexed_graph):
     assert entity.title == "Entity0"
     assert entity.type == "PERSON"
     assert entity.degree == 3
-    assert entity.community_ids == ["c0"]
-
-    # Entity with None community_ids should get an empty list.
-    assert result.entities[2].community_ids == []
     assert result.entities[2].type is None
 
     relationship = result.relationships[0]
     assert relationship.source == "Entity0"
     assert relationship.target == "Entity1"
     assert relationship.weight == 1.0
+
+
+async def test_community_ids_come_from_the_communities_table_top_level_first(
+    uow, indexed_graph
+):
+    result = await GraphVisualizationOrchestrator(uow).execute(GetGraphVisualization(rag_id=42))
+
+    community_ids = {entity.id: entity.community_ids for entity in result.entities}
+    assert community_ids == {"e0": ["10"], "e1": ["10", "21", "32"], "e2": []}
+
+
+async def test_community_ids_are_filled_for_entities_kept_by_the_cap(uow, indexed_graph):
+    result = await GraphVisualizationOrchestrator(uow).execute(
+        GetGraphVisualization(rag_id=42, max_entities=1)
+    )
+
+    assert [(entity.id, entity.community_ids) for entity in result.entities] == [("e0", ["10"])]
+
+
+async def test_missing_communities_table_leaves_community_ids_empty(tmp_path, uow):
+    # An index run that stopped before community detection still has a drawable graph.
+    write_table(tmp_path, "entities", _sample_entities())
+    write_table(tmp_path, "relationships", _sample_relationships())
+
+    result = await GraphVisualizationOrchestrator(uow).execute(GetGraphVisualization(rag_id=42))
+
+    assert [entity.community_ids for entity in result.entities] == [[], [], []]
+
+
+@pytest.mark.parametrize("absent_column", ["community", "level", "entity_ids"])
+async def test_communities_table_missing_a_column_leaves_community_ids_empty(
+    tmp_path, uow, absent_column
+):
+    write_table(tmp_path, "entities", _sample_entities())
+    write_table(tmp_path, "relationships", _sample_relationships())
+    write_table(tmp_path, "communities", _sample_communities().drop(columns=[absent_column]))
+
+    result = await GraphVisualizationOrchestrator(uow).execute(GetGraphVisualization(rag_id=42))
+
+    assert [entity.community_ids for entity in result.entities] == [[], [], []]
+
+
+async def test_community_rows_without_an_id_are_skipped(tmp_path, uow):
+    write_table(tmp_path, "entities", _sample_entities())
+    write_table(tmp_path, "relationships", _sample_relationships())
+    communities = _sample_communities()
+    communities["community"] = [None, 10, 21]
+    write_table(tmp_path, "communities", communities)
+
+    result = await GraphVisualizationOrchestrator(uow).execute(GetGraphVisualization(rag_id=42))
+
+    community_ids = {entity.id: entity.community_ids for entity in result.entities}
+    assert community_ids == {"e0": ["10"], "e1": ["10", "21"], "e2": []}
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"", b"PAR1", b"not a parquet file"],
+    ids=["empty", "header-only", "garbage"],
+)
+async def test_undecodable_communities_table_leaves_community_ids_empty(tmp_path, uow, content):
+    # The indexer rewrites communities.parquet in place, so a read can see a torn file.
+    write_table(tmp_path, "entities", _sample_entities())
+    write_table(tmp_path, "relationships", _sample_relationships())
+    (tmp_path / "communities.parquet").write_bytes(content)
+
+    result = await GraphVisualizationOrchestrator(uow).execute(GetGraphVisualization(rag_id=42))
+
+    assert [entity.title for entity in result.entities] == ["Entity0", "Entity1", "Entity2"]
+    assert [entity.community_ids for entity in result.entities] == [[], [], []]
+
+
+async def test_communities_with_no_entities_leave_community_ids_empty(tmp_path, uow):
+    write_table(tmp_path, "entities", _sample_entities())
+    write_table(tmp_path, "relationships", _sample_relationships())
+    write_table(
+        tmp_path,
+        "communities",
+        pandas.DataFrame({"community": [0], "level": [0], "entity_ids": [[]]}),
+    )
+
+    result = await GraphVisualizationOrchestrator(uow).execute(GetGraphVisualization(rag_id=42))
+
+    assert [entity.community_ids for entity in result.entities] == [[], [], []]
 
 
 async def test_max_entities_limits_and_filters_relationships(uow, indexed_graph):
@@ -136,7 +232,6 @@ async def test_default_keeps_the_two_hundred_highest_degree_entities(tmp_path, u
                 "title": [f"Entity{index}" for index in range(entity_count)],
                 "type": ["ORG"] * entity_count,
                 "degree": list(range(entity_count)),
-                "community_ids": [[] for _ in range(entity_count)],
             }
         ),
     )
@@ -161,7 +256,6 @@ async def test_max_entities_above_the_default_is_honoured(tmp_path, uow):
                 "title": [f"Entity{index}" for index in range(entity_count)],
                 "type": ["ORG"] * entity_count,
                 "degree": [1] * entity_count,
-                "community_ids": [[] for _ in range(entity_count)],
             }
         ),
     )
@@ -227,7 +321,6 @@ async def test_search_matches_regex_characters_literally(tmp_path, uow, search):
             "title": [f"Uses {search} here", "Plain title"],
             "type": ["ORG", "ORG"],
             "degree": [1, 1],
-            "community_ids": [[], []],
         }
     )
     write_table(tmp_path, "entities", entities)
@@ -290,7 +383,6 @@ async def test_search_keeps_low_degree_matches_ahead_of_high_degree_neighbours(t
                 "title": ["Needle", *neighbour_titles, "Loner"],
                 "type": ["ORG"] * 6,
                 "degree": [1, 50, 40, 30, 20, 99],
-                "community_ids": [[] for _ in range(6)],
             }
         ),
     )
