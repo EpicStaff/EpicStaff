@@ -8,21 +8,32 @@ cannot disagree on what an entry holds.
 import json
 from decimal import Decimal
 
+from agents.serializers.surface_serializers import (
+    SurfaceGraphBasicSearchConfigWriteSerializer,
+    SurfaceGraphDriftSearchConfigWriteSerializer,
+    SurfaceGraphGlobalSearchConfigWriteSerializer,
+    SurfaceGraphLocalSearchConfigWriteSerializer,
+    SurfaceNaiveSearchConfigWriteSerializer,
+)
 from django.core.exceptions import ObjectDoesNotExist
 from django.forms.models import model_to_dict
+from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.knowledge_models import SourceCollection
 
-SEARCH_CONFIG_RELATIONS = (
-    "naive_search_config",
-    "graph_basic_search_config",
-    "graph_local_search_config",
-    "graph_global_search_config",
-    "graph_drift_search_config",
-)
+# The serializers the surface API checks each search config with: an import is held
+# to the same limits. Each takes only its own fields and fills the model defaults.
+_SEARCH_CONFIG_SERIALIZERS = {
+    "naive_search_config": SurfaceNaiveSearchConfigWriteSerializer,
+    "graph_basic_search_config": SurfaceGraphBasicSearchConfigWriteSerializer,
+    "graph_local_search_config": SurfaceGraphLocalSearchConfigWriteSerializer,
+    "graph_global_search_config": SurfaceGraphGlobalSearchConfigWriteSerializer,
+    "graph_drift_search_config": SurfaceGraphDriftSearchConfigWriteSerializer,
+}
+SEARCH_CONFIG_RELATIONS = tuple(_SEARCH_CONFIG_SERIALIZERS)
 # Prefetch for a surface queryset, so its knowledge key costs no query per surface.
 KNOWLEDGE_PREFETCH = (
     "knowledge",
@@ -39,22 +50,6 @@ def _config_values(config) -> dict:
     return {
         name: str(value) if isinstance(value, Decimal) else value for name, value in values.items()
     }
-
-
-def config_field_names(config_model) -> frozenset[str]:
-    """The fields an import file may set on a search config: its own plain settings.
-
-    Never the primary key, the link to its owner or the soft-delete fields; shared by
-    surface knowledge and knowledge nodes.
-    """
-    return frozenset(
-        field.name
-        for field in config_model._meta.concrete_fields
-        if field.editable
-        and not field.primary_key
-        and not field.is_relation
-        and field.name not in _CONFIG_EXCLUDED_FIELDS
-    )
 
 
 def _row_entry(row) -> dict:
@@ -136,21 +131,38 @@ def create_knowledge(
     """Create the knowledge rows and search configs of one surface.
 
     An entry whose collection does not resolve, or is already linked, is dropped.
-    A search config takes only the config model's own settings from the file;
-    any other key is ignored.
+    A search config is checked by the serializer the surface API uses: it takes only
+    the config's own settings from the file, ignores any other key, and gives a
+    setting the file leaves out its default.
+
+    Raises:
+        ValidationError: A search config holds a value the surface API refuses;
+            keyed by the collection and the config. The import's transaction rolls
+            back, so nothing of the file is stored.
     """
     for collection_id, entry in _resolved_entries(entries, id_mapper, org_id):
+        configs = _validated_search_configs(entry)
         row = knowledge_model.objects.create(collection_id=collection_id, **owner_kwargs)
-        for relation in SEARCH_CONFIG_RELATIONS:
-            values = entry.get(relation)
-            if not values:
-                continue
+        for relation, values in configs.items():
             config_model = knowledge_model._meta.get_field(relation).related_model
-            allowed = config_field_names(config_model)
-            config_model.objects.create(
-                **{name: value for name, value in values.items() if name in allowed},
-                **{_KNOWLEDGE_FIELD: row},
+            config_model.objects.create(**values, **{_KNOWLEDGE_FIELD: row})
+
+
+def _validated_search_configs(entry: dict) -> dict:
+    """Return each search config the entry gives a value for, validated."""
+    validated = {}
+    for relation, serializer_class in _SEARCH_CONFIG_SERIALIZERS.items():
+        values = entry.get(relation)
+        if not values:
+            continue
+        serializer = serializer_class(data=values)
+        if not serializer.is_valid():
+            collection_label = entry.get("collection_name") or entry.get("collection")
+            raise ValidationError(
+                {f'Knowledge of collection "{collection_label}"': {relation: serializer.errors}}
             )
+        validated[relation] = serializer.validated_data
+    return validated
 
 
 def _entry_key(collection_id: int, entry: dict) -> tuple[int, str]:
