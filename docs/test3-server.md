@@ -77,9 +77,12 @@ proxy in front of test-3; test-3 itself filters nothing.
 6. **Check.** In each `src`, run `docker compose --env-file .env --env-file deploy.env config --format json | jq .name`.
    It must print `epicstaff-dev` or `epicstaff-branch`, never `src`.
 7. **developer's database.** It was seeded once from test-2:
-   - `pg_dump -Fc --no-owner --no-privileges` of test-2's `crewdb`, restored into
-     `dev_crew_pgdata` before the first deploy. The only expected restore error is
-     `schema "sandbox" already exists`: the crewdb image creates it.
+   - `pg_dump -Fc` of test-2's `crewdb`, restored with `pg_restore` into `dev_crew_pgdata`
+     before the first deploy. Keep owners and privileges: both hosts have the same database
+     users. Without them, the sandbox schema ends up owned by `root_user` and `sandbox_new` fails
+     with `relation "migration" already exists`, and the other service users lose their grants.
+     The only expected restore error is `schema "sandbox" already exists`: the crewdb image
+     creates it.
    - test-2 runs `main`, which encrypts stored secrets with a key derived from
      `DJANGO_SECRET_KEY`. For the first deploy only, `deploy.env` carried test-2's
      `DJANGO_SECRET_KEY`, so migration `0291_reencrypt_secrets_master_key` moved those secrets to
