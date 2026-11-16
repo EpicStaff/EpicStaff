@@ -71,12 +71,14 @@ x-bounded-logs: &bounded-logs
     max-file: "5"
 
 # Our own service images run as uid 1000 and need no capability, so they get none, and
-# no-new-privileges keeps a setuid binary from giving one back.
+# no-new-privileges keeps a setuid binary from giving one back. The root filesystem is
+# read-only: each service mounts its own /tmp, and its volumes are its only other writable paths.
 x-hardened: &hardened
   security_opt:
     - no-new-privileges:true
   cap_drop:
     - ALL
+  read_only: true
 
 #x-communication-env: &communication_env
 #  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
@@ -251,6 +253,9 @@ services:
       PLUGINS_DEV_API_PORT: ${PLUGINS_DEV_API_PORT:?}
     volumes:
       - media_data:/app/src/django_app/media
+      # On disk, not tmpfs: request bodies over FILE_UPLOAD_MAX_MEMORY_SIZE spool here, up to
+      # one plugin package (PLUGINS_MAX_PACKAGE_MB) twice per upload.
+      - django_app_tmp:/tmp
       # Approved plugins' SPA files, published here and served by epicstaff-nginx (read-only).
       - plugin_spa:/srv/plugin-spa
     networks:
@@ -277,6 +282,8 @@ services:
 
   realtime:
     <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/realtime:${IMAGE_TAG:?}
@@ -323,6 +330,8 @@ services:
 
   manager:
     <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/manager:${IMAGE_TAG:?}
@@ -448,6 +457,8 @@ services:
 
   crew:
     <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/crew:${IMAGE_TAG:?}
@@ -635,6 +646,8 @@ services:
 
   webhook:
     <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?}
@@ -944,6 +957,8 @@ services:
 
   knowledge_new:
     <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     container_name: knowledge_new
@@ -979,6 +994,8 @@ services:
   # Nothing outside the profile may depend_on them, or a stack without chat would not start.
   chat:
     <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     image: ghcr.io/epicstaff/chat:${IMAGE_TAG:?}
     build:
       context: .
@@ -1339,6 +1356,7 @@ volumes:
   auditor_data: {}
   chat_pgdata: {}
   plugin_spa: {}
+  django_app_tmp: {}
   es_plugins_data: {}
   plugins_pgdata: {}
   plugin_egress_policy: {}
