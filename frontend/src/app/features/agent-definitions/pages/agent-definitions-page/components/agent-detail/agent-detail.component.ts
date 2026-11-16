@@ -1,5 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import {
+    afterRenderEffect,
     ChangeDetectionStrategy,
     Component,
     computed,
@@ -12,6 +13,7 @@ import {
     output,
     signal,
     untracked,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -185,6 +187,22 @@ export class AgentDetailComponent implements OnInit {
 
     private seededKey: string | null = null;
 
+    private readonly agentNameInput = viewChild<ElementRef<HTMLInputElement>>('agentNameInput');
+
+    private nameFocusedForCreate = false;
+
+    private readonly focusAgentNameOnCreate = afterRenderEffect(() => {
+        const creating = this.isCreating();
+        const input = this.agentNameInput()?.nativeElement;
+        if (!creating || !input) {
+            if (!creating) this.nameFocusedForCreate = false;
+            return;
+        }
+        if (this.nameFocusedForCreate) return;
+        this.nameFocusedForCreate = true;
+        input.focus();
+    });
+
     constructor() {
         effect(() => {
             const a = this.agent();
@@ -192,17 +210,26 @@ export class AgentDetailComponent implements OnInit {
 
             const key = creating ? 'creating' : a ? `agent:${a.id}` : null;
             if (key === this.seededKey) return;
+            const previousKey = this.seededKey;
             this.seededKey = key;
 
             if (creating) {
                 this.form.reset(this.emptyValue());
                 this.sections.set({ basics: true, surfaces: false });
+                this.savedSnapshot = this.form.getRawValue();
             } else if (a) {
-                this.form.reset(this.valueFromAgent(a));
+                const serverValue = this.valueFromAgent(a);
+                // The create request already left on name blur. A model picked while it was in
+                // flight is only in the form — keep it and save it once this agent exists.
+                const next = previousKey === 'creating' ? this.withEditsMadeWhileCreating(serverValue) : serverValue;
+                this.form.reset(next);
                 this.form.markAsPristine();
+                this.savedSnapshot = previousKey === 'creating' ? serverValue : next;
             }
-            this.savedSnapshot = this.form.getRawValue();
             this.dirtyChange.emit(this.form.dirty);
+            if (previousKey === 'creating' && a) {
+                untracked(() => this.persist(false));
+            }
         });
 
         effect(() => {
@@ -318,6 +345,16 @@ export class AgentDetailComponent implements OnInit {
 
     private emptyValue(): AgentFormValue {
         return { name: '', description: '', llm_config: null, fallback_llm_config: null };
+    }
+
+    /** LLM picks made after the create request was sent, before the saved agent replaced the draft. */
+    private withEditsMadeWhileCreating(serverValue: AgentFormValue): AgentFormValue {
+        const local = this.form.getRawValue();
+        return {
+            ...serverValue,
+            llm_config: serverValue.llm_config ?? local.llm_config,
+            fallback_llm_config: serverValue.fallback_llm_config ?? local.fallback_llm_config,
+        };
     }
 
     private valueFromAgent(a: AgentDefinition): AgentFormValue {

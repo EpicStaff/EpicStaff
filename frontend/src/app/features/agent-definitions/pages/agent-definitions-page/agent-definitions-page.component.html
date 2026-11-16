@@ -204,17 +204,42 @@
                 </app-detail-header>
 
                 <div class="detail-body">
-                    @if (store.isDraftingAgent()) {
+                    <!-- One instance for the draft and the agent it becomes. Swapping them ate the
+                         click that left the name field: blur creates the agent, and the new view
+                         replaced the LLM dropdown before that click could open it. -->
+                    @if (store.isDraftingAgent() || store.selectedAgent() !== null) {
                         <app-agent-detail
-                            [agent]="null"
-                            [isCreating]="true"
+                            [attr.data-tour]="store.isSelectedAgentFromLatestDraft() ? tourAnchors.createdAgent : null"
+                            [agent]="store.selectedAgent()"
+                            [isCreating]="store.isDraftingAgent()"
+                            [focusRequest]="store.selectedAgentFocus()"
                             [saving]="store.saving()"
                             [surfaces]="store.surfaces()"
                             [saveErrorTick]="store.agentSaveErrorTick()"
                             [surfaceSaveError]="store.surfaceSaveError()"
                             [surfaceCreateErrorTick]="store.surfaceCreateErrorTick()"
+                            [instructionListError]="store.selectedAgentInstructionListError()"
+                            [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
+                            [groups]="store.groups()"
+                            [readOnly]="!store.isDraftingAgent() && agentsReadOnly()"
                             (save)="onSaveAgent($event)"
+                            (delete)="onDeleteAgent($event)"
                             (dirtyChange)="onDirtyChange($event)"
+                            (instructionListChange)="onSelectedInstructionList($event)"
+                            (openInstruction)="onOpenInstruction($event)"
+                            (createSurface)="onCreateSurfaceForSelected($event)"
+                            (setSharedInCategory)="onSetSharedForSelected($event)"
+                            (dropSharedSurface)="onDropSharedForSelected($event)"
+                            (setSurfacePlaces)="onSetSurfacePlacesForSelected($event)"
+                            (makeSharedSurface)="store.makeSurfaceShared($event)"
+                            (detachSurface)="onDetachSurfaceForSelected($event)"
+                            (deleteSurfaceFromPanel)="onDeleteSurface($event)"
+                            (duplicateSurface)="store.duplicateSurface($event)"
+                            (makeAgentSpecificCopy)="onMakeAgentSpecificCopyForSelected($event)"
+                            (openSurfaceSource)="store.openSharedSurfaceSource($event)"
+                            (renameSurface)="store.updateSurface($event.id, { name: $event.name })"
+                            (surfaceChange)="store.updateSurface($event.id, $event.patch)"
+                            (viewSummary)="onViewSummary($event)"
                         />
                     } @else if (store.isDraftingSurface()) {
                         <div class="surface-pane">
@@ -225,55 +250,6 @@
                                 (create)="onCreateSurface($event)"
                             />
                         </div>
-                    } @else if (store.selectedAgent()) {
-                        <app-agent-detail
-                            [attr.data-tour]="store.isSelectedAgentFromLatestDraft() ? tourAnchors.createdAgent : null"
-                            [agent]="store.selectedAgent()!"
-                            [focusRequest]="store.selectedAgentFocus()"
-                            [saving]="store.saving()"
-                            [surfaces]="store.surfaces()"
-                            [saveErrorTick]="store.agentSaveErrorTick()"
-                            [surfaceSaveError]="store.surfaceSaveError()"
-                            [surfaceCreateErrorTick]="store.surfaceCreateErrorTick()"
-                            [instructionListError]="store.selectedAgentInstructionListError()"
-                            [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
-                            [groups]="store.groups()"
-                            [readOnly]="agentsReadOnly()"
-                            (save)="onSaveAgent($event)"
-                            (delete)="onDeleteAgent($event)"
-                            (dirtyChange)="onDirtyChange($event)"
-                            (instructionListChange)="store.updateInstructionList(store.selectedAgent()!.id, $event)"
-                            (openInstruction)="onOpenInstruction($event)"
-                            (createSurface)="
-                                store.createSurfaceForAgent(store.selectedAgent()!.id, $event.body, $event.place)
-                            "
-                            (setSharedInCategory)="
-                                store.setSharedSurfacesInCategory(
-                                    $event.surfaceIds,
-                                    store.selectedAgent()!.id,
-                                    $event.category
-                                )
-                            "
-                            (dropSharedSurface)="
-                                store.dropSharedSurfaceOnAgent(
-                                    $event.surfaceId,
-                                    store.selectedAgent()!.id,
-                                    $event.category
-                                )
-                            "
-                            (setSurfacePlaces)="
-                                store.setSurfacePlaces($event.surfaceId, store.selectedAgent()!.id, $event.places)
-                            "
-                            (makeSharedSurface)="store.makeSurfaceShared($event)"
-                            (detachSurface)="store.detachSurfaceFromAgent($event, store.selectedAgent()!.id)"
-                            (deleteSurfaceFromPanel)="onDeleteSurface($event)"
-                            (duplicateSurface)="store.duplicateSurface($event)"
-                            (makeAgentSpecificCopy)="store.makeAgentSpecificCopy($event, store.selectedAgent()!.id)"
-                            (openSurfaceSource)="store.openSharedSurfaceSource($event)"
-                            (renameSurface)="store.updateSurface($event.id, { name: $event.name })"
-                            (surfaceChange)="store.updateSurface($event.id, $event.patch)"
-                            (viewSummary)="onViewSummary($event)"
-                        />
                     } @else {
                         <app-empty-detail />
                     }
