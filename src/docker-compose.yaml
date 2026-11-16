@@ -630,9 +630,13 @@ services:
   epicstaff-nginx:
     image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
     container_name: ${INSTANCE_PREFIX?}epicstaff-nginx
+    # Long syntax: `docker compose config --no-interpolate` (src/nginx/tests/check_templates.sh)
+    # still shows each container port, which it cannot read out of "${VAR}:80".
     ports:
-      - "${NGINX_HTTP_PORT:?}:80"
-      - "${NGINX_HTTPS_PORT:?}:443"
+      - target: 80
+        published: ${NGINX_HTTP_PORT:?}
+      - target: 443
+        published: ${NGINX_HTTPS_PORT:?}
     environment:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?}
       NGINX_SSL_MODE: ${NGINX_SSL_MODE:?}
