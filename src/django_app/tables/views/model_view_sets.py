@@ -66,11 +66,11 @@ from rest_framework.exceptions import (
 from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
 )
-from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from src.shared.models import UserAction
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.constants.decision_table_constants import (
     CONDITION_GROUP_INPUT_FIELDS,
@@ -131,7 +131,11 @@ from tables.models import (
     TaskNode,
     TransferJob,
 )
-from tables.models.audit_filter_preset_models import AuditFilterPreset
+from tables.models.audit_filter_preset_models import (
+    AUDIT_PRESET_DOMAIN_RESOURCE_TYPES,
+    AuditFilterPreset,
+    AuditPresetDomain,
+)
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.flow_filter_preset_models import FlowFilterPreset
 from tables.models.graph_models import (
@@ -153,6 +157,7 @@ from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
+    SystemOneConfig,
 )
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig, linked_secrets_prefetch
@@ -249,6 +254,7 @@ from tables.serializers.model_serializers.key_value_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
+    SystemOneConfigSerializer,
 )
 from tables.serializers.model_serializers.realtime_serializers import (
     TwilioAuthTokenSecretSerializer,
@@ -283,6 +289,7 @@ from tables.services.delete_services import (
     GraphVersionDeleteService,
     LLMConfigDeleteService,
     OpenAIRealtimeConfigDeleteService,
+    SystemOneConfigDeleteService,
 )
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.graph_bulk_save_service.registry import TRIGGER_NODE_LIST_KEYS
@@ -300,6 +307,10 @@ from tables.services.secrets.pinned_principal_rules import (
     EMBEDDING_MODEL_ENDPOINT_FIELDS,
     LLM_MODEL_ENDPOINT_FIELDS,
 )
+from tables.services.secrets.secret_code_inspector import (
+    SecretCodeInspector,
+    secret_code_access,
+)
 from tables.services.secrets.secret_use_checks import (
     check_elevenlabs_realtime_config_write,
     check_embedding_config_write,
@@ -309,10 +320,12 @@ from tables.services.secrets.secret_use_checks import (
     check_llm_model_write,
     check_mcp_tool_write,
     check_openai_realtime_config_write,
+    check_python_code_tool_config_write,
     check_python_code_tool_write,
     check_python_node_write,
     check_realtime_config_write,
     check_realtime_transcription_config_write,
+    check_system_one_config_write,
     check_telegram_trigger_node_write,
     check_twilio_channel_write,
     check_webhook_trigger_node_write,
@@ -329,6 +342,7 @@ from tables.services.twilio_service import TwilioService, TwilioServiceError
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.swagger_schemas.audit_filter_preset_schemas import (
     AUDIT_FILTER_PRESET_COPY,
+    AUDIT_FILTER_PRESET_DOMAIN,
     AUDIT_FILTER_PRESET_EXPORT_JOBS,
     AUDIT_FILTER_PRESET_IMPORT,
 )
@@ -340,8 +354,12 @@ from tables.swagger_schemas.bulk_delete_schemas import (
     GRAPH_VERSION_BULK_DELETE_POST,
     LLM_CONFIG_BULK_DELETE_POST,
     OPENAI_REALTIME_CONFIG_BULK_DELETE_POST,
+    SYSTEM_ONE_CONFIG_BULK_DELETE_POST,
 )
-from tables.swagger_schemas.common_schemas import FLOW_WITH_TRIGGER_NODES_403_RESPONSE
+from tables.swagger_schemas.common_schemas import (
+    FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+    FLOW_WITH_TRIGGER_NODES_OR_SECRET_CODE_403_RESPONSE,
+)
 from tables.swagger_schemas.graph_copy_schemas import GRAPH_COPY_POST
 from tables.swagger_schemas.graph_delete_by_uuid_schemas import (
     GRAPH_DELETE_BY_UUID_DELETE,
@@ -405,7 +423,11 @@ from tables.views.secret_use import (
     ModelEndpointsGuardedViewSetMixin,
     SecretUseCheckedViewSetMixin,
 )
+from user_audit.context import mark_request_handled
+from user_audit.read_only import not_a_user_change, reads_only
+from user_audit.recorder import record_copy, record_user_action
 from utils.logger import logger
+from utils.pagination import DefaultLimitOffsetPagination
 
 redis_service = RedisService()
 
@@ -498,6 +520,21 @@ class LLMConfigReadWriteViewSet(
     serializer_class = LLMConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMConfigFilter
+
+
+@extend_schema_view(bulk_delete=extend_schema(**SYSTEM_ONE_CONFIG_BULK_DELETE_POST))
+class SystemOneConfigReadWriteViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = SystemOneConfigDeleteService
+    secret_use_check = check_system_one_config_write
+    queryset = SystemOneConfig.objects.select_related(
+        "api_key_secret", "llm_config"
+    ).prefetch_related(*authorship_prefetches())
+    serializer_class = SystemOneConfigSerializer
 
 
 class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
@@ -710,6 +747,14 @@ class PythonCodeToolViewSet(
             raise BuiltInToolModificationError()
         return super().destroy(request, *args, **kwargs)
 
+    def check_copy_allowed(self, request, instance) -> None:
+        # The copy is the caller's own code, which reads the secrets it declares.
+        declared = instance.python_code.linked_secrets()
+        if declared:
+            secret_code_access.assert_user_may_recreate(
+                request.user, self.get_active_org_id(), declared
+            )
+
     @extend_schema(methods=["POST"], **PYTHON_CODE_TOOL_FAVORITE_POST)
     @extend_schema(methods=["DELETE"], **PYTHON_CODE_TOOL_FAVORITE_DELETE)
     @action(detail=True, methods=["post", "delete"], url_path="favorite")
@@ -728,6 +773,8 @@ class PythonCodeToolViewSet(
         if not body.is_valid():
             return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
         ids = body.validated_data["ids"]
+        # Each binned tool records itself; a request that binned none records nothing.
+        mark_request_handled()
 
         with transaction.atomic():
             # Built-in tools are silently excluded, never rejected — they are
@@ -747,6 +794,7 @@ class PythonCodeToolViewSet(
 
     @extend_schema(**PYTHON_CODE_TOOL_USAGE_POST)
     @action(detail=False, methods=["post"], url_path="usage")
+    @reads_only
     def usage(self, request):
         return self._usage_response(request, PythonCodeTool)
 
@@ -770,7 +818,9 @@ class PythonCodeToolViewSet(
         return Response(data, status=status.HTTP_200_OK)
 
 
-class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class PythonCodeToolConfigViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
@@ -778,6 +828,7 @@ class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         *authorship_prefetches(last_edit=False)
     )
     serializer_class = PythonCodeToolConfigSerializer
+    secret_use_check = check_python_code_tool_config_write
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["tool", "name"]
 
@@ -941,6 +992,10 @@ class GraphViewSet(
         # Copied trigger nodes are live at once (they share the source's webhook trigger).
         if TriggerNodeInspector.has_any_in_graph(instance):
             trigger_node_access.assert_user_may_recreate(request.user, instance.org_id)
+        # Copied code is the caller's own, and reads the secrets it declares.
+        declared = SecretCodeInspector.declared_in_graph(instance)
+        if declared:
+            secret_code_access.assert_user_may_recreate(request.user, instance.org_id, declared)
 
     @extend_schema(
         request=GraphNodesPartialExportSerializer,
@@ -958,6 +1013,7 @@ class GraphViewSet(
         url_path="partial-export-jobs",
         throttle_classes=EXPORT_JOB_THROTTLE_CLASSES,
     )
+    @reads_only
     def partial_export_jobs(self, request, pk=None):
         author = self.export_job_author()
         serializer = GraphNodesPartialExportSerializer(data=request.data)
@@ -1166,7 +1222,10 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             "Uses optimistic locking via `save_version` to prevent overwriting concurrent edits. "
             "A snapshot holding a trigger node (webhook, Telegram, schedule) also requires USE "
             "on flows; without it the response is 403 "
-            "`flow_with_trigger_nodes_requires_use_permission` and nothing is written."
+            "`flow_with_trigger_nodes_requires_use_permission` and nothing is written. "
+            "A snapshot whose code declares a secret, whether or not it still exists, also "
+            "requires USE on secrets; without it the response is 403 "
+            "`code_with_secrets_requires_secrets_use_permission` and nothing is written."
         ),
         request=RestoreVersionInputSerializer,
         responses={
@@ -1178,7 +1237,7 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
                     "auto_backup_version_id": serializers.IntegerField(allow_null=True),
                 },
             ),
-            403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+            403: FLOW_WITH_TRIGGER_NODES_OR_SECRET_CODE_403_RESPONSE,
         },
         parameters=[
             OpenApiParameter(
@@ -1198,7 +1257,10 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             "Missing dependencies are stripped from the snapshot and reported in `warnings`. "
             "Returns the ID of the newly created graph. A snapshot holding a trigger node "
             "(webhook, Telegram, schedule) also requires USE on flows; without it the response "
-            "is 403 `flow_with_trigger_nodes_requires_use_permission` and nothing is written."
+            "is 403 `flow_with_trigger_nodes_requires_use_permission` and nothing is written. "
+            "A snapshot whose code declares a secret, whether or not it still exists, also "
+            "requires USE on secrets; without it the response is 403 "
+            "`code_with_secrets_requires_secrets_use_permission` and nothing is written."
         ),
         request=None,
         responses={
@@ -1209,7 +1271,7 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
                     "warnings": serializers.ListField(child=serializers.DictField()),
                 },
             ),
-            403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+            403: FLOW_WITH_TRIGGER_NODES_OR_SECRET_CODE_403_RESPONSE,
         },
     ),
     preview=extend_schema(
@@ -1256,6 +1318,9 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     bulk_delete=extend_schema(**GRAPH_VERSION_BULK_DELETE_POST),
 )
 class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet):
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = GraphVersion.objects.none()
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -1299,6 +1364,9 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
             name=write_serializer.validated_data["name"],
             description=write_serializer.validated_data.get("description", ""),
         )
+        # Recorded here, not in the service: a restore's backup version and an imported
+        # flow's version are part of the restore or import that request records.
+        record_user_action(action=UserAction.CREATED, org_id=graph.org_id, target=version)
 
         return Response(
             GraphVersionReadSerializer(version).data,
@@ -1317,6 +1385,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
 
         version = self.get_object()
         self._check_trigger_nodes_may_be_recreated(request, version)
+        self._check_secret_code_may_be_recreated(request, version)
         backup = request.query_params.get("backup", "").lower() == "true"
         result = GraphVersioningService().restore_version(
             version,
@@ -1341,6 +1410,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
     def create_graph(self, request, *args, **kwargs):
         version = self.get_object()
         self._check_trigger_nodes_may_be_recreated(request, version)
+        self._check_secret_code_may_be_recreated(request, version)
         result = GraphVersioningService().create_graph_from_version(version, user=request.user)
         return Response(result, status=status.HTTP_201_CREATED)
 
@@ -1350,6 +1420,15 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
         # `nodes` layout are the same in every snapshot version.
         if TriggerNodeInspector.has_any_in_flow_entry(version.snapshot or {}):
             trigger_node_access.assert_user_may_recreate(request.user, version.graph.org_id)
+
+    @staticmethod
+    def _check_secret_code_may_be_recreated(request, version: GraphVersion) -> None:
+        # The restored code is the caller's own, and reads the secrets it declares, now or
+        # once a purged one is recreated. Snapshot names may not resolve, so no secrets are
+        # passed: the restore itself drops and warns about each secret a plugin's service
+        # account may not reference (`restore_secret_declarations`).
+        if SecretCodeInspector.snapshot_declares_any(version.snapshot or {}):
+            secret_code_access.assert_user_may_recreate(request.user, version.graph.org_id)
 
     @action(detail=True, methods=["get"], url_path="preview")
     def preview(self, request, *args, **kwargs):
@@ -1741,6 +1820,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         url_path="end",
         permission_classes=[IsSystemApiKeyAuthenticated],
     )
+    @not_a_user_change
     def end(self, request):
         """Mark a RealtimeAgentChat as ended.
 
@@ -1918,6 +1998,14 @@ class TwilioChannelViewSet(
             # The row was found without org scoping: another org's channel must be a
             # 404 before the secret check can answer with anything else.
             self._assert_parent_in_active_org(serializer)
+            # Overwriting an existing channel on POST is an update in disguise; the
+            # action map only gates CREATE for this view's "create" action.
+            assert_org_permission(
+                request.user,
+                self.get_active_org_id(),
+                self.rbac_resource_type,
+                Permission.UPDATE,
+            )
             self.run_secret_use_check(instance, serializer.validated_data)
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -2293,6 +2381,7 @@ class ClassificationDecisionTableNodeModelViewSet(
         ),
     )
     @action(detail=True, methods=["post"], url_path="explain")
+    @reads_only
     def explain(self, request, pk=None):
         serializer = CdtExplainRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -2452,6 +2541,8 @@ class McpToolViewSet(
         if not body.is_valid():
             return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
         ids = body.validated_data["ids"]
+        # Each binned tool records itself; a request that binned none records nothing.
+        mark_request_handled()
 
         with transaction.atomic():
             # McpTool has no built-in concept — every matching id is deletable.
@@ -2464,6 +2555,7 @@ class McpToolViewSet(
 
     @extend_schema(**MCP_TOOL_USAGE_POST)
     @action(detail=False, methods=["post"], url_path="usage")
+    @reads_only
     def usage(self, request):
         return self._usage_response(request, McpTool)
 
@@ -2839,6 +2931,7 @@ class SecretViewSet(
         return Response(secret_usage_service.summary(secret=secret, effective=effective))
 
 
+@extend_schema(**AUDIT_FILTER_PRESET_DOMAIN)
 @extend_schema_view(export_jobs=extend_schema(**AUDIT_FILTER_PRESET_EXPORT_JOBS))
 class AuditFilterPresetViewSet(OrgScopedViewSetMixin, ExportJobActionMixin, viewsets.ModelViewSet):
     """
@@ -2851,17 +2944,21 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, ExportJobActionMixin, view
     The author may share a preset (`is_shared: true`); un-sharing is rejected
     by the serializer.
 
-    Gated entirely on AUDIT:read, same as browsing itself - presets are a
+    Every request works on one audit domain, `?domain=` (default `sessions`,
+    anything else but `user_actions` is a 400 before any row is read): it
+    lists, creates, copies, exports and imports only that domain's presets.
+
+    Gated entirely on the domain's own read bit - AUDIT:read for sessions,
+    USER_AUDIT:read for user_actions, same as browsing each tab - presets are a
     convenience over audit data, not audit data itself, so every action
     (including create/update/destroy/copy/export/import) maps to READ rather
     than the CREATE/UPDATE/DELETE bits DEFAULT_ACTION_MAP would otherwise
-    require - which were never granted for the `audit` resource type (see
+    require - which were never granted for either audit resource type (see
     rbac/access/builtin_roles.json: Org Admin only has READ+EXPORT).
     """
 
     # Presets belong to a person, so a plugin service account never reaches them.
     permission_classes = [IsAuthenticated, DenyPluginCredential, HasOrgPermission]
-    rbac_resource_type = ResourceType.AUDIT
     rbac_action_map = {
         "list": Permission.READ,
         "retrieve": Permission.READ,
@@ -2883,8 +2980,29 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, ExportJobActionMixin, view
 
     _author_only_actions = frozenset({"update", "partial_update", "destroy"})
 
+    @property
+    def domain(self) -> str:
+        domain = self.request.query_params.get("domain", AuditPresetDomain.SESSIONS)
+        if domain not in AuditPresetDomain.values:
+            raise DRFValidationError(
+                {"domain": f"Must be one of: {', '.join(AuditPresetDomain.values)}."}
+            )
+        return domain
+
+    @property
+    def rbac_resource_type(self) -> ResourceType:
+        # Read by HasOrgPermission before anything else, so an invalid domain 400s
+        # before any permission or data lookup.
+        return AUDIT_PRESET_DOMAIN_RESOURCE_TYPES[self.domain]
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "domain": self.domain}
+
+    def export_job_data(self, validated_data: dict) -> dict:
+        return {**validated_data, "domain": self.domain}
+
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().filter(domain=self.domain)
         if self.action in self._author_only_actions:
             return queryset.filter(created_by=self.request.user)
         return queryset.filter(Q(is_shared=True) | Q(created_by=self.request.user))
@@ -2902,6 +3020,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, ExportJobActionMixin, view
             created_by=request.user,
             is_shared=serializer.validated_data["is_shared"],
         )
+        record_copy(preset, clone)
         return Response(self.get_serializer(clone).data, status=201)
 
     @extend_schema(**AUDIT_FILTER_PRESET_IMPORT)
@@ -2914,6 +3033,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, ExportJobActionMixin, view
             user=request.user,
             settings=ImportSettings(),
             org_id=self.get_active_org_id(),
+            domain=self.domain,
         )
         return Response(summary, status=status.HTTP_200_OK)
 
@@ -3000,6 +3120,7 @@ class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewse
         return Response(KeyValueTableService().usage(self.get_object()))
 
     @action(detail=True, methods=["post"], url_path="entries/lookup")
+    @reads_only
     def lookup_entries(self, request, pk=None):
         table = self.get_object()
         serializer = KeyValueKeysSerializer(data=request.data)
@@ -3008,8 +3129,8 @@ class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewse
         return Response({key: asdict(item) for key, item in result.items()})
 
 
-class KeyValueTableEntryPagination(LimitOffsetPagination):
-    """Caps `?limit=` so one request can't force a worker to load every entry of a table."""
+class KeyValueTableEntryPagination(DefaultLimitOffsetPagination):
+    """Tighter cap than the project default: every entry on a page renders a value preview."""
 
     max_limit = 100
 

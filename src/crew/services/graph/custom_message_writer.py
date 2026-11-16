@@ -257,6 +257,8 @@ class CustomSessionMessageWriter:
         parsed_result: Any,
         result_variable: str,
         usage: dict,
+        provider: str | None = None,
+        model_version: str | None = None,
     ):
         prompt_message_data = ClassificationPromptMessageData(
             prompt_id=prompt_id,
@@ -265,6 +267,8 @@ class CustomSessionMessageWriter:
             parsed_result=parsed_result,
             result_variable=result_variable,
             usage=usage,
+            provider=provider,
+            model_version=model_version,
         )
         graph_message = GraphMessage(
             session_id=session_id,

@@ -508,19 +508,3 @@ def test_a_description_of_only_control_characters_is_rejected_on_import_and_by_t
     assert "Description must contain visible text." in str(imported.data)
     assert "Description must contain visible text." in str(created.data)
     assert PythonCodeTool.objects.filter(org=org_a).count() == tool_count_before
-
-
-# ---- the synchronous exports are gone ----
-
-
-@pytest.mark.django_db
-@EACH_KIND
-def test_the_synchronous_tool_exports_are_gone(request, client_a, kind):
-    tool = request.getfixturevalue(kind.fixture)
-
-    single = client_a.get(f"{kind.url}{tool.id}/export/")
-    bulk = client_a.post(f"{kind.url}bulk-export/", {"ids": [tool.id]}, format="json")
-
-    assert single.status_code == 404
-    # Read as the detail route of a tool called "bulk-export": refused, never served.
-    assert bulk.status_code in {403, 404, 405}

@@ -16,17 +16,14 @@ from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService, ImportSettings
 from tables.import_export.services.inspect_service import InspectService
-from tables.import_export.version_conversions.base import VersionConverter
+from tables.import_export.version_conversions.base import VersionConverter, file_version
 from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
+from tables.validators.run_refusal_validator import assert_no_run_refusals_in_export
+from user_audit.actor import Actor
 
 _ZIP_HEAD_SIZE = 4
 _COPY_CHUNK_SIZE = 1024 * 1024
-
-
-def _file_version(envelope: dict) -> int:
-    # Files from before the version field default to 1, as the converter treats them.
-    return envelope.get("version", 1)
 
 
 def ensure_job_import_version(envelope: dict) -> None:
@@ -37,9 +34,14 @@ def ensure_job_import_version(envelope: dict) -> None:
     `archive_required`, because only an archive holds the collection's files.
 
     Raises:
-        ValidationError: {"code": "use_sync_import"} for a version before archives.
+        ValidationError: {"code": "use_sync_import"} for a version before archives;
+            the synchronous import's message for a version that is not a whole number.
     """
-    if _file_version(envelope) < ARCHIVE_IMPORT_VERSION:
+    try:
+        version = file_version(envelope)
+    except UnsupportedImportVersionError as error:
+        raise ValidationError(str(error)) from error
+    if version < ARCHIVE_IMPORT_VERSION:
         raise ValidationError(
             {
                 "code": "use_sync_import",
@@ -64,8 +66,17 @@ class ViewSetImportExportService:
         except UnsupportedImportVersionError as e:
             raise ValidationError(str(e)) from e
 
-    def import_entity(self, file, user, settings: ImportSettings = None, org_id: int | None = None):
+    def import_entity(
+        self,
+        file,
+        user,
+        settings: ImportSettings = None,
+        org_id: int | None = None,
+        **strategy_kwargs,
+    ):
         """Import a `.json` export, or a `.zip` one that carries no knowledge collection.
+
+        `strategy_kwargs` reach every strategy's `import_entity` as keyword arguments.
 
         Raises:
             UseImportJobError: The `.zip` is an export of this entity carrying
@@ -85,6 +96,7 @@ class ViewSetImportExportService:
             org_id=org_id,
             user=user,
             effective_permissions=effective_permissions,
+            **strategy_kwargs,
         )
         summary = id_mapper.get_detailed_summary(registry)
 
@@ -98,10 +110,12 @@ class ViewSetImportExportService:
         user,
         settings: ImportSettings,
         main_entity,
+        actor: Actor | None = None,
     ) -> dict:
         """Import the export archive at `path`; returns the import summary.
 
         Used by the import job, which owns the file and deletes it afterwards.
+        `actor` is who the import's user-action records name (see `ImportService.import_data`).
 
         Raises:
             ValidationError: The archive is unsafe or unreadable, its main entity is
@@ -118,6 +132,7 @@ class ViewSetImportExportService:
                 user=user,
                 effective_permissions=effective_permissions,
                 archive=archive,
+                actor=actor,
             )
         return id_mapper.get_detailed_summary(registry)
 
@@ -220,22 +235,25 @@ def _read_archive_envelope(file):
 def check_job_archive(path: str, *, main_entity, user, org_id: int) -> None:
     """Refuse an archive an import job would refuse up front, before the job is created.
 
-    Applies every archive cap, the version and main-entity checks, and the flows:USE
-    check for trigger nodes, so a caller learns of these at once instead of from a
-    failed job. The import job runs them all again on the stored archive.
+    Applies every archive cap, the version and main-entity checks, the flows:USE
+    check for trigger nodes and the check for flows crew would refuse to run, so a
+    caller learns of these at once instead of from a failed job. The import job runs
+    them all again on the stored archive.
 
     Raises:
         InvalidArchiveError: The archive is unsafe or unreadable.
-        ValidationError: Its main entity is not `main_entity`, or it is older than
-            archives (`use_sync_import`).
+        ValidationError: Its main entity is not `main_entity`, its version is not a
+            whole number, it is older than archives (`use_sync_import`), or it holds
+            a flow crew would refuse to run.
         FlowWithTriggerNodesRequiresUsePermissionError: It holds a trigger node and
             `user` lacks USE on flows in `org_id`.
     """
     with ImportArchive.open(path) as archive:
         data = _read_job_envelope(archive, main_entity)
-    # The same check ImportService.import_data runs before it writes anything.
+    # The same checks ImportService.import_data runs before it writes anything.
     if TriggerNodeInspector.has_any_in_export(data):
         trigger_node_access.assert_user_may_recreate(user, org_id)
+    assert_no_run_refusals_in_export(data)
 
 
 def _read_job_envelope(archive: ImportArchive, main_entity) -> dict:

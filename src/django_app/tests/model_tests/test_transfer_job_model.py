@@ -51,6 +51,23 @@ def test_an_explicit_expiry_is_kept(default_org):
     assert job.expires_at == expires_at
 
 
+@pytest.mark.django_db
+def test_a_job_outlives_the_api_key_it_was_started_with(default_org, regular_user, issue_api_key):
+    _raw_key, api_key = issue_api_key(user=regular_user, org=default_org)
+    job = TransferJob.objects.create(
+        org=default_org,
+        created_by=regular_user,
+        api_key=api_key,
+        kind=TransferJob.Kind.IMPORT,
+        main_entity=TransferJob.MainEntity.FLOW,
+    )
+
+    api_key.delete()
+
+    job.refresh_from_db()
+    assert (job.api_key_id, job.created_by_id) == (None, regular_user.id)
+
+
 def test_main_entities_are_the_export_file_types():
     # The client switches on these strings; "FlowNodes" is a flow editor partial export.
     assert set(TransferJob.MainEntity.values) == {
@@ -61,5 +78,6 @@ def test_main_entities_are_the_export_file_types():
         "AuditFilterPreset",
         "Session",
         "ClassificationDecisionTableNode",
+        "AgentDefinition",
         "FlowNodes",
     }

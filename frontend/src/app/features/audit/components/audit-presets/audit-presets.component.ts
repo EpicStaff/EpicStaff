@@ -31,8 +31,8 @@ import { escapeHtml } from '@shared/utils';
 import { filter, finalize, Observable, switchMap, tap } from 'rxjs';
 
 import { TransferExportService } from '../../../../core/services/transfer-export.service';
-import { TransferJobsService } from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
+import { AUDIT_FIELD_CATALOG, AuditLookupOptions } from '../../models/audit-domain.models';
 import {
     AuditEnumOption,
     AuditFilterMode,
@@ -132,6 +132,7 @@ export class AuditPresetsComponent implements OnInit {
     public readonly currentFilter = input.required<AuditFilterState>();
     public readonly agentOptions = input<AuditEnumOption[]>([]);
     public readonly toolOptions = input<AuditEnumOption[]>([]);
+    public readonly lookupOptions = input<AuditLookupOptions>({});
     public readonly openCreateOnInit = input<boolean>(false);
     public readonly presetApplied = output<AuditFilterState>();
     public readonly queryCopied = output<string>();
@@ -157,6 +158,7 @@ export class AuditPresetsComponent implements OnInit {
     protected readonly loadError = computed(() => this.presetsStorage.loadError());
 
     private readonly vocabularies = computed<AuditFilterVocabularies>(() => ({
+        ...this.lookupOptions(),
         agents: this.agentOptions(),
         tools: this.toolOptions(),
     }));
@@ -198,7 +200,7 @@ export class AuditPresetsComponent implements OnInit {
         if (editor === null) {
             return [];
         }
-        return describeAuditFilter({ ...editor.state, mode: 'builder' }, this.vocabularies()).filter(
+        return describeAuditFilter({ ...editor.state, mode: 'builder' }, this.catalog, this.vocabularies()).filter(
             (chip) => chip.key !== 'matchScope'
         );
     });
@@ -214,9 +216,10 @@ export class AuditPresetsComponent implements OnInit {
     ];
 
     protected readonly unavailableHint = "Created outside the filters panel — it can't be opened here";
+    protected readonly catalog = inject(AUDIT_FIELD_CATALOG);
+    protected readonly hasMatchScope = this.catalog.domain === 'sessions';
 
     private readonly presetsStorage = inject(AuditPresetsStorageService);
-    private readonly transferJobs = inject(TransferJobsService);
     private readonly transferExport = inject(TransferExportService);
     private readonly toastService = inject(ToastService);
     private readonly confirmationDialog = inject(ConfirmationDialogService);
@@ -283,7 +286,7 @@ export class AuditPresetsComponent implements OnInit {
             return;
         }
         const name = editor.name.trim();
-        const filterBody = buildPresetBody(editor.state);
+        const filterBody = buildPresetBody(editor.state, this.catalog);
         const request =
             editor.presetId === null
                 ? this.presetsStorage.createPreset(name, filterBody, this.scope() === 'shared')
@@ -348,7 +351,9 @@ export class AuditPresetsComponent implements OnInit {
 
     protected overwrite(card: AuditPresetCard): void {
         this.closeMenu(card.preset.id);
-        this.presetsStorage.updatePreset(card.preset.id, { filter_body: buildPresetBody(this.currentFilter()) });
+        this.presetsStorage.updatePreset(card.preset.id, {
+            filter_body: buildPresetBody(this.currentFilter(), this.catalog),
+        });
     }
 
     protected copyQuery(card: AuditPresetCard): void {
@@ -364,8 +369,7 @@ export class AuditPresetsComponent implements OnInit {
             {
                 title: 'Delete preset?',
                 message: `Are you sure you want to delete <strong>${escapeHtml(preset.name)}</strong> preset?`,
-                caution:
-                    "It will <strong>disappear</strong> from your presets list, and the filters and match scope saved in it <strong>will be lost</strong>. You'll have to set them up manually next time.",
+                caution: `It will <strong>disappear</strong> from your presets list, and the ${this.hasMatchScope ? 'filters and match scope' : 'filters'} saved in it <strong>will be lost</strong>. You'll have to set them up manually next time.`,
                 confirmText: 'Delete',
             },
             () => this.presetsStorage.deletePreset(preset.id)
@@ -505,7 +509,7 @@ export class AuditPresetsComponent implements OnInit {
 
     /** Exports as a background job, which outlives this panel; TransferExportService reports how it ends. */
     private exportPresets(ids: number[], onAccepted?: () => void): void {
-        const start = this.transferJobs.startExport('auditFilterPresets', { ids }).pipe(
+        const start = this.presetsStorage.startExport(ids).pipe(
             tap(() => {
                 if (!this.destroyRef.destroyed) {
                     onAccepted?.();
@@ -517,8 +521,8 @@ export class AuditPresetsComponent implements OnInit {
     }
 
     private toCard(preset: AuditPreset): AuditPresetCard {
-        const state = restorePresetState(preset.filter_body);
-        const chips = state === null ? [] : describeAuditFilter(state, this.vocabularies());
+        const state = restorePresetState(preset.filter_body, this.catalog);
+        const chips = state === null ? [] : describeAuditFilter(state, this.catalog, this.vocabularies());
         return {
             preset,
             state,

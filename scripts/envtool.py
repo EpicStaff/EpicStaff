@@ -91,9 +91,17 @@ class Feature(NamedTuple):
 # writes both together so they cannot drift apart.
 FEATURES = (
     Feature("Chat", "CHAT_ENABLED", "chat", ("chat", "chatdb"), ("CHAT_WORKERS", "CHAT_LOG_LEVEL")),
+    # Both audit switches share the auditor stack: its profile is on when either is.
     Feature(
-        "Audit trail",
-        "AUDIT_TRAIL_ENABLED",
+        "Session audit trail",
+        "SESSION_AUDIT_TRAIL_ENABLED",
+        "auditor",
+        ("auditor", "opensearch"),
+        ("AUDITOR_LOG_LEVEL",),
+    ),
+    Feature(
+        "User audit trail",
+        "USER_AUDIT_TRAIL_ENABLED",
         "auditor",
         ("auditor", "opensearch"),
         ("AUDITOR_LOG_LEVEL",),
@@ -126,6 +134,8 @@ GENERATED_SECRETS = (
     "AUDIT_JWT_SECRET",
     "OPENSEARCH_PASSWORD",
     "AVATAR_URL_SIGNING_SECRET",
+    "SECRETS_ENCRYPTION_KEY",
+    "SECRETS_TRANSPORT_KEY",
     "CHAT_INTERNAL_API_KEY",
     *PLUGIN_SECRETS,
 )
@@ -188,16 +198,20 @@ SETUP_ACTIONS = {
     "quit": "Quit",
 }
 SERVER_SIZES = {
-    "small": "Small: 1-3 CPU cores (the defaults)",
-    "medium": "Medium: 4-7 CPU cores",
-    "large": "Large: 8 or more CPU cores",
+    "small": "Small: 1-3 CPUs",
+    "medium": "Medium: 4-7 CPUs",
+    "large": "Large: 8 or more CPUs (Django as in the defaults)",
 }
-# Postgres has ~97 usable connections and the other services take ~40; django_app holds up to
-# DJANGO_SGI_WORKERS x DJANGO_DB_POOL_MAX_SIZE + 4. chatdb is a separate Postgres (6 workers max).
+# crewdb has ~197 usable connections (max_connections=200 in docker-compose.yaml, less 3 for
+# superusers) and the other services take ~50; django_app holds up to DJANGO_SGI_WORKERS x
+# DJANGO_DB_POOL_MAX_SIZE + 8, so at pool 15 it fits 9 workers (test_envtool.py checks every size).
+# chatdb is a separate Postgres with the default max_connections of 100 (6 workers max).
+# Under a burst each session costs Django ~0.11 CPU-seconds and the sandbox ~0.13, so Django
+# needs about 40% of the cores: 3 servers on 4-7 cores leave the sandbox, Postgres and crew room.
 SERVER_SIZE_VALUES = {
     "small": {"DJANGO_SGI_WORKERS": "1", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "1"},
-    "medium": {"DJANGO_SGI_WORKERS": "2", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "2"},
-    "large": {"DJANGO_SGI_WORKERS": "3", "DJANGO_DB_POOL_MAX_SIZE": "12", "CHAT_WORKERS": "4"},
+    "medium": {"DJANGO_SGI_WORKERS": "3", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "2"},
+    "large": {"DJANGO_SGI_WORKERS": "6", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "4"},
 }
 # Sandbox limit -> (description, how long crew waits for the result). Crew must wait longer than
 # the sandbox may run, with room for library installation.
@@ -303,7 +317,9 @@ def feature_values(enabled: dict[str, bool], current_profiles: str, local: bool)
     profiles = [profile for profile in parse_profiles(current_profiles) if profile not in owned]
     if local:
         profiles.append("dev")
-    profiles += [feature.profile for feature in FEATURES if enabled[feature.flag]]
+    for feature in FEATURES:
+        if enabled[feature.flag] and feature.profile not in profiles:
+            profiles.append(feature.profile)
     values = {feature.flag: "true" if enabled[feature.flag] else "false" for feature in FEATURES}
     values["COMPOSE_PROFILES"] = ",".join(profiles) or "none"
     return values
@@ -458,6 +474,7 @@ def update_env_file(
     # utf-8-sig: a byte order mark (Windows editors) would glue onto the first variable name.
     original = env_file.read_bytes().decode("utf-8-sig")
     already_set = set(SET_VARIABLE.findall(original))
+    overrides = {**_split_audit_switch(original), **(overrides or {})}
     added, needs_value, content = [], [], []
     for variables in schema["groups"].values():
         for name, declaration in variables["vars"].items():
@@ -480,6 +497,22 @@ def update_env_file(
         with env_file.open("a", encoding="utf-8", newline=newline) as file:
             file.write(appended + "".join(content))
     return added, needs_value
+
+
+# The single audit switch released before the session and user trails got one each. It
+# only ever audited sessions, so its value carries into the session switch alone; the user
+# trail collects new personal data, so its switch keeps its default and an operator opts in.
+LEGACY_AUDIT_SWITCH = "AUDIT_TRAIL_ENABLED"
+SESSION_AUDIT_SWITCH = "SESSION_AUDIT_TRAIL_ENABLED"
+
+
+def _split_audit_switch(env_text: str) -> dict[str, str]:
+    """The old audit switch's value for the session switch, so an upgrade that audited
+    sessions keeps doing so instead of getting the new switch's `false` default."""
+    legacy_value = read_env_values(env_text).get(LEGACY_AUDIT_SWITCH)
+    if legacy_value is None:
+        return {}
+    return {SESSION_AUDIT_SWITCH: legacy_value}
 
 
 def read_env_values(text: str) -> dict[str, str]:
@@ -605,17 +638,22 @@ class Screen:
         question: str,
         choices: dict[str, str] | None = None,
         validate: Callable[[str], str] | None = None,
+        default: str | None = None,
     ) -> str:
         """Prompt until the answer is usable. `choices` maps each answer to its description and
-        accepts the answer itself or its number."""
+        accepts the answer itself or its number; an empty answer takes `default`, if any."""
         error = None
         while True:
             self.draw(error)
-            print(style(question, BOLD))
+            if default is None:
+                print(style(question, BOLD))
+            else:
+                shown = list(choices).index(default) + 1
+                print(f"{style(question, BOLD)} {style(f'Enter for {shown}', DIM)}")
             if choices:
                 for number, description in enumerate(choices.values(), start=1):
                     print(f"  {style(str(number), CYAN)}  {description}")
-            answer = input(style("> ", CYAN)).strip()
+            answer = input(style("> ", CYAN)).strip() or (default or "")
             if not answer:
                 error = None
                 continue
@@ -716,11 +754,50 @@ def ask_production_values(
         choices=RETENTION_CHOICES,
     )
     values |= dict.fromkeys(RETENTION_DAYS, retention)
+    cpu_count = detect_cpu_count()
+    size = server_size_for(cpu_count)
+    detected = (
+        f"Detected {cpu_count} CPU{'' if cpu_count == 1 else 's'}"
+        if cpu_count
+        else "Could not detect the CPUs"
+    )
+    size_note = (
+        f"{detected}: using the {size.capitalize()} server size "
+        "(change it under advanced settings)."
+    )
+    screen.notes.append(size_note)
     if screen.ask_yes_no(
         "Advanced", "Adjust advanced settings (server size, code time limit, logging)?", False
     ):
-        values |= ask_advanced(screen, schema, enabled)
+        # The operator picks the size now: keep only the part that stays true whatever they pick.
+        screen.notes[screen.notes.index(size_note)] = f"{detected}."
+        values |= ask_advanced(screen, schema, enabled, detected_size=size)
+    else:
+        values |= advanced_values(size, None, None, enabled, schema)
     return values, enabled, serving_mode
+
+
+def detect_cpu_count() -> int | None:
+    """Return the CPUs this process may run on, or None when unknown.
+
+    Counts logical CPUs (hyperthreads included). Uses the affinity mask where the OS has one
+    (Linux, where it also reflects a container's cpuset), else every CPU. A CPU quota
+    (`docker run --cpus`) is not visible this way.
+    """
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            return len(os.sched_getaffinity(0))
+        except OSError:
+            # Some sandboxes refuse the call; the wizard must not fail after all its questions.
+            pass
+    return os.cpu_count()
+
+
+def server_size_for(cpu_count: int | None) -> str:
+    """Return the SERVER_SIZES preset for `cpu_count` CPUs, small when the count is unknown."""
+    if cpu_count is None or cpu_count < 4:
+        return "small"
+    return "medium" if cpu_count < 8 else "large"
 
 
 def advanced_values(
@@ -754,17 +831,25 @@ def advanced_values(
         for name in target_defaults(schema, "prod"):
             if name.endswith("_LOG_LEVEL"):
                 values[name] = log_level
+    kept = {name for feature in FEATURES if enabled[feature.flag] for name in feature.settings}
     for feature in FEATURES:
         if not enabled[feature.flag]:
-            for name in feature.settings:
+            for name in set(feature.settings) - kept:
                 values.pop(name, None)
     return values
 
 
 def ask_advanced(
-    screen: Screen, schema: dict, enabled: dict[str, bool], current: dict[str, str] | None = None
+    screen: Screen,
+    schema: dict,
+    enabled: dict[str, bool],
+    current: dict[str, str] | None = None,
+    detected_size: str | None = None,
 ) -> dict[str, str]:
-    """Ask the three advanced questions; with `current` (an existing file) each can keep its value."""
+    """Ask the three advanced questions; with `current` (an existing file) each can keep its value.
+
+    `detected_size` is the server size an empty answer keeps.
+    """
     keep = {}
     if current is not None:
         workers = f"{current.get('DJANGO_SGI_WORKERS')} Django workers"
@@ -775,7 +860,10 @@ def ask_advanced(
             "log": {"keep": f"Keep current (Django logs at {current.get('DJANGO_LOG_LEVEL')})"},
         }
     size = screen.ask(
-        "Server size", "How big is the server?", choices=keep.get("size", {}) | SERVER_SIZES
+        "Server size",
+        "How big is the server?",
+        choices=keep.get("size", {}) | SERVER_SIZES,
+        default=detected_size,
     )
     code_limit = screen.ask(
         "Code time limit",
@@ -891,7 +979,13 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
     for feature in FEATURES:
         flag_on = old.get(feature.flag, "").strip().lower() in Env.BOOLEAN_TRUE_VALUES
         profile_on = feature.profile in profiles
-        if flag_on != profile_on:
+        # A profile shared by two flags stays on while either flag is on.
+        sibling_on = any(
+            old.get(other.flag, "").strip().lower() in Env.BOOLEAN_TRUE_VALUES
+            for other in FEATURES
+            if other.profile == feature.profile and other is not feature
+        )
+        if flag_on != profile_on and not (profile_on and sibling_on):
             screen.notes.append(
                 f"{feature.label} is out of sync: {feature.flag} is "
                 f"{'on' if flag_on else 'off'} but the {feature.profile} profile is "
@@ -923,9 +1017,13 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
     print(f"{style('✓', GREEN)} Updated {style(str(env_file), BOLD)}")
     commands = ["cd src", "docker compose up -d"]
     for feature in FEATURES:
-        if was_on[feature.flag] and not enabled[feature.flag]:
+        profile_still_on = any(
+            enabled[other.flag] for other in FEATURES if other.profile == feature.profile
+        )
+        stop = f"docker compose stop {' '.join(feature.services)}"
+        if was_on[feature.flag] and not profile_still_on and stop not in commands:
             # `up -d` leaves containers of a deactivated profile running.
-            commands.append(f"docker compose stop {' '.join(feature.services)}")
+            commands.append(stop)
     print_panel("Apply it with", commands)
 
 

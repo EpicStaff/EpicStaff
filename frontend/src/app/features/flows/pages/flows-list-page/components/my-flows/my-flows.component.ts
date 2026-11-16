@@ -25,7 +25,6 @@ import { DragScrollDirective } from '@shared/directives';
 import { BulkDeleteService, LABELS_STORE } from '@shared/services';
 import { filter, switchMap } from 'rxjs/operators';
 
-import { TransferExportService } from '../../../../../../core/services/transfer-export.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import {
@@ -37,7 +36,6 @@ import { FlowRenameDialogComponent } from '../../../../components/flow-rename-di
 import { FlowSessionsListComponent } from '../../../../components/flow-sessions-dialog/flow-sessions-list.component';
 import { GetGraphLightRequest, GraphDto } from '../../../../models/graph.model';
 import { FlowCopyImportFacadeService } from '../../../../services/flow-copy-import-facade.service';
-import { FlowExportOptionsDialogService } from '../../../../services/flow-export-options-dialog.service';
 import { FlowsApiService } from '../../../../services/flows-api.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
@@ -67,8 +65,6 @@ export class MyFlowsComponent implements AfterViewChecked {
     private readonly toastService = inject(ToastService);
     private readonly bulkDeleteService = inject(BulkDeleteService);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
-    private readonly transferExport = inject(TransferExportService);
-    private readonly exportOptionsDialog = inject(FlowExportOptionsDialogService);
     private readonly labelsStorage = inject(LabelsStorageService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly destroyRef = inject(DestroyRef);
@@ -231,7 +227,7 @@ export class MyFlowsComponent implements AfterViewChecked {
                 break;
 
             case 'export':
-                this.exportFlow(flow);
+                this.flowCopyImport.exportFlows([flow.id]);
                 break;
 
             case 'viewDetails':
@@ -284,7 +280,7 @@ export class MyFlowsComponent implements AfterViewChecked {
             providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
-        dialogRef.closed.subscribe((result) => {
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (!result) return;
             this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()).subscribe();
         });
@@ -297,7 +293,7 @@ export class MyFlowsComponent implements AfterViewChecked {
             providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
-        dialogRef.closed.subscribe((newName) => {
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((newName) => {
             if (newName && newName.trim().length > 0) {
                 this.flowCopyImport.copyFlow(flow.id, newName.trim()).subscribe({
                     next: (graph) => {
@@ -375,13 +371,5 @@ export class MyFlowsComponent implements AfterViewChecked {
             last_edited_by: flow.last_edited_by ?? null,
             last_edited_at: flow.last_edited_at ?? null,
         };
-    }
-
-    private exportFlow(flow: GetGraphLightRequest): void {
-        this.exportOptionsDialog
-            .ask(1)
-            // Not tied to this view: an export the user started still downloads after they leave the list.
-            .pipe(switchMap((options) => this.transferExport.exportFlows([flow.id], options.includeKnowledge)))
-            .subscribe();
     }
 }

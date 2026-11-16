@@ -117,8 +117,9 @@ node scripts/generate-third-party-notices.mjs       # regenerate after a depende
 [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) documents the licences of every
 **production** dependency, so it has to be regenerated whenever that set changes. The check
 compares the lockfile hash stamped in the file header, so it needs neither network access nor a
-`license-checker` run. The generator does need network — it fetches `license-checker` through
-`npx`.
+generator run. The generator needs no network either: it reads `package-lock.json` and the
+installed packages, so run `npm ci` first. It stops and names any package whose licence is
+missing, not an SPDX expression, or not on its reviewed lists.
 
 ### Staged files only
 

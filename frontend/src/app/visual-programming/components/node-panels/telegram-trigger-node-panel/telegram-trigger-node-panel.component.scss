@@ -1,4 +1,5 @@
 @use '../../../styles/node-panel-mixins.scss' as mixins;
+@use '../../../../../styles/diff-value-mark' as diff-value-mark;
 
 // Match app-select (app-tooltip) labels to the app-custom-input labels — scoped to this panel only.
 // Anchored to app-select to outrank the tooltip component's own .tooltip-label rule.
@@ -226,3 +227,11 @@
         transform: rotate(360deg);
     }
 }
+
+// Spaced off the field above it, like the recycle-bin note.
+.missing-reference-note {
+    margin-top: 0.5rem;
+}
+
+// Version diff (Changes tab): the picked fields are one value, marked as a whole when a restore changes them.
+@include diff-value-mark.marked-inside('.output-fields__container');

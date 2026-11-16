@@ -43,7 +43,12 @@ class TestAuditFilterPresetExport:
         assert exported.job.display_name == "my preset"
         assert exported.envelope["main_entity"] == EntityType.AUDIT_FILTER_PRESET
         assert exported.envelope[EntityType.AUDIT_FILTER_PRESET] == [
-            {"id": preset.id, "name": preset.name, "filter_body": preset.filter_body}
+            {
+                "id": preset.id,
+                "name": preset.name,
+                "filter_body": preset.filter_body,
+                "domain": "sessions",
+            }
         ]
 
     def test_export_of_an_unknown_id_is_refused(self, auth_client, preset):

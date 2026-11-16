@@ -307,6 +307,19 @@ def test_get_exposes_retention_policy(client_as, admin_acme, acme):
     }
 
 
+@pytest.mark.django_db
+def test_organization_list_carries_effective_retention(client_as, superadmin, acme):
+    store_retention(acme, sessions_days=180, audit_days=0)
+
+    response = client_as(superadmin).get("/api/admin/organizations/")
+
+    assert response.status_code == status.HTTP_200_OK
+    config = next(org for org in response.json()["results"] if org["id"] == acme.id)["config"]
+    assert config["sessions_effective_days"] == 180
+    assert config["conversations_effective_days"] == 90
+    assert config["audit_effective_days"] == 0
+
+
 # ---- audit floor ----
 
 

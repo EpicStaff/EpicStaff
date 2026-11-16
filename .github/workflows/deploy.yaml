@@ -41,7 +41,7 @@ permissions:
 jobs:
   resolve:
     name: Resolve target/ref/tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       server: ${{ steps.r.outputs.server }}
       ref: ${{ steps.r.outputs.ref }}
@@ -111,8 +111,8 @@ jobs:
           REGENERATE_ENV_INPUT: ${{ github.event.inputs.regenerate_env || 'true' }}
         run: |
           set -euo pipefail
-          git config --global --add safe.directory /home/developer/EpicStaff
-          cd /home/developer/EpicStaff
+          git config --global --add safe.directory "$APP_DIR"
+          cd "$APP_DIR"
           git fetch --prune
           git checkout main
           git pull --ff-only origin main
@@ -146,8 +146,8 @@ jobs:
           REGENERATE_ENV_INPUT: ${{ github.event.inputs.regenerate_env }}
         run: |
           set -euo pipefail
-          git config --global --add safe.directory /home/developer/EpicStaff
-          cd /home/developer/EpicStaff
+          git config --global --add safe.directory "$APP_DIR"
+          cd "$APP_DIR"
           git fetch --prune
           git checkout "$BRANCH"
           git pull --ff-only origin "$BRANCH"

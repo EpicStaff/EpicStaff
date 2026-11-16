@@ -25,7 +25,7 @@ import {
     ValidatorFn,
     Validators,
 } from '@angular/forms';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltipModule, TooltipPosition } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     CustomInputComponent,
@@ -37,6 +37,7 @@ import {
     SelectItem,
     TooltipComponent,
     ValidationErrorsComponent,
+    WarningNoteComponent,
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, KEY_VALUE_MODE_COLORS, ResourceCode } from '@shared/models';
@@ -91,19 +92,26 @@ import {
     valuePathHint,
     writeSourcePath,
 } from '../../../core/helpers/key-value-node.helpers';
-import { KeyValueEntry, KeyValueMode } from '../../../core/models/key-value-node.model';
+import { KeyValueEntry, KeyValueMode, KeyValueReadWriteEntry } from '../../../core/models/key-value-node.model';
 import { KeyValueNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { FlowService } from '../../../services/flow.service';
 import { KeyValueEntryDraftsService } from '../../../services/key-value-entry-drafts.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { keyedListRowChanges, linkedEntityFormat, reordersKeyedList } from '../../../utils/diff';
+import { DiffFieldMarkChange, DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
+import { DiffTooltipSide, sideAwayFrom } from '../../diff-field-mark/diff-mark-tooltip.component';
 import { PickerItem } from '../../input-map/var-picker-flat.component';
 import {
     buildVariablePickerItems,
     isPlainEnter,
     VariablePathPicker,
+    variablesDisplayToFormValue,
+    variablesFormValueToDisplay,
     withoutUsedPaths,
 } from '../../input-map/variable-path-picker';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { highlightVariablesHtml } from '../shared/variable-highlight-textarea/highlight-variables';
 import { VariableDropdownOverlayComponent } from '../shared/variable-highlight-textarea/variable-dropdown-overlay/variable-dropdown-overlay.component';
 
@@ -159,6 +167,13 @@ interface EntryFormValue {
     value?: string;
 }
 
+/** What the version diff shows on an entry row: the mark of a changed row, or that a restore adds the row. */
+interface EntryRowMark {
+    /** The variable path on the canvas and in the version; `null` for a row a restore adds. */
+    change: DiffFieldMarkChange | null;
+    added: boolean;
+}
+
 @Component({
     selector: 'app-key-value-node-panel',
     imports: [
@@ -171,6 +186,9 @@ interface EntryFormValue {
         AppSvgIconComponent,
         TooltipComponent,
         NgTemplateOutlet,
+        MissingReferenceNoteComponent,
+        DiffFieldMarkComponent,
+        WarningNoteComponent,
         MatTooltipModule,
         TooltipOnOverflowDirective,
     ],
@@ -238,6 +256,52 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
         return this.selectedTableName() ?? 'Select a table';
     });
     protected readonly keysLabel = computed(() => KEYS_LABEL[this.mode()]);
+    /**
+     * Changes tab of a version preview: what a restore does to each entry, paired with the canvas entries by key.
+     * The entries are diffed as one list, so they are paired here. `null` anywhere else.
+     */
+    private readonly entryRowChanges = computed(() => keyedListRowChanges(this.panelDiff(), 'entries', entryKey));
+    /**
+     * One per entry row, in the version's order (the rows the panel shows): a changed row is marked with its canvas
+     * variable path as its field shows it (`.client`, not `variables.client`), a row only in the version is shown as
+     * added; `null` for a row a restore keeps.
+     */
+    protected readonly entryRowMarks = computed<(EntryRowMark | null)[]>(
+        () =>
+            this.entryRowChanges()?.rows.map((row) => {
+                if (row === null || row.status === 'deleted') return null;
+                if (row.status === 'added') return { change: null, added: true };
+                return {
+                    change: { current: entryDisplayValue(row.current), version: entryDisplayValue(row.version) },
+                    added: false,
+                };
+            }) ?? []
+    );
+    /**
+     * The side of its row the diff tooltip of a changed entry last opened on. Only one is open at a time, and it opens
+     * at once while a field's own tooltip waits for its delay, so the field's tooltip can take the other side.
+     */
+    private readonly entryDiffTooltipSide = signal<DiffTooltipSide>('above');
+    /** The canvas entries the version does not have: a restore removes them. The value as its field shows it. */
+    protected readonly removedEntries = computed(() =>
+        (this.entryRowChanges()?.removed ?? []).map((row) => ({
+            key: row.key,
+            value: entryDisplayValue(row.current) ?? '',
+        }))
+    );
+    /**
+     * Whether a restore puts the entries both sides have in another order (entries run in order). The rows are
+     * paired by key, so their marks cannot show it; a note under the list does.
+     */
+    protected readonly entriesReordered = computed(() => reordersKeyedList(this.panelDiff(), 'entries', entryKey));
+    /** The loaded tables name a changed table in the mark's tooltip; one not loaded (or gone): `table #id`. */
+    protected readonly tableNameFormat = linkedEntityFormat(
+        'table',
+        (id) => this.keyValueTablesStorage.tables().find((table) => table.id === id)?.name
+    );
+    /** The mode as the Mode select names it. */
+    protected readonly modeLabelFormat = (mode: unknown): string =>
+        KEY_VALUE_MODE_LABELS[mode as KeyValueMode] ?? String(mode);
     // Leaves out names a key-value node can't use, such as `user-name` or `_private`.
     private readonly variableItems = computed(() =>
         buildVariablePickerItems(this.flowService.startNodeInitialState()).filter((item) => isStatePath(item.fullPath))
@@ -256,7 +320,12 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
             control?.setValue(path);
             control?.markAsDirty();
         },
-        pathOf: writeSourcePath,
+        pathOf: (displayValue: string) => {
+            const rawPath = writeSourcePath(displayValue);
+            if (!rawPath) return 'variables.';
+            if (rawPath.startsWith('.')) return 'variables' + rawPath;
+            return 'variables.' + rawPath;
+        },
     });
     // The same picker for a `{variables.…` placeholder at a key's caret; any flow variable may go into a key.
     protected readonly keyVariablePicker = new VariablePathPicker({
@@ -267,6 +336,9 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
             openPlaceholderAt(value, input.selectionStart ?? value.length)?.text.trimStart() ?? '',
     });
 
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    /** Where a field's own tooltip opens when nothing asks otherwise, as `matTooltip` takes it. */
+    private readonly defaultTooltipPosition: TooltipPosition = inject(MAT_TOOLTIP_DEFAULT_OPTIONS).position ?? 'below';
     private readonly keyValueTablesApi = inject(KeyValueTablesApiService);
     private readonly keyValueTablesStorage = inject(KeyValueTablesStorageService);
     private readonly permissions = inject(PermissionsService);
@@ -545,6 +617,44 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     protected onValueKeydown(entryIndex: number, event: KeyboardEvent): void {
         this.variablePicker.onKeydown(entryIndex, event);
         this.moveOnEnter(entryIndex, event);
+    }
+
+    protected onValueInput(entryIndex: number, event: Event): void {
+        const input = event.target as HTMLInputElement;
+        const valueCtrl = this.entries.at(entryIndex).get('value');
+        valueCtrl?.setValue(variablesDisplayToFormValue(input.value), { emitEvent: true });
+        valueCtrl?.markAsDirty();
+        this.variablePicker.onInput(entryIndex, event);
+    }
+
+    protected onValueBlur(entryIndex: number, event: FocusEvent): void {
+        this.entries.at(entryIndex).get('value')?.markAsTouched();
+        this.variablePicker.onBlur(entryIndex, event);
+    }
+
+    protected onEntryDiffTooltipSide(side: DiffTooltipSide): void {
+        this.entryDiffTooltipSide.set(side);
+    }
+
+    /**
+     * Where the Key and Variable path fields of a row show their own tooltips: where every tooltip opens, and on a
+     * changed row (Changes tab) on the other side of the row from the row's diff tooltip, so the two never cover
+     * each other.
+     */
+    protected entryFieldTooltipPosition(entryIndex: number): TooltipPosition {
+        return this.entryRowMarks()[entryIndex]?.change
+            ? sideAwayFrom(this.entryDiffTooltipSide())
+            : this.defaultTooltipPosition;
+    }
+
+    /** Returns the portion of the form value to show in the display input (strips the `variables` prefix). */
+    protected getValueDisplayText(entryIndex: number): string {
+        return variablesFormValueToDisplay((this.entries.at(entryIndex).get('value')?.value ?? '') as string);
+    }
+
+    protected isValueInvalid(entryIndex: number): boolean {
+        const ctrl = this.entries.at(entryIndex).get('value');
+        return (ctrl?.invalid ?? false) && (ctrl?.touched ?? false);
     }
 
     protected isKeyListOpen(entryIndex: number): boolean {
@@ -1002,4 +1112,19 @@ function canvasSummary(form: FormGroup): string {
     // Empty rows are not saved, so they don't count toward the canvas key count.
     const keyCount = entries.filter((entry) => !isEmptyEntry(entry)).length;
     return JSON.stringify([mode, key_value_table, keyCount]);
+}
+
+/** An entry's variable path; a delete entry has none. */
+function entryKey(entry: unknown): string {
+    return (entry as KeyValueEntry).key;
+}
+
+function entryValue(entry: unknown): string | null {
+    return (entry as Partial<KeyValueReadWriteEntry>).value ?? null;
+}
+
+/** An entry's variable path as its value field shows it; `null` when it has none. */
+function entryDisplayValue(entry: unknown): string | null {
+    const value = entryValue(entry);
+    return value === null ? null : variablesFormValueToDisplay(value);
 }

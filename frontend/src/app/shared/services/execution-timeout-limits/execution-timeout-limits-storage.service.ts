@@ -1,5 +1,5 @@
 import { inject, Injectable, signal, untracked } from '@angular/core';
-import { ExecutionTimeoutLimits } from '@shared/models';
+import { effectiveExecutionTimeoutSeconds, ExecutionTimeoutLimits } from '@shared/models';
 import { finalize, map, Observable, of, shareReplay, tap } from 'rxjs';
 
 import { StorageService } from '../storage-service.interface';
@@ -57,9 +57,7 @@ export class ExecutionTimeoutLimitsStorageService implements StorageService {
      * without one its default, and caps a longer one at the maximum.
      */
     public secondsToRun(storedSeconds: number | undefined): number {
-        const { defaultSeconds, maxSeconds } = this.limits();
-        const seconds = storedSeconds ?? defaultSeconds;
-        return maxSeconds === null ? seconds : Math.min(seconds, maxSeconds);
+        return effectiveExecutionTimeoutSeconds(storedSeconds, this.limits());
     }
 
     public clear(): void {

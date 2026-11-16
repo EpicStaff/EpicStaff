@@ -1,32 +1,6 @@
-from agents.services.surface_content_service import SurfaceContentModels
+from agents.services.surface_content_service import SurfaceContentModels, SurfaceContentService
 from django.core.exceptions import ObjectDoesNotExist
 from tables.models import AgentNode, AgentNodeTask
-from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
-
-# SurfaceKnowledge's optional one-to-one search configs use the same
-# related_name on every inline-surface family; `content_attr` picks the
-# matching model class off the SurfaceContentModels bundle.
-_SEARCH_CONFIG_RELATED_NAMES = (
-    ("naive_search_config", "naive_config"),
-    ("graph_basic_search_config", "graph_basic_config"),
-    ("graph_local_search_config", "graph_local_config"),
-    ("graph_global_search_config", "graph_global_config"),
-    ("graph_drift_search_config", "graph_drift_config"),
-)
-
-
-def _copy_field_values(instance, exclude: set[str]) -> dict:
-    """Return {field_name: value} for concrete, non-pk fields not in `exclude`.
-
-    The soft-delete state is never copied: a copy starts live.
-    """
-    return {
-        field.name: getattr(instance, field.name)
-        for field in instance._meta.concrete_fields
-        if not field.primary_key
-        and field.name not in exclude
-        and field.name not in SOFT_DELETE_FIELD_NAMES
-    }
 
 
 def copy_node_inline_surface(
@@ -51,50 +25,9 @@ def copy_node_inline_surface(
         instructions=source_surface.instructions,
         **{node_fk_name: new_node},
     )
-
-    source_owner = {content.parent_field: source_surface}
-    new_owner = {content.parent_field: new_surface}
-
-    for tool in content.python_tool.objects.filter(**source_owner):
-        content.python_tool.objects.create(
-            python_tool=tool.python_tool, mode=tool.mode, **new_owner
-        )
-
-    for tool in content.mcp_tool.objects.filter(**source_owner):
-        content.mcp_tool.objects.create(mcp_tool=tool.mcp_tool, mode=tool.mode, **new_owner)
-
-    new_org_id = new_node.graph.org_id
-    for item in content.storage_item.objects.filter(**source_owner):
-        if item.storage_file.org_id != new_org_id:
-            continue
-        content.storage_item.objects.create(
-            storage_file=item.storage_file,
-            can_list=item.can_list,
-            can_view=item.can_view,
-            can_edit=item.can_edit,
-            can_delete=item.can_delete,
-            **new_owner,
-        )
-
-    for knowledge in content.knowledge.objects.filter(**source_owner):
-        new_knowledge = content.knowledge.objects.create(
-            collection=knowledge.collection, **new_owner
-        )
-        _copy_knowledge_search_configs(knowledge, new_knowledge, content)
-
-
-def _copy_knowledge_search_configs(
-    source_knowledge, new_knowledge, content: SurfaceContentModels
-) -> None:
-    for related_name, content_attr in _SEARCH_CONFIG_RELATED_NAMES:
-        try:
-            config = getattr(source_knowledge, related_name)
-        except ObjectDoesNotExist:
-            continue
-
-        config_model = getattr(content, content_attr)
-        values = _copy_field_values(config, exclude={"surface_knowledge"})
-        config_model.objects.create(surface_knowledge=new_knowledge, **values)
+    SurfaceContentService.copy_content(
+        source_surface, new_surface, content, org_id=new_node.graph.org_id
+    )
 
 
 def copy_agent_node_tasks(source_node: AgentNode, new_node: AgentNode) -> None:

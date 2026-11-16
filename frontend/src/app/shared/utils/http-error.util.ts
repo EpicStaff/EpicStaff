@@ -151,7 +151,7 @@ function collectValidationMessages(node: unknown): string[] {
 }
 
 /** Dedupe messages, cap to 3, and append "…and N more" for the remainder. */
-function joinErrorMessages(messages: string[]): string {
+export function joinErrorMessages(messages: readonly string[]): string {
     const unique = Array.from(new Set(messages));
     const MAX = 3;
     if (unique.length <= MAX) return unique.join('; ');

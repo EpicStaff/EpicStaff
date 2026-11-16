@@ -22,13 +22,24 @@ import {
 import { SecretsStorageService } from '@shared/services';
 
 import { ToastService } from '../../../services/notifications';
+import { FieldName } from '../../utils/diff';
+import { MissingReferenceNoteComponent } from '../missing-reference-note/missing-reference-note.component';
+
+/** The diff fields that hold a code's secret names: Python and webhook code, and the two table computations. */
+type SecretsDiffField = Extract<FieldName, `${string}.secret_names`>;
 
 /** A "Secrets" field (label + input-styled trigger + multi-select dropdown) for node side
  *  panels — lets a node reference multiple secrets by id. Reused across Python/Webhook/CDT/
  *  Telegram node panels instead of duplicating the trigger+dropdown wiring in each one. */
 @Component({
     selector: 'app-node-secrets-field',
-    imports: [AppSvgIconComponent, BinnedSecretNoteComponent, HelpTooltipComponent, MultiSelectComponent],
+    imports: [
+        AppSvgIconComponent,
+        BinnedSecretNoteComponent,
+        HelpTooltipComponent,
+        MissingReferenceNoteComponent,
+        MultiSelectComponent,
+    ],
     templateUrl: './node-secrets-field.component.html',
     styleUrls: ['./node-secrets-field.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -48,6 +59,8 @@ export class NodeSecretsFieldComponent {
     /** Dropdown width — narrow panels (e.g. CDT's 350px sidebar) need a smaller value than
      *  the 390px default so the panel doesn't overflow past the field's own column. */
     public readonly panelWidth = input<string>('390px');
+    /** The diff field these secrets are, for the note on the Changes tab of a version preview about deleted ones. */
+    public readonly diffField = input<SecretsDiffField | null>(null);
 
     private readonly trigger = viewChild<ElementRef<HTMLButtonElement>>('trigger');
     public readonly multiSelectRef = viewChild<MultiSelectComponent>('multiSelect');

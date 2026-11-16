@@ -32,6 +32,7 @@ import { filter, map } from 'rxjs/operators';
 import { GuidedTourService } from '../../../core/guided-tour';
 import { AppNavigationDrawerService } from '../../../core/services/app-navigation-drawer.service';
 import { TransferJobsStoreService } from '../../../core/services/transfer-jobs-store.service';
+import { auditTabsFor } from '../../../features/audit/guards/audit-domain-enabled.guard';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../features/create-agent-tour/create-agent-tour-anchors';
 import { AppsListComponent } from '../../../features/plugins/components/apps-list/apps-list.component';
@@ -145,8 +146,8 @@ export class LeftSidebarComponent {
     /** The open/close control was used; the owner of the width decides the new one. */
     public readonly expandedToggle = output<void>();
 
-    /** The open popover's focus trap: Apps, the app switcher or Help. */
-    private readonly appsListFocusTrap = viewChild('appsListTrap', { read: CdkTrapFocus });
+    /** The open popover's focus trap: Apps, the app switcher, Help or Jobs. At most one popover is open at a time. */
+    private readonly popoverFocusTrap = viewChild('popoverTrap', { read: CdkTrapFocus });
 
     // Declared ahead of the state, whose initializers read the apps through it.
     private readonly appNavigation = inject(AppNavigationService);
@@ -356,9 +357,7 @@ export class LeftSidebarComponent {
                 activePaths: ['/audit'],
                 icon: 'audit',
                 label: 'Audit',
-                isPermitted: () =>
-                    this.configService.isAuditTrailEnabled &&
-                    this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
+                isPermitted: () => auditTabsFor(this.configService, this.permissionService).length > 0,
                 separatedAbove: true,
             },
         ];
@@ -466,7 +465,7 @@ export class LeftSidebarComponent {
 
     /** A popover takes the focus on its search field when it has one, else on its first item. */
     protected focusOpenedPopover(): void {
-        afterNextRender(() => this.appsListFocusTrap()?.focusTrap.focusFirstTabbableElement(), {
+        afterNextRender(() => this.popoverFocusTrap()?.focusTrap.focusFirstTabbableElement(), {
             injector: this.injector,
         });
     }

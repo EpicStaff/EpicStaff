@@ -31,6 +31,7 @@ from tables.serializers.transfer_job_serializers import (
 from tables.services.transfer_jobs.archive_store import TransferArchiveStore
 from tables.services.transfer_jobs.export_definitions import export_definition
 from tables.services.transfer_jobs.job_service import TransferJobService
+from user_audit.read_only import reads_only
 
 TICKET_QUERY_PARAM = "ticket"
 
@@ -141,6 +142,7 @@ class TransferJobViewSet(OrgScopedResolverMixin, viewsets.GenericViewSet):
         ),
     )
     @action(detail=True, methods=["post"], url_path="download-ticket")
+    @reads_only
     def download_ticket(self, request, pk=None):
         job = self.get_object()
         api_key_org_id = user_api_key_org_id(request)
@@ -249,7 +251,7 @@ def _assert_downloadable(job: TransferJob, user, api_key_org_id: int | None) -> 
     assert_row_org_permission(
         user,
         job.org_id,
-        definition.resource_type,
+        definition.resource_type_for(job.request),
         definition.permission,
         not_found=NotFound(),
         api_key_org_id=api_key_org_id,

@@ -38,8 +38,9 @@ import { map, merge, startWith } from 'rxjs';
 import { ToastService } from '../../../../services/notifications';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-dialogs/llm-model-selector/llm-model-selector.component';
 import { RealtimeConfigFormComponent } from '../realtime-config-form/realtime-config-form.component';
+import { SystemOneConfigFormComponent } from '../system-one-config-form/system-one-config-form.component';
 
-export type ConfigTab = 'llm' | 'realtime' | 'embedding';
+export type ConfigTab = 'llm' | 'realtime' | 'embedding' | 'system_one';
 
 const DUPLICATE_EMBEDDING_NAME_MESSAGE =
     'An embedding configuration with this name already exists. Please choose a different name.';
@@ -65,12 +66,14 @@ const DUPLICATE_EMBEDDING_NAME_MESSAGE =
         LlmReasoningEffortFieldComponent,
         EnterSubmitDirective,
         RealtimeConfigFormComponent,
+        SystemOneConfigFormComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AddConfigurationDialogComponent implements OnInit {
     private readonly reasoningEffortField = viewChild(LlmReasoningEffortFieldComponent);
     private readonly realtimeForm = viewChild(RealtimeConfigFormComponent);
+    private readonly systemOneForm = viewChild(SystemOneConfigFormComponent);
 
     private readonly fb = inject(FormBuilder);
     private readonly destroyRef = inject(DestroyRef);
@@ -87,12 +90,24 @@ export class AddConfigurationDialogComponent implements OnInit {
     isSubmitting = signal(false);
     /** The server's refusal of the last LLM or embedding save; the realtime form keeps its own. */
     errorMessage = signal<string | null>(null);
-    // The realtime tab's form saves itself; its progress counts as this dialog's.
-    protected readonly isSaving = computed(() => this.isSubmitting() || (this.realtimeForm()?.isSubmitting() ?? false));
-    // One banner for the dialog, showing the active tab's error.
-    protected readonly bannerMessage = computed(() =>
-        this.activeTab() === 'realtime' ? (this.realtimeForm()?.errorMessage() ?? null) : this.errorMessage()
+    // The realtime and System One tabs' forms save themselves; their progress counts as this dialog's.
+    protected readonly isSaving = computed(
+        () =>
+            this.isSubmitting() ||
+            (this.realtimeForm()?.isSubmitting() ?? false) ||
+            (this.systemOneForm()?.isSubmitting() ?? false)
     );
+    // One banner for the dialog, showing the active tab's error.
+    protected readonly bannerMessage = computed(() => {
+        switch (this.activeTab()) {
+            case 'realtime':
+                return this.realtimeForm()?.errorMessage() ?? null;
+            case 'system_one':
+                return this.systemOneForm()?.errorMessage() ?? null;
+            default:
+                return this.errorMessage();
+        }
+    });
     // Saving before the LLM model is known would send reasoning_effort as null instead of the chosen value.
     readonly isLlmModelResolving = computed(
         () => this.activeTab() === 'llm' && (this.reasoningEffortField()?.resolving() ?? false)
@@ -105,6 +120,8 @@ export class AddConfigurationDialogComponent implements OnInit {
                 return 'Add Voice';
             case 'embedding':
                 return 'Add Embedding';
+            case 'system_one':
+                return 'Add System One';
         }
     });
 
@@ -226,6 +243,9 @@ export class AddConfigurationDialogComponent implements OnInit {
                 break;
             case 'embedding':
                 this.submitEmbedding();
+                break;
+            case 'system_one':
+                this.systemOneForm()?.submit();
                 break;
         }
     }

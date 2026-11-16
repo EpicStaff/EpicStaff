@@ -173,6 +173,12 @@ describe('TransferJobsPanelComponent', () => {
         );
     });
 
+    it('says an export of agents holds agents', () => {
+        answerList(job({ id: 'agents', main_entity: 'AgentDefinition', display_name: '3 agents' }));
+
+        expect(row('3 agents').textContent).toContain('Export · Agents');
+    });
+
     describe('status', () => {
         const QUEUED_EXPORT = job({ ...RUNNING_EXPORT, id: 'queued', status: 'queued', display_name: 'Waiting' });
 

@@ -18,7 +18,6 @@ from rbac.views.auth import (
     PasswordResetRequestView,
     ResetUserView,
     SseTicketView,
-    SwaggerTokenView,
     TokenIntrospectView,
     WsTicketView,
 )
@@ -75,7 +74,6 @@ urlpatterns = [
         AdminPasswordResetView.as_view(),
         name="admin_password_reset",
     ),
-    path("api/auth/swagger-token/", SwaggerTokenView.as_view(), name="swagger_token"),
     path("api/profile/", ProfileView.as_view(), name="profile"),
     path(
         "api/profile/avatar/",

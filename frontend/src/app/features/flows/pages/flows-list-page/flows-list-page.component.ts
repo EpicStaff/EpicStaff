@@ -46,6 +46,7 @@ import {
 import {
     buildPreviewImportResult,
     enrichImportResult,
+    escapeHtml,
     exportEnvelopeFile,
     ExportFileFormat,
     ImportFileData,
@@ -76,7 +77,6 @@ import {
     toFileNodeId,
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
-import { TransferExportService } from '../../../../core/services/transfer-export.service';
 import {
     describeTransferError,
     IMPORT_WITHOUT_SUMMARY_MESSAGE,
@@ -92,7 +92,6 @@ import { ImportReviewDialogComponent } from '../../components/import-review-dial
 import { EMPTY_FLOWS_FILTER, FlowsFilterState, FlowSortOrder } from '../../models/flow-filter.model';
 import { GraphDto } from '../../models/graph.model';
 import { FlowCopyImportFacadeService } from '../../services/flow-copy-import-facade.service';
-import { FlowExportOptionsDialogService } from '../../services/flow-export-options-dialog.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
@@ -151,8 +150,6 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private importExportService = inject(ImportExportService);
     private flowCopyImport = inject(FlowCopyImportFacadeService);
     private transferJobs = inject(TransferJobsService);
-    private transferExport = inject(TransferExportService);
-    private exportOptionsDialog = inject(FlowExportOptionsDialogService);
     private toastService = inject(ToastService);
     private labelsStorage = inject(LabelsStorageService);
     private importFlowSettings = inject(ImportFlowSettingsService);
@@ -230,7 +227,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     }
 
     public readonly deleteMessageForLabel = (label: LabelTreeNode): string => {
-        return `Are you sure you want to delete <strong>${label.name}</strong> label? This will remove it from all flows and sublabels.`;
+        return `Are you sure you want to delete <strong>${escapeHtml(label.name)}</strong> label? This will remove it from all flows and sublabels.`;
     };
 
     public readonly deleteCautionForLabel = (label: LabelTreeNode): string | undefined => {
@@ -422,7 +419,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
-        dialogRef.closed.subscribe((result: GraphDto | undefined) => {
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result: GraphDto | undefined) => {
             if (result) {
                 this.router.navigate(['/flows', result.id]);
             }
@@ -435,6 +432,11 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     public closeImportOptions(): void {
         this.importOptionsOpen.set(false);
+    }
+
+    public onImportFromOptions(): void {
+        this.closeImportOptions();
+        this.onImportClick();
     }
 
     public onImportClick(): void {
@@ -622,14 +624,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             return;
         }
 
-        this.exportOptionsDialog
-            .ask(ids.length)
-            .pipe(
-                tap(() => this.flowStorageService.setSelectMode(false)),
-                // Not tied to this page: an export the user started still downloads after they leave it.
-                switchMap((options) => this.transferExport.exportFlows(ids, options.includeKnowledge))
-            )
-            .subscribe();
+        this.flowCopyImport.exportFlows(ids, () => this.flowStorageService.setSelectMode(false));
     }
 
     public deleteSelectedFlows(): void {

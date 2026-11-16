@@ -10,6 +10,7 @@ import {
 } from '../../../../features/flows/models/graph-version-preview.model';
 import { usableNodeNumberOrNull } from '../../../core/helpers/node-number.util';
 import { FlowModel } from '../../../core/models/flow.model';
+import { NodeIdentityDto } from '../../../core/models/node-identity.model';
 import { buildFlowModelFromGraphDto } from '../build-flow-model-from-graph-dto';
 import {
     buildScheduleBlock,
@@ -65,12 +66,12 @@ interface AdapterContext {
     secretDeclarations: SnapshotSecretDeclarations | undefined;
 }
 
-/** Authorship is added to every node in `adaptNode`, so an adapter leaves it out. */
+/** Authorship and the node uuid are added to every node in `adaptNode`, so an adapter leaves them out. */
 type SnapshotNodeAdapters = {
     [TNodeType in SnapshotNodeType]: (
         node: SnapshotNodeOfType<TNodeType>,
         context: AdapterContext
-    ) => Omit<NodeListItem<(typeof SNAPSHOT_NODE_LIST_KEY)[TNodeType]>, keyof AuthorshipFields>;
+    ) => Omit<NodeListItem<(typeof SNAPSHOT_NODE_LIST_KEY)[TNodeType]>, keyof AuthorshipFields | keyof NodeIdentityDto>;
 };
 
 /**
@@ -187,7 +188,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
 /**
  * Turns a stored version snapshot (export format) into the live GraphDto shape, so the preview
  * goes through exactly the same loaders as the live canvas. Pure: `secretsByName` (the
- * organisation's current secrets) is passed in. Node types this build does not know are skipped.
+ * declared names the backend resolved, the preview's `resolved_secrets`) is passed in. Node types this build does not know are skipped.
  */
 export function mapSnapshotToGraphDto(
     snapshot: GraphVersionSnapshot,
@@ -221,24 +222,24 @@ export function mapSnapshotToGraphDto(
 /**
  * The canvas model for a version preview: snapshot → GraphDto → the live post-load pipeline, then
  * every node is detached from the backend (`backendId: null`) so no panel fetches or polls live
- * data. `snapshotIdToNodeUuid` maps snapshot node ids to canvas node ids (for warnings that point
+ * data. `snapshotIdToCanvasId` maps snapshot node ids to canvas node ids (for warnings that point
  * at a node).
  */
 export function buildPreviewFlowModel(
     snapshot: GraphVersionSnapshot,
     secretsByName: ReadonlyMap<string, number>,
     availableFlows: readonly Pick<GetGraphLightRequest, 'id'>[]
-): { flow: FlowModel; snapshotIdToNodeUuid: Map<number, string> } {
+): { flow: FlowModel; snapshotIdToCanvasId: Map<number, string> } {
     const loadedFlow = buildFlowModelFromGraphDto(mapSnapshotToGraphDto(snapshot, secretsByName), availableFlows);
 
-    const snapshotIdToNodeUuid = new Map<number, string>();
+    const snapshotIdToCanvasId = new Map<number, string>();
     for (const node of loadedFlow.nodes) {
-        if (node.backendId !== null) snapshotIdToNodeUuid.set(node.backendId, node.id);
+        if (node.backendId !== null) snapshotIdToCanvasId.set(node.backendId, node.id);
     }
 
     return {
         flow: { ...loadedFlow, nodes: loadedFlow.nodes.map((node) => ({ ...node, backendId: null })) },
-        snapshotIdToNodeUuid,
+        snapshotIdToCanvasId,
     };
 }
 
@@ -249,11 +250,11 @@ export function buildPreviewFlowModel(
  */
 export function mapNodeAuthorshipToCanvas(
     nodeAuthorship: Readonly<Record<string, SnapshotNodeAuthorship>>,
-    snapshotIdToNodeUuid: ReadonlyMap<number, string>
+    snapshotIdToCanvasId: ReadonlyMap<number, string>
 ): Map<string, SnapshotNodeAuthorship> {
     const authorshipByNodeId = new Map<string, SnapshotNodeAuthorship>();
     for (const [snapshotNodeId, authorship] of Object.entries(nodeAuthorship)) {
-        const nodeId = snapshotIdToNodeUuid.get(Number(snapshotNodeId));
+        const nodeId = snapshotIdToCanvasId.get(Number(snapshotNodeId));
         if (nodeId === undefined) continue;
         authorshipByNodeId.set(nodeId, {
             created_by: authorship.created_by ?? null,
@@ -267,7 +268,8 @@ export function mapNodeAuthorshipToCanvas(
 
 function adaptNode(node: SnapshotNode, context: AdapterContext): unknown {
     const adapter = SNAPSHOT_NODE_ADAPTERS[node.node_type] as (node: SnapshotNode, context: AdapterContext) => object;
-    const adapted = { ...adapter(node, context), ...NO_AUTHORSHIP };
+    const identity: NodeIdentityDto = { uuid: node.uuid ?? null };
+    const adapted = { ...adapter(node, context), ...identity, ...NO_AUTHORSHIP };
     return 'node_number' in adapted
         ? { ...adapted, node_number: usableNodeNumberOrNull(adapted.node_number) }
         : adapted;

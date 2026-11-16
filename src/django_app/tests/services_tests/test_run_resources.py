@@ -75,6 +75,25 @@ class World:
             org=self.org,
         )
 
+    def typesafe_config(self):
+        return self.make(
+            "tables.SystemOneConfig",
+            custom_name=self.name("typesafe"),
+            provider="typesafe",
+            model_name="jev-1.14.0",
+            api_key_secret=self.secret(),
+            org=self.org,
+        )
+
+    def llm_backed_system_one_config(self):
+        return self.make(
+            "tables.SystemOneConfig",
+            custom_name=self.name("llm-backed"),
+            provider="llm",
+            llm_config=self.llm_config(),
+            org=self.org,
+        )
+
     def embedding_config(self):
         model = self.make("tables.EmbeddingModel", name=self.name("embedding"), org=self.org)
         return self.make(
@@ -277,6 +296,14 @@ class World:
             prompt_key="route",
             llm_config=self.llm_config(),
         )
+        for config in (self.typesafe_config(), self.llm_backed_system_one_config()):
+            self.make(
+                "tables.ClassificationDecisionTablePrompt",
+                cdt_node=table,
+                prompt_key=self.name("ask"),
+                kind="system_one",
+                system_one_config=config,
+            )
         section = self.make(
             "tables.ClassificationConditionGroupSection",
             id=uuid.uuid4(),

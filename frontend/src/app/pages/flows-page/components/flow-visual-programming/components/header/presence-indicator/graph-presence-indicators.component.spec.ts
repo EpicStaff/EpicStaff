@@ -34,8 +34,7 @@ describe('GraphPresenceIndicatorsComponent', () => {
 
         expect(element.querySelector('img')).toBeNull();
         expect(avatar.textContent?.trim()).toBe('IB');
-        expect(avatar.style.backgroundColor).toBeTruthy();
-        expect(avatar.style.backgroundColor).not.toBe('transparent');
+        expect(avatar.style.getPropertyValue('--avatar-color')).toBeTruthy();
     });
 
     it('shows the image again when the same editor arrives with a fresh avatar link', () => {

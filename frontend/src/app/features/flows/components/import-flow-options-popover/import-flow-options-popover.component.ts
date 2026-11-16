@@ -1,13 +1,13 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { CdkOverlayOrigin, OverlayModule } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
-import { HelpTooltipComponent } from '@shared/components';
+import { ButtonComponent, HelpTooltipComponent } from '@shared/components';
 
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 
 @Component({
     selector: 'app-import-flow-options-popover',
-    imports: [OverlayModule, CdkTrapFocus, HelpTooltipComponent],
+    imports: [OverlayModule, CdkTrapFocus, HelpTooltipComponent, ButtonComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './import-flow-options-popover.component.html',
     styleUrl: './import-flow-options-popover.component.scss',
@@ -16,6 +16,7 @@ export class ImportFlowOptionsPopoverComponent {
     @Input({ required: true }) public origin!: CdkOverlayOrigin;
     @Input() public open = false;
     @Output() public readonly closed = new EventEmitter<void>();
+    @Output() public readonly importRequested = new EventEmitter<void>();
 
     private readonly settingsService = inject(ImportFlowSettingsService);
     public readonly settings = this.settingsService.settings;
@@ -59,5 +60,9 @@ export class ImportFlowOptionsPopoverComponent {
 
     public close(): void {
         this.closed.emit();
+    }
+
+    public requestImport(): void {
+        this.importRequested.emit();
     }
 }

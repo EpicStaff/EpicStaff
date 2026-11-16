@@ -7,7 +7,6 @@ collection/s3 carried-not-resolved semantics, and multi-agent pool sharing.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -21,6 +20,7 @@ from app.exceptions import (
 from app.resources.resolver import AgentResolver
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolDescription, McpToolGateway
+from mcp.types import Tool
 from shared.models.agent_service import (
     AgentRequest,
     AgentSpec,
@@ -49,6 +49,7 @@ from shared.models.tools import (
     PythonCodeToolData,
 )
 from tests.cancellation import never_cancelled
+from tests.secret_sealing import agent_cryptographer
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -230,10 +231,10 @@ async def test_mcp_tool_ref_resolves_to_registry():
 async def test_mcp_tool_schema_reaches_the_model_cleaned():
     """The registered spec, which is what the model receives, carries the external
     server's input schema without control characters and with free text capped."""
-    server_tool = SimpleNamespace(
+    server_tool = Tool(
         name="mcp_tool",
         description="Searches the web.",
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {
                 "query": {
@@ -249,7 +250,7 @@ async def test_mcp_tool_schema_reaches_the_model_cleaned():
     client.list_tools = AsyncMock(return_value=[server_tool])
     factory = MagicMock(spec=FastMCPClientFactory)
     factory.create.return_value = client
-    gateway = McpToolGateway(factory, describe_cache_ttl_s=300)
+    gateway = McpToolGateway(factory, agent_cryptographer(), describe_cache_ttl_s=300)
     agent = _agent_spec(tool_refs=["mcp-tool:4"])
     request = _request([agent], tools=[_base_tool("mcp-tool:4", _mcp_tool_data("mcp_tool"))])
 

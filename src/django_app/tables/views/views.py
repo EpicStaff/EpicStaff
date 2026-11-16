@@ -21,17 +21,19 @@ from rbac.access.principals import user_api_key_org_id
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.fields import resolve_active_org_id
 from rbac.scoping.mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedServiceViewSetMixin,
 )
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.settings import api_settings
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
+from src.shared.models import UserAction
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
 from tables.exceptions import (
@@ -79,6 +81,7 @@ from tables.serializers.transfer_job_serializers import (
 )
 from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.converter_service import ConverterService
+from tables.services.knowledge_services.collection_last_edit import record_rag_change
 from tables.services.knowledge_services.indexing_service import IndexingService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.notification_email_sender import NotificationEmailSender
@@ -145,6 +148,9 @@ from tables.swagger_schemas.telegram_schemas import (
 from tables.throttles import NotifyEmailThrottle
 from tables.utils.telegram_fields import load_telegram_trigger_fields
 from tables.views.mixins import ExportJobActionMixin
+from user_audit.context import mark_request_handled
+from user_audit.read_only import not_a_user_change, reads_only
+from user_audit.recorder import record_user_action
 from utils.graph_utils import runtime_node_name
 from utils.logger import logger
 
@@ -286,17 +292,24 @@ class SessionViewSet(
         # sub-sessions removed by the parent_session cascade. The row lock keeps a
         # concurrent delete from removing a selected session before ours runs, so
         # the count matches what this request deleted.
+        org_id = self.get_active_org_id()
+        # Each deleted session records itself; a request that deleted none records nothing.
+        mark_request_handled()
         with transaction.atomic():
-            owned_session_ids = list(
-                Session.objects.visible_in_org(self.get_active_org_id())
+            owned_sessions = list(
+                Session.objects.visible_in_org(org_id)
                 .select_for_update(of=("self",))
                 .filter(id__in=ids)
+                .select_related("graph")
+                # Only what the record names: a session's JSON columns can be large.
+                .only("id", "graph__name")
                 .order_by("id")
-                .values_list("id", flat=True)
             )
-            Session.objects.filter(id__in=owned_session_ids).delete()
+            for session in owned_sessions:
+                record_user_action(action=UserAction.DELETED, org_id=org_id, target=session)
+            Session.objects.filter(id__in=[session.id for session in owned_sessions]).delete()
 
-        return Response({"deleted": len(owned_session_ids), "ids": ids}, status=status.HTTP_200_OK)
+        return Response({"deleted": len(owned_sessions), "ids": ids}, status=status.HTTP_200_OK)
 
     @extend_schema(**SESSION_WARNINGS_GET)
     @action(detail=True, methods=["get"], url_path="warnings")
@@ -321,6 +334,7 @@ class SessionViewSet(
 
 class RunSession(APIView):
     @extend_schema(**RUN_SESSION_POST)
+    @not_a_user_change
     def post(self, request):
         request_received_ts = time.time()
         logger.info("Received POST request to start a new session.")
@@ -415,9 +429,16 @@ class RunSession(APIView):
         except RunAdmissionRefusedError:
             # A refusal is the caller's answer (409), not a failure to start.
             raise
-        except Exception as e:
-            logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
-            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
+        except APIException as error:
+            # The run path raises its domain errors as APIExceptions. Any 4xx one (such as a
+            # flow without an entry point, an undeclared secret or a deleted LLM provider)
+            # keeps the existing 400 with its message in `error`. A 5xx one, like any other
+            # exception, goes to the global handler, which answers without the internal text
+            # (503 for an exhausted database pool).
+            if status.is_server_error(error.status_code):
+                raise
+            logger.warning("Session for graph_id {} not started: {}", graph_id, error)
+            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(error)})
 
         return Response(
             data={"session_id": session_id},
@@ -440,6 +461,7 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
     _NODE_ORG_PATH = "graph__org_id"
 
     @extend_schema(**RUN_SESSION_TEST_POST)
+    @not_a_user_change
     def post(self, request):
         # A test run starts a session, so it needs FLOWS.USE; it also executes the
         # node's stored code with a payload the caller wrote, a contributor-level
@@ -493,6 +515,7 @@ class GetUpdates(APIView):
 
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
+    @not_a_user_change
     def post(self, request, *args, **kwargs):
         session = get_accessible_session(
             request.user,
@@ -527,6 +550,7 @@ class NotifyEmailView(APIView):
         summary="Send a notification email",
         request=NotifyEmailSerializer,
     )
+    @not_a_user_change
     def post(self, request, *args, **kwargs):
         serializer = NotifyEmailSerializer(data=request.data)
         if not serializer.is_valid():
@@ -550,6 +574,7 @@ class RunPythonCodeAPIView(APIView):
     _org_context = OrgContextService()
 
     @extend_schema(**RUN_PYTHON_CODE_POST)
+    @not_a_user_change
     def post(self, request):
         serializer = RunPythonCodeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -631,6 +656,7 @@ class InitRealtimeAPIView(APIView):
     _org_context = OrgContextService()
 
     @extend_schema(**INIT_REALTIME_POST)
+    @not_a_user_change
     def post(self, request):
         logger.info("Received POST request to start a new session.")
 
@@ -789,7 +815,7 @@ class QuickstartView(APIView):
         provider = serializer.validated_data["provider"]
         api_key = serializer.validated_data.get("api_key")
         secret = serializer.validated_data.get("api_key_secret_id")
-        org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
             org_id=org_id,
@@ -852,11 +878,10 @@ class QuickstartApplyView(APIView):
     rbac_resource_type = ResourceType.LLM_CONFIGS
     # Checked one by one: a combined IntFlag passes `can()` when either bit is held.
     rbac_required_actions = (Permission.CREATE, Permission.UPDATE)
-    _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_APPLY_POST)
     def post(self, request):
-        org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        org_id = resolve_active_org_id(request)
         for required_action in self.rbac_required_actions:
             assert_org_permission(
                 user=request.user,
@@ -907,7 +932,7 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
                 {"error": f"Unknown rag_type '{rag_type}'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        rag = self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
         assert_org_permission(
             request.user,
             org_id,
@@ -927,14 +952,14 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
         secret_resolver = SecretResolver()
 
         embedding_api_key_secret_id = indexing_data["embedder_api_key_secret_id"]
-        embedding_api_key = secret_resolver.resolve(
+        embedding_api_key = secret_resolver.resolve_sealed(
             secret_id=embedding_api_key_secret_id,
             org_id=org_id,
         )
 
         llm_api_key_secret_id = indexing_data.get("llm_api_key_secret_id")
         if llm_api_key_secret_id is not None:
-            llm_api_key = secret_resolver.resolve(
+            llm_api_key = secret_resolver.resolve_sealed(
                 secret_id=llm_api_key_secret_id,
                 org_id=org_id,
             )
@@ -965,6 +990,7 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
                 )
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)
+        record_rag_change(rag.base_rag_type.source_collection, changed=True)
 
         return Response(
             {
@@ -991,6 +1017,7 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
     @extend_schema(
         request=ProcessRagIndexingEstimateSerializer, responses={200: OpenApiTypes.OBJECT}
     )
+    @reads_only
     def post(self, request):
         serializer = ProcessRagIndexingEstimateSerializer(data=request.data)
         if not serializer.is_valid():
@@ -1054,20 +1081,22 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                 {"error": f"Unknown rag_type '{rag_type}'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        rag = self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
         assert_org_permission(
             request.user,
             self.get_active_org_id(),
             ResourceType.KNOWLEDGE_SOURCES,
             Permission.UPDATE,
         )
+        cancelled = True
         try:
             with KnowledgeClient() as client:
                 client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
         except ClientResourceNotFoundError:
-            pass
+            cancelled = False  # No indexing was running.
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)
+        record_rag_change(rag.base_rag_type.source_collection, changed=cancelled)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

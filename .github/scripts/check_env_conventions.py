@@ -49,6 +49,8 @@ COMPOSE_MAY_BE_EMPTY = {
     # A blank user and password mean an unauthenticated SMTP relay.
     "DJANGO_EMAIL_USER",
     "DJANGO_EMAIL_PASSWORD",
+    # A blank hash leaves the widget embed snippet without Subresource Integrity (chat settings.py).
+    "CHAT_WIDGET_INTEGRITY",
 }
 
 BOOL_WORD = r"(?i:true|false|yes|no|on|off|t|f|y|n|1|0)"

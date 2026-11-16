@@ -8,6 +8,7 @@ from tables.models import (
     LLMConfig,
     McpTool,
     PythonCodeTool,
+    SystemOneConfig,
     WebhookTrigger,
 )
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
@@ -33,6 +34,7 @@ _DEPENDENCY_ENTITY_TYPES = {
     EntityType.PYTHON_CODE_TOOL.value: EntityType.PYTHON_CODE_TOOL,
     EntityType.MCP_TOOL.value: EntityType.MCP_TOOL,
     EntityType.VENV.value: EntityType.VENV,
+    EntityType.SYSTEM_ONE_CONFIG.value: EntityType.SYSTEM_ONE_CONFIG,
 }
 
 _DEPENDENCY_MODELS = {
@@ -44,7 +46,14 @@ _DEPENDENCY_MODELS = {
     EntityType.PYTHON_CODE_TOOL.value: PythonCodeTool,
     EntityType.MCP_TOOL.value: McpTool,
     EntityType.VENV.value: SandboxVenvBinding,
+    EntityType.SYSTEM_ONE_CONFIG.value: SystemOneConfig,
 }
+
+#: Dependencies a restore may only link while they are visible to the flow's organization;
+#: one of another organization reads as missing.
+_ORG_CHECKED_DEPENDENCY_TYPES = frozenset(
+    {EntityType.VENV.value, EntityType.SYSTEM_ONE_CONFIG.value}
+)
 
 
 def _node_type_for_model(model: type) -> NodeType | None:
@@ -61,8 +70,7 @@ def _build_venv_code_fields_by_node_type() -> dict[NodeType, tuple[str, ...]]:
         node_type = _node_type_for_model(site.model)
         code_fields_by_node_type.setdefault(node_type, []).append(site.code_field)
     return {
-        node_type: tuple(code_fields)
-        for node_type, code_fields in code_fields_by_node_type.items()
+        node_type: tuple(code_fields) for node_type, code_fields in code_fields_by_node_type.items()
     }
 
 

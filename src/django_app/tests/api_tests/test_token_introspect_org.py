@@ -72,3 +72,20 @@ def test_introspect_marks_superadmin(env_api_key, superadmin_jwt_tokens):
     body = resp.json()
     assert body["is_superadmin"] is True
     assert body["org_ids"] == []
+
+
+@pytest.mark.django_db
+def test_introspect_leaves_out_deactivated_orgs(
+    env_api_key, regular_user, jwt_tokens, default_org, org_admin_role
+):
+    deactivated_org = Organization.objects.create(name="Deactivated Org", is_active=False)
+    OrganizationUser.objects.create(user=regular_user, org=deactivated_org, role=org_admin_role)
+
+    raw, _ = env_api_key
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw)
+
+    resp = client.post(INTROSPECT_URL, data={"token": jwt_tokens["access"]}, format="json")
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["org_ids"] == [default_org.pk]

@@ -62,7 +62,8 @@ class AbstractBindingRepository(abc.ABC):
         """Write only `broken_reason` (and `updated_at`), so a concurrent edit of other columns survives."""
 
     @abc.abstractmethod
-    async def delete(self, binding_id: UUID, org_id: int) -> bool: ...
+    async def delete(self, binding_id: UUID, org_id: int) -> str | None:
+        """Delete the org's binding and return the name it had; None when there was none."""
 
 
 class AbstractConversationRepository(abc.ABC):

@@ -12,15 +12,18 @@
     },
     "qdrant_url": {
       "type": "string",
-      "description": "URL of the Qdrant server."
+      "description": "URL of the Qdrant server. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "input_type": "user_input"
     },
     "qdrant_api_key": {
       "type": "string",
-      "description": "API key for Qdrant. Can be empty if not required."
+      "description": "API key for Qdrant. Leave empty if the server does not require one. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "input_type": "user_input"
     },
     "openai_api_key": {
       "type": "string",
-      "description": "OpenAI API key used for embeddings."
+      "description": "OpenAI API key used for embeddings. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "input_type": "user_input"
     },
     "filter_by": {
       "type": "string",

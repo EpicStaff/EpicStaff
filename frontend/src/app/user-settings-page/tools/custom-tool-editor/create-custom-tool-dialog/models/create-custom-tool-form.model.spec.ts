@@ -15,6 +15,7 @@ const LOADED_TOOL: GetPythonCodeToolRequest = {
         code: 'def main():\n    return 1\n',
         entrypoint: 'main',
         venv_id: 12,
+        global_kwargs: { region: 'eu' },
         secrets: [{ id: 4, name: 'API_TOKEN' }],
     },
     name: 'Fetch orders',
@@ -63,7 +64,9 @@ describe('toCreatePayload sent through CustomToolsService', () => {
 
     afterEach(() => httpMock.verify());
 
-    it('does not send the read-only fields back when a loaded tool is saved unchanged', () => {
+    // Global kwargs go back as loaded: the dialog does not edit them, and changing them on code that reads secrets
+    // needs Secrets:Use.
+    it('sends a loaded tool back unchanged, without its read-only fields, when it is saved unchanged', () => {
         // The edit dialog seeds its form from the loaded tool and builds the body with toCreatePayload.
         const payload = toCreatePayload(
             {
@@ -75,7 +78,7 @@ describe('toCreatePayload sent through CustomToolsService', () => {
                 useStorage: LOADED_TOOL.use_storage ?? false,
             },
             toSecretIds(LOADED_TOOL.python_code.secrets),
-            { entrypoint: LOADED_TOOL.python_code.entrypoint }
+            { entrypoint: LOADED_TOOL.python_code.entrypoint, globalKwargs: LOADED_TOOL.python_code.global_kwargs }
         );
 
         service.updatePythonCodeToolV2(LOADED_TOOL.id, payload).subscribe();
@@ -91,7 +94,7 @@ describe('toCreatePayload sent through CustomToolsService', () => {
                 code: 'def main():\n    return 1\n',
                 entrypoint: 'main',
                 venv_id: 12,
-                global_kwargs: {},
+                global_kwargs: { region: 'eu' },
                 secret_ids: [4],
             },
         });

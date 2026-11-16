@@ -7,6 +7,17 @@ export function hasPersistedWaypoints(conn: ConnectionModel): boolean {
     return conn.userAdjustedWaypoints === true && (conn.waypoints?.length ?? 0) > 0;
 }
 
+/** Whether the edge row this connection was loaded from holds bends (whether or not the canvas uses them). */
+export function hasStoredWaypoints(conn: ConnectionModel): boolean {
+    const stored = conn.data?.metadata?.['waypoints'];
+    return Array.isArray(stored) && stored.length > 0;
+}
+
+/** The bends an edge save writes: the hand-placed ones, or none for a wire the router draws. */
+export function waypointsToPersist(conn: ConnectionModel): IPoint[] {
+    return hasPersistedWaypoints(conn) ? conn.waypoints! : [];
+}
+
 /**
  * Strips `waypoints` from non-user-adjusted connections, mirroring `hasPersistedWaypoints`:
  * those waypoints are router-computed and never saved, so they must not count as unsaved changes.

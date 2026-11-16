@@ -19,23 +19,32 @@ import {
     CustomInputComponent,
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
+    HintMessageComponent,
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
 import { ResourceCode, toSecretIds, WebhookTriggerModel } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
+import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { CODE_DIFF_HINT_EXPAND_EDITOR } from '../../../core/constants/code-diff-hints';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { codeChangeFor } from '../../../utils/diff';
 import { describeTestRunBlocker, formatTestPayload } from '../../../utils/test-run';
+import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonTerminalComponent } from '../python-node-panel/python-terminal/python-terminal.component';
+import { webhookTriggerNameFormat } from '../shared/diff/webhook-trigger-name-format';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     PYTHON_CODE_RUNNING_MESSAGE,
@@ -73,6 +82,10 @@ export const RUN_PYTHON_CODE_LABEL = 'Run python code';
         PythonTerminalComponent,
         NgTemplateOutlet,
         ExecutionTimeoutFieldComponent,
+        MissingReferenceNoteComponent,
+        DiffFieldMarkComponent,
+        CodeDiffViewComponent,
+        HintMessageComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -85,17 +98,30 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     private readonly sidePanelService = inject(SidePanelService);
     private readonly flowService = inject(FlowService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
 
     /** Rendered by the panel shell in its header. */
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
+    private readonly triggerSelect = viewChild(WebhookTriggerSelectComponent);
 
     public readonly isFormCollapsed = signal<boolean>(false);
     /** Whether the code gets the flow's file storage (`epicstaff_storage`). */
     public readonly useStorage = signal<boolean>(false);
     protected readonly expandedPane = signal<WebhookExpandedPane>('code');
+    /**
+     * Changes tab of a version preview, widened panel: the changed code, shown as a diff while the big pane holds
+     * the code. A small code card gets the field mark instead.
+     */
+    protected readonly codeDiff = computed(() =>
+        this.isExpanded() ? codeChangeFor(this.panelDiff(), 'python_code.code') : null
+    );
+    protected readonly codeDiffHint = CODE_DIFF_HINT_EXPAND_EDITOR;
+    /** The triggers the select listed name a changed trigger in the mark's tooltip; one not listed: `trigger #id`. */
+    // Reads `triggerSelect` while the fields are set up, so that query must stay declared above this field.
+    protected readonly triggerNameFormat = webhookTriggerNameFormat(this.triggerSelect);
     /** Set by the first run: the terminal then stays under the code (it has its own hide toggle). */
     private readonly isCodeTerminalShown = signal(false);
     /** Height in px of an editor shown as a card (small panel, or the left column of the expanded one). */
@@ -164,6 +190,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         return state === 'not-created' || state === 'changed';
     });
 
+    protected readonly secretCodeLockedMessage = SECRET_CODE_NEEDS_USE_MESSAGE;
     pythonCode: string = '';
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
@@ -179,6 +206,11 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
               ? "Secrets assigned to this webhook's code."
               : "Secrets already assigned to this webhook's code. You don't have permission to change which secrets are selected."
     );
+    /** The code reads secrets and the user lacks Secrets:Use: the code and storage flag (which edits the code) are locked, the rest is not. */
+    protected readonly isSecretCodeLocked = computed(
+        () => !this.isReadOnly() && this.flowReadOnly.isSecretCodeLocked(this.node().data.python_code.secret_ids ?? [])
+    );
+    protected readonly isCodeReadOnly = computed(() => this.isReadOnly() || this.isSecretCodeLocked());
     public readonly selectedSecretIds = signal<number[]>([]);
     public readonly secretNames = computed(() =>
         this.canEditSecrets()
@@ -316,9 +348,11 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
                 ...this.node().data,
                 webhook_trigger: this.form.value.webhook_trigger ?? null,
                 python_code: {
+                    // Keeps the stored fields the panel does not edit (global_kwargs).
+                    ...this.node().data.python_code,
                     name: this.node().data.python_code.name || 'Python Code',
                     code: this.pythonCode,
-                    entrypoint: 'main',
+                    entrypoint: this.node().data.python_code.entrypoint || 'main',
                     secret_ids: this.selectedSecretIds(),
                     secret_names: this.secretNames(),
                     execution_timeout: this.executionTimeout.value,

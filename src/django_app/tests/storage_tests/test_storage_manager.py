@@ -98,6 +98,148 @@ class TestWrites:
 
 
 @pytest.mark.django_db
+class TestDestinationNameValidation:
+    """A write may not create an entry at a name storage or the index can't hold.
+
+    The destination of a mkdir, rename, move or copy is checked before any key is
+    built, so nothing reaches the object store and no row is written.
+    """
+
+    def test_mkdir_rejects_a_newline_in_the_folder_name(self, manager, fake_backend, org, org_user):
+        with pytest.raises(ValueError, match="control character"):
+            manager.mkdir(org.id, "docs/bad\nname", user=org_user.user)
+
+        assert _keys(fake_backend, org) == []
+        assert _rows(org) == {}
+
+    def test_rename_rejects_a_newline_in_the_destination_name(self, manager, fake_backend, org, org_user):
+        store_object(fake_backend, org.id, "old.txt", b"x")
+
+        with pytest.raises(ValueError, match="control character"):
+            manager.rename(org.id, "old.txt", "new\nname.txt", user=org_user.user)
+
+        assert _keys(fake_backend, org) == ["old.txt"]
+        assert set(_rows(org)) == {"old.txt"}
+
+    def test_move_rejects_an_over_long_destination_segment(self, manager, fake_backend, org, org_user):
+        store_object(fake_backend, org.id, "a.txt", b"x")
+
+        with pytest.raises(ValueError, match="longer than 255 bytes"):
+            manager.move(org.id, "a.txt", "d" * 256, user=org_user.user)
+
+        assert _keys(fake_backend, org) == ["a.txt"]
+        assert set(_rows(org)) == {"a.txt"}
+
+    def test_copy_rejects_a_control_character_in_the_destination_name(self, manager, fake_backend, org, org_user):
+        store_object(fake_backend, org.id, "a.txt", b"x")
+
+        with pytest.raises(ValueError, match="control character"):
+            manager.copy(org.id, "a.txt", "dest\x07", user=org_user.user)
+
+        assert _keys(fake_backend, org) == ["a.txt"]
+        assert set(_rows(org)) == {"a.txt"}
+
+    def test_copy_to_another_org_rejects_a_control_character_in_the_destination_name(
+        self, manager, fake_backend, org, org_user, second_org
+    ):
+        store_object(fake_backend, org.id, "a.txt", b"x")
+
+        with pytest.raises(ValueError, match="control character"):
+            manager.copy_cross_org(org.id, "a.txt", second_org.id, "inbox\x07", user=org_user.user)
+
+        assert _keys(fake_backend, second_org) == []
+        assert _rows(second_org) == {}
+
+    @pytest.mark.parametrize("path", ["", "/"])
+    def test_mkdir_rejects_a_blank_folder_path(self, manager, fake_backend, org, org_user, path):
+        # The root is not a name: creating a folder there would store a nameless row.
+        with pytest.raises(ValueError, match="blank"):
+            manager.mkdir(org.id, path, user=org_user.user)
+
+        assert _keys(fake_backend, org) == []
+        assert _rows(org) == {}
+
+    @pytest.mark.parametrize("path", ["", "/"])
+    def test_rename_rejects_a_blank_destination_path(self, manager, fake_backend, org, org_user, path):
+        store_object(fake_backend, org.id, "old.txt", b"x")
+
+        with pytest.raises(ValueError, match="blank"):
+            manager.rename(org.id, "old.txt", path, user=org_user.user)
+
+        assert _keys(fake_backend, org) == ["old.txt"]
+        assert _rows(org) == {"old.txt": "file"}
+
+    def test_move_into_the_org_root_is_allowed(self, manager, fake_backend, org, org_user):
+        store_object(fake_backend, org.id, "docs/a.txt", b"x")
+
+        manager.move(org.id, "docs/a.txt", "", user=org_user.user)
+
+        assert fake_backend.download(f"org_{org.id}/a.txt") == b"x"
+        assert "a.txt" in _rows(org)
+
+    def test_renaming_a_folder_to_the_longest_path_a_file_may_take_is_rejected(
+        self, manager, fake_backend, org, org_user
+    ):
+        # The folder marker makes the row one character longer than its path.
+        longest_file_path = "/".join(["x" * 250, "x" * 249, "x" * 249, "x" * 249])
+        assert len(longest_file_path) == 1000
+        manager.mkdir(org.id, "docs", user=org_user.user)
+
+        with pytest.raises(ValueError, match="longer than 1000 characters"):
+            manager.rename(org.id, "docs", longest_file_path, user=org_user.user)
+
+        assert set(_rows(org)) == {"docs/"}
+
+    def test_renaming_a_file_to_the_longest_path_it_may_take_is_allowed(
+        self, manager, fake_backend, org, org_user
+    ):
+        longest_file_path = "/".join(["x" * 250, "x" * 249, "x" * 249, "x" * 249])
+        store_object(fake_backend, org.id, "old.txt", b"x")
+
+        manager.rename(org.id, "old.txt", longest_file_path, user=org_user.user)
+
+        assert longest_file_path in _rows(org)
+
+    def test_move_rejects_a_legal_destination_the_moved_file_no_longer_fits_in(
+        self, manager, fake_backend, org, org_user
+    ):
+        # The folder itself fits; "<folder>/a.txt" is five characters past the row.
+        folder = "/".join(["x" * 250, "x" * 249, "x" * 249, "x" * 248])
+        assert len(folder) == 999
+        manager.mkdir(org.id, folder, user=org_user.user)
+        store_object(fake_backend, org.id, "a.txt", b"x")
+
+        with pytest.raises(ValueError, match="longer than 1000 characters"):
+            manager.move(org.id, "a.txt", folder, user=org_user.user)
+
+        assert f"{folder}/a.txt" not in _rows(org)
+
+    def test_move_allows_a_destination_the_moved_file_exactly_fits_in(
+        self, manager, fake_backend, org, org_user
+    ):
+        folder = "/".join(["x" * 250, "x" * 249, "x" * 249, "x" * 243])
+        assert len(f"{folder}/a.txt") == 1000
+        manager.mkdir(org.id, folder, user=org_user.user)
+        store_object(fake_backend, org.id, "a.txt", b"x")
+
+        manager.move(org.id, "a.txt", folder, user=org_user.user)
+
+        assert f"{folder}/a.txt" in _rows(org)
+
+    def test_copy_rejects_a_legal_destination_the_copied_file_no_longer_fits_in(
+        self, manager, fake_backend, org, org_user
+    ):
+        folder = "/".join(["x" * 250, "x" * 249, "x" * 249, "x" * 248])
+        manager.mkdir(org.id, folder, user=org_user.user)
+        store_object(fake_backend, org.id, "a.txt", b"x")
+
+        with pytest.raises(ValueError, match="longer than 1000 characters"):
+            manager.copy(org.id, "a.txt", folder, user=org_user.user)
+
+        assert f"{folder}/a.txt" not in _rows(org)
+
+
+@pytest.mark.django_db
 class TestCrossOrg:
     def test_copy_to_another_org_records_the_copies_authored_by_the_copier_and_keeps_the_source(
         self, manager, fake_backend, org, org_user, second_org

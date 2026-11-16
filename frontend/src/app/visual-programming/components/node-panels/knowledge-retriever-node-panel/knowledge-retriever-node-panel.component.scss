@@ -189,6 +189,14 @@
     flex-direction: column;
 }
 
+// The field mark around the query editor, while it shows, takes the editor's place in the column.
+.query-mark.diff-field-mark--shown {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
 .code-editor-section {
     flex: 1;
     height: 100%;

@@ -14,12 +14,19 @@ litellm-known ctx; False for user-override or FALLBACK_CONTEXT_WINDOW. Callers
 MUST use is_trusted to relax their own clamping accordingly — see
 docs/knowledge_and_rag/ADAPTIVE_CONTEXT_MANAGEMENT.md.
 
-Daily refresh / multi-worker: under gunicorn -w N a single worker is elected
-(non-blocking file lock) to fetch the upstream JSON once a day and persist it
-as a shared on-disk snapshot. Every worker — owner or not — lazily merges that
-snapshot into its in-process `litellm.model_cost` via a cheap mtime-guarded
-stat() inside `resolve_context_window`, so all workers converge on the same
-once-a-day data without issuing any extra network requests on the hot path.
+Daily refresh, opt-in (LITELLM_MODEL_COST_REFRESH_ENABLED, off by default): the
+refresh fetches the model map from the unpinned main branch of BerriAI/litellm on
+GitHub and trusts it as is, so it stays off unless an operator turns it on. Off,
+nothing is scheduled, no request is made and no snapshot on disk is read: the
+map bundled with the pinned litellm release is the only source (Dockerfile.dj
+sets LITELLM_LOCAL_MODEL_COST_MAP so litellm itself does not fetch it either).
+
+On, under gunicorn -w N a single worker is elected (non-blocking file lock) to
+fetch the upstream JSON once a day and persist it as a shared on-disk snapshot.
+Every worker — owner or not — lazily merges that snapshot into its in-process
+`litellm.model_cost` via a cheap mtime-guarded stat() inside
+`resolve_context_window`, so all workers converge on the same once-a-day data
+without issuing any extra network requests on the hot path.
 """
 
 import json
@@ -42,6 +49,7 @@ for _name in ("LiteLLM", "LiteLLM Proxy", "LiteLLM Router"):
 import httpx
 import litellm
 from apscheduler.schedulers.background import BackgroundScheduler
+from django.conf import settings
 from filelock import FileLock, Timeout
 from loguru import logger
 from src.shared.litellm_model_names import litellm_lookup_name
@@ -82,8 +90,14 @@ _loaded_snapshot_mtime: float | None = None
 def _ensure_snapshot_loaded() -> None:
     """Merge the on-disk snapshot into this process's `litellm.model_cost`
     if the file changed since we last loaded it. Cheap stat(); no network.
+
+    Does nothing while the refresh is disabled: a snapshot left on disk by an
+    earlier run with the refresh on is upstream data the operator has since
+    opted out of.
     """
     global _loaded_snapshot_mtime
+    if not settings.LITELLM_MODEL_COST_REFRESH_ENABLED:
+        return
     path = _snapshot_path()
     try:
         mtime = path.stat().st_mtime
@@ -250,9 +264,10 @@ _reasoning_support_cache_snapshot_mtime: float | None = None
 def reasoning_support(provider_name: str | None, model_name: str) -> ReasoningSupport:
     """Return which `reasoning_effort` levels litellm reports the model accepts.
 
-    Reads the daily snapshot when one exists, litellm's bundled map otherwise. An
-    unknown model, or any litellm failure, answers NO_REASONING_SUPPORT: the caller
-    then refuses a reasoning effort rather than sending one the provider may reject.
+    Reads the daily snapshot when the refresh is enabled and one exists, litellm's
+    bundled map otherwise. An unknown model, or any litellm failure, answers
+    NO_REASONING_SUPPORT: the caller then refuses a reasoning effort rather than
+    sending one the provider may reject.
 
     Rules, first match wins, for a reasoning model:
       1. The entry lists `reasoning_effort_levels`: exactly those levels.
@@ -477,12 +492,20 @@ _refresh_owner_lock: FileLock | None = None
 def start_litellm_refresh_if_owner() -> bool:
     """Elect a single owner across all web workers to run the daily refresh.
 
-    Every worker loads any existing snapshot immediately (no network). Exactly
-    one worker wins a non-blocking file lock and starts the scheduler; the rest
-    skip it and simply read the snapshot the owner produces. Returns True if
-    this process became the owner.
+    Does nothing and returns False while LITELLM_MODEL_COST_REFRESH_ENABLED is
+    off. On, every worker loads any existing snapshot immediately (no network).
+    Exactly one worker wins a non-blocking file lock and starts the scheduler;
+    the rest skip it and simply read the snapshot the owner produces. Returns
+    True if this process became the owner.
     """
     global _refresh_owner_lock
+
+    if not settings.LITELLM_MODEL_COST_REFRESH_ENABLED:
+        logger.info(
+            "litellm model_cost refresh disabled (LITELLM_MODEL_COST_REFRESH_ENABLED); "
+            "using the model map bundled with litellm."
+        )
+        return False
 
     # All workers: adopt whatever snapshot already exists on disk right away.
     _ensure_snapshot_loaded()

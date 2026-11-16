@@ -16,7 +16,8 @@ export type TransferJobMainEntity =
     | 'AuditFilterPreset'
     | 'Session'
     | 'ClassificationDecisionTableNode'
-    | 'FlowNodes';
+    | 'FlowNodes'
+    | 'AgentDefinition';
 
 /** The two formats an export of sessions or of a classification decision table can be written in. */
 export type ExportFormat = 'json' | 'csv';
@@ -108,6 +109,7 @@ export const TRANSFER_JOB_ENTITY_LABELS: Record<TransferJobMainEntity, string> =
     Session: 'Sessions',
     ClassificationDecisionTableNode: 'Classification decision table',
     FlowNodes: 'Flow nodes',
+    AgentDefinition: 'Agents',
 };
 
 export function isUnfinishedTransferJob(job: TransferJob): boolean {

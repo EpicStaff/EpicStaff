@@ -1,6 +1,11 @@
-import sys
+# MongoDB Vector Search Tool
+#
+# `connection_string` and `openai_api_key` are NOT function parameters:
+# args_schema.json declares them with "input_type": "user_input", so they are
+# set in the tool configuration and the sandbox injects them as module-level
+# globals -- the agent never sees them.
 from logging import getLogger
-from typing import Any, List
+from typing import List
 
 try:
     import pymongo
@@ -14,6 +19,8 @@ try:
 except ImportError:
     raise ImportError("openai is required. Install via `pip install openai`.")
 
+from epicstaff_common import require_setting, safe_error_message
+
 logger = getLogger(__name__)
 
 class MongoDBVectorSearchTool:
@@ -22,8 +29,6 @@ class MongoDBVectorSearchTool:
     def __init__(
         self,
         query: str,
-        openai_api_key: str,
-        connection_string: str,
         database_name: str,
         collection_name: str,
         vector_index_name: str = "vector_index",
@@ -36,7 +41,6 @@ class MongoDBVectorSearchTool:
         include_embeddings: bool = False,
     ):
         self.query = query
-        self.connection_string = connection_string
         self.database_name = database_name
         self.collection_name = collection_name
         self.vector_index_name = vector_index_name
@@ -48,12 +52,10 @@ class MongoDBVectorSearchTool:
         self.oversampling_factor = oversampling_factor
         self.include_embeddings = include_embeddings
 
-        # OpenAI client using API key from args
-        self._openai_client = Client(api_key=openai_api_key)
+        self._openai_client = Client(api_key=require_setting(globals(), "openai_api_key"))
 
-        # MongoDB client
         self._client = MongoClient(
-            self.connection_string,
+            require_setting(globals(), "connection_string"),
             driver=DriverInfo(name="StandaloneMongoDBVectorTool", version="1.0"),
         )
         self._coll = self._client[self.database_name][self.collection_name]
@@ -89,14 +91,13 @@ class MongoDBVectorSearchTool:
 
             cursor = self._coll.aggregate(pipeline)
             return json_util.dumps(list(cursor))
-        except Exception as e:
-            logger.error(f"Error in vector search: {e}")
-            return ""
+        except Exception as error:
+            message = f"Error in vector search: {safe_error_message(error)}"
+            logger.error(message)
+            return message
 
 def main(
     query: str,
-    openai_api_key: str,
-    connection_string: str,
     database_name: str,
     collection_name: str,
     vector_index_name: str = "vector_index",
@@ -107,43 +108,22 @@ def main(
     limit: int = 4,
     oversampling_factor: int = 10,
     include_embeddings: bool = False,
-):
-    """Entrypoint for CLI execution with explicit parameters."""
-    tool = MongoDBVectorSearchTool(
-        query=query,
-        openai_api_key=openai_api_key,
-        connection_string=connection_string,
-        database_name=database_name,
-        collection_name=collection_name,
-        vector_index_name=vector_index_name,
-        text_key=text_key,
-        embedding_key=embedding_key,
-        dimensions=dimensions,
-        embedding_model=embedding_model,
-        limit=limit,
-        oversampling_factor=oversampling_factor,
-        include_embeddings=include_embeddings,
-    )
-    result = tool.run()
-    print(result)
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="MongoDB Vector Search Tool")
-    parser.add_argument("--query", required=True, help="Query to search in MongoDB")
-    parser.add_argument("--openai_api_key", required=True, help="OpenAI API Key")
-    parser.add_argument("--connection_string", required=True, help="MongoDB connection string")
-    parser.add_argument("--database_name", required=True, help="MongoDB database name")
-    parser.add_argument("--collection_name", required=True, help="MongoDB collection name")
-    parser.add_argument("--vector_index_name", default="vector_index", help="Vector index name")
-    parser.add_argument("--text_key", default="text", help="Field name for document text")
-    parser.add_argument("--embedding_key", default="embedding", help="Field name for embeddings")
-    parser.add_argument("--dimensions", type=int, default=1536, help="Embedding dimensions")
-    parser.add_argument("--embedding_model", default="text-embedding-3-large", help="OpenAI embedding model")
-    parser.add_argument("--limit", type=int, default=4, help="Number of documents to return")
-    parser.add_argument("--oversampling_factor", type=int, default=10, help="Oversampling factor")
-    parser.add_argument("--include_embeddings", action="store_true", help="Include embeddings in results")
-
-    args = parser.parse_args()
-    main(**vars(args))
+    **kwargs,
+) -> str:
+    try:
+        tool = MongoDBVectorSearchTool(
+            query=query,
+            database_name=database_name,
+            collection_name=collection_name,
+            vector_index_name=vector_index_name,
+            text_key=text_key,
+            embedding_key=embedding_key,
+            dimensions=dimensions,
+            embedding_model=embedding_model,
+            limit=limit,
+            oversampling_factor=oversampling_factor,
+            include_embeddings=include_embeddings,
+        )
+        return tool.run()
+    except Exception as error:
+        return f"Error executing tool: {safe_error_message(error)}"

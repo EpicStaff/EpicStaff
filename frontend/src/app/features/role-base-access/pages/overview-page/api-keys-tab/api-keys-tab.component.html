@@ -9,36 +9,7 @@
     </div>
 
     <div class="toolbar-actions">
-        @if (orgFilterItems().length) {
-            <app-multi-select
-                #orgMs
-                [hideTrigger]="true"
-                [items]="orgFilterItems()"
-                searchPlaceholder="Search organization"
-                (selectionChange)="onOrgFilterChange($event)"
-            >
-                <button
-                    type="button"
-                    class="org-trigger"
-                    [class.org-trigger--active]="orgFilterIds().length"
-                    aria-haspopup="listbox"
-                    [attr.aria-expanded]="orgMs.isOpen()"
-                    matTooltip="Organization filter"
-                    [appMultiSelectTrigger]="orgMs"
-                >
-                    <span class="org-trigger__label">{{
-                        orgFilterIds().length
-                            ? orgFilterIds().length + ' organization' + (orgFilterIds().length === 1 ? '' : 's')
-                            : 'All Organizations'
-                    }}</span>
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="1rem"
-                    />
-                </button>
-            </app-multi-select>
-        }
-
+        <app-table-column-picker [table]="table" />
         <!-- aria-disabled, not disabled: it keeps the focus when a bulk action clears the selection. -->
         <button
             #bulkButton
@@ -103,6 +74,8 @@
 </div>
 
 <app-table
+    #table
+    layoutKey="workspace-api-keys"
     [columns]="columns()"
     [data]="tableData()"
     [selectable]="true"

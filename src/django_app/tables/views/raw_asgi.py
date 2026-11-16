@@ -18,6 +18,7 @@ from rest_framework.exceptions import AuthenticationFailed, NotAuthenticated, Va
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSetMixin
+from user_audit.context import current_context
 from utils.exception_handler import custom_exception_handler
 
 
@@ -49,7 +50,9 @@ def reject_non_utf8_query(scope) -> None:
 def authorize_request(view: ViewSetMixin, scope, action: str) -> Request:
     """Authenticate, authorize and throttle the request as `view`'s `action` would be.
 
-    The request is built with an empty body: the real one is read from `receive` later.
+    The request is the one of the user-action context asgi.py opened around the app, if
+    any, so the caller and the org checked here are the ones its record names; otherwise
+    a new one with an empty body. Either way the real body is read from `receive` later.
     Call it in a sync thread; the authenticated user is cached on the returned request.
 
     Raises:
@@ -60,7 +63,7 @@ def authorize_request(view: ViewSetMixin, scope, action: str) -> Request:
     """
     view.action_map = {"post": action}
     view.args, view.kwargs = (), {}
-    request = view.initialize_request(ASGIRequest(scope, io.BytesIO()))
+    request = view.initialize_request(_http_request(scope))
     view.request = request
     try:
         view.perform_authentication(request)
@@ -73,6 +76,13 @@ def authorize_request(view: ViewSetMixin, scope, action: str) -> Request:
             exc.status_code = status.HTTP_403_FORBIDDEN
         raise
     return request
+
+
+def _http_request(scope) -> ASGIRequest:
+    context = current_context()
+    if context is not None:
+        return context.request
+    return ASGIRequest(scope, io.BytesIO())
 
 
 def declared_size(request: Request) -> int | None:

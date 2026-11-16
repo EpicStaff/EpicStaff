@@ -13,4 +13,5 @@ export class RoundButtonComponent {
     selected = input(false);
     /** Shown on hover and focus, and the button's accessible name in place of its short label. */
     tooltip = input('');
+    disabled = input(false);
 }

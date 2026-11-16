@@ -17,7 +17,7 @@ class TransferJob(OrgScopedModel, TimestampMixin):
 
     Every export is a job that produces a `.zip`: flows, knowledge collections,
     tools, MCP tools, audit filter presets, sessions, a classification decision
-    table node, or nodes picked in the flow editor (`MainEntity.FLOW_NODES`).
+    table node, agents, or nodes picked in the flow editor (`MainEntity.FLOW_NODES`).
     Imports run as jobs only for flows and knowledge collections; the others
     import synchronously.
 
@@ -46,10 +46,20 @@ class TransferJob(OrgScopedModel, TimestampMixin):
         AUDIT_FILTER_PRESET = EntityType.AUDIT_FILTER_PRESET.value
         SESSION = EntityType.SESSION.value
         CLASSIFICATION_DECISION_TABLE_NODE = EntityType.CLASSIFICATION_DECISION_TABLE_NODE.value
+        AGENT_DEFINITION = EntityType.AGENT_DEFINITION.value
         # Nodes exported from the flow editor (a partial export of one flow).
         FLOW_NODES = "FlowNodes"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # The API key the job was started with (beside `created_by`), so the user actions
+    # the job records in the background name it as a request with that key would.
+    api_key = models.ForeignKey(
+        "rbac.ApiKey",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="+",
+    )
     kind = models.CharField(max_length=10, choices=Kind.choices)
     main_entity = models.CharField(max_length=40, choices=MainEntity.choices)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.QUEUED)

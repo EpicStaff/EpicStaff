@@ -25,6 +25,7 @@ for name, value in {
     "CHAT_INTERNAL_API_KEY": "internal-key-for-tests-0123456789",
     "CHAT_PUBLIC_BASE_URL": "http://localhost",
     "CHAT_WIDGET_URL": "https://cdn.example.test/epicchat/embed.js",
+    "CHAT_WIDGET_INTEGRITY": "",
     "CHAT_CALLBACK_URL": "http://chat:8200/chat/internal/v1/session-callbacks",
     "CHAT_DJANGO_TIMEOUT": "10s",
     "CHAT_IP_MESSAGE_RATE": "30/m",

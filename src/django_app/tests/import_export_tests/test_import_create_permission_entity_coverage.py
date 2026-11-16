@@ -26,7 +26,7 @@ from rbac.models import OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
 from rbac.models.role import RolePermission
 from tables.import_export.enums import EntityType
-from tables.models import Graph, StartNode
+from tables.models import Graph, StartNode, SystemOneConfig
 from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
     GeminiRealtimeConfig,
@@ -56,6 +56,15 @@ def _create_elevenlabs_realtime_config(org):
 
 def _create_gemini_realtime_config(org):
     return GeminiRealtimeConfig.objects.create(org=org, custom_name="gemini realtime")
+
+
+def _create_system_one_config(org):
+    return SystemOneConfig.objects.create(
+        org=org,
+        custom_name="carried system one config",
+        provider="typesafe",
+        model_name="jev-1.14.0",
+    )
 
 
 def _create_agent_definition(org):
@@ -91,6 +100,12 @@ CASES = [
         GeminiRealtimeConfig,
         ResourceType.LLM_CONFIGS,
         _create_gemini_realtime_config,
+    ),
+    CarriedEntityCase(
+        EntityType.SYSTEM_ONE_CONFIG,
+        SystemOneConfig,
+        ResourceType.LLM_CONFIGS,
+        _create_system_one_config,
     ),
     CarriedEntityCase(
         EntityType.AGENT_DEFINITION,

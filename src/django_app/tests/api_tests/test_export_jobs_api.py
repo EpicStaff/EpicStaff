@@ -13,6 +13,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from agents.models import AgentDefinition
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -43,6 +44,7 @@ pytestmark = pytest.mark.django_db
 EVERY_EXPORT_RIGHT = {
     ResourceType.FLOWS: Permission.READ | Permission.EXPORT,
     ResourceType.TOOLS: Permission.READ | Permission.EXPORT,
+    ResourceType.AGENTS: Permission.READ | Permission.EXPORT,
     ResourceType.AUDIT: Permission.READ,
 }
 
@@ -151,9 +153,15 @@ def _colleagues_shared_preset_case(org, author):
     return (
         "/api/audit-filter-presets/export-jobs/",
         {"ids": [preset.id]},
-        {"ids": [preset.id]},
+        # No `?domain=` is the sessions domain, stored for the runner and the download.
+        {"ids": [preset.id], "domain": "sessions"},
         "Failed runs",
     )
+
+
+def _agents_case(org, author):
+    ids = [AgentDefinition.objects.create(org=org, name=name).id for name in ("One", "Two")]
+    return "/api/agent-definitions/export-jobs/", {"ids": ids}, {"ids": ids}, "2 agents"
 
 
 def _sessions_case(org, author):
@@ -206,6 +214,7 @@ def _flow_nodes_case(org, author):
         pytest.param(_built_in_tool_case, "PythonCodeTool", id="built-in python tool"),
         pytest.param(_mcp_tools_case, "MCPTool", id="mcp tools"),
         pytest.param(_colleagues_shared_preset_case, "AuditFilterPreset", id="shared preset"),
+        pytest.param(_agents_case, "AgentDefinition", id="agents"),
         pytest.param(_sessions_case, "Session", id="sessions by id"),
         pytest.param(_sessions_by_filter_case, "Session", id="sessions by filter"),
         pytest.param(_cdt_case, "ClassificationDecisionTableNode", id="decision table"),
@@ -235,6 +244,8 @@ def test_an_export_job_is_queued_with_its_request_and_name(
         acme.id,
         exporter.id,
     )
+    # Started from a session, not with an API key.
+    assert job.api_key_id is None
     assert job.request == stored_request
     assert job.display_name == display_name
     assert enqueued == [job.id]
@@ -255,6 +266,11 @@ def test_an_export_job_is_queued_with_its_request_and_name(
             "/api/audit-filter-presets/export-jobs/",
             lambda org: {"ids": [_preset(org).id]},
             id="audit preset",
+        ),
+        pytest.param(
+            "/api/agent-definitions/export-jobs/",
+            lambda org: {"ids": [AgentDefinition.objects.create(org=org, name="Theirs").id]},
+            id="agent",
         ),
         pytest.param(
             "/api/sessions/export-jobs/", lambda org: {"ids": [_session(org).id]}, id="session"
@@ -336,6 +352,14 @@ def _nodes_of_a_new_flow(org) -> tuple[str, dict]:
             {ResourceType.TOOLS: Permission.READ},
             lambda org: ("/api/mcp-tools/export-jobs/", {"ids": [_mcp_tool(org).id]}),
             id="tools without export, mcp tool",
+        ),
+        pytest.param(
+            {ResourceType.AGENTS: Permission.READ},
+            lambda org: (
+                "/api/agent-definitions/export-jobs/",
+                {"ids": [AgentDefinition.objects.create(org=org, name="Mine").id]},
+            ),
+            id="agents without export",
         ),
         pytest.param(
             {ResourceType.FLOWS: Permission.READ},
@@ -473,6 +497,27 @@ def test_a_session_export_with_ids_and_filters_names_the_filters_it_refused(
     assert response.status_code == 400
     assert response.json()["message"].endswith("(got graph_id, status).")
     assert not TransferJob.objects.exists()
+
+
+@pytest.mark.parametrize(
+    "make_case",
+    [
+        pytest.param(_python_tool_case, id="export-jobs action"),
+        pytest.param(_flow_nodes_case, id="flow partial-export-jobs action"),
+    ],
+)
+def test_an_export_job_started_with_a_user_api_key_keeps_the_key(
+    api_client, exporter, acme, issue_api_key, enqueued, make_case
+):
+    raw_key, api_key = issue_api_key(user=exporter, org=acme, name="Nightly backup")
+    url, body, _stored_request, _display_name = make_case(acme, exporter)
+    api_client.credentials(HTTP_X_API_KEY=raw_key)
+
+    response = api_client.post(url, body, format="json")
+
+    assert response.status_code == 202, response.content
+    job = TransferJob.objects.get(pk=response.json()["job_id"])
+    assert (job.created_by_id, job.api_key_id) == (exporter.id, api_key.id)
 
 
 def test_a_system_api_key_is_refused_before_any_session_is_selected(

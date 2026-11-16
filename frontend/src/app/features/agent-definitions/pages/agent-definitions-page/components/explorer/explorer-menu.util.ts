@@ -1,5 +1,7 @@
 import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
+import { Surface } from '../../../../models/surface.model';
 import { BranchTreeNode } from '../../../../models/tree-node.model';
 import { ExplorerMenuItem, ExplorerMenuSubject } from './explorer-context-menu/explorer-menu.model';
 
@@ -14,6 +16,11 @@ export const GROUP_MENU_ACTION = {
     deleteGroup: 'delete-group',
     collapseAll: 'collapse-all',
     expandAll: 'expand-all',
+} as const;
+
+export const AGENTS_SECTION_MENU_ACTION = {
+    import: 'import-agents',
+    export: 'export-agents',
 } as const;
 
 /**
@@ -133,6 +140,48 @@ function itemGroupMenuItems(
     return items;
 }
 
+export function agentsSectionMenuItems(): ExplorerMenuItem[] {
+    return [
+        {
+            id: AGENTS_SECTION_MENU_ACTION.import,
+            label: 'Import',
+            resource: ResourceCode.Agents,
+            action: ActionCode.Create,
+        },
+        {
+            id: AGENTS_SECTION_MENU_ACTION.export,
+            label: 'Export…',
+            resource: ResourceCode.Agents,
+            action: ActionCode.Export,
+        },
+    ];
+}
+
+/**
+ * Copying an agent copies the surfaces it owns too, so the server then also requires Surfaces:Create
+ * and refuses the whole copy without it.
+ */
+export function canDuplicateAgent(
+    agentId: number,
+    surfaces: readonly Surface[],
+    permissions: Pick<PermissionsService, 'can'>
+): boolean {
+    if (!permissions.can(ResourceCode.Agents, ActionCode.Create)) return false;
+    const ownsSurface = surfaces.some((surface) => surface.owner_agent === agentId);
+    return !ownsSurface || permissions.can(ResourceCode.Surfaces, ActionCode.Create);
+}
+
+/** Whether the user may pick this item of the node's menu; Duplicate on an agent also needs `canDuplicateAgent`. */
+export function isTreeNodeMenuItemAllowed(
+    node: BranchTreeNode,
+    item: ExplorerMenuItem,
+    surfaces: readonly Surface[],
+    permissions: Pick<PermissionsService, 'can'>
+): boolean {
+    if (node.kind === 'agent' && item.id === 'duplicate') return canDuplicateAgent(node.agentId, surfaces, permissions);
+    return permissions.can(item.resource, item.action);
+}
+
 export function treeNodeMenuItems(node: BranchTreeNode): ExplorerMenuItem[] {
     switch (node.kind) {
         case 'agent':
@@ -140,6 +189,7 @@ export function treeNodeMenuItems(node: BranchTreeNode): ExplorerMenuItem[] {
                 { id: 'duplicate', label: 'Duplicate', resource: ResourceCode.Agents, action: ActionCode.Create },
                 // Authorship is read-only, so seeing the agent is enough to see who created and edited it.
                 { id: 'view-details', label: 'View Details', resource: ResourceCode.Agents, action: ActionCode.Read },
+                { id: 'export', label: 'Export', resource: ResourceCode.Agents, action: ActionCode.Export },
                 { id: 'delete', label: 'Delete', resource: ResourceCode.Agents, action: ActionCode.Delete },
             ];
         case 'surface':

@@ -60,7 +60,9 @@ COPY --from=builder /app /app
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
 # trace, see the litellm finding in docs/backend-runtime-fetch-audit.md) — django_app imports
-# it via tables/services/llm_clients/litellm_client.py.
+# it via tables/services/llm_clients/litellm_client.py. The daily model-map
+# refresh in tables/utils/litellm_model_info.py is a separate fetch, off unless
+# LITELLM_MODEL_COST_REFRESH_ENABLED is true.
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \

@@ -14,7 +14,6 @@ from services.transfer_job_sweep_service import (
 )
 from src.shared.redis_streams import (
     TRANSFER_JOB_STREAM,
-    TRANSFER_JOB_STREAM_MAXLEN,
     TRANSFER_JOB_SWEEP_REQUESTED_AT_FIELD,
 )
 

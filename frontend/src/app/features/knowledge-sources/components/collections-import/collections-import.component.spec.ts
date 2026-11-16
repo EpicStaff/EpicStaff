@@ -160,9 +160,6 @@ describe('CollectionsImportComponent permissions', () => {
 });
 
 describe('CollectionsImportComponent', () => {
-    // The page loads the zip reader on demand; loaded here, its first load does not eat into a test's time limit.
-    beforeAll(() => import('@zip.js/zip.js'));
-
     /** Clicks Import and picks the file in the browser's file picker (a detached <input type="file">). */
     function chooseFileToImport(file: File): void {
         const picker = document.createElement('input');

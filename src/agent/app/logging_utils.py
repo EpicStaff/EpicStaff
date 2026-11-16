@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
+import re
 import secrets
 from copy import deepcopy
+from http import HTTPStatus
 from typing import Any
+from urllib.parse import urlsplit
 
+import httpx2
+from loguru import logger
 from pydantic import ValidationError
 
 _DIGEST_CHARS = 12
@@ -27,6 +33,115 @@ _SENSITIVE = (
     "token",
     "secret",
 )
+
+
+# Scheme, then userinfo up to the authority's last "@" (any character but whitespace,
+# "/", "?" or "#"), then the host and port, then the rest of the URL up to whitespace, a
+# double quote or an angle bracket. A single quote does not end the rest, since a path
+# can hold one; a closing single quote right after a URL is dropped with it.
+# No word boundary in front: "xhttps://…" must be cut too.
+_URL = re.compile(r"(?i)(https?://)(?:[^\s/?#]*@)?([^\s/?#'\"<>@]*)[^\s\"<>]*")
+
+# The mcp SDK logs under its module names, except ClientSession, which logs as "client".
+_MCP_SDK_LOGGER_NAMES = ("mcp", "client")
+
+
+def url_origin(url: str | httpx2.URL) -> str:
+    """Render a URL held as a value as its origin, `scheme://host[:port]`.
+
+    Parsed rather than matched, so no character in the userinfo or path can hide them:
+    each can carry a credential (a password, an API key in the path as some providers
+    issue them), as can the query and fragment.
+    """
+    parts = urlsplit(str(url))
+    return f"{parts.scheme}://{parts.netloc.rpartition('@')[2]}"
+
+
+def redact_urls(text: str) -> str:
+    """Cut every http(s) URL in free `text` down to its origin, `scheme://host[:port]`.
+
+    For the URLs a library quotes in its own messages, where they cannot be parsed out
+    as values; a URL held as a value goes through `url_origin` instead.
+    """
+    return _URL.sub(r"\1\2", text)
+
+
+def http_status_text(code: int) -> str:
+    """Name an HTTP status as "HTTP 401 Unauthorized", with the standard reason phrase
+    for the code rather than the server's own text."""
+    try:
+        return f"HTTP {code} {HTTPStatus(code).phrase}"
+    except ValueError:
+        return f"HTTP {code}"
+
+
+def describe_http_status_error(error: httpx2.HTTPStatusError) -> str:
+    """Render a status error as "HTTP 401 Unauthorized from <origin>".
+
+    httpx2's own text quotes the full request URL, any redirect Location and the
+    server's reason phrase.
+    """
+    origin = url_origin(error.request.url)
+    return f"{http_status_text(error.response.status_code)} from {origin}"
+
+
+class _RedactingSdkLogHandler(logging.Handler):
+    """Hand the mcp SDK's stdlib log records to loguru, without URL secrets or payloads.
+
+    The SDK quotes request URLs in its own messages (an unfollowed redirect's target),
+    and the exceptions it logs quote them too (an httpx2 status error on the SSE message
+    endpoint, which is joined onto the configured URL) or quote the server's payload (a
+    pydantic error's input_value). So the message has its URLs cut, a status error is
+    named by its status and origin, any other exception becomes its class name and a
+    digest, and no traceback is forwarded.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            text = redact_urls(record.getMessage())
+            if record.exc_info and record.exc_info[1] is not None:
+                text = f"{text}: {_describe_sdk_exception(record.exc_info[1])}"
+            try:
+                level: str | int = logger.level(record.levelname).name
+            except ValueError:
+                level = record.levelno
+            _attributed_to(record).log(level, text)
+        except Exception:
+            # Never handleError: it prints the raw record to stderr.
+            _attributed_to(record).error("unrenderable {} log record", record.name)
+
+
+def _attributed_to(record: logging.LogRecord):
+    def _patch(loguru_record: dict) -> None:
+        loguru_record.update(name=record.name, function=record.funcName, line=record.lineno)
+
+    return logger.patch(_patch)
+
+
+def _describe_sdk_exception(error: BaseException) -> str:
+    # The SDK's task groups wrap a single failure in an exception group.
+    while isinstance(error, BaseExceptionGroup) and len(error.exceptions) == 1:
+        error = error.exceptions[0]
+    if isinstance(error, httpx2.HTTPStatusError):
+        return describe_http_status_error(error)
+    return format_exception_for_log(error)
+
+
+def route_mcp_sdk_logs_to_loguru() -> None:
+    """Send the mcp SDK's log records through `_RedactingSdkLogHandler` only. Idempotent.
+
+    Without it the agent, which configures no stdlib handler, prints them to stderr
+    through `logging.lastResort`, verbatim and with tracebacks. A handler rather than a
+    filter, because a logger's filters skip records created on its child loggers. The
+    WARNING floor keeps the SDK's DEBUG lines, which carry tool arguments and results,
+    from being created at all, whatever the root logger's level.
+    """
+    for name in _MCP_SDK_LOGGER_NAMES:
+        sdk_logger = logging.getLogger(name)
+        if not any(isinstance(handler, _RedactingSdkLogHandler) for handler in sdk_logger.handlers):
+            sdk_logger.addHandler(_RedactingSdkLogHandler())
+        sdk_logger.setLevel(logging.WARNING)
+        sdk_logger.propagate = False
 
 
 def redact(value):

@@ -140,6 +140,18 @@
     }
 }
 
+// Changes tab of a version preview: a restore changes something on this tab. A plain dot, no icon, so the tab
+// links keep their width.
+.tab-link__changed-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 4px;
+    border-radius: 50%;
+    background-color: var(--color-diff-changed);
+    vertical-align: middle;
+}
+
 .tab-separator {
     color: var(--white-alpha-20);
     font-size: 0.875rem;
@@ -159,6 +171,12 @@
     app-classification-decision-table-grid {
         flex: 1;
         min-height: 0;
+    }
+
+    // Lined up with the tabs row above the grid.
+    .routes-missing-reference-note {
+        flex-shrink: 0;
+        margin: 0.5rem 1rem 1rem;
     }
 }
 
@@ -192,6 +210,19 @@
         display: flex;
         flex-direction: column;
         @include mixins.editor-pane-corner;
+
+        // The editor's mark frame follows the column's rounded corner.
+        app-code-editor {
+            border-radius: inherit;
+        }
+    }
+
+    // While shown, the mark around the code column takes the column's place in the row.
+    .code-editor-mark.diff-field-mark--shown {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
     }
 }
 
@@ -374,28 +405,20 @@
         }
     }
 
-    .add-prompt-header-btn {
-        display: inline-flex;
+    .prompt-section-actions {
+        display: flex;
         align-items: center;
-        gap: 0.4rem;
-        background: var(--accent-color);
-        color: var(--white);
-        border: none;
-        border-radius: 6px;
-        padding: 0.5rem 0.875rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-        cursor: pointer;
-        white-space: nowrap;
-        transition: background 0.2s ease;
+        gap: 0.5rem;
+    }
 
-        &:hover {
-            background: var(--purple-430);
-        }
-
-        i {
-            font-size: 0.9rem;
-        }
+    .prompt-kind-tag {
+        background: var(--green-alpha-8);
+        color: var(--color-ks-status-new);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: 1;
+        padding: 4px 8px;
+        border-radius: 4px;
     }
 
     .required-star {
@@ -586,6 +609,17 @@
         gap: 0.4rem;
     }
 
+    // Beside the config select: same label gap and control height as that select, so the two line up.
+    .prompt-name--paired {
+        .prompt-field {
+            gap: 0.5rem;
+        }
+
+        .field-input:not(:read-only) {
+            height: 40px;
+        }
+    }
+
     .field-input {
         background: var(--graphite-800);
         border: 1px solid var(--white-alpha-15);
@@ -701,7 +735,7 @@
         background-color: var(--purple-alpha-10);
         border-radius: 6px;
         font-size: 0.8125rem;
-        color: var(--white-alpha-70);
+        color: var(--accent-color);
         border-left: 3px solid var(--accent-color);
         flex-shrink: 0;
     }

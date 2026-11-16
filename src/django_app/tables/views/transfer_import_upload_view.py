@@ -19,6 +19,7 @@ from django.db import close_old_connections
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
 from rbac.authorship import resolve_author
+from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework.exceptions import APIException, MethodNotAllowed, ValidationError
@@ -116,6 +117,8 @@ class _Admission:
     org_id: int
     import_settings: ImportSettings | None
     file_name: str
+    # The key the request authenticated with; the import's user actions name it.
+    api_key: ApiKey | None
 
 
 def import_upload_app(route: ImportJobRoute):
@@ -165,6 +168,7 @@ async def _serve_import_upload(route: ImportJobRoute, scope, receive, send) -> N
                             settings=admission.import_settings,
                             archive_path=archive_path,
                             file_name=admission.file_name,
+                            api_key=admission.api_key,
                         )
                 except ValidationError as error:
                     raise _rejection(error) from error
@@ -212,7 +216,11 @@ def _admit(scope, route: ImportJobRoute) -> _Admission:
         # Replacing overwrites existing items in place; the gate above only checks CREATE.
         assert_org_permission(request.user, org_id, route.resource_type, Permission.UPDATE)
     return _Admission(
-        user=user, org_id=org_id, import_settings=import_settings, file_name=file_name
+        user=user,
+        org_id=org_id,
+        import_settings=import_settings,
+        file_name=file_name,
+        api_key=request.auth if isinstance(request.auth, ApiKey) else None,
     )
 
 

@@ -1,3 +1,14 @@
+# Secrets first, merge commits included: a secret can arrive in a conflict
+# resolution too. husky sets core.hooksPath, so git runs this hook instead of the
+# one pre-commit would install, and the gitleaks hook from .pre-commit-config.yaml
+# is called from here.
+if command -v pre-commit >/dev/null 2>&1; then
+  pre-commit run gitleaks --hook-stage pre-commit || exit 1
+else
+  echo "pre-commit is not installed, so this commit was NOT checked for secrets." >&2
+  echo "Install it (pip install pre-commit) to run that check on every commit." >&2
+fi
+
 # Skip linting during merge commits to avoid reformatting files from upstream
 if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
   exit 0

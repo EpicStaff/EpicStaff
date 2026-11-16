@@ -9,6 +9,7 @@ from tables.models import (
     RealtimeModel,
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
+    SystemOneConfig,
 )
 from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
@@ -16,6 +17,10 @@ from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
 )
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
+from tables.serializers.model_serializers.llm_serializers import (
+    SYSTEM_ONE_FORBIDDEN_FIELDS,
+    system_one_model_error,
+)
 from tables.serializers.utils.llm_config_data_validation import (
     LLMConfigDataFieldsValidationMixin,
 )
@@ -143,3 +148,30 @@ class GeminiRealtimeConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = GeminiRealtimeConfig
         exclude = ["created_by", "created_at", "api_key_secret"]
+
+
+class SystemOneConfigImportSerializer(serializers.ModelSerializer):
+    """Secrets never travel through import/export. An imported TypeSafe or OpenAI config
+    lands with no key; the destination org's admin must assign one after import."""
+
+    model_name = serializers.CharField(max_length=64, required=False, allow_null=True)
+
+    class Meta:
+        model = SystemOneConfig
+        exclude = ["created_by", "created_at", "api_key_secret"]
+
+    def validate(self, attrs):
+        # The database forbids the other provider's fields, and DRF does not run
+        # check constraints: reject them here so a crafted file is a 400, not a 500.
+        # Required fields are not checked: an imported config has no key.
+        errors = {
+            field: message
+            for field, message in SYSTEM_ONE_FORBIDDEN_FIELDS[attrs["provider"]].items()
+            if attrs.get(field) is not None
+        }
+        model_error = system_one_model_error(attrs["provider"], attrs.get("model_name"))
+        if model_error:
+            errors["model_name"] = model_error
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs

@@ -10,13 +10,12 @@ function makeNode(id: string, type: NodeType, overrides: Partial<NodeModel> = {}
     return {
         id,
         backendId: null,
+        nodeUuid: `node-uuid-${id}`,
         type,
         node_name: `node-${id}`,
         data: {} as NodeModel['data'],
         position: { x: 0, y: 0 },
         ports: null,
-        color: '#000',
-        icon: 'icon',
         input_map: {},
         output_variable_path: null,
         size: { width: 330, height: 60 },
@@ -28,13 +27,12 @@ function makeStartNode(id: string, overrides: Partial<StartNodeModel> = {}): Sta
     return {
         id,
         backendId: null,
+        nodeUuid: `node-uuid-${id}`,
         type: NodeType.START,
         node_name: '__start__',
         data: { initialState: {} },
         position: { x: -200, y: 0 },
         ports: null,
-        color: '#d3d3d3',
-        icon: 'start',
         input_map: {},
         output_variable_path: null,
         size: { width: 125, height: 60 },
@@ -87,12 +85,15 @@ describe('extractToSubflow', () => {
         const subflowNonStart = result.subflowModel.nodes.filter((n) => n.type !== NodeType.START);
         expect(subflowNonStart).toHaveLength(2);
 
-        // All subflow nodes should have fresh IDs (not 'a' or 'b')
+        // All subflow nodes should have fresh IDs and uuids (not those of 'a' or 'b')
         for (const node of subflowNonStart) {
             expect(node.id).not.toBe('a');
             expect(node.id).not.toBe('b');
             expect(node.backendId).toBeNull();
+            expect(node.nodeUuid).toEqual(expect.any(String));
+            expect([nodeA.nodeUuid, nodeB.nodeUuid]).not.toContain(node.nodeUuid);
         }
+        expect(subflowStart!.nodeUuid).toEqual(expect.any(String));
 
         // Internal edge (a→b) remapped in subflow
         const internalConnections = result.subflowModel.connections.filter((c) => c.sourceNodeId !== subflowStart!.id);
@@ -110,6 +111,7 @@ describe('extractToSubflow', () => {
         expect(subGraphNode).toBeTruthy();
         expect(subGraphNode.id).toBe('subgraph-1');
         expect(subGraphNode.data.id).toBe(42);
+        expect(subGraphNode.nodeUuid).toEqual(expect.any(String));
     });
 
     it('reconnects inbound edges to the SubGraphNode', () => {

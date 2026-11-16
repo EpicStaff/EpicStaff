@@ -20,7 +20,7 @@ import {
     Validator,
 } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
-import { generateUuid } from '@shared/utils';
+import { generateUuid, groupThousands } from '@shared/utils';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
@@ -93,6 +93,8 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     isInvalid = computed(() => {
         return this.invalid() || this.isOutOfRange() || this.hasBadInput();
     });
+
+    protected readonly groups = computed(() => (this.hasBadInput() ? null : groupThousands(this.value())));
 
     isAboveWarning = computed(() => {
         const value = this.value();

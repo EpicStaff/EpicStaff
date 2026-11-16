@@ -11,7 +11,9 @@
         leftIcon ? 'btn--icon-left-' + mod : '',
         rightIcon ? 'btn--icon-right-' + mod : '',
         collapsedToIcon() ? 'btn--only-icon' : '',
+        iconOnly() ? 'btn--icon-only' : '',
         'btn--mod-' + mod,
+        appearance() === 'toolbar' ? 'btn--toolbar' : '',
     ]"
     [disabled]="disabled()"
     [attr.aria-label]="ariaLabelAttribute()"

@@ -1,6 +1,7 @@
 from collections.abc import Callable
 
 import settings
+from foundation.cryptographer import AbstractCryptographer, FernetRotatedCryptographer
 from infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 from infrastructure.graphrag.artifact_store import S3ArtifactStore
 from litestar.di import Provide
@@ -53,4 +54,13 @@ def artifact_store() -> S3ArtifactStore:
         bucket=settings.KNOWLEDGE_BUCKET,
         access_key=settings.STORAGE_ACCESS_KEY,
         secret_key=settings.STORAGE_SECRET_KEY,
+    )
+
+
+@register(use_cache=True, sync_to_thread=False)
+def cryptographer() -> AbstractCryptographer:
+    return FernetRotatedCryptographer(
+        settings.SECRETS_TRANSPORT_KEY,
+        settings.SECRETS_TRANSPORT_PREVIOUS_KEYS,
+        hkdf_info=settings.SECRETS_TRANSPORT_HKDF_INFO.encode(),
     )

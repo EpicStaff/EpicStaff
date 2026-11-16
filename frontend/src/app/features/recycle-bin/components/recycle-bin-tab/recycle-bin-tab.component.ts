@@ -9,18 +9,7 @@ import {
 } from '@shared/components';
 import { ActionCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import {
-    debounceTime,
-    defer,
-    distinctUntilChanged,
-    filter,
-    finalize,
-    Observable,
-    skip,
-    Subject,
-    Subscription,
-    switchMap,
-} from 'rxjs';
+import { debounceTime, defer, filter, finalize, Observable, skip, Subject, Subscription, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -90,6 +79,9 @@ const RESTORE_TOAST_DURATION_MS = 10_000;
 })
 export class RecycleBinTabComponent implements OnInit {
     readonly recycleBinTab = input.required<RecycleBinTabKey>();
+    /** `?search=` and `?kind=` of a link to one item (the audit trail's): the search and Kind switch the tab opens on. */
+    readonly search = input<string>();
+    readonly kind = input<string>();
 
     // Declared above the state on purpose: the fields below read their signals while the class initializes.
     private readonly storage = inject(RecycleBinStorageService);
@@ -111,7 +103,7 @@ export class RecycleBinTabComponent implements OnInit {
     protected readonly canPurge = computed(() => this.permissionsService.isSuperadmin);
     /** No checkboxes when there is nothing the user could do with a selection. */
     protected readonly selectable = computed(() => this.canRestore() || this.canPurge());
-    protected readonly searchTerm = signal('');
+    protected readonly searchTerm = linkedSignal(() => this.search() ?? '');
     /** Each date column's own direction (its arrow), and the column the list is sorted by. */
     protected readonly columnDirections = signal(INITIAL_COLUMN_DIRECTIONS);
     protected readonly sortField = signal<RecycleBinSortField>(DEFAULT_SORT.field);
@@ -124,7 +116,7 @@ export class RecycleBinTabComponent implements OnInit {
     /** Tools: the Kind filter picks which bin is listed, so one is always chosen. */
     protected readonly kindSwitch = computed(() => hasKindSwitch(this.tab()));
     /** Files: an item type, or `null` for both. Tools: the source shown (see kindSwitch). */
-    protected readonly kindFilter = linkedSignal<string | null>(() => initialKindFilter(this.tab()));
+    protected readonly kindFilter = linkedSignal<string | null>(() => initialKindFilter(this.tab(), this.kind()));
     /** The count column's filter (Flows, Agents…): a COUNT_FILTER_OPTIONS value, or `null` for all. */
     protected readonly countFilter = signal<string | null>(null);
     /** A search or filter narrows the list; the Kind switch doesn't, it picks the list. */
@@ -175,7 +167,12 @@ export class RecycleBinTabComponent implements OnInit {
 
     constructor() {
         this.serverSearches
-            .pipe(debounceTime(SERVER_SEARCH_DEBOUNCE_MS), distinctUntilChanged(), takeUntilDestroyed())
+            .pipe(debounceTime(SERVER_SEARCH_DEBOUNCE_MS), takeUntilDestroyed())
+            .subscribe(() => this.reload(1));
+        // A link to the tab already open keeps this instance and only changes these inputs; the first value is the
+        // one ngOnInit loads.
+        toObservable(computed(() => [this.search(), this.kind()]))
+            .pipe(skip(1), takeUntilDestroyed())
             .subscribe(() => this.reload(1));
         if (this.reloadRequests) {
             // The first value is the current count; only later requests (the page's "Empty recycle bin") reload.

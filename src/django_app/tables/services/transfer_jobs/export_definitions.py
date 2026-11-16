@@ -11,7 +11,8 @@ scoped, named and written. Adding an exportable entity:
 3. Give its viewset `ExportJobActionMixin` with `export_job_definition` and, when
    the `export-jobs` body holds more than `ids`, `export_job_request_serializer_class`
    (whose validated data `build_request` reads). Map `export_jobs` to the
-   definition's `permission` in its `rbac_action_map`.
+   definition's `permission` in its `rbac_action_map`, gated on the resource type
+   `resource_type_for` names.
 
 This module is serializer-free: request bodies are validated by the viewset, and
 a definition only reads their validated data.
@@ -23,6 +24,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from agents.models import AgentDefinition
 from django.db.models import Model, Q, QuerySet
 from rbac.models.enums import Permission, ResourceType
 from tables.import_export.archive import ExportArchiveWriter
@@ -56,6 +58,7 @@ from tables.models import (
     SourceCollection,
     TransferJob,
 )
+from tables.models.audit_filter_preset_models import AUDIT_PRESET_DOMAIN_RESOURCE_TYPES
 from tables.models.user import User
 from tables.utils.helpers import generate_file_name
 
@@ -92,23 +95,40 @@ class ExportArtifact:
 class ExportJobDefinition(ABC):
     """How one main entity is exported as a job.
 
-    A job's request always holds `ids`: the items `scoped_queryset` must find, all
+    A job's request always holds `ids`: the items `selected_items` must find, all
     of them, both when the job is started and again when it runs.
     """
 
     main_entity: TransferJob.MainEntity
     # Start of the archive's file name, e.g. `flow` in `flow_support_2026-01-01.zip`.
     file_prefix: str
-    # The right a caller needs, on `resource_type`, to start the job and to download it.
+    # The resource type of a definition whose right does not depend on the job's
+    # request; read only through `resource_type_for`.
     resource_type: ResourceType
+    # The right a caller needs, on `resource_type_for`, to start the job and to download it.
     permission: Permission = Permission.EXPORT
     lane: TransferLane = TransferLane.LIGHT
     # How the job list names a job of several items: "3 <plural_label>".
     plural_label: str
 
+    def resource_type_for(self, request: dict) -> ResourceType:
+        """The resource type on which starting, running and downloading the job need `permission`.
+
+        Args:
+            request: The job's stored request (`build_request`).
+        """
+        return self.resource_type
+
     @abstractmethod
     def scoped_queryset(self, *, user: User, org_id: int) -> QuerySet:
         """Every item of this entity `user` may export from `org_id`."""
+
+    def selected_items(self, *, user: User, org_id: int, request: dict) -> QuerySet:
+        """The items of the job's `request` that `user` may export from `org_id`.
+
+        The job is started, and run, only when this finds every id of `request`.
+        """
+        return self.scoped_queryset(user=user, org_id=org_id).filter(pk__in=request["ids"])
 
     def build_request(self, validated_data: dict) -> dict:
         """The job's stored request, from the validated body of its `export-jobs` action."""
@@ -151,7 +171,8 @@ class EnvelopeExportDefinition(ExportJobDefinition):
     """An export whose archive holds the `export.json` envelope (and any collection files).
 
     The archive imports again as it is: through an import job for flows and
-    collections, through the synchronous `import/` of the others.
+    collections, through the synchronous `import/` of the others. The right it needs
+    is `permission` on the resource type `ENTITY_RESOURCE_MAP` gives the entity.
     """
 
     def __init__(
@@ -163,7 +184,6 @@ class EnvelopeExportDefinition(ExportJobDefinition):
         plural_label: str,
         scope: Callable[[User, int], Q],
         lane: TransferLane = TransferLane.LIGHT,
-        resource_type: ResourceType | None = None,
         permission: Permission = Permission.EXPORT,
         carries_knowledge_flag: bool = False,
     ):
@@ -174,9 +194,11 @@ class EnvelopeExportDefinition(ExportJobDefinition):
         self.plural_label = plural_label
         self._scope = scope
         self.lane = lane
-        self.resource_type = resource_type or ENTITY_RESOURCE_MAP[entity_type]
         self.permission = permission
         self._carries_knowledge_flag = carries_knowledge_flag
+
+    def resource_type_for(self, request: dict) -> ResourceType:
+        return ENTITY_RESOURCE_MAP[self.entity_type]
 
     def scoped_queryset(self, *, user: User, org_id: int) -> QuerySet:
         return self._model.objects.filter(self._scope(user, org_id))
@@ -205,6 +227,38 @@ class EnvelopeExportDefinition(ExportJobDefinition):
             path=ArchiveExportFormatStrategy().render_to_file(result),
             base_name=self.base_name(selected, job.request),
             excluded=result.excluded,
+        )
+
+
+class AuditFilterPresetExportDefinition(EnvelopeExportDefinition):
+    """Presets of one audit domain, the job's `domain`.
+
+    Presets are a convenience over audit browsing: every action on them, export and
+    download included, needs the domain's read right and nothing more. A preset of
+    another domain is not found, like one of another organization.
+    """
+
+    def __init__(self):
+        super().__init__(
+            entity_type=EntityType.AUDIT_FILTER_PRESET,
+            model=AuditFilterPreset,
+            file_prefix="audit_filter_preset",
+            plural_label="audit filter presets",
+            scope=_audit_preset_scope,
+            permission=Permission.READ,
+        )
+
+    def build_request(self, validated_data: dict) -> dict:
+        return {**super().build_request(validated_data), "domain": validated_data["domain"]}
+
+    def resource_type_for(self, request: dict) -> ResourceType:
+        return AUDIT_PRESET_DOMAIN_RESOURCE_TYPES[request["domain"]]
+
+    def selected_items(self, *, user: User, org_id: int, request: dict) -> QuerySet:
+        return (
+            super()
+            .selected_items(user=user, org_id=org_id, request=request)
+            .filter(domain=request["domain"])
         )
 
 
@@ -435,17 +489,14 @@ EXPORT_JOB_DEFINITIONS: dict[str, ExportJobDefinition] = {
             plural_label="MCP tools",
             scope=_in_org,
         ),
-        # Presets are a convenience over audit browsing: every action on them,
-        # export included, needs AUDIT read and nothing more.
         EnvelopeExportDefinition(
-            entity_type=EntityType.AUDIT_FILTER_PRESET,
-            model=AuditFilterPreset,
-            file_prefix="audit_filter_preset",
-            plural_label="audit filter presets",
-            scope=_audit_preset_scope,
-            resource_type=ResourceType.AUDIT,
-            permission=Permission.READ,
+            entity_type=EntityType.AGENT_DEFINITION,
+            model=AgentDefinition,
+            file_prefix="agent",
+            plural_label="agents",
+            scope=_in_org,
         ),
+        AuditFilterPresetExportDefinition(),
         SessionExportDefinition(),
         ClassificationDecisionTableExportDefinition(),
         FlowNodesExportDefinition(),

@@ -2,7 +2,18 @@ import { NodeType } from '@shared/models';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { FlowModel } from '../../core/models/flow.model';
-import { LIVE_NODE_ID as ID, liveGraph, livePython, liveTask } from '../testing/live-graph.fixture';
+import { getNodeDiff } from '../save/diff';
+import {
+    LIVE_NODE_ID as ID,
+    liveAgent,
+    liveClassificationTable,
+    liveGraph,
+    liveNote,
+    livePython,
+    liveStart,
+    liveTask,
+} from '../testing/live-graph.fixture';
+import { buildFlowModelFromGraphDto } from './build-flow-model-from-graph-dto';
 import { mapGraphDtoToFlowModel } from './map-graph-dto-to-flow-model';
 
 /** Every node's badge number, keyed by its backend id. */
@@ -110,5 +121,251 @@ describe('mapGraphDtoToFlowModel node numbers', () => {
         expect(numbersByBackendId(flow).get(ID.python)).toBe(14);
         expect(flow.nodes.find((node) => node.type === NodeType.START)?.nodeNumber).toBeUndefined();
         expect(warn).toHaveBeenCalledTimes(1);
+    });
+});
+
+const STALE_METADATA = {
+    position: { x: 10, y: 20 },
+    color: '#ff0000',
+    icon: 'ti ti-bug',
+    size: { width: 999, height: 999 },
+};
+
+/** `liveClassificationTable` with one visible route row per route code. */
+function classificationTableWithRoutes(
+    ...routeCodes: string[]
+): GraphDto['classification_decision_table_node_list'][number] {
+    const [route] = liveClassificationTable.condition_groups;
+    return {
+        ...liveClassificationTable,
+        condition_groups: routeCodes.map((routeCode, index) => ({
+            ...route,
+            id: 100 + index,
+            group_name: routeCode,
+            order: index + 1,
+            route_code: routeCode,
+            dock_visible: true,
+        })),
+    };
+}
+
+function loadedNode(graph: GraphDto, backendId: number) {
+    return mapGraphDtoToFlowModel(graph).nodes.find((node) => node.backendId === backendId)!;
+}
+
+/** `liveGraph` with garbage position, colour, icon and size on every node. */
+function withStaleStyles(graph: GraphDto): GraphDto {
+    const stale = Object.fromEntries(
+        Object.entries(graph).map(([key, value]) => [
+            key,
+            key.endsWith('_list') && key !== 'edge_list'
+                ? (value as { metadata: object }[]).map((node) => ({
+                      ...node,
+                      metadata: { ...node.metadata, ...STALE_METADATA },
+                  }))
+                : value,
+        ])
+    );
+    return stale as unknown as GraphDto;
+}
+
+describe('mapGraphDtoToFlowModel node style', () => {
+    it('ignores backend color, icon and size, and keeps the position', () => {
+        const graph: GraphDto = {
+            ...liveGraph,
+            agent_node_list: [{ ...liveAgent, metadata: STALE_METADATA }],
+        };
+
+        const node = loadedNode(graph, ID.agent);
+
+        expect(node).not.toHaveProperty('color');
+        expect(node).not.toHaveProperty('icon');
+        expect(node.size).toEqual({ width: 330, height: 60 });
+        expect(node.position).toEqual({ x: 10, y: 20 });
+    });
+
+    it('gives a start node without a stored size 125x60', () => {
+        const graph: GraphDto = { ...liveGraph, start_node_list: [{ ...liveStart, metadata: {} }] };
+
+        expect(loadedNode(graph, ID.start).size).toEqual({ width: 125, height: 60 });
+    });
+
+    it('loads a classification table stored 340 wide as 330 wide, with its height from the groups', () => {
+        const graph: GraphDto = {
+            ...liveGraph,
+            classification_decision_table_node_list: [
+                {
+                    ...classificationTableWithRoutes('A', 'B', 'C'),
+                    metadata: { position: { x: 0, y: 0 }, size: { width: 340, height: 500 } },
+                },
+            ],
+        };
+
+        const table = buildFlowModelFromGraphDto(graph).nodes.find(
+            (node) => node.backendId === ID.classificationTable
+        )!;
+
+        // A header plus 3 route rows, Default and Error, 60 each.
+        expect(table.size).toEqual({ width: 330, height: 360 });
+    });
+
+    it('keeps the valid size stored on a note', () => {
+        const graph: GraphDto = {
+            ...liveGraph,
+            graph_note_list: [{ ...liveNote, metadata: { size: { width: 420, height: 260 } } }],
+        };
+
+        expect(loadedNode(graph, ID.note).size).toEqual({ width: 420, height: 260 });
+    });
+
+    it.each([
+        ['a string width', { width: '300', height: 100 }],
+        ['a negative width', { width: -5, height: 100 }],
+        ['a zero height', { width: 300, height: 0 }],
+        ['a NaN width', { width: NaN, height: 100 }],
+        ['a null size', null],
+        ['a height-less size', { width: 300 }],
+    ])('loads a note with %s as 200x150', (_label, size) => {
+        const graph: GraphDto = { ...liveGraph, graph_note_list: [{ ...liveNote, metadata: { size } }] };
+
+        expect(loadedNode(graph, ID.note).size).toEqual({ width: 200, height: 150 });
+    });
+
+    it('loads a legacy note with only a position as 200x150', () => {
+        const graph: GraphDto = {
+            ...liveGraph,
+            graph_note_list: [{ ...liveNote, metadata: { position: { x: 5, y: 6 } } }],
+        };
+
+        const node = loadedNode(graph, ID.note);
+
+        expect(node.size).toEqual({ width: 200, height: 150 });
+        expect(node.position).toEqual({ x: 5, y: 6 });
+    });
+
+    it('leaves the save diff empty when only the stored size differs', () => {
+        const loaded = mapGraphDtoToFlowModel(withStaleStyles(liveGraph));
+        const savedWithOldStyles = {
+            ...loaded,
+            nodes: loaded.nodes.map((node) => ({
+                ...node,
+                size: STALE_METADATA.size,
+            })),
+        };
+
+        const diff = getNodeDiff(savedWithOldStyles, loaded);
+
+        for (const nodeDiff of Object.values(diff)) {
+            expect(nodeDiff.toCreate).toEqual([]);
+            expect(nodeDiff.toUpdate).toEqual([]);
+            expect(nodeDiff.toDelete).toEqual([]);
+        }
+    });
+});
+
+describe('mapGraphDtoToFlowModel hand-placed wire bends', () => {
+    const BENDS = [
+        { x: 600, y: 30 },
+        { x: 600, y: 430 },
+    ];
+    const OUTDATED_SIZE = { width: 900, height: 40 };
+    const DRAWN_SIZE = { width: 330, height: 60 };
+
+    /** The agent → task wire, with the given stored sizes on its ends (undefined: no size stored). */
+    function loadAgentToTaskWire(
+        agentSize: { width: number; height: number } | undefined,
+        taskSize: { width: number; height: number } | undefined
+    ) {
+        const graph: GraphDto = {
+            ...liveGraph,
+            agent_node_list: [{ ...liveAgent, metadata: { position: { x: 0, y: 0 }, size: agentSize } }],
+            task_node_list: [{ ...liveTask, metadata: { position: { x: 1000, y: 400 }, size: taskSize } }],
+            edge_list: [
+                {
+                    id: 50,
+                    graph: 1,
+                    start_node_id: ID.agent,
+                    end_node_id: ID.task,
+                    metadata: { waypoints: BENDS },
+                },
+            ],
+        };
+        const flow = mapGraphDtoToFlowModel(graph);
+        return flow.connections.find((connection) => connection.data?.id === 50)!;
+    }
+
+    it.each([
+        ['neither end stores a size', undefined, undefined],
+        ['both ends store the size they are drawn at', DRAWN_SIZE, DRAWN_SIZE],
+    ])('keeps the bends when %s', (_label, agentSize, taskSize) => {
+        const wire = loadAgentToTaskWire(agentSize, taskSize);
+
+        expect(wire.waypoints).toEqual(BENDS);
+        expect(wire.userAdjustedWaypoints).toBe(true);
+    });
+
+    it.each([
+        ['the source', OUTDATED_SIZE, undefined],
+        ['the target', undefined, OUTDATED_SIZE],
+    ])('routes the wire afresh when %s was stored at a size it is no longer drawn at', (_end, agentSize, taskSize) => {
+        const wire = loadAgentToTaskWire(agentSize, taskSize);
+
+        expect(wire.waypoints).toBeUndefined();
+        expect(wire.userAdjustedWaypoints).toBeUndefined();
+    });
+
+    it('keeps the bends of a wire whose ends are not outdated, beside one that is routed afresh', () => {
+        const graph: GraphDto = {
+            ...liveGraph,
+            agent_node_list: [{ ...liveAgent, metadata: { position: { x: 0, y: 0 }, size: OUTDATED_SIZE } }],
+            edge_list: [
+                { id: 50, graph: 1, start_node_id: ID.agent, end_node_id: ID.task, metadata: { waypoints: BENDS } },
+                { id: 51, graph: 1, start_node_id: ID.python, end_node_id: ID.task, metadata: { waypoints: BENDS } },
+            ],
+        };
+
+        const waypointsByEdgeId = new Map(
+            mapGraphDtoToFlowModel(graph).connections.map((connection) => [connection.data?.id, connection.waypoints])
+        );
+
+        expect(waypointsByEdgeId.get(50)).toBeUndefined();
+        expect(waypointsByEdgeId.get(51)).toEqual(BENDS);
+    });
+
+    it('keeps the bends of a wire on a note, even one whose stored size is not the size it is drawn at', () => {
+        const graph: GraphDto = {
+            ...liveGraph,
+            // A string width is not a usable size, so the note is drawn at its default 200x150.
+            graph_note_list: [{ ...liveNote, metadata: { size: { width: '420', height: 260 } } }],
+            edge_list: [
+                { id: 50, graph: 1, start_node_id: ID.agent, end_node_id: ID.note, metadata: { waypoints: BENDS } },
+            ],
+        };
+
+        const wire = mapGraphDtoToFlowModel(graph).connections.find((connection) => connection.data?.id === 50)!;
+
+        expect(wire.waypoints).toEqual(BENDS);
+    });
+
+    it('keeps the bends of a wire into a classification table stored at the height its rows give it', () => {
+        const graph: GraphDto = {
+            ...liveGraph,
+            classification_decision_table_node_list: [
+                { ...classificationTableWithRoutes('A', 'B', 'C'), metadata: { size: { width: 330, height: 360 } } },
+            ],
+            edge_list: [
+                {
+                    id: 50,
+                    graph: 1,
+                    start_node_id: ID.task,
+                    end_node_id: ID.classificationTable,
+                    metadata: { waypoints: BENDS },
+                },
+            ],
+        };
+
+        const wire = mapGraphDtoToFlowModel(graph).connections.find((connection) => connection.data?.id === 50)!;
+
+        expect(wire.waypoints).toEqual(BENDS);
     });
 });

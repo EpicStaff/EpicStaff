@@ -3,26 +3,23 @@
 }
 
 .popover {
-    background: var(--color-sidenav-background);
-    border: 1px solid var(--color-divider-subtle);
-    border-radius: 10px;
-    width: 320px;
-    box-shadow: 0 10px 24px var(--black-alpha-25);
+    display: flex;
+    flex-direction: column;
+    width: 352px;
+    background: var(--color-background-body);
+    border: 1px solid var(--graphite-750);
+    border-radius: 8px;
+    box-shadow:
+        0 6px 10px 4px var(--black-alpha-15),
+        0 2px 3px 0 var(--black-alpha-30);
     overflow: hidden;
 }
 
 .popover__header {
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 1rem 0.25rem;
     color: var(--text-secondary-60);
     font-size: var(--text-body-medium-size);
-    font-weight: var(--text-body-medium-weight);
-    border-bottom: 1px solid var(--color-divider-subtle);
-}
-
-.popover__section {
-    &:not(:first-child) {
-        border-top: 1px solid var(--color-divider-subtle);
-    }
+    line-height: 1.3;
 }
 
 .popover__row {
@@ -30,36 +27,23 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.625rem 1rem;
-}
-
-.popover__row + .popover__row {
-    border-top: 1px solid var(--color-divider-subtle);
+    height: 40px;
+    padding: 0.5rem 1rem;
 }
 
 .popover__row--nested {
-    padding-left: 2.25rem;
-    background: var(--color-background-body);
-    font-size: 0.875rem;
+    padding-left: 2rem;
     animation: slideDownFadeIn 0.2s ease-out;
-
-    .popover__label {
-        font-size: 0.8rem;
-        font-weight: 400;
-        color: var(--color-text-secondary);
-    }
 }
 
 @keyframes slideDownFadeIn {
     from {
         opacity: 0;
-        max-height: 0;
         transform: translateY(-0.5rem);
     }
 
     to {
         opacity: 1;
-        max-height: 100px;
         transform: translateY(0);
     }
 }
@@ -67,10 +51,11 @@
 .popover__label {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    color: var(--color-text-secondary);
-    font-size: 0.8125rem;
-    font-weight: 500;
+    gap: 0.25rem;
+    color: var(--color-text-primary);
+    font-size: var(--text-body-medium-size);
+    line-height: 1.3;
+    white-space: nowrap;
 }
 
 .help-icon {
@@ -85,21 +70,20 @@
 
 .toggle-group {
     position: relative;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    background: var(--color-background-body);
-    border-radius: 6px;
-    padding: 3px;
+    display: flex;
     flex-shrink: 0;
+    border: 1px solid var(--graphite-750);
+    border-radius: 4px;
+    overflow: hidden;
     cursor: pointer;
 }
 
 .toggle-slider {
     position: absolute;
-    top: 3px;
-    left: 3px;
-    width: calc(50% - 3px);
-    height: calc(100% - 6px);
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 100%;
     background: var(--accent-color);
     border-radius: 4px;
     transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -113,35 +97,17 @@
 .toggle-btn {
     position: relative;
     z-index: 1;
-    padding: 0.2rem 0.75rem;
-    border: 1px solid var(--color-divider-subtle);
-    border-radius: 4px;
+    width: 40px;
+    height: 28px;
+    padding: 0;
+    border: none;
     background: transparent;
-    color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    color: var(--color-text-primary);
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
+    line-height: 1.3;
     cursor: pointer;
-    transition:
-        color 0.2s ease,
-        border-color 0.2s ease;
     user-select: none;
-    text-align: center;
-
-    &:first-of-type {
-        border-right: none;
-        border-top-right-radius: 0;
-        border-bottom-right-radius: 0;
-    }
-
-    &:last-of-type {
-        border-left: none;
-        border-top-left-radius: 0;
-        border-bottom-left-radius: 0;
-    }
-
-    &.text-active {
-        color: var(--white);
-        border-color: transparent;
-    }
 
     // Drawn inside: the slider sits right under the button.
     &:focus-visible {
@@ -151,22 +117,20 @@
 
 .popover__footer {
     display: flex;
-    justify-content: flex-end;
-    padding: 0.5rem 1rem 0.75rem;
-    border-top: 1px solid var(--color-divider-subtle);
+    align-items: center;
+    justify-content: space-between;
+    height: 40px;
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--graphite-750);
+    --button-small-font-weight: var(--text-body-small-large-weight);
 }
 
-.popover__reset {
-    background: transparent;
-    border: none;
-    color: var(--color-text-secondary);
-    font-size: 0.75rem;
-    cursor: pointer;
-    padding: 0.25rem 0.4rem;
-    border-radius: 4px;
-    transition: color 0.15s ease;
+.popover__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
 
-    &:is(:hover, :focus-visible) {
-        color: var(--accent-color);
-    }
+.popover__action {
+    --button-small-padding-x: 1rem;
 }

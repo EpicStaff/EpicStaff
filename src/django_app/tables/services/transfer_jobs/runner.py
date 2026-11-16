@@ -21,6 +21,7 @@ from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.transfer_jobs.archive_store import TransferArchiveStore
 from tables.services.transfer_jobs.export_definitions import TransferJobError, export_definition
 from tables.utils.helpers import generate_file_name
+from user_audit.actor import Actor
 from utils.exception_handler import flatten_error_detail
 from utils.logger import logger
 
@@ -111,7 +112,7 @@ class TransferJobRunner:
             logger.info("Transfer job {} is not queued any more; skipped", job_id)
             return
 
-        job = TransferJob.objects.select_related("created_by").get(pk=job_id)
+        job = TransferJob.objects.select_related("created_by", "api_key").get(pk=job_id)
         try:
             if job.created_by is None:
                 raise TransferJobError("creator_missing", "The user who started the job is gone.")
@@ -170,10 +171,11 @@ class TransferJobRunner:
     def _export(self, job: TransferJob) -> None:
         definition = export_definition(job.main_entity)
         user, org_id = job.created_by, job.org_id
+        resource_type = definition.resource_type_for(job.request)
         # Checked again here: the creator's rights may have changed since the job was queued.
-        assert_org_permission(user, org_id, definition.resource_type, definition.permission)
-        entity_ids = list(job.request.get("ids", []))
-        selected = definition.scoped_queryset(user=user, org_id=org_id).filter(pk__in=entity_ids)
+        assert_org_permission(user, org_id, resource_type, definition.permission)
+        entity_ids = job.request["ids"]
+        selected = definition.selected_items(user=user, org_id=org_id, request=job.request)
         if not entity_ids or selected.count() != len(set(entity_ids)):
             raise TransferJobError("not_found", "Some of the requested items do not exist.")
 
@@ -193,7 +195,7 @@ class TransferJobRunner:
             # (its download re-checks the same right). Revoked after this point, the job
             # completes, and its download is refused like one whose right was revoked
             # after completion.
-            assert_org_permission(user, org_id, definition.resource_type, definition.permission)
+            assert_org_permission(user, org_id, resource_type, definition.permission)
             with open(artifact.path, "rb") as archive:
                 job.archive_key = self._store.upload_file(job.id, EXPORT_ARCHIVE_NAME, archive)
         finally:
@@ -222,7 +224,18 @@ class TransferJobRunner:
 
         with temporary_archive(partial(self._store.download_to, job.archive_key)) as path:
             job.result = ViewSetImportExportService(entity_type).import_archive(
-                path, org_id=org_id, user=user, settings=settings, main_entity=entity_type
+                path,
+                org_id=org_id,
+                user=user,
+                settings=settings,
+                main_entity=entity_type,
+                # The job runs outside the request that started it: what it creates is
+                # recorded as that request's caller, its creator with the key it used.
+                actor=Actor(
+                    user_id=user.pk,
+                    email=user.email,
+                    api_key_name=job.api_key.name if job.api_key else None,
+                ),
             )
 
     def _remove_older_export_archives(self, job: TransferJob) -> None:

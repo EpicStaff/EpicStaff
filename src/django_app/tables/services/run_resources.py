@@ -131,6 +131,7 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     FollowField("tables.ClassificationDecisionTableNode", "post_python_code"),
     FollowChildren("tables.ClassificationDecisionTablePrompt", "cdt_node"),
     FollowField("tables.ClassificationDecisionTablePrompt", "llm_config"),
+    FollowField("tables.ClassificationDecisionTablePrompt", "system_one_config"),
     FollowChildren("tables.ClassificationConditionGroup", "classification_decision_table_node"),
     FollowChildren(
         "tables.ClassificationConditionGroupSection", "classification_decision_table_node"
@@ -215,6 +216,8 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     # Model configs.
     FollowField("tables.LLMConfig", "model"),
     FollowField("tables.LLMConfig", "api_key_secret"),
+    FollowField("tables.SystemOneConfig", "api_key_secret"),
+    FollowField("tables.SystemOneConfig", "llm_config"),
     FollowField("tables.EmbeddingConfig", "model"),
     FollowField("tables.EmbeddingConfig", "api_key_secret"),
     # Webhooks.

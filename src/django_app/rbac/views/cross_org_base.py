@@ -7,7 +7,8 @@ from rbac.access.gates import (
     IsSuperadmin,
     RestrictApiKeyToUserKeyReads,
 )
-from rbac.exceptions import OrgContextRequiredError
+from rbac.access.principals import user_api_key_org_id
+from rbac.exceptions import OrganizationNotFoundError, OrgContextRequiredError
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 
 
@@ -20,12 +21,14 @@ class CrossOrgAdminPagination(PageNumberPagination):
 
 
 class CrossOrgAdminViewSet(viewsets.ViewSet):
-    """Base for flat cross-org governance viewsets (roles, memberships, orgs, API keys).
+    """Base for flat cross-org governance viewsets (roles, memberships, orgs, users,
+    API keys, plugin role permissions).
 
     - **Door gate:** `HasResourcePermissionAnywhere(rbac_resource_type)` —
       resolved via `rbac_action_map` (subclass sets both). Coarse: passes if
       the caller holds the action in >=1 org; the service does the precise
-      per-org check.
+      per-org check. A subclass may replace the door gate with its own
+      `permission_classes` (`UserAdminViewSet` lists `IsSuperadmin` instead).
     - **Mixed gate:** any action named in `superadmin_actions` swaps the door
       gate for `IsSuperadmin` and keeps the rest of `permission_classes` —
       for a resource's global/platform actions (e.g. create/deactivate an
@@ -36,6 +39,10 @@ class CrossOrgAdminViewSet(viewsets.ViewSet):
       `permission_classes`, so neither a subclass's `permission_classes` nor
       an `@action(permission_classes=...)` can drop it: writes are JWT-only
       and the SYSTEM key is rejected outright.
+    - **API-key org:** a USER key (a superadmin's too) acts only in its own
+      org. Views take the orgs they read through `requested_org_ids`,
+      `key_org_ids`, `key_org_id` and `require_key_org`, never from the
+      query directly.
     """
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
@@ -64,3 +71,30 @@ class CrossOrgAdminViewSet(viewsets.ViewSet):
             return [int(part) for part in raw.split(",") if part != ""]
         except ValueError as exc:
             raise OrgContextRequiredError() from exc
+
+    def requested_org_ids(self, request, param="org_ids"):
+        """Return the orgs the `param` query names, or `[key org]` for a USER API key.
+
+        Whatever a USER key's request asks for, or nothing at all, becomes the key's org.
+        The value is parsed first either way, so a malformed one is a 400 for a key too.
+        """
+        org_ids = self.parse_org_ids(request.query_params.get(param))
+        return self.key_org_ids(request) or org_ids
+
+    def key_org_id(self, request):
+        """Return the org of the request's USER API key, or None for any other credential."""
+        return user_api_key_org_id(request)
+
+    def key_org_ids(self, request):
+        """Return `[key org]` for a USER API key request, else None (no limit)."""
+        key_org_id = self.key_org_id(request)
+        return None if key_org_id is None else [key_org_id]
+
+    def require_key_org(self, request, org_id):
+        """Raise OrganizationNotFoundError when a USER API key's org is not `org_id`.
+
+        Another org is answered as missing, so the key learns nothing about it.
+        """
+        key_org_id = self.key_org_id(request)
+        if key_org_id is not None and key_org_id != org_id:
+            raise OrganizationNotFoundError()

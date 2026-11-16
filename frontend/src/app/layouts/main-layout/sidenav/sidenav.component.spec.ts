@@ -145,7 +145,8 @@ describe('LeftSidebarComponent', () => {
                     provide: ConfigService,
                     useValue: {
                         apiUrl: '/api/',
-                        isAuditTrailEnabled: false,
+                        isSessionAuditEnabled: false,
+                        isUserAuditEnabled: false,
                         isChatEnabled: true,
                         isPluginsEnabled: true,
                     },
@@ -397,10 +398,27 @@ describe('LeftSidebarComponent', () => {
         }
 
         it('is set off from the pages above it by a separator', () => {
-            (TestBed.inject(ConfigService) as { isAuditTrailEnabled: boolean }).isAuditTrailEnabled = true;
+            (TestBed.inject(ConfigService) as { isSessionAuditEnabled: boolean }).isSessionAuditEnabled = true;
             render(COLLAPSED_WIDTH);
 
             expect(separatorBeforeAudit()).toBe(true);
+        });
+
+        it('is shown for the user actions tab alone', () => {
+            const config = TestBed.inject(ConfigService) as { isUserAuditEnabled: boolean };
+            config.isUserAuditEnabled = true;
+            render(COLLAPSED_WIDTH);
+
+            expect(navLink('Audit')).toBeDefined();
+        });
+
+        it('hides the Audit nav item when no tab is allowed', () => {
+            const config = TestBed.inject(ConfigService) as { isSessionAuditEnabled: boolean };
+            config.isSessionAuditEnabled = true;
+            vi.spyOn(TestBed.inject(PermissionsService), 'can').mockReturnValue(false);
+            render(COLLAPSED_WIDTH);
+
+            expect(navLink('Audit')).toBeUndefined();
         });
 
         it('leaves no separator behind when the audit trail is off', () => {
@@ -1169,7 +1187,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
     let leaveFlowAllowed: boolean;
     let workspaceAllowed: boolean;
     let settingsAllowed: boolean;
-    let config: { isAuditTrailEnabled: boolean };
+    let config: { isSessionAuditEnabled: boolean; isUserAuditEnabled: boolean };
     let availablePlugins: WritableSignal<AvailablePlugin[]>;
     let tours: WritableSignal<readonly TourDefinition[]>;
 
@@ -1179,7 +1197,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
         leaveFlowAllowed = true;
         workspaceAllowed = true;
         settingsAllowed = true;
-        config = { isAuditTrailEnabled: false };
+        config = { isSessionAuditEnabled: false, isUserAuditEnabled: false };
         availablePlugins = signal<AvailablePlugin[]>([]);
         tours = signal<readonly TourDefinition[]>([]);
         TestBed.configureTestingModule({
@@ -1302,7 +1320,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
     });
 
     it('steps from Chats to Audit when the audit trail is shown', async () => {
-        config.isAuditTrailEnabled = true;
+        config.isSessionAuditEnabled = true;
         await startAt('/chats');
 
         await press('ArrowDown');

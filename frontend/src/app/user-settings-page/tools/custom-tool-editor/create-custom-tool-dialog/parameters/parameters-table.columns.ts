@@ -25,12 +25,12 @@ const DESCRIPTION_ERROR_MESSAGES = {
 };
 
 const TYPE_OPTIONS = [
-    { label: 'string', value: 'string' },
-    { label: 'integer', value: 'integer' },
-    { label: 'number', value: 'number' },
-    { label: 'boolean', value: 'boolean' },
-    { label: 'object', value: 'object' },
-    { label: 'array', value: 'array' },
+    { name: 'string', value: 'string' },
+    { name: 'integer', value: 'integer' },
+    { name: 'number', value: 'number' },
+    { name: 'boolean', value: 'boolean' },
+    { name: 'object', value: 'object' },
+    { name: 'array', value: 'array' },
 ];
 
 const DEFAULT_VALUE_ERROR_MESSAGES = {

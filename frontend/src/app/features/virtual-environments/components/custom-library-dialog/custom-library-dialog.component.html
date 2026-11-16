@@ -1,0 +1,182 @@
+<!-- The drop area is the dialog itself, so its overlay covers the whole of it and a file can be
+     dropped wherever the pointer happens to be. -->
+<app-drag-drop-area
+    class="custom-library-dialog"
+    [allowedTypes]="allowedTypes"
+    [permissionResource]="ResourceCode.CustomLibraries"
+    [actionCode]="ActionCode.Create"
+    (filesDropped)="onFilesChosen($event)"
+    (appEnterSubmit)="submit()"
+    [appEnterSubmitDisabled]="isSaving()"
+>
+    <header class="custom-library-dialog__header">
+        <h2
+            class="custom-library-dialog__title text-h3"
+            appTooltipOnOverflow
+            matTooltipPosition="above"
+            [matTooltip]="title()"
+        >
+            {{ title() }}
+        </h2>
+        <button
+            type="button"
+            class="custom-library-dialog__icon-btn custom-library-dialog__close"
+            aria-label="Close"
+            [disabled]="isSaving()"
+            (click)="cancel()"
+        >
+            <app-svg-icon
+                icon="close"
+                size="20px"
+            />
+        </button>
+    </header>
+
+    <div class="custom-library-dialog__body">
+        @if (!isManaging()) {
+            <section class="custom-library-dialog__section">
+                <div class="custom-library-dialog__label text-body">
+                    <span>Library Name</span>
+                    <app-help-tooltip [text]="nameHint" />
+                </div>
+                <div class="custom-library-dialog__name">
+                    @if (detectedName(); as name) {
+                        <span class="custom-library-dialog__name-value">{{ name }}</span>
+                        <span class="custom-library-dialog__detected text-body-small">
+                            <app-svg-icon
+                                icon="check"
+                                size="14px"
+                            />
+                            Auto-detected
+                        </span>
+                    } @else {
+                        <span class="custom-library-dialog__name-placeholder">Detected from your first file</span>
+                    }
+                </div>
+            </section>
+        }
+
+        <section class="custom-library-dialog__section">
+            <div class="custom-library-dialog__section-header">
+                <h3 class="custom-library-dialog__section-title text-body">
+                    Versions
+                    @if (rows().length) {
+                        <span class="custom-library-dialog__count">{{ rows().length }}</span>
+                    }
+                </h3>
+                @if (rows().length) {
+                    <div class="custom-library-dialog__section-actions">
+                        @if (canUpload()) {
+                            <button
+                                type="button"
+                                class="custom-library-dialog__text-btn custom-library-dialog__text-btn--accent text-body-small"
+                                [disabled]="isSaving()"
+                                (click)="moreFiles.click()"
+                            >
+                                + Add More Files
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (isLoadingWheels()) {
+                <p class="custom-library-dialog__muted text-body-small">Loading versions...</p>
+            } @else if (rows().length === 0) {
+                @if (canUpload()) {
+                    <app-file-uploader
+                        mod="sm"
+                        [hint]="fileHint"
+                        (filesUploaded)="onFilesChosen($event)"
+                    />
+                } @else {
+                    <p class="custom-library-dialog__muted text-body-small">This library has no versions yet.</p>
+                }
+            } @else {
+                <ul class="custom-library-dialog__rows">
+                    @for (row of rows(); track row.key; let index = $index) {
+                        @let issue = issueText(row);
+                        <li
+                            class="custom-library-dialog__row text-body-small"
+                            [class.custom-library-dialog__row--refused]="issue !== null"
+                        >
+                            <span class="custom-library-dialog__row-number">{{ index + 1 }}</span>
+                            <span
+                                class="custom-library-dialog__file"
+                                appTooltipOnOverflow
+                                matTooltipPosition="above"
+                                [matTooltip]="row.filename"
+                                >{{ row.filename }}</span
+                            >
+
+                            @if (issue) {
+                                <span
+                                    class="custom-library-dialog__badge"
+                                    [class.custom-library-dialog__badge--other]="row.staged?.issue === 'other-library'"
+                                    [class.custom-library-dialog__badge--failed]="row.staged?.issue !== 'other-library'"
+                                    [matTooltip]="issue.reason"
+                                    matTooltipPosition="above"
+                                >
+                                    <app-svg-icon
+                                        [icon]="
+                                            row.staged?.issue === 'other-library' ? 'route-alt-left' : 'alert-triangle'
+                                        "
+                                        size="14px"
+                                    />
+                                    {{ issue.label }}
+                                </span>
+                            } @else if (row.wheel && row.wheel.status !== 'completed') {
+                                <app-venv-status-badge
+                                    [status]="row.wheel.status"
+                                    [error]="row.wheel.error"
+                                />
+                            } @else if (row.version) {
+                                <span class="custom-library-dialog__version">{{ row.version }}</span>
+                            }
+
+                            @if (row.wheel === null || canDeleteWheel()) {
+                                <button
+                                    type="button"
+                                    class="custom-library-dialog__icon-btn"
+                                    [attr.aria-label]="'Remove ' + row.filename"
+                                    [disabled]="isSaving()"
+                                    (click)="removeRow(row)"
+                                >
+                                    <app-svg-icon
+                                        icon="close"
+                                        size="16px"
+                                    />
+                                </button>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    </div>
+
+    <footer class="custom-library-dialog__footer">
+        <app-button
+            type="outline-primary"
+            [disabled]="isSaving()"
+            (click)="cancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="!canSubmit() || isSaving()"
+            (click)="submit()"
+        >
+            {{ submitLabel() }}
+        </app-button>
+    </footer>
+
+    <input
+        #moreFiles
+        type="file"
+        class="custom-library-dialog__file-input"
+        multiple
+        (change)="onFilePicked($event)"
+    />
+</app-drag-drop-area>

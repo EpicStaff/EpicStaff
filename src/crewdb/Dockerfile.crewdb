@@ -1,4 +1,4 @@
-FROM docker.io/ankane/pgvector:v0.5.1
+FROM docker.io/ankane/pgvector:v0.5.1@sha256:d3a9d8ac27bb7e05e333ef25b634d2625adaa85336ab729954b9e94859bf6fa7
 
 
 #for django healthcheck

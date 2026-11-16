@@ -96,11 +96,15 @@ def _user(custom_role_user, acme, flows=ALL_FLOWS, knowledge=Permission.READ | P
     )
 
 
-async def _post(path, user, org, body, query="", headers=None):
+async def _post(path, user, org, body, query="", headers=None, raw_api_key=None):
+    """POST as `user` with a JWT, or with `raw_api_key` (one of `user`'s) when given."""
     from django_app.asgi import application
 
-    token = await sync_to_async(lambda: str(AccessToken.for_user(user)))()
-    all_headers = {"Authorization": f"Bearer {token}", "X-Organization-Id": str(org.id)}
+    if raw_api_key is not None:
+        all_headers = {"X-Api-Key": raw_api_key}
+    else:
+        token = await sync_to_async(lambda: str(AccessToken.for_user(user)))()
+        all_headers = {"Authorization": f"Bearer {token}", "X-Organization-Id": str(org.id)}
     all_headers.update(headers or {})
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=application), base_url="http://test"
@@ -141,6 +145,23 @@ async def test_a_flow_archive_is_stored_under_a_server_built_key_and_queued(
     assert backend.objects[job.archive_key] == body
     assert enqueued == [job.id]
     assert temp_files and all(not os.path.exists(name) for name in temp_files)
+    # Started from a session, not with an API key.
+    assert job.api_key_id is None
+
+
+async def test_an_import_started_with_a_user_api_key_keeps_the_key_on_the_job(
+    custom_role_user, acme, issue_api_key, backend, enqueued, temp_files
+):
+    user = await sync_to_async(_user)(custom_role_user, acme)
+    raw_key, api_key = await sync_to_async(issue_api_key)(user=user, org=acme, name="CI importer")
+    body = _zip(await sync_to_async(_envelope)(acme))
+
+    response = await _post(FLOWS, user, acme, body, raw_api_key=raw_key)
+
+    assert response.status_code == 202, response.text
+    job = await TransferJob.objects.aget(pk=response.json()["job_id"])
+    assert (job.created_by_id, job.api_key_id) == (user.id, api_key.id)
+    assert enqueued == [job.id]
 
 
 async def test_the_collection_route_refuses_a_flow_archive(
@@ -191,6 +212,32 @@ async def test_an_archive_older_than_version_6_is_sent_to_the_synchronous_import
 
     assert response.status_code == 400
     assert response.json()["code"] == "use_sync_import", response.json()
+    await _no_job_left(backend, temp_files)
+
+
+@pytest.mark.parametrize(
+    ("version", "shown_as"),
+    [
+        ("7", '"7"'),
+        (None, "null"),
+        ([1], "[1]"),
+        ({}, "{}"),
+        (True, "true"),
+        (4.5, "4.5"),
+    ],
+)
+async def test_an_archive_whose_version_is_not_a_whole_number_is_refused(
+    custom_role_user, acme, backend, enqueued, temp_files, version, shown_as
+):
+    user = await sync_to_async(_user)(custom_role_user, acme)
+    envelope = await sync_to_async(_envelope)(acme)
+    envelope["version"] = version
+
+    response = await _post(FLOWS, user, acme, _zip(envelope))
+
+    assert response.status_code == 400, response.text
+    assert response.json()["code"] == "invalid_file", response.json()
+    assert response.json()["message"] == f"File version must be a whole number, got {shown_as}"
     await _no_job_left(backend, temp_files)
 
 

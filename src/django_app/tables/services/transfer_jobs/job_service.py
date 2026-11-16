@@ -9,8 +9,9 @@ from functools import partial
 
 from django.db import close_old_connections, transaction
 from django.db.models import Count, Q, QuerySet
-from rbac.models import Organization
+from rbac.models import ApiKey, Organization
 from rest_framework.exceptions import NotFound
+from src.shared.models import UserAction
 from tables.exceptions import (
     ExportEntitiesNotFoundError,
     TooManyTransferJobsError,
@@ -25,6 +26,9 @@ from tables.services.transfer_jobs.archive_store import TransferArchiveStore
 from tables.services.transfer_jobs.export_definitions import ExportJobDefinition
 from tables.services.transfer_jobs.queue import enqueue_transfer_job
 from tables.services.transfer_jobs.runner import IMPORT_ARCHIVE_NAME
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
+from user_audit.targets import TargetDescription, target_type
 from utils.logger import logger
 
 # Unfinished (queued or running) jobs one user may have in one organization, and
@@ -47,6 +51,7 @@ class TransferJobService:
         org_id: int,
         definition: ExportJobDefinition,
         validated_data: dict,
+        api_key: ApiKey | None = None,
     ) -> TransferJob:
         """Queue an export of `definition`'s main entity from `org_id`, owned by `user`.
 
@@ -57,18 +62,17 @@ class TransferJobService:
         (`definition.permission`); the runner checks it again.
 
         Args:
-            validated_data: The validated body of the `export-jobs` action, with
-                `ids` of distinct items; every one must be in
-                `definition.scoped_queryset` for `user` and `org_id`.
+            validated_data: The data the `export-jobs` action built the job from
+                (`ExportJobActionMixin.export_job_data`), with `ids` of distinct items;
+                `definition.selected_items` must find every one for `user` and `org_id`.
+            api_key: The API key the request authenticated with, if any; never client input.
 
         Raises:
             ExportEntitiesNotFoundError: An id is no item `user` may export from `org_id`.
             TooManyTransferJobsError: `user` or `org_id` is at its unfinished-job limit.
         """
         request = definition.build_request(validated_data)
-        selected = definition.scoped_queryset(user=user, org_id=org_id).filter(
-            pk__in=request["ids"]
-        )
+        selected = definition.selected_items(user=user, org_id=org_id, request=request)
         if selected.count() != len(request["ids"]):
             raise ExportEntitiesNotFoundError()
         display_name = definition.display_name(selected, request)
@@ -79,6 +83,7 @@ class TransferJobService:
             job = TransferJob.objects.create(
                 org_id=org_id,
                 created_by=user,
+                api_key=api_key,
                 kind=TransferJob.Kind.EXPORT,
                 main_entity=definition.main_entity,
                 display_name=_fit_display_name(display_name),
@@ -96,6 +101,7 @@ class TransferJobService:
         settings: ImportSettings | None,
         archive_path: str,
         file_name: str = "",
+        api_key: ApiKey | None = None,
         store: TransferArchiveStore | None = None,
     ) -> TransferJob:
         """Store the archive at `archive_path` and queue its import into `org_id`, owned by `user`.
@@ -113,6 +119,8 @@ class TransferJobService:
             settings: The import settings of a flow import; None for an import that
                 takes none, which runs with the defaults.
             file_name: Name of the uploaded file, shown in the job list.
+            api_key: The API key the request authenticated with, if any; the user
+                actions the import records name it. Never client input.
 
         Raises:
             InvalidArchiveError, ValidationError,
@@ -139,6 +147,7 @@ class TransferJobService:
                     id=job_id,
                     org_id=org_id,
                     created_by=user,
+                    api_key=api_key,
                     kind=TransferJob.Kind.IMPORT,
                     main_entity=entity_type.value,
                     display_name=_fit_display_name(file_name),
@@ -213,11 +222,13 @@ class TransferJobService:
         """Delete every job of `user` in `org_id` that is not running, then their archives.
 
         Running jobs are kept. As in `remove_job`, the rows stay locked until the
-        commit, so a queued job removed here never runs.
+        commit, so a queued job removed here never runs. Each deleted job is recorded
+        as a `deleted` user action; a removal that deleted none records nothing.
 
         Returns:
             How many jobs were deleted; 0 when there was none to delete.
         """
+        mark_request_handled()
         with transaction.atomic():
             # Locked in id order, so two concurrent removals cannot deadlock each other.
             # The sweep's multi-row UPDATE of stale queued jobs locks in no fixed order
@@ -228,7 +239,7 @@ class TransferJobService:
                 .exclude(status=TransferJob.Status.RUNNING)
                 .select_for_update()
                 .order_by("pk")
-                .values("pk", "archive_key")
+                .values("pk", "archive_key", "display_name")
             )
             if not jobs:
                 return 0
@@ -236,6 +247,16 @@ class TransferJobService:
                 pk__in=[job["pk"] for job in jobs]
             ).delete()
             _delete_archives_on_commit(jobs)
+            for job in jobs:
+                record_user_action(
+                    action=UserAction.DELETED,
+                    org_id=org_id,
+                    target_description=TargetDescription(
+                        type=target_type(TransferJob),
+                        id=str(job["pk"]),
+                        name=job["display_name"] or None,
+                    ),
+                )
         return deleted_by_model.get(TransferJob._meta.label, 0)
 
     @staticmethod

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
-import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     CustomInputComponent,
     GoToButtonComponent,
@@ -14,14 +14,14 @@ import { FlowsApiService } from '../../../../features/flows/services/flows-api.s
 // import { flowUrl } from '@shared/utils';
 import { SubGraphNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
+import { linkedEntityFormat, mapFieldRowChanges } from '../../../utils/diff';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { inputMapFromRows } from '../../input-map/input-map-rows';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 
 const MISSING_FLOW_MESSAGE = "This node's flow was deleted.";
-
-interface InputMapPair {
-    key: string;
-    value: string;
-}
 
 @Component({
     selector: 'app-subgraph-node-panel',
@@ -33,6 +33,8 @@ interface InputMapPair {
         HelpTooltipComponent,
         SelectComponent,
         ValidationErrorsComponent,
+        MissingReferenceNoteComponent,
+        DiffFieldMarkComponent,
     ],
     templateUrl: './subgraph-node-panel.component.html',
     styleUrls: ['./subgraph-node-panel.component.scss'],
@@ -54,6 +56,15 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
     public readonly flowItems = computed<SelectItem[]>(() =>
         this.filteredFlows().map((flow) => ({ name: flow.name, value: flow.id }))
     );
+    /** Changes tab of a version preview: what a restore does to each Input List row; `null` anywhere else. */
+    protected readonly inputMapRowChanges = computed(() => mapFieldRowChanges(this.panelDiff(), 'input_map'));
+    /** The flows listed for the select name the subflow in the mark's tooltip; one not listed shows as `flow #id`. */
+    protected readonly flowNameFormat = linkedEntityFormat(
+        'flow',
+        (id) => this.availableFlows().find((flow) => flow.id === id)?.name
+    );
+
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
 
     /**
      * The chosen flow is one the user can open. `form` is not a signal: `dirtyCheckTick` follows its edits,
@@ -133,8 +144,7 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
             }
         }
 
-        const validInputPairs = this.getValidInputPairs();
-        const inputMapValue = this.createInputMapFromPairs(validInputPairs);
+        const inputMapValue = inputMapFromRows(this.inputMapPairs.getRawValue());
 
         return {
             ...this.node(),
@@ -166,23 +176,6 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
                 })
             );
         }
-    }
-
-    private getValidInputPairs(): AbstractControl[] {
-        return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value as InputMapPair;
-            return value.key?.trim() !== '' || value.value?.trim() !== '';
-        });
-    }
-
-    private createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
-        return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
-            const pair = curr.value as InputMapPair;
-            if (pair.key?.trim()) {
-                acc[pair.key.trim()] = pair.value;
-            }
-            return acc;
-        }, {});
     }
 
     public getSelectedFlowUrl(): string | null {

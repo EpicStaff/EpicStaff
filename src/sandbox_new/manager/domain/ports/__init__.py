@@ -1,3 +1,11 @@
-from .repositories import AbstractVenvRepository
+from .repositories import (
+    AbstractCustomLibraryRepository,
+    AbstractVenvRepository,
+    AbstractWheelRepository,
+)
 
-__all__ = ["AbstractVenvRepository"]
+__all__ = [
+    "AbstractCustomLibraryRepository",
+    "AbstractVenvRepository",
+    "AbstractWheelRepository",
+]

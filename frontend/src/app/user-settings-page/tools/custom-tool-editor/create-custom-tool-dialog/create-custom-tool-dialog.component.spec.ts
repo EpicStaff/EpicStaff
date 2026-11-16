@@ -8,6 +8,7 @@ import {
     ExecutionTimeoutLimits,
     GetExecutionTimeoutLimitsResponse,
     GetPythonCodeToolRequest,
+    ResourceCode,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsApiService, SecretsStorageService } from '@shared/services';
 import { of, Subject, throwError } from 'rxjs';
@@ -87,7 +88,8 @@ interface OpenedDialog {
 
 function openDialog(
     selectedTool: GetPythonCodeToolRequest | null,
-    limitsProviders: (Provider | EnvironmentProviders)[] = [provideLoadedExecutionTimeoutLimits()]
+    limitsProviders: (Provider | EnvironmentProviders)[] = [provideLoadedExecutionTimeoutLimits()],
+    canUseSecrets = true
 ): OpenedDialog {
     const customTools: CustomToolsFake = {
         getPythonCodeTools: vi.fn().mockReturnValue(of([])),
@@ -117,7 +119,11 @@ function openDialog(
             { provide: SecretsStorageService, useValue: { namesForIds: () => [] } },
             {
                 provide: PermissionsService,
-                useValue: { canEditSecrets: () => true, can: () => true, canAny: () => true },
+                useValue: {
+                    canEditSecrets: () => canUseSecrets,
+                    can: (resource: ResourceCode) => resource !== ResourceCode.Secrets || canUseSecrets,
+                    canAny: () => true,
+                },
             },
         ],
     });
@@ -387,5 +393,162 @@ describe('CreateCustomToolDialogComponent save errors', () => {
 
         expect(toast.error).toHaveBeenCalledExactlyOnceWith('Failed to update custom tool. Please try again.');
         expect(bannerText(fixture)).toBe('');
+    });
+});
+
+describe('CreateCustomToolDialogComponent code that reads secrets', () => {
+    const TOOL_READING_SECRET: GetPythonCodeToolRequest = {
+        ...STORED_TOOL,
+        python_code: { ...STORED_TOOL.python_code, venv_id: null, secrets: [{ id: 4, name: 'API_TOKEN' }] },
+    };
+    const LOCKED_HINT = 'This code reads secrets. Editing it requires the Use permission on Secrets.';
+
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    function element(fixture: ComponentFixture<CreateCustomToolDialogComponent>): HTMLElement {
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    function codeEditorIsReadOnly(fixture: ComponentFixture<CreateCustomToolDialogComponent>): boolean {
+        return (element(fixture).querySelector('app-code-editor') as HTMLElement & { readOnly: boolean }).readOnly;
+    }
+
+    function venvIsReadOnly(fixture: ComponentFixture<CreateCustomToolDialogComponent>): boolean {
+        return element(fixture).querySelector('app-select .selector__readonly-value') !== null;
+    }
+
+    function makeCopyButton(fixture: ComponentFixture<CreateCustomToolDialogComponent>): HTMLButtonElement {
+        return Array.from(element(fixture).querySelectorAll<HTMLButtonElement>('app-button button')).find((button) =>
+            button.textContent?.includes('Make Copy')
+        )!;
+    }
+
+    it('locks the code and venv and the copy for a user without Secrets:Use, and leaves the rest editable', () => {
+        const { fixture, customTools } = openDialog(TOOL_READING_SECRET, undefined, false);
+
+        makeCopyButton(fixture).click();
+
+        expect(codeEditorIsReadOnly(fixture)).toBe(true);
+        expect(venvIsReadOnly(fixture)).toBe(true);
+        expect(element(fixture).querySelector('app-hint-message')?.textContent?.trim()).toBe(LOCKED_HINT);
+        expect(makeCopyButton(fixture).getAttribute('aria-disabled')).toBe('true');
+        expect(customTools.copyPythonCodeTool).not.toHaveBeenCalled();
+        expect(element(fixture).querySelector<HTMLInputElement>('app-custom-input input')!.disabled).toBe(false);
+    });
+
+    it.each([
+        ['to a user with Secrets:Use', TOOL_READING_SECRET, true],
+        ['when the code reads no secret', STORED_TOOL, false],
+    ])('leaves the code, venv and copy open %s', (_case, tool, canUseSecrets) => {
+        const { fixture, customTools } = openDialog(tool, undefined, canUseSecrets);
+
+        makeCopyButton(fixture).click();
+
+        expect(codeEditorIsReadOnly(fixture)).toBe(false);
+        expect(venvIsReadOnly(fixture)).toBe(false);
+        expect(element(fixture).querySelector('app-hint-message')).toBeNull();
+        expect(customTools.copyPythonCodeTool).toHaveBeenCalledOnce();
+    });
+
+    function copyButton(fixture: ComponentFixture<CreateCustomToolDialogComponent>, label: string): HTMLButtonElement {
+        return Array.from(element(fixture).querySelectorAll<HTMLButtonElement>('app-button button')).find((button) =>
+            button.textContent?.includes(label)
+        )!;
+    }
+
+    function describedText(
+        fixture: ComponentFixture<CreateCustomToolDialogComponent>,
+        button: HTMLButtonElement
+    ): string {
+        const id = button.getAttribute('aria-describedby');
+        return id ? (element(fixture).querySelector(`[id="${id}"]`)?.textContent?.trim() ?? '') : '';
+    }
+
+    function pressEnter(): void {
+        const keydownEvents = TestBed.inject(DialogRef).keydownEvents as Subject<KeyboardEvent>;
+        keydownEvents.next(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+    }
+
+    it.each([
+        ['Make Copy', TOOL_READING_SECRET],
+        ['Create Editable Copy', { ...TOOL_READING_SECRET, built_in: true }],
+    ])('tells keyboard and screen-reader users why "%s" is blocked', (label, tool) => {
+        const { fixture } = openDialog(tool, undefined, false);
+
+        expect(describedText(fixture, copyButton(fixture, label))).toBe(
+            'This code reads secrets. Copying it requires the Use permission on Secrets.'
+        );
+    });
+
+    it('leaves the copy button without a blocked reason when the copy is allowed', () => {
+        const { fixture } = openDialog(TOOL_READING_SECRET);
+
+        expect(copyButton(fixture, 'Make Copy').hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    it.each([
+        ['does not copy a built-in tool on Enter for a user without Secrets:Use', false, 0],
+        ['copies a built-in tool on Enter for a user with Secrets:Use', true, 1],
+    ])('%s', (_case, canUseSecrets, copies) => {
+        const { customTools } = openDialog({ ...TOOL_READING_SECRET, built_in: true }, undefined, canUseSecrets);
+
+        pressEnter();
+
+        expect(customTools.copyPythonCodeTool).toHaveBeenCalledTimes(copies);
+    });
+
+    function parametersTableIsReadOnly(fixture: ComponentFixture<CreateCustomToolDialogComponent>): boolean {
+        return (element(fixture).querySelector('app-parameters-table-view') as HTMLElement & { readOnly: boolean })
+            .readOnly;
+    }
+
+    it.each([
+        ['locks the variables for a user without Secrets:Use', false, true],
+        ['leaves the variables editable for a user with Secrets:Use', true, false],
+    ])('%s', (_case, canUseSecrets, locked) => {
+        const { fixture } = openDialog(TOOL_READING_SECRET, undefined, canUseSecrets);
+
+        expect(parametersTableIsReadOnly(fixture)).toBe(locked);
+    });
+
+    it('sends locked variables back exactly as loaded when the rest of the tool is saved', () => {
+        // Stored without the fields the table adds when it writes a parameter back.
+        const variables = [{ name: 'limit', type: 'integer' }];
+        const { fixture, customTools } = openDialog({ ...TOOL_READING_SECRET, variables }, undefined, false);
+        fixture.componentInstance.form.controls.description.setValue('Fetches the latest orders, newest first');
+
+        fixture.componentInstance.submit();
+
+        const payload = customTools.updatePythonCodeToolV2.mock.calls.at(-1)!.at(-1) as CreatePythonCodeToolPayload;
+        expect(payload.variables).toEqual(variables);
+    });
+
+    it('shows the reason the backend gives for refusing a copy in the banner', () => {
+        const reason = 'This contains code that reads secrets. This action requires the Use permission on secrets.';
+        const { fixture, customTools, toast } = openDialog(TOOL_READING_SECRET);
+        customTools.copyPythonCodeTool.mockReturnValueOnce(
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 403,
+                        error: {
+                            status_code: 403,
+                            code: 'code_with_secrets_requires_secrets_use_permission',
+                            message: reason,
+                        },
+                    })
+            )
+        );
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        makeCopyButton(fixture).click();
+        fixture.detectChanges();
+
+        expect(element(fixture).querySelector('app-error-banner')?.textContent?.trim()).toBe(reason);
+        expect(toast.error).not.toHaveBeenCalled();
     });
 });

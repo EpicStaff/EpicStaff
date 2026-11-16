@@ -7,8 +7,8 @@ created on import without any permission check. Unlisted on purpose: SESSION
 gated as FLOWS), and AUDIT_FILTER_PRESET (a personal saved search over audit data;
 an entry with the same search as the importer's own preset or any shared preset in
 their org is reused, otherwise a private preset is created for the importer with copy
-numbering; no role holds CREATE on AUDIT, and its own import endpoint is gated on
-AUDIT read). Tags map to their parent resource; models and provider realtime
+numbering; no role holds CREATE on AUDIT or USER_AUDIT, and its own import endpoint is
+gated on the read right of the preset's audit domain). Tags map to their parent resource; models and provider realtime
 configs map to LLM_CONFIGS.
 """
 
@@ -36,6 +36,7 @@ ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.OPENAI_REALTIME_CONFIG: ResourceType.LLM_CONFIGS,
     EntityType.ELEVENLABS_REALTIME_CONFIG: ResourceType.LLM_CONFIGS,
     EntityType.GEMINI_REALTIME_CONFIG: ResourceType.LLM_CONFIGS,
+    EntityType.SYSTEM_ONE_CONFIG: ResourceType.LLM_CONFIGS,
     EntityType.LLM_MODEL: ResourceType.LLM_CONFIGS,
     EntityType.EMBEDDING_MODEL: ResourceType.LLM_CONFIGS,
     EntityType.REALTIME_MODEL: ResourceType.LLM_CONFIGS,
@@ -82,6 +83,7 @@ EXPORT_EXEMPT_TYPES: frozenset[EntityType] = frozenset(
         EntityType.OPENAI_REALTIME_CONFIG,
         EntityType.ELEVENLABS_REALTIME_CONFIG,
         EntityType.GEMINI_REALTIME_CONFIG,
+        EntityType.SYSTEM_ONE_CONFIG,
         EntityType.LLM_MODEL,
         EntityType.EMBEDDING_MODEL,
         EntityType.REALTIME_MODEL,

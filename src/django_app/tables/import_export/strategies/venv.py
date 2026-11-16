@@ -15,6 +15,7 @@ from packaging.utils import canonicalize_name
 from proxies.sandbox.models import SandboxVenvBinding
 from proxies.sandbox.services import VenvService
 from rbac.authorship import resolve_author
+from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -41,11 +42,19 @@ class VenvStrategy(EntityImportExportStrategy):
         return {}
 
     def export_entity(self, instance: SandboxVenvBinding) -> dict:
+        """The environment as the file carries it.
+
+        Raises:
+            ValidationError: It installs a custom library, which no file can carry.
+                Rendered as 400.
+        """
         venv = VenvService().retrieve(instance)
+        libs = venv.get("libs") or []
+        self._assert_no_custom_libraries(venv.get("name"), libs)
         return {
             "id": instance.pk,
             "name": venv.get("name"),
-            "libs": [self._export_lib(lib) for lib in venv.get("libs") or []],
+            "libs": [self._export_lib(lib) for lib in libs],
         }
 
     def get_org_scope_q(self, org_id: int) -> Q:
@@ -99,6 +108,28 @@ class VenvStrategy(EntityImportExportStrategy):
         return binding
 
     @staticmethod
+    def _assert_no_custom_libraries(name: str | None, libs: list[dict]) -> None:
+        """Refuse to write out an environment built on a package stored here.
+
+        A custom library is a package this installation holds itself, so it exists
+        only for the organization that uploaded it. A file can carry the name but
+        never the package, and on the other side that name would be resolved against
+        a package index -- another package entirely, or nothing at all. Refused while
+        the file format cannot carry the library with the environment.
+
+        Raises:
+            ValidationError: Some library of the environment is a custom one.
+        """
+        custom_names = [str(lib.get("name")) for lib in libs if lib.get("is_custom")]
+        if not custom_names:
+            return
+        raise ValidationError(
+            f"Venv '{name}' uses custom libraries ({', '.join(custom_names)}). "
+            "Exporting a venv that uses custom libraries is not supported yet, "
+            "because the file cannot carry the packages themselves."
+        )
+
+    @staticmethod
     def _export_lib(lib: dict) -> dict:
         """One library as the file carries it: a name and what to resolve it against.
 
@@ -113,13 +144,22 @@ class VenvStrategy(EntityImportExportStrategy):
         return {"name": lib.get("name"), "specification": specification}
 
     @staticmethod
-    def _library_key(libs: list[dict]) -> frozenset[tuple[str, str]]:
+    def _library_key(libs: list[dict]) -> frozenset[tuple[str, str, bool]]:
         """What makes two environments the same set of libraries, order aside.
 
         Names are canonicalized the way the sandbox canonicalizes them, so `Pydantic`
         and `pydantic` do not read as two different libraries and build a duplicate.
+
+        Where the package comes from is part of what makes them the same: a stored
+        library and a package index entry of that name are two different packages,
+        and reusing one for the other would install something the file never asked
+        for.
         """
         return frozenset(
-            (canonicalize_name(lib.get("name") or ""), (lib.get("specification") or "").strip())
+            (
+                canonicalize_name(lib.get("name") or ""),
+                (lib.get("specification") or "").strip(),
+                bool(lib.get("is_custom")),
+            )
             for lib in libs
         )

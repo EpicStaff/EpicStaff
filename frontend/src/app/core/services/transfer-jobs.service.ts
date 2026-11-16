@@ -62,6 +62,7 @@ export interface ExportJobRequests {
     sessions: ({ ids: number[] } | SessionExportFilters) & { export_format: ExportFormat };
     /** One node at a time. */
     classificationDecisionTables: { ids: [number]; export_format: ExportFormat };
+    agentDefinitions: { ids: number[] };
 }
 
 export type ExportJobTarget = keyof ExportJobRequests;
@@ -74,6 +75,7 @@ const EXPORT_PATHS: Record<ExportJobTarget, string> = {
     auditFilterPresets: 'audit-filter-presets/export-jobs/',
     sessions: 'sessions/export-jobs/',
     classificationDecisionTables: 'classification-decision-table-node/export-jobs/',
+    agentDefinitions: 'agent-definitions/export-jobs/',
 };
 
 const TIMEOUT_MESSAGES: Record<TransferJobKind, string> = {
@@ -190,12 +192,14 @@ export class TransferJobsService {
         return this.endTold.has(jobId);
     }
 
+    /** `params` go in the query: e.g. the audit domain an export of audit filter presets is scoped to. */
     startExport<Target extends ExportJobTarget>(
         target: Target,
-        body: ExportJobRequests[Target]
+        body: ExportJobRequests[Target],
+        params?: HttpParams
     ): Observable<StartedTransferJob> {
         return this.startJob('export', (context) =>
-            this.http.post<TransferJobCreated>(`${this.apiUrl}${EXPORT_PATHS[target]}`, body, { context })
+            this.http.post<TransferJobCreated>(`${this.apiUrl}${EXPORT_PATHS[target]}`, body, { params, context })
         );
     }
 

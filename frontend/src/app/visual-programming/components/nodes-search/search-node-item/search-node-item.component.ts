@@ -165,11 +165,11 @@ export class SearchNodeItemComponent {
     private readonly nodeIcons = NODE_ICONS;
 
     public getNodeColor(type: NodeType): string {
-        return this.node.color || this.nodeColors[type] || '#685fff';
+        return this.nodeColors[type] || '#685fff';
     }
 
     public getNodeIcon(type: NodeType): string {
-        return this.node.icon || this.nodeIcons[type] || 'ti ti-code';
+        return this.nodeIcons[type] || 'ti ti-code';
     }
 
     public getNodeDisplayName(): string {

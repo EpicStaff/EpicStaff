@@ -54,8 +54,6 @@ function pythonNode(id: string, position: { x: number; y: number }): NodeModel {
         data: {},
         position,
         ports: generatePortsForNode(id, NodeType.PYTHON),
-        color: '',
-        icon: '',
         size: { width: 200, height: 100 },
         input_map: {},
         output_variable_path: null,

@@ -177,6 +177,8 @@ class ClassificationPromptMessageData:
     result_variable: str
     usage: dict
     message_type: str = "classification_prompt"
+    provider: str | None = None
+    model_version: str | None = None
 
 
 @dataclass

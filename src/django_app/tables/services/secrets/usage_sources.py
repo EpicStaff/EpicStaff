@@ -21,6 +21,7 @@ from tables.models import (
     OpenAIRealtimeConfig,
     RealtimeConfig,
     RealtimeTranscriptionConfig,
+    SystemOneConfig,
 )
 from tables.models.graph_models import (
     TelegramTriggerNode,
@@ -57,6 +58,7 @@ CATEGORY_ORDER = (
 NODE_TYPE_TELEGRAM_TRIGGER = "telegram-trigger"
 
 RESOURCE_TYPE_LLM_CONFIG = "llm_config"
+RESOURCE_TYPE_SYSTEM_ONE_CONFIG = "system_one_config"
 RESOURCE_TYPE_EMBEDDING_CONFIG = "embedding_config"
 RESOURCE_TYPE_REALTIME_CONFIG = "realtime_config"
 RESOURCE_TYPE_REALTIME_TRANSCRIPTION_CONFIG = "realtime_transcription_config"
@@ -412,6 +414,15 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         name_field="custom_name",
         rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
         resource_type=RESOURCE_TYPE_LLM_CONFIG,
+    ),
+    UsageSource(
+        model=SystemOneConfig,
+        secret_path="api_key_secret_id",
+        category=CATEGORY_LLM_CONFIGS,
+        org_path="org_id",
+        name_field="custom_name",
+        rbac_resource_types=frozenset({RBAC_LLM_CONFIGS}),
+        resource_type=RESOURCE_TYPE_SYSTEM_ONE_CONFIG,
     ),
     UsageSource(
         model=EmbeddingConfig,

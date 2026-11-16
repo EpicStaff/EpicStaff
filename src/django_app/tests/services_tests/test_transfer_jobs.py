@@ -268,6 +268,29 @@ def test_a_refused_archive_fails_with_its_code_and_the_upload_is_deleted(
     assert backend.objects == {}
 
 
+def test_an_archive_whose_version_is_not_a_whole_number_fails_as_an_invalid_file(
+    runner, backend, store, flow, regular_user
+):
+    envelope = ExportService(entity_registry).export_entities(
+        EntityType.GRAPH, [flow.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
+    envelope["version"] = "7"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(ENVELOPE_MEMBER, json.dumps(envelope))
+    job = _import_job(flow.org, regular_user, store, buffer.getvalue())
+
+    runner.run(job.id)
+
+    job.refresh_from_db()
+    assert job.status == TransferJob.Status.FAILED
+    assert job.error == {
+        "code": "invalid_file",
+        "message": 'File version must be a whole number, got "7"',
+    }
+    assert backend.objects == {}
+
+
 def test_an_unexpected_failure_shows_no_internal_detail(runner, flow, regular_user, monkeypatch):
     def explode(*args, **kwargs):
         raise RuntimeError("database password is hunter2")

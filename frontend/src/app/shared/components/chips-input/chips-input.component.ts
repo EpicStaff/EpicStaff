@@ -50,6 +50,8 @@ export class ChipsInputComponent implements ControlValueAccessor {
     separatorLabel = input('Split by comma');
     addButtonTooltip = input('Add');
     readOnly = input<boolean>(false);
+    /** Shown in read-only mode when there are no chips. */
+    readOnlyEmptyText = input<string>('No libraries');
 
     private onChange: (value: string[]) => void = () => {};
     private onTouched: () => void = () => {};

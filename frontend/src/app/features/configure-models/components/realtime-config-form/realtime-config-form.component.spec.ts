@@ -80,11 +80,11 @@ beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('RealtimeConfigFormComponent', () => {
-    it('asks for provider, API key, configuration name and model name, in that order', () => {
+    it('asks for configuration name, provider, API key and model name, in that order', () => {
         const { fixture } = render();
 
         const text = host(fixture).querySelector('section')!.textContent!;
-        const positions = ['Provider', 'API Key', 'Configuration Name', 'Model Name'].map((label) =>
+        const positions = ['Configuration Name', 'Provider', 'API Key', 'Model Name'].map((label) =>
             text.indexOf(label)
         );
 

@@ -10,6 +10,7 @@ export function mapDecisionTableNodeToModel(dn: GetDecisionTableNodeRequest): De
     return {
         id: generateUuid(),
         backendId: dn.id,
+        nodeUuid: dn.uuid,
         type: NodeType.TABLE,
         node_name: dn.node_name,
         nodeNumber: dn.node_number ?? undefined,
@@ -37,8 +38,6 @@ export function mapDecisionTableNodeToModel(dn: GetDecisionTableNodeRequest): De
         },
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: {} as Record<string, unknown>,
         output_variable_path: null,
         size: ui.size,

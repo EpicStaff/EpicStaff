@@ -45,3 +45,47 @@ describe('MultiSelectComponent read-only view', () => {
         expect(document.querySelector('.cdk-overlay-container')?.textContent).toContain('STRIPE_KEY');
     });
 });
+
+describe('MultiSelectComponent select all', () => {
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => {
+        document.querySelectorAll('.cdk-overlay-container').forEach((container) => container.remove());
+        vi.unstubAllGlobals();
+    });
+
+    it('ticks every enabled item and leaves each disabled item as it was', () => {
+        const fixture = TestBed.createComponent(MultiSelectComponent);
+        fixture.componentRef.setInput('items', [
+            { name: 'Enabled', value: 'enabled' },
+            { name: 'Locked on', value: 'locked-on', disabled: true },
+            { name: 'Locked off', value: 'locked-off', disabled: true },
+        ]);
+        fixture.componentRef.setInput('selectedValues', ['locked-on']);
+        fixture.componentRef.setInput('hideTrigger', true);
+        fixture.componentRef.setInput('selectAllLabel', 'Show All');
+        fixture.detectChanges();
+        const saved: unknown[][] = [];
+        fixture.componentInstance.selectionChange.subscribe((values) => saved.push(values));
+        fixture.componentInstance.openDropdown();
+        fixture.detectChanges();
+
+        const footerButton = (text: string) =>
+            [...document.querySelectorAll<HTMLElement>('.cdk-overlay-container app-button')]
+                .find((button) => button.textContent?.trim() === text)!
+                .querySelector('button')!;
+        footerButton('Show All').click();
+        fixture.detectChanges();
+        footerButton('Save Selection').click();
+
+        expect(saved).toEqual([['enabled', 'locked-on']]);
+    });
+});

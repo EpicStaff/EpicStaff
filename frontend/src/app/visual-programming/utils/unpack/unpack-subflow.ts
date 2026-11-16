@@ -119,6 +119,7 @@ function cloneNodesWithFreshIds(
             ...node,
             id: newId,
             backendId: null,
+            nodeUuid: generateUuid(),
             nodeNumber: isNumberedNodeType(node.type) ? nextNodeNumber() : undefined,
             data: clonedData,
             input_map: clonedInputMap,

@@ -34,7 +34,7 @@ npm install
 node scripts/generate-third-party-notices.mjs
 ```
 
-The generator invokes `npx --yes license-checker --production --json` internally — no extra devDependency is needed. It rewrites ONLY the `frontend` region of this file.
+The generator reads the production tree from `package-lock.json` and each installed package's own `package.json`; it downloads and runs no third-party tool. It stops, naming the package, when a licence is missing, not an SPDX expression, or uses an identifier outside its reviewed list. It rewrites ONLY the `frontend` region of this file.
 
 ### What the frontend refresh covers
 

@@ -120,7 +120,7 @@
                         [control]="form.controls.graph_id"
                     />
                 </div>
-                @for (contractError of contractErrors(); track contractError) {
+                @for (contractError of contractErrors(); track $index) {
                     <div class="bindings-dialog__contract-error text-body-small">{{ contractError }}</div>
                 }
                 @if (contractGaps(); as gaps) {
@@ -388,7 +388,7 @@
                         Applies to this desk's existing conversations too, once you save:
                     </p>
                     <ul class="bindings-dialog__backlog-effects">
-                        @for (effect of backlogEffects(); track effect) {
+                        @for (effect of backlogEffects(); track $index) {
                             <li>{{ effect }}</li>
                         }
                     </ul>

@@ -66,6 +66,21 @@ export function getClassificationTableVisualHeight(
     return Math.max(CDT_HEADER_HEIGHT + CDT_ROW_HEIGHT * totalRows, CDT_MIN_HEIGHT);
 }
 
+export const TABLE_NODE_WIDTH = 330;
+
+function isPositiveFinite(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+/** A note is user-resizable, so its stored size is kept when valid; otherwise the default applies. */
+export function readNoteSize(metadata: Record<string, unknown> | null | undefined): { width: number; height: number } {
+    const size = metadata?.['size'] as { width?: unknown; height?: unknown } | null | undefined;
+    if (isPositiveFinite(size?.width) && isPositiveFinite(size?.height)) {
+        return { width: size.width, height: size.height };
+    }
+    return getDefaultNodeSize(NodeType.NOTE);
+}
+
 export function getDefaultNodeSize(type: NodeType, data?: unknown): { width: number; height: number } {
     switch (type) {
         case NodeType.NOTE:
@@ -74,7 +89,7 @@ export function getDefaultNodeSize(type: NodeType, data?: unknown): { width: num
         case NodeType.TABLE: {
             const tableData = (data as DecisionTableNodeModel['data'] | undefined)?.table;
             return {
-                width: 330,
+                width: TABLE_NODE_WIDTH,
                 height: getDecisionTableVisualHeight(tableData?.condition_groups ?? []),
             };
         }
@@ -82,7 +97,7 @@ export function getDefaultNodeSize(type: NodeType, data?: unknown): { width: num
         case NodeType.CLASSIFICATION_TABLE: {
             const tableData = (data as ClassificationDecisionTableNodeModel['data'] | undefined)?.table;
             return {
-                width: 330,
+                width: TABLE_NODE_WIDTH,
                 height: getClassificationTableVisualHeight(tableData?.condition_groups ?? []),
             };
         }
@@ -105,7 +120,7 @@ export function normalizeTableNodeSize(node: NodeModel): NodeModel {
             ...node,
             size: {
                 ...node.size,
-                width: node.size?.width ?? 330,
+                width: TABLE_NODE_WIDTH,
                 height: getDecisionTableVisualHeight(tableData?.condition_groups ?? []),
             },
         };
@@ -117,7 +132,7 @@ export function normalizeTableNodeSize(node: NodeModel): NodeModel {
             ...node,
             size: {
                 ...node.size,
-                width: node.size?.width ?? 330,
+                width: TABLE_NODE_WIDTH,
                 height: getClassificationTableVisualHeight(tableData?.condition_groups ?? []),
             },
         };

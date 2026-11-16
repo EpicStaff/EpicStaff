@@ -6,6 +6,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ConfirmationDialogService, LabelSidebarComponent, SearchComponent } from '@shared/components';
 import { EXPORT_WARNING_DURATION_MS } from '@shared/constants';
+import { LabelTreeNode } from '@shared/models';
 import { AppStorageService } from '@shared/services';
 import { EMPTY, Observable, of, Subject } from 'rxjs';
 
@@ -589,5 +590,36 @@ describe('FlowsListPageComponent bulk export', () => {
 
         expect(toastError).toHaveBeenCalledExactlyOnceWith('Too many exports are running. Try again later.');
         expect(clickedLinks).toEqual([]);
+    });
+});
+
+describe('FlowsListPageComponent label delete message', () => {
+    function labelNamed(name: string): LabelTreeNode {
+        return { id: 1, name, parent: null, full_path: name, created_at: '', metadata: {}, children: [] };
+    }
+
+    function deleteMessageFor(label: LabelTreeNode): string {
+        TestBed.configureTestingModule({
+            providers: [
+                provideRouter([]),
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                // The page resets the filter and leaves select mode when it is destroyed.
+                { provide: FlowsStorageService, useValue: { resetFilter: vi.fn(), setSelectMode: vi.fn() } },
+                { provide: LabelsStorageService, useValue: {} },
+            ],
+        });
+        // Only the message builder is under test, so the template is replaced with an empty one.
+        TestBed.overrideComponent(FlowsListPageComponent, {
+            set: { template: '', templateUrl: undefined, styleUrls: [], imports: [] },
+        });
+        return TestBed.createComponent(FlowsListPageComponent).componentInstance.deleteMessageForLabel(label);
+    }
+
+    it('shows a label name with markup as text, because the dialog renders the message as HTML', () => {
+        const message = deleteMessageFor(labelNamed('<img src=https://example.com/x.gif>'));
+
+        expect(message).toContain('<strong>&lt;img src=https://example.com/x.gif&gt;</strong>');
+        expect(message).not.toContain('<img');
     });
 });

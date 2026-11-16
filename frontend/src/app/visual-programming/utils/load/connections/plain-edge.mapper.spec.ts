@@ -16,7 +16,8 @@ function mapWithMetadata(metadata: Record<string, unknown>) {
             [1, 'source-uuid'],
             [2, 'target-uuid'],
         ]),
-        nodeByBackendId
+        nodeByBackendId,
+        new Set()
     );
     return connection;
 }

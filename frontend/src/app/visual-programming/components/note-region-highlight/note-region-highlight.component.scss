@@ -1,0 +1,94 @@
+// Dashed highlight that appears when hovering or selecting a note with a linked region.
+.note-region-highlight {
+    position: absolute;
+    pointer-events: none;
+    border: 1.5px dashed var(--region-color, #d9d9d9);
+    z-index: 0;
+    animation: note-region-in 0.15s ease;
+
+    // When the note is selected, the region is interactive (draggable + resizable).
+    &.is-interactive {
+        pointer-events: all;
+        cursor: grab;
+
+        &:active {
+            cursor: grabbing;
+        }
+    }
+}
+
+// Resize handles on the region highlight (shown when the note is selected).
+.region-handle {
+    position: absolute;
+    pointer-events: all;
+    background: var(--region-color, #d9d9d9);
+    border-radius: 2px;
+    z-index: 1;
+
+    &--n,
+    &--s {
+        left: 50%;
+        transform: translateX(-50%);
+        width: 24px;
+        height: 6px;
+        cursor: ns-resize;
+    }
+    &--e,
+    &--w {
+        top: 50%;
+        transform: translateY(-50%);
+        width: 6px;
+        height: 24px;
+        cursor: ew-resize;
+    }
+    &--n {
+        top: -3px;
+    }
+    &--s {
+        bottom: -3px;
+    }
+    &--e {
+        right: -3px;
+    }
+    &--w {
+        left: -3px;
+    }
+
+    &--ne,
+    &--nw,
+    &--se,
+    &--sw {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+    &--ne {
+        top: -4px;
+        right: -4px;
+        cursor: nesw-resize;
+    }
+    &--nw {
+        top: -4px;
+        left: -4px;
+        cursor: nwse-resize;
+    }
+    &--se {
+        bottom: -4px;
+        right: -4px;
+        cursor: nwse-resize;
+    }
+    &--sw {
+        bottom: -4px;
+        left: -4px;
+        cursor: nesw-resize;
+    }
+}
+
+@keyframes note-region-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}

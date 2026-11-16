@@ -339,39 +339,47 @@ function agentOf(id: number, name: string): AgentDefinition {
     };
 }
 
+/** The real store and its real API services, over a fake HTTP backend. */
+function storeOverFakeBackend(): { store: AgentsPageStore; backend: HttpTestingController } {
+    TestBed.configureTestingModule({
+        providers: [
+            provideHttpClient(),
+            provideHttpClientTesting(),
+            { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
+            AgentsPageStore,
+            // Only reloaded after a failed surface save, which these tests never make.
+            { provide: SurfaceCatalogsStore, useValue: {} },
+        ],
+    });
+    return { store: TestBed.inject(AgentsPageStore), backend: TestBed.inject(HttpTestingController) };
+}
+
+/** One page of a list endpoint, as the API answers it. */
+const page = <T>(results: T[]) => ({ count: results.length, next: null, previous: null, results });
+
+const isGet = (url: string) => (request: { method: string; url: string }) =>
+    request.method === 'GET' && request.url === url;
+
+/** Opens the page: the store loads agents, surfaces and groups; the backend answers with these rows. */
+function loadPage(
+    store: AgentsPageStore,
+    backend: HttpTestingController,
+    agents: AgentDefinition[],
+    surfaces: Surface[] = []
+): void {
+    store.load();
+    backend.expectOne(isGet(AGENTS_URL)).flush(page(agents));
+    backend.expectOne(isGet(SURFACES_URL)).flush(page(surfaces));
+    backend.expectOne(isGet(GROUPS_URL)).flush(page([]));
+}
+
 describe('AgentsPageStore: whether the agent shown is the one the latest draft was saved as', () => {
     let store: AgentsPageStore;
     let backend: HttpTestingController;
 
-    beforeEach(() => {
-        TestBed.configureTestingModule({
-            providers: [
-                provideHttpClient(),
-                provideHttpClientTesting(),
-                { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
-                AgentsPageStore,
-                // Only reloaded after a failed surface save, which these tests never make.
-                { provide: SurfaceCatalogsStore, useValue: {} },
-            ],
-        });
-        store = TestBed.inject(AgentsPageStore);
-        backend = TestBed.inject(HttpTestingController);
-    });
+    beforeEach(() => ({ store, backend } = storeOverFakeBackend()));
 
     afterEach(() => backend.verify());
-
-    function loadAgents(agents: AgentDefinition[]): void {
-        store.load();
-        backend
-            .expectOne((request) => request.method === 'GET' && request.url === AGENTS_URL)
-            .flush({ count: agents.length, next: null, previous: null, results: agents });
-        backend
-            .expectOne((request) => request.method === 'GET' && request.url === SURFACES_URL)
-            .flush({ count: 0, next: null, previous: null, results: [] });
-        backend
-            .expectOne((request) => request.method === 'GET' && request.url === GROUPS_URL)
-            .flush({ count: 0, next: null, previous: null, results: [] });
-    }
 
     /** Add Agent, then a name: the backend creates the agent. */
     function createFromDraft(agent: AgentDefinition): void {
@@ -404,7 +412,7 @@ describe('AgentsPageStore: whether the agent shown is the one the latest draft w
     });
 
     it('is false for an agent that was there before', () => {
-        loadAgents([agentOf(3, 'Invoice Reader')]);
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
         createFromDraft(agentOf(7, 'CV Processor'));
 
         store.selectAgent(3);
@@ -420,5 +428,268 @@ describe('AgentsPageStore: whether the agent shown is the one the latest draft w
         store.selectAgent(7);
 
         expect(store.isSelectedAgentFromLatestDraft()).toBe(false);
+    });
+});
+
+describe('AgentsPageStore duplicateAgent', () => {
+    const COPY_URL = `${AGENTS_URL}3/copy/`;
+    let store: AgentsPageStore;
+    let backend: HttpTestingController;
+    let toast: ToastService;
+
+    beforeEach(() => {
+        ({ store, backend } = storeOverFakeBackend());
+        toast = TestBed.inject(ToastService);
+        vi.spyOn(toast, 'error');
+    });
+
+    afterEach(() => backend.verify());
+
+    it('adds the copy the server made and selects it', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+
+        store.duplicateAgent(3);
+        backend
+            .expectOne({ method: 'POST', url: COPY_URL })
+            .flush(agentOf(8, 'Invoice Reader #2'), { status: 201, statusText: 'Created' });
+        backend.expectOne(isGet(SURFACES_URL)).flush(page([]));
+
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader', 'Invoice Reader #2']);
+        expect(store.selectedAgent()?.id).toBe(8);
+        expect(store.saving()).toBe(false);
+    });
+
+    it('reloads surfaces even when the source owned none in the list, so a surface cloned for the copy shows', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')], [surface(20, 'Web search', null)]);
+
+        store.duplicateAgent(3);
+        backend.expectOne({ method: 'POST', url: COPY_URL }).flush(agentOf(8, 'Invoice Reader #2'));
+        const clone = surface(22, 'Reader inbox', null, 8);
+        backend.expectOne(isGet(SURFACES_URL)).flush(page([surface(20, 'Web search', null), clone]));
+
+        expect(store.surfaces().filter((row) => row.owner_agent === 8)).toEqual([clone]);
+    });
+
+    it('shows the server message and adds nothing when the copy fails', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+        const message = 'A copy with that name was just created; please retry.';
+
+        store.duplicateAgent(3);
+        backend
+            .expectOne({ method: 'POST', url: COPY_URL })
+            .flush({ message }, { status: 400, statusText: 'Bad Request' });
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
+        expect(store.saving()).toBe(false);
+    });
+
+    it('shows the server message and adds nothing when the agent owns surfaces the user may not create', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+        const message =
+            'This agent owns surfaces, and copying it clones them, so it requires the Create permission on surfaces.';
+
+        store.duplicateAgent(3);
+        backend.expectOne({ method: 'POST', url: COPY_URL }).flush(
+            {
+                status_code: 403,
+                code: 'agent_with_owned_surfaces_requires_surfaces_create_permission',
+                message,
+            },
+            { status: 403, statusText: 'Forbidden' }
+        );
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
+        expect(store.saving()).toBe(false);
+    });
+
+    it('adds nothing and stays quiet on an uncoded 403, which the forbidden interceptor already reported', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+
+        store.duplicateAgent(3);
+        backend
+            .expectOne({ method: 'POST', url: COPY_URL })
+            .flush(
+                { detail: 'You do not have permission to perform this action.' },
+                { status: 403, statusText: 'Forbidden' }
+            );
+
+        expect(toast.error).not.toHaveBeenCalled();
+        expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
+        expect(store.saving()).toBe(false);
+    });
+});
+
+describe('AgentsPageStore agent export', () => {
+    const EXPORT_JOBS_URL = `${AGENTS_URL}export-jobs/`;
+    const JOB_URL = '/api/transfer-jobs/job-1/';
+    const DOWNLOAD_URL = '/api/transfer-jobs/job-1/download/?ticket=t-1';
+    let store: AgentsPageStore;
+    let backend: HttpTestingController;
+    let toast: ToastService;
+    let downloads: string[];
+
+    beforeEach(() => {
+        downloads = [];
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            downloads.push(this.href);
+        });
+        ({ store, backend } = storeOverFakeBackend());
+        toast = TestBed.inject(ToastService);
+        vi.spyOn(toast, 'info');
+        vi.spyOn(toast, 'error');
+        vi.spyOn(toast, 'warning');
+        loadPage(store, backend, [agentOf(1, 'Alpha'), agentOf(2, 'Beta'), agentOf(3, 'Gamma')]);
+    });
+
+    afterEach(() => {
+        backend.verify();
+        vi.restoreAllMocks();
+    });
+
+    /** The server accepts the export job; returns the ids it was asked to export. */
+    function acceptExportJob(): unknown {
+        const start = backend.expectOne({ method: 'POST', url: EXPORT_JOBS_URL });
+        start.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+        return start.request.body;
+    }
+
+    /** The job completes with `excluded` left out, and the server hands out a download ticket for its archive. */
+    async function finishExportJob(excluded: { entity_type: string; entity_id: number; name: string | null }[] = []) {
+        (await vi.waitFor(() => backend.expectOne(JOB_URL))).flush({
+            id: 'job-1',
+            kind: 'export',
+            main_entity: 'AgentDefinition',
+            status: 'completed',
+            display_name: 'Beta',
+            file_name: 'agent_Beta_2026-11-16.zip',
+            result: { excluded },
+            error: null,
+            created_at: '2026-11-16T10:00:00Z',
+            finished_at: '2026-11-16T10:01:00Z',
+            expires_at: null,
+        });
+        backend
+            .expectOne({ method: 'POST', url: '/api/transfer-jobs/job-1/download-ticket/' })
+            .flush({ download_url: DOWNLOAD_URL });
+    }
+
+    it('starts every export with nothing ticked', () => {
+        store.toggleAgentSelection(1);
+
+        store.startAgentExport();
+
+        expect(store.agentExportMode()).toBe(true);
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('ticks every agent on Select all, and clears them on the next one', () => {
+        store.startAgentExport();
+
+        store.toggleSelectAllAgents();
+        expect(store.allAgentsSelected()).toBe(true);
+        expect([...store.selectedAgentIds()]).toEqual([1, 2, 3]);
+
+        store.toggleSelectAllAgents();
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('exports only the ticked agents that still exist in one job, leaves export mode and downloads the archive', async () => {
+        store.startAgentExport();
+        store.toggleAgentSelection(1);
+        store.toggleAgentSelection(3);
+        store.toggleAgentSelection(99);
+
+        store.confirmAgentExport();
+
+        expect(acceptExportJob()).toEqual({ ids: [1, 3] });
+        expect(store.agentExportMode()).toBe(false);
+        expect(store.selectedAgentIds().size).toBe(0);
+        await finishExportJob();
+        expect(downloads).toEqual([expect.stringContaining(DOWNLOAD_URL)]);
+    });
+
+    it('asks for a ticked agent instead of exporting nothing, and stays in export mode', () => {
+        store.startAgentExport();
+
+        store.confirmAgentExport();
+
+        expect(toast.info).toHaveBeenCalledExactlyOnceWith('Select at least one agent to export.');
+        expect(store.agentExportMode()).toBe(true);
+    });
+
+    it('exports one agent as a job and warns about the tools left out of its archive', async () => {
+        store.exportAgent(2);
+
+        expect(acceptExportJob()).toEqual({ ids: [2] });
+        await finishExportJob([{ entity_type: 'PythonCodeTool', entity_id: 5, name: 'Scraper' }]);
+
+        expect(downloads).toEqual([expect.stringContaining(DOWNLOAD_URL)]);
+        expect(vi.mocked(toast.warning).mock.calls[0][0]).toContain('1 Python tool (Scraper)');
+    });
+
+    it('exports nothing for an agent that is no longer in the list', () => {
+        store.exportAgent(99);
+
+        backend.expectNone(EXPORT_JOBS_URL);
+    });
+
+    it.each([
+        {
+            status: 404,
+            statusText: 'Not Found',
+            code: 'export_entities_not_found',
+            message: 'Some agents were not found.',
+        },
+        { status: 403, statusText: 'Forbidden', code: 'permission_denied', message: 'You may not export agents.' },
+    ])(
+        "shows the server's reason when it refuses the export with $status, and keeps the ticks to try again",
+        ({ status, statusText, code, message }) => {
+            store.startAgentExport();
+            store.toggleAgentSelection(2);
+
+            store.confirmAgentExport();
+            backend
+                .expectOne({ method: 'POST', url: EXPORT_JOBS_URL })
+                .flush({ status_code: status, code, message }, { status, statusText });
+            backend.match((request) => request.method === 'GET');
+
+            expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+            expect(store.agentExportMode()).toBe(true);
+            expect([...store.selectedAgentIds()]).toEqual([2]);
+            expect(downloads).toEqual([]);
+        }
+    );
+
+    it('loads the agents again when an agent to export is gone', () => {
+        store.exportAgent(2);
+        backend
+            .expectOne({ method: 'POST', url: EXPORT_JOBS_URL })
+            .flush(
+                { status_code: 404, code: 'export_entities_not_found', message: 'Not found.' },
+                { status: 404, statusText: 'Not Found' }
+            );
+
+        backend.expectOne(isGet(AGENTS_URL)).flush(page([agentOf(1, 'Alpha'), agentOf(3, 'Gamma')]));
+        backend.expectOne(isGet(SURFACES_URL)).flush(page([]));
+        backend.expectOne(isGet(GROUPS_URL)).flush(page([]));
+
+        expect(store.agents().map((row) => row.name)).toEqual(['Alpha', 'Gamma']);
+    });
+});
+
+describe('AgentsPageStore agent import', () => {
+    it('lets the user pick an agent export archive as well as a plain JSON export', () => {
+        const { store, backend } = storeOverFakeBackend();
+        const picker = document.createElement('input');
+        vi.spyOn(picker, 'click').mockImplementation(() => undefined);
+        const createElement = vi.spyOn(document, 'createElement').mockReturnValueOnce(picker);
+
+        store.importAgents();
+        createElement.mockRestore();
+
+        expect(picker.accept).toBe('.json,.zip');
+        backend.verify();
     });
 });
