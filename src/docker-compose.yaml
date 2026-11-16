@@ -215,7 +215,7 @@ services:
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
       PLUGINS_DEV_API_PORT: ${PLUGINS_DEV_API_PORT:?}
     volumes:
-      - media_data:/app/media
+      - media_data:/app/src/django_app/media
       # Approved plugins' SPA files, published here and served by epicstaff-nginx (read-only).
       - plugin_spa:/srv/plugin-spa
     networks:
