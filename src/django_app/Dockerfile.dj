@@ -72,3 +72,13 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
 WORKDIR /app/src/django_app
 
 RUN chmod +x ./entrypoint.sh
+
+# Code and venv stay root-owned (read-only for the runtime user); only the
+# media_data and plugin_spa mount points are writable. A new, empty volume
+# takes their ownership from the image.
+RUN groupadd --system --gid 1000 app \
+ && useradd --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
+ && mkdir -p /app/src/django_app/media /srv/plugin-spa \
+ && chown app:app /app/src/django_app/media /srv/plugin-spa
+
+USER app

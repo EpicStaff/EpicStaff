@@ -84,6 +84,32 @@ x-bounded-logs: &bounded-logs
 #  COMMUNICATION_STORAGE_NAME: ${COMMUNICATION_STORAGE_NAME}
 
 services:
+  # The service images run as uid 1000. Volumes that earlier root images created stay
+  # root-owned (Docker copies image ownership only into a new, empty volume), so this
+  # one-shot hands them to uid 1000 before their services start. It changes only entries
+  # that are wrong, so later runs do nearly nothing. -h changes a symlink itself, never
+  # what it points at. DAC_READ_SEARCH lets it into 0700 directories owned by uid 1000.
+  volume-permissions:
+    logging: *bounded-logs
+    restart: "no"
+    image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
+    container_name: volume-permissions
+    user: "0"
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+    volumes:
+      - media_data:/volumes/media_data
+      - plugin_spa:/volumes/plugin_spa
+      - auditor_data:/volumes/auditor_data
+    command: [find, /volumes/media_data, /volumes/plugin_spa, /volumes/auditor_data,
+              "(", "!", -uid, "1000", -o, "!", -gid, "1000", ")", -exec, chown, -h, "1000:1000", "{}", "+"]
+
   django_app:
     logging: *bounded-logs
     restart: unless-stopped
@@ -224,6 +250,8 @@ services:
           - djangoapp
           - django
     depends_on:
+      volume-permissions:
+        condition: service_completed_successfully
       crewdb:
         condition: service_healthy
       redis:
@@ -310,6 +338,8 @@ services:
     tty: true
     stdin_open: true
     depends_on:
+      volume-permissions:
+        condition: service_completed_successfully
       crewdb:
         condition: service_healthy
       redis:
@@ -886,6 +916,8 @@ services:
     volumes:
       - auditor_data:/app/export_data
     depends_on:
+      volume-permissions:
+        condition: service_completed_successfully
       opensearch:
         condition: service_started
       redis:

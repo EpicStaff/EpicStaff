@@ -97,7 +97,7 @@ echo ">> checking for crashed containers"
 # failing healthcheck shows only in Health, so both count as crashed. Compose prints
 # one JSON object per line (older versions: one array); read both. A parse failure or
 # an empty list fails the deploy instead of passing it as "no crashes". storage-init
-# is one-shot: only its clean exit is expected.
+# and volume-permissions are one-shots: only their clean exit is expected.
 read -r -d '' CRASH_CHECK <<'PY' || true
 import json
 import sys
@@ -111,7 +111,8 @@ if not containers:
     sys.exit("no containers found")
 for container in containers:
     service, state, health = container["Service"], container["State"], container.get("Health")
-    if service == "storage-init" and state == "exited" and container.get("ExitCode") == 0:
+    one_shot = service in ("storage-init", "volume-permissions")
+    if one_shot and state == "exited" and container.get("ExitCode") == 0:
         continue
     if state in ("exited", "restarting", "dead") or health == "unhealthy":
         print(f"{service} (state={state}, health={health or 'none'})")
