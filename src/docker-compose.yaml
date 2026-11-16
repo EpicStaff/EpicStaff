@@ -70,6 +70,14 @@ x-bounded-logs: &bounded-logs
     max-size: "10m"
     max-file: "5"
 
+# Our own service images run as uid 1000 and need no capability, so they get none, and
+# no-new-privileges keeps a setuid binary from giving one back.
+x-hardened: &hardened
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 #x-communication-env: &communication_env
 #  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
 #  COMMUNICATION_BROKER_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
@@ -111,6 +119,7 @@ services:
               "(", "!", -uid, "1000", -o, "!", -gid, "1000", ")", -exec, chown, -h, "1000:1000", "{}", "+"]
 
   django_app:
+    <<: *hardened
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
@@ -267,6 +276,7 @@ services:
       retries: 100
 
   realtime:
+    <<: *hardened
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/realtime:${IMAGE_TAG:?}
@@ -312,6 +322,7 @@ services:
         condition: service_started
 
   manager:
+    <<: *hardened
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/manager:${IMAGE_TAG:?}
@@ -436,6 +447,7 @@ services:
       start_period: 5s
 
   crew:
+    <<: *hardened
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/crew:${IMAGE_TAG:?}
@@ -622,6 +634,7 @@ services:
       - frontend-network
 
   webhook:
+    <<: *hardened
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?}
@@ -930,6 +943,7 @@ services:
       start_period: 5s
 
   knowledge_new:
+    <<: *hardened
     logging: *bounded-logs
     restart: unless-stopped
     container_name: knowledge_new
@@ -964,6 +978,7 @@ services:
   # COMPOSE_PROFILES includes "chat"; CHAT_ENABLED=true then exposes the feature in nginx and the UI.
   # Nothing outside the profile may depend_on them, or a stack without chat would not start.
   chat:
+    <<: *hardened
     image: ghcr.io/epicstaff/chat:${IMAGE_TAG:?}
     build:
       context: .
