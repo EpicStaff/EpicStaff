@@ -127,7 +127,8 @@ MAX_RESULT_SIZE = env.byte_size("SANDBOX_MAX_RESULT_SIZE")
 if MAX_RESULT_SIZE is None or MAX_RESULT_SIZE <= 0:
     raise ValueError("SANDBOX_MAX_RESULT_SIZE must be a positive size, not none.")
 
-# Defaults are the confining value: a missing setting must not unconfine the sandbox.
+# Defaults are the confining value: a missing setting must not unconfine the sandbox,
+# and env.bool rejects a malformed one, so only an explicit false value unconfines it.
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET", True)
 BLOCK_NETWORK = env.bool("SANDBOX_BLOCK_NETWORK", True)
 REQUIRE_ISOLATION = env.bool("SANDBOX_REQUIRE_ISOLATION", True)
