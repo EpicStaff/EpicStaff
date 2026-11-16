@@ -184,7 +184,25 @@ export class GraphRagGridTableComponent {
         if (event.button !== 0 || this.resizing) return;
         event.preventDefault();
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+        this.freezeColumnWidths(headerCell);
         this.resizing = { key, startX: event.clientX, startWidth: headerCell.offsetWidth };
+    }
+
+    private freezeColumnWidths(headerCell: HTMLElement): void {
+        const row = headerCell.parentElement;
+        if (!row) return;
+        const cells = Array.from(row.children) as HTMLElement[];
+        const columns = this.columns();
+        this.columnWidths.update((widths) => {
+            const frozen: Record<string, number> = { ...widths };
+            cells.forEach((cell, index) => {
+                const col = columns[index];
+                if (col && frozen[col] === undefined) {
+                    frozen[col] = cell.offsetWidth;
+                }
+            });
+            return frozen;
+        });
     }
 
     onResizeMove(event: PointerEvent): void {
