@@ -28,8 +28,8 @@ class Command(BaseCommand):
                     pass
                 logger.success("Postgres is ready!")
                 return  # success
-            except psycopg.OperationalError:
-                logger.warning(f"Trying again to connect to Postgres: {attempt}/150")
+            except psycopg.OperationalError as error:
+                logger.warning(f"Trying again to connect to Postgres: {attempt}/150 ({error})")
                 time.sleep(2)
 
         logger.error(

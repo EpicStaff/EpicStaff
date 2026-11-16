@@ -34,10 +34,12 @@ that:
 2. Creates the django role (`create_django_user`) and creates the `vector` extension:
    pgvector 0.5.1 is not a trusted extension, so the django role could not. Trusted ones such
    as `pg_trgm` its migrations create themselves. `DJANGO_DB_USER` must differ from `DB_USER`.
-3. Moves every object in `public` the superuser owns to the django role
+3. Moves every object in `public` a superuser owns to the django role
    (`transfer_public_objects_to_django_user`): tables (their indexes and owned sequences
    follow), other sequences, views, routines and types. Extension members stay. Earlier
    releases ran django_app as the superuser; on a database already moved this changes nothing.
+   It does not move objects from an earlier django role: to rename `DJANGO_DB_USER`, run
+   `REASSIGN OWNED BY <old> TO <new>; DROP ROLE <old>;` as `DB_USER` after crewdb created the new one.
 4. Creates each other role if missing (`create_<service>_user`): `USAGE ON SCHEMA public`, and
    `ALTER DEFAULT PRIVILEGES ... REVOKE ALL ON TABLES` so a new table grants it nothing. The
    knowledge role also gets `CREATEDB` and `CREATE` on the schema and database; the sandbox

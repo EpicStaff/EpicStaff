@@ -83,13 +83,14 @@ EOF
 }
 
 # Earlier releases ran django_app as the superuser, so it owns the existing tables. Hand them,
-# and every other object of the public schema the superuser owns, to the django role.
+# and every other object of the public schema a superuser owns, to the django role: any
+# superuser, since an old volume may have been created under a different POSTGRES_USER.
 # REASSIGN OWNED cannot do it: the superuser also owns the system catalogs. Extension members
 # stay with their extension. One transaction; on a database already moved it changes nothing.
 transfer_public_objects_to_django_user() {
     local django_user="${DJANGO_DB_USER}"
 
-    echo "[django] Moving objects in public owned by ${POSTGRES_USER} to ${django_user}..."
+    echo "[django] Moving objects in public owned by a superuser to ${django_user}..."
     setup_psql <<EOF
 \set VERBOSITY terse
 DO \$\$
@@ -113,27 +114,28 @@ BEGIN
                    c.oid
             FROM pg_class c
             WHERE c.relnamespace = 'public'::regnamespace
-              AND c.relowner = to_regrole(current_user)
+              AND c.relowner IN (SELECT oid FROM pg_roles WHERE rolsuper)
               -- Indexes, TOAST tables and row types follow their table.
               AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S', 'c')
-              -- So does a sequence owned by a column (serial, identity).
-              AND NOT EXISTS (
+              -- So does a sequence owned by a column (serial, identity). Partitions also
+              -- depend on their parent, but ALTER TABLE does not recurse to them.
+              AND (c.relkind <> 'S' OR NOT EXISTS (
                   SELECT FROM pg_depend d
                   WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid
                     AND d.refclassid = 'pg_class'::regclass AND d.deptype IN ('a', 'i')
-              )
+              ))
             UNION ALL
             SELECT 'ROUTINE', p.oid::regprocedure::text, 'pg_proc'::regclass, p.oid
             FROM pg_proc p
             WHERE p.pronamespace = 'public'::regnamespace
-              AND p.proowner = to_regrole(current_user)
+              AND p.proowner IN (SELECT oid FROM pg_roles WHERE rolsuper)
             UNION ALL
             -- Array types follow their element type; composite types are listed above.
             SELECT CASE t.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END,
                    t.oid::regtype::text, 'pg_type'::regclass, t.oid
             FROM pg_type t
             WHERE t.typnamespace = 'public'::regnamespace
-              AND t.typowner = to_regrole(current_user)
+              AND t.typowner IN (SELECT oid FROM pg_roles WHERE rolsuper)
               AND t.typtype IN ('d', 'e', 'r')
         ) AS owned
         WHERE NOT EXISTS (
