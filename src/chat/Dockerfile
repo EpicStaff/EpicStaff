@@ -1,5 +1,5 @@
 # --- Stage 1: Builder ---
-FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
+FROM python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS builder
 
 # Wheels only (UV_NO_BUILD=1): no sdist build backend ever runs at install time.
 # UV_PYTHON_DOWNLOADS=never keeps the digest-pinned interpreter above in use.
@@ -27,7 +27,7 @@ COPY ./chat /app/src/chat
 COPY ./shared /app/src/shared
 
 # --- Stage 2: Runtime ---
-FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
+FROM python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS runtime
 
 COPY --from=builder /app /app
 
