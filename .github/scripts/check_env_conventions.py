@@ -51,6 +51,8 @@ COMPOSE_MAY_BE_EMPTY = {
     "DJANGO_EMAIL_PASSWORD",
     # A blank hash leaves the widget embed snippet without Subresource Integrity (chat settings.py).
     "CHAT_WIDGET_INTEGRITY",
+    # A blank prefix keeps the plain container and volume names of a single instance per host.
+    "INSTANCE_PREFIX",
 }
 
 BOOL_WORD = r"(?i:true|false|yes|no|on|off|t|f|y|n|1|0)"
