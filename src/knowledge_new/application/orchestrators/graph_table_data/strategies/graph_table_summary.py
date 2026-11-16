@@ -1,13 +1,16 @@
-import pandas
+import asyncio
+
 from application.commands import GetGraphTableSummary
 from application.orchestrators.base import AbstractOrchestrator
+from application.orchestrators.graph_output import (
+    count_output_table_rows,
+    ensure_graph_indexed,
+    open_graph_output_storage,
+)
 from application.orchestrators.graph_table_data.strategies.graph_table import (
     SUPPORTED_TABLES,
 )
 from application.results import GraphTableSummaryItem, GraphTableSummaryResult
-from graphrag.data_model import DataReader
-from graphrag_storage import create_storage
-from graphrag_storage.tables.table_provider_factory import create_table_provider
 
 
 def _make_label(name: str) -> str:
@@ -23,28 +26,26 @@ class GraphTableSummaryOrchestrator(
     AbstractOrchestrator[GetGraphTableSummary, GraphTableSummaryResult]
 ):
     async def on_execute(self, command: GetGraphTableSummary) -> GraphTableSummaryResult:
-        async with self.uow:
-            config = await self.uow.graph_rag_repo.get_config(command.rag_id)
+        storage = await open_graph_output_storage(self.uow, command.rag_id)
+        await ensure_graph_indexed(storage, command.rag_id)
 
-        storage = create_storage(config.output_storage)
-        table_provider = create_table_provider(config.table_provider, storage)
-        reader = DataReader(table_provider)
+        table_names = sorted(SUPPORTED_TABLES)
+        # A TaskGroup cancels the remaining downloads as soon as one table fails to read.
+        async with asyncio.TaskGroup() as task_group:
+            count_tasks = [
+                task_group.create_task(count_output_table_rows(storage, table_name))
+                for table_name in table_names
+            ]
 
-        items: list[GraphTableSummaryItem] = []
-        for table_name in sorted(SUPPORTED_TABLES):
-            try:
-                reader_method = getattr(reader, table_name)
-                dataframe: pandas.DataFrame = await reader_method()
-                count = len(dataframe)
-            except (ValueError, FileNotFoundError):
-                count = 0
-
-            items.append(
+        # A table the index has not written (covariates are optional) counts as empty;
+        # a file that exists but cannot be read fails the request instead.
+        return GraphTableSummaryResult(
+            tables=[
                 GraphTableSummaryItem(
                     name=table_name,
                     label=_make_label(table_name),
-                    count=count,
+                    count=count_task.result() or 0,
                 )
-            )
-
-        return GraphTableSummaryResult(tables=items)
+                for table_name, count_task in zip(table_names, count_tasks, strict=True)
+            ]
+        )

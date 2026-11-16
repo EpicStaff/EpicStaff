@@ -1,10 +1,23 @@
 declare module 'd3-force-3d' {
-    import { SimulationLinkDatum, SimulationNodeDatum } from 'd3-force';
-
-    interface ForceNode3D extends SimulationNodeDatum {
+    /** Node fields the simulation reads and writes; `z`/`vz`/`fz` are used only with three dimensions. */
+    interface ForceNode3D {
+        index?: number;
+        x?: number;
+        y?: number;
         z?: number;
+        vx?: number;
+        vy?: number;
         vz?: number;
+        fx?: number | null;
+        fy?: number | null;
         fz?: number | null;
+    }
+
+    /** A link endpoint is a node object, or the node's index before the link force initialises it. */
+    interface ForceLink3D<N extends ForceNode3D> {
+        source: N | number | string;
+        target: N | number | string;
+        index?: number;
     }
 
     interface Simulation<N extends ForceNode3D> {
@@ -21,13 +34,13 @@ declare module 'd3-force-3d' {
     export function forceSimulation<N extends ForceNode3D>(nodes?: N[], numDimensions?: number): Simulation<N>;
 
     export function forceLink<N extends ForceNode3D>(
-        links?: SimulationLinkDatum<N>[]
-    ): { distance(d: number): unknown; strength(s: number): unknown };
+        links?: ForceLink3D<N>[]
+    ): { distance(distance: number): unknown; strength(strength: number): unknown };
 
     export function forceManyBody(): {
-        strength(s: number): unknown;
-        distanceMin(d: number): unknown;
-        distanceMax(d: number): unknown;
+        strength(strength: number): unknown;
+        distanceMin(distance: number): unknown;
+        distanceMax(distance: number): unknown;
     };
 
     export function forceCenter(x?: number, y?: number, z?: number): unknown;

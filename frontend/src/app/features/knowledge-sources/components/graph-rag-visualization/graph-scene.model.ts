@@ -39,6 +39,8 @@ export interface SceneResources {
 export interface OrbitControlsLike {
     update(): void;
     dispose(): void;
+    addEventListener(type: 'change', listener: () => void): void;
+    removeEventListener(type: 'change', listener: () => void): void;
     enabled: boolean;
     enableRotate: boolean;
     enablePan: boolean;

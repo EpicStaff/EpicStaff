@@ -1,16 +1,29 @@
+// Pins what the graph visualization shows and requests as data loads, fails, is searched and resized, and that the
+// 3D scene is created once and updated in place. Component layer: rendered in a host against HttpTestingController
+// with a fake scene service (no WebGL in jsdom), driven and asserted through the DOM.
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { Component } from '@angular/core';
-import { ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing';
+import { Component, Injectable } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 
 import { ConfigService } from '../../../../services/config';
 import { GraphVisualizationData } from '../../models/graph-visualization.model';
 import { GraphRagVisualizationComponent } from './graph-rag-visualization.component';
+import { GraphSceneService } from './graph-scene.service';
 
 const API_URL = 'http://api.test/api/';
+const VISUALIZATION_URL = `${API_URL}graph-rag/42/visualization/`;
+const INITIAL_REQUEST_URL = `${VISUALIZATION_URL}?max_entities=200`;
 
-function buildVisualizationData(entityCount = 3): GraphVisualizationData {
+// jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+function buildVisualizationData(entityCount = 3, totalEntities = entityCount): GraphVisualizationData {
     const entities = Array.from({ length: entityCount }, (_, i) => ({
         id: `e${i}`,
         title: `Entity ${i}`,
@@ -21,9 +34,52 @@ function buildVisualizationData(entityCount = 3): GraphVisualizationData {
     return {
         entities,
         relationships: [{ id: 'r0', source: 'Entity 0', target: 'Entity 1', weight: 1.0 }],
-        total_entities: entityCount,
+        total_entities: totalEntities,
         total_relationships: 1,
     };
+}
+
+function emptyVisualizationData(): GraphVisualizationData {
+    return { entities: [], relationships: [], total_entities: 0, total_relationships: 0 };
+}
+
+/**
+ * WebGL is not available in the test DOM, so the scene service is replaced by a fake that keeps the
+ * real graph bookkeeping but never creates a renderer. Loading the 3D libraries is held open until
+ * the test resolves it, to exercise what happens when the component goes away mid-load.
+ */
+@Injectable()
+class FakeGraphSceneService extends GraphSceneService {
+    initSceneCalls = 0;
+    refreshGraphCalls = 0;
+    private sceneInitialized = false;
+    private resolveDependencies: () => void = () => {};
+    private readonly dependencies = new Promise<void>((resolve) => (this.resolveDependencies = resolve));
+
+    override loadDependencies(): Promise<void> {
+        return this.dependencies;
+    }
+
+    finishLoadingDependencies(): void {
+        this.resolveDependencies();
+    }
+
+    override initScene(): void {
+        this.initSceneCalls++;
+        this.sceneInitialized = true;
+    }
+
+    override isSceneInitialized(): boolean {
+        return this.sceneInitialized;
+    }
+
+    override refreshGraph(): void {
+        this.refreshGraphCalls++;
+    }
+
+    override dispose(): void {
+        this.sceneInitialized = false;
+    }
 }
 
 @Component({
@@ -38,12 +94,63 @@ describe('GraphRagVisualizationComponent', () => {
     let fixture: ComponentFixture<TestHostComponent>;
     let httpMock: HttpTestingController;
 
-    function getVizComponent(): GraphRagVisualizationComponent {
-        return fixture.debugElement.query(By.directive(GraphRagVisualizationComponent))
-            .componentInstance as GraphRagVisualizationComponent;
+    function getSceneService(): FakeGraphSceneService {
+        return fixture.debugElement
+            .query(By.directive(GraphRagVisualizationComponent))
+            .injector.get(GraphSceneService) as FakeGraphSceneService;
+    }
+
+    function textContent(): string {
+        return (fixture.nativeElement as HTMLElement).textContent ?? '';
+    }
+
+    function query(selector: string): HTMLElement | null {
+        return (fixture.nativeElement as HTMLElement).querySelector(selector);
+    }
+
+    function normalizedText(selector: string): string {
+        return (query(selector)?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    }
+
+    function flushInitial(data: GraphVisualizationData = buildVisualizationData()): void {
+        httpMock.expectOne(INITIAL_REQUEST_URL).flush(data);
+        fixture.detectChanges();
+    }
+
+    /** Types into the toolbar search field; the component debounces, so the caller advances the fake timers. */
+    function typeSearch(term: string): void {
+        const input = query('.search__input') as HTMLInputElement;
+        input.value = term;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    /** Types a number into the "Displayed Entities" field and leaves it, which commits the value. */
+    function enterDisplayedEntities(value: string): void {
+        const input = query('.visualization__slider .slider-stepper__value-input') as HTMLInputElement;
+        input.value = value;
+        input.dispatchEvent(new Event('blur'));
+        fixture.detectChanges();
+    }
+
+    function expectVisualizationRequest(params: Record<string, string | null>) {
+        return httpMock.expectOne(
+            (request) =>
+                request.url === VISUALIZATION_URL &&
+                Object.entries(params).every(([key, value]) => request.params.get(key) === value)
+        );
+    }
+
+    function typeFilterCheckboxes(): HTMLInputElement[] {
+        return Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLInputElement>(
+                '.visualization__sidebar input[type="checkbox"]'
+            )
+        );
     }
 
     beforeEach(async () => {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         await TestBed.configureTestingModule({
             imports: [TestHostComponent],
             providers: [
@@ -51,199 +158,286 @@ describe('GraphRagVisualizationComponent', () => {
                 provideHttpClientTesting(),
                 { provide: ConfigService, useValue: { apiUrl: API_URL } },
             ],
-        }).compileComponents();
+        })
+            .overrideComponent(GraphRagVisualizationComponent, {
+                set: { providers: [{ provide: GraphSceneService, useClass: FakeGraphSceneService }] },
+            })
+            .compileComponents();
 
         fixture = TestBed.createComponent(TestHostComponent);
         httpMock = TestBed.inject(HttpTestingController);
         fixture.detectChanges();
     });
 
-    afterEach(() => httpMock.verify());
-
-    it('sends a GET request with max_entities on init', () => {
-        const request = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-        expect(request.request.method).toBe('GET');
-        request.flush(buildVisualizationData());
+    afterEach(() => {
+        httpMock.verify();
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
     });
 
-    it('shows loading state while fetching', () => {
-        const vizComponent = getVizComponent();
-        expect(vizComponent.viewState()).toBe('loading');
+    describe('loading', () => {
+        it('requests 200 entities on init', () => {
+            const request = httpMock.expectOne(INITIAL_REQUEST_URL);
+            expect(request.request.method).toBe('GET');
+            request.flush(buildVisualizationData());
+        });
 
-        const request = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-        request.flush(buildVisualizationData());
+        it('shows a loading spinner while fetching', () => {
+            expect(query('app-loading-spinner')).not.toBeNull();
+
+            flushInitial();
+        });
+
+        it('says the graph has no entities when the first load is empty', () => {
+            flushInitial(emptyVisualizationData());
+
+            expect(textContent()).toContain('This graph has no entities to display');
+            expect(textContent()).not.toContain('run indexing first');
+            expect(query('app-loading-spinner')).toBeNull();
+        });
+
+        it('shows the total entity and relationship counts after a successful load', () => {
+            flushInitial(buildVisualizationData(5));
+
+            expect(normalizedText('.visualization__stats')).toBe('Total Entities: 5 Total Relationships: 1');
+        });
+
+        it('builds entity type filters from loaded data', () => {
+            flushInitial(buildVisualizationData(4));
+
+            expect(textContent()).toContain('PERSON (2)');
+            expect(textContent()).toContain('ORG (2)');
+        });
     });
 
-    it('shows empty state on 404 response', () => {
-        const vizComponent = getVizComponent();
+    describe('errors', () => {
+        it('tells the user to run indexing when the graph is not indexed yet (409 graph_not_indexed)', () => {
+            httpMock
+                .expectOne(INITIAL_REQUEST_URL)
+                .flush(
+                    { status_code: 409, code: 'graph_not_indexed', message: 'Any backend wording' },
+                    { status: 409, statusText: 'Conflict' }
+                );
+            fixture.detectChanges();
 
-        const request = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-        request.flush({ message: 'Not found' }, { status: 404, statusText: 'Not Found' });
+            expect(textContent()).toContain('run indexing first');
+            expect(query('app-fetch-error-state')).toBeNull();
+            expect(query('app-loading-spinner')).toBeNull();
+        });
 
-        expect(vizComponent.viewState()).toBe('empty');
+        it.each<[string, number, object]>([
+            ['a 409 with another code', 409, { status_code: 409, code: 'upstream_resource_conflict', message: 'x' }],
+            ['a 404', 404, { status_code: 404, code: 'not_found', message: 'GraphRag not found' }],
+        ])('shows an error with retry, not the indexing hint, for %s', (_label, status, body) => {
+            httpMock.expectOne(INITIAL_REQUEST_URL).flush(body, { status, statusText: 'Error' });
+            fixture.detectChanges();
+
+            expect(query('app-fetch-error-state')).not.toBeNull();
+            expect(textContent()).not.toContain('run indexing first');
+        });
+
+        it('says GraphRAG is unavailable on a 503', () => {
+            httpMock
+                .expectOne(INITIAL_REQUEST_URL)
+                .flush({ message: 'unavailable' }, { status: 503, statusText: 'Service Unavailable' });
+            fixture.detectChanges();
+
+            expect(query('app-fetch-error-state')).not.toBeNull();
+            expect(textContent()).toContain('GraphRAG is not available on this server');
+        });
     });
 
-    it('shows error state on 503 response', () => {
-        const vizComponent = getVizComponent();
+    describe('displayed entities', () => {
+        it('lets the user ask for every entity when the first load returned only part of the graph', () => {
+            flushInitial(buildVisualizationData(200, 5000));
 
-        const request = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-        request.flush({ message: 'unavailable' }, { status: 503, statusText: 'Service Unavailable' });
+            enterDisplayedEntities('5000');
 
-        expect(vizComponent.viewState()).toBe('error');
-        expect(vizComponent.errorMessage()).toBe('GraphRAG is not available on this server');
+            expectVisualizationRequest({ max_entities: '5000' }).flush(buildVisualizationData(200, 5000));
+        });
+
+        it('never requests fewer than one entity', () => {
+            flushInitial();
+
+            enterDisplayedEntities('0');
+
+            expectVisualizationRequest({ max_entities: '1' }).flush(buildVisualizationData(1));
+        });
+
+        it('keeps the type filters on screen but disabled while a reload is in flight', () => {
+            flushInitial(buildVisualizationData(4));
+            expect(typeFilterCheckboxes().length).toBe(2);
+            expect(typeFilterCheckboxes().every((checkbox) => !checkbox.disabled)).toBe(true);
+
+            enterDisplayedEntities('2');
+
+            expect(query('.visualization__sidebar')).not.toBeNull();
+            expect(typeFilterCheckboxes().length).toBe(2);
+            expect(typeFilterCheckboxes().every((checkbox) => checkbox.disabled)).toBe(true);
+
+            expectVisualizationRequest({ max_entities: '2' }).flush(buildVisualizationData(2));
+            fixture.detectChanges();
+
+            expect(typeFilterCheckboxes().every((checkbox) => !checkbox.disabled)).toBe(true);
+        });
     });
 
-    it('shows empty state when API returns zero entities', () => {
-        const vizComponent = getVizComponent();
+    describe('scene lifecycle', () => {
+        async function initializeScene(): Promise<FakeGraphSceneService> {
+            flushInitial();
+            const sceneService = getSceneService();
+            sceneService.finishLoadingDependencies();
+            await fixture.whenStable();
+            return sceneService;
+        }
 
-        const request = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-        request.flush({ entities: [], relationships: [], total_entities: 0, total_relationships: 0 });
+        it('creates the scene once the 3D libraries have loaded', async () => {
+            const sceneService = await initializeScene();
 
-        expect(vizComponent.viewState()).toBe('empty');
-    });
+            expect(sceneService.initSceneCalls).toBe(1);
+        });
 
-    it('populates counts after successful data load', () => {
-        const vizComponent = getVizComponent();
+        it('does not create a scene when destroyed while the 3D libraries are still loading', async () => {
+            flushInitial();
+            const sceneService = getSceneService();
 
-        const data = buildVisualizationData(5);
-        const request = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-        request.flush(data);
+            fixture.destroy();
+            sceneService.finishLoadingDependencies();
+            await Promise.resolve();
+            await Promise.resolve();
 
-        expect(vizComponent.entityCount()).toBe(5);
-        expect(vizComponent.relationshipCount()).toBe(1);
-    });
+            expect(sceneService.initSceneCalls).toBe(0);
+        });
 
-    it('builds entity type filters from loaded data', () => {
-        const vizComponent = getVizComponent();
+        it('updates the existing scene in place when the displayed entities change', async () => {
+            const sceneService = await initializeScene();
+            const canvas = query('canvas');
 
-        const request = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-        request.flush(buildVisualizationData(4));
+            enterDisplayedEntities('2');
+            expectVisualizationRequest({ max_entities: '2' }).flush(buildVisualizationData(2));
+            fixture.detectChanges();
 
-        const filters = vizComponent.entityTypeFilters();
-        const labels = filters.map((f) => f.type);
-        expect(labels).toContain('PERSON');
-        expect(labels).toContain('ORG');
-        expect(filters.every((f) => f.checked)).toBe(true);
+            expect(sceneService.initSceneCalls).toBe(1);
+            expect(sceneService.refreshGraphCalls).toBe(1);
+            expect(query('canvas')).toBe(canvas);
+        });
+
+        it('updates the existing scene in place when a search reloads the graph', async () => {
+            const sceneService = await initializeScene();
+            const canvas = query('canvas');
+            vi.useFakeTimers();
+
+            typeSearch('Entity');
+            vi.advanceTimersByTime(300);
+            expectVisualizationRequest({ search: 'Entity' }).flush(buildVisualizationData(2));
+            fixture.detectChanges();
+
+            expect(sceneService.initSceneCalls).toBe(1);
+            expect(sceneService.refreshGraphCalls).toBe(1);
+            expect(query('canvas')).toBe(canvas);
+        });
     });
 
     describe('API-driven search', () => {
-        it('sends search param to API after debounce', fakeAsync(() => {
-            const vizComponent = getVizComponent();
+        beforeEach(() => vi.useFakeTimers());
 
-            // Flush initial load
-            const initialRequest = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-            initialRequest.flush(buildVisualizationData());
+        it('limits the search field to 200 characters', () => {
+            flushInitial();
 
-            vizComponent.onSearchTermChange('test query');
-            tick(300);
+            expect(query('.search__input')?.getAttribute('maxlength')).toBe('200');
+        });
 
-            const searchRequest = httpMock.expectOne(
-                (req) =>
-                    req.url === `${API_URL}graph-rag/42/visualization/` &&
-                    req.params.get('search') === 'test query' &&
-                    req.params.get('max_entities') === '200'
-            );
+        it('sends the trimmed term with the displayed entity count after the debounce', () => {
+            flushInitial();
+
+            typeSearch('  test query  ');
+            vi.advanceTimersByTime(300);
+
+            const searchRequest = expectVisualizationRequest({ search: 'test query', max_entities: '3' });
             expect(searchRequest.request.method).toBe('GET');
             searchRequest.flush(buildVisualizationData(2));
-        }));
+        });
 
-        it('does not send search param when term is whitespace only', fakeAsync(() => {
-            const vizComponent = getVizComponent();
+        it('keeps the toolbar and shows a no-results message when the search matches nothing', () => {
+            flushInitial();
 
-            const initialRequest = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-            initialRequest.flush(buildVisualizationData());
+            typeSearch('nothing like this');
+            vi.advanceTimersByTime(300);
+            expectVisualizationRequest({ search: 'nothing like this' }).flush(emptyVisualizationData());
+            fixture.detectChanges();
 
-            vizComponent.onSearchTermChange('   ');
-            tick(300);
+            expect(textContent()).toContain('No entities match your search');
+            expect(query('app-loading-spinner')).toBeNull();
+            expect(query('app-search')).not.toBeNull();
+            expect(query('app-slider-with-stepper')).not.toBeNull();
+        });
 
-            const reloadRequest = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
+        it('reloads without a search param when the term is reduced to whitespace', () => {
+            flushInitial();
+            typeSearch('abc');
+            vi.advanceTimersByTime(300);
+            expectVisualizationRequest({ search: 'abc' }).flush(buildVisualizationData());
+
+            typeSearch('   ');
+            vi.advanceTimersByTime(300);
+
+            const reloadRequest = httpMock.expectOne((request) => request.url === VISUALIZATION_URL);
             expect(reloadRequest.request.params.has('search')).toBe(false);
             reloadRequest.flush(buildVisualizationData());
-        }));
+        });
 
-        it('debounces rapid search input', fakeAsync(() => {
-            const vizComponent = getVizComponent();
+        it('debounces rapid search input', () => {
+            flushInitial();
 
-            const initialRequest = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-            initialRequest.flush(buildVisualizationData());
+            typeSearch('a');
+            vi.advanceTimersByTime(100);
+            typeSearch('ab');
+            vi.advanceTimersByTime(100);
+            typeSearch('abc');
+            vi.advanceTimersByTime(300);
 
-            vizComponent.onSearchTermChange('a');
-            tick(100);
-            vizComponent.onSearchTermChange('ab');
-            tick(100);
-            vizComponent.onSearchTermChange('abc');
-            tick(300);
+            // Only the last value triggers a request
+            expectVisualizationRequest({ search: 'abc' }).flush(buildVisualizationData(1));
+        });
 
-            // Only the last value should trigger a request
-            const searchRequest = httpMock.expectOne(
-                (req) => req.url === `${API_URL}graph-rag/42/visualization/` && req.params.get('search') === 'abc'
-            );
-            searchRequest.flush(buildVisualizationData(1));
-        }));
+        it('does not search again when the debounced term is the one already searched', () => {
+            flushInitial();
+            typeSearch('same');
+            vi.advanceTimersByTime(300);
+            expectVisualizationRequest({ search: 'same' }).flush(buildVisualizationData(2));
 
-        it('skips duplicate consecutive search terms', fakeAsync(() => {
-            const vizComponent = getVizComponent();
+            // Edited and changed back within the debounce window: the settled term is unchanged.
+            typeSearch('samex');
+            vi.advanceTimersByTime(100);
+            typeSearch('same');
+            vi.advanceTimersByTime(300);
 
-            const initialRequest = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-            initialRequest.flush(buildVisualizationData());
+            httpMock.expectNone((request) => request.url === VISUALIZATION_URL);
+        });
 
-            vizComponent.onSearchTermChange('same');
-            tick(300);
+        it('rebuilds entity type filters from the search result', () => {
+            flushInitial(buildVisualizationData(4));
+            expect(textContent()).toContain('ORG (2)');
 
-            const firstSearch = httpMock.expectOne((req) => req.params.get('search') === 'same');
-            firstSearch.flush(buildVisualizationData(2));
+            typeSearch('person');
+            vi.advanceTimersByTime(300);
+            expectVisualizationRequest({ search: 'person' }).flush(buildVisualizationData(1));
+            fixture.detectChanges();
 
-            // Same term again — should be suppressed by distinctUntilChanged
-            vizComponent.onSearchTermChange('same');
-            tick(300);
+            expect(textContent()).toContain('PERSON (1)');
+            expect(textContent()).not.toContain('ORG (');
+        });
 
-            httpMock.expectNone(`${API_URL}graph-rag/42/visualization/`);
-        }));
+        it('keeps the search term when the displayed entities change during a search', () => {
+            flushInitial();
+            typeSearch('query');
+            vi.advanceTimersByTime(300);
+            expectVisualizationRequest({ search: 'query' }).flush(buildVisualizationData(2));
+            fixture.detectChanges();
 
-        it('resets entity type filters when search triggers reload', fakeAsync(() => {
-            const vizComponent = getVizComponent();
+            enterDisplayedEntities('2');
 
-            const initialRequest = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-            initialRequest.flush(buildVisualizationData(4));
-
-            expect(vizComponent.entityTypeFilters().length).toBeGreaterThan(0);
-
-            vizComponent.onSearchTermChange('person');
-            tick(300);
-
-            // Filters should be cleared before the reload
-            expect(vizComponent.entityTypeFilters()).toEqual([]);
-
-            const searchRequest = httpMock.expectOne((req) => req.params.get('search') === 'person');
-            searchRequest.flush(buildVisualizationData(2));
-
-            // Filters rebuilt from new data
-            expect(vizComponent.entityTypeFilters().length).toBeGreaterThan(0);
-        }));
-
-        it('includes search param when max entities changes during active search', fakeAsync(() => {
-            const vizComponent = getVizComponent();
-
-            const initialRequest = httpMock.expectOne(`${API_URL}graph-rag/42/visualization/?max_entities=200`);
-            initialRequest.flush(buildVisualizationData());
-
-            // Set a search term via the search flow
-            vizComponent.onSearchTermChange('query');
-            tick(300);
-
-            const searchRequest = httpMock.expectOne((req) => req.params.get('search') === 'query');
-            searchRequest.flush(buildVisualizationData(2));
-
-            // Now change max entities — should still include search
-            vizComponent.onMaxEntitiesChange(50);
-
-            const entitiesRequest = httpMock.expectOne(
-                (req) =>
-                    req.url === `${API_URL}graph-rag/42/visualization/` &&
-                    req.params.get('max_entities') === '50' &&
-                    req.params.get('search') === 'query'
-            );
-            entitiesRequest.flush(buildVisualizationData(2));
-        }));
+            expectVisualizationRequest({ max_entities: '2', search: 'query' }).flush(buildVisualizationData(2));
+        });
     });
 });

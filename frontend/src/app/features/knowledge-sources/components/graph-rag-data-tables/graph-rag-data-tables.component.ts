@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
@@ -9,8 +10,18 @@ import {
     SelectItem,
 } from '@shared/components';
 import { EMPTY, Subject } from 'rxjs';
-import { debounceTime, distinctUntilChanged, switchMap, tap } from 'rxjs/operators';
+import { catchError, debounceTime, switchMap, tap } from 'rxjs/operators';
 
+import {
+    GRAPH_NOT_INDEXED_MESSAGE,
+    GRAPH_SEARCH_DEBOUNCE_MS,
+    GRAPH_SEARCH_MAX_LENGTH,
+    GRAPH_TABLE_DEFAULT_PAGE_SIZE,
+    GRAPH_TABLE_FALLBACK_ICON,
+    GRAPH_TABLE_ICONS,
+    GRAPH_TABLE_PAGE_SIZE_OPTIONS,
+} from '../../constants/constants';
+import { isGraphNotIndexedError } from '../../helpers/graph-not-indexed-error.util';
 import { GraphTableData, GraphTableSummaryItem } from '../../models/graph-visualization.model';
 import { DocumentsApiService } from '../../services/documents-api.service';
 import { GraphRagService } from '../../services/graph-rag.service';
@@ -19,17 +30,8 @@ import { GraphRagGridTableComponent } from '../graph-rag-grid-table/graph-rag-gr
 import { GraphGridColumnDef } from '../graph-rag-grid-table/graph-rag-grid-table.model';
 import { GRAPH_TABLE_COLUMNS } from '../graph-rag-grid-table/graph-rag-table-columns';
 
-type ViewState = 'loading' | 'ready' | 'empty' | 'error';
-
-const TABLE_ICONS: Record<string, string> = {
-    entities: 'graph-entities',
-    relationships: 'graph-relationships',
-    communities: 'graph-communities',
-    documents: 'graph-documents',
-    text_units: 'graph-text-units',
-    community_reports: 'graph-community-reports',
-    covariates: 'graph-covariates',
-};
+/** `not-indexed`: the backend answered 409 `graph_not_indexed` — the graph exists but has not been indexed yet. */
+type ViewState = 'loading' | 'ready' | 'empty' | 'not-indexed' | 'error';
 
 @Component({
     selector: 'app-graph-rag-data-tables',
@@ -56,13 +58,16 @@ export class GraphRagDataTablesComponent implements OnInit {
     readonly rows = signal<Record<string, unknown>[]>([]);
     readonly total = signal(0);
     readonly page = signal(1);
-    readonly pageSize = signal(10);
+    readonly pageSize = signal(GRAPH_TABLE_DEFAULT_PAGE_SIZE);
     readonly searchTerm = signal('');
     readonly viewState = signal<ViewState>('loading');
     readonly tableLoading = signal(false);
     readonly errorMessage = signal('');
     readonly summaryLoaded = signal(false);
 
+    /** The term as sent to the backend and highlighted in the cells; the field itself keeps what the user typed. */
+    readonly trimmedSearchTerm = computed(() => this.searchTerm().trim());
+    readonly noSearchMatches = computed(() => this.viewState() === 'empty' && this.trimmedSearchTerm() !== '');
     readonly totalPages = computed(() => Math.ceil(this.total() / this.pageSize()) || 1);
     readonly activeColumnDefs = signal<GraphGridColumnDef[]>([]);
     readonly isDocumentsTable = computed(() => this.activeTable()?.name === 'documents');
@@ -109,12 +114,11 @@ export class GraphRagDataTablesComponent implements OnInit {
     });
 
     // 5. Public template-bound
-    readonly pageSizeItems: SelectItem<number>[] = [
-        { name: '10', value: 10 },
-        { name: '25', value: 25 },
-        { name: '50', value: 50 },
-        { name: '100', value: 100 },
-    ];
+    readonly pageSizeItems: SelectItem<number>[] = GRAPH_TABLE_PAGE_SIZE_OPTIONS.map((size) => ({
+        name: String(size),
+        value: size,
+    }));
+    protected readonly searchMaxLength = GRAPH_SEARCH_MAX_LENGTH;
 
     // 6. Private fields
     private readonly graphRagService = inject(GraphRagService);
@@ -155,7 +159,7 @@ export class GraphRagDataTablesComponent implements OnInit {
     }
 
     getTableIcon(tableName: string): string {
-        return TABLE_ICONS[tableName] ?? 'database';
+        return GRAPH_TABLE_ICONS[tableName] ?? GRAPH_TABLE_FALLBACK_ICON;
     }
 
     onSearchInput(term: string): void {
@@ -189,8 +193,9 @@ export class GraphRagDataTablesComponent implements OnInit {
     private initSearchDebounce(): void {
         this.searchSubject
             .pipe(
-                debounceTime(300),
-                distinctUntilChanged(),
+                // No distinctUntilChanged: selecting another table clears the term without going through
+                // this stream, so retyping the previous term must still search; switchMap cancels stale loads.
+                debounceTime(GRAPH_SEARCH_DEBOUNCE_MS),
                 tap((term) => {
                     this.searchTerm.set(term);
                     this.page.set(1);
@@ -219,64 +224,85 @@ export class GraphRagDataTablesComponent implements OnInit {
                         this.viewState.set('empty');
                     }
                 },
-                error: () => {
-                    this.viewState.set('error');
-                    this.errorMessage.set('Failed to load table summary');
-                },
+                error: (error: HttpErrorResponse) => this.handleLoadError(error, 'Failed to load table summary'),
             });
     }
 
     private initPreviewPipeline(): void {
         this.previewSubject
             .pipe(
-                switchMap((documentId) => this.documentsApiService.previewDocumentBlob(documentId)),
+                // Errors are handled per request so a failed preview does not end the stream.
+                switchMap((documentId) =>
+                    this.documentsApiService.previewDocumentBlob(documentId).pipe(
+                        tap((blob) => {
+                            this.previewBlob.set(blob);
+                            this.previewLoading.set(false);
+                        }),
+                        catchError(() => {
+                            this.previewLoading.set(false);
+                            this.previewError.set('Failed to load document preview.');
+                            return EMPTY;
+                        })
+                    )
+                ),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe({
-                next: (blob) => {
-                    this.previewBlob.set(blob);
-                    this.previewLoading.set(false);
-                },
-                error: () => {
-                    this.previewLoading.set(false);
-                    this.previewError.set('Failed to load document preview.');
-                },
-            });
+            .subscribe();
     }
 
     private initLoadPipeline(): void {
         this.loadSubject
             .pipe(
-                tap(() => this.tableLoading.set(true)),
+                // Errors are handled per request so a failed load does not end the stream.
                 switchMap(() => {
                     const table = this.activeTable();
                     if (!table) return EMPTY;
-                    return this.graphRagService.getTableData(
-                        this.ragId(),
-                        table.name,
-                        this.page(),
-                        this.pageSize(),
-                        this.searchTerm() || undefined
-                    );
+                    // A ready grid stays on screen under the loading overlay; an error, hint or empty message
+                    // has no grid to overlay, so it gives way to the full loading state until the answer arrives.
+                    if (this.viewState() !== 'ready') {
+                        this.viewState.set('loading');
+                    }
+                    this.tableLoading.set(true);
+                    return this.graphRagService
+                        .getTableData(
+                            this.ragId(),
+                            table.name,
+                            this.page(),
+                            this.pageSize(),
+                            this.trimmedSearchTerm() || undefined
+                        )
+                        .pipe(
+                            tap((data) => this.applyTableData(table, data)),
+                            catchError((error: HttpErrorResponse) => {
+                                this.tableLoading.set(false);
+                                this.handleLoadError(error, 'Failed to load table data');
+                                return EMPTY;
+                            })
+                        );
                 }),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe({
-                next: (data: GraphTableData) => {
-                    const table = this.activeTable();
-                    this.activeColumnDefs.set(table ? (GRAPH_TABLE_COLUMNS[table.name] ?? []) : []);
-                    this.columns.set(data.columns);
-                    this.rows.set(data.rows);
-                    this.total.set(data.total);
-                    this.tableLoading.set(false);
-                    this.viewState.set(data.total === 0 ? 'empty' : 'ready');
-                },
-                error: () => {
-                    this.tableLoading.set(false);
-                    this.viewState.set('error');
-                    this.errorMessage.set('Failed to load table data');
-                },
-            });
+            .subscribe();
+    }
+
+    private applyTableData(table: GraphTableSummaryItem, data: GraphTableData): void {
+        this.activeColumnDefs.set(GRAPH_TABLE_COLUMNS[table.name] ?? []);
+        this.columns.set(data.columns);
+        this.rows.set(data.rows);
+        this.total.set(data.total);
+        this.tableLoading.set(false);
+        this.viewState.set(data.total === 0 ? 'empty' : 'ready');
+    }
+
+    /** "Graph not indexed" gets the run-indexing hint; anything else (other 409s and 404 included) is a load error. */
+    private handleLoadError(error: HttpErrorResponse, fallbackMessage: string): void {
+        if (isGraphNotIndexedError(error)) {
+            this.viewState.set('not-indexed');
+            this.errorMessage.set(GRAPH_NOT_INDEXED_MESSAGE);
+        } else {
+            this.viewState.set('error');
+            this.errorMessage.set(fallbackMessage);
+        }
     }
 
     private loadTableData(): void {

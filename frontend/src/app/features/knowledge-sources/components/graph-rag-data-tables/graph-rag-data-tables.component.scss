@@ -39,7 +39,9 @@
     }
 
     &__sidebar-title {
-        font-size: 0.875rem;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         color: var(--color-text-secondary);
     }
 
@@ -141,7 +143,9 @@
 
     &__title {
         color: var(--color-text-primary);
-        font-size: 0.875rem;
+        font-size: var(--text-body-bold-size);
+        font-weight: var(--text-body-bold-weight);
+        line-height: var(--text-body-bold-line-height);
         margin: 0;
         white-space: nowrap;
 
@@ -160,7 +164,9 @@
         border: none;
         background: transparent;
         color: var(--color-text-secondary);
-        font-size: 1rem;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         cursor: pointer;
         padding: 0;
         white-space: nowrap;
@@ -253,7 +259,9 @@
 
     &__page-size-label {
         color: var(--color-text-secondary);
-        font-size: 0.875rem;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         white-space: nowrap;
     }
 
@@ -279,6 +287,8 @@
         background: transparent;
         color: var(--accent-color);
         font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
         cursor: pointer;
         transition:
             background-color 0.15s ease,
@@ -290,13 +300,13 @@
 
         &--active {
             background-color: var(--accent-color);
-            color: var(--color-text-on-accent, #fff);
+            color: var(--color-text-primary);
         }
 
         &--nav {
             min-width: 40px;
-            font-size: 1.25rem;
-            font-weight: 600;
+            font-size: 1.25rem; // glyph size for the ‹ › arrows, not a text style
+            font-weight: 700;
             line-height: 1;
         }
 
@@ -314,6 +324,8 @@
         height: 40px;
         color: var(--accent-color);
         font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
         user-select: none;
     }
 }

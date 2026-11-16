@@ -1,28 +1,24 @@
-@if (viewState() === 'loading' && !toolbarVisible()) {
+@if (!toolbarVisible()) {
     <div class="visualization__state">
-        <app-loading-spinner
-            size="lg"
-            message="Loading graph data..."
-        />
+        @switch (viewState()) {
+            @case ('loading') {
+                <app-loading-spinner
+                    size="lg"
+                    message="Loading graph data..."
+                />
+            }
+            @case ('error') {
+                <app-fetch-error-state
+                    [title]="errorMessage()"
+                    (retry)="retryLoad()"
+                />
+            }
+            @default {
+                <p class="visualization__state-message">{{ errorMessage() }}</p>
+            }
+        }
     </div>
-}
-
-@if (viewState() === 'empty') {
-    <div class="visualization__state">
-        <p class="visualization__state-message">No index data -- run indexing first</p>
-    </div>
-}
-
-@if (viewState() === 'error' && !toolbarVisible()) {
-    <div class="visualization__state">
-        <app-fetch-error-state
-            [title]="errorMessage()"
-            (retry)="retryLoad()"
-        />
-    </div>
-}
-
-@if (toolbarVisible()) {
+} @else {
     <div class="visualization">
         <!-- Toolbar -->
         <div class="visualization__toolbar">
@@ -48,10 +44,11 @@
                     class="visualization__toolbar-value"
                     mod="sm"
                     [inline]="true"
-                    [min]="1"
-                    [max]="totalEntityCount()"
+                    [min]="minEntities"
+                    [max]="sliderMax()"
                     [step]="sliderStep()"
                     [value]="maxEntities()"
+                    [commitOnRelease]="true"
                     (changed)="onMaxEntitiesChange($event)"
                 />
             </div>
@@ -78,76 +75,78 @@
                     [searchTerm]="searchTerm()"
                     (searchTermChange)="onSearchTermChange($event)"
                     [ariaLabel]="'Search graph nodes'"
+                    [maxLength]="searchMaxLength"
                 />
             </div>
         </div>
 
         <div class="visualization__body">
-            @if (viewState() === 'ready') {
-                <!-- Left sidebar -->
-                <div
-                    class="visualization__sidebar"
-                    [style.width.px]="sidebarWidth()"
-                    #sidebarElement
-                >
-                    <div class="visualization__sidebar-body">
-                        <!-- Entity Types section -->
-                        <div class="visualization__sidebar-section">
-                            <span class="visualization__sidebar-section-title">ENTITY TYPES</span>
-                            <div class="visualization__sidebar-section-list">
-                                @for (filter of entityTypeFilters(); track filter.type) {
-                                    <div class="visualization__filter-item">
-                                        <app-checkbox
-                                            [checked]="filter.checked"
-                                            (changed)="onTypeFilterChange($index, $event)"
-                                            [ariaLabel]="filter.label"
-                                        />
-                                        <span
-                                            class="visualization__filter-color"
-                                            [style.background-color]="filter.color"
-                                        ></span>
-                                        <span class="visualization__filter-label">{{ filter.label }}</span>
-                                    </div>
-                                }
-                            </div>
+            <!-- Left sidebar — stays mounted across reloads, so it does not flicker away while new data loads -->
+            <div
+                class="visualization__sidebar"
+                [style.width.px]="sidebarWidth()"
+                #sidebarElement
+            >
+                <div class="visualization__sidebar-body">
+                    <!-- Entity Types section -->
+                    <div class="visualization__sidebar-section">
+                        <span class="visualization__sidebar-section-title">ENTITY TYPES</span>
+                        <div class="visualization__sidebar-section-list">
+                            @for (filter of entityTypeFilters(); track filter.type) {
+                                <div class="visualization__filter-item">
+                                    <app-checkbox
+                                        [checked]="filter.checked"
+                                        [disabled]="typeFiltersDisabled()"
+                                        (changed)="onTypeFilterChange($index, $event)"
+                                        [ariaLabel]="filter.label"
+                                    />
+                                    <span
+                                        class="visualization__filter-color"
+                                        [style.background-color]="filter.color"
+                                    ></span>
+                                    <span class="visualization__filter-label">{{ filter.label }}</span>
+                                </div>
+                            }
                         </div>
                     </div>
-                    <div
-                        class="resizable-sidebar-handle"
-                        [appResizableSidebar]="'graph-viz-sidebar'"
-                        [sidebarTarget]="sidebarElement"
-                        [sidebarMinWidth]="160"
-                        [sidebarMaxWidth]="400"
-                    ></div>
                 </div>
-
-                <!-- Canvas container -->
                 <div
-                    class="visualization__canvas-container"
-                    #canvasContainer
-                >
-                    <canvas
-                        #graphCanvas
-                        class="visualization__canvas"
-                        aria-label="Force-directed graph visualization of knowledge entities and their relationships"
-                        (pointerdown)="onCanvasPointerDown($event)"
-                        (pointermove)="onCanvasPointerMove($event)"
-                        (pointerup)="onCanvasPointerUp()"
-                        (pointerleave)="onCanvasPointerLeave()"
-                    ></canvas>
+                    class="resizable-sidebar-handle"
+                    [appResizableSidebar]="sidebarWidthKey"
+                    [sidebarTarget]="sidebarElement"
+                    [sidebarMinWidth]="sidebarWidthOptions.minWidth"
+                    [sidebarMaxWidth]="sidebarWidthOptions.maxWidth"
+                ></div>
+            </div>
 
-                    <!-- Hover tooltip -->
-                    @if (hoveredNodeTitle()) {
-                        <div
-                            class="visualization__hover-tooltip"
-                            [style.left.px]="hoverPosition().x"
-                            [style.top.px]="hoverPosition().y"
-                        >
-                            {{ hoveredNodeTitle() }}
-                        </div>
-                    }
-                </div>
+            <!-- Canvas container — stays mounted across reloads so the scene is updated in place -->
+            <div
+                class="visualization__canvas-container"
+                #canvasContainer
+            >
+                <!-- pointermove is bound outside the Angular zone in the component -->
+                <canvas
+                    #graphCanvas
+                    class="visualization__canvas"
+                    aria-label="Force-directed graph visualization of knowledge entities and their relationships"
+                    (pointerdown)="onCanvasPointerDown($event)"
+                    (pointerup)="onCanvasPointerUp()"
+                    (pointerleave)="onCanvasPointerLeave()"
+                ></canvas>
 
+                <!-- Hover tooltip -->
+                @if (hoveredNodeTitle()) {
+                    <div
+                        class="visualization__hover-tooltip"
+                        [style.left.px]="hoverPosition().x"
+                        [style.top.px]="hoverPosition().y"
+                    >
+                        {{ hoveredNodeTitle() }}
+                    </div>
+                }
+            </div>
+
+            @if (viewState() === 'ready') {
                 <!-- Right detail panel (overlay) -->
                 @if (detailPanelOpen()) {
                     <div
@@ -157,10 +156,10 @@
                     >
                         <div
                             class="resizable-sidebar-handle visualization__detail-handle"
-                            [appResizableSidebar]="'graph-viz-detail'"
+                            [appResizableSidebar]="detailPanelWidthKey"
                             [sidebarTarget]="detailPanelElement"
-                            [sidebarMinWidth]="240"
-                            [sidebarMaxWidth]="600"
+                            [sidebarMinWidth]="detailPanelWidthOptions.minWidth"
+                            [sidebarMaxWidth]="detailPanelWidthOptions.maxWidth"
                             [sidebarSide]="'right'"
                         ></div>
 
@@ -209,11 +208,13 @@
                                                 >Relationships ({{ connectedEdges().length }})</span
                                             >
                                             @for (conn of connectedEdges(); track $index) {
-                                                <span
+                                                <button
+                                                    type="button"
                                                     class="visualization__detail-link"
                                                     (click)="onSelectNode(conn.otherNode.index)"
-                                                    >{{ conn.otherNode.title }}</span
                                                 >
+                                                    {{ conn.otherNode.title }}
+                                                </button>
                                             }
                                         </div>
                                     }
@@ -265,17 +266,26 @@
                         </div>
                     </div>
                 }
-            } @else if (viewState() === 'error') {
-                <div class="visualization__state">
-                    <app-fetch-error-state
-                        [title]="errorMessage()"
-                        (retry)="retryLoad()"
-                    />
-                </div>
             } @else {
-                <!-- Loading within body (toolbar stays) -->
-                <div class="visualization__state">
-                    <app-loading-spinner size="md" />
+                <!-- Overlay over the mounted canvas; the toolbar stays usable -->
+                <div
+                    class="visualization__overlay"
+                    [class.visualization__overlay--loading]="viewState() === 'loading'"
+                >
+                    @switch (viewState()) {
+                        @case ('loading') {
+                            <app-loading-spinner size="md" />
+                        }
+                        @case ('error') {
+                            <app-fetch-error-state
+                                [title]="errorMessage()"
+                                (retry)="retryLoad()"
+                            />
+                        }
+                        @default {
+                            <p class="visualization__state-message">{{ errorMessage() }}</p>
+                        }
+                    }
                 </div>
             }
         </div>

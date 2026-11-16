@@ -37,6 +37,12 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     /** Digits kept after rounding; defaults to the precision of `step`. */
     decimals = input<number | undefined>(undefined);
     optional = input<boolean>(false);
+    /**
+     * When true, dragging the slider only moves the thumb and the value is committed (emitted)
+     * once on release — for consumers where every intermediate value would trigger expensive work.
+     * By default every `input` event commits.
+     */
+    commitOnRelease = input<boolean>(false);
 
     value = model<number | null>(null);
     changed = output<number | null>();
@@ -64,15 +70,20 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
         return ((val - minVal) / (maxVal - minVal)) * 100;
     });
 
-    /** Updates the visual state during drag without emitting to the parent. */
+    /** Commits every drag step, or with `commitOnRelease` only updates the visual state. */
     onSliderInput(event: Event) {
         const target = event.target as HTMLInputElement;
         const newValue = this.roundToDecimals(parseFloat(target.value));
-        this.value.set(newValue);
+        if (this.commitOnRelease()) {
+            this.value.set(newValue);
+        } else {
+            this.updateValue(newValue);
+        }
     }
 
-    /** Commits the final value on pointer release and notifies the parent. */
+    /** With `commitOnRelease`, commits the final value on pointer release and notifies the parent. */
     onSliderCommit(event: Event) {
+        if (!this.commitOnRelease()) return;
         const target = event.target as HTMLInputElement;
         const newValue = this.roundToDecimals(parseFloat(target.value));
         this.updateValue(newValue);

@@ -1,5 +1,10 @@
 from dataclasses import dataclass, field
 
+from application.graph_index_read_limits import (
+    GRAPH_TABLE_DEFAULT_PAGE,
+    GRAPH_TABLE_DEFAULT_PAGE_SIZE,
+    GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
+)
 from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
@@ -68,7 +73,7 @@ class GetMetrics(Command):
 @dataclass(frozen=True)
 class GetGraphVisualization(Command):
     rag_id: int
-    max_entities: int | None = None
+    max_entities: int = GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES
     search: str | None = None
 
 
@@ -76,8 +81,8 @@ class GetGraphVisualization(Command):
 class GetGraphTableData(Command):
     rag_id: int
     table_name: str
-    page: int = 1
-    page_size: int = 10
+    page: int = GRAPH_TABLE_DEFAULT_PAGE
+    page_size: int = GRAPH_TABLE_DEFAULT_PAGE_SIZE
     search: str | None = None
 
 

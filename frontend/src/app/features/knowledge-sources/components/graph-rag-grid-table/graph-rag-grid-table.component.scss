@@ -70,7 +70,9 @@
     display: flex;
     align-items: center;
     padding: 0.375rem 0.75rem;
-    font-size: 0.875rem;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
     height: 100%;
     color: var(--text);
     min-width: 0;
@@ -89,7 +91,12 @@
         cursor: pointer;
 
         &:hover {
-            background-color: var(--purple-alpha-15);
+            background-color: var(--color-ks-hover-row);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
         }
     }
 }
@@ -98,6 +105,7 @@
 .grid-table-col-label {
     font-size: var(--text-body-bold-size);
     font-weight: var(--text-body-bold-weight);
+    line-height: var(--text-body-bold-line-height);
     color: var(--text);
     text-transform: uppercase;
     white-space: nowrap;
@@ -143,7 +151,9 @@
 }
 
 // ===== HIGHLIGHT =====
-:host ::ng-deep mark.data-tables__highlight {
+// The <mark> elements come from the highlight pipe through [innerHTML], so they carry no view encapsulation attribute;
+// ::ng-deep reaches them, and the pipe's class keeps the rule off any other <mark> inside the host.
+:host ::ng-deep mark.grid-table-highlight {
     background-color: var(--orange-600-alpha-60);
     color: inherit;
     padding: 0;
@@ -152,7 +162,9 @@
 
 // ===== CELL POPOVER =====
 .grid-table-popover {
-    z-index: 1000;
+    // Just above the sticky header and the column resize handles (both z-index 2). The popover is position: fixed,
+    // so this only has to win inside the table's stacking context.
+    z-index: 3;
     overflow: auto;
     background-color: var(--color-flow-card-bg);
     border: 1px solid var(--color-divider-subtle);
@@ -160,7 +172,9 @@
     padding: 0.375rem 0.75rem;
 
     &__text {
-        font-size: 0.875rem;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
         color: var(--color-text-primary);
         white-space: pre-wrap;
         word-break: break-all;

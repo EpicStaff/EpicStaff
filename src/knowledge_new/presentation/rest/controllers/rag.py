@@ -1,5 +1,5 @@
 import asyncio
-from typing import Literal
+from typing import Annotated, Literal
 
 from application import commands
 from application.commands import (
@@ -10,6 +10,16 @@ from application.commands import (
     GetMetrics,
     GetRelationshipDetail,
     RemoveRag,
+)
+from application.graph_index_read_limits import (
+    GRAPH_SEARCH_MAX_LENGTH,
+    GRAPH_TABLE_DEFAULT_PAGE,
+    GRAPH_TABLE_DEFAULT_PAGE_SIZE,
+    GRAPH_TABLE_MAX_PAGE_SIZE,
+    GRAPH_TABLE_MIN_PAGE,
+    GRAPH_TABLE_MIN_PAGE_SIZE,
+    GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
+    GRAPH_VISUALIZATION_MIN_MAX_ENTITIES,
 )
 from application.orchestrators.estimating import build_estimator
 from application.orchestrators.graph_table_data import (
@@ -36,6 +46,7 @@ from litestar import Controller, delete, get, post, status_codes
 from litestar.connection import ASGIConnection
 from litestar.exceptions import HTTPException
 from litestar.handlers.base import BaseRouteHandler
+from litestar.params import Parameter
 from presentation.rest import schemas
 
 
@@ -180,8 +191,7 @@ class RagController(Controller):
         orchestrator = build_graph_table_summary(strategy, uow)
         result = await orchestrator.execute(command)
         return [
-            schemas.GraphTableSummaryOutputSchema.model_validate(item)
-            for item in result.tables
+            schemas.GraphTableSummaryOutputSchema.model_validate(item) for item in result.tables
         ]
 
     @get(
@@ -195,9 +205,11 @@ class RagController(Controller):
         rag_id: int,
         uow: AbstractUnitOfWork,
         table_name: str,
-        page: int = 1,
-        page_size: int = 10,
-        search: str | None = None,
+        page: Annotated[int, Parameter(ge=GRAPH_TABLE_MIN_PAGE)] = GRAPH_TABLE_DEFAULT_PAGE,
+        page_size: Annotated[
+            int, Parameter(ge=GRAPH_TABLE_MIN_PAGE_SIZE, le=GRAPH_TABLE_MAX_PAGE_SIZE)
+        ] = GRAPH_TABLE_DEFAULT_PAGE_SIZE,
+        search: Annotated[str | None, Parameter(max_length=GRAPH_SEARCH_MAX_LENGTH)] = None,
     ) -> schemas.GraphTableDataOutputSchema:
         command = GetGraphTableData(
             rag_id=rag_id,
@@ -220,8 +232,10 @@ class RagController(Controller):
         strategy: RAGStrategy,
         rag_id: int,
         uow: AbstractUnitOfWork,
-        max_entities: int | None = None,
-        search: str | None = None,
+        max_entities: Annotated[
+            int, Parameter(ge=GRAPH_VISUALIZATION_MIN_MAX_ENTITIES)
+        ] = GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
+        search: Annotated[str | None, Parameter(max_length=GRAPH_SEARCH_MAX_LENGTH)] = None,
     ) -> schemas.GraphVisualizationOutputSchema:
         command = GetGraphVisualization(rag_id=rag_id, max_entities=max_entities, search=search)
         orchestrator = build_graph_visualization(strategy, uow)

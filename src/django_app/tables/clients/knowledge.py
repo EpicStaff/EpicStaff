@@ -1,4 +1,5 @@
 from typing import Literal, Self
+from urllib.parse import quote
 
 import httpx
 from loguru import logger
@@ -7,18 +8,30 @@ from src.shared.models.knowledge_new import ChunkingConfig
 
 from tables.clients.errors import (
     ClientBadGatewayError,
+    ClientConflictError,
     ClientNotAvailableError,
     ClientResourceNotFoundError,
     ClientTimeoutError,
     ClientValidationError,
+    KnowledgeGraphNotIndexedError,
 )
+
+
+def _path_segment(value: str) -> str:
+    """Encode `value` as one URL path segment, so "/", "?" or "#" cannot reshape the URL."""
+    return quote(value, safe="")
 
 
 class KnowledgeClient:
     HOST = "http://knowledge_new:8100"
 
-    def __init__(self, host: str = HOST, timeout: float = 10.0):
-        self._client = httpx.Client(base_url=host, timeout=timeout)
+    def __init__(
+        self,
+        host: str = HOST,
+        timeout: float = 10.0,
+        transport: httpx.BaseTransport | None = None,
+    ):
+        self._client = httpx.Client(base_url=host, timeout=timeout, transport=transport)
 
     def __enter__(self) -> Self:
         return self
@@ -124,14 +137,16 @@ class KnowledgeClient:
     def get_entity_detail(self, rag_id: int, entity_id: str) -> dict:
         """Fetch the description of a single entity from the graph index."""
         response = self._request(
-            method="get", url=f"rags/graph/{rag_id}/entity/{entity_id}/"
+            method="get",
+            url=f"rags/graph/{rag_id}/entity/{_path_segment(entity_id)}/",
         )
         return response.json()
 
     def get_relationship_detail(self, rag_id: int, relationship_id: str) -> dict:
         """Fetch the description of a single relationship from the graph index."""
         response = self._request(
-            method="get", url=f"rags/graph/{rag_id}/relationship/{relationship_id}/"
+            method="get",
+            url=f"rags/graph/{rag_id}/relationship/{_path_segment(relationship_id)}/",
         )
         return response.json()
 
@@ -139,13 +154,13 @@ class KnowledgeClient:
         self,
         rag_id: int,
         table_name: str,
-        page: int = 1,
-        page_size: int = 10,
+        page: int,
+        page_size: int,
         search: str | None = None,
     ) -> dict:
         """Fetch paginated parquet table data for a graph RAG."""
-        url = f"rags/graph/{rag_id}/tables/{table_name}/"
-        params: dict = {"page": page, "page_size": page_size}
+        url = f"rags/graph/{rag_id}/tables/{_path_segment(table_name)}/"
+        params: dict[str, str | int] = {"page": page, "page_size": page_size}
         if search:
             params["search"] = search
         response = self._request(method="get", url=url, params=params)
@@ -153,9 +168,7 @@ class KnowledgeClient:
 
     def get_table_summary(self, rag_id: int) -> list[dict]:
         """Fetch the list of available tables with their row counts."""
-        response = self._request(
-            method="get", url=f"rags/graph/{rag_id}/table-summary/"
-        )
+        response = self._request(method="get", url=f"rags/graph/{rag_id}/table-summary/")
         return response.json()
 
     def _request(
@@ -181,6 +194,19 @@ class KnowledgeClient:
                 raise ClientBadGatewayError(response.text) from e
             if response.status_code == 404:
                 raise ClientResourceNotFoundError(response.text) from e
+            if response.status_code == 409:
+                raise _conflict_error(response) from e
             raise ClientValidationError(response.text) from e
 
         return response
+
+
+def _conflict_error(response: httpx.Response) -> ClientConflictError:
+    """Pick the conflict error matching the upstream error code."""
+    try:
+        upstream_code = response.json().get("code")
+    except (ValueError, AttributeError):
+        upstream_code = None
+    if upstream_code == KnowledgeGraphNotIndexedError.code:
+        return KnowledgeGraphNotIndexedError(response.text)
+    return ClientConflictError(response.text)

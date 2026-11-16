@@ -3,14 +3,16 @@ import {
     Component,
     computed,
     effect,
+    ElementRef,
     HostListener,
     input,
     output,
     signal,
+    viewChildren,
 } from '@angular/core';
 
-import { HighlightPipe } from '../graph-rag-data-tables/highlight.pipe';
 import { GraphGridColumnDef } from './graph-rag-grid-table.model';
+import { HighlightPipe } from './highlight.pipe';
 
 const MIN_COLUMN_WIDTH = 100;
 const POPOVER_MIN_WIDTH = 300;
@@ -20,6 +22,12 @@ const POPOVER_MAX_HEIGHT = 300;
 interface ExpandedCell {
     value: string;
     style: Record<string, string>;
+}
+
+/** Position of a body cell: row index into `rows`, column index into `columns`. */
+interface CellPosition {
+    row: number;
+    column: number;
 }
 
 @Component({
@@ -40,7 +48,12 @@ export class GraphRagGridTableComponent {
     readonly expandedCell = signal<ExpandedCell | null>(null);
 
     private readonly columnWidths = signal<Record<string, number>>({});
+    /** The cell that holds the grid's single tab stop (roving tabindex); updated whenever a cell gets focus. */
+    private readonly activeCell = signal<CellPosition>({ row: 0, column: 0 });
+    /** Body cells in DOM order: row by row, `columns().length` cells per row. */
+    private readonly bodyCells = viewChildren<ElementRef<HTMLElement>>('bodyCell');
     private resizing: { key: string; startX: number; startWidth: number } | null = null;
+    private popoverAnchor: HTMLElement | null = null;
 
     private readonly columnDefMap = computed(() => {
         const map = new Map<string, GraphGridColumnDef>();
@@ -67,6 +80,15 @@ export class GraphRagGridTableComponent {
         });
     }
 
+    /** The active cell clamped to the current data, so the grid keeps exactly one tab stop when rows or columns shrink. */
+    private readonly tabStop = computed<CellPosition>(() => {
+        const { row, column } = this.activeCell();
+        return {
+            row: Math.min(row, Math.max(this.rows().length - 1, 0)),
+            column: Math.min(column, Math.max(this.columns().length - 1, 0)),
+        };
+    });
+
     readonly gridTemplateColumns = computed(() => {
         const widths = this.columnWidths();
         const defs = this.columnDefMap();
@@ -89,26 +111,63 @@ export class GraphRagGridTableComponent {
             .join(' ');
     }
 
-    onCellClick(column: string, value: unknown, event: MouseEvent, row: Record<string, unknown>): void {
+    /** Click, Enter and Space on a body cell: emits the row for clickable tables, otherwise opens the popover. */
+    onCellActivate(value: unknown, row: Record<string, unknown>, cellElement: HTMLElement): void {
         if (this.clickableRows()) {
             this.rowClick.emit(row);
             return;
         }
-        const cell = (event.currentTarget as HTMLElement).getBoundingClientRect();
         const text = value == null ? '' : String(value);
-        const style = this.calculatePopoverPosition(cell);
+        const style = this.calculatePopoverPosition(cellElement.getBoundingClientRect());
+        this.popoverAnchor = cellElement;
         this.expandedCell.set({ value: text, style });
+    }
+
+    /** Only the tab-stop cell is in the Tab order; the others are reached with the arrow keys. */
+    cellTabIndex(rowIndex: number, columnIndex: number): number {
+        const tabStop = this.tabStop();
+        return tabStop.row === rowIndex && tabStop.column === columnIndex ? 0 : -1;
+    }
+
+    onCellFocus(rowIndex: number, columnIndex: number): void {
+        this.activeCell.set({ row: rowIndex, column: columnIndex });
+    }
+
+    /**
+     * Grid keyboard model: arrows move one cell, Home/End jump to the first/last cell of the row,
+     * Enter and Space activate the cell. Every handled key is prevented — Space and the arrows would otherwise
+     * scroll the grid, and Enter is prevented too so it behaves exactly like a click.
+     */
+    onCellKeydown(
+        event: KeyboardEvent,
+        value: unknown,
+        row: Record<string, unknown>,
+        position: CellPosition,
+        cellElement: HTMLElement
+    ): void {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            this.onCellActivate(value, row, cellElement);
+            return;
+        }
+        const target = this.targetCell(event.key, position);
+        if (!target) return;
+        event.preventDefault();
+        this.focusCell(target);
     }
 
     closePopover(): void {
         this.expandedCell.set(null);
+        this.popoverAnchor = null;
     }
 
     @HostListener('document:keydown.escape')
     onEscapeKey(): void {
-        if (this.expandedCell()) {
-            this.closePopover();
-        }
+        if (!this.expandedCell()) return;
+        const anchor = this.popoverAnchor;
+        this.closePopover();
+        // Keyboard users return to the cell they opened the popover from.
+        anchor?.focus();
     }
 
     @HostListener('document:pointerdown', ['$event'])
@@ -137,6 +196,36 @@ export class GraphRagGridTableComponent {
 
     onResizeEnd(): void {
         this.resizing = null;
+    }
+
+    /** The cell a navigation key moves to, or null for keys the grid does not handle. Moves stop at the edges. */
+    private targetCell(key: string, { row, column }: CellPosition): CellPosition | null {
+        const lastRow = this.rows().length - 1;
+        const lastColumn = this.columns().length - 1;
+        switch (key) {
+            case 'ArrowUp':
+                return { row: Math.max(row - 1, 0), column };
+            case 'ArrowDown':
+                return { row: Math.min(row + 1, lastRow), column };
+            case 'ArrowLeft':
+                return { row, column: Math.max(column - 1, 0) };
+            case 'ArrowRight':
+                return { row, column: Math.min(column + 1, lastColumn) };
+            case 'Home':
+                return { row, column: 0 };
+            case 'End':
+                return { row, column: lastColumn };
+            default:
+                return null;
+        }
+    }
+
+    private focusCell(position: CellPosition): void {
+        // The popover belongs to the cell it was opened from; moving away closes it.
+        this.closePopover();
+        this.activeCell.set(position);
+        const cellIndex = position.row * this.columns().length + position.column;
+        this.bodyCells()[cellIndex]?.nativeElement.focus();
     }
 
     private calculatePopoverPosition(cellRect: DOMRect): Record<string, string> {

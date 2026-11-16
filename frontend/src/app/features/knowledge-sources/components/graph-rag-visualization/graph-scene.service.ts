@@ -1,7 +1,8 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable, NgZone } from '@angular/core';
 import type {
     Camera,
     InstancedMesh,
+    Light,
     LineSegments,
     Material,
     OrthographicCamera,
@@ -13,24 +14,56 @@ import type {
 import { VisualizationEntity, VisualizationRelationship } from '../../models/graph-visualization.model';
 import {
     AMBIENT_LIGHT_INTENSITY,
+    AMBIENT_LIGHT_NAME,
+    BASE_RENDER_ORDER,
+    CAMERA_FAR_PLANE,
+    CAMERA_FIELD_OF_VIEW_DEGREES,
+    CAMERA_NEAR_PLANE,
     DIMMED_ALPHA,
     DIRECTIONAL_LIGHT_INTENSITY,
+    DIRECTIONAL_LIGHT_NAME,
+    DIRECTIONAL_LIGHT_POSITION,
+    DOLLY_SPEED,
     DOT_RADIUS,
     DOT_SPEED,
+    DOT_SPHERE_HEIGHT_SEGMENTS,
+    DOT_SPHERE_WIDTH_SEGMENTS,
     DOTS_PER_EDGE,
+    EDGE_COLOR,
+    EDGE_CYLINDER_RADIAL_SEGMENTS,
     EDGE_OPACITY,
+    EDGE_PICK_THRESHOLD_PX,
     EDGE_WIDTH_RATIO,
+    FOREGROUND_RENDER_ORDER,
     HIGHLIGHT_COLOR,
     HIGHLIGHT_EDGE_COLOR,
+    HIGHLIGHT_LINE_FLOATS_PER_EDGE,
+    HIGHLIGHT_LINES_RENDER_ORDER,
+    HOVER_TOOLTIP_OFFSET_ABOVE_NODE,
     HOVERED_BORDER_COLOR,
-    LABEL_BG_COLOR,
+    INITIAL_LAYOUT_SPREAD,
+    LABEL_BACKGROUND_COLOR,
     LABEL_CANVAS_HEIGHT,
+    LABEL_FONT_FAMILY,
     LABEL_FONT_SIZE,
+    LABEL_HORIZONTAL_PADDING,
+    LABEL_OFFSET_ABOVE_NODE,
+    LABEL_SPRITE_HEIGHT,
     LABEL_TEXT_COLOR,
+    MAX_FRAME_DELTA_SECONDS,
+    MAX_PIXEL_RATIO,
+    MIN_EDGE_SEGMENT_LENGTH,
     NODE_3D_BRIGHTNESS,
     NODE_3D_OPACITY,
-    OFFSCREEN_POS,
+    NODE_3D_SHININESS,
+    NODE_MAX_RADIUS,
+    NODE_MIN_RADIUS,
+    NODE_SPHERE_HEIGHT_SEGMENTS,
+    NODE_SPHERE_WIDTH_SEGMENTS,
+    OFFSCREEN_POSITION,
+    ORTHOGRAPHIC_CAMERA_DISTANCE,
     OUTLINE_SCALE,
+    PERSPECTIVE_CAMERA_DISTANCE,
     SCENE_BACKGROUND,
     TYPE_COLORS,
 } from './graph-scene.constants';
@@ -39,12 +72,20 @@ import { hexToRgb, stableHash } from './graph-scene.utils';
 
 @Injectable()
 export class GraphSceneService {
+    private readonly ngZone = inject(NgZone);
     private three: typeof import('three') | null = null;
     private orbitControlsModule: { OrbitControls: new (...args: unknown[]) => OrbitControlsLike } | null = null;
 
     private resources: SceneResources | null = null;
-    private animationFrameId: number | null = null;
+    private frameRequestId: number | null = null;
+    private lastFrameTimestamp: number | null = null;
+    /** Set when node positions, instance order or the camera changed since the last 3D depth sort. */
+    private depthOrderStale = true;
     private resizeObserver: ResizeObserver | null = null;
+    private readonly controlsChangeHandler = (): void => {
+        this.depthOrderStale = true;
+        this.requestRender();
+    };
 
     private nodes: GraphNode[] = [];
     private edges: GraphEdge[] = [];
@@ -86,13 +127,11 @@ export class GraphSceneService {
     /** Parse raw API data into internal node/edge arrays. */
     buildGraph(entities: VisualizationEntity[], relationships: VisualizationRelationship[]): void {
         this.titleToIndex.clear();
-        const minRadius = 4;
-        const maxRadius = 16;
         const maxDegree = Math.max(1, ...entities.map((e) => e.degree));
         this.nodes = entities.map((entity, index) => {
             this.titleToIndex.set(entity.title, index);
             const colorHex = entity.type ? TYPE_COLORS[stableHash(entity.type) % TYPE_COLORS.length] : TYPE_COLORS[0];
-            const radius = minRadius + (entity.degree / maxDegree) * (maxRadius - minRadius);
+            const radius = NODE_MIN_RADIUS + (entity.degree / maxDegree) * (NODE_MAX_RADIUS - NODE_MIN_RADIUS);
 
             return {
                 id: entity.id,
@@ -101,8 +140,8 @@ export class GraphSceneService {
                 type: entity.type,
                 description: null,
                 degree: entity.degree,
-                x: (Math.random() - 0.5) * 200,
-                y: (Math.random() - 0.5) * 200,
+                x: (Math.random() - 0.5) * INITIAL_LAYOUT_SPREAD,
+                y: (Math.random() - 0.5) * INITIAL_LAYOUT_SPREAD,
                 z: 0,
                 color: hexToRgb(colorHex),
                 radius,
@@ -133,258 +172,73 @@ export class GraphSceneService {
         return this.edges;
     }
 
-    /** Initialize the Three.js scene, renderer, and meshes. */
-    initScene(canvas: HTMLCanvasElement, container: HTMLElement, is3D: boolean): SceneResources {
-        const THREE = this.three!;
-        this.is3D = is3D;
+    /** True once `initScene` has created a renderer and until `dispose` runs. */
+    isSceneInitialized(): boolean {
+        return this.resources !== null;
+    }
 
-        // Renderer
-        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.setSize(container.clientWidth, container.clientHeight);
+    /**
+     * Initialize the Three.js renderer, camera, controls and graph meshes for a canvas.
+     * Everything that schedules work (controls listeners, wheel listener, resize observer,
+     * animation frames) is created outside the Angular zone, so an idle scene does not run
+     * change detection; the scene renders only when something visible changed.
+     */
+    initScene(canvas: HTMLCanvasElement, container: HTMLElement, is3D: boolean): void {
+        this.ngZone.runOutsideAngular(() => {
+            const THREE = this.three!;
+            this.is3D = is3D;
 
-        // Scene
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(SCENE_BACKGROUND);
+            const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
+            renderer.setSize(container.clientWidth, container.clientHeight);
 
-        // Camera
-        const camera = this.createCamera(container, is3D);
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(SCENE_BACKGROUND);
 
-        // Controls
-        const controls = new this.orbitControlsModule!.OrbitControls(camera, renderer.domElement) as OrbitControlsLike;
-        controls.enableRotate = is3D;
-        controls.screenSpacePanning = true;
-        // LEFT=ROTATE (disabled in 2D, free for node drag), MIDDLE=PAN, RIGHT=PAN
-        controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
-        if (is3D) {
-            // Disable built-in zoom (slows with distance); use constant-speed dolly instead
-            controls.enableZoom = false;
-            this.setupConstantDolly(canvas, camera, controls);
-        } else {
-            controls.zoomToCursor = true;
-        }
+            const camera = this.createCamera(container, is3D);
+            const controls = this.createControls(camera, canvas, is3D);
+            if (is3D) {
+                this.addLights(scene, camera);
+            }
 
-        // Nodes (InstancedMesh)
-        const geometry = new THREE.SphereGeometry(1, 16, 12);
-        const nodeMaterial = is3D
-            ? new THREE.MeshPhongMaterial({
-                  color: 0xffffff,
-                  transparent: true,
-                  opacity: NODE_3D_OPACITY,
-                  shininess: 40,
-              })
-            : new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const nodesMesh = new THREE.InstancedMesh(geometry, nodeMaterial, Math.max(this.nodes.length, 1));
-        nodesMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            const { nodesMesh, edgesMesh } = this.createGraphMeshes(scene);
+            const raycaster = new THREE.Raycaster();
+            this.resources = { renderer, scene, camera, controls, nodesMesh, edgesMesh, labelSprites: [], raycaster };
 
-        // Lighting for 3D shading (gradient from center to edges)
-        if (is3D) {
-            const ambientLight = new THREE.AmbientLight(0xffffff, AMBIENT_LIGHT_INTENSITY);
-            ambientLight.name = 'graphAmbient';
-            scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffffff, DIRECTIONAL_LIGHT_INTENSITY);
-            dirLight.name = 'graphDirectional';
-            dirLight.position.set(0, 50, 100); // relative to camera — always lights from above-front
-            camera.add(dirLight);
-            scene.add(camera);
-        }
+            this.applyGraphState();
 
-        scene.add(nodesMesh);
+            this.resizeObserver = new ResizeObserver(() => this.handleResize(container));
+            this.resizeObserver.observe(container);
 
-        // Edges — cylinder InstancedMesh for both 2D and 3D
-        const edgesMesh = this.createEdgesMesh(scene);
-
-        // Node outline mesh (BackSide rendering creates a border ring)
-        const outlineGeometry = new THREE.SphereGeometry(1, 16, 12);
-        const outlineMaterial = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
-        const outlineMesh = new THREE.InstancedMesh(outlineGeometry, outlineMaterial, Math.max(this.nodes.length, 1));
-        outlineMesh.frustumCulled = false;
-        // Hide all outline instances initially
-        const outlineDummy = new THREE.Object3D();
-        outlineDummy.position.set(OFFSCREEN_POS, OFFSCREEN_POS, OFFSCREEN_POS);
-        outlineDummy.scale.setScalar(0);
-        outlineDummy.updateMatrix();
-        for (let i = 0; i < Math.max(this.nodes.length, 1); i++) {
-            outlineMesh.setMatrixAt(i, outlineDummy.matrix);
-        }
-        scene.add(outlineMesh);
-        this.outlineMesh = outlineMesh;
-
-        // Depth-only node proxy for 3D multi-pass edge occlusion
-        if (is3D) {
-            const depthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
-            const depthNodesMesh = new THREE.InstancedMesh(geometry, depthMaterial, Math.max(this.nodes.length, 1));
-            depthNodesMesh.instanceMatrix = nodesMesh.instanceMatrix;
-            depthNodesMesh.frustumCulled = false;
-            depthNodesMesh.visible = false;
-            scene.add(depthNodesMesh);
-            this.depthNodesMesh = depthNodesMesh;
-        } else {
-            this.depthNodesMesh = null;
-        }
-
-        // Highlight lines overlay (connected edges rendered brighter)
-        const hlPositions = new Float32Array(this.edges.length * 6);
-        const hlGeometry = new THREE.BufferGeometry();
-        hlGeometry.setAttribute('position', new THREE.Float32BufferAttribute(hlPositions, 3));
-        hlGeometry.setDrawRange(0, 0);
-        const hlMaterial = new THREE.LineBasicMaterial({
-            color: new THREE.Color(...HIGHLIGHT_EDGE_COLOR),
-            transparent: true,
-            opacity: 1.0,
-            depthTest: false,
+            this.requestRender();
         });
-        const highlightLines = new THREE.LineSegments(hlGeometry, hlMaterial);
-        highlightLines.frustumCulled = false;
-        highlightLines.renderOrder = 1;
-        scene.add(highlightLines);
-        this.highlightLinesObj = highlightLines;
+    }
 
-        if (!is3D) {
-            // 2D: nodes render on top of highlight lines
-            nodesMesh.renderOrder = 2;
-            outlineMesh.renderOrder = 2;
-        }
+    /**
+     * Rebuild the graph meshes from the current `buildGraph` data, keeping the renderer,
+     * camera and controls — used when new data is loaded into an existing scene.
+     */
+    refreshGraph(): void {
+        if (!this.resources) return;
+        const scene = this.resources.scene;
+        this.disposeGraphMeshes(scene);
 
-        // Animated dots (small spheres that travel along highlighted edges)
-        const maxDots = this.edges.length * DOTS_PER_EDGE;
-        const dotGeometry = new THREE.SphereGeometry(1, 8, 6);
-        const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
-        const dotsMesh = new THREE.InstancedMesh(dotGeometry, dotMaterial, Math.max(maxDots, 1));
-        dotsMesh.frustumCulled = false;
-        dotsMesh.renderOrder = 2;
-        // Hide all dots initially
-        const zeroDummy = new THREE.Object3D();
-        zeroDummy.scale.setScalar(0);
-        zeroDummy.position.set(OFFSCREEN_POS, OFFSCREEN_POS, OFFSCREEN_POS);
-        zeroDummy.updateMatrix();
-        for (let i = 0; i < maxDots; i++) {
-            dotsMesh.setMatrixAt(i, zeroDummy.matrix);
-        }
-        scene.add(dotsMesh);
-        this.dotsMesh = dotsMesh;
-        this.dotsData = [];
+        this.hoveredNodeIndex = null;
+        this.hoveredEdgeIndex = null;
+        this.connectedEdgeIndices.clear();
+        this.connectedNodeIndices.clear();
 
-        // Labels
-        const labelSprites: Sprite[] = [];
-
-        // Raycaster
-        const raycaster = new THREE.Raycaster();
-
-        this.resources = { renderer, scene, camera, controls, nodesMesh, edgesMesh, labelSprites, raycaster };
-
-        // Initial instance transforms and colors
-        this.updateInstanceMatrices();
-        this.updateInstanceColors();
-        this.updateEdgePositions();
-
-        // Resize observer
-        this.resizeObserver = new ResizeObserver(() => this.handleResize(container));
-        this.resizeObserver.observe(container);
-
-        // Start render loop
-        this.startRenderLoop();
-
-        return this.resources;
+        const { nodesMesh, edgesMesh } = this.createGraphMeshes(scene);
+        this.resources.nodesMesh = nodesMesh;
+        this.resources.edgesMesh = edgesMesh;
+        this.applyGraphState();
+        this.requestRender();
     }
 
     /** Switch between 2D and 3D. Recreates camera and adjusts controls. */
     switchDimension(container: HTMLElement, is3D: boolean): void {
         if (!this.resources) return;
-        this.is3D = is3D;
-
-        // Replace camera
-        const newCamera = this.createCamera(container, is3D);
-        this.resources.camera = newCamera;
-
-        // Replace controls
-        this.resources.controls.dispose();
-        this.removeConstantDolly();
-        const THREE = this.three!;
-        const controls = new this.orbitControlsModule!.OrbitControls(
-            newCamera,
-            this.resources.renderer.domElement
-        ) as OrbitControlsLike;
-        controls.enableRotate = is3D;
-        controls.screenSpacePanning = true;
-        controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
-        if (is3D) {
-            controls.enableZoom = false;
-            this.setupConstantDolly(this.resources.renderer.domElement, newCamera, controls);
-        } else {
-            controls.zoomToCursor = true;
-        }
-        this.resources.controls = controls;
-
-        // Reset z for 2D
-        if (!is3D) {
-            for (const node of this.nodes) {
-                node.z = 0;
-            }
-        }
-
-        // Update node material for dimension
-        const oldNodeMat = this.resources.nodesMesh.material as Material;
-        const newNodeMat = is3D
-            ? new THREE.MeshPhongMaterial({
-                  color: 0xffffff,
-                  transparent: true,
-                  opacity: NODE_3D_OPACITY,
-                  shininess: 40,
-              })
-            : new THREE.MeshBasicMaterial({ color: 0xffffff });
-        this.resources.nodesMesh.material = newNodeMat;
-        oldNodeMat.dispose();
-
-        this.resources.nodesMesh.renderOrder = is3D ? 0 : 2;
-        if (this.outlineMesh) {
-            this.outlineMesh.renderOrder = is3D ? 0 : 2;
-        }
-
-        // Depth-only node proxy for 3D multi-pass edge occlusion
-        if (is3D && !this.depthNodesMesh) {
-            const depthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
-            const depthMesh = new THREE.InstancedMesh(
-                this.resources.nodesMesh.geometry,
-                depthMaterial,
-                Math.max(this.nodes.length, 1)
-            );
-            depthMesh.instanceMatrix = this.resources.nodesMesh.instanceMatrix;
-            depthMesh.frustumCulled = false;
-            depthMesh.visible = false;
-            this.resources.scene.add(depthMesh);
-            this.depthNodesMesh = depthMesh;
-        } else if (!is3D && this.depthNodesMesh) {
-            (this.depthNodesMesh.material as Material).dispose();
-            this.resources.scene.remove(this.depthNodesMesh);
-            this.depthNodesMesh = null;
-        }
-
-        // Add/remove lights
-        const existingAmbient = this.resources.scene.getObjectByName('graphAmbient');
-        const existingDir = this.resources.camera.getObjectByName('graphDirectional');
-        if (is3D && !existingAmbient) {
-            const ambientLight = new THREE.AmbientLight(0xffffff, AMBIENT_LIGHT_INTENSITY);
-            ambientLight.name = 'graphAmbient';
-            this.resources.scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffffff, DIRECTIONAL_LIGHT_INTENSITY);
-            dirLight.name = 'graphDirectional';
-            dirLight.position.set(0, 50, 100);
-            this.resources.camera.add(dirLight);
-            this.resources.scene.add(this.resources.camera);
-        } else if (!is3D) {
-            if (existingAmbient) this.resources.scene.remove(existingAmbient);
-            if (existingDir) {
-                this.resources.camera.remove(existingDir);
-            }
-        }
-
-        // Reset visibility — multi-pass leaves objects hidden after the last frame
-        this.resources.nodesMesh.visible = true;
-        this.resources.edgesMesh.visible = true;
-        if (this.outlineMesh) this.outlineMesh.visible = true;
-        if (this.highlightLinesObj) this.highlightLinesObj.visible = true;
-        if (this.dotsMesh) this.dotsMesh.visible = true;
+        this.ngZone.runOutsideAngular(() => this.applyDimension(container, is3D));
     }
 
     /** Update node positions from simulation data. Call this in the simulation tick. */
@@ -402,12 +256,310 @@ export class GraphSceneService {
         if (this.labelsVisible) {
             this.updateLabelPositions();
         }
+        this.requestRender();
     }
+
+    /** Schedule a single frame; repeated calls before it runs are merged into one render. */
+    requestRender(): void {
+        if (!this.resources || this.frameRequestId !== null) return;
+        this.frameRequestId = this.ngZone.runOutsideAngular(() =>
+            requestAnimationFrame((timestamp) => this.renderFrame(timestamp))
+        );
+    }
+
+    // ---- private: scene construction ----
+
+    private createControls(camera: Camera, domElement: HTMLCanvasElement, is3D: boolean): OrbitControlsLike {
+        const THREE = this.three!;
+        const controls = new this.orbitControlsModule!.OrbitControls(camera, domElement) as OrbitControlsLike;
+        controls.enableRotate = is3D;
+        controls.screenSpacePanning = true;
+        // LEFT=ROTATE (disabled in 2D, free for node drag), MIDDLE=PAN, RIGHT=PAN
+        controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+        if (is3D) {
+            // Disable built-in zoom (slows with distance); use constant-speed dolly instead
+            controls.enableZoom = false;
+            this.setupConstantDolly(domElement, camera, controls);
+        } else {
+            controls.zoomToCursor = true;
+        }
+        controls.addEventListener('change', this.controlsChangeHandler);
+        return controls;
+    }
+
+    private disposeControls(controls: OrbitControlsLike): void {
+        controls.removeEventListener('change', this.controlsChangeHandler);
+        controls.dispose();
+        this.removeConstantDolly();
+    }
+
+    /** Lighting for 3D shading: ambient on the scene, directional attached to the camera so it follows it. */
+    private addLights(scene: Scene, camera: Camera): void {
+        const THREE = this.three!;
+        const ambientLight = new THREE.AmbientLight(0xffffff, AMBIENT_LIGHT_INTENSITY);
+        ambientLight.name = AMBIENT_LIGHT_NAME;
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, DIRECTIONAL_LIGHT_INTENSITY);
+        directionalLight.name = DIRECTIONAL_LIGHT_NAME;
+        directionalLight.position.set(...DIRECTIONAL_LIGHT_POSITION);
+        camera.add(directionalLight);
+        scene.add(camera);
+    }
+
+    /** Remove the 3D lights and detach `camera` (which carries the directional light) from the scene. */
+    private removeLights(scene: Scene, camera: Camera): void {
+        const ambientLight = scene.getObjectByName(AMBIENT_LIGHT_NAME) as Light | undefined;
+        if (ambientLight) {
+            scene.remove(ambientLight);
+            ambientLight.dispose();
+        }
+        const directionalLight = camera.getObjectByName(DIRECTIONAL_LIGHT_NAME) as Light | undefined;
+        if (directionalLight) {
+            camera.remove(directionalLight);
+            directionalLight.dispose();
+        }
+        scene.remove(camera);
+    }
+
+    private applyDimension(container: HTMLElement, is3D: boolean): void {
+        const resources = this.resources!;
+        this.is3D = is3D;
+
+        // Look up the lights on the outgoing camera and detach it before it is replaced;
+        // otherwise each 3D→2D→3D round trip leaves the old camera and its light in the scene.
+        this.removeLights(resources.scene, resources.camera);
+        this.disposeControls(resources.controls);
+
+        const camera = this.createCamera(container, is3D);
+        resources.camera = camera;
+        resources.controls = this.createControls(camera, resources.renderer.domElement, is3D);
+        if (is3D) {
+            this.addLights(resources.scene, camera);
+        }
+
+        // Reset z for 2D
+        if (!is3D) {
+            for (const node of this.nodes) {
+                node.z = 0;
+            }
+        }
+
+        // Update node material for dimension
+        const oldNodeMaterial = resources.nodesMesh.material as Material;
+        resources.nodesMesh.material = this.createNodeMaterial(is3D);
+        oldNodeMaterial.dispose();
+
+        resources.nodesMesh.renderOrder = is3D ? BASE_RENDER_ORDER : FOREGROUND_RENDER_ORDER;
+        if (this.outlineMesh) {
+            this.outlineMesh.renderOrder = is3D ? BASE_RENDER_ORDER : FOREGROUND_RENDER_ORDER;
+        }
+
+        // Depth-only node proxy for 3D multi-pass edge occlusion
+        if (is3D && !this.depthNodesMesh) {
+            this.depthNodesMesh = this.createDepthNodesMesh(resources.scene, resources.nodesMesh);
+        } else if (!is3D && this.depthNodesMesh) {
+            (this.depthNodesMesh.material as Material).dispose();
+            resources.scene.remove(this.depthNodesMesh);
+            this.depthNodesMesh = null;
+        }
+
+        // Reset visibility — multi-pass leaves objects hidden after the last frame
+        resources.nodesMesh.visible = true;
+        resources.edgesMesh.visible = true;
+        if (this.outlineMesh) this.outlineMesh.visible = true;
+        if (this.highlightLinesObj) this.highlightLinesObj.visible = true;
+        if (this.dotsMesh) this.dotsMesh.visible = true;
+
+        // Rewrite instances in natural order — the 3D depth sort leaves them reordered — and
+        // recolor them, since 3D applies a brightness factor that 2D does not.
+        this.updateInstanceMatrices();
+        this.updateInstanceColors();
+        this.updateEdgePositions();
+        this.updateHoverVisuals();
+        if (this.labelsVisible) {
+            this.updateLabelPositions();
+        }
+        this.requestRender();
+    }
+
+    private createNodeMaterial(is3D: boolean): Material {
+        const THREE = this.three!;
+        return is3D
+            ? new THREE.MeshPhongMaterial({
+                  color: 0xffffff,
+                  transparent: true,
+                  opacity: NODE_3D_OPACITY,
+                  shininess: NODE_3D_SHININESS,
+              })
+            : new THREE.MeshBasicMaterial({ color: 0xffffff });
+    }
+
+    private createDepthNodesMesh(scene: Scene, nodesMesh: InstancedMesh): InstancedMesh {
+        const THREE = this.three!;
+        const depthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
+        const depthMesh = new THREE.InstancedMesh(nodesMesh.geometry, depthMaterial, Math.max(this.nodes.length, 1));
+        depthMesh.instanceMatrix = nodesMesh.instanceMatrix;
+        depthMesh.frustumCulled = false;
+        depthMesh.visible = false;
+        scene.add(depthMesh);
+        return depthMesh;
+    }
+
+    /** Write the current graph state (positions, colors, visibility, labels) into freshly created meshes. */
+    private applyGraphState(): void {
+        if (this.labelsVisible) {
+            this.createLabelSprites();
+        }
+        this.updateInstanceMatrices();
+        this.updateInstanceColors();
+        this.updateEdgePositions();
+        this.updateEdgeColors();
+    }
+
+    /** Create the node, edge, outline, depth, highlight-line and dot meshes for the current nodes/edges. */
+    private createGraphMeshes(scene: Scene): { nodesMesh: InstancedMesh; edgesMesh: InstancedMesh } {
+        const THREE = this.three!;
+        const is3D = this.is3D;
+
+        // Nodes (InstancedMesh)
+        const geometry = new THREE.SphereGeometry(1, NODE_SPHERE_WIDTH_SEGMENTS, NODE_SPHERE_HEIGHT_SEGMENTS);
+        const nodesMesh = new THREE.InstancedMesh(
+            geometry,
+            this.createNodeMaterial(is3D),
+            Math.max(this.nodes.length, 1)
+        );
+        nodesMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        scene.add(nodesMesh);
+
+        // Edges — cylinder InstancedMesh for both 2D and 3D
+        const edgesMesh = this.createEdgesMesh(scene);
+
+        // Node outline mesh (BackSide rendering creates a border ring)
+        const outlineGeometry = new THREE.SphereGeometry(1, NODE_SPHERE_WIDTH_SEGMENTS, NODE_SPHERE_HEIGHT_SEGMENTS);
+        const outlineMaterial = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
+        const outlineMesh = new THREE.InstancedMesh(outlineGeometry, outlineMaterial, Math.max(this.nodes.length, 1));
+        outlineMesh.frustumCulled = false;
+        // Hide all outline instances initially
+        const outlineDummy = new THREE.Object3D();
+        outlineDummy.position.set(OFFSCREEN_POSITION, OFFSCREEN_POSITION, OFFSCREEN_POSITION);
+        outlineDummy.scale.setScalar(0);
+        outlineDummy.updateMatrix();
+        for (let i = 0; i < Math.max(this.nodes.length, 1); i++) {
+            outlineMesh.setMatrixAt(i, outlineDummy.matrix);
+        }
+        scene.add(outlineMesh);
+        this.outlineMesh = outlineMesh;
+
+        // Depth-only node proxy for 3D multi-pass edge occlusion
+        this.depthNodesMesh = is3D ? this.createDepthNodesMesh(scene, nodesMesh) : null;
+
+        // Highlight lines overlay (connected edges rendered brighter)
+        const hlPositions = new Float32Array(this.edges.length * HIGHLIGHT_LINE_FLOATS_PER_EDGE);
+        const hlGeometry = new THREE.BufferGeometry();
+        hlGeometry.setAttribute('position', new THREE.Float32BufferAttribute(hlPositions, 3));
+        hlGeometry.setDrawRange(0, 0);
+        const hlMaterial = new THREE.LineBasicMaterial({
+            color: new THREE.Color(...HIGHLIGHT_EDGE_COLOR),
+            transparent: true,
+            opacity: 1.0,
+            depthTest: false,
+        });
+        const highlightLines = new THREE.LineSegments(hlGeometry, hlMaterial);
+        highlightLines.frustumCulled = false;
+        highlightLines.renderOrder = HIGHLIGHT_LINES_RENDER_ORDER;
+        scene.add(highlightLines);
+        this.highlightLinesObj = highlightLines;
+
+        if (!is3D) {
+            // 2D: nodes render on top of highlight lines
+            nodesMesh.renderOrder = FOREGROUND_RENDER_ORDER;
+            outlineMesh.renderOrder = FOREGROUND_RENDER_ORDER;
+        }
+
+        // Animated dots (small spheres that travel along highlighted edges)
+        const maxDots = this.edges.length * DOTS_PER_EDGE;
+        const dotGeometry = new THREE.SphereGeometry(1, DOT_SPHERE_WIDTH_SEGMENTS, DOT_SPHERE_HEIGHT_SEGMENTS);
+        const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+        const dotsMesh = new THREE.InstancedMesh(dotGeometry, dotMaterial, Math.max(maxDots, 1));
+        dotsMesh.frustumCulled = false;
+        dotsMesh.renderOrder = FOREGROUND_RENDER_ORDER;
+        // Hide all dots initially
+        const zeroDummy = new THREE.Object3D();
+        zeroDummy.scale.setScalar(0);
+        zeroDummy.position.set(OFFSCREEN_POSITION, OFFSCREEN_POSITION, OFFSCREEN_POSITION);
+        zeroDummy.updateMatrix();
+        for (let i = 0; i < maxDots; i++) {
+            dotsMesh.setMatrixAt(i, zeroDummy.matrix);
+        }
+        scene.add(dotsMesh);
+        this.dotsMesh = dotsMesh;
+        this.dotsData = [];
+
+        return { nodesMesh, edgesMesh };
+    }
+
+    private createLabelSprites(): void {
+        const resources = this.resources!;
+        for (const node of this.nodes) {
+            const sprite = this.createLabelSprite(node.title);
+            sprite.position.set(node.x, node.y + node.radius + LABEL_OFFSET_ABOVE_NODE, node.z);
+            sprite.visible = this.isNodeVisible(node);
+            resources.scene.add(sprite);
+            resources.labelSprites.push(sprite);
+        }
+    }
+
+    private disposeLabelSprites(): void {
+        const resources = this.resources!;
+        for (const sprite of resources.labelSprites) {
+            resources.scene.remove(sprite);
+            sprite.material.map?.dispose();
+            sprite.material.dispose();
+        }
+        resources.labelSprites = [];
+    }
+
+    /** Dispose every mesh created by `createGraphMeshes`, plus the label sprites. */
+    private disposeGraphMeshes(scene: Scene): void {
+        const { nodesMesh, edgesMesh } = this.resources!;
+        this.disposeLabelSprites();
+
+        // Depth-only node proxy shares geometry + instanceMatrix with nodesMesh — dispose only its material
+        if (this.depthNodesMesh) {
+            (this.depthNodesMesh.material as Material).dispose();
+            scene.remove(this.depthNodesMesh);
+            this.depthNodesMesh = null;
+        }
+
+        // InstancedMesh.dispose() releases the per-instance matrix/color buffers on the GPU; geometry and material
+        // disposal does not cover them, so without it every reload leaks one set per mesh. The depth proxy above
+        // must not get it: it shares nodesMesh's instanceMatrix, which nodesMesh.dispose() releases here.
+        for (const mesh of [nodesMesh, edgesMesh, this.outlineMesh, this.dotsMesh]) {
+            if (!mesh) continue;
+            mesh.geometry.dispose();
+            (mesh.material as Material).dispose();
+            mesh.dispose();
+            scene.remove(mesh);
+        }
+        if (this.highlightLinesObj) {
+            this.highlightLinesObj.geometry.dispose();
+            (this.highlightLinesObj.material as Material).dispose();
+            scene.remove(this.highlightLinesObj);
+        }
+        this.outlineMesh = null;
+        this.highlightLinesObj = null;
+        this.dotsMesh = null;
+        this.dotsData = [];
+        this.instancesSorted = false;
+    }
+
+    // ---- public: graph state ----
 
     /** Highlight specific node indices (community or search). Pass null to clear. */
     setHighlightedNodes(indices: Set<number> | null): void {
         this.highlightedIndices = indices;
         this.updateInstanceColors();
+        this.requestRender();
     }
 
     /** Search highlight — hides non-matching/non-connected nodes entirely. Pass null to show all. */
@@ -423,23 +575,13 @@ export class GraphSceneService {
         } else {
             this.searchVisibleIndices = null;
         }
-        this.updateInstanceMatrices();
-        this.updateInstanceColors();
-        this.updateEdgePositions();
-        if (this.labelsVisible) {
-            this.updateLabelPositions();
-        }
+        this.applyVisibilityChange();
     }
 
     /** Filter by entity type. Pass null to show all. */
     setVisibleTypes(types: Set<string | null> | null): void {
         this.visibleTypeSet = types;
-        this.updateInstanceMatrices();
-        this.updateInstanceColors();
-        this.updateEdgePositions();
-        if (this.labelsVisible) {
-            this.updateLabelPositions();
-        }
+        this.applyVisibilityChange();
     }
 
     /** Toggle labels on/off. */
@@ -448,22 +590,11 @@ export class GraphSceneService {
         if (!this.resources) return;
 
         if (visible && this.resources.labelSprites.length === 0) {
-            // Create label sprites
-            for (const node of this.nodes) {
-                const sprite = this.createLabelSprite(node.title);
-                sprite.position.set(node.x, node.y + node.radius + 4, node.z);
-                sprite.visible = this.isNodeVisible(node);
-                this.resources.scene.add(sprite);
-                this.resources.labelSprites.push(sprite);
-            }
+            this.createLabelSprites();
         } else if (!visible) {
-            for (const sprite of this.resources.labelSprites) {
-                this.resources.scene.remove(sprite);
-                sprite.material.map?.dispose();
-                sprite.material.dispose();
-            }
-            this.resources.labelSprites = [];
+            this.disposeLabelSprites();
         }
+        this.requestRender();
     }
 
     /** Raycast to find which node is under the given screen coordinates. Returns node index or -1. */
@@ -491,7 +622,7 @@ export class GraphSceneService {
     }
 
     /** Raycast to find which edge is nearest to the given screen coordinates. Returns edge index or -1. */
-    pickEdge(screenX: number, screenY: number, container: HTMLElement, threshold = 6): number {
+    pickEdge(screenX: number, screenY: number, container: HTMLElement, threshold = EDGE_PICK_THRESHOLD_PX): number {
         if (!this.resources || !this.three) return -1;
         const THREE = this.three;
         const rect = container.getBoundingClientRect();
@@ -557,6 +688,7 @@ export class GraphSceneService {
 
         this.updateEdgeColors();
         this.updateHoverVisuals();
+        this.requestRender();
     }
 
     /** Returns the currently hovered edge index, or null. */
@@ -582,7 +714,7 @@ export class GraphSceneService {
         if (!node) return null;
 
         const THREE = this.three;
-        const vector = new THREE.Vector3(node.x, node.y + node.radius + 2, node.z);
+        const vector = new THREE.Vector3(node.x, node.y + node.radius + HOVER_TOOLTIP_OFFSET_ABOVE_NODE, node.z);
         vector.project(this.resources.camera);
 
         const rect = container.getBoundingClientRect();
@@ -609,6 +741,7 @@ export class GraphSceneService {
 
         this.updateEdgeColors();
         this.updateHoverVisuals();
+        this.requestRender();
     }
 
     /** Convert screen coordinates to world position (projects onto z=0 plane for 2D, or camera plane for 3D). */
@@ -638,81 +771,30 @@ export class GraphSceneService {
         return null;
     }
 
-    /** Dispose all Three.js resources. */
+    /** Dispose all Three.js resources and stop rendering. Safe to call when no scene exists. */
     dispose(): void {
-        if (this.animationFrameId !== null) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
+        if (this.frameRequestId !== null) {
+            cancelAnimationFrame(this.frameRequestId);
+            this.frameRequestId = null;
         }
+        this.lastFrameTimestamp = null;
 
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
-        this.removeConstantDolly();
 
         if (this.resources) {
-            const { renderer, scene, nodesMesh, edgesMesh, labelSprites, controls } = this.resources;
-
-            controls.dispose();
-
-            // Dispose labels
-            for (const sprite of labelSprites) {
-                sprite.material.map?.dispose();
-                sprite.material.dispose();
-                scene.remove(sprite);
-            }
-
-            // Dispose depth-only node proxy (shares geometry + instanceMatrix with nodesMesh)
-            if (this.depthNodesMesh) {
-                (this.depthNodesMesh.material as Material).dispose();
-                scene.remove(this.depthNodesMesh);
-                this.depthNodesMesh = null;
-            }
-
-            // Dispose nodes
-            nodesMesh.geometry.dispose();
-            (nodesMesh.material as Material).dispose();
-            scene.remove(nodesMesh);
-
-            // Dispose edges
-            edgesMesh.geometry.dispose();
-            (edgesMesh.material as Material).dispose();
-            scene.remove(edgesMesh);
-
-            // Dispose outline mesh
-            if (this.outlineMesh) {
-                this.outlineMesh.geometry.dispose();
-                (this.outlineMesh.material as Material).dispose();
-                scene.remove(this.outlineMesh);
-                this.outlineMesh = null;
-            }
-
-            // Dispose highlight lines
-            if (this.highlightLinesObj) {
-                this.highlightLinesObj.geometry.dispose();
-                (this.highlightLinesObj.material as Material).dispose();
-                scene.remove(this.highlightLinesObj);
-                this.highlightLinesObj = null;
-            }
-
-            // Dispose dots
-            if (this.dotsMesh) {
-                this.dotsMesh.geometry.dispose();
-                (this.dotsMesh.material as Material).dispose();
-                scene.remove(this.dotsMesh);
-                this.dotsMesh = null;
-                this.dotsData = [];
-            }
-
-            // Dispose renderer
+            const { renderer, scene, camera, controls } = this.resources;
+            this.disposeControls(controls);
+            this.disposeGraphMeshes(scene);
+            this.removeLights(scene, camera);
             renderer.dispose();
             renderer.forceContextLoss();
-
             this.resources = null;
         }
 
         this.hoveredNodeIndex = null;
         this.hoveredEdgeIndex = null;
-        this.instancesSorted = false;
+        this.depthOrderStale = true;
         this.connectedEdgeIndices.clear();
         this.connectedNodeIndices.clear();
     }
@@ -727,7 +809,6 @@ export class GraphSceneService {
 
     private setupConstantDolly(canvas: HTMLCanvasElement, camera: Camera, controls: OrbitControlsLike): void {
         const THREE = this.three!;
-        const dollySpeed = 15;
         const raycaster = new THREE.Raycaster();
         const mouseNDC = new THREE.Vector2();
 
@@ -742,7 +823,7 @@ export class GraphSceneService {
                 -((event.clientY - rect.top) / rect.height) * 2 + 1
             );
             raycaster.setFromCamera(mouseNDC, camera);
-            const direction = raycaster.ray.direction.clone().multiplyScalar(sign * dollySpeed);
+            const direction = raycaster.ray.direction.clone().multiplyScalar(sign * DOLLY_SPEED);
 
             camera.position.x += direction.x;
             camera.position.y += direction.y;
@@ -750,6 +831,8 @@ export class GraphSceneService {
             controls.target.x += direction.x;
             controls.target.y += direction.y;
             controls.target.z += direction.z;
+            this.depthOrderStale = true;
+            this.requestRender();
         };
         canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
     }
@@ -767,14 +850,26 @@ export class GraphSceneService {
         const height = container.clientHeight || 1;
 
         if (is3D) {
-            const camera = new THREE.PerspectiveCamera(60, width / height, 1, 5000);
-            camera.position.set(0, 0, 300);
+            const camera = new THREE.PerspectiveCamera(
+                CAMERA_FIELD_OF_VIEW_DEGREES,
+                width / height,
+                CAMERA_NEAR_PLANE,
+                CAMERA_FAR_PLANE
+            );
+            camera.position.set(0, 0, PERSPECTIVE_CAMERA_DISTANCE);
             return camera;
         } else {
             const halfW = width / 2;
             const halfH = height / 2;
-            const camera = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 1, 5000);
-            camera.position.set(0, 0, 500);
+            const camera = new THREE.OrthographicCamera(
+                -halfW,
+                halfW,
+                halfH,
+                -halfH,
+                CAMERA_NEAR_PLANE,
+                CAMERA_FAR_PLANE
+            );
+            camera.position.set(0, 0, ORTHOGRAPHIC_CAMERA_DISTANCE);
             camera.lookAt(0, 0, 0);
             return camera;
         }
@@ -802,7 +897,7 @@ export class GraphSceneService {
                 dummy.scale.setScalar(node.radius);
             } else {
                 // Move offscreen and scale to zero
-                dummy.position.set(OFFSCREEN_POS, OFFSCREEN_POS, OFFSCREEN_POS);
+                dummy.position.set(OFFSCREEN_POSITION, OFFSCREEN_POSITION, OFFSCREEN_POSITION);
                 dummy.scale.setScalar(0);
             }
             dummy.updateMatrix();
@@ -811,6 +906,18 @@ export class GraphSceneService {
         this.resources.nodesMesh.instanceMatrix.needsUpdate = true;
         this.resources.nodesMesh.computeBoundingSphere();
         this.instancesSorted = false;
+        this.depthOrderStale = true;
+    }
+
+    /** Re-apply node/edge/label visibility after the type filter or search set changed. */
+    private applyVisibilityChange(): void {
+        this.updateInstanceMatrices();
+        this.updateInstanceColors();
+        this.updateEdgePositions();
+        if (this.labelsVisible) {
+            this.updateLabelPositions();
+        }
+        this.requestRender();
     }
 
     private getNodeColor(nodeIndex: number): ColorTuple {
@@ -840,13 +947,15 @@ export class GraphSceneService {
         if (this.resources.nodesMesh.instanceColor) {
             this.resources.nodesMesh.instanceColor.needsUpdate = true;
         }
+        // Colors were written in natural order; the 3D pass must re-sort them alongside the matrices.
+        this.depthOrderStale = true;
     }
 
     private createEdgesMesh(scene: Scene): InstancedMesh {
         const THREE = this.three!;
         const minRadius = this.nodes.reduce((min, n) => Math.min(min, n.radius), Infinity);
         this.edgeRadius = minRadius * EDGE_WIDTH_RATIO;
-        const cylGeometry = new THREE.CylinderGeometry(1, 1, 1, 6);
+        const cylGeometry = new THREE.CylinderGeometry(1, 1, 1, EDGE_CYLINDER_RADIAL_SEGMENTS);
         const cylMaterial = new THREE.MeshBasicMaterial({
             transparent: true,
             opacity: EDGE_OPACITY,
@@ -873,7 +982,7 @@ export class GraphSceneService {
             const src = this.nodes[edge.sourceIndex];
             const tgt = this.nodes[edge.targetIndex];
             if (!this.isNodeVisible(src) || !this.isNodeVisible(tgt)) {
-                dummy.position.set(OFFSCREEN_POS, OFFSCREEN_POS, OFFSCREEN_POS);
+                dummy.position.set(OFFSCREEN_POSITION, OFFSCREEN_POSITION, OFFSCREEN_POSITION);
                 dummy.scale.setScalar(0);
                 dummy.updateMatrix();
                 edgesMesh.setMatrixAt(visibleCount, dummy.matrix);
@@ -898,8 +1007,8 @@ export class GraphSceneService {
             const z1 = tgt.z - nz * tgt.radius;
             const segLen = Math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2 + (z1 - z0) ** 2);
 
-            if (segLen < 0.01) {
-                dummy.position.set(OFFSCREEN_POS, OFFSCREEN_POS, OFFSCREEN_POS);
+            if (segLen < MIN_EDGE_SEGMENT_LENGTH) {
+                dummy.position.set(OFFSCREEN_POSITION, OFFSCREEN_POSITION, OFFSCREEN_POSITION);
                 dummy.scale.setScalar(0);
                 dummy.updateMatrix();
                 edgesMesh.setMatrixAt(visibleCount, dummy.matrix);
@@ -919,7 +1028,7 @@ export class GraphSceneService {
         }
 
         // Hide remaining slots
-        dummy.position.set(OFFSCREEN_POS, OFFSCREEN_POS, OFFSCREEN_POS);
+        dummy.position.set(OFFSCREEN_POSITION, OFFSCREEN_POSITION, OFFSCREEN_POSITION);
         dummy.scale.setScalar(0);
         dummy.updateMatrix();
         for (let i = visibleCount; i < this.edges.length; i++) {
@@ -928,7 +1037,6 @@ export class GraphSceneService {
 
         edgesMesh.instanceMatrix.needsUpdate = true;
         edgesMesh.computeBoundingSphere();
-        this.updateEdgeColors();
     }
 
     private updateLabelPositions(): void {
@@ -936,14 +1044,14 @@ export class GraphSceneService {
         for (let i = 0; i < this.resources.labelSprites.length && i < this.nodes.length; i++) {
             const node = this.nodes[i];
             const sprite = this.resources.labelSprites[i];
-            sprite.position.set(node.x, node.y + node.radius + 4, node.z);
+            sprite.position.set(node.x, node.y + node.radius + LABEL_OFFSET_ABOVE_NODE, node.z);
             sprite.visible = this.isNodeVisible(node);
         }
     }
 
     private createLabelSprite(text: string): Sprite {
         const THREE = this.three!;
-        const font = `${LABEL_FONT_SIZE}px Inter, sans-serif`;
+        const font = `${LABEL_FONT_SIZE}px ${LABEL_FONT_FAMILY}`;
 
         // Measure text width first
         const measureCanvas = document.createElement('canvas');
@@ -951,8 +1059,7 @@ export class GraphSceneService {
         measureCtx.font = font;
         const textWidth = measureCtx.measureText(text).width;
 
-        const padding = 12;
-        const canvasWidth = Math.ceil(textWidth + padding * 2);
+        const canvasWidth = Math.ceil(textWidth + LABEL_HORIZONTAL_PADDING * 2);
         const canvasHeight = LABEL_CANVAS_HEIGHT;
 
         const canvas = document.createElement('canvas');
@@ -961,7 +1068,7 @@ export class GraphSceneService {
         const context = canvas.getContext('2d')!;
 
         // Background pill
-        context.fillStyle = LABEL_BG_COLOR;
+        context.fillStyle = LABEL_BACKGROUND_COLOR;
         const radius = canvasHeight / 2;
         context.beginPath();
         context.roundRect(0, 0, canvasWidth, canvasHeight, radius);
@@ -979,9 +1086,8 @@ export class GraphSceneService {
         const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
         const sprite = new THREE.Sprite(material);
         // Scale proportional to canvas aspect ratio
-        const spriteHeight = 8;
-        const spriteWidth = spriteHeight * (canvasWidth / canvasHeight);
-        sprite.scale.set(spriteWidth, spriteHeight, 1);
+        const spriteWidth = LABEL_SPRITE_HEIGHT * (canvasWidth / canvasHeight);
+        sprite.scale.set(spriteWidth, LABEL_SPRITE_HEIGHT, 1);
         return sprite;
     }
 
@@ -1032,7 +1138,7 @@ export class GraphSceneService {
                     dummy.scale.setScalar(node.radius * OUTLINE_SCALE);
                     tempColor.setRGB(borderColor[0], borderColor[1], borderColor[2]);
                 } else {
-                    dummy.position.set(OFFSCREEN_POS, OFFSCREEN_POS, OFFSCREEN_POS);
+                    dummy.position.set(OFFSCREEN_POSITION, OFFSCREEN_POSITION, OFFSCREEN_POSITION);
                     dummy.scale.setScalar(0);
                     tempColor.setRGB(0, 0, 0);
                 }
@@ -1066,7 +1172,7 @@ export class GraphSceneService {
                     const nx = dx / len;
                     const ny = dy / len;
                     const nz = dz / len;
-                    const offset = count * 6;
+                    const offset = count * HIGHLIGHT_LINE_FLOATS_PER_EDGE;
                     positions[offset] = src.x + nx * src.radius;
                     positions[offset + 1] = src.y + ny * src.radius;
                     positions[offset + 2] = src.z + nz * src.radius;
@@ -1085,13 +1191,11 @@ export class GraphSceneService {
     private updateEdgeColors(): void {
         if (!this.resources || !this.three) return;
 
-        const defaultColor: ColorTuple = [0.5, 0.5, 0.55];
-        const highlightColor: ColorTuple = [1.0, 0.95, 0.4];
         const edgesMesh = this.resources.edgesMesh;
         const tempColor = new this.three.Color();
 
         for (let i = 0; i < this.edges.length; i++) {
-            const color: ColorTuple = this.connectedEdgeIndices.has(i) ? highlightColor : defaultColor;
+            const color: ColorTuple = this.connectedEdgeIndices.has(i) ? HIGHLIGHT_EDGE_COLOR : EDGE_COLOR;
             tempColor.setRGB(color[0], color[1], color[2]);
             edgesMesh.setColorAt(i, tempColor);
         }
@@ -1120,6 +1224,7 @@ export class GraphSceneService {
             orthoCamera.bottom = -height / 2;
             orthoCamera.updateProjectionMatrix();
         }
+        this.requestRender();
     }
 
     /** Distance from point (px,py) to line segment (ax,ay)-(bx,by) in screen pixels. */
@@ -1155,14 +1260,15 @@ export class GraphSceneService {
         }
     }
 
-    private updateDots(): void {
+    /** Advance the dots along their edges by `deltaSeconds` of animation time. */
+    private updateDots(deltaSeconds: number): void {
         if (!this.dotsMesh || !this.three || this.dotsData.length === 0) return;
         const THREE = this.three;
         const dummy = new THREE.Object3D();
 
         for (let i = 0; i < this.dotsData.length; i++) {
             const dot = this.dotsData[i];
-            dot.t += dot.speed / 60; // ~60fps
+            dot.t += dot.speed * deltaSeconds;
             if (dot.t > 1) dot.t -= 1;
 
             const edge = this.edges[dot.edgeIndex];
@@ -1194,7 +1300,7 @@ export class GraphSceneService {
         // Hide unused instances
         const zeroDummy = new THREE.Object3D();
         zeroDummy.scale.setScalar(0);
-        zeroDummy.position.set(OFFSCREEN_POS, OFFSCREEN_POS, OFFSCREEN_POS);
+        zeroDummy.position.set(OFFSCREEN_POSITION, OFFSCREEN_POSITION, OFFSCREEN_POSITION);
         zeroDummy.updateMatrix();
         const maxDots = this.edges.length * DOTS_PER_EDGE;
         for (let i = this.dotsData.length; i < maxDots; i++) {
@@ -1209,7 +1315,7 @@ export class GraphSceneService {
         const THREE = this.three;
         const zeroDummy = new THREE.Object3D();
         zeroDummy.scale.setScalar(0);
-        zeroDummy.position.set(OFFSCREEN_POS, OFFSCREEN_POS, OFFSCREEN_POS);
+        zeroDummy.position.set(OFFSCREEN_POSITION, OFFSCREEN_POSITION, OFFSCREEN_POSITION);
         zeroDummy.updateMatrix();
         const maxDots = this.edges.length * DOTS_PER_EDGE;
         for (let i = 0; i < maxDots; i++) {
@@ -1255,7 +1361,7 @@ export class GraphSceneService {
                 dummy.position.set(node.x, node.y, node.z);
                 dummy.scale.setScalar(node.radius);
             } else {
-                dummy.position.set(OFFSCREEN_POS, OFFSCREEN_POS, OFFSCREEN_POS);
+                dummy.position.set(OFFSCREEN_POSITION, OFFSCREEN_POSITION, OFFSCREEN_POSITION);
                 dummy.scale.setScalar(0);
             }
             dummy.updateMatrix();
@@ -1277,21 +1383,35 @@ export class GraphSceneService {
         this.instancesSorted = true;
     }
 
-    private startRenderLoop(): void {
-        const render = (): void => {
-            if (!this.resources) return;
-            this.resources.controls.update();
-            if (this.dotsData.length > 0) {
-                this.updateDots();
-            }
-            if (this.is3D && this.depthNodesMesh) {
-                this.render3DMultiPass();
-            } else {
-                this.resources.renderer.render(this.resources.scene, this.resources.camera);
-            }
-            this.animationFrameId = requestAnimationFrame(render);
-        };
-        this.animationFrameId = requestAnimationFrame(render);
+    /**
+     * Draw one frame. Keeps requesting frames only while dots are animating; everything else
+     * (simulation ticks, camera moves, hover, filters, resize) calls `requestRender` itself.
+     */
+    private renderFrame(timestamp: number): void {
+        this.frameRequestId = null;
+        if (!this.resources) return;
+
+        const deltaSeconds =
+            this.lastFrameTimestamp === null
+                ? 0
+                : Math.min((timestamp - this.lastFrameTimestamp) / 1000, MAX_FRAME_DELTA_SECONDS);
+
+        this.resources.controls.update();
+        if (this.dotsData.length > 0) {
+            this.updateDots(deltaSeconds);
+        }
+        if (this.is3D && this.depthNodesMesh) {
+            this.render3DMultiPass();
+        } else {
+            this.resources.renderer.render(this.resources.scene, this.resources.camera);
+        }
+
+        if (this.dotsData.length > 0) {
+            this.lastFrameTimestamp = timestamp;
+            this.requestRender();
+        } else {
+            this.lastFrameTimestamp = null;
+        }
     }
 
     /**
@@ -1326,8 +1446,12 @@ export class GraphSceneService {
         // Suppress background for subsequent passes to preserve color buffer
         scene.background = null;
 
-        // Sort node instances back-to-front for correct transparent blending
-        this.sortInstancesByDepth();
+        // Sort node instances back-to-front for correct transparent blending — only when the
+        // camera, positions, colors or visibility changed since the last sort
+        if (this.depthOrderStale) {
+            this.sortInstancesByDepth();
+            this.depthOrderStale = false;
+        }
 
         // Pass 2 — transparent nodes + outlines + labels (skip depth test — occlusion handled by sorting)
         depthMesh.visible = false;

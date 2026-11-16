@@ -53,13 +53,20 @@ def registry(*errors: type[Exception]):
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
     EntityNotFoundError,
-    GraphNotIndexedError,
     GraphRagConfigNotFoundError,
     NotRunningOperationError,
     RelationshipNotFoundError,
 )
 def handler_not_found(request: Request, error: Exception) -> Response:
     return create_response(request, status_codes.HTTP_404_NOT_FOUND, "not_found", error)
+
+
+@registry(GraphNotIndexedError)
+def handler_graph_not_indexed(request: Request, error: Exception) -> Response:
+    # The RAG exists but has no index output yet: a state the caller can resolve by
+    # indexing, not a missing resource. django_app recognises the code and tells the
+    # browser so.
+    return create_response(request, status_codes.HTTP_409_CONFLICT, "graph_not_indexed", error)
 
 
 @registry(UnsupportedError)

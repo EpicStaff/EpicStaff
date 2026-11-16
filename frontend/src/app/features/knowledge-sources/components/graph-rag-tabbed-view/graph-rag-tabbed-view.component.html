@@ -11,7 +11,7 @@
         mod="sm"
         [active]="activeTab() === 'visualization'"
         [disabled]="!showTabs()"
-        matTooltip="Available after indexing has run"
+        matTooltip="Available after indexing"
         [matTooltipDisabled]="showTabs()"
         (action)="onTabChange('visualization')"
     >
@@ -22,7 +22,7 @@
         mod="sm"
         [active]="activeTab() === 'data-tables'"
         [disabled]="!showTabs()"
-        matTooltip="Available after indexing has run"
+        matTooltip="Available after indexing"
         [matTooltipDisabled]="showTabs()"
         (action)="onTabChange('data-tables')"
     >

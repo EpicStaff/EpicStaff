@@ -8,7 +8,6 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from tables.clients.errors import ClientError
 from tables.clients.knowledge import KnowledgeClient
 from tables.exceptions import (
     CollectionNotFoundException,
@@ -31,9 +30,14 @@ from tables.serializers.graph_rag_serializers import (
     GraphRagDocumentListSerializer,
     GraphRagIndexConfigUpdateSerializer,
     GraphRagSerializer,
+    GraphRagTableDataQuerySerializer,
+    GraphRagVisualizationQuerySerializer,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.swagger_schemas.common_schemas import INTERNAL_SERVER_ERROR_500_RESPONSE
+from tables.swagger_schemas.knowledge_schemas.graph_rag_schemas import (
+    GRAPH_INDEX_READ_RESPONSES,
+)
 
 # ORM path from a GraphRag up to the owning collection's org.
 _GRAPH_RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
@@ -400,79 +404,59 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(responses=GRAPH_INDEX_READ_RESPONSES)
     @action(detail=True, methods=["get"], url_path="table-summary")
     def table_summary(self, request, pk=None):
         """Proxy table summary (list of tables with row counts) from the knowledge_new service."""
         self._assert_graph_rag_in_active_org(pk)
 
-        try:
-            with KnowledgeClient() as client:
-                data = client.get_table_summary(rag_id=int(pk))
-        except ClientError as e:
-            return Response({"error": e.public_detail}, status=e.status_code)
-
+        with KnowledgeClient() as client:
+            data = client.get_table_summary(rag_id=int(pk))
         return Response(data)
 
+    @extend_schema(
+        parameters=[GraphRagTableDataQuerySerializer],
+        responses=GRAPH_INDEX_READ_RESPONSES,
+    )
     @action(detail=True, methods=["get"], url_path="tables/(?P<table_name>[a-z_]+)")
     def table_data(self, request, pk=None, table_name=None):
         """Proxy paginated parquet table data from the knowledge_new service."""
         self._assert_graph_rag_in_active_org(pk)
 
-        page = request.query_params.get("page", "1")
-        page_size = request.query_params.get("page_size", "10")
-        search = request.query_params.get("search") or None
+        query = GraphRagTableDataQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
 
-        try:
-            page = int(page)
-            page_size = min(int(page_size), 100)
-        except (ValueError, TypeError):
-            return Response(
-                {"error": "page and page_size must be integers."},
-                status=status.HTTP_400_BAD_REQUEST,
+        with KnowledgeClient() as client:
+            data = client.get_table_data(
+                rag_id=int(pk),
+                table_name=table_name,
+                page=query.validated_data["page"],
+                page_size=query.validated_data["page_size"],
+                search=query.validated_data.get("search") or None,
             )
-
-        try:
-            with KnowledgeClient() as client:
-                data = client.get_table_data(
-                    rag_id=int(pk),
-                    table_name=table_name,
-                    page=page,
-                    page_size=page_size,
-                    search=search,
-                )
-        except ClientError as e:
-            return Response({"error": e.public_detail}, status=e.status_code)
-
         return Response(data)
 
+    @extend_schema(
+        parameters=[GraphRagVisualizationQuerySerializer],
+        responses=GRAPH_INDEX_READ_RESPONSES,
+    )
     @action(detail=True, methods=["get"], url_path="visualization")
     def visualization(self, request, pk=None):
         """Proxy graph visualization data from the knowledge_new service."""
         self._assert_graph_rag_in_active_org(pk)
 
-        max_entities_raw = request.query_params.get("max_entities")
-        max_entities = None
-        if max_entities_raw is not None:
-            try:
-                max_entities = int(max_entities_raw)
-            except (ValueError, TypeError):
-                return Response(
-                    {"error": "max_entities must be an integer."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        query = GraphRagVisualizationQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
 
-        search = request.query_params.get("search")
-
-        try:
-            with KnowledgeClient() as client:
-                data = client.get_visualization(
-                    rag_id=int(pk), max_entities=max_entities, search=search
-                )
-        except ClientError as e:
-            return Response({"error": e.public_detail}, status=e.status_code)
-
+        with KnowledgeClient() as client:
+            data = client.get_visualization(
+                rag_id=int(pk),
+                max_entities=query.validated_data.get("max_entities"),
+                search=query.validated_data.get("search") or None,
+            )
         return Response(data)
 
+    @extend_schema(responses=GRAPH_INDEX_READ_RESPONSES)
     @action(
         detail=True,
         methods=["get"],
@@ -482,14 +466,11 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         """Proxy entity description lookup to the knowledge_new service."""
         self._assert_graph_rag_in_active_org(pk)
 
-        try:
-            with KnowledgeClient() as client:
-                data = client.get_entity_detail(rag_id=int(pk), entity_id=entity_id)
-        except ClientError as e:
-            return Response({"error": e.public_detail}, status=e.status_code)
-
+        with KnowledgeClient() as client:
+            data = client.get_entity_detail(rag_id=int(pk), entity_id=entity_id)
         return Response(data)
 
+    @extend_schema(responses=GRAPH_INDEX_READ_RESPONSES)
     @action(
         detail=True,
         methods=["get"],
@@ -499,12 +480,6 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         """Proxy relationship description lookup to the knowledge_new service."""
         self._assert_graph_rag_in_active_org(pk)
 
-        try:
-            with KnowledgeClient() as client:
-                data = client.get_relationship_detail(
-                    rag_id=int(pk), relationship_id=relationship_id
-                )
-        except ClientError as e:
-            return Response({"error": e.public_detail}, status=e.status_code)
-
+        with KnowledgeClient() as client:
+            data = client.get_relationship_detail(rag_id=int(pk), relationship_id=relationship_id)
         return Response(data)

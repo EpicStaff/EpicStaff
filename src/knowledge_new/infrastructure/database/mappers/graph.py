@@ -7,6 +7,7 @@ from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_chunking.chunking_config import ChunkingConfig as GraphRagChunkingConfig
 from graphrag_input import TextDocument
 from graphrag_llm.config import ModelConfig
+from graphrag_storage import StorageConfig
 from infrastructure.database.models import EmbeddingConfig as ORMEmbeddingConfig
 from infrastructure.database.models import (
     GraphRag,
@@ -114,6 +115,11 @@ def graph_rag_orm_to_rag(orm_rag: GraphRag) -> Rag:
     )
 
 
+def graph_rag_output_storage_config(rag_id: int, *, slot: SlotEnum) -> StorageConfig:
+    """Return the storage config where `slot`'s index run writes its output tables."""
+    return create_storage_config(rag_id=rag_id, subdir=f"{slot}/output")
+
+
 def graph_rag_orm_to_graphrag_config(orm_rag: GraphRag, *, slot: SlotEnum) -> GraphRagConfig:
     llm_config: LLMConfig = orm_rag.llm
     embedding_config: ORMEmbeddingConfig = orm_rag.embedder
@@ -125,7 +131,7 @@ def graph_rag_orm_to_graphrag_config(orm_rag: GraphRag, *, slot: SlotEnum) -> Gr
         extract_graph=_build_extract_graph_config(index_config),
         cluster_graph=_build_cluster_graph_config(index_config),
         input_storage=create_storage_config(rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/input"),
-        output_storage=create_storage_config(rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/output"),
+        output_storage=graph_rag_output_storage_config(orm_rag.graph_rag_id, slot=slot),
         update_output_storage=create_storage_config(
             rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/update_output"
         ),

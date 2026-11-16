@@ -27,9 +27,7 @@ _STRATEGIES: dict[RAGStrategy, type[AbstractGraphTableDataOrchestrator]] = {
     RAGStrategy.GRAPH: GraphTableDataOrchestrator
 }
 
-_SUMMARY_STRATEGIES: dict[RAGStrategy, type] = {
-    RAGStrategy.GRAPH: GraphTableSummaryOrchestrator
-}
+_SUMMARY_STRATEGIES: dict[RAGStrategy, type] = {RAGStrategy.GRAPH: GraphTableSummaryOrchestrator}
 
 
 def build_graph_table_data(

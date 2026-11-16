@@ -1,13 +1,18 @@
-<div class="grid-table-wrapper">
+<div
+    class="grid-table-wrapper"
+    role="grid"
+>
     <!-- Header row -->
     <div
         class="grid-table-header"
+        role="row"
         [style.grid-template-columns]="gridTemplateColumns()"
     >
         @for (col of columns(); track col) {
             <div
                 #headerCell
                 class="grid-table-cell"
+                role="columnheader"
             >
                 <span class="grid-table-col-label">{{ formatColumnHeader(col) }}</span>
                 <span
@@ -23,17 +28,29 @@
     </div>
 
     <!-- Body rows -->
-    <div class="grid-table-body">
-        @for (row of rows(); track $index) {
+    <div
+        class="grid-table-body"
+        role="rowgroup"
+    >
+        @for (row of rows(); track $index; let rowIndex = $index) {
             <div
                 class="grid-table-row"
+                role="row"
                 [class.grid-table-row--clickable]="clickableRows()"
                 [style.grid-template-columns]="gridTemplateColumns()"
             >
-                @for (col of columns(); track col) {
+                @for (col of columns(); track col; let columnIndex = $index) {
+                    <!-- Roving tabindex: one cell is in the Tab order, the arrow keys move between cells -->
                     <div
+                        #bodyCell
                         class="grid-table-cell grid-table-cell--body"
-                        (click)="onCellClick(col, row[col], $event, row)"
+                        role="gridcell"
+                        [tabIndex]="cellTabIndex(rowIndex, columnIndex)"
+                        (focus)="onCellFocus(rowIndex, columnIndex)"
+                        (click)="onCellActivate(row[col], row, bodyCell)"
+                        (keydown)="
+                            onCellKeydown($event, row[col], row, { row: rowIndex, column: columnIndex }, bodyCell)
+                        "
                     >
                         <span
                             class="grid-table-cell-text"
