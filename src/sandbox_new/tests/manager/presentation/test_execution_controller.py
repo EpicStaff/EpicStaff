@@ -7,7 +7,8 @@ caller the job was taken and then fail it in the worker.
 A full sandbox answers 503 with `Retry-After`, decided by a guard before the body is
 read; held jobs do not fill it. A job that would be held answers 503 once the held cap
 is reached. The status endpoint answers for every execution the sandbox still knows, and 404
-for the rest -- that 404 is how a waiting producer learns to stop waiting.
+for the rest -- that 404 is how a waiting producer learns to stop waiting. A secret the
+sandbox cannot decrypt is refused with 400, the answer naming the secret but not its value.
 """
 
 from litestar import status_codes
@@ -23,7 +24,7 @@ SUBMISSION = {
     "entrypoint": "main",
     "global_kwargs": {"LIMIT": 3},
     "func_kwargs": {"value": "x"},
-    "secrets": {"TOKEN": "s3cret"},
+    "secrets": {},
     "use_storage": False,
     "storage_allowed_paths": [],
     "storage_org_prefix": None,
@@ -44,6 +45,23 @@ def test_submit_against_a_completed_venv_is_accepted_and_dispatched(
     assert response.json() == {"execution_id": "exec-1", "status": "queued"}
     assert [job.execution_id for job in dispatcher.dispatched] == ["exec-1"]
     assert dispatcher.dispatched[0].venv_hash == "1abc"
+
+
+def test_submit_with_an_undecryptable_secret_is_rejected_naming_only_the_secret(
+    client, venv_repository, dispatcher, registry
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={**SUBMISSION, "venv_id": venv.id, "secrets": {"API_KEY": "gAAAAAforged"}},
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "API_KEY" in response.text
+    assert "gAAAAAforged" not in response.text
+    assert dispatcher.dispatched == []
+    assert registry.status("exec-1") is None
 
 
 def test_an_accepted_submission_logs_exec_received(client, venv_repository, checkpoints):

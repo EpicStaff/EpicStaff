@@ -268,8 +268,7 @@ class TestImportFromStorage:
             "status_code": 400,
             "code": "upload_rejected",
             "message": (
-                "Upload rejected. Archive 'report.docx' expands to 500 bytes, "
-                "over the limit of 100 bytes"
+                "Upload rejected. Archive 'report.docx' expands to more than 100 bytes"
             ),
         }
         assert _document_count(empty_collection) == 0

@@ -5,6 +5,7 @@ from django.db.models import Avg, Count, Prefetch
 from loguru import logger
 from rbac.authorship import record_last_edit, resolve_author
 from src.shared.enums.knowledge_new import RAGStrategy
+from src.shared.models import UserAction
 from src.shared.models.search_config_suggestion import SuggestedCollectionMetrics
 from tables.clients import KnowledgeClient
 from tables.clients.errors import (
@@ -30,6 +31,8 @@ from tables.models.knowledge_models.naive_rag_models import (
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 
 _GRAPH_RAG_CLEANUP_TIMEOUT_SECONDS = 5.0
 
@@ -124,7 +127,7 @@ class CollectionManagementService:
         org_id: int | None = None,
     ) -> SourceCollection:
         """
-        Create a new empty collection.
+        Create a new empty collection, recorded as a user action of the request's caller.
 
         Args:
             collection_name: Name for collection (auto-generated if None)
@@ -146,6 +149,7 @@ class CollectionManagementService:
             org_id=org_id,
         )
         record_last_edit(collection, created_by)
+        record_user_action(action=UserAction.CREATED, org_id=collection.org_id, target=collection)
 
         logger.info(
             f"Created collection '{collection.collection_name}' (ID: {collection.collection_id})"
@@ -169,7 +173,8 @@ class CollectionManagementService:
             collection_name: New collection name (unchanged if None)
             description: New description (unchanged if None)
             user: Acting user; becomes the last editor if the name or description changed.
-                Never becomes the author, even of a collection that has none.
+                Never becomes the author, even of a collection that has none. The change is
+                recorded as a `renamed` (or `updated`) user action; a no-op records nothing.
 
         Returns:
             SourceCollection: Updated collection
@@ -195,6 +200,15 @@ class CollectionManagementService:
         changed = (collection.collection_name, collection.description) != state_before
         if changed:
             record_last_edit(collection, user)
+            renamed = collection.collection_name != state_before[0]
+            record_user_action(
+                action=UserAction.RENAMED if renamed else UserAction.UPDATED,
+                org_id=collection.org_id,
+                target=collection,
+                previous_name=state_before[0] if renamed else None,
+            )
+        else:
+            mark_request_handled()
 
         logger.info(f"Updated collection {collection_id} fields: {update_fields or 'none'}")
 
@@ -343,6 +357,8 @@ class CollectionManagementService:
         Returns:
             dict: Deletion summary
         """
+        # Each binned collection records itself; a request that binned none records nothing.
+        mark_request_handled()
         if not collection_ids:
             return {
                 "deleted_count": 0,

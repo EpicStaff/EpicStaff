@@ -21,7 +21,6 @@ import {
     workspacePermissionGuard,
 } from './core/guards/workspace.guard';
 import { HIDE_SIDENAV_ON_PHONE } from './core/services/app-navigation-drawer.service';
-import { auditTrailEnabledGuard } from './features/audit/guards/audit-trail-enabled.guard';
 import { chatEnabledGuard } from './features/chat/guards/chat-enabled.guard';
 import { FILES_TAB } from './features/files/constants/files-tabs';
 import { availablePluginGuard } from './features/plugins/guards/available-plugin.guard';
@@ -346,12 +345,7 @@ export const routes: Routes = [
                     },
                     {
                         path: 'audit',
-                        loadComponent: () =>
-                            import('./features/audit/audit-sessions-browser.component').then(
-                                (m) => m.AuditSessionsBrowserComponent
-                            ),
-                        canActivate: [auditTrailEnabledGuard, permissionGuard],
-                        data: { permission: [ResourceCode.Audit, ActionCode.Read] },
+                        loadChildren: () => import('./features/audit/audit.routes').then((m) => m.AUDIT_ROUTES),
                     },
                     {
                         path: 'settings',

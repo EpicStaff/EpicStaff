@@ -380,13 +380,17 @@ class TestCopyAndImportNumberAmongOwnNames:
     ):
         AuditFilterPreset.objects.create(org=acme, created_by=admin_acme, name="Failed runs (3)")
 
-        assert next_free_preset_name(acme.id, admin_acme.id, "Fresh") == "Fresh"
-        assert next_free_preset_name(acme.id, admin_acme.id, "Failed runs") == "Failed runs (2)"
+        assert next_free_preset_name(acme.id, admin_acme.id, "Fresh", domain="sessions") == "Fresh"
+        assert next_free_preset_name(acme.id, admin_acme.id, "Failed runs", domain="sessions") == "Failed runs (2)"
         assert (
-            next_free_preset_name(acme.id, admin_acme.id, "Failed runs (3)") == "Failed runs (2)"
+            next_free_preset_name(acme.id, admin_acme.id, "Failed runs (3)", domain="sessions") == "Failed runs (2)"
         )
-        assert next_free_preset_name(acme.id, colleague_acme.id, "Failed runs") == "Failed runs"
-        assert next_free_preset_name(beta.id, admin_acme.id, "Failed runs") == "Failed runs"
+        assert next_free_preset_name(acme.id, colleague_acme.id, "Failed runs", domain="sessions") == "Failed runs"
+        assert next_free_preset_name(beta.id, admin_acme.id, "Failed runs", domain="sessions") == "Failed runs"
+        assert (
+            next_free_preset_name(acme.id, admin_acme.id, "Failed runs", domain="user_actions")
+            == "Failed runs"
+        )
 
 
 @pytest.mark.django_db
@@ -441,7 +445,12 @@ class TestPrivatePresetVisibleOnlyToAuthor:
         assert bulk.status_code == 200
         exported = json.loads(bulk.content)[EntityType.AUDIT_FILTER_PRESET]
         assert exported == [
-            {"id": private_preset.id, "name": "My private", "filter_body": {"query": "status = ok"}}
+            {
+                "id": private_preset.id,
+                "name": "My private",
+                "filter_body": {"query": "status = ok"},
+                "domain": "sessions",
+            }
         ]
 
 

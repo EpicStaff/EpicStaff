@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
     AuthorshipDetailsDialogService,
     ButtonComponent,
@@ -25,9 +26,10 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, RealtimeChannel, ResourceCode } from '@shared/models';
 import { RealtimeChannelService } from '@shared/services';
-import { movedToRecycleBinMessage } from '@shared/utils';
+import { movedToRecycleBinMessage, takeQueryParams } from '@shared/utils';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { AgentDefinition } from '../../../agent-definitions/models/agent-definition.model';
@@ -65,6 +67,11 @@ export class VoiceSettingsSectionComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly injector = inject(Injector);
+    private readonly permissions = inject(PermissionsService);
+    private readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
+    // `?channelId=`, taken from the URL at init and opened after the first load
+    private linkedChannelId: string | undefined;
 
     status = signal<LoadingState>(LoadingState.IDLE);
 
@@ -82,6 +89,7 @@ export class VoiceSettingsSectionComponent implements OnInit {
     ];
 
     ngOnInit(): void {
+        this.linkedChannelId = takeQueryParams(this.route, this.router, ['channelId']).channelId;
         this.loadAll();
 
         this.channelService.channelsChanged$
@@ -103,6 +111,7 @@ export class VoiceSettingsSectionComponent implements OnInit {
                 next: (channels) => {
                     this.channels.set(channels);
                     this.status.set(LoadingState.LOADED);
+                    this.openLinkedChannel();
                 },
                 error: () => this.status.set(LoadingState.ERROR),
             });
@@ -111,6 +120,17 @@ export class VoiceSettingsSectionComponent implements OnInit {
             .getAgentDefinitions()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({ next: (defs) => this.agentDefinitions.set(defs), error: () => {} });
+    }
+
+    /**
+     * `?channelId=` opens that channel as its Edit button does, once, after the first load. A viewer without that button
+     * gets the list only. An unknown id is ignored.
+     */
+    private openLinkedChannel(): void {
+        const channelId = this.linkedChannelId;
+        this.linkedChannelId = undefined;
+        const channel = this.channels().find((candidate) => candidate.id === Number(channelId));
+        if (channel && this.permissions.can(ResourceCode.Voice, ActionCode.Update)) this.onEditChannel(channel);
     }
 
     getStreamUrl(channel: RealtimeChannel): string | null {

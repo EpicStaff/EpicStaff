@@ -6,6 +6,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
+from src.shared.models import UserAction
+from tables.models.base_models import SoftDeleteMixin
 from tables.serializers.serializers import (
     BulkDeleteQuerySerializer,
     BulkDeleteRequestSerializer,
@@ -17,6 +19,9 @@ from tables.serializers.serializers import (
 from tables.services.delete_services import BaseDeleteService
 from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
 from tables.services.trigger_nodes import trigger_node_access
+from user_audit.context import mark_request_handled
+from user_audit.read_only import reads_only
+from user_audit.recorder import record_copy, record_user_action
 from utils.logger import logger
 
 
@@ -26,6 +31,9 @@ class CopyActionMixin:
     Requires two class attributes:
         copy_service_class: Copy service to instantiate.
         copy_serializer_class: Serializer for the response.
+
+    Records the new copy as `copied`, the source's name as its previous name, like a
+    storage or document copy.
     """
 
     copy_service_class = None
@@ -49,6 +57,7 @@ class CopyActionMixin:
                 new_instance = self.copy_service_class().copy(
                     instance, name=name, user=request.user, **extra
                 )
+                record_copy(instance, new_instance)
         except IntegrityError:
             logger.warning(
                 "Copy of %s#%s raced on a unique constraint; client should retry.",
@@ -125,6 +134,12 @@ class BulkDeleteActionMixin:
         # usage when the delete runs.
         with transaction.atomic():
             service.assert_deletable(instance)
+            if not isinstance(instance, SoftDeleteMixin):
+                # Recorded while the row still exists, as on the bulk path: once it is gone
+                # the request's fallback record could not name it. A soft delete records itself.
+                record_user_action(
+                    action=UserAction.DELETED, org_id=service.org_id, target=instance
+                )
             super().perform_destroy(instance)
 
     @action(detail=False, methods=["post"], url_path="bulk-delete")
@@ -136,6 +151,8 @@ class BulkDeleteActionMixin:
 
         dry_run = query.validated_data["dry_run"]
         ids = body.validated_data["ids"]
+        # Each deleted row records itself; a dry run or a delete of nothing records nothing.
+        mark_request_handled()
         service = self.get_delete_service()
         result = service.preview(ids) if dry_run else service.delete(ids)
         logger.info(
@@ -233,6 +250,7 @@ class InspectActionMixin:
     """Adds a ``inspect_import`` action to an import-capable ViewSet."""
 
     @action(detail=False, methods=["post"], url_path="import/inspect")
+    @reads_only
     def inspect_import(self, request):
         serializer = InspectImportRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

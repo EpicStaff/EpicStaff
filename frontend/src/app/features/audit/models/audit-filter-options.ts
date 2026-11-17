@@ -1,6 +1,7 @@
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { auditNodeTypeLabel } from '../utils/audit-event-label.util';
+import { AuditFieldCatalog } from './audit-domain.models';
 import { AuditEnumOption, AuditFilterOp } from './audit-filter.models';
 
 // same label as the table's Node Type column, so a type reads the same in both places
@@ -84,13 +85,14 @@ export const JOIN_OPTIONS: AuditEnumOption[] = [
     { value: 'or', label: 'OR' },
 ];
 
+// The first operator is the one a new condition starts with.
 export const JSON_OPERATORS: AuditFilterOp[] = [
-    'equals',
-    'key_not_equals',
     'contains',
     'not_contains',
     'starts_with',
     'ends_with',
+    'equals',
+    'key_not_equals',
     'key_exists',
     'key_not_exists',
     'gt',
@@ -162,3 +164,11 @@ export const QUERY_FIELDS: string[] = [
     'prompt',
     'message_text',
 ];
+
+export const SESSION_FIELD_CATALOG: AuditFieldCatalog = {
+    domain: 'sessions',
+    builderFields: [],
+    queryFields: QUERY_FIELDS,
+    queryExamples: QUERY_EXAMPLES,
+    queryPlaceholder: 'e.g. status in (failed) and name == "Session Start"',
+};

@@ -31,6 +31,7 @@ import { filter, map } from 'rxjs/operators';
 
 import { GuidedTourService } from '../../../core/guided-tour';
 import { AppNavigationDrawerService } from '../../../core/services/app-navigation-drawer.service';
+import { auditTabsFor } from '../../../features/audit/guards/audit-domain-enabled.guard';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../features/create-agent-tour/create-agent-tour-anchors';
 import { AppsListComponent } from '../../../features/plugins/components/apps-list/apps-list.component';
@@ -333,9 +334,7 @@ export class LeftSidebarComponent {
                 activePaths: ['/audit'],
                 icon: 'audit',
                 label: 'Audit',
-                isPermitted: () =>
-                    this.configService.isAuditTrailEnabled &&
-                    this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
+                isPermitted: () => auditTabsFor(this.configService, this.permissionService).length > 0,
                 separatedAbove: true,
             },
         ];

@@ -20,6 +20,7 @@ from tables.models.graph_models import GraphStorageFile, StorageFile, WebhookTri
 from tables.services.secrets import secret_service
 from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.sealed_values import open_sealed_values
 
 URL = "/api/run-python-code/"
 PLAINTEXT = "sk-target-run-abc123"
@@ -155,7 +156,7 @@ class TestPythonNodeTarget:
 
         assert response.status_code == 200, response.data
         [task] = _submitted_tasks(sandbox_intake)
-        assert task["secrets"] == {"TARGET_KEY": PLAINTEXT}
+        assert open_sealed_values(task["secrets"]) == {"TARGET_KEY": PLAINTEXT}
 
     def test_undeclared_secret_is_rejected_before_anything_is_written(
         self, acme_client, acme, acme_graph, sandbox_intake

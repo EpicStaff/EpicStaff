@@ -13,6 +13,7 @@ from rbac.governance.organizations import (
     OrganizationManagementService,
 )
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
+from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
 from rbac.schemas.organizations import (
     ORGANIZATION_SETTINGS_UPDATE,
@@ -56,6 +57,10 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     through the project's `custom_exception_handler` envelope; the view layer
     does not catch or translate them.
     """
+
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = Organization.objects.none()
 
     superadmin_actions = frozenset({"create", "deactivate", "reactivate", "destroy"})
     pagination_class = CrossOrgAdminPagination
@@ -191,6 +196,10 @@ class OrganizationSelfServiceViewSet(viewsets.ViewSet):
     JWT-only: `RestrictApiKeyToUserKeyReads` refuses every API key here, as on the
     cross-org governance writes, so a key cannot change audit retention.
     """
+
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = Organization.objects.none()
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, HasOrgPermission]

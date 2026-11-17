@@ -99,6 +99,7 @@ import {
 import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { inputMapFromRows } from '../../input-map/input-map-rows';
 import {
     MissingReferenceNoteComponent,
     ROUTE_DIFF_FIELDS,
@@ -1375,15 +1376,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     private serializeInputMap(arrayName: string): Record<string, string> {
-        const arr = this.form.get(arrayName) as FormArray;
-        const result: Record<string, string> = {};
-        arr.controls.forEach((ctrl) => {
-            const pair = ctrl.value;
-            if (pair.key?.trim()) {
-                result[pair.key.trim()] = pair.value || '';
-            }
-        });
-        return result;
+        return inputMapFromRows((this.form.get(arrayName) as FormArray).getRawValue());
     }
 
     private cloneConditionGroups(groups: ConditionGroup[]): ConditionGroup[] {

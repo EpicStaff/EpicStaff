@@ -1,6 +1,8 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { AuthorshipDetailsDialogService } from '@shared/components';
 import { GetMcpToolRequest } from '@shared/models';
 import { NEVER, of, throwError } from 'rxjs';
@@ -70,6 +72,7 @@ describe('ToolsListComponent "view_details" action', () => {
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
+                provideRouter([]),
                 { provide: TOOLS_LIST_PORT, useValue: port },
                 { provide: AuthorshipDetailsDialogService, useValue: authorshipDetailsDialog },
             ],
@@ -122,6 +125,7 @@ describe('ToolsListComponent "duplicate" action', () => {
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
+                provideRouter([]),
                 { provide: TOOLS_LIST_PORT, useValue: port },
                 { provide: ToastService, useValue: toast },
             ],
@@ -164,6 +168,7 @@ describe('ToolsListComponent bulk duplicate', () => {
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
+                provideRouter([]),
                 { provide: TOOLS_LIST_PORT, useValue: port },
                 { provide: ToastService, useValue: toast },
             ],
@@ -180,5 +185,54 @@ describe('ToolsListComponent bulk duplicate', () => {
             '1 MCP tool(s) read secrets you may not use and will not be duplicated.'
         );
         expect(toast.success).toHaveBeenCalledExactlyOnceWith('Duplicated 1 MCP tool(s).');
+    });
+});
+
+describe('ToolsListComponent ?toolId= deep link', () => {
+    async function openAt(url: string): Promise<{ openConfigureDialog: ReturnType<typeof vi.fn>; router: Router }> {
+        const openConfigureDialog = vi.fn(() => ({ closed: NEVER }));
+        const port = {
+            kind: 'mcp',
+            entityLabelPlural: 'MCP tools',
+            filterAdapter: {
+                idOf: (tool: GetMcpToolRequest) => tool.id,
+                nameOf: (tool: GetMcpToolRequest) => tool.name,
+                labelIdsOf: (tool: GetMcpToolRequest) => tool.labels,
+                favoriteOf: (tool: GetMcpToolRequest) => tool.is_favorite,
+                searchableTextOf: (tool: GetMcpToolRequest) => [tool.name],
+                updatedAtOf: (tool: GetMcpToolRequest) => tool.updated_at,
+            },
+            createdEvent$: NEVER,
+            isBuiltIn: () => false,
+            descriptionOf: () => '',
+            getAll: () => of([MCP_TOOL]),
+            getBulkUsage: () => of([]),
+            openConfigureDialog,
+        };
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                provideRouter([{ path: 'tools/mcp', component: ToolsListComponent }]),
+                { provide: TOOLS_LIST_PORT, useValue: port },
+            ],
+        });
+        const harness = await RouterTestingHarness.create();
+        await harness.navigateByUrl(url);
+        await harness.fixture.whenStable();
+        return { openConfigureDialog, router: TestBed.inject(Router) };
+    }
+
+    it('opens the tool as a card click does, and drops the param from the URL', async () => {
+        const { openConfigureDialog, router } = await openAt(`/tools/mcp?toolId=${MCP_TOOL.id}`);
+
+        expect(openConfigureDialog).toHaveBeenCalledExactlyOnceWith(expect.anything(), MCP_TOOL);
+        expect(router.url).toBe('/tools/mcp');
+    });
+
+    it('opens nothing for a tool id that is not in the list', async () => {
+        const { openConfigureDialog } = await openAt('/tools/mcp?toolId=999');
+
+        expect(openConfigureDialog).not.toHaveBeenCalled();
     });
 });

@@ -1,7 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, Provider, signal } from '@angular/core';
+import { ApplicationRef, Component, input, NgZone, NO_ERRORS_SCHEMA, output, Provider, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
@@ -471,7 +471,7 @@ describe('ClassificationDecisionTableNodePanelComponent — explanations of a ru
     // -- the decision tree, in the CDK overlay ---------------------------------
 
     function renderOverlay(): void {
-        TestBed.inject(ApplicationRef).tick();
+        TestBed.inject(NgZone).run(() => TestBed.inject(ApplicationRef).tick());
     }
 
     function openTree(): void {
@@ -1281,6 +1281,45 @@ describe('ClassificationDecisionTableNodePanelComponent — stored code fields',
 
         expect([pre_computation?.entrypoint, pre_computation?.global_kwargs]).toEqual(['run', { retries: 3 }]);
         expect([post_computation?.entrypoint, post_computation?.global_kwargs]).toEqual(['run', { retries: 3 }]);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — the pre-computation Input List on save', () => {
+    it('saves the filled and the named rows as they are, and leaves out a row added and left empty', () => {
+        configurePanelTestBed();
+        const node = tableNode();
+        const fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...node,
+            data: {
+                ...node.data,
+                table: {
+                    ...node.data.table,
+                    pre_computation: { code: 'def main(): pass', input_map: { text: 'variables.text', topic: '' } },
+                },
+            },
+        } as ClassificationDecisionTableNodeModel);
+        fixture.detectChanges();
+        fixture.componentInstance.activeTab.set('precomputation');
+        fixture.detectChanges();
+        const root = fixture.nativeElement as HTMLElement;
+        const addInput = root.querySelector<HTMLButtonElement>('.cdt-input-map-wrapper .add-pair-btn')!;
+
+        // One row left as added, one only named.
+        addInput.click();
+        fixture.detectChanges();
+        addInput.click();
+        fixture.detectChanges();
+        const named = root.querySelectorAll<HTMLInputElement>('.cdt-input-map-wrapper input[formControlName="key"]')[3];
+        named.value = 'company';
+        named.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.onSaveSilently()?.data.table.pre_computation?.input_map).toEqual({
+            text: 'variables.text',
+            topic: '',
+            company: 'variables.',
+        });
     });
 });
 

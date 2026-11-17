@@ -21,15 +21,17 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 import litellm
+from foundation.cryptographer import AbstractCryptographer, CryptographerError
 from loguru import logger
 
 from app.emitters.base import Emitter
-from app.exceptions import AGENT_FAILED, FallbackLLMFailedError, RunCancelled
+from app.exceptions import AGENT_FAILED, FallbackLLMFailedError, RunCancelled, SecretDecryptionError
 from app.llm.client import LLMChunk, LLMClient
 from app.llm.retry import FALLBACK_TRIGGERS
 from app.logging_utils import format_exception_for_log, redact_messages, redact_value
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
+from app.secret_decryption import decrypt_header_markers
 from app.tools.registry import ToolRegistry
 from app.usage import TokenUsageAccumulator
 from shared.litellm_errors import LiteLLMErrorFact, describe_litellm_error
@@ -106,12 +108,43 @@ def _safe_context_window(model_str: str) -> int | None:
         return None
 
 
-def _build_model_config(context: AgentContext) -> dict:
+def _open_sealed_secrets(config: dict, llm_name: str, cryptographer: AbstractCryptographer) -> None:
+    """Replace the transport-sealed ``api_key`` and ``extra_headers`` markers in ``config``.
+
+    Raises:
+        SecretDecryptionError: A sealed value does not open with the transport key.
+    """
+    # An empty api_key means no key, as it did before keys were sealed.
+    if config.get("api_key"):
+        try:
+            config["api_key"] = cryptographer.decrypt(config["api_key"])
+        except CryptographerError:
+            raise SecretDecryptionError(
+                f'LLM config "{llm_name}": api_key could not be decrypted.'
+            ) from None
+
+    if config.get("extra_headers"):
+        try:
+            config["extra_headers"] = decrypt_header_markers(config["extra_headers"], cryptographer)
+        except CryptographerError:
+            raise SecretDecryptionError(
+                f'LLM config "{llm_name}": extra_headers could not be decrypted.'
+            ) from None
+
+
+def _build_model_config(context: AgentContext, cryptographer: AbstractCryptographer) -> dict:
     """Build the litellm-compatible model_config dict from the active LLM spec.
 
     Prefixes ``model`` with ``provider/`` when the provider name is not
     already present in the model string (e.g. ``openai/gpt-4o`` vs a model
     that already carries a provider prefix like ``azure/gpt-4o``).
+
+    The only place the agent's own LLM secrets are decrypted: ``api_key`` and the
+    ``extra_headers`` secret markers arrive sealed with the transport key and leave
+    here as plaintext. The ``LLMData`` itself keeps the sealed values.
+
+    Raises:
+        SecretDecryptionError: The api_key or an extra_headers marker cannot be decrypted.
     """
     llm_config = context.active_llm.config
     model = _model_str(context)
@@ -126,6 +159,8 @@ def _build_model_config(context: AgentContext) -> dict:
         value = getattr(llm_config, field_name)
         if value is not None:
             config[field_name] = value
+
+    _open_sealed_secrets(config, _llm_name(context.active_llm), cryptographer)
 
     if provider in _STORE_OPT_OUT_PROVIDERS:
         config["store"] = False
@@ -188,8 +223,14 @@ class DefaultAgentLoop(AgentLoop):
     the loop and return a partial ``LoopResult``.
     """
 
-    def __init__(self, llm: LLMClient, context_warning_ratio: float | None = None) -> None:
+    def __init__(
+        self,
+        llm: LLMClient,
+        cryptographer: AbstractCryptographer,
+        context_warning_ratio: float | None = None,
+    ) -> None:
         self._llm = llm
+        self._cryptographer = cryptographer
         self._context_warning_ratio = context_warning_ratio
 
     async def run(
@@ -236,7 +277,11 @@ class DefaultAgentLoop(AgentLoop):
                 context.correlation_id,
                 format_exception_for_log(error),
             )
-            fact = _describe_llm_failure(error, context) or AGENT_FAILED
+            # A sealed secret that won't open names only the LLM config, so its text is the fact.
+            if isinstance(error, SecretDecryptionError):
+                fact = LiteLLMErrorFact(code="llm_secret_unreadable", detail=str(error))
+            else:
+                fact = _describe_llm_failure(error, context) or AGENT_FAILED
             return LoopResult(
                 stop_reason=StopReason.LLM_ERROR.value,
                 final_text=state.final_text,
@@ -286,7 +331,7 @@ class DefaultAgentLoop(AgentLoop):
                 context,
                 emitter,
                 tools=tools.tool_specs(),
-                model_config=_build_model_config(context),
+                model_config=_build_model_config(context, self._cryptographer),
             ):
                 await emitter.on_chunk(chunk)
                 chunks.append(chunk)
@@ -512,7 +557,7 @@ class DefaultAgentLoop(AgentLoop):
         )
         await emitter.on_llm_fallback(primary, context.active_llm, primary_error)
 
-        fallback_config = _build_model_config(context)
+        fallback_config = _build_model_config(context, self._cryptographer)
 
         if "tool_choice" not in model_config:
             fallback_config.pop("tool_choice", None)
@@ -608,7 +653,7 @@ class DefaultAgentLoop(AgentLoop):
         """
         context.append_message({"role": "user", "content": reason})
 
-        model_config = _build_model_config(context)
+        model_config = _build_model_config(context, self._cryptographer)
         model_config.pop("tool_choice", None)
 
         text_buf = ""

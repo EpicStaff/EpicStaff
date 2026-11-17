@@ -33,23 +33,12 @@
             role="group"
             aria-label="Version view"
         >
-            <app-tab-button
-                mod="sm"
-                [active]="!showChanges()"
-                (action)="onShowChangesChange(false)"
-                >Preview</app-tab-button
-            >
-            <span
-                class="preview-bar__tab-separator"
-                aria-hidden="true"
-                >/</span
-            >
-            <app-tab-button
-                mod="sm"
-                [active]="showChanges()"
-                (action)="onShowChangesChange(true)"
-                >Changes</app-tab-button
-            >
+            <app-radio-button
+                mod="small"
+                [options]="viewOptions"
+                [value]="showChanges()"
+                (valueChange)="onShowChangesChange(!!$event)"
+            />
         </div>
         @if (warnings().length > 0) {
             <button

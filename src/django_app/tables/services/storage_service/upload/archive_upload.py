@@ -11,6 +11,7 @@ from django.conf import settings
 from django.db import close_old_connections
 from rest_framework.exceptions import ValidationError
 from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
+from src.shared.models import UserAction
 from tables.exceptions import StoragePathIsFile, StorageUnavailable, UploadTooLarge
 from tables.services.storage_service import get_storage_backend
 from tables.services.storage_service.archive_unpacking.extraction_guard import (
@@ -19,6 +20,7 @@ from tables.services.storage_service.archive_unpacking.extraction_guard import (
 from tables.services.storage_service.archive_unpacking.inspection import inspect_archive
 from tables.services.storage_service.archive_unpacking.names import strip_archive_suffix
 from tables.services.storage_service.dataclasses import BinPurgeGrant
+from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.path_utils import (
     check_new_name,
@@ -200,6 +202,8 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator, use
         backend.discard_keys(created)
         raise
 
+    # One record for the folder the archive became, not one per file in it.
+    StorageFileSync.record_transfer(UserAction.CREATED, org_id, f"{folder}/", user=user)
     return {
         "path": folder,
         "extracted": [file_path for file_path, _ in files],

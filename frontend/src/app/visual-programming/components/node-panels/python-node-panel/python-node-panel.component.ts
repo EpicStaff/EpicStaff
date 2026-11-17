@@ -36,10 +36,11 @@ import { codeChangeFor, linkedEntityFormat, mapFieldRowChanges } from '../../../
 import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { inputMapFromRows } from '../../input-map/input-map-rows';
 import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
-import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { parseTestInputValues, PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     NODE_SAVING_MESSAGE,
@@ -430,8 +431,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     }
 
     createUpdatedNode(opts?: { manualSave?: boolean }): PythonNodeModel {
-        const validInputPairs = getValidInputPairs(this.inputMapPairs);
-        const inputMapValue = createInputMapFromPairs(validInputPairs);
+        const inputMapValue = inputMapFromRows(this.inputMapPairs.getRawValue());
         if (this.isOpenTestMode()) {
             const testArray = this.form.get('test_input') as FormArray;
             const testKeys = new Set(

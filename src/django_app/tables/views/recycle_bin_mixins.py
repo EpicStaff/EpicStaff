@@ -9,7 +9,6 @@ from rbac.models.enums import Permission
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.generics import get_object_or_404
-from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.serializers.recycle_bin_serializers import (
@@ -35,6 +34,7 @@ from tables.swagger_schemas.recycle_bin_schemas import (
     RECYCLE_BIN_CONTENTS_GET,
     RECYCLE_BIN_LIST_GET,
 )
+from utils.pagination import DefaultLimitOffsetPagination
 
 # Seeing the bin is a read and restoring brings an item back (a create). One bit
 # per action, so the any-bit can() is exact. A restore that brings trigger nodes
@@ -55,7 +55,7 @@ RECYCLE_BIN_ACTION_MAP = {
 PURGE_ACTIONS = frozenset({"purge", "bulk_purge"})
 
 
-class RecycleBinPagination(LimitOffsetPagination):
+class RecycleBinPagination(DefaultLimitOffsetPagination):
     """`?limit=`/`?offset=` paging of every bin list, storage's too.
 
     The limit is capped: every entry on a page costs its contents and details queries.

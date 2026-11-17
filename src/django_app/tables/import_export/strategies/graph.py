@@ -222,7 +222,13 @@ class GraphStrategy(EntityImportExportStrategy):
         # real old exported id.
         old_id = data.get("id")
         if old_id is not None:
-            id_mapper.map(EntityType.GRAPH, old_id, graph.id, was_created=True)
+            id_mapper.map(
+                EntityType.GRAPH,
+                old_id,
+                graph.id,
+                was_created=True,
+                replaced=replaced_graph is not None,
+            )
 
         GraphOrganization.objects.get_or_create(graph=graph)
 

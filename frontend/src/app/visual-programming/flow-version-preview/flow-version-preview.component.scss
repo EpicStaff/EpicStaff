@@ -51,15 +51,10 @@ app-flow-graph {
     gap: var(--space-sm);
     padding: 0 var(--space-2xs);
 
-    // Same grouping as the flows list tabs.
     &__tabs {
-        display: flex;
-        align-items: center;
-        gap: var(--space-2xs);
-    }
-
-    &__tab-separator {
-        color: var(--color-text-secondary);
+        width: 200px;
+        border-radius: 8px;
+        background: var(--color-background-body);
     }
 
     &__warnings {

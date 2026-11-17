@@ -225,26 +225,17 @@
                                                 }
                                             }
                                             @case ('select') {
-                                                <select
+                                                <app-select
                                                     class="dt__cell-select"
-                                                    [attr.aria-label]="col.header"
-                                                    [matTooltip]="col.header"
+                                                    mod="small"
+                                                    panelClass="dt-select-panel"
+                                                    [items]="col.options ?? []"
+                                                    [placeholder]="col.placeholder ?? ''"
+                                                    [tooltip]="col.header"
                                                     [ngModel]="getCellValue(row._id, col.key)"
                                                     (ngModelChange)="onCellChange(row._id, col.key, $event)"
                                                     [disabled]="!!isCellDisabled()?.(row, col.key)"
-                                                >
-                                                    @if (col.placeholder) {
-                                                        <option
-                                                            value=""
-                                                            disabled
-                                                        >
-                                                            {{ col.placeholder }}
-                                                        </option>
-                                                    }
-                                                    @for (opt of col.options; track opt.value) {
-                                                        <option [ngValue]="opt.value">{{ opt.label }}</option>
-                                                    }
-                                                </select>
+                                                />
                                             }
                                             @case ('checkbox') {
                                                 <app-checkbox

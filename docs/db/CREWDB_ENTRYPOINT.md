@@ -2,12 +2,13 @@
 
 ## Overview
 
-The crewdb container hosts one PostgreSQL database shared by several services. django_app
-connects as the superuser and owns the schema; the other services connect with restricted
-roles of their own:
+The crewdb container hosts one PostgreSQL database shared by several services. Only crewdb
+itself and the django_app test suite use the superuser (`DB_USER`). Every service connects
+with a role of its own:
 
 | Service   | Role (env var)       | Access                                                      |
 |-----------|----------------------|-------------------------------------------------------------|
+| django_app | `DJANGO_DB_USER`    | Owns the objects in `public` and runs the migrations; `CREATE` on `public` and the database. Not a superuser, no `CREATEDB` |
 | manager   | `MANAGER_DB_USER`    | The tables its retention, schedule and cleanup jobs touch   |
 | knowledge | `KNOWLEDGE_DB_USER`  | RAG configuration (read), indexing status (update), chunks and embeddings (read/write); also `CREATEDB` and `CREATE` on `public` and the database |
 | realtime  | `REALTIME_DB_USER`   | Realtime session items                                      |
@@ -30,12 +31,21 @@ with `tuple concurrently updated`.
 that:
 
 1. Waits until the target database accepts connections.
-2. Creates each role if missing (`create_<service>_user`): `USAGE ON SCHEMA public`, and
+2. Creates the django role (`create_django_user`) and creates the `vector` extension:
+   pgvector 0.5.1 is not a trusted extension, so the django role could not. Trusted ones such
+   as `pg_trgm` its migrations create themselves. `DJANGO_DB_USER` must differ from `DB_USER`.
+3. Moves every object in `public` a superuser owns to the django role
+   (`transfer_public_objects_to_django_user`): tables (their indexes and owned sequences
+   follow), other sequences, views, routines and types. Extension members stay. Earlier
+   releases ran django_app as the superuser; on a database already moved this changes nothing.
+   It does not move objects from an earlier django role: to rename `DJANGO_DB_USER`, run
+   `REASSIGN OWNED BY <old> TO <new>; DROP ROLE <old>;` as `DB_USER` after crewdb created the new one.
+4. Creates each other role if missing (`create_<service>_user`): `USAGE ON SCHEMA public`, and
    `ALTER DEFAULT PRIVILEGES ... REVOKE ALL ON TABLES` so a new table grants it nothing. The
    knowledge role also gets `CREATEDB` and `CREATE` on the schema and database; the sandbox
    role owns its own schema and has it as its `search_path`.
-3. Drops the legacy auto-grant event triggers (see below).
-4. Touches `/tmp/users_created`, which the healthcheck (`custom-docker-entrypoint.sh
+5. Drops the legacy auto-grant event triggers (see below).
+6. Touches `/tmp/users_created`, which the healthcheck (`custom-docker-entrypoint.sh
    healthcheck-users`) requires together with `pg_isready`.
 
 Role, schema and database names are spliced into SQL, so they must be plain names (letters,
@@ -74,7 +84,7 @@ matrix runs `REVOKE ALL` followed by the matrix's `GRANT`s. It runs:
 
 ```
 crewdb starts
-  +--> postgres up --> roles created --> legacy triggers dropped --> flag --> healthy
+  +--> postgres up --> roles created, ownership moved --> legacy triggers dropped --> flag --> healthy
                                                                                |
 sandbox_new (depends_on crewdb healthy) ---------------------------------------+
   +--> piccolo migrations --> healthy                                          |

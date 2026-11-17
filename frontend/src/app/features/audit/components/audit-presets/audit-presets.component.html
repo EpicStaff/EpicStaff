@@ -349,10 +349,12 @@
                 </button>
             </div>
 
-            <app-audit-match-scope
-                [scope]="editorState.state.matchScope"
-                (scopeChange)="setEditorMatchScope($event)"
-            />
+            @if (hasMatchScope) {
+                <app-audit-match-scope
+                    [scope]="editorState.state.matchScope"
+                    (scopeChange)="setEditorMatchScope($event)"
+                />
+            }
 
             @if (editorState.state.mode === 'query') {
                 <label

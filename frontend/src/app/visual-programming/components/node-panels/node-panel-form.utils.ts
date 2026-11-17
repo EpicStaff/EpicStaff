@@ -39,16 +39,6 @@ export function getValidInputPairs(inputMapPairs: FormArray): AbstractControl[] 
     });
 }
 
-export function createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
-    return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
-        const pair = curr.value as InputMapPair;
-        if (pair.key?.trim()) {
-            acc[pair.key.trim()] = pair.value;
-        }
-        return acc;
-    }, {});
-}
-
 export function parseCommaSeparatedList(value: string | null | undefined): string[] {
     return value
         ? value
