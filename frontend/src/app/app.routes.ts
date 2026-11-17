@@ -348,6 +348,11 @@ export const routes: Routes = [
                         loadChildren: () => import('./features/audit/audit.routes').then((m) => m.AUDIT_ROUTES),
                     },
                     {
+                        path: 'dashboard',
+                        loadChildren: () =>
+                            import('./features/dashboard/dashboard.routes').then((m) => m.DASHBOARD_ROUTES),
+                    },
+                    {
                         path: 'settings',
                         loadComponent: () =>
                             import('./features/configure-models/pages/settings-page/settings-page.component').then(

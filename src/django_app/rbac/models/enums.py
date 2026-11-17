@@ -25,6 +25,7 @@ class ResourceType(models.TextChoices):
     VENVS = "venvs", "Venvs"
     CHATS = "chats", "Conversations"
     CUSTOM_LIBRARIES = "custom_libraries", "Custom Libraries"
+    DASHBOARD = "dashboard", "Dashboard"
 
 
 class Permission(IntFlag):

@@ -198,6 +198,10 @@ export class PermissionsService implements StorageService {
         return this.resolveDefaultWorkspaceTab() !== null;
     }
 
+    canOpenDashboard(): boolean {
+        return this.can(ResourceCode.Dashboard, ActionCode.Read);
+    }
+
     /** First workspace tab route the caller can access, or `null` if none.
      *  Superadmin → `/workspace/main`. Ordered: organizations → users → roles → api-keys. */
     resolveDefaultWorkspaceTab(): string | null {

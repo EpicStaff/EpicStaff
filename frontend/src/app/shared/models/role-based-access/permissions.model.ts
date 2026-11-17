@@ -29,6 +29,7 @@ export enum ResourceCode {
     Venvs = 'venvs',
     Chats = 'chats',
     CustomLibraries = 'custom_libraries',
+    Dashboard = 'dashboard',
 }
 
 export interface ActivePermissions {
