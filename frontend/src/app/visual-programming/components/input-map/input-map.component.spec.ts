@@ -646,3 +646,81 @@ describe('InputMapComponent message on a named row without a variable path', () 
         expect(messages()).toEqual([MESSAGE, null, null]);
     });
 });
+
+// A panel's form whose Input List has a single named row, with the Test mode switch shown.
+@Component({
+    imports: [ReactiveFormsModule, InputMapComponent],
+    template: `<form [formGroup]="form">
+        <app-input-map
+            [showTestMode]="true"
+            [testMode]="testMode()"
+            (testModeChange)="testMode.set($event)"
+        />
+    </form>`,
+})
+class SingleRowHostComponent {
+    readonly testMode = signal(false);
+    readonly form: FormGroup = new FormBuilder().group({
+        input_map: inputListOf([['user', 'variables.user']]),
+        test_input: new FormArray([]),
+    });
+}
+
+describe('InputMapComponent removing the only row', () => {
+    let fixture: ComponentFixture<SingleRowHostComponent>;
+
+    const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+    const rows = (): HTMLElement[] => Array.from(host().querySelectorAll('.input-map-item'));
+    const addButton = (): HTMLButtonElement => host().querySelector<HTMLButtonElement>('.add-pair-btn')!;
+    const inputMap = (): InputMapComponent =>
+        fixture.debugElement.query(By.directive(InputMapComponent)).componentInstance as InputMapComponent;
+    const removeOnlyRow = (): void => {
+        host().querySelector<HTMLButtonElement>('button[aria-label="Remove input"]')!.click();
+        fixture.detectChanges();
+    };
+    const toggleTestMode = (on: boolean): void => {
+        inputMap().onTestModeToggle(on);
+        fixture.detectChanges();
+    };
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowService, useValue: { startNodeInitialState: signal({}) } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: GraphSessionService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                { provide: SidePanelService, useValue: { triggerAutosave: () => undefined } },
+            ],
+        });
+        // Test mode binds tooltips to its buttons; only the rows matter here.
+        TestBed.overrideComponent(InputMapComponent, {
+            set: { imports: [ReactiveFormsModule], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        fixture = TestBed.createComponent(SingleRowHostComponent);
+        fixture.detectChanges();
+    });
+
+    afterEach(() => fixture.destroy());
+
+    it('leaves no rows, only Add Input, which takes the focus', async () => {
+        removeOnlyRow();
+        await fixture.whenStable();
+
+        expect(rows()).toEqual([]);
+        expect(fixture.componentInstance.form.value.input_map).toEqual([]);
+        expect(document.activeElement).toBe(addButton());
+    });
+
+    // Leaving Test mode removes the Input List row whose test row is gone.
+    it('brings no row back when Test mode is left, the row removed in Test mode', () => {
+        toggleTestMode(true);
+        removeOnlyRow();
+
+        toggleTestMode(false);
+
+        expect(rows()).toEqual([]);
+        expect(fixture.componentInstance.form.value.input_map).toEqual([]);
+        expect(addButton()).not.toBeNull();
+    });
+});
