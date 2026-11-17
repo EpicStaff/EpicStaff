@@ -201,7 +201,7 @@ async def test_unreachable_sandbox_fails_the_run(sandbox_intake, captured_log_me
     )
 
     assert result["returncode"] == 1
-    assert result["stderr"] == "The sandbox is unreachable."
+    assert result["stderr"] == "The code couldn't run because of a server error."
     assert "sk-live-SENTINEL" not in "".join(captured_log_messages)
     assert "SandboxUnreachableError" in "".join(captured_log_messages)
 
@@ -225,7 +225,7 @@ async def test_execution_the_sandbox_lost_fails_the_run(sandbox_intake, fast_sta
 
     assert result["returncode"] == 1
     assert result["stderr"] == (
-        "The sandbox lost the execution (it restarted, or its result was not delivered)."
+        "The code couldn't run because of a server error."
     )
 
 
@@ -241,7 +241,7 @@ async def test_no_result_within_the_backstop_fails_the_run(sandbox_intake, monke
     )
 
     assert result["returncode"] == 1
-    assert result["stderr"] == "Timed out waiting for the result after 0.05 s."
+    assert result["stderr"] == "The code's result didn't arrive in time."
 
 
 @pytest.mark.asyncio

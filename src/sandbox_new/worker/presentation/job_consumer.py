@@ -16,6 +16,7 @@ from collections.abc import Callable
 
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
+from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
 
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.ports import AbstractAdmissionGate, AbstractJobSource, UndecodableJobError
@@ -23,9 +24,7 @@ from worker.domain.models import Job
 
 __all__ = ["JobConsumer"]
 
-_EXPIRED_MESSAGE = "Sandbox overloaded: the job waited {waited} s in the queue and was not run."
-_UNDECODABLE_MESSAGE = "Sandbox could not read the job; it was not run."
-_RUN_FAILED_MESSAGE = "Sandbox failed to run the job."
+_EXPIRED_MESSAGE = "The server was too busy to run the code in time."
 
 
 class JobConsumer:
@@ -68,7 +67,7 @@ class JobConsumer:
             logger.error("Job {} could not be decoded; failing it", error.execution_id)
             await self._orchestrator.fail(
                 error.execution_id,
-                _UNDECODABLE_MESSAGE,
+                SANDBOX_SERVER_ERROR_MESSAGE,
                 session_id=error.session_id,
                 reply_to_crew_channel=error.reply_to_crew_channel,
             )
@@ -114,7 +113,7 @@ class JobConsumer:
             try:
                 await self._orchestrator.fail(
                     job.execution_id,
-                    _RUN_FAILED_MESSAGE,
+                    SANDBOX_SERVER_ERROR_MESSAGE,
                     session_id=job.session_id,
                     reply_to_crew_channel=job.reply_to_crew_channel,
                 )
@@ -152,7 +151,7 @@ class JobConsumer:
         )
         await self._orchestrator.fail(
             job.execution_id,
-            _EXPIRED_MESSAGE.format(waited=waited),
+            _EXPIRED_MESSAGE,
             session_id=job.session_id,
             reply_to_crew_channel=job.reply_to_crew_channel,
             not_run_reason="overloaded",

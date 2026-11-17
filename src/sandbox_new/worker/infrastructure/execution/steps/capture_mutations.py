@@ -9,6 +9,7 @@ FIFO or an oversized file is tampering, not a reporting problem, so it fails the
 import json
 
 from loguru import logger
+from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
 
 from worker.application.context import ExecutionContext
 from worker.domain.models import StorageMutations
@@ -40,7 +41,7 @@ class CaptureMutationsStep:
             mutations = json.loads(text)
         except UnsafeControlFileError as error:
             logger.error("Rejected storage mutations file of {}: {}", job.execution_id, error)
-            context.fail(f"Rejected the storage mutations file: {error}.")
+            context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
             return
         except Exception:
             logger.exception("Failed to read storage mutations for {}", job.execution_id)

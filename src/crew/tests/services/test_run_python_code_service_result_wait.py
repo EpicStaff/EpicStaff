@@ -14,7 +14,7 @@ import settings
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
 from services.redis_service import RedisService
-from services.run_python_code_service import TIMEOUT_STDERR_MESSAGE, RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 from src.shared.models import CodeResultData
 from tests.services.conftest import CREW_RESULT_CHANNEL, SHARED_RESULT_CHANNEL
 from utils.singleton_meta import SingletonMeta
@@ -118,7 +118,7 @@ async def test_returns_timeout_result_when_no_result_arrives(
 
     assert result["execution_id"] == sandbox.tasks[0]["execution_id"]
     assert result["returncode"] == 124
-    assert result["stderr"] == TIMEOUT_STDERR_MESSAGE
+    assert result["stderr"] == "The code's result didn't arrive in time."
     assert result["result_data"] is None
 
 

@@ -13,7 +13,11 @@ from pydantic import BaseModel, ConfigDict
 
 from worker.domain.models import IsolationPlan, Job, StorageMutations
 
-__all__ = ["ExecutionContext"]
+__all__ = ["UNSAFE_TO_RUN_MESSAGE", "ExecutionContext"]
+
+# Failed with when the isolation a run needs is missing or could not be set up. Which
+# isolation, and how to change that, is the operator's business and goes to the log.
+UNSAFE_TO_RUN_MESSAGE = "This server can't run code safely right now, so the code wasn't run."
 
 
 class ExecutionContext(BaseModel):
@@ -51,9 +55,13 @@ class ExecutionContext(BaseModel):
         """Mark the run finished with whatever outcome fields are already set."""
         self.completed = True
 
-    def fail(self, error: Exception | str, returncode: int = 1) -> None:
-        """Record a failure as the run's outcome and mark it finished."""
-        message = str(error)
+    def fail(self, message: str, returncode: int = 1) -> None:
+        """Record a failure as the run's outcome and mark it finished.
+
+        Args:
+            message: Shown to the user after whatever the child wrote to stderr. A fixed
+                text, never one built from an exception.
+        """
         self.stderr = f"{self.stderr}\n{message}" if self.stderr else message
         self.returncode = returncode
         self.completed = True

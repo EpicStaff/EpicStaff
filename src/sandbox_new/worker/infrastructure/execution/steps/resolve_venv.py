@@ -9,12 +9,11 @@ venv is missing it fails the job rather than launching against a bad path.
 from pathlib import Path
 
 from loguru import logger
+from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
 
 from worker.application.context import ExecutionContext
 
 __all__ = ["ResolveVenvStep"]
-
-_VENV_UNAVAILABLE = "Execution environment is not available."
 
 
 class ResolveVenvStep:
@@ -33,7 +32,7 @@ class ResolveVenvStep:
                 venv_path,
                 context.job.execution_id,
             )
-            context.fail(_VENV_UNAVAILABLE)
+            context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
             return
 
         context.python_executable = python_executable

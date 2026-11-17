@@ -110,7 +110,7 @@ async def test_a_hanging_child_is_terminated_and_reported_as_a_timeout(tmp_path)
     await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
 
     assert context.returncode == 124
-    assert "exceeded 0.2 seconds and was terminated" in context.stderr
+    assert context.stderr == "The code ran longer than 0.2 seconds and was stopped."
 
 
 async def test_the_per_job_timeout_overrides_the_configured_default(tmp_path):
@@ -127,7 +127,7 @@ async def test_the_configured_default_applies_when_the_job_sets_no_timeout(tmp_p
     await LaunchStep(default_timeout=0.2, min_timeout=0, max_timeout=None)(context)
 
     assert context.returncode == 124
-    assert "exceeded 0.2 seconds" in context.stderr
+    assert context.stderr == "The code ran longer than 0.2 seconds and was stopped."
 
 
 async def test_a_child_that_cannot_be_killed_is_reported_as_possibly_still_running(
@@ -287,4 +287,4 @@ async def test_a_requested_timeout_above_the_maximum_is_the_one_actually_applied
     await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=0.2)(context)
 
     assert context.returncode == 124
-    assert "exceeded 0.2 seconds and was terminated" in context.stderr
+    assert context.stderr == "The code ran longer than 0.2 seconds and was stopped."

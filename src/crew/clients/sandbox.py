@@ -5,6 +5,10 @@ the result on its own Redis result channel, which this client never touches. Wha
 adds is the guarantee that a run never waits forever: a full sandbox is retried for a
 bounded budget, and a pending result is checked against the sandbox every
 `STATUS_POLL_INTERVAL_SECONDS` so an execution the sandbox lost is reported, not awaited.
+
+Every failure leaves this client as a `SandboxError` whose message is fit to show the
+user: the `detail` of a 4xx answer in foundation's error envelope, or a fixed fact. Any
+other answer body (a 5xx, a proxy's HTML page, an empty body) is only logged.
 """
 
 import asyncio
@@ -16,19 +20,22 @@ from time import monotonic
 from urllib.parse import quote
 
 import httpx
+from foundation.schemas import ErrorResponseSchema, ErrorType
 from foundation.transport.http import (
     AsyncClient,
     ClientBadGatewayError,
     ClientConnectionError,
-    ClientError,
     ClientGatewayTimeoutError,
     ClientHTTPStatusError,
     ClientNotFoundError,
     ClientTimeoutError,
     ClientUnavailableError,
 )
+from loguru import logger
+from pydantic import ValidationError
 from src.shared.models.sandbox_execution import ExecutionRequest
 from src.shared.sandbox_errors import (
+    SANDBOX_SERVER_ERROR_MESSAGE,
     SandboxError,
     SandboxExecutionLostError,
     SandboxOverloadedError,
@@ -106,7 +113,8 @@ class SandboxClient(AsyncClient):
         Raises:
             SandboxOverloadedError: The sandbox was still full when the budget ran out.
             SandboxUnreachableError: The sandbox could not be reached within the budget.
-            SandboxError: The sandbox refused the execution; the message is its error body.
+            SandboxError: The sandbox refused the execution; the message is the `detail`
+                of its 4xx error envelope, or a fixed fact for any other answer.
         """
         payload = request.model_dump(mode="json")
         deadline = monotonic() + self.queue_timeout
@@ -128,7 +136,7 @@ class SandboxClient(AsyncClient):
                 failure = SandboxUnreachableError()
                 requested_wait = 0.0
             except ClientHTTPStatusError as error:
-                raise SandboxError(error.response.text) from error
+                raise _refusal(error.response) from None
 
             remaining = deadline - monotonic()
             if remaining <= 0:
@@ -151,11 +159,21 @@ class SandboxClient(AsyncClient):
             SandboxExecutionLostError: The sandbox does not know the execution: it was
                 lost on a restart, or its result was published long enough ago to be
                 forgotten.
+            SandboxUnreachableError: No usable answer: the request timed out, the
+                connection failed, or the sandbox answered 5xx. Worth asking again.
+            SandboxError: The sandbox refused the request with another 4xx.
         """
         try:
             response = await self.get(f"/executions/{quote(execution_id, safe='')}")
         except ClientNotFoundError:
             raise SandboxExecutionLostError() from None
+        except (ClientTimeoutError, ClientConnectionError):
+            raise SandboxUnreachableError() from None
+        except ClientHTTPStatusError as error:
+            if error.response.status_code >= 500:
+                _log_unshown_answer(error.response)
+                raise SandboxUnreachableError() from None
+            raise _refusal(error.response) from None
         return response.json()["status"]
 
     async def wait_for_result[T](
@@ -178,6 +196,7 @@ class SandboxClient(AsyncClient):
                 result arrived.
             SandboxUnreachableError: `MAX_STATUS_FAILURES` status checks in a row failed.
             SandboxResultTimeoutError: `backstop` seconds passed without a result.
+            SandboxError: The sandbox refused a status check with a 4xx other than 404.
         """
         result_task = asyncio.ensure_future(result)
         timeout = asyncio.timeout(backstop)
@@ -205,11 +224,7 @@ class SandboxClient(AsyncClient):
                 if result_task.done():
                     return result_task.result()
                 raise
-            except (ClientTimeoutError, ClientConnectionError):
-                consecutive_failures += 1
-            except ClientHTTPStatusError as error:
-                if error.response.status_code < 500:
-                    raise
+            except SandboxUnreachableError:
                 consecutive_failures += 1
             else:
                 consecutive_failures = 0
@@ -219,9 +234,37 @@ class SandboxClient(AsyncClient):
     async def _is_known(self, execution_id: str) -> bool:
         try:
             await self.status(execution_id)
-        except (SandboxExecutionLostError, ClientError):
+        except SandboxError:
             return False
         return True
+
+
+def _refusal(response: httpx.Response) -> SandboxError:
+    """Return the error for a non-2xx answer, showing its `detail` only when it is the caller's.
+
+    A 5xx `detail` can be the raw text of an unhandled exception (foundation's fallback
+    handler), and a proxy answers with its own HTML page, so only a 4xx carrying a
+    `client_error` envelope is trusted to hold a fact meant for the user.
+    """
+    if response.status_code < 500:
+        try:
+            envelope = ErrorResponseSchema.model_validate_json(response.content)
+        except ValidationError:
+            envelope = None
+        if envelope is not None and envelope.type is ErrorType.CLIENT_ERROR and envelope.errors:
+            return SandboxError(envelope.errors[0].detail)
+    _log_unshown_answer(response)
+    return SandboxError(SANDBOX_SERVER_ERROR_MESSAGE)
+
+
+def _log_unshown_answer(response: httpx.Response) -> None:
+    logger.warning(
+        "Sandbox answered {} {} with {}: {}",
+        response.request.method,
+        response.request.url.path,
+        response.status_code,
+        response.text,
+    )
 
 
 def _retry_after_seconds(response: httpx.Response) -> float:

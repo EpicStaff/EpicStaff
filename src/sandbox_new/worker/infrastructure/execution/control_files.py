@@ -11,19 +11,24 @@ import os
 import stat
 from pathlib import Path
 
-__all__ = ["UnsafeControlFileError", "read_control_file"]
+__all__ = ["ControlFileTooLargeError", "UnsafeControlFileError", "read_control_file"]
 
 
 class UnsafeControlFileError(Exception):
     """The control file is a symlink, not a regular file, or too large to read."""
 
 
+class ControlFileTooLargeError(UnsafeControlFileError):
+    """The control file is larger than the reader accepts."""
+
+
 def read_control_file(path: Path, *, max_bytes: int) -> str | None:
     """Return the UTF-8 text of a regular file the child wrote, or None if it is missing.
 
     Raises:
-        UnsafeControlFileError: The file is a symlink, not a regular file, or larger
-            than ``max_bytes``. The message never names where a link points.
+        ControlFileTooLargeError: The file is larger than ``max_bytes``.
+        UnsafeControlFileError: The file is a symlink or not a regular file. The
+            message never names where a link points.
     """
     try:
         # O_NONBLOCK: opening a FIFO with no writer would otherwise block forever.
@@ -41,5 +46,5 @@ def read_control_file(path: Path, *, max_bytes: int) -> str | None:
         data = file.read(max_bytes + 1)
 
     if len(data) > max_bytes:
-        raise UnsafeControlFileError(f"the file is larger than {max_bytes} bytes")
+        raise ControlFileTooLargeError(f"the file is larger than {max_bytes} bytes")
     return data.decode("utf-8")

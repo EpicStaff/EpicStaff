@@ -6,7 +6,6 @@ from typing import Any
 
 import settings
 from clients.sandbox import SandboxClient
-from foundation.transport.http import ClientError
 from loguru import logger
 from models.state import State
 from pydantic import ValidationError
@@ -25,7 +24,6 @@ from utils.singleton_meta import SingletonMeta
 
 # Matches the sandbox's own timeout exit code, so callers need no new branch.
 TIMEOUT_RETURNCODE = 124
-TIMEOUT_STDERR_MESSAGE = "Timed out waiting for the result"
 # The session's StopEvent is a threading.Event and cannot be awaited, so the submit
 # and the result wait wake up this often to check it.
 STOP_CHECK_INTERVAL_S = 0.5
@@ -140,14 +138,14 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 _until_stopped(result_future, stop_event),
                 backstop=settings.CODE_RESULT_TIMEOUT,
             )
-        except SandboxResultTimeoutError:
+        except SandboxResultTimeoutError as error:
             logger.error(
                 "No code result for execution ID {} after {} seconds; giving up.",
                 execution_id,
                 settings.CODE_RESULT_TIMEOUT,
             )
-            return _failed_result(execution_id, TIMEOUT_RETURNCODE, TIMEOUT_STDERR_MESSAGE)
-        except (SandboxError, ClientError) as error:
+            return _failed_result(execution_id, TIMEOUT_RETURNCODE, str(error))
+        except SandboxError as error:
             if isinstance(error, SandboxExecutionLostError):
                 logger.log(
                     BENCH_LEVEL,
