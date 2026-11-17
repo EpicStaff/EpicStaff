@@ -73,7 +73,10 @@ describe('VenvDialogComponent library rows', () => {
         return found as HTMLElement;
     }
 
-    function cell(index: number, label: 'Library name' | 'Version' | 'Specification'): HTMLInputElement {
+    function cell(
+        index: number,
+        label: 'Library name' | 'Description' | 'Version' | 'Specification'
+    ): HTMLInputElement {
         const input = row(index).querySelector(`input[aria-label="${label}"]`);
         if (!input) throw new Error(`no "${label}" input in row ${index}`);
         return input as HTMLInputElement;
@@ -332,6 +335,12 @@ describe('VenvDialogComponent library rows', () => {
             return (fixture.nativeElement as HTMLElement).querySelector('app-hint-message');
         }
 
+        function customBox(): HTMLInputElement | null {
+            return (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+                'input[aria-label="Custom library"]'
+            );
+        }
+
         function addButton(): HTMLButtonElement | null {
             return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.venv-dialog__add-lib');
         }
@@ -343,6 +352,8 @@ describe('VenvDialogComponent library rows', () => {
             expect(cell(0, 'Library name').disabled).toBe(true);
             expect(cell(0, 'Version').disabled).toBe(true);
             expect(cell(0, 'Specification').disabled).toBe(true);
+            expect(cell(0, 'Description').disabled).toBe(true);
+            expect(customBox()?.disabled).toBe(true);
             expect(
                 (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
                     'button[aria-label="Remove library"]'
@@ -356,6 +367,7 @@ describe('VenvDialogComponent library rows', () => {
 
             expect(hint()).toBeNull();
             expect(cell(0, 'Version').disabled).toBe(false);
+            expect(customBox()?.disabled).toBe(false);
             expect(addButton()?.hidden).toBe(false);
         });
 
