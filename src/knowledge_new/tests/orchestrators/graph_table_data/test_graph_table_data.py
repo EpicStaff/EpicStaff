@@ -160,6 +160,82 @@ async def test_search_total_counts_matches_and_pages_over_them(tmp_path, uow):
     assert [row["id"] for row in result.rows] == ["e14", "e15", "e16", "e17", "e18"]
 
 
+# -- Exact-match column filter --
+
+
+async def test_exact_filter_returns_only_rows_equal_to_value(tmp_path, uow):
+    entities = _entities(5)
+    entities["degree"] = [7, 17, 70, 7, 700]
+    write_table(tmp_path, "entities", entities)
+
+    result = await _table_data(uow, filter_column="degree", filter_value="7")
+
+    assert [row["id"] for row in result.rows] == ["e0", "e3"]
+    assert result.total == 2
+
+
+async def test_exact_filter_and_search_intersect(tmp_path, uow):
+    entities = _entities(5)
+    entities["degree"] = [7, 7, 7, 7, 7]
+    entities.loc[1, "description"] = "written in C++"
+    entities.loc[3, "description"] = "written in python"
+    write_table(tmp_path, "entities", entities)
+
+    result = await _table_data(
+        uow, filter_column="degree", filter_value="7", search="C++"
+    )
+
+    assert [row["id"] for row in result.rows] == ["e1"]
+    assert result.total == 1
+
+
+async def test_exact_filter_does_not_match_missing_cells(tmp_path, uow):
+    entities = _entities(3)
+    entities["description"] = [None, "something", None]
+    write_table(tmp_path, "entities", entities)
+
+    result = await _table_data(uow, filter_column="description", filter_value="nan")
+
+    assert result.rows == []
+    assert result.total == 0
+
+
+async def test_exact_filter_column_not_in_table_raises_unsupported(uow):
+    with pytest.raises(UnsupportedError):
+        await _table_data(uow, filter_column="not_a_column", filter_value="x")
+
+
+async def test_exact_filter_requires_both_column_and_value(uow):
+    with pytest.raises(UnsupportedError):
+        await _table_data(uow, filter_column="degree")
+    with pytest.raises(UnsupportedError):
+        await _table_data(uow, filter_value="7")
+
+
+async def test_exact_filter_matches_integers_stored_as_float(tmp_path, uow):
+    # A pandas column with any null promotes int64 → float64, so integer `1` lands as `1.0`.
+    # The filter has to match "1" against that, not depend on `astype(str) == "1.0"`.
+    entities = _entities(4)
+    entities["degree"] = [1.0, 11.0, None, 1.0]
+    write_table(tmp_path, "entities", entities)
+
+    result = await _table_data(uow, filter_column="degree", filter_value="1")
+
+    assert [row["id"] for row in result.rows] == ["e0", "e3"]
+    assert result.total == 2
+
+
+async def test_exact_filter_on_numeric_column_with_non_numeric_value_matches_nothing(
+    tmp_path, uow
+):
+    write_table(tmp_path, "entities", _entities(3))
+
+    result = await _table_data(uow, filter_column="degree", filter_value="not-a-number")
+
+    assert result.rows == []
+    assert result.total == 0
+
+
 # -- Missing data, unknown table, unknown RAG --
 
 

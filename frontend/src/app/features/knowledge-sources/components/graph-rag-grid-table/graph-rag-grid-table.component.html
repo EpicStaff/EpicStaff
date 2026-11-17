@@ -8,21 +8,24 @@
         role="row"
         [style.grid-template-columns]="gridTemplateColumns()"
     >
-        @for (col of columns(); track col) {
+        @for (def of columnDefs(); track def.key) {
             <div
                 #headerCell
                 class="grid-table-cell"
+                [class.grid-table-cell--pinned-end]="def.pinned === 'end'"
                 role="columnheader"
             >
-                <span class="grid-table-col-label">{{ formatColumnHeader(col) }}</span>
-                <span
-                    class="grid-table-resize-handle"
-                    (pointerdown)="onResizeStart(col, $event, headerCell)"
-                    (pointermove)="onResizeMove($event)"
-                    (pointerup)="onResizeEnd()"
-                    (pointercancel)="onResizeEnd()"
-                    (lostpointercapture)="onResizeEnd()"
-                ></span>
+                <span class="grid-table-col-label">{{ formatColumnHeader(def) }}</span>
+                @if (!isActionColumn(def)) {
+                    <span
+                        class="grid-table-resize-handle"
+                        (pointerdown)="onResizeStart(def.key, $event, headerCell)"
+                        (pointermove)="onResizeMove($event)"
+                        (pointerup)="onResizeEnd()"
+                        (pointercancel)="onResizeEnd()"
+                        (lostpointercapture)="onResizeEnd()"
+                    ></span>
+                }
             </div>
         }
     </div>
@@ -36,26 +39,36 @@
             <div
                 class="grid-table-row"
                 role="row"
-                [class.grid-table-row--clickable]="clickableRows()"
                 [style.grid-template-columns]="gridTemplateColumns()"
             >
-                @for (col of columns(); track col; let columnIndex = $index) {
+                @for (def of columnDefs(); track def.key; let columnIndex = $index) {
                     <!-- Roving tabindex: one cell is in the Tab order, the arrow keys move between cells -->
                     <div
                         #bodyCell
                         class="grid-table-cell grid-table-cell--body"
+                        [class.grid-table-cell--pinned-end]="def.pinned === 'end'"
+                        [class.grid-table-cell--action]="isActionColumn(def)"
                         role="gridcell"
+                        [attr.aria-label]="def.action?.tooltip ?? null"
                         [tabIndex]="cellTabIndex(rowIndex, columnIndex)"
                         (focus)="onCellFocus(rowIndex, columnIndex)"
-                        (click)="onCellActivate(row[col], row, bodyCell)"
-                        (keydown)="
-                            onCellKeydown($event, row[col], row, { row: rowIndex, column: columnIndex }, bodyCell)
-                        "
+                        (click)="onCellActivate(def, row, bodyCell)"
+                        (keydown)="onCellKeydown($event, def, row, { row: rowIndex, column: columnIndex }, bodyCell)"
                     >
-                        <span
-                            class="grid-table-cell-text"
-                            [innerHTML]="row[col] | highlight: searchTerm()"
-                        ></span>
+                        @if (def.action; as action) {
+                            <app-svg-icon
+                                class="grid-table-action-icon"
+                                [icon]="action.icon"
+                                size="1rem"
+                                [matTooltip]="action.tooltip ?? ''"
+                                matTooltipPosition="left"
+                            />
+                        } @else {
+                            <span
+                                class="grid-table-cell-text"
+                                [innerHTML]="row[def.key] | highlight: searchTerm()"
+                            ></span>
+                        }
                     </div>
                 }
             </div>

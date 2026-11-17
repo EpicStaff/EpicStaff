@@ -1,35 +1,40 @@
-// Pins the grid table's DOM behaviour: grid semantics, roving-tabindex keyboard navigation, the cell popover and
-// search highlighting. Component layer (rendered in a host, driven through DOM events).
+// Pins the grid table's DOM behaviour: grid semantics, roving-tabindex keyboard navigation, the cell popover,
+// search highlighting and the action-button column. Component layer (rendered in a host, driven through DOM events).
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { GraphRagGridTableComponent } from './graph-rag-grid-table.component';
+import { GraphGridActionEvent, GraphGridColumnDef } from './graph-rag-grid-table.model';
 
-const COLUMNS = ['title', 'description'];
+const COLUMN_DEFS: GraphGridColumnDef[] = [{ key: 'title' }, { key: 'description' }];
 const ROWS: Record<string, unknown>[] = [
     { title: 'Entity 1', description: 'A long description of the first entity' },
     { title: 'Entity 2', description: null },
 ];
 const THIRD_ROW: Record<string, unknown> = { title: 'Entity 3', description: 'Third' };
 
+const COLUMN_DEFS_WITH_ACTION: GraphGridColumnDef[] = [
+    { key: 'title' },
+    { key: 'description' },
+    { key: 'actions', pinned: 'end', width: '48px', action: { name: 'view', icon: 'eye' } },
+];
+
 @Component({
     template: `
         <app-graph-rag-grid-table
-            [columns]="columns"
+            [columnDefs]="columnDefs()"
             [rows]="rows()"
             [searchTerm]="searchTerm()"
-            [clickableRows]="clickableRows()"
-            (rowClick)="clickedRows.push($event)"
+            (actionClick)="actions.push($event)"
         />
     `,
     imports: [GraphRagGridTableComponent],
 })
 class TestHostComponent {
-    readonly columns = COLUMNS;
+    readonly columnDefs = signal(COLUMN_DEFS);
     readonly rows = signal(ROWS);
     readonly searchTerm = signal('');
-    readonly clickableRows = signal(false);
-    readonly clickedRows: Record<string, unknown>[] = [];
+    readonly actions: GraphGridActionEvent[] = [];
 }
 
 describe('GraphRagGridTableComponent', () => {
@@ -70,7 +75,7 @@ describe('GraphRagGridTableComponent', () => {
         expect(headers).toEqual(['Title', 'Description']);
         // One header row plus one row per data row
         expect(host.querySelectorAll('[role="row"]').length).toBe(ROWS.length + 1);
-        expect(bodyCells().length).toBe(ROWS.length * COLUMNS.length);
+        expect(bodyCells().length).toBe(ROWS.length * COLUMN_DEFS.length);
         expect(tabStops()).toEqual([bodyCells()[0]]);
         expect(
             bodyCells()
@@ -206,16 +211,30 @@ describe('GraphRagGridTableComponent', () => {
         expect(popover()).toBeNull();
     });
 
-    it('emits the row instead of opening the popover when rows are clickable', () => {
-        fixture.componentInstance.clickableRows.set(true);
+    it('emits the action name and row when an action cell is clicked or activated, and keeps the popover closed', () => {
+        fixture.componentInstance.columnDefs.set(COLUMN_DEFS_WITH_ACTION);
         fixture.detectChanges();
 
-        pressKey(bodyCells()[2], 'Enter');
-        bodyCells()[0].click();
-        fixture.detectChanges();
+        // Three columns per row: [0] title, [1] description, [2] action; [3..5] second row.
+        const actionCellRow1 = bodyCells()[2];
+        const actionCellRow2 = bodyCells()[5];
+        actionCellRow1.click();
+        pressKey(actionCellRow2, 'Enter');
 
-        expect(fixture.componentInstance.clickedRows).toEqual([ROWS[1], ROWS[0]]);
+        expect(fixture.componentInstance.actions).toEqual([
+            { action: 'view', row: ROWS[0] },
+            { action: 'view', row: ROWS[1] },
+        ]);
         expect(popover()).toBeNull();
+    });
+
+    it('leaves the action column header blank and omits its resize handle', () => {
+        fixture.componentInstance.columnDefs.set(COLUMN_DEFS_WITH_ACTION);
+        fixture.detectChanges();
+
+        const headers = Array.from(host.querySelectorAll<HTMLElement>('[role="columnheader"]'));
+        expect(headers[2].querySelector('.grid-table-col-label')?.textContent?.trim()).toBe('');
+        expect(headers[2].querySelector('.grid-table-resize-handle')).toBeNull();
     });
 
     it('highlights the search term inside the cells', () => {

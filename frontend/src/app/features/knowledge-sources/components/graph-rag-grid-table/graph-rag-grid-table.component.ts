@@ -10,8 +10,10 @@ import {
     signal,
     viewChildren,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { GraphGridColumnDef } from './graph-rag-grid-table.model';
+import { GraphGridActionEvent, GraphGridColumnDef } from './graph-rag-grid-table.model';
 import { HighlightPipe } from './highlight.pipe';
 
 const MIN_COLUMN_WIDTH = 100;
@@ -24,7 +26,7 @@ interface ExpandedCell {
     style: Record<string, string>;
 }
 
-/** Position of a body cell: row index into `rows`, column index into `columns`. */
+/** Position of a body cell: row index into `rows`, column index into `columnDefs`. */
 interface CellPosition {
     row: number;
     column: number;
@@ -35,33 +37,23 @@ interface CellPosition {
     templateUrl: './graph-rag-grid-table.component.html',
     styleUrls: ['./graph-rag-grid-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [HighlightPipe],
+    imports: [AppSvgIconComponent, HighlightPipe, MatTooltip],
 })
 export class GraphRagGridTableComponent {
-    readonly columns = input.required<string[]>();
+    readonly columnDefs = input.required<GraphGridColumnDef[]>();
     readonly rows = input.required<Record<string, unknown>[]>();
     readonly searchTerm = input<string>('');
-    readonly columnDefs = input<GraphGridColumnDef[]>([]);
-    readonly clickableRows = input(false);
-    readonly rowClick = output<Record<string, unknown>>();
+    readonly actionClick = output<GraphGridActionEvent>();
 
     readonly expandedCell = signal<ExpandedCell | null>(null);
 
     private readonly columnWidths = signal<Record<string, number>>({});
     /** The cell that holds the grid's single tab stop (roving tabindex); updated whenever a cell gets focus. */
     private readonly activeCell = signal<CellPosition>({ row: 0, column: 0 });
-    /** Body cells in DOM order: row by row, `columns().length` cells per row. */
+    /** Body cells in DOM order: row by row, one entry per column. */
     private readonly bodyCells = viewChildren<ElementRef<HTMLElement>>('bodyCell');
     private resizing: { key: string; startX: number; startWidth: number } | null = null;
     private popoverAnchor: HTMLElement | null = null;
-
-    private readonly columnDefMap = computed(() => {
-        const map = new Map<string, GraphGridColumnDef>();
-        for (const def of this.columnDefs()) {
-            map.set(def.key, def);
-        }
-        return map;
-    });
 
     constructor() {
         effect(() => {
@@ -85,38 +77,49 @@ export class GraphRagGridTableComponent {
         const { row, column } = this.activeCell();
         return {
             row: Math.min(row, Math.max(this.rows().length - 1, 0)),
-            column: Math.min(column, Math.max(this.columns().length - 1, 0)),
+            column: Math.min(column, Math.max(this.columnDefs().length - 1, 0)),
         };
     });
 
     readonly gridTemplateColumns = computed(() => {
         const widths = this.columnWidths();
-        const defs = this.columnDefMap();
-        return this.columns()
-            .map((col) => {
-                const width = widths[col];
-                if (width) return `${width}px`;
-                const def = defs.get(col);
-                return def?.width ?? '1fr';
+        const defs = this.columnDefs();
+        const fillerIndex = defs.map((def) => !this.isActionColumn(def)).lastIndexOf(true);
+        return defs
+            .map((def, index) => {
+                const width = widths[def.key];
+                const track = width ? `${width}px` : (def.width ?? '1fr');
+                return index === fillerIndex && track !== '1fr' ? `minmax(${track}, 1fr)` : track;
             })
             .join(' ');
     });
 
-    formatColumnHeader(column: string): string {
-        const def = this.columnDefMap().get(column);
-        if (def?.label) return def.label;
-        return column
+    formatColumnHeader(def: GraphGridColumnDef): string {
+        if (def.action) return '';
+        if (def.label) return def.label;
+        return def.key
             .split('_')
             .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
             .join(' ');
     }
 
-    /** Click, Enter and Space on a body cell: emits the row for clickable tables, otherwise opens the popover. */
-    onCellActivate(value: unknown, row: Record<string, unknown>, cellElement: HTMLElement): void {
-        if (this.clickableRows()) {
-            this.rowClick.emit(row);
+    /** True while the column renders as a row-level action button rather than a value cell. */
+    isActionColumn(def: GraphGridColumnDef): boolean {
+        return def.action !== undefined;
+    }
+
+    /**
+     * Click, Enter and Space on a body cell:
+     * — an action column emits `actionClick` with the column's action name;
+     * — anything else opens the cell popover.
+     */
+    onCellActivate(def: GraphGridColumnDef, row: Record<string, unknown>, cellElement: HTMLElement): void {
+        if (def.action) {
+            this.closePopover();
+            this.actionClick.emit({ action: def.action.name, row });
             return;
         }
+        const value = row[def.key];
         const text = value == null ? '' : String(value);
         const style = this.calculatePopoverPosition(cellElement.getBoundingClientRect());
         this.popoverAnchor = cellElement;
@@ -140,14 +143,14 @@ export class GraphRagGridTableComponent {
      */
     onCellKeydown(
         event: KeyboardEvent,
-        value: unknown,
+        def: GraphGridColumnDef,
         row: Record<string, unknown>,
         position: CellPosition,
         cellElement: HTMLElement
     ): void {
         if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            this.onCellActivate(value, row, cellElement);
+            this.onCellActivate(def, row, cellElement);
             return;
         }
         const target = this.targetCell(event.key, position);
@@ -192,13 +195,13 @@ export class GraphRagGridTableComponent {
         const row = headerCell.parentElement;
         if (!row) return;
         const cells = Array.from(row.children) as HTMLElement[];
-        const columns = this.columns();
+        const defs = this.columnDefs();
         this.columnWidths.update((widths) => {
             const frozen: Record<string, number> = { ...widths };
             cells.forEach((cell, index) => {
-                const col = columns[index];
-                if (col && frozen[col] === undefined) {
-                    frozen[col] = cell.offsetWidth;
+                const def = defs[index];
+                if (def && frozen[def.key] === undefined) {
+                    frozen[def.key] = cell.offsetWidth;
                 }
             });
             return frozen;
@@ -219,7 +222,7 @@ export class GraphRagGridTableComponent {
     /** The cell a navigation key moves to, or null for keys the grid does not handle. Moves stop at the edges. */
     private targetCell(key: string, { row, column }: CellPosition): CellPosition | null {
         const lastRow = this.rows().length - 1;
-        const lastColumn = this.columns().length - 1;
+        const lastColumn = this.columnDefs().length - 1;
         switch (key) {
             case 'ArrowUp':
                 return { row: Math.max(row - 1, 0), column };
@@ -242,7 +245,7 @@ export class GraphRagGridTableComponent {
         // The popover belongs to the cell it was opened from; moving away closes it.
         this.closePopover();
         this.activeCell.set(position);
-        const cellIndex = position.row * this.columns().length + position.column;
+        const cellIndex = position.row * this.columnDefs().length + position.column;
         this.bodyCells()[cellIndex]?.nativeElement.focus();
     }
 

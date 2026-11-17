@@ -210,6 +210,26 @@ class RagController(Controller):
             int, Parameter(ge=GRAPH_TABLE_MIN_PAGE_SIZE, le=GRAPH_TABLE_MAX_PAGE_SIZE)
         ] = GRAPH_TABLE_DEFAULT_PAGE_SIZE,
         search: Annotated[str | None, Parameter(max_length=GRAPH_SEARCH_MAX_LENGTH)] = None,
+        filter_column: Annotated[
+            str | None,
+            Parameter(
+                query="filter_column",
+                description=(
+                    "Exact-match filter: column name. Must be one of the table's user-facing "
+                    "columns and set together with filter_value."
+                ),
+            ),
+        ] = None,
+        filter_value: Annotated[
+            str | None,
+            Parameter(
+                query="filter_value",
+                description=(
+                    "Exact-match filter: the cell value to match as a string. Set together "
+                    "with filter_column; applied before `search`."
+                ),
+            ),
+        ] = None,
     ) -> schemas.GraphTableDataOutputSchema:
         command = GetGraphTableData(
             rag_id=rag_id,
@@ -217,6 +237,8 @@ class RagController(Controller):
             page=page,
             page_size=page_size,
             search=search,
+            filter_column=filter_column,
+            filter_value=filter_value,
         )
         orchestrator = build_graph_table_data(strategy, uow)
         result = await orchestrator.execute(command)

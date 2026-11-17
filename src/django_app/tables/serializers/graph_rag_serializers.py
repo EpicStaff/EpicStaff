@@ -577,6 +577,30 @@ class GraphRagTableDataQuerySerializer(serializers.Serializer):
         default=GRAPH_TABLE_DEFAULT_PAGE_SIZE,
     )
     search = _graph_search_field()
+    # Exact-match filter: both parts must be sent together. knowledge_new validates the column name
+    # against the table's user-facing columns and 400s on an unknown column or a half-set pair.
+    filter_column = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        max_length=GRAPH_SEARCH_MAX_LENGTH,
+        help_text="Exact-match filter column. Must be sent together with filter_value.",
+    )
+    filter_value = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=False,
+        max_length=GRAPH_SEARCH_MAX_LENGTH,
+        help_text="Exact-match filter value. Must be sent together with filter_column.",
+    )
+
+    def validate(self, attrs: dict) -> dict:
+        has_column = "filter_column" in attrs
+        has_value = "filter_value" in attrs
+        if has_column != has_value:
+            raise serializers.ValidationError(
+                "filter_column and filter_value must be sent together."
+            )
+        return attrs
 
 
 class GraphRagVisualizationQuerySerializer(serializers.Serializer):

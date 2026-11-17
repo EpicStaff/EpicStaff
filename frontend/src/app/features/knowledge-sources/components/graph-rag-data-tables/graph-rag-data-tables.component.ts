@@ -27,8 +27,13 @@ import { DocumentsApiService } from '../../services/documents-api.service';
 import { GraphRagService } from '../../services/graph-rag.service';
 import { GraphRagDocumentsStorageService } from '../../services/graph-rag-documents-storage.service';
 import { GraphRagGridTableComponent } from '../graph-rag-grid-table/graph-rag-grid-table.component';
-import { GraphGridColumnDef } from '../graph-rag-grid-table/graph-rag-grid-table.model';
-import { GRAPH_TABLE_COLUMNS } from '../graph-rag-grid-table/graph-rag-table-columns';
+import { GraphGridActionEvent, GraphGridColumnDef } from '../graph-rag-grid-table/graph-rag-grid-table.model';
+import {
+    GRAPH_ACTION_VIEW_COMMUNITY,
+    GRAPH_ACTION_VIEW_COMMUNITY_REPORT,
+    GRAPH_ACTION_VIEW_DOCUMENT,
+    GRAPH_TABLE_COLUMNS,
+} from '../graph-rag-grid-table/graph-rag-table-columns';
 
 /** `not-indexed`: the backend answered 409 `graph_not_indexed` — the graph exists but has not been indexed yet. */
 type ViewState = 'loading' | 'ready' | 'empty' | 'not-indexed' | 'error';
@@ -54,12 +59,14 @@ export class GraphRagDataTablesComponent implements OnInit {
     // 3. Signals & Computed
     readonly tables = signal<GraphTableSummaryItem[]>([]);
     readonly activeTable = signal<GraphTableSummaryItem | null>(null);
-    readonly columns = signal<string[]>([]);
     readonly rows = signal<Record<string, unknown>[]>([]);
     readonly total = signal(0);
     readonly page = signal(1);
     readonly pageSize = signal(GRAPH_TABLE_DEFAULT_PAGE_SIZE);
     readonly searchTerm = signal('');
+    /** Exact-match filter set by a cross-table jump; cleared on table switch, page-size change, or new search. */
+    readonly filterColumn = signal<string | null>(null);
+    readonly filterValue = signal<string | null>(null);
     readonly viewState = signal<ViewState>('loading');
     readonly tableLoading = signal(false);
     readonly errorMessage = signal('');
@@ -70,7 +77,8 @@ export class GraphRagDataTablesComponent implements OnInit {
     readonly noSearchMatches = computed(() => this.viewState() === 'empty' && this.trimmedSearchTerm() !== '');
     readonly totalPages = computed(() => Math.ceil(this.total() / this.pageSize()) || 1);
     readonly activeColumnDefs = signal<GraphGridColumnDef[]>([]);
-    readonly isDocumentsTable = computed(() => this.activeTable()?.name === 'documents');
+    /** The jump filter's integer value, displayed in the breadcrumb when a cross-table jump is active. */
+    readonly filterBreadcrumbValue = computed(() => this.filterValue());
 
     // Document preview state
     readonly previewBlob = signal<Blob | null>(null);
@@ -143,6 +151,7 @@ export class GraphRagDataTablesComponent implements OnInit {
         this.activeTable.set(table);
         this.page.set(1);
         this.searchTerm.set('');
+        this.clearFilter();
         this.loadTableData();
     }
 
@@ -166,20 +175,26 @@ export class GraphRagDataTablesComponent implements OnInit {
         this.searchSubject.next(term);
     }
 
-    onDocumentRowClick(row: Record<string, unknown>): void {
-        const title = String(row['title'] ?? '');
-        const document = this.documentsStorage.documents().find((doc) => doc.file_name === title);
-        if (!document) {
-            this.previewFileName.set(title);
-            this.previewError.set('Document not found. It may have been removed from the collection.');
-            return;
+    /** Routes a per-row action button from the grid to its handler. */
+    onGridAction(event: GraphGridActionEvent): void {
+        switch (event.action) {
+            case GRAPH_ACTION_VIEW_DOCUMENT:
+                this.openDocumentPreview(event.row);
+                return;
+            case GRAPH_ACTION_VIEW_COMMUNITY_REPORT:
+                this.jumpToTable('community_reports', 'community', event.row['community']);
+                return;
+            case GRAPH_ACTION_VIEW_COMMUNITY:
+                this.jumpToTable('communities', 'community', event.row['community']);
+                return;
         }
+    }
 
-        this.previewFileName.set(title);
-        this.previewError.set('');
-        this.previewBlob.set(null);
-        this.previewLoading.set(true);
-        this.previewSubject.next(document.document_id);
+    /** Clears the cross-table jump filter while staying on the current tab. */
+    clearJumpFilter(): void {
+        this.clearFilter();
+        this.page.set(1);
+        this.loadTableData();
     }
 
     closePreview(): void {
@@ -199,6 +214,8 @@ export class GraphRagDataTablesComponent implements OnInit {
                 tap((term) => {
                     this.searchTerm.set(term);
                     this.page.set(1);
+                    // Typing a new search abandons any cross-table jump filter — the two were never visible together.
+                    this.clearFilter();
                 }),
                 takeUntilDestroyed(this.destroyRef)
             )
@@ -269,7 +286,9 @@ export class GraphRagDataTablesComponent implements OnInit {
                             table.name,
                             this.page(),
                             this.pageSize(),
-                            this.trimmedSearchTerm() || undefined
+                            this.trimmedSearchTerm() || undefined,
+                            this.filterColumn() ?? undefined,
+                            this.filterValue() ?? undefined
                         )
                         .pipe(
                             tap((data) => this.applyTableData(table, data)),
@@ -287,11 +306,42 @@ export class GraphRagDataTablesComponent implements OnInit {
 
     private applyTableData(table: GraphTableSummaryItem, data: GraphTableData): void {
         this.activeColumnDefs.set(GRAPH_TABLE_COLUMNS[table.name] ?? []);
-        this.columns.set(data.columns);
         this.rows.set(data.rows);
         this.total.set(data.total);
         this.tableLoading.set(false);
         this.viewState.set(data.total === 0 ? 'empty' : 'ready');
+    }
+
+    private openDocumentPreview(row: Record<string, unknown>): void {
+        const title = String(row['title'] ?? '');
+        const document = this.documentsStorage.documents().find((doc) => doc.file_name === title);
+        if (!document) {
+            this.previewFileName.set(title);
+            this.previewError.set('Document not found. It may have been removed from the collection.');
+            return;
+        }
+
+        this.previewFileName.set(title);
+        this.previewError.set('');
+        this.previewBlob.set(null);
+        this.previewLoading.set(true);
+        this.previewSubject.next(document.document_id);
+    }
+
+    /** Switches to `tableName` and applies an exact-match filter on `columnKey`; no-op when the value is missing. */
+    private jumpToTable(tableName: string, columnKey: string, rawValue: unknown): void {
+        if (rawValue == null) return;
+        const destination = this.tables().find((table) => table.name === tableName);
+        if (!destination) return;
+        this.closePreview();
+        this.activeTable.set(destination);
+        this.page.set(1);
+        this.searchTerm.set('');
+        // Exact match avoids the substring over-match that short integer values like a community number cause
+        // (e.g. "7" would otherwise match 7, 17, 70, 700…).
+        this.filterColumn.set(columnKey);
+        this.filterValue.set(String(rawValue));
+        this.loadTableData();
     }
 
     /** "Graph not indexed" gets the run-indexing hint; anything else (other 409s and 404 included) is a load error. */
@@ -307,5 +357,10 @@ export class GraphRagDataTablesComponent implements OnInit {
 
     private loadTableData(): void {
         this.loadSubject.next();
+    }
+
+    private clearFilter(): void {
+        this.filterColumn.set(null);
+        this.filterValue.set(null);
     }
 }

@@ -423,7 +423,9 @@ describe('GraphRagDataTablesComponent', () => {
         }
 
         function clickDocumentRow(): void {
-            fixture.debugElement.query(By.css('[role="gridcell"]')).nativeElement.click();
+            const actionCell = fixture.debugElement.queryAll(By.css('[role="gridcell"].grid-table-cell--action'))[0]
+                ?.nativeElement as HTMLElement | undefined;
+            actionCell?.click();
             fixture.detectChanges();
         }
 

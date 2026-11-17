@@ -433,6 +433,8 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
                 page=query.validated_data["page"],
                 page_size=query.validated_data["page_size"],
                 search=query.validated_data.get("search") or None,
+                filter_column=query.validated_data.get("filter_column"),
+                filter_value=query.validated_data.get("filter_value"),
             )
         return Response(data)
 

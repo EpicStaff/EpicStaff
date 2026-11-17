@@ -76,11 +76,19 @@ export class GraphRagService {
         tableName: string,
         page = 1,
         pageSize = 10,
-        search?: string
+        search?: string,
+        filterColumn?: string,
+        filterValue?: string
     ): Observable<GraphTableData> {
         let params = new HttpParams().set('page', page.toString()).set('page_size', pageSize.toString());
         if (search) {
             params = params.set('search', search);
+        }
+        // filter_column and filter_value go together — the backend rejects a partial pair with 400.
+        // Both have to be non-empty strings: the backend treats an empty filter_value as a literal
+        // empty-cell match, which is never what the UI wants.
+        if (filterColumn && filterValue) {
+            params = params.set('filter_column', filterColumn).set('filter_value', filterValue);
         }
         return this.http.get<GraphTableData>(`${this.apiUrl}${ragId}/tables/${tableName}/`, { params });
     }

@@ -157,12 +157,18 @@ class KnowledgeClient:
         page: int,
         page_size: int,
         search: str | None = None,
+        filter_column: str | None = None,
+        filter_value: str | None = None,
     ) -> dict:
         """Fetch paginated parquet table data for a graph RAG."""
         url = f"rags/graph/{rag_id}/tables/{_path_segment(table_name)}/"
         params: dict[str, str | int] = {"page": page, "page_size": page_size}
         if search:
             params["search"] = search
+        # knowledge_new rejects a half-set pair; the Django serializer has already enforced that.
+        if filter_column is not None and filter_value is not None:
+            params["filter_column"] = filter_column
+            params["filter_value"] = filter_value
         response = self._request(method="get", url=url, params=params)
         return response.json()
 

@@ -17,10 +17,10 @@ from domain.errors import UnsupportedError
 _TABLE_COLUMNS: dict[GraphOutputTableEnum, list[str]] = {
     GraphOutputTableEnum.ENTITIES: ["id", "title", "type", "description", "degree"],
     GraphOutputTableEnum.RELATIONSHIPS: ["id", "source", "target", "description", "weight"],
-    GraphOutputTableEnum.COMMUNITIES: ["id", "title", "level", "size"],
+    GraphOutputTableEnum.COMMUNITIES: ["id", "community", "title", "level", "size"],
     GraphOutputTableEnum.DOCUMENTS: ["id", "human_readable_id", "title"],
     GraphOutputTableEnum.TEXT_UNITS: ["id", "text", "n_tokens"],
-    GraphOutputTableEnum.COMMUNITY_REPORTS: ["id", "title", "summary"],
+    GraphOutputTableEnum.COMMUNITY_REPORTS: ["id", "community", "title", "summary"],
     GraphOutputTableEnum.COVARIATES: [
         "id",
         "subject_id",
@@ -62,16 +62,36 @@ def _rows_containing(dataframe: pandas.DataFrame, search: str) -> pandas.DataFra
     return dataframe.loc[mask]
 
 
+def _rows_equal(dataframe: pandas.DataFrame, column: str, value: str) -> pandas.DataFrame:
+    """Keep rows where `column` equals `value` as text. Missing cells never match."""
+    values = dataframe[column]
+    present = values.notna()
+    if pandas.api.types.is_numeric_dtype(values):
+        try:
+            numeric_value = float(value)
+        except ValueError:
+            # A non-numeric filter value on a numeric column matches nothing.
+            return dataframe.iloc[0:0]
+        mask = present & (values == numeric_value)
+    else:
+        mask = present & (values.astype(str) == value)
+    return dataframe.loc[mask]
+
+
 def _select_page(
     dataframe: pandas.DataFrame,
     columns: list[str],
     search: str | None,
     page: int,
     page_size: int,
+    filter_column: str | None = None,
+    filter_value: str | None = None,
 ) -> tuple[list[dict[str, object]], int]:
     """Filter, then cut out one page. Returns the page's rows and the filtered total."""
     # Missing columns become empty, so every row carries the full fixed column set.
     dataframe = dataframe.reindex(columns=columns)
+    if filter_column is not None and filter_value is not None:
+        dataframe = _rows_equal(dataframe, filter_column, filter_value)
     if search:
         dataframe = _rows_containing(dataframe, search)
 
@@ -90,6 +110,12 @@ class GraphTableDataOrchestrator(AbstractGraphTableDataOrchestrator):
             raise UnsupportedError(that="table name", got=command.table_name)
 
         columns = _TABLE_COLUMNS[command.table_name]
+        if (command.filter_column is None) != (command.filter_value is None):
+            raise UnsupportedError(
+                that="filter pair", got="filter_column and filter_value must be set together"
+            )
+        if command.filter_column is not None and command.filter_column not in columns:
+            raise UnsupportedError(that="filter column", got=command.filter_column)
         storage = await open_graph_output_storage(self.uow, command.rag_id)
         dataframe = await read_output_table(storage, command.table_name, columns)
 
@@ -106,6 +132,8 @@ class GraphTableDataOrchestrator(AbstractGraphTableDataOrchestrator):
                 command.search,
                 command.page,
                 command.page_size,
+                command.filter_column,
+                command.filter_value,
             )
 
         return GraphTableDataResult(

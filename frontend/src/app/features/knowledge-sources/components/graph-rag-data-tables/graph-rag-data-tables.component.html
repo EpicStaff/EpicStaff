@@ -63,6 +63,22 @@
                             <span class="data-tables__breadcrumb-separator">/</span>
                             <span class="data-tables__breadcrumb-current">{{ previewFileName() }}</span>
                         </h3>
+                    } @else if (filterBreadcrumbValue(); as filterValue) {
+                        <h3 class="data-tables__title data-tables__title--breadcrumb">
+                            <button
+                                type="button"
+                                class="data-tables__breadcrumb-back"
+                                (click)="clearJumpFilter()"
+                            >
+                                <app-svg-icon
+                                    icon="arrow-left"
+                                    size="1rem"
+                                />
+                                <span class="data-tables__breadcrumb-label">{{ table.label }}</span>
+                            </button>
+                            <span class="data-tables__breadcrumb-separator">/</span>
+                            <span class="data-tables__breadcrumb-current">Community {{ filterValue }}</span>
+                        </h3>
                     } @else {
                         <h3 class="data-tables__title">{{ table.label }}</h3>
                         <div class="data-tables__search">
@@ -126,12 +142,10 @@
                         }
                         <app-graph-rag-grid-table
                             class="data-tables__grid"
-                            [columns]="columns()"
                             [rows]="rows()"
                             [searchTerm]="trimmedSearchTerm()"
                             [columnDefs]="activeColumnDefs()"
-                            [clickableRows]="isDocumentsTable()"
-                            (rowClick)="onDocumentRowClick($event)"
+                            (actionClick)="onGridAction($event)"
                         />
                     </div>
 

@@ -84,6 +84,10 @@ class GetGraphTableData(Command):
     page: int = GRAPH_TABLE_DEFAULT_PAGE
     page_size: int = GRAPH_TABLE_DEFAULT_PAGE_SIZE
     search: str | None = None
+    # Optional exact-match filter on a single column. Both filter_column and
+    # filter_value must be set together; the match is applied before `search`.
+    filter_column: str | None = None
+    filter_value: str | None = None
 
 
 @dataclass(frozen=True)
