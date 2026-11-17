@@ -61,6 +61,11 @@ RUN useradd --system --no-create-home --uid 1000 sandboxuser
 # Copy built app from builder
 COPY --from=builder /app /app
 
+# Every execution starts two interpreters (the launcher and the user code) as
+# sandboxuser, which cannot write bytecode into these root-owned trees, so without
+# precompiled .pyc each run recompiles the stdlib and the launcher's imports from source.
+RUN python -m compileall -q -j0 /usr/local/lib/python3.12 /app/src
+
 # Add virtualenv to PATH
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
