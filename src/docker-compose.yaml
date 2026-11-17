@@ -472,7 +472,7 @@ services:
       dockerfile: ./crew/Dockerfile.crew
     container_name: ${INSTANCE_PREFIX?}crew
     environment:
-      <<: [*docker-env, *redis-env, *communication-env]
+      <<: [*docker-env, *redis-env, *communication-env, *secrets-transport-env]
       CREW_LOG_LEVEL: ${CREW_LOG_LEVEL:?}
       CREW_MAX_CONCURRENT_SESSIONS: ${CREW_MAX_CONCURRENT_SESSIONS:?}
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT:?}
