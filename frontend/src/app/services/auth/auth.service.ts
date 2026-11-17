@@ -66,6 +66,7 @@ export class AuthService {
             .post<FirstSetupResponse>(`${this.baseUrl}first-setup/`, payload, { withCredentials: true })
             .pipe(
                 tap((resp) => {
+                    this.forgetSession();
                     this.defaultOrgId.set(resp.organization.id);
                     this.statusCache$ = null;
                     this.accessTokenSignal.set(resp.access);
@@ -81,7 +82,10 @@ export class AuthService {
                 { withCredentials: true }
             )
             .pipe(
-                tap((tokens) => this.accessTokenSignal.set(tokens.access)),
+                tap((tokens) => {
+                    this.forgetSession();
+                    this.accessTokenSignal.set(tokens.access);
+                }),
                 map(() => true)
             );
     }
@@ -178,7 +182,11 @@ export class AuthService {
         this.accessTokenSignal.set(accessToken);
     }
 
-    /** The signed-in user, and every storage registered in `APP_STORAGE`. */
+    /**
+     * The signed-in user, and every storage registered in `APP_STORAGE`. Run at sign-out and again at sign-in: a
+     * session that ended without a sign-out (browser closed, session expired) leaves its storage behind for whoever
+     * signs in next in the same browser.
+     */
     private forgetSession(): void {
         this.currentUserService.clearCurrentUser();
         this.appStorage.clearAll();

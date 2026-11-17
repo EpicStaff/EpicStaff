@@ -1,5 +1,10 @@
 import { AuditFilterState, EMPTY_AUDIT_FILTER } from '../models/audit-filter.models';
-import { auditFilterStorageKey, readStoredAuditFilter, writeStoredAuditFilter } from './audit-filter-storage.util';
+import {
+    auditFilterStorageKey,
+    clearStoredAuditFilters,
+    readStoredAuditFilter,
+    writeStoredAuditFilter,
+} from './audit-filter-storage.util';
 
 describe('audit filter storage', () => {
     afterEach(() => {
@@ -44,5 +49,26 @@ describe('audit filter storage', () => {
 
         expect(() => writeStoredAuditFilter(auditFilterStorageKey(1, 'applied'), EMPTY_AUDIT_FILTER)).not.toThrow();
         expect(readStoredAuditFilter(auditFilterStorageKey(1, 'applied'))).toEqual(EMPTY_AUDIT_FILTER);
+    });
+
+    it('clears audit filters in every stored format and leaves other keys alone', () => {
+        writeStoredAuditFilter(auditFilterStorageKey(1, 'applied'), { ...EMPTY_AUDIT_FILTER, kinds: ['session'] });
+        localStorage.setItem('epicstaff.audit.filter.v0.applied.1', '{}');
+        localStorage.setItem('epicstaff.theme', 'dark');
+
+        clearStoredAuditFilters();
+
+        expect(readStoredAuditFilter(auditFilterStorageKey(1, 'applied'))).toEqual(EMPTY_AUDIT_FILTER);
+        expect(localStorage.getItem('epicstaff.audit.filter.v0.applied.1')).toBeNull();
+        expect(localStorage.getItem('epicstaff.theme')).toBe('dark');
+    });
+
+    it('clears nothing, without throwing, when storage is blocked', () => {
+        writeStoredAuditFilter(auditFilterStorageKey(1, 'applied'), EMPTY_AUDIT_FILTER);
+        vi.spyOn(Storage.prototype, 'key').mockImplementation(() => {
+            throw new Error('blocked');
+        });
+
+        expect(() => clearStoredAuditFilters()).not.toThrow();
     });
 });
