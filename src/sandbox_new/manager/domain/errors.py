@@ -16,6 +16,7 @@ __all__ = [
     "UVPackageNotFoundError",
     "UVVersionNotFoundError",
     "UnsupportedUploadError",
+    "VenvLibrariesRejectedError",
     "VenvNotFoundError",
     "WheelInUseError",
     "WheelNameMismatchError",
@@ -146,6 +147,19 @@ class SecretNotDecryptableError(BadRequestError):
     """
 
     default_message: str = "Secret '{name}' could not be decrypted; the job was not run."
+
+
+class VenvLibrariesRejectedError(BaseError):
+    """A venv still holds libraries an earlier release stored and this one refuses.
+
+    The venv is not built until its libraries are replaced, so none of them ever
+    reaches uv.
+    """
+
+    default_message: str = (
+        "This environment declares libraries that can no longer be installed; replace "
+        "them to build it again. {reasons}"
+    )
 
 
 class UVBuildError(BaseError):

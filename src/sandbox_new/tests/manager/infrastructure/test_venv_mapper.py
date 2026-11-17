@@ -7,6 +7,7 @@ needs no engine to build one. Piccolo can hand back a JSONB column as a list or 
 string depending on its configuration, so both shapes are covered.
 """
 
+import json
 from datetime import UTC, datetime
 
 from manager.domain.enums import VenvStatus
@@ -72,3 +73,44 @@ def test_to_domain_carries_the_database_timestamps():
 
     assert venv.created_at == datetime(2026, 10, 14, 11, 17, 37, tzinfo=UTC)
     assert venv.updated_at == datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC)
+
+
+# Stored by an earlier release, which let a version specifier into the name.
+LEGACY_LIBRARY = {
+    "name": "numpy>=1",
+    "description": None,
+    "specification": "",
+    "version": None,
+    "is_custom": False,
+}
+VALID_LIBRARY = {
+    "name": "pandas",
+    "description": None,
+    "specification": ">=2.0",
+    "version": None,
+    "is_custom": False,
+}
+
+
+def test_to_domain_reads_a_library_the_rules_now_refuse_instead_of_raising():
+    """One such row would otherwise fail every list holding it, the build and cleanup
+    loops included, for every other venv as well."""
+    venv = VenvMapper.to_domain(make_row(libs=[VALID_LIBRARY, LEGACY_LIBRARY]))
+
+    assert [lib.name for lib in venv.libs] == ["pandas", "numpy>=1"]
+    assert [lib.rejection is None for lib in venv.libs] == [True, False]
+    assert venv.status is VenvStatus.COMPLETED
+
+
+def test_to_domain_reads_a_refused_library_given_as_a_json_string():
+    venv = VenvMapper.to_domain(make_row(libs=json.dumps([LEGACY_LIBRARY])))
+
+    assert venv.libs[0].rejection is not None
+
+
+def test_a_refused_library_is_written_back_exactly_as_it_was_stored():
+    """Renaming the venv, or failing its build, rewrites the row; the entry the user has
+    to fix must still be there, unchanged, when they come to fix it."""
+    venv = VenvMapper.to_domain(make_row(libs=[VALID_LIBRARY, LEGACY_LIBRARY]))
+
+    assert VenvMapper.dump_libs(venv.libs) == [VALID_LIBRARY, LEGACY_LIBRARY]

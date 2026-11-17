@@ -1,8 +1,8 @@
 """Responses of the venv controller.
 
 Mostly 2XX: error mapping would need a case per handler and every one of them costs a
-live HTTP test server. The one rejection covered here is the library invariant, because
-it is the only validation that happens after the body has already been parsed.
+live HTTP test server. The rejections covered here are the library invariants, because
+they are the only validation that happens after the body has already been parsed.
 """
 
 from datetime import UTC, datetime
@@ -11,6 +11,7 @@ import pytest
 from litestar import status_codes
 
 from manager.domain.enums import VenvStatus
+from manager.domain.models import Library
 from tests.builders import make_library, make_venv
 
 
@@ -293,3 +294,83 @@ def test_create_stores_and_returns_whether_a_library_is_custom(client, venv_repo
     body = response.json()
     assert [lib["is_custom"] for lib in body["libs"]] == [False, True]
     assert [lib.is_custom for lib in venv_repository.rows[body["id"]].libs] == [False, True]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "six\n-i http://internal-host:9/simple",
+        "-e /etc",
+        "/etc",
+        "requests[socks]\n-i x",
+        "requests[ socks]",
+        "requests[socks];python_version<'3'",
+        "requests[]",
+    ],
+)
+def test_create_rejects_a_library_name_uv_would_read_as_more_than_a_package(
+    client, venv_repository, name
+):
+    response = client.post("/venvs", json={"name": "data", "libs": [{"name": name}]})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert venv_repository.rows == {}
+
+
+def test_update_rejects_a_library_name_uv_would_read_as_more_than_a_package(
+    client, venv_repository
+):
+    stored = venv_repository.seed(make_venv(libs=[make_library(name="pandas")]))[0]
+
+    response = client.patch(
+        f"/venvs/{stored.id}", json={"libs": [{"name": "six\n-r /etc/passwd"}]}
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert [lib.name for lib in venv_repository.rows[stored.id].libs] == ["pandas"]
+
+
+def test_create_accepts_libraries_declared_with_extras(client, venv_repository):
+    response = client.post(
+        "/venvs",
+        json={
+            "name": "data",
+            "libs": [
+                {"name": "requests[socks]", "specification": ">=2.0"},
+                {"name": "httpx[http2,cli]", "specification": ">=0.27, <1"},
+            ],
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+    body = response.json()
+    assert [(lib["name"], lib["specification"]) for lib in body["libs"]] == [
+        ("requests[socks]", ">=2.0"),
+        ("httpx[http2,cli]", ">=0.27, <1"),
+    ]
+    assert [lib.requirement for lib in venv_repository.rows[body["id"]].libs] == [
+        "requests[socks]>=2.0",
+        "httpx[http2,cli]>=0.27, <1",
+    ]
+
+
+def test_a_venv_holding_a_library_an_older_release_stored_still_lists_and_retrieves(
+    client, venv_repository
+):
+    """It is shown as stored, so its owner can see what to replace."""
+    legacy, _ = venv_repository.seed(
+        make_venv(
+            name="legacy",
+            status=VenvStatus.COMPLETED,
+            libs=[Library.from_stored({"name": "numpy>=1", "specification": ""})],
+        ),
+        make_venv(name="valid"),
+    )
+
+    listed = client.get("/venvs")
+    retrieved = client.get(f"/venvs/{legacy.id}")
+
+    assert listed.status_code == status_codes.HTTP_200_OK
+    assert [venv["name"] for venv in listed.json()["result"]] == ["legacy", "valid"]
+    assert retrieved.status_code == status_codes.HTTP_200_OK
+    assert [lib["name"] for lib in retrieved.json()["libs"]] == ["numpy>=1"]

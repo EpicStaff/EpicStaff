@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Any
@@ -6,9 +7,10 @@ from uuid import UUID
 from foundation.base import Entity, ValueObject
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, PrivateAttr, ValidationError, field_validator, model_validator
 
 from manager.domain.enums import JobStatus, VenvStatus, WheelStatus
+from manager.domain.errors import VenvLibrariesRejectedError
 from manager.domain.types import LibraryString
 
 __all__ = [
@@ -22,35 +24,151 @@ __all__ = [
     "StorageCredentials",
     "Venv",
     "Wheel",
+    "check_requirement",
 ]
 
 DEFAULT_VENV_NAME = "default"
 WHEEL_SUFFIX = ".whl"
 SOURCE_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".zip")
-DISTRIBUTION_NAME_PATTERN = r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$"
+DISTRIBUTION_NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
+DISTRIBUTION_NAME_PATTERN = rf"^{DISTRIBUTION_NAME}$"
+# A distribution name, optionally followed by extras that are distribution names
+# themselves: `requests`, `requests[socks]`, `requests[socks,security]`. Used with
+# `fullmatch`, or as the prefix of a requirement line whose remainder is checked on
+# its own -- never anchored with `$`, which also matches before a trailing newline.
+LIBRARY_NAME_RE = re.compile(
+    rf"{DISTRIBUTION_NAME}(?:\[{DISTRIBUTION_NAME}(?:,{DISTRIBUTION_NAME})*\])?"
+)
 VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_\.][a-z0-9]+)*)?$"
 
 
+def check_library_name(value: str, /) -> str:
+    """Accept a distribution name, optionally with extras, and nothing else.
+
+    The name starts one line of the requirements `uv pip compile` reads on stdin, so
+    a line break, a leading `-`, a path, a URL, a marker or a specifier in it would
+    hand uv a second requirement, an option or a local project.
+
+    Raises:
+        ValueError: The value is anything else.
+    """
+    if LIBRARY_NAME_RE.fullmatch(value) is None:
+        raise ValueError(
+            f"Library name {value!r} is not a package name. Use letters, digits and "
+            "'.', '_' or '-' between them, optionally followed by extras in brackets, "
+            "for example 'requests' or 'requests[socks,security]'; put a version in "
+            "the specification."
+        )
+    return value
+
+
+def check_specification(value: str, /) -> str:
+    """Accept a PEP 440 specifier set written on one line.
+
+    Raises:
+        ValueError: The value spans lines, holds a tab, or is not a specifier set.
+    """
+    # `SpecifierSet` reads any whitespace around an operator as padding, a line
+    # break included, so the break would reach uv inside the requirement line.
+    if any(character.isspace() and character != " " for character in value):
+        raise ValueError(f"Version specification {value!r} must be on one line, with no tabs.")
+    try:
+        SpecifierSet(value)
+    except InvalidSpecifier as e:
+        raise ValueError(f"Invalid version specification: '{value}'") from e
+    return value
+
+
+def check_requirement(line: str, /) -> str:
+    """Accept a requirement line only in the shape `Library.requirement` writes one.
+
+    The two rules a library is held to, applied to the line they produce: a library
+    name, then a specifier set. Anything a valid library could not have produced
+    fails one of them.
+
+    Raises:
+        ValueError: The line is anything else.
+    """
+    name = LIBRARY_NAME_RE.match(line)
+    if name is None:
+        raise ValueError(f"Requirement {line!r} does not start with a package name.")
+    check_specification(line[name.end() :])
+    return line
+
+
+def _describe_rejection(error: ValidationError) -> str:
+    """The reasons a stored library fails validation, without pydantic's decoration."""
+    reasons = []
+    for detail in error.errors():
+        cause = detail.get("ctx", {}).get("error")
+        reasons.append(str(cause) if cause is not None else detail["msg"])
+    return "; ".join(reasons)
+
+
 class Library(ValueObject):
-    name: str = Field(min_length=1)
+    """A package a venv declares, resolved from the index or from a custom library.
+
+    `requirement` becomes one line of the requirements `uv pip compile` reads on
+    stdin, so neither `name` nor `specification` may carry anything uv would read as
+    a second line, an option (`-i`, `-r`, `-e`) or a path: `name` is a distribution
+    name with optional extras, without markers, a specifier or a URL.
+
+    A library read back from storage may predate these rules: see `from_stored`.
+    """
+
+    name: str
     description: str | None = None
     specification: str = ""
     version: str | None = Field(default=None, pattern=VERSION_PATTERN)
     is_custom: bool = False
+    _rejection: str | None = PrivateAttr(default=None)
+
+    @classmethod
+    def from_stored(cls, data: dict[str, Any], /) -> "Library":
+        """Read a library back from storage, including one these rules now refuse.
+
+        An earlier release stored names such as `numpy>=1`. Raising on such a row
+        would fail every read that touches it, the background build and cleanup loops
+        included, so the library is kept exactly as stored and marked rejected
+        instead: its venv still reads, lists and runs, but never builds while it
+        holds one (`Venv.assert_buildable`).
+        """
+        try:
+            return cls.model_validate(data)
+        except ValidationError as error:
+            library = cls.model_construct(**data)
+            library._rejection = _describe_rejection(error)
+            return library
 
     @field_validator("name")
     @classmethod
     def normalize_name(cls, value: str) -> str:
-        return canonicalize_name(value)
+        # Checked before canonicalizing, so the refusal names what was sent. A regex,
+        # not `canonicalize_name(validate=True)`: packaging 24 lets that accept a name
+        # followed by a newline.
+        return canonicalize_name(check_library_name(value))
 
     @field_validator("specification")
     @classmethod
     def validate_version_specification(cls, value: str) -> str:
-        try:
-            SpecifierSet(value)
-        except InvalidSpecifier as e:
-            raise ValueError(f"Invalid version specification: '{value}'") from e
-        return value
+        return check_specification(value)
+
+    @model_validator(mode="after")
+    def reject_extras_on_a_custom_library(self) -> "Library":
+        """Refuse extras on a stored library.
+
+        A stored library is looked up, guarded against deletion and pinned by its
+        bare name, so `acme[extra]` would name a library nothing stores.
+
+        Raises:
+            ValueError: A custom library carries extras.
+        """
+        if self.is_custom and self.distribution_name != self.name:
+            raise ValueError(
+                f"Custom library {self.name!r} cannot take extras; "
+                f"declare it as {self.distribution_name!r}."
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_version_against_specification(self) -> "Library":
@@ -61,6 +179,16 @@ class Library(ValueObject):
                 f"Version '{self.version}' does not satisfy specification '{self.specification}'"
             )
         return self
+
+    @property
+    def distribution_name(self) -> str:
+        """The package itself, without extras: what uv resolves and pins."""
+        return self.name.partition("[")[0]
+
+    @property
+    def rejection(self) -> str | None:
+        """Why this stored library would be refused today; None when it is valid."""
+        return self._rejection
 
     @property
     def requirement(self) -> LibraryString:
@@ -99,7 +227,8 @@ class Venv(Entity):
 
         Two entries for one package give the resolver two requirements it cannot both
         honour, and it fails the whole build over it. Names reach here canonicalized,
-        so `Pydantic` and `pydantic` count as the same package.
+        so `Pydantic` and `pydantic` count as the same package. They are compared in
+        full, extras included: `requests` next to `requests[socks]` is allowed.
 
         Raises:
             ValueError: Some package is declared more than once.
@@ -123,13 +252,25 @@ class Venv(Entity):
 
         `versions` also carries the transitive packages uv resolved; only declared
         libraries are stamped, and one the build did not resolve is left as declared.
+        A lock pins the package, not its extras, so `requests[socks]` is looked up as
+        `requests`.
         """
         self.libs = [
-            library.with_resolved_version(versions[library.name])
-            if library.name in versions
+            library.with_resolved_version(versions[library.distribution_name])
+            if library.distribution_name in versions
             else library
             for library in self.libs
         ]
+
+    def assert_buildable(self):
+        """Refuse to build while some library is one an older release stored.
+
+        Raises:
+            VenvLibrariesRejectedError: Some library is rejected; names each one.
+        """
+        rejections = [library.rejection for library in self.libs if library.rejection]
+        if rejections:
+            raise VenvLibrariesRejectedError(reasons=" ".join(rejections))
 
     def uses_custom_library(self, name: str, /) -> bool:
         """Whether this venv names that stored library at all.

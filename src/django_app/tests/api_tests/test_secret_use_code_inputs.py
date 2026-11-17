@@ -169,12 +169,18 @@ class TestVenvLibraries:
         _assert_denied(response, "libs")
         sandbox_client.update.assert_not_called()
 
-    def test_an_unreadable_libs_payload_is_a_change(self, no_use_client, binding, secret, sandbox_client):
+    def test_an_unreadable_libs_payload_is_refused_before_the_sandbox_is_asked(
+        self, no_use_client, binding, secret, sandbox_client
+    ):
+        """The body is checked before the gate, so a `libs` that is not a list of
+        libraries is refused under `libs` without reading the stored ones."""
         _code(secret, venv=binding)
 
         response = _patch_venv(no_use_client, binding, {"libs": "requests"})
 
-        _assert_denied(response, "libs")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+        assert response.json()["message"].startswith("libs: ")
+        assert sandbox_client.method_calls == []
 
 
 def _patch_tool(client, tool, data):

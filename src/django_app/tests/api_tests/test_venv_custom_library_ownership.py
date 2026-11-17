@@ -177,3 +177,35 @@ def test_renaming_a_venv_asks_nothing_about_libraries(
 
     assert response.status_code == status.HTTP_200_OK
     assert library_sandbox.list.call_count == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("name", ["my-lib[extra]", "their-lib[extra]"])
+def test_a_stored_library_named_with_extras_is_refused_before_anything_is_asked(
+    auth_client, owned_library, library_sandbox, venv_sandbox, name
+):
+    """A stored library is found and guarded by its bare name, which extras would hide,
+    so the entry is refused on its shape, before the ownership check could be asked
+    about the wrong name."""
+    response = auth_client.post(
+        "/api/venvs/", venv_payload({"name": name, "is_custom": True}), format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["message"].startswith("libs: ")
+    assert "cannot take extras" in response.json()["message"]
+    assert venv_sandbox.method_calls == []
+    assert library_sandbox.method_calls == []
+    assert not SandboxVenvBinding.objects.exists()
+
+
+@pytest.mark.django_db
+def test_an_index_package_named_with_extras_is_forwarded(auth_client, venv_sandbox):
+    """Extras are refused on a stored library only; on a package index lookup they
+    select its optional dependencies."""
+    payload = venv_payload({"name": "my-lib[extra]", "is_custom": False})
+
+    response = auth_client.post("/api/venvs/", payload, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert venv_sandbox.create.call_args.args[0] == payload

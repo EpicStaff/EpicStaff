@@ -70,3 +70,35 @@ async def test_the_requirements_still_reach_the_resolver_unchanged(monkeypatch, 
 async def test_a_venv_that_was_never_initialised_is_refused(venv_path, tmp_path):
     with pytest.raises(ValueError):
         await UVProvider.apply(venv_path / "missing", "requests", wheelhouse=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "six\n-i http://internal-host:9/simple",
+        "requests>=2\n-r /etc/passwd",
+        "-e /etc",
+        "/etc",
+        "requests @ file:///etc",
+    ],
+)
+async def test_a_line_no_library_could_have_written_never_reaches_uv(commands, venv_path, line):
+    """Every caller builds its lines from validated libraries; this holds even if one
+    stops doing so, since uv honours an option or a path on any stdin line."""
+    with pytest.raises(ValueError):
+        await UVProvider.apply(venv_path, "requests", line)
+
+    assert commands == []
+
+
+async def test_a_library_with_extras_reaches_the_resolver_as_written(monkeypatch, venv_path):
+    sent: list[str | None] = []
+
+    async def record(*args: str, input=None, **kwargs):
+        sent.append(input)
+
+    monkeypatch.setattr(UVProvider, "run", record)
+
+    await UVProvider.apply(venv_path, "requests[socks,security]>=2.0, <3")
+
+    assert sent[0] == "requests[socks,security]>=2.0, <3"

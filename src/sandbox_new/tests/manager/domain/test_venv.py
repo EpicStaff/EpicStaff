@@ -4,7 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from manager.domain.enums import VenvStatus
-from manager.domain.models import Library, Venv
+from manager.domain.errors import VenvLibrariesRejectedError
+from manager.domain.models import Library, Venv, check_requirement
 from tests.builders import make_library, make_venv
 
 
@@ -33,6 +34,154 @@ def test_library_rejects_invalid_versions(version):
 def test_library_rejects_an_empty_name():
     with pytest.raises(ValidationError):
         Library(name="")
+
+
+@pytest.mark.parametrize(
+    ("name", "requirement"),
+    [
+        ("requests", "requests>=2.0"),
+        ("Requests_Toolbelt", "requests-toolbelt>=2.0"),
+        ("zope.interface", "zope-interface>=2.0"),
+        ("a", "a>=2.0"),
+        ("py3", "py3>=2.0"),
+        ("requests[socks]", "requests[socks]>=2.0"),
+        ("requests[socks,security]", "requests[socks,security]>=2.0"),
+        ("Requests[Socks_Proxy]", "requests[socks-proxy]>=2.0"),
+    ],
+)
+def test_library_accepts_a_distribution_name_with_optional_extras(name, requirement):
+    assert make_library(name=name, specification=">=2.0").requirement == requirement
+
+
+# Each name is one line of the requirements uv reads on stdin; these would give it a
+# second line, an option, or a local path or URL to install from.
+@pytest.mark.parametrize(
+    "name",
+    [
+        "six\n-i http://internal-host:9/simple",
+        "six\n-r /etc/passwd",
+        "requests\n--index-url https://evil.example/simple",
+        "requests\n",
+        "requests\r-e /etc",
+        "-e /etc",
+        "-r",
+        "/etc",
+        "./local/path",
+        "foo @ file:///etc",
+        "git+https://example.com/repo.git",
+        "requests>=2",
+        "requests; python_version<'3'",
+        "requests ",
+        "-requests",
+        "requests-",
+        "requests[socks]\n-i x",
+        "requests[socks]\n",
+        "requests[ socks]",
+        "requests[socks];python_version<'3'",
+        "requests[socks]>=2",
+        "requests[]",
+        "requests[socks,]",
+        "requests[socks",
+        "requests[-e]",
+        "[socks]",
+    ],
+)
+def test_library_rejects_anything_but_a_distribution_name_with_optional_extras(name):
+    with pytest.raises(ValidationError):
+        make_library(name=name, specification="")
+
+
+def test_a_library_pinned_by_a_build_keeps_its_extras_in_the_requirement():
+    library = make_library(name="requests[socks]", specification=">=2.0", version="2.31.0")
+
+    assert library.requirement == "requests[socks]==2.31.0"
+
+
+def test_a_custom_library_cannot_take_extras():
+    """A stored library is found and guarded by its bare name, which extras would hide."""
+    with pytest.raises(ValidationError):
+        make_library(name="acme-core[extra]", is_custom=True)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "requests",
+        "requests>=2.0",
+        "requests>=1.0, <2",
+        "requests[socks,security]==2.31.0",
+        "zope-interface~=5.0",
+        "acme-core==1.0.0+local.1",
+    ],
+)
+def test_check_requirement_accepts_every_line_a_library_can_write(line):
+    assert check_requirement(line) == line
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "six\n-i http://internal-host:9/simple",
+        "requests>=2.0\n-r /etc/passwd",
+        "-e /etc",
+        "/etc",
+        "requests @ file:///etc",
+        "requests; python_version<'3'",
+        "requests[ socks]",
+        "requests --index-url http://evil",
+        "",
+    ],
+)
+def test_check_requirement_refuses_a_line_no_library_could_write(line):
+    with pytest.raises(ValueError):
+        check_requirement(line)
+
+
+# What an earlier release let a client store, read back from the database.
+LEGACY_LIBRARY = {"name": "numpy>=1", "specification": "", "version": None, "is_custom": False}
+
+
+def test_a_stored_library_the_rules_now_refuse_still_reads_with_the_reason():
+    library = Library.from_stored(LEGACY_LIBRARY)
+
+    assert library.name == "numpy>=1"
+    assert "Library name 'numpy>=1' is not a package name" in library.rejection
+
+
+def test_a_valid_stored_library_reads_as_an_ordinary_one():
+    library = Library.from_stored({"name": "Requests[Socks]", "specification": ">=2"})
+
+    assert library == make_library(name="requests[socks]", specification=">=2")
+    assert library.rejection is None
+
+
+def test_a_venv_holding_a_refused_stored_library_is_not_buildable():
+    venv = make_venv(libs=[make_library(name="pandas"), Library.from_stored(LEGACY_LIBRARY)])
+
+    with pytest.raises(VenvLibrariesRejectedError, match="numpy>=1"):
+        venv.assert_buildable()
+
+
+def test_a_venv_of_valid_libraries_is_buildable():
+    make_venv(libs=[make_library(name="requests[socks]")]).assert_buildable()
+
+
+def test_replacing_the_libraries_makes_a_refused_venv_buildable_again():
+    venv = make_venv(libs=[Library.from_stored(LEGACY_LIBRARY)])
+
+    venv.set_libs([make_library(name="numpy", specification=">=1")])
+
+    venv.assert_buildable()
+
+
+@pytest.mark.parametrize("specification", [">=1.0\n", ">=\n1.0", "===\n/etc", ">=1.0,\t<2"])
+def test_library_rejects_a_specification_that_spans_lines(specification):
+    with pytest.raises(ValidationError):
+        make_library(specification=specification)
+
+
+def test_library_accepts_a_specification_with_spaces_after_its_commas():
+    assert make_library(specification=">=1.0, <2").requirement == "requests>=1.0, <2"
 
 
 def test_venv_rename_changes_the_name():
@@ -173,6 +322,17 @@ def test_venv_apply_resolved_versions_stamps_each_library():
     assert [(lib.name, lib.version) for lib in venv.libs] == [
         ("pandas", "2.2.3"),
         ("numpy", "1.26.4"),
+    ]
+
+
+def test_venv_apply_resolved_versions_stamps_a_library_declared_with_extras():
+    """The lock pins `requests`, never `requests[socks]`."""
+    venv = make_venv(libs=[make_library(name="requests[socks]", specification="")])
+
+    venv.apply_resolved_versions({"requests": "2.32.3", "pysocks": "1.7.1"})
+
+    assert [(lib.name, lib.version, lib.specification) for lib in venv.libs] == [
+        ("requests[socks]", "2.32.3", ">=2.32.3")
     ]
 
 

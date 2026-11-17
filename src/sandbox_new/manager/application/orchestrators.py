@@ -173,7 +173,9 @@ class VenvBuildOrchestrator:
 
         # Before anything is started: a venv refused here has had nothing done to it,
         # and one that is only waiting must not look like one that is being built.
+        # Failing it is persisted, which also takes it off the declared-venv tick.
         try:
+            venv.assert_buildable()
             custom_wheels = await self._offered_wheels(venv)
         except CustomLibraryStillBuildingError as waiting:
             venv.mark_as_waiting()
@@ -407,9 +409,9 @@ class JobOrchestrator:
             logger.info("Execution {} is already known; not enqueued again", execution_id)
             return known_status
 
-        logger.info('BEFORE SECRETS: {}', secrets)
+        logger.info("BEFORE SECRETS: {}", secrets)
         secrets = self._open_secrets(execution_id, secrets)
-        logger.info('AFTER SECRETS: {}', secrets)
+        logger.info("AFTER SECRETS: {}", secrets)
 
         # Reserved before the first await, so a concurrent re-POST sees the id as known.
         self.registry.reserve(execution_id)

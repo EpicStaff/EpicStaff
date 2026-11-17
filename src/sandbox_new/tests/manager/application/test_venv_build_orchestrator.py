@@ -11,7 +11,7 @@ import pytest
 from manager.application.orchestrators import VenvBuildOrchestrator
 from manager.domain.enums import VenvStatus, WheelStatus
 from manager.domain.errors import VenvNotFoundError
-from manager.domain.models import CustomLibrary, Wheel
+from manager.domain.models import CustomLibrary, Library, Wheel
 from tests.builders import make_library, make_venv
 from tests.fakes import FakeUnitOfWork
 from tests.fakes.repositories import FakeCustomLibraryRepository, FakeWheelRepository
@@ -418,3 +418,33 @@ async def test_a_venv_refused_before_the_build_is_never_marked_processing(
     await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
 
     assert uv_provider.init_venv_calls == []
+
+
+async def test_a_venv_holding_a_library_an_older_release_stored_fails_without_reaching_uv(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    """The declared-venv tick builds what `list_by_status` returns: the refused venv
+    fails with a reason naming the entry, is never handed to uv, and the venv after it
+    still builds."""
+    legacy, valid = uow.venv_repo.seed(
+        make_venv(
+            name="legacy",
+            libs=[
+                make_library(name="pandas"),
+                Library.from_stored({"name": "numpy>=1", "specification": ""}),
+            ],
+        ),
+        make_venv(name="valid", libs=[make_library(name="requests[socks]", specification="")]),
+    )
+    orchestrator = VenvBuildOrchestrator(uow, uv_provider, file_storage)
+
+    for venv in await uow.venv_repo.list_by_status(VenvStatus.DECLARED, VenvStatus.WAITING):
+        await orchestrator.build(venv)
+
+    failed = uow.venv_repo.rows[legacy.id]
+    assert failed.status is VenvStatus.FAILED
+    assert "Library name 'numpy>=1' is not a package name" in failed.error
+    assert [lib.name for lib in failed.libs] == ["pandas", "numpy>=1"]
+    assert uow.venv_repo.rows[valid.id].status is VenvStatus.COMPLETED
+    assert [libs for _, libs in uv_provider.apply_calls] == [("requests[socks]",)]
+    assert await uow.venv_repo.list_by_status(VenvStatus.DECLARED, VenvStatus.WAITING) == []
