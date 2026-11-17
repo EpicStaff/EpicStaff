@@ -1708,7 +1708,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.isDeactivating = true;
         return this.unsavedChangesDialog
-            .confirmUnsavedChanges(() =>
+            .confirmUnsavedFlowChanges(() =>
                 this.saveFlowState(false).pipe(
                     map(() => true),
                     defaultIfEmpty(false),
