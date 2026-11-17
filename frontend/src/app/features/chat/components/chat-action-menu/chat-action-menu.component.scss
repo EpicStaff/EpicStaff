@@ -14,16 +14,32 @@
         outline: 2px solid var(--accent-color);
         color: var(--color-text-primary);
     }
+
+    // Accent while pressed and while its menu is open, so the open menu shows which ⋮ it belongs to. After the focus
+    // ring's rule: a menu opened from the keyboard keeps the accent too.
+    &:active,
+    &[aria-expanded='true'] {
+        color: var(--accent-color);
+    }
 }
 
 .chat-action-menu {
     @include row-more-menu.panel;
-    // Labels such as "My name: <alias>" grow it; the screen's edge stops it.
+    // Items 216px wide (inside the panel's 1px border) and 40px tall, 8px 16px padded (the mixin's). A minimum, not a
+    // width: labels such as "My name: <alias>" grow it; the screen's edge stops it.
     width: auto;
-    min-width: 170px;
+    min-width: 218px;
     max-width: min(280px, calc(100vw - 16px));
 
+    &__separator {
+        flex-shrink: 0;
+        height: 1px;
+        background-color: var(--color-divider-subtle);
+    }
+
     &__item {
+        flex-shrink: 0;
+        height: 40px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
