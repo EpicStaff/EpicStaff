@@ -386,9 +386,9 @@ describe('ConversationRowComponent', () => {
         });
 
         it("shows the current user's picture in the badge, and a person icon for anyone else or without one", () => {
-            currentUser.update((user) => ({ ...user, avatar_url: 'https://cdn.example/ada.png' }));
+            currentUser.update((user) => ({ ...user, avatar_url: 'https://example.com/avatars/ada.png' }));
             render(conversation({ mode: 'human', assigned_operator_id: 3 }));
-            expect(holderImage()?.getAttribute('src')).toBe('https://cdn.example/ada.png');
+            expect(holderImage()?.getAttribute('src')).toBe('https://example.com/avatars/ada.png');
             expect(holderBadge()?.querySelector('use[href="#icon-user"]')).toBeNull();
 
             render(conversation({ mode: 'human', assigned_operator_id: 7, assigned_operator_name: 'Grace Hopper' }));
@@ -402,7 +402,7 @@ describe('ConversationRowComponent', () => {
         });
 
         it('falls back to the person icon when the picture fails to load', () => {
-            currentUser.update((user) => ({ ...user, avatar_url: 'https://cdn.example/expired.png' }));
+            currentUser.update((user) => ({ ...user, avatar_url: 'https://example.com/avatars/expired.png' }));
             render(conversation({ mode: 'human', assigned_operator_id: 3 }));
             holderImage()!.dispatchEvent(new Event('error'));
             fixture.detectChanges();
