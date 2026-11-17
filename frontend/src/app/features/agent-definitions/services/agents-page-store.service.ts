@@ -2,13 +2,14 @@
 import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
+import { ExportOptionsDialogService } from '@shared/services';
 import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
-import { catchError, debounceTime, groupBy, mergeMap, tap } from 'rxjs/operators';
+import { catchError, debounceTime, groupBy, mergeMap, switchMap, tap } from 'rxjs/operators';
 
 import { wasHandledByForbiddenInterceptor } from '../../../core/interceptors/forbidden-interceptor-handled.util';
 import { TransferExportService } from '../../../core/services/transfer-export.service';
-import { TransferJobsService } from '../../../core/services/transfer-jobs.service';
+import { StartedTransferJob, TransferJobsService } from '../../../core/services/transfer-jobs.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ToastService } from '../../../services/notifications';
@@ -127,6 +128,7 @@ export class AgentsPageStore {
     private readonly importWithReview = inject(ImportWithReviewService);
     private readonly transferJobs = inject(TransferJobsService);
     private readonly transferExport = inject(TransferExportService);
+    private readonly exportOptionsDialog = inject(ExportOptionsDialogService);
     private readonly groupsStore = inject(AgentGroupsStorageService);
     private readonly collapsedGroupsKey = collapsedGroupsStorageKey(inject(ProfileService).currentUserSignal()?.id);
 
@@ -1311,6 +1313,10 @@ export class AgentsPageStore {
                 entityLabelPlural: 'agents',
                 inspect: (file) => this.agentsApi.inspectImport(file),
                 importFile: (file) => this.agentsApi.importAgents(file),
+                importArchive: (file) =>
+                    this.transferJobs
+                        .startImport('agentDefinitions', file)
+                        .pipe(switchMap((started) => this.transferJobs.waitForImport(started))),
                 accept: '.json,.zip',
             })
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -1356,11 +1362,27 @@ export class AgentsPageStore {
     }
 
     /**
-     * Exports the agents as a background job, which outlives this page. TransferExportService downloads the archive,
-     * warns about the dependencies left out and reports a failure; an agent that is gone (404) also reloads the list.
+     * Asks for the export options, then exports the agents as a background job, which outlives this page; nothing
+     * runs when the user cancels. TransferExportService downloads the archive, warns about the dependencies left out
+     * and reports a failure; an agent that is gone (404) also reloads the list.
      */
     private exportAgents(ids: number[], onStarted?: () => void): void {
-        const start = this.transferJobs.startExport('agentDefinitions', { ids }).pipe(
+        this.exportOptionsDialog
+            .ask(ids.length, { singular: 'agent', plural: 'agents' })
+            .pipe(
+                switchMap(({ includeKnowledge }) =>
+                    this.transferExport.export(this.startAgentExportJob(ids, includeKnowledge, onStarted))
+                )
+            )
+            .subscribe();
+    }
+
+    private startAgentExportJob(
+        ids: number[],
+        includeKnowledge: boolean,
+        onStarted?: () => void
+    ): Observable<StartedTransferJob> {
+        return this.transferJobs.startExport('agentDefinitions', { ids, include_knowledge: includeKnowledge }).pipe(
             tap({
                 next: () => onStarted?.(),
                 error: (error: unknown) => {
@@ -1370,7 +1392,6 @@ export class AgentsPageStore {
                 },
             })
         );
-        this.transferExport.export(start).subscribe();
     }
 
     private extractError(err: unknown, fallback: string): string {

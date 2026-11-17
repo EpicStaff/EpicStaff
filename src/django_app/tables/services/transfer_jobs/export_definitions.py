@@ -170,8 +170,8 @@ class ExportJobDefinition(ABC):
 class EnvelopeExportDefinition(ExportJobDefinition):
     """An export whose archive holds the `export.json` envelope (and any collection files).
 
-    The archive imports again as it is: through an import job for flows and
-    collections, through the synchronous `import/` of the others. The right it needs
+    The archive imports again as it is: through an import job for flows, agents
+    and collections, through the synchronous `import/` of the others. The right it needs
     is `permission` on the resource type `ENTITY_RESOURCE_MAP` gives the entity.
     """
 
@@ -495,6 +495,8 @@ EXPORT_JOB_DEFINITIONS: dict[str, ExportJobDefinition] = {
             file_prefix="agent",
             plural_label="agents",
             scope=_in_org,
+            lane=TransferLane.HEAVY,
+            carries_knowledge_flag=True,
         ),
         AuditFilterPresetExportDefinition(),
         SessionExportDefinition(),

@@ -1,4 +1,5 @@
 import { inject, Injectable } from '@angular/core';
+import { ExportOptionsDialogService } from '@shared/services';
 import { Observable } from 'rxjs';
 import { switchMap, tap } from 'rxjs/operators';
 
@@ -7,7 +8,6 @@ import { ImportExportService } from '../../../core/services/import-export.servic
 import { TransferExportService } from '../../../core/services/transfer-export.service';
 import { StartedTransferJob, TransferJobsService } from '../../../core/services/transfer-jobs.service';
 import { GraphDto, PartialImportResponse } from '../models/graph.model';
-import { FlowExportOptionsDialogService } from './flow-export-options-dialog.service';
 import { FlowsStorageService } from './flows-storage.service';
 import { UsePermissionRefusalService } from './use-permission-refusal.service';
 
@@ -24,7 +24,7 @@ export class FlowCopyImportFacadeService {
     private readonly importExport = inject(ImportExportService);
     private readonly transferJobs = inject(TransferJobsService);
     private readonly transferExport = inject(TransferExportService);
-    private readonly exportOptionsDialog = inject(FlowExportOptionsDialogService);
+    private readonly exportOptionsDialog = inject(ExportOptionsDialogService);
     private readonly usePermissionRefusal = inject(UsePermissionRefusalService);
 
     copyFlow(sourceId: number, newName: string): Observable<GraphDto> {
@@ -58,7 +58,7 @@ export class FlowCopyImportFacadeService {
      */
     public exportFlows(ids: number[], onConfirmed?: () => void): void {
         this.exportOptionsDialog
-            .ask(ids.length)
+            .ask(ids.length, { singular: 'flow', plural: 'flows' })
             .pipe(
                 tap(() => onConfirmed?.()),
                 switchMap((options) => this.transferExport.exportFlows(ids, options.includeKnowledge))

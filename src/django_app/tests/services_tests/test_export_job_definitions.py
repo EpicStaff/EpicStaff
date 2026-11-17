@@ -268,10 +268,12 @@ def _stream_job_ids(redis_client, stream: str) -> list[str]:
         (TransferJob.MainEntity.SESSION, TransferJob.Kind.EXPORT, TRANSFER_JOB_STREAM),
         (TransferJob.MainEntity.FLOW, TransferJob.Kind.IMPORT, TRANSFER_JOB_STREAM),
         (TransferJob.MainEntity.SOURCE_COLLECTION, TransferJob.Kind.IMPORT, TRANSFER_JOB_STREAM),
+        # An agent's archive may carry its surfaces' collection files, which can be large.
+        (TransferJob.MainEntity.AGENT_DEFINITION, TransferJob.Kind.EXPORT, TRANSFER_JOB_STREAM),
+        (TransferJob.MainEntity.AGENT_DEFINITION, TransferJob.Kind.IMPORT, TRANSFER_JOB_STREAM),
         (TransferJob.MainEntity.PYTHON_CODE_TOOL, TransferJob.Kind.EXPORT, TRANSFER_JOB_LIGHT_STREAM),
         (TransferJob.MainEntity.MCP_TOOL, TransferJob.Kind.EXPORT, TRANSFER_JOB_LIGHT_STREAM),
         (TransferJob.MainEntity.AUDIT_FILTER_PRESET, TransferJob.Kind.EXPORT, TRANSFER_JOB_LIGHT_STREAM),
-        (TransferJob.MainEntity.AGENT_DEFINITION, TransferJob.Kind.EXPORT, TRANSFER_JOB_LIGHT_STREAM),
         (
             TransferJob.MainEntity.CLASSIFICATION_DECISION_TABLE_NODE,
             TransferJob.Kind.EXPORT,

@@ -268,7 +268,7 @@ from tables.serializers.transfer_job_serializers import (
     ClassificationDecisionTableExportJobCreateSerializer,
     ExportJobCreatedSerializer,
     ExportJobCreateSerializer,
-    FlowExportJobCreateSerializer,
+    KnowledgeExportJobCreateSerializer,
 )
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.services.cdt_explain.service import CdtExplainService
@@ -845,7 +845,7 @@ class PythonCodeResultReadViewSet(
 @extend_schema_view(
     bulk_delete=extend_schema(**GRAPH_BULK_DELETE_POST),
     copy=extend_schema(**GRAPH_COPY_POST),
-    export_jobs=extend_schema(request=FlowExportJobCreateSerializer),
+    export_jobs=extend_schema(request=KnowledgeExportJobCreateSerializer),
 )
 class GraphViewSet(
     OrgScopedViewSetMixin,
@@ -877,7 +877,7 @@ class GraphViewSet(
     copy_serializer_class = GraphLightSerializer
     delete_service_class = GraphDeleteService
     export_job_definition = export_definition(TransferJob.MainEntity.FLOW)
-    export_job_request_serializer_class = FlowExportJobCreateSerializer
+    export_job_request_serializer_class = KnowledgeExportJobCreateSerializer
 
     serializer_class = GraphSerializer
     filter_backends = [DjangoFilterBackend, LabelFilterBackend]

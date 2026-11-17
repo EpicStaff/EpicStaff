@@ -182,13 +182,13 @@ class TransferJobRunner:
         artifact = definition.write_archive(job, selected, user=user, org_id=org_id)
         try:
             # The cap bounds what one job may leave in the shared bucket. It is the
-            # import jobs' upload cap too, so a flow or collection archive past it
-            # would be refused on import.
+            # import jobs' upload cap too, so a flow, agent or collection archive past
+            # it would be refused on import.
             if os.path.getsize(artifact.path) > settings.MAX_KNOWLEDGE_ARCHIVE_SIZE:
                 raise TransferJobError(
                     "archive_too_large",
                     "The export is larger than the archive size limit. Export fewer items, "
-                    "or export flows without their knowledge.",
+                    "or export them without their knowledge.",
                 )
             # Checked again before anything is stored: writing the archive can take long,
             # and an archive its creator may no longer export would be stored for nobody

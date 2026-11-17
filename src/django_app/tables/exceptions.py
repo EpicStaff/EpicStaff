@@ -1163,6 +1163,7 @@ class UseImportJobError(CustomAPIExeption):
     _JOB_BY_MAIN_ENTITY = {
         EntityType.GRAPH: "a flow import job",
         EntityType.SOURCE_COLLECTION: "a knowledge collection import job",
+        EntityType.AGENT_DEFINITION: "an agent import job",
     }
 
     def __init__(self, main_entity: object = None):

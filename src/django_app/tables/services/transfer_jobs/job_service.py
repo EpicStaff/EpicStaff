@@ -116,8 +116,8 @@ class TransferJobService:
         and keeps owning the file at `archive_path`.
 
         Args:
-            settings: The import settings of a flow import; None for an import that
-                takes none, which runs with the defaults.
+            settings: The import settings of a flow or agent import; None for an
+                import that takes none, which runs with the defaults.
             file_name: Name of the uploaded file, shown in the job list.
             api_key: The API key the request authenticated with, if any; the user
                 actions the import records name it. Never client input.

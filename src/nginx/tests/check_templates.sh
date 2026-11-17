@@ -1042,8 +1042,9 @@ expect_refused "an unset NGINX_HSTS_ENABLED is refused" "environment variable NG
 # byte size (src/shared/humanize.py); 19-derive-knowledge-archive-size.envsh renders it in bytes
 # and refuses what Django would refuse, and none and 0 (no cap, to nginx).
 if expect_valid "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb is accepted"; then
-  expect_directives "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb caps both import-job routes at 157286400 bytes" \
+  expect_directives "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb caps every import-job route at 157286400 bytes" \
     "location = /api/graphs/import-jobs/" "location = /api/source-collections/import-jobs/" \
+    "location = /api/agent-definitions/import-jobs/" \
     "client_max_body_size 157286400;" "error_page 413 = @knowledge_archive_too_large;"
 fi
 if expect_valid "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=' 1.5 GB ' is accepted" \
@@ -2470,6 +2471,7 @@ for plugins_enabled in false true; do
     "/auditor/api/x 8010 -" "/api/x/ 8000 django" "/admin/ 8000 django" "/ws/x 8000 django" \
     "/api/storage/upload/stream 8000 django" "/api/run-session/subscribe/1/ 8000 django" \
     "/api/graphs/import-jobs/ 8000 django" "/api/source-collections/import-jobs/ 8000 django" \
+    "/api/agent-definitions/import-jobs/ 8000 django" \
     "/static/x 8000 django" "/media/x 8000 django"; do
     read -r path port upstream <<< "$target"
     live sh -c 'curl -s -D /tmp/headers -o /tmp/body -H "Host: epicstaff.test" \
@@ -2505,7 +2507,8 @@ for plugins_enabled in false true; do
     "/media/x 404" "/media/avatars/x 404" "/static/x 404" "/ws/x 404" "/realtime/x 404" \
     "/auditor/api/x 404" "/chat 404" "/chat/api/x 404" "/plugins/weather 404" \
     "/api/storage/upload/stream 404" "/api/run-session/subscribe/1/ 404" \
-    "/api/graphs/import-jobs/ 404" "/api/source-collections/import-jobs/ 404"; do
+    "/api/graphs/import-jobs/ 404" "/api/source-collections/import-jobs/ 404" \
+    "/api/agent-definitions/import-jobs/ 404"; do
     read -r path port location <<< "$target"
     status=$(live sh -c 'curl -s -D /tmp/headers -o /tmp/body -w "%{http_code}" -H "Host: epicstaff.test" \
       -H "Cookie: __Host-auth.refresh=live-refresh" "http://127.0.0.1:$2$1"' request "$path" "$tunnel_port" || true)
@@ -2574,6 +2577,7 @@ forwarded_proto_targets=("epicstaff.test /" "epicstaff.test /chat" "epicstaff.te
   "epicstaff.test /realtime/x" "epicstaff.test /auditor/api/x" "epicstaff.test /api/x/"
   "epicstaff.test /admin/" "epicstaff.test /ws/x" "epicstaff.test /api/storage/upload/stream"
   "epicstaff.test /api/graphs/import-jobs/" "epicstaff.test /api/source-collections/import-jobs/"
+  "epicstaff.test /api/agent-definitions/import-jobs/"
   "epicstaff.test /api/run-session/subscribe/1/" "epicstaff.test /static/x" "epicstaff.test /media/x"
   "alpha.plugins.epicstaff.test /.well-known/epicstaff/config.json")
 # $1 = description, $2 = the scheme to ask nginx in, $3 = the X-Forwarded-Proto the client sends

@@ -1,5 +1,6 @@
 from tables.views.storage_upload_stream_view import UPLOAD_STREAM_PATH
 from tables.views.transfer_import_upload_view import (
+    AGENT_DEFINITION_IMPORT_JOBS_ROUTE,
     COLLECTION_IMPORT_JOBS_ROUTE,
     FLOW_IMPORT_JOBS_ROUTE,
 )
@@ -480,6 +481,25 @@ def add_import_job_upload_postprocessing_hook(result, generator, request, public
             "parameters": [_FILE_NAME_PARAMETER],
             "requestBody": _ZIP_BODY,
             "responses": _import_job_responses("KNOWLEDGE_SOURCES:CREATE"),
+        }
+    }
+    paths[AGENT_DEFINITION_IMPORT_JOBS_ROUTE.path] = {
+        "post": {
+            "operationId": "agent_definitions_import_jobs_create",
+            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "description": _IMPORT_JOB_DESCRIPTION,
+            "parameters": [
+                _FILE_NAME_PARAMETER,
+                {
+                    "in": "query",
+                    "name": "import_labels",
+                    "required": False,
+                    "schema": {"type": "boolean", "default": True},
+                    "description": "Import the agents' labels.",
+                },
+            ],
+            "requestBody": _ZIP_BODY,
+            "responses": _import_job_responses("AGENTS:CREATE"),
         }
     }
     return result

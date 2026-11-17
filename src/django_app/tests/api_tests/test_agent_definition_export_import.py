@@ -1,5 +1,7 @@
 """Agents export through an export job (`agent-definitions/export-jobs/`) and import through
 the synchronous `import/`, which takes the job's `.zip` as well as a plain `.json` export.
+A `.zip` carrying the knowledge collections of the agents' surfaces imports through an
+import job instead.
 
 Presentation tests through the real endpoints; the export job runs inline with an
 in-memory archive store.
@@ -14,17 +16,28 @@ from agents.models import (
     AgentDefaultSurface,
     AgentDefinition,
     Surface,
+    SurfaceKnowledge,
     SurfaceMcpTool,
     SurfacePlace,
     SurfacePythonTool,
     ToolMode,
 )
 from rbac.models.enums import Permission, ResourceType
+from tables.import_export.archive import ENVELOPE_MEMBER
+from tables.import_export.enums import EntityType
+from tables.import_export.schemas import ImportSettings
 from tables.models import LLMConfig, LLMModel, Provider, TransferJob
+from tables.models.knowledge_models import DocumentMetadata, SourceCollection
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
+from tables.models.user import User
+from tables.services.transfer_jobs.archive_store import TransferArchiveStore
+from tables.services.transfer_jobs.job_service import TransferJobService
+from tables.services.transfer_jobs.runner import TransferJobRunner
 from tests.api_tests.role_grant_clients import FULL_CRUD, client_with_grants
+from tests.import_export_tests.knowledge_builders import make_document
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.storage_backend_fake import FakeStorageBackend
 from tests.transfer_job_helpers import FinishedExport, export_via_job
 
 URL = "/api/agent-definitions/"
@@ -37,6 +50,7 @@ FULL_GRANTS = {
     ResourceType.SURFACES: FULL_CRUD,
     ResourceType.LLM_CONFIGS: FULL_CRUD,
 }
+KNOWLEDGE_GRANTS = {**FULL_GRANTS, ResourceType.KNOWLEDGE_SOURCES: FULL_CRUD | EXPORT}
 
 
 def _client(org, django_user_model, email, grants=None):
@@ -436,3 +450,140 @@ def test_import_and_inspect_require_agents_create(acme_client, acme, django_user
     assert _import(client, exported).status_code == 403
     assert _inspect(client, exported).status_code == 403
     assert AgentDefinition.objects.filter(org=acme).count() == 1
+
+
+# ---- knowledge ----
+
+
+@pytest.fixture
+def collection(acme):
+    collection = SourceCollection.objects.create(
+        collection_name="Handbook", description="HR docs", org=acme
+    )
+    make_document(collection, "policy.txt", b"policy bytes")
+    return collection
+
+
+@pytest.fixture
+def knowing_agent(acme, collection):
+    """An agent whose owned surface has knowledge on `collection`."""
+    agent = AgentDefinition.objects.create(org=acme, name="Librarian")
+    owned = Surface.objects.create(
+        org=acme, name="librarian-owned", instructions="look it up", owner_agent=agent
+    )
+    SurfaceKnowledge.objects.create(surface=owned, collection=collection)
+    return agent
+
+
+@pytest.fixture
+def knowledge_client(acme, django_user_model):
+    return _client(acme, django_user_model, "agent-io-knowledge@example.com", KNOWLEDGE_GRANTS)
+
+
+def _run_import_job(archive: bytes, org, importer: User, tmp_path) -> TransferJob:
+    """Start an import job of `archive` into `org` as `importer`, run it, and return it."""
+    path = tmp_path / "agent.zip"
+    path.write_bytes(archive)
+    store = TransferArchiveStore(backend=FakeStorageBackend())
+    job = TransferJobService().start_import(
+        user=importer,
+        org_id=org.id,
+        entity_type=EntityType.AGENT_DEFINITION,
+        settings=ImportSettings(import_labels=True),
+        archive_path=str(path),
+        store=store,
+    )
+    TransferJobRunner(store=store).run(job.id)
+    job.refresh_from_db()
+    return job
+
+
+@pytest.mark.django_db
+def test_an_agent_export_job_includes_knowledge_unless_asked_otherwise(acme_client, agent):
+    default = _start_export(acme_client, [agent.id])
+    without = acme_client.post(
+        EXPORT_JOBS_URL, {"ids": [agent.id], "include_knowledge": False}, format="json"
+    )
+
+    assert (default.status_code, without.status_code) == (202, 202)
+    assert TransferJob.objects.get(pk=default.json()["job_id"]).request == {
+        "ids": [agent.id],
+        "include_knowledge": True,
+    }
+    assert TransferJob.objects.get(pk=without.json()["job_id"]).request == {
+        "ids": [agent.id],
+        "include_knowledge": False,
+    }
+
+
+@pytest.mark.django_db
+def test_an_agent_archive_carries_the_owned_surfaces_collection_with_its_files(
+    knowledge_client, knowing_agent, collection
+):
+    exported = _export(knowledge_client, knowing_agent)
+
+    assert [entry["id"] for entry in exported.envelope["SourceCollection"]] == [
+        collection.collection_id
+    ]
+    [document] = collection.documents.all()
+    assert set(exported.members) == {
+        ENVELOPE_MEMBER,
+        f"knowledge/documents/{document.document_id}",
+    }
+
+
+@pytest.mark.django_db
+def test_an_agent_archive_without_knowledge_carries_no_collection(
+    knowledge_client, knowing_agent
+):
+    exported = export_via_job(
+        knowledge_client,
+        EXPORT_JOBS_URL,
+        {"ids": [knowing_agent.id], "include_knowledge": False},
+    )
+
+    assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+    assert "SourceCollection" not in exported.envelope
+    assert list(exported.members) == [ENVELOPE_MEMBER]
+
+
+@pytest.mark.django_db
+def test_an_import_job_relinks_the_owned_surface_to_the_imported_collection(
+    knowledge_client, knowing_agent, collection, beta, django_user_model, tmp_path
+):
+    exported = _export(knowledge_client, knowing_agent)
+    _client(beta, django_user_model, "agent-io-knowledge-beta@example.com", KNOWLEDGE_GRANTS)
+    importer = User.objects.get(email="agent-io-knowledge-beta@example.com")
+
+    job = _run_import_job(exported.archive, beta, importer, tmp_path)
+
+    assert job.status == TransferJob.Status.COMPLETED, job.error
+    assert job.main_entity == TransferJob.MainEntity.AGENT_DEFINITION
+    imported_collection = SourceCollection.objects.get(org=beta)
+    assert imported_collection.collection_id != collection.collection_id
+    assert imported_collection.collection_name == "Handbook"
+    [document] = DocumentMetadata.objects.filter(source_collection=imported_collection)
+    assert (document.file_name, bytes(document.document_content.content)) == (
+        "policy.txt",
+        b"policy bytes",
+    )
+    owned = AgentDefinition.objects.get(org=beta).owned_surfaces.get()
+    assert list(owned.knowledge.values_list("collection_id", flat=True)) == [
+        imported_collection.collection_id
+    ]
+
+
+@pytest.mark.django_db
+def test_the_synchronous_import_sends_an_archive_with_knowledge_to_the_agent_import_job(
+    knowledge_client, knowing_agent
+):
+    exported = _export(knowledge_client, knowing_agent)
+
+    response = _import(knowledge_client, exported)
+
+    assert response.status_code == 400, response.content
+    assert response.json()["code"] == "use_import_job"
+    assert response.json()["message"] == (
+        "This archive carries knowledge collections; import it as an agent import job."
+    )
+    assert AgentDefinition.objects.count() == 1

@@ -162,7 +162,13 @@ def _colleagues_shared_preset_case(org, author):
 
 def _agents_case(org, author):
     ids = [AgentDefinition.objects.create(org=org, name=name).id for name in ("One", "Two")]
-    return "/api/agent-definitions/export-jobs/", {"ids": ids}, {"ids": ids}, "2 agents"
+    return (
+        "/api/agent-definitions/export-jobs/",
+        {"ids": ids},
+        # An agent export carries its surfaces' knowledge unless the request says otherwise.
+        {"ids": ids, "include_knowledge": True},
+        "2 agents",
+    )
 
 
 def _sessions_case(org, author):

@@ -13,6 +13,7 @@ from asgiref.sync import sync_to_async
 from django.test import override_settings
 from rest_framework_simplejwt.tokens import AccessToken
 
+from agents.models import AgentDefinition
 from rbac.models.enums import Permission, ResourceType
 from tables.import_export.archive import ENVELOPE_MEMBER
 from tables.import_export.enums import EntityType
@@ -33,6 +34,7 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
 
 FLOWS = "/api/graphs/import-jobs/"
 COLLECTIONS = "/api/source-collections/import-jobs/"
+AGENTS = "/api/agent-definitions/import-jobs/"
 ALL_FLOWS = Permission.READ | Permission.CREATE | Permission.UPDATE | Permission.USE
 
 
@@ -88,11 +90,29 @@ def _zip(envelope: dict) -> bytes:
     return buffer.getvalue()
 
 
-def _user(custom_role_user, acme, flows=ALL_FLOWS, knowledge=Permission.READ | Permission.CREATE):
+def _agent_envelope(acme) -> dict:
+    agent = AgentDefinition.objects.create(org=acme, name="Researcher")
+    result = ExportService(entity_registry).export_entities(
+        EntityType.AGENT_DEFINITION, [agent.id], policy=UNRESTRICTED_EXPORT_POLICY
+    )
+    return result.data
+
+
+def _user(
+    custom_role_user,
+    acme,
+    flows=ALL_FLOWS,
+    knowledge=Permission.READ | Permission.CREATE,
+    agents=Permission.READ | Permission.CREATE,
+):
     return custom_role_user(
         acme,
         "importer@example.com",
-        {ResourceType.FLOWS: flows, ResourceType.KNOWLEDGE_SOURCES: knowledge},
+        {
+            ResourceType.FLOWS: flows,
+            ResourceType.KNOWLEDGE_SOURCES: knowledge,
+            ResourceType.AGENTS: agents,
+        },
     )
 
 
@@ -164,25 +184,27 @@ async def test_an_import_started_with_a_user_api_key_keeps_the_key_on_the_job(
     assert enqueued == [job.id]
 
 
-async def test_the_collection_route_refuses_a_flow_archive(
-    custom_role_user, acme, backend, enqueued, temp_files
+@pytest.mark.parametrize("path", [COLLECTIONS, AGENTS])
+async def test_a_route_of_another_entity_refuses_a_flow_archive(
+    custom_role_user, acme, backend, enqueued, temp_files, path
 ):
     user = await sync_to_async(_user)(custom_role_user, acme)
     body = _zip(await sync_to_async(_envelope)(acme))
 
-    response = await _post(COLLECTIONS, user, acme, body)
+    response = await _post(path, user, acme, body)
 
     assert response.status_code == 400, response.text
     assert response.json()["code"] == "invalid_file", response.json()
     await _no_job_left(backend, temp_files)
 
 
+@pytest.mark.parametrize("path", [FLOWS, AGENTS])
 async def test_a_body_that_is_not_a_zip_is_refused(
-    custom_role_user, acme, backend, enqueued, temp_files
+    custom_role_user, acme, backend, enqueued, temp_files, path
 ):
     user = await sync_to_async(_user)(custom_role_user, acme)
 
-    response = await _post(FLOWS, user, acme, b'{"main_entity": "Flow"}')
+    response = await _post(path, user, acme, b'{"main_entity": "Flow"}')
 
     assert response.status_code == 400
     assert response.json()["code"] == "invalid_archive", response.json()
@@ -289,6 +311,10 @@ async def test_a_streamed_body_past_the_cap_is_refused_while_reading(
         (FLOWS, "?preserve_uuids=maybe"),
         (COLLECTIONS, "?import_labels=true"),
         (COLLECTIONS, f"?file_name={'x' * 256}"),
+        # The agent import/ takes no settings but import_labels.
+        (AGENTS, "?preserve_uuids=true"),
+        (AGENTS, "?replace_existing=true"),
+        (AGENTS, "?import_labels=maybe"),
     ],
 )
 async def test_invalid_import_settings_are_refused_before_reading(
@@ -329,12 +355,24 @@ async def test_importing_collections_needs_create_rights(
     await _no_job_left(backend, temp_files)
 
 
+async def test_importing_agents_needs_create_rights(
+    custom_role_user, acme, backend, enqueued, temp_files
+):
+    user = await sync_to_async(_user)(custom_role_user, acme, agents=Permission.READ)
+
+    response = await _post(AGENTS, user, acme, _zip(await sync_to_async(_agent_envelope)(acme)))
+
+    assert response.status_code == 403, response.text
+    await _no_job_left(backend, temp_files)
+
+
+@pytest.mark.parametrize("path", [FLOWS, AGENTS])
 async def test_an_org_the_caller_is_not_in_is_refused(
-    custom_role_user, acme, beta, backend, enqueued, temp_files
+    custom_role_user, acme, beta, backend, enqueued, temp_files, path
 ):
     user = await sync_to_async(_user)(custom_role_user, acme)
 
-    response = await _post(FLOWS, user, beta, b"PK\x03\x04")
+    response = await _post(path, user, beta, b"PK\x03\x04")
 
     assert response.status_code == 403, response.text
     await _no_job_left(backend, temp_files)
@@ -446,6 +484,42 @@ async def test_a_collection_archive_is_stored_and_queued(
     )
     assert backend.objects[job.archive_key] == body
     assert enqueued == [job.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "import_labels"),
+    [
+        pytest.param("?file_name=researcher.zip", True, id="labels by default"),
+        pytest.param("?file_name=researcher.zip&import_labels=false", False, id="labels off"),
+    ],
+)
+async def test_an_agent_archive_is_stored_and_queued(
+    custom_role_user, acme, backend, enqueued, temp_files, query, import_labels
+):
+    user = await sync_to_async(_user)(custom_role_user, acme)
+    body = _zip(await sync_to_async(_agent_envelope)(acme))
+
+    response = await _post(AGENTS, user, acme, body, query)
+
+    assert response.status_code == 202, response.text
+    job = await TransferJob.objects.aget(pk=response.json()["job_id"])
+    assert (job.kind, job.main_entity, job.org_id, job.created_by_id, job.display_name) == (
+        "import",
+        "AgentDefinition",
+        acme.id,
+        user.id,
+        "researcher.zip",
+    )
+    assert job.request == {
+        "settings": {
+            "preserve_uuids": False,
+            "replace_existing": False,
+            "import_labels": import_labels,
+        }
+    }
+    assert backend.objects[job.archive_key] == body
+    assert enqueued == [job.id]
+    assert temp_files and all(not os.path.exists(name) for name in temp_files)
 
 
 async def test_a_lost_queue_entry_still_answers_with_the_committed_job(

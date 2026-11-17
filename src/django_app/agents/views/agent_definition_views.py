@@ -14,7 +14,7 @@ from tables.import_export.enums import EntityType
 from tables.import_export.services.import_service import ImportSettings
 from tables.models import TransferJob
 from tables.serializers.serializers import ImportRequestSerializer
-from tables.serializers.transfer_job_serializers import ExportJobCreateSerializer
+from tables.serializers.transfer_job_serializers import KnowledgeExportJobCreateSerializer
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.transfer_jobs.export_definitions import export_definition
@@ -36,7 +36,7 @@ from agents.services.agent_definition_copy_service import AgentDefinitionCopySer
 
 @extend_schema_view(
     copy=extend_schema(**AGENT_DEFINITION_COPY_POST),
-    export_jobs=extend_schema(request=ExportJobCreateSerializer),
+    export_jobs=extend_schema(request=KnowledgeExportJobCreateSerializer),
 )
 class AgentDefinitionViewSet(
     OrgScopedViewSetMixin,
@@ -62,6 +62,7 @@ class AgentDefinitionViewSet(
     copy_service_class = AgentDefinitionCopyService
     copy_serializer_class = AgentDefinitionReadSerializer
     export_job_definition = export_definition(TransferJob.MainEntity.AGENT_DEFINITION)
+    export_job_request_serializer_class = KnowledgeExportJobCreateSerializer
     queryset = AgentDefinition.objects.select_related(
         "org", "llm_config", "fallback_llm_config", "fcm_llm_config", "realtime_agent"
     ).prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())

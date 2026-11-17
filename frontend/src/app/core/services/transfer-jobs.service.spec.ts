@@ -335,6 +335,7 @@ describe('TransferJobsService', () => {
                 { ids: [7], export_format: 'json' },
                 '/api/classification-decision-table-node/export-jobs/',
             ],
+            ['agentDefinitions', { ids: [8], include_knowledge: false }, '/api/agent-definitions/export-jobs/'],
         ] as const)('starts a %s export with its body at %s', (target, body, url) => {
             observe(service.startExport(target, body as never));
 
@@ -419,6 +420,27 @@ describe('TransferJobsService', () => {
             expect(request.request.body).toBe(archive);
             expect(receivedQuery(request)).toEqual({ file_name: 'collections.zip' });
             request.flush({ job_id: JOB_ID }, { status: 202, statusText: 'Accepted' });
+        });
+
+        it('uploads an agent archive with only its file name in the query, even when given flow settings', () => {
+            const archive = new File(['PK'], 'agents.zip');
+
+            const outcome = observe(
+                service.startImport('agentDefinitions', archive, {
+                    preserveUuids: true,
+                    replaceExisting: true,
+                    importLabels: false,
+                })
+            );
+
+            const request = httpMock.expectOne(
+                (candidate) => candidate.url === '/api/agent-definitions/import-jobs/' && candidate.method === 'POST'
+            );
+            expect(request.request.body).toBe(archive);
+            expect(request.request.headers.get('Content-Type')).toBe('application/zip');
+            expect(receivedQuery(request)).toEqual({ file_name: 'agents.zip' });
+            request.flush({ job_id: JOB_ID }, { status: 202, statusText: 'Accepted' });
+            expect(outcome.values).toEqual([{ id: JOB_ID, kind: 'import', orgId: 7 }]);
         });
 
         it.each([

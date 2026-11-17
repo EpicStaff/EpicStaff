@@ -25,8 +25,8 @@ export type ExportFormat = 'json' | 'csv';
 /** `error.code` of a completed export whose archive was deleted to make room for the user's newer exports. */
 export const ARCHIVE_REMOVED_ERROR_CODE = 'archive_removed';
 
-/** What an import job brings in: flows or knowledge collections. */
-export type TransferImportTarget = 'flows' | 'collections';
+/** What an import job brings in: flows, knowledge collections or agents. */
+export type TransferImportTarget = 'flows' | 'collections' | 'agentDefinitions';
 
 export interface TransferJobError {
     code: string;

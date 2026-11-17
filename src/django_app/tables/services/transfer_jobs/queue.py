@@ -18,7 +18,7 @@ LANE_STREAMS = {
 
 
 def job_lane(job: TransferJob) -> TransferLane:
-    """The lane an export's definition names; imports (flows, collections) are heavy."""
+    """The lane an export's definition names; imports (flows, agents, collections) are heavy."""
     if job.kind == TransferJob.Kind.EXPORT:
         return export_definition(job.main_entity).lane
     return TransferLane.HEAVY

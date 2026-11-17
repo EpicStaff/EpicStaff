@@ -1,28 +1,32 @@
 import { inject, Injectable } from '@angular/core';
-import { ConfirmationDialogService, ConfirmationResultWithOptions } from '@shared/components';
-import { pluralize } from '@shared/utils';
+import { ExportEntityLabels, ExportOptions } from '@shared/models';
+import { escapeHtml, pluralize } from '@shared/utils';
 import { Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 
-import { FlowExportOptions } from '../models/flow-export-options.model';
+// Relative import, not the `@shared/components` barrel: shared components import `@shared/services`, so the barrel
+// would make a `@shared/services` <-> `@shared/components` cycle.
+import {
+    ConfirmationDialogService,
+    ConfirmationResultWithOptions,
+} from '../../components/cofirm-dialog/confimation-dialog.service';
 
-/** Asks how to export flows, in the app's confirmation dialog. */
+/** Asks how to export items that can carry knowledge collections (flows, agents), in the app's confirmation dialog. */
 @Injectable({
     providedIn: 'root',
 })
-export class FlowExportOptionsDialogService {
+export class ExportOptionsDialogService {
     private readonly confirmationDialog = inject(ConfirmationDialogService);
 
     /**
      * Emits the chosen options once the user confirms, and completes without a value when they cancel or close.
      * The knowledge box starts checked every time: a large archive stays a choice made for this export.
      */
-    ask(flowCount: number): Observable<FlowExportOptions> {
+    ask(count: number, labels: ExportEntityLabels): Observable<ExportOptions> {
         return this.confirmationDialog
             .confirmWithOptions({
-                title: `Export ${pluralize(flowCount, 'flow', 'flows')}`,
-                message:
-                    'Knowledge data adds the knowledge collections the flows use, with their files, so they work after import. The archive can get large.',
+                title: `Export ${pluralize(count, labels.singular, labels.plural)}`,
+                message: `Knowledge data adds the knowledge collections the ${escapeHtml(labels.plural)} use, with their files, so they work after import. The archive can get large.`,
                 checkbox: { label: 'Include knowledge data', checked: true },
                 confirmText: 'Export',
                 cancelText: 'Cancel',

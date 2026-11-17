@@ -31,12 +31,15 @@ class ExportJobCreateSerializer(serializers.Serializer):
         return list(dict.fromkeys(ids))
 
 
-class FlowExportJobCreateSerializer(ExportJobCreateSerializer):
-    """Body of `POST /api/graphs/export-jobs/`."""
+class KnowledgeExportJobCreateSerializer(ExportJobCreateSerializer):
+    """Body of an `export-jobs` action whose archive may carry knowledge collections.
+
+    `POST /api/graphs/export-jobs/` and `POST /api/agent-definitions/export-jobs/`.
+    """
 
     include_knowledge = serializers.BooleanField(
         default=True,
-        help_text="Carry the knowledge collections the flows' nodes use, with their files.",
+        help_text="Carry the knowledge collections the exported items use, with their files.",
     )
 
 
@@ -146,6 +149,12 @@ class FlowImportJobQuerySerializer(_ImportJobQuerySerializer):
 
 class CollectionImportJobQuerySerializer(_ImportJobQuerySerializer):
     """Query of `POST /api/source-collections/import-jobs/`: only the file name."""
+
+
+class AgentDefinitionImportJobQuerySerializer(_ImportJobQuerySerializer):
+    """Query of `POST /api/agent-definitions/import-jobs/`: the setting the `import/` form has."""
+
+    import_labels = serializers.BooleanField(default=True)
 
 
 class TransferJobSerializer(serializers.ModelSerializer):

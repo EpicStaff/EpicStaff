@@ -42,6 +42,7 @@ export const IMPORT_WITHOUT_SUMMARY_MESSAGE =
 const IMPORT_TARGET_PATHS: Record<TransferImportTarget, string> = {
     flows: 'graphs/',
     collections: 'source-collections/',
+    agentDefinitions: 'agent-definitions/',
 };
 
 /** The filters an export of every session that matches them takes, in place of the sessions' ids. */
@@ -62,7 +63,7 @@ export interface ExportJobRequests {
     sessions: ({ ids: number[] } | SessionExportFilters) & { export_format: ExportFormat };
     /** One node at a time. */
     classificationDecisionTables: { ids: [number]; export_format: ExportFormat };
-    agentDefinitions: { ids: number[] };
+    agentDefinitions: { ids: number[]; include_knowledge: boolean };
 }
 
 export type ExportJobTarget = keyof ExportJobRequests;
@@ -246,8 +247,8 @@ export class TransferJobsService {
     }
 
     /**
-     * Uploads a `.zip` export as the raw request body; flow imports take the import settings. The file's name goes
-     * in the query, as the raw body carries none, and names the job in the list.
+     * Uploads a `.zip` export as the raw request body; only flow imports take the import settings. The file's name
+     * goes in the query, as the raw body carries none, and names the job in the list.
      */
     startImport(
         target: TransferImportTarget,

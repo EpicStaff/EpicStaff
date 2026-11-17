@@ -40,7 +40,7 @@ class TransferJobCreateThrottle(SimpleRateThrottle):
     Throttle for starting transfer jobs, one bucket for all of them: every export
     job (each `POST .../export-jobs/` and `POST /api/graphs/{id}/partial-export-jobs/`)
     and import uploads (`POST /api/graphs/import-jobs/`,
-    `POST /api/source-collections/import-jobs/`).
+    `POST /api/source-collections/import-jobs/`, `POST /api/agent-definitions/import-jobs/`).
 
     The unfinished-job limit caps how many jobs run at once; this caps how
     fast one caller can start them, since a job that fails fast frees its slot

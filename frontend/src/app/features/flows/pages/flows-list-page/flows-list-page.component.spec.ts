@@ -6,8 +6,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ConfirmationDialogService, LabelSidebarComponent, SearchComponent } from '@shared/components';
 import { EXPORT_WARNING_DURATION_MS } from '@shared/constants';
-import { LabelTreeNode } from '@shared/models';
-import { AppStorageService } from '@shared/services';
+import { ExportOptions, LabelTreeNode } from '@shared/models';
+import { AppStorageService, ExportOptionsDialogService } from '@shared/services';
 import { EMPTY, Observable, of, Subject } from 'rxjs';
 
 import { EntityTypeResult, FlowImportResultItem, ImportResult } from '../../../../core/models/import-result.model';
@@ -26,9 +26,7 @@ import { FlowsFilterMenuComponent } from '../../components/filter/flows-filter-m
 import { ImportFlowOptionsPopoverComponent } from '../../components/import-flow-options-popover/import-flow-options-popover.component';
 import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
 import { ImportReviewDialogComponent } from '../../components/import-review-dialog/import-review-dialog.component';
-import { FlowExportOptions } from '../../models/flow-export-options.model';
 import { EMPTY_FLOWS_FILTER } from '../../models/flow-filter.model';
-import { FlowExportOptionsDialogService } from '../../services/flow-export-options-dialog.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { FlowsListPageComponent } from './flows-list-page.component';
@@ -83,7 +81,7 @@ let toastError: ReturnType<typeof vi.fn>;
 let toastWarning: ReturnType<typeof vi.fn>;
 let httpMock: HttpTestingController;
 /** What the user answers in the export options dialog; it completes empty when they cancel. */
-let exportOptionsAnswer: Observable<FlowExportOptions>;
+let exportOptionsAnswer: Observable<ExportOptions>;
 let fixture: ComponentFixture<FlowsListPageComponent>;
 
 /** Renders the page header; in select mode, with these flows picked, when any are given. */
@@ -106,7 +104,7 @@ function renderPage(selectedFlowIds: number[] = []): void {
             { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
             { provide: Dialog, useValue: { open: dialogOpen } },
             { provide: ConfirmationDialogService, useValue: { confirm } },
-            { provide: FlowExportOptionsDialogService, useValue: { ask: () => exportOptionsAnswer } },
+            { provide: ExportOptionsDialogService, useValue: { ask: () => exportOptionsAnswer } },
             {
                 provide: ToastService,
                 useValue: {

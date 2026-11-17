@@ -38,6 +38,7 @@ from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.schemas import ImportSettings
 from tables.models.user import User
 from tables.serializers.transfer_job_serializers import (
+    AgentDefinitionImportJobQuerySerializer,
     CollectionImportJobQuerySerializer,
     FlowImportJobQuerySerializer,
 )
@@ -93,7 +94,16 @@ COLLECTION_IMPORT_JOBS_ROUTE = ImportJobRoute(
     entity_type=EntityType.SOURCE_COLLECTION,
     query_serializer_class=CollectionImportJobQuerySerializer,
 )
-IMPORT_JOB_ROUTES = (FLOW_IMPORT_JOBS_ROUTE, COLLECTION_IMPORT_JOBS_ROUTE)
+AGENT_DEFINITION_IMPORT_JOBS_ROUTE = ImportJobRoute(
+    path="/api/agent-definitions/import-jobs/",
+    entity_type=EntityType.AGENT_DEFINITION,
+    query_serializer_class=AgentDefinitionImportJobQuerySerializer,
+)
+IMPORT_JOB_ROUTES = (
+    FLOW_IMPORT_JOBS_ROUTE,
+    COLLECTION_IMPORT_JOBS_ROUTE,
+    AGENT_DEFINITION_IMPORT_JOBS_ROUTE,
+)
 
 
 class TransferImportAccessView(OrgScopedResolverMixin, ViewSet):

@@ -1,10 +1,9 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import {
     buildPreviewImportResult,
     exportEnvelopeFile,
-    extractHttpErrorMessage,
+    ExportFileFormat,
     ImportFileData,
     readExportEnvelope,
 } from '@shared/utils';
@@ -24,6 +23,11 @@ export interface ImportWithReviewConfig {
     entityLabelPlural: string;
     inspect: (file: File) => Observable<InspectResult>;
     importFile: (file: File) => Observable<unknown>;
+    /**
+     * Imports a `.zip` export archive, e.g. as a background job that the observable waits for. A `.zip` goes to
+     * `importFile` when left out.
+     */
+    importArchive?: (file: File) => Observable<unknown>;
     /** The file picker's `accept`; a plain `.json` export when left out. Add `.zip` where the import takes archives. */
     accept?: string;
 }
@@ -43,7 +47,9 @@ export class ImportWithReviewService {
 
     public importFile(file: File, config: ImportWithReviewConfig): Observable<unknown> {
         return from(readExportEnvelope(file)).pipe(
-            switchMap(({ data }) => this.inspectAndImport(file, data, config)),
+            switchMap(({ format, data }) =>
+                this.inspectAndImport(file, data, this.importerFor(format, config), config)
+            ),
             catchError((error: unknown) => {
                 this.toastService.error(describeTransferError(error, `Failed to read the ${config.entityLabel} file.`));
                 return EMPTY;
@@ -66,9 +72,15 @@ export class ImportWithReviewService {
         });
     }
 
+    /** How the file the user chose is imported: an archive by `importArchive` where the config has one. */
+    private importerFor(format: ExportFileFormat, config: ImportWithReviewConfig): (file: File) => Observable<unknown> {
+        return format === 'zip' && config.importArchive ? config.importArchive : config.importFile;
+    }
+
     private inspectAndImport(
         file: File,
         fileData: ImportFileData,
+        importFile: (file: File) => Observable<unknown>,
         config: ImportWithReviewConfig
     ): Observable<unknown> {
         // Only the envelope is inspected, so an archive's files stay on the user's machine; the import takes the
@@ -76,10 +88,10 @@ export class ImportWithReviewService {
         return config.inspect(exportEnvelopeFile(fileData)).pipe(
             switchMap((inspection) => {
                 if (!hasReviewableItems(inspection.review_items)) {
-                    return config.importFile(file).pipe(
-                        catchError((err: HttpErrorResponse) => {
+                    return importFile(file).pipe(
+                        catchError((error: unknown) => {
                             this.toastService.error(
-                                extractHttpErrorMessage(err, `Failed to import ${config.entityLabelPlural}.`)
+                                describeTransferError(error, `Failed to import ${config.entityLabelPlural}.`)
                             );
                             return EMPTY;
                         })
@@ -93,7 +105,7 @@ export class ImportWithReviewService {
                     data: {
                         importResult: buildPreviewImportResult(fileData),
                         reviewItems: inspection.review_items,
-                        importFn: () => config.importFile(file),
+                        importFn: () => importFile(file),
                     },
                 });
 
