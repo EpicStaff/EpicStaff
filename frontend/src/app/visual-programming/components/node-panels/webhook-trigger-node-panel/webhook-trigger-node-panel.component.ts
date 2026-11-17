@@ -25,8 +25,9 @@ import {
 } from '@shared/components';
 import { ResourceCode, toSecretIds, WebhookTriggerModel } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
-import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
+import { codeSuggestionKeyLabel, SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 
+import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { CODE_DIFF_HINT_EXPAND_EDITOR } from '../../../core/constants/code-diff-hints';
@@ -99,6 +100,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     private readonly flowService = inject(FlowService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    private readonly isMac = inject(PLATFORM_IS_MAC);
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
@@ -201,7 +203,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     );
     public readonly secretsTooltip = computed(() =>
         this.canEditSecrets()
-            ? "Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            ? `Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
             : this.isReadOnly()
               ? "Secrets assigned to this webhook's code."
               : "Secrets already assigned to this webhook's code. You don't have permission to change which secrets are selected."

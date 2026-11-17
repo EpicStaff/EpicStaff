@@ -17,6 +17,7 @@ import { SecretsStorageService } from '@shared/services';
 import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { of, Subject } from 'rxjs';
 
+import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
 import { Venv, VenvStatus } from '../../../../features/virtual-environments/models/venv.model';
@@ -79,11 +80,12 @@ const pythonNode = {
 } as unknown as PythonNodeModel;
 
 // A user with Secrets:Use who may edit flows: any read-only here comes from the preview.
-function create(isPreview: boolean): PythonNodePanelComponent {
+function create(isPreview: boolean, isMac = false): PythonNodePanelComponent {
     TestBed.configureTestingModule({
         providers: [
             provideLoadedExecutionTimeoutLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
+            { provide: PLATFORM_IS_MAC, useValue: isMac },
             { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
         ],
     });
@@ -105,6 +107,16 @@ describe('PythonNodePanelComponent secrets', () => {
 
     it('stays editable in the live editor for a user with Secrets:Use', () => {
         expect(create(false).canEditSecrets()).toBe(true);
+    });
+
+    // macOS takes Monaco's Ctrl+Space (⌃Space) for switching the input source, so a Mac user is pointed to ⌘I.
+    it.each([
+        ['Windows and Linux', false, 'Ctrl+Space'],
+        ['a Mac', true, '⌘I'],
+    ])('names the key that inserts get_secret on %s', (_, isMac, key) => {
+        expect(create(false, isMac).secretsTooltip()).toBe(
+            `Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press ${key} in the code editor to insert get_secret('name').`
+        );
     });
 });
 

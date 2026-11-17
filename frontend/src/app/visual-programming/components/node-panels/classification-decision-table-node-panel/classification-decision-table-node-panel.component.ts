@@ -46,11 +46,18 @@ import {
     SecretsStorageService,
     SystemOneConfigStorageService,
 } from '@shared/services';
-import { escapeHtml, formatNodeLabel, getProviderIconPath, SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
+import {
+    codeSuggestionKeyLabel,
+    escapeHtml,
+    formatNodeLabel,
+    getProviderIconPath,
+    SECRET_CODE_NEEDS_USE_MESSAGE,
+} from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { ExportFormat } from '../../../../core/models/transfer-job.model';
+import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
 import { TransferExportService } from '../../../../core/services/transfer-export.service';
 import { TransferJobsService } from '../../../../core/services/transfer-jobs.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -238,6 +245,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private readonly diffState = inject(FlowDiffStateService);
     private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
+    private readonly isMac = inject(PLATFORM_IS_MAC);
     private flowService = inject(FlowService);
     private undoRedoService = inject(UndoRedoService);
 
@@ -330,14 +338,14 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     );
     public readonly preSecretsTooltip = computed(() =>
         this.canEditSecrets()
-            ? "Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            ? `Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
             : this.isReadOnly()
               ? 'Secrets assigned to this pre-computation code.'
               : "Secrets already assigned to this pre-computation code. You don't have permission to change which secrets are selected."
     );
     public readonly postSecretsTooltip = computed(() =>
         this.canEditSecrets()
-            ? "Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            ? `Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
             : this.isReadOnly()
               ? 'Secrets assigned to this post-computation code.'
               : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
