@@ -446,24 +446,35 @@ class TestKnowledgeNodeRunValidation:
 
     def test_missing_collection_blocks_even_with_query(self, validator, graph):
         node = KnowledgeNode.objects.create(
-            graph=graph, rag_type="naive", rag_id=1, query="find me"
+            graph=graph, node_name="Search", node_number=1, rag_type="naive", rag_id=1, query="q"
         )
         with pytest.raises(self._error()) as exc:
             validator.validate_runnable([node])
-        assert "source_collection" in str(exc.value.detail)
+        assert str(exc.value.detail) == (
+            'Knowledge Retriever node "Search #1" has no collection, RAG or query.'
+        )
 
     def test_incomplete_rag_blocks(self, validator, graph, collection):
         node = KnowledgeNode.objects.create(
-            graph=graph, source_collection=collection, rag_type="naive", query="q"
+            graph=graph,
+            node_name="Search",
+            node_number=1,
+            source_collection=collection,
+            rag_type="naive",
+            query="q",
         )  # rag_id missing
         with pytest.raises(self._error()) as exc:
             validator.validate_runnable([node])
-        assert "rag_type/rag_id" in str(exc.value.detail)
+        assert str(exc.value.detail) == (
+            'Knowledge Retriever node "Search #1" has no collection, RAG or query.'
+        )
 
     def test_empty_query_blocks(self, validator, graph, collection, naive_rag_type):
         impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
         node = KnowledgeNode.objects.create(
             graph=graph,
+            node_name="Search",
+            node_number=1,
             source_collection=collection,
             rag_type="naive",
             rag_id=impl.naive_rag_id,
@@ -472,21 +483,23 @@ class TestKnowledgeNodeRunValidation:
         )
         with pytest.raises(self._error()) as exc:
             validator.validate_runnable([node])
-        assert "query" in str(exc.value.detail)
+        assert str(exc.value.detail) == (
+            'Knowledge Retriever node "Search #1" has no collection, RAG or query.'
+        )
 
     def test_all_offending_nodes_reported_together(self, validator, graph):
-        n1 = KnowledgeNode.objects.create(graph=graph, query="q")  # no collection/rag
-        n2 = KnowledgeNode.objects.create(graph=graph)  # empty everything
+        first = KnowledgeNode.objects.create(
+            graph=graph, node_name="First", node_number=1, query="q"
+        )  # no collection/rag
+        second = KnowledgeNode.objects.create(
+            graph=graph, node_name="Second", node_number=2
+        )  # empty everything
         with pytest.raises(self._error()) as exc:
-            validator.validate_runnable([n1, n2])
-        detail = str(exc.value.detail)
-        assert f"#{n1.id}" in detail and f"#{n2.id}" in detail
-
-    def test_offending_node_is_named_by_its_runtime_name(self, validator, graph):
-        node = KnowledgeNode.objects.create(graph=graph, node_name="Search", node_number=3)
-        with pytest.raises(self._error()) as exc:
-            validator.validate_runnable([node])
-        assert f"Search #3 #{node.id} (" in str(exc.value.detail)
+            validator.validate_runnable([first, second])
+        assert str(exc.value.detail) == (
+            'Knowledge Retriever node "First #1" has no collection, RAG or query. '
+            'Knowledge Retriever node "Second #2" has no collection, RAG or query.'
+        )
 
 
 @pytest.mark.django_db

@@ -476,7 +476,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         *,
         start_node: StartNode | None,
         visiting_graph_ids: set[int] | None = None,
-        parent_graph: Graph | None = None,
         subflow_node: SubGraphNode | None = None,
     ) -> GraphData:
         """Recursively build GraphData for a graph to handle subgraphs
@@ -488,21 +487,24 @@ class SessionManagerService(metaclass=SingletonMeta):
                 None when the graph has none.
             visiting_graph_ids: Set of graph IDs currently being visited in the recursion stack.
                 Used to detect cycles that bypass the validator.
-            parent_graph: The graph whose subgraph reference led to this call, used only to
-                name the offending edge if the re-entry guard below fires.
-            subflow_node: The Subflow node that uses this graph, named in the error when
-                nothing is connected to the graph's Start; None for the flow that was run.
+            subflow_node: The Subflow node that uses this graph, named if the re-entry
+                guard below fires; None for the flow that was run. Run errors about this
+                graph name it as a subflow when this is set.
         """
         if visiting_graph_ids is None:
             visiting_graph_ids = set()
 
         # Guard against re-entry into a graph currently being built
         if graph.pk in visiting_graph_ids:
-            parent_name = parent_graph.name if parent_graph else f"Flow {graph.pk}"
-            raise SubGraphValidationError(
-                f"Recursion detected: '{parent_name}' references '{graph.name}' which creates "
-                f"a cycle."
+            raise SubGraphValidationError.leads_to_loop(
+                node_label=node_label(
+                    node_name=subflow_node.node_name, node_number=subflow_node.node_number
+                ),
+                flow_name=graph.name,
             )
+
+        # Run errors name a subflow; the flow the user ran needs no naming.
+        flow_name = graph.name if subflow_node is not None else None
 
         visiting_graph_ids_for_recursion = visiting_graph_ids | {graph.pk}
         python_node_list = (
@@ -633,11 +635,17 @@ class SessionManagerService(metaclass=SingletonMeta):
         )
 
         if file_extractor_node_list:
-            self.file_node_validator.validate_file_nodes(file_extractor_node_list)
+            self.file_node_validator.validate_file_nodes(
+                file_extractor_node_list, flow_name=flow_name
+            )
         if audio_transcription_node_list:
-            self.file_node_validator.validate_file_nodes(audio_transcription_node_list)
+            self.file_node_validator.validate_file_nodes(
+                audio_transcription_node_list, flow_name=flow_name
+            )
         if knowledge_node_list:
-            self.knowledge_node_validator.validate_runnable(knowledge_node_list)
+            self.knowledge_node_validator.validate_runnable(
+                knowledge_node_list, flow_name=flow_name
+            )
 
         condition_group_next_ids = list(
             ConditionGroup.objects.filter(
@@ -797,13 +805,8 @@ class SessionManagerService(metaclass=SingletonMeta):
             edge_data_list.append(edge_data)
 
         if entrypoint is None:
-            if subflow_node is not None:
-                raise SubflowEntryPointException(
-                    flow_name=graph.name,
-                    subflow_node_label=node_label(
-                        node_name=subflow_node.node_name, node_number=subflow_node.node_number
-                    ),
-                )
+            if flow_name is not None:
+                raise SubflowEntryPointException(flow_name=flow_name)
             raise GraphEntryPointException()
 
         decision_table_node_data_list = [
@@ -823,7 +826,6 @@ class SessionManagerService(metaclass=SingletonMeta):
                     None,
                     start_node=subgraph_start_node,
                     visiting_graph_ids=visiting_graph_ids_for_recursion,
-                    parent_graph=graph,
                     subflow_node=item,
                 )
                 # Not None here: _build_graph_data raises GraphEntryPointException without one.
@@ -852,7 +854,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
             )
 
-        end_node = self.end_node_validator.validate(graph_id=graph.pk)
+        end_node = self.end_node_validator.validate(graph_id=graph.pk, flow_name=flow_name)
 
         # TODO: remove validation
         end_node_data = (

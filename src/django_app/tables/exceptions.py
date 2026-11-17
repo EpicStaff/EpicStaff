@@ -17,6 +17,16 @@ if TYPE_CHECKING:
 __all__ = ["CustomAPIExeption"]
 
 
+def _in_flow(sentence: str, flow_name: str | None) -> str:
+    """End a Run error sentence, naming the subflow it is about.
+
+    `flow_name` is None for the flow the user ran: that one needs no naming.
+    """
+    if flow_name is None:
+        return f"{sentence}."
+    return f'{sentence} in flow "{flow_name}".'
+
+
 class GraphEntryPointException(CustomAPIExeption):
     status_code = 400
     default_detail = "No node connected to start node"
@@ -25,18 +35,13 @@ class GraphEntryPointException(CustomAPIExeption):
 class SubflowEntryPointException(GraphEntryPointException):
     """Raised on run when a flow a Subflow node uses has no node connected to its Start.
 
-    Names that flow and the node, since the flow the user ran may well be fine.
+    Names that flow, since the flow the user ran may well be fine.
     """
 
     default_code = "subflow_entry_point_missing"
 
-    def __init__(self, *, flow_name: str, subflow_node_label: str):
-        super().__init__(
-            detail=(
-                f'Flow "{flow_name}" (used by Subflow node "{subflow_node_label}") '
-                "has no node connected to its Start."
-            )
-        )
+    def __init__(self, *, flow_name: str):
+        super().__init__(detail=_in_flow("No node connected to start node", flow_name))
 
 
 class GraphNotFoundError(CustomAPIExeption):
@@ -140,17 +145,48 @@ class AgentSerializerError(CustomAPIExeption):
 
 class EndNodeValidationError(CustomAPIExeption):
     status_code = 400
-    default_detail = "ValidationError occured in session_manager_service"
+    default_detail = "The End node's Output Map is broken."
+
+    @classmethod
+    def broken_output_map(cls, *, flow_name: str | None) -> "EndNodeValidationError":
+        return cls(_in_flow("The End node's Output Map is broken", flow_name))
+
+    @classmethod
+    def outputs_not_variables(
+        cls, *, keys: list[str], flow_name: str | None
+    ) -> "EndNodeValidationError":
+        return cls(
+            " ".join(
+                _in_flow(f'Output "{key}" of the End node isn\'t a flow variable', flow_name)
+                for key in keys
+            )
+        )
 
 
 class FileNodeValidationError(CustomAPIExeption):
+    """Raised on run for a File Extractor or Audio to text node with nothing mapped to its input."""
+
     status_code = 400
-    default_detail = "FileExtractorNode requires input arguments"
+
+    def __init__(self, *, node_kind: str, node_label: str, flow_name: str | None):
+        super().__init__(
+            detail=_in_flow(f'{node_kind} node "{node_label}" has no input file', flow_name)
+        )
 
 
 class KnowledgeNodeRunValidationError(CustomAPIExeption):
     status_code = 400
-    default_detail = "KnowledgeNode is not fully configured to run"
+
+    def __init__(self, *, node_labels: list[str], flow_name: str | None):
+        super().__init__(
+            detail=" ".join(
+                _in_flow(
+                    f'Knowledge Retriever node "{node_label}" has no collection, RAG or query',
+                    flow_name,
+                )
+                for node_label in node_labels
+            )
+        )
 
 
 class InvalidTaskOrderError(CustomAPIExeption):
@@ -180,8 +216,30 @@ class GraphSaveVersionConflictError(CustomAPIExeption):
 
 
 class SubGraphValidationError(CustomAPIExeption):
+    """Raised on run for a Subflow node that can't run: no flow selected, or a loop of flows."""
+
     status_code = 400
-    default_detail = "ValidationError occured in SubGraphValidator during subgraph validation"
+    default_detail = "A Subflow node can't run."
+
+    @classmethod
+    def no_flow_selected(
+        cls, *, node_label: str, flow_name: str | None
+    ) -> "SubGraphValidationError":
+        return cls(_in_flow(f'Subflow node "{node_label}" has no flow selected', flow_name))
+
+    @classmethod
+    def runs_own_flow(cls, *, node_label: str, flow_name: str | None) -> "SubGraphValidationError":
+        return cls(_in_flow(f'Subflow node "{node_label}" runs its own flow', flow_name))
+
+    @classmethod
+    def loop_through_run_flow(cls, *, node_label: str, flow_name: str) -> "SubGraphValidationError":
+        """The loop comes back to the flow the user ran; `flow_name` is the flow the node runs."""
+        return cls(f'Subflow node "{node_label}" makes a loop through flow "{flow_name}".')
+
+    @classmethod
+    def leads_to_loop(cls, *, node_label: str, flow_name: str) -> "SubGraphValidationError":
+        """The loop is among subflows only; `flow_name` is the first flow on it."""
+        return cls(f'Subflow node "{node_label}" leads to a loop in flow "{flow_name}".')
 
 
 class ExportCycleError(CustomAPIExeption):
