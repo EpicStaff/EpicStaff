@@ -181,6 +181,7 @@ services:
       DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE:?}
       DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE:?}
       DJANGO_NOTIFY_EMAIL_THROTTLE_RATE: ${DJANGO_NOTIFY_EMAIL_THROTTLE_RATE:?}
+      DJANGO_TRANSFER_JOB_CREATE_THROTTLE_RATE: ${DJANGO_TRANSFER_JOB_CREATE_THROTTLE_RATE:?}
       DJANGO_LOGIN_THROTTLE_RATE: ${DJANGO_LOGIN_THROTTLE_RATE:?}
       DJANGO_LOGIN_IP_THROTTLE_RATE: ${DJANGO_LOGIN_IP_THROTTLE_RATE:?}
       DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE: ${DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE:?}
@@ -200,6 +201,11 @@ services:
       DJANGO_ORG_STORAGE_QUOTA: ${DJANGO_ORG_STORAGE_QUOTA:?}
       DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE: ${DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE:?}
       DJANGO_MAX_ARCHIVE_FILE_SIZE: ${DJANGO_MAX_ARCHIVE_FILE_SIZE:?}
+      DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE: ${DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE:?}
+      DJANGO_MAX_KNOWLEDGE_ARCHIVE_ENTRIES: ${DJANGO_MAX_KNOWLEDGE_ARCHIVE_ENTRIES:?}
+      DJANGO_MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE: ${DJANGO_MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE:?}
+      DJANGO_MAX_EXPORT_ENVELOPE_SIZE: ${DJANGO_MAX_EXPORT_ENVELOPE_SIZE:?}
+      DJANGO_TRANSFER_ARCHIVE_TTL: ${DJANGO_TRANSFER_ARCHIVE_TTL:?}
       DJANGO_UPLOAD_PART_SIZE: ${DJANGO_UPLOAD_PART_SIZE:?}
       DJANGO_UPLOAD_MAX_CONCURRENCY: ${DJANGO_UPLOAD_MAX_CONCURRENCY:?}
       DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG: ${DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG:?}
@@ -739,6 +745,8 @@ services:
       # .localhost names and docker-compose.plugins-dev.yaml is in the command: that file publishes
       # 80 and 443 on 127.0.0.1 only, publishes 8082, and alone sets PLUGINS_DEV_LOOPBACK_ONLY.
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
+      # The body cap of the import-job upload routes, as Django applies it.
+      DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE: ${DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
       # Entrypoint hooks use the long syntax so a missing file stops `up` with an
@@ -772,6 +780,12 @@ services:
       - type: bind
         source: ./nginx/docker-entrypoint.d/18-check-trusted-proxies.envsh
         target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/19-derive-knowledge-archive-size.envsh
+        target: /docker-entrypoint.d/19-derive-knowledge-archive-size.envsh
         read_only: true
         bind:
           create_host_path: false
@@ -966,8 +980,6 @@ services:
 
   knowledge_new:
     <<: *hardened
-    tmpfs:
-      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     container_name: ${INSTANCE_PREFIX?}knowledge_new
@@ -975,6 +987,10 @@ services:
     build:
       context: .
       dockerfile: ./knowledge_new/Dockerfile
+    volumes:
+      # On disk, not tmpfs: a GraphRAG index import spools its whole archive here (up to
+      # DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE) and unpacks its document tables to rewrite them.
+      - knowledge_new_tmp:/tmp
     networks:
       - backend-network
     depends_on:
@@ -1372,6 +1388,7 @@ volumes:
   chat_pgdata: {}
   plugin_spa: {}
   django_app_tmp: {}
+  knowledge_new_tmp: {}
   es_plugins_data: {}
   plugins_pgdata: {}
   plugin_egress_policy: {}

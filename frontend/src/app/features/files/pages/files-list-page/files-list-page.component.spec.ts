@@ -12,6 +12,7 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { KeyValueTablesPageComponent } from '../../../key-value-tables/pages/key-value-tables-page/key-value-tables-page.component';
+import { CollectionsImportComponent } from '../../../knowledge-sources/components/collections-import/collections-import.component';
 import { CollectionsListPageComponent } from '../../../knowledge-sources/pages/collections-list-page/collections-list-page.component';
 import { CollectionsStorageService } from '../../../knowledge-sources/services/collections-storage.service';
 import { StorageItem } from '../../models/storage.models';
@@ -38,6 +39,9 @@ class StoragePageStubComponent implements OnDestroy {
 
 @Component({ selector: 'app-collections-list-page', template: '<div class="collections-stub">collections</div>' })
 class CollectionsListPageStubComponent {}
+
+@Component({ selector: 'app-collections-import', template: '<div class="collections-import-stub">import</div>' })
+class CollectionsImportStubComponent {}
 
 @Component({ selector: 'app-key-value-tables-page', template: '<div class="key-value-tables-stub">kv</div>' })
 class KeyValueTablesPageStubComponent {}
@@ -75,8 +79,8 @@ describe('FilesListPageComponent', () => {
      * what this spec covers is the @if inside each block, so the blocks are loaded up front.
      */
     let deferBlocksLoaded = false;
-    async function loadDeferBlocks(state = DeferBlockState.Complete): Promise<void> {
-        for (const block of await fixture().getDeferBlocks()) await block.render(state);
+    async function loadDeferBlocks(): Promise<void> {
+        for (const block of await fixture().getDeferBlocks()) await block.render(DeferBlockState.Complete);
         deferBlocksLoaded = true;
     }
 
@@ -140,9 +144,21 @@ describe('FilesListPageComponent', () => {
             ],
         });
         TestBed.overrideComponent(FilesListPageComponent, {
-            remove: { imports: [CollectionsListPageComponent, StoragePageComponent, KeyValueTablesPageComponent] },
+            remove: {
+                imports: [
+                    CollectionsListPageComponent,
+                    CollectionsImportComponent,
+                    StoragePageComponent,
+                    KeyValueTablesPageComponent,
+                ],
+            },
             add: {
-                imports: [CollectionsListPageStubComponent, StoragePageStubComponent, KeyValueTablesPageStubComponent],
+                imports: [
+                    CollectionsListPageStubComponent,
+                    CollectionsImportStubComponent,
+                    StoragePageStubComponent,
+                    KeyValueTablesPageStubComponent,
+                ],
             },
         });
         await TestBed.compileComponents();
@@ -164,6 +180,7 @@ describe('FilesListPageComponent', () => {
         expect(storageLayer()?.classList).not.toContain('tab-page--kept-alive');
         expect(storageLayer()?.hasAttribute('inert')).toBe(false);
         expect(query('app-button')?.textContent).toContain('Add files');
+        expect(query('app-collections-import')).toBeNull();
     });
 
     it('renders only the Knowledge Sources page on its tab', async () => {
@@ -171,12 +188,19 @@ describe('FilesListPageComponent', () => {
 
         expect(query('.collections-stub')).not.toBeNull();
         expect(query('.storage-stub')).toBeNull();
-        expect(query('app-button')?.textContent).toContain('Add collection');
+        const importControl = query('app-collections-import');
+        const createButton = query('app-button');
+        expect(createButton?.textContent).toContain('Create collection');
+        // Import sits left of Create collection, as on the Flows page.
+        expect(importControl!.compareDocumentPosition(createButton!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it('shows a spinner while a tab page is still loading', async () => {
         await harness.navigateByUrl('/storage/files');
-        await loadDeferBlocks(DeferBlockState.Loading);
+        // The tab pages show a loading state; the header's Import has none and shows nothing until it has loaded.
+        for (const block of await fixture().getDeferBlocks()) {
+            await block.render(DeferBlockState.Loading).catch(() => block.render(DeferBlockState.Complete));
+        }
         fixture().detectChanges();
 
         expect(query('.tab-page__loading app-spinner')?.textContent).toContain('Loading');

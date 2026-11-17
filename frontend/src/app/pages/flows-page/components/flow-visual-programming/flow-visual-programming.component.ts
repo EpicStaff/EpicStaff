@@ -2194,7 +2194,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
-        this.flowCopyImport.exportFlow({ id: this.graph.id, name: this.graph.name });
+        this.flowCopyImport.exportFlows([this.graph.id]);
     }
 
     /**

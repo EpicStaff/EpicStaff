@@ -21,10 +21,7 @@
                 class="collections-page__sidebar"
                 [style.width.px]="sidebarWidth()"
             >
-                <app-collections-list-sidebar
-                    [collections]="collections()"
-                    (onCreateCollection)="createCollection()"
-                />
+                <app-collections-list-sidebar [collections]="collections()" />
 
                 <div
                     class="resizable-sidebar-handle"

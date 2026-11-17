@@ -1,41 +1,45 @@
 <div class="collections-sidebar">
-    <div class="collections-sidebar__header">
-        <span class="collections-sidebar__header-label"
-            >Collections
-            <span class="collections-sidebar__header-count">
-                {{ collections().length }}
-            </span>
-        </span>
-
-        <ng-container *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]">
-            <app-button
-                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
-                [type]="collections().length ? 'primary' : 'outline-primary'"
-                [leftIcon]="'plus'"
-                (click)="onCreateCollection.emit()"
-            >
-                Add
-            </app-button>
-        </ng-container>
-    </div>
-
     @if (!collections().length) {
         <p class="collections-sidebar__empty">No collections yet</p>
     } @else {
-        <app-select
-            class="rag-select"
-            [placeholder]="'Rag type'"
-            [items]="ragTypeItems"
-            [(selectedValue)]="selectedRagType"
+        <app-search
+            class="collections-sidebar__search"
+            ariaLabel="Search collections"
+            [(searchTerm)]="searchTerm"
         />
+        <div class="collections-sidebar__toolbar">
+            <app-select
+                class="rag-select"
+                [placeholder]="'All RAG types'"
+                [items]="ragTypeItems"
+                [(selectedValue)]="selectedRagType"
+            />
+            <app-collections-export-control
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
+                [selectMode]="selectMode()"
+                [selectedCount]="selectedIds().length"
+                [allSelected]="allVisibleSelected()"
+                (selectModeEntered)="enterSelectMode()"
+                (selectAllToggled)="toggleSelectAll()"
+                (cleared)="exitSelectMode()"
+                (exportConfirmed)="exportSelected()"
+            />
+        </div>
         <div class="collections-sidebar__items">
             @for (collection of filteredCollections(); track collection.collection_id) {
                 <app-collection
                     class="collections-sidebar__item"
                     [collection]="collection"
                     [selected]="selectedCollectionId() === collection.collection_id"
-                    (click)="selectCollection(collection.collection_id)"
+                    [selectMode]="selectMode()"
+                    [checked]="isChecked(collection.collection_id)"
+                    [exporting]="exportingIds().has(collection.collection_id)"
+                    (checkedChange)="setChecked(collection.collection_id, $event)"
+                    (exportRequested)="exportCollection(collection.collection_id)"
+                    (click)="onCollectionClick(collection.collection_id)"
                 />
+            } @empty {
+                <p class="collections-sidebar__no-match">No collections match</p>
             }
         </div>
     }

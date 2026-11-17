@@ -67,21 +67,6 @@ export class AuditPresetsApiService {
         return this.http.delete<void>(`${this.baseUrl}${id}/`, { params: this.domainParams(domain) });
     }
 
-    public exportPreset(domain: AuditDomainName, id: number): Observable<Blob> {
-        return this.http.get(`${this.baseUrl}${id}/export/`, {
-            params: this.domainParams(domain),
-            responseType: 'blob',
-        });
-    }
-
-    public exportPresets(domain: AuditDomainName, ids: number[]): Observable<Blob> {
-        return this.http.post(
-            `${this.baseUrl}export/`,
-            { ids },
-            { params: this.domainParams(domain), responseType: 'blob' }
-        );
-    }
-
     public importPresets(domain: AuditDomainName, file: File): Observable<ImportResult> {
         const formData = new FormData();
         formData.append('file', file);
