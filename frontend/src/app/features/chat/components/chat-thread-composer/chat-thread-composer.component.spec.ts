@@ -188,7 +188,7 @@ describe('ChatThreadComposerComponent', () => {
         type('hello');
         pressEnter();
         expect(input().disabled).toBe(true);
-        // The thread says "Bot is replying…" from this.
+        // The thread says "Bot is replying..." from this.
         expect(fixture.componentInstance.isProcessing()).toBe(true);
 
         setInputs({ conversation: row({ state: 'processing' }) });
@@ -455,7 +455,7 @@ describe('ChatThreadComposerComponent', () => {
         expect(input().placeholder).toBe('Type a message…');
     });
 
-    it('reports a run in progress on a real conversation, for the thread to say Bot is replying…', () => {
+    it('reports a run in progress on a real conversation, for the thread to say Bot is replying...', () => {
         setInputs({ conversation: row({ is_test: false, state: 'processing' }) });
         expect(fixture.componentInstance.isProcessing()).toBe(true);
     });

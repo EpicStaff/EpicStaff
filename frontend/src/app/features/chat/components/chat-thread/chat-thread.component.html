@@ -168,7 +168,11 @@
             aria-live="polite"
         >
             @if (isBotReplying()) {
-                Bot is replying…
+                Bot is replying<span
+                    class="thread__replying-dots"
+                    aria-hidden="true"
+                    ><span>.</span><span>.</span><span>.</span></span
+                >
             }
         </div>
     </div>

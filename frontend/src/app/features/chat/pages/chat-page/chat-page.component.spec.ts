@@ -487,7 +487,7 @@ describe('ChatPageComponent', () => {
         expect(chatApi.reply).not.toHaveBeenCalled();
         // Said in the thread, where the reply will appear, from the send on: before the stream reports the run.
         fixture.detectChanges();
-        expect(text('.thread__replying')).toEqual(['Bot is replying…']);
+        expect(text('.thread__replying')).toEqual(['Bot is replying...']);
     });
 
     it('shows the run a visitor message started under it on a test conversation only, on its lighter bubble', () => {

@@ -185,9 +185,11 @@ describe('ConversationRowComponent', () => {
             expect(plain(description?.textContent)).toBe('Bot: Where is my order?');
         });
 
-        it('says "Bot is replying…" instead, without a sender, while a run is in flight', () => {
+        it('says "Bot is replying..." instead, without a sender, while a run is in flight', () => {
             render(conversation({ state: 'processing', last_message_role: 'user' }));
-            expect(textOf('.conversation-row__preview')).toBe('Bot is replying…');
+            expect(textOf('.conversation-row__preview')).toBe('Bot is replying...');
+            // The dots are drawn, not read out.
+            expect(host().querySelector('.conversation-row__replying-dots')?.getAttribute('aria-hidden')).toBe('true');
             expect(accessibleName()).toContain('bot is replying');
         });
     });

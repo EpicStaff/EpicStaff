@@ -1,3 +1,4 @@
+@use '../../styles/replying-dots';
 @use '../../styles/wait-chip';
 
 // The open conversation: its header, messages and composer.
@@ -39,17 +40,21 @@
         gap: 12px;
     }
 
-    // Plain grey text on the bot's side while it replies; empty, it takes no room.
+    // Small grey text on the bot's side while it replies; empty, it takes no room.
     &__replying {
         align-self: flex-end;
         color: var(--color-text-secondary);
-        font-size: var(--text-body-size);
-        font-weight: var(--text-body-weight);
-        line-height: var(--text-body-line-height);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
 
         &:empty {
             margin-top: -12px;
         }
+    }
+
+    &__replying-dots {
+        @include replying-dots.dots;
     }
 
     &__older {
@@ -284,22 +289,14 @@
         background-color: color-mix(in srgb, var(--accent-color) 40%, transparent);
     }
 
-    &--operator {
-        .message__content {
-            background-color: var(--accent-color);
+    // No test variant: the operator's bubble is the same in Bot Testing.
+    &--operator .message__content {
+        background-color: var(--accent-color);
 
-            // An accent link would vanish on the accent bubble: the text colour, underlined.
-            ::ng-deep a {
-                color: inherit;
-                text-decoration: underline;
-            }
-        }
-
-        // In a test conversation (Bot Testing) the operator writes in the accent, on an accent tint,
-        // since accent text would vanish on the accent fill.
-        &.message--test .message__content {
-            background-color: var(--color-chat-test-operator-bubble);
-            color: var(--accent-color);
+        // An accent link would vanish on the accent bubble: the text colour, underlined.
+        ::ng-deep a {
+            color: inherit;
+            text-decoration: underline;
         }
     }
 

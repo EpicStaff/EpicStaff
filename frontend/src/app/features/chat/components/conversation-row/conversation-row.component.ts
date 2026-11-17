@@ -46,7 +46,7 @@ interface ConversationHolder {
 
 /**
  * One conversation in the list, as chat apps draw it: the visitor's avatar, name and last activity, then the last
- * message after who wrote it ("Bot is replying…" while a run is in flight). A taken one has its operator's badge on the
+ * message after who wrote it ("Bot is replying..." while a run is in flight). A taken one has its operator's badge on the
  * avatar's corner. A conversation where the visitor waits for a person has a bold name and, on its right, how long they
  * have waited and Take over (unless the current user holds it); the wait gets an alert icon and the error colour once
  * overdue. In progress, one with news the user has not opened has a green dot by its time and a brighter preview. A
@@ -109,9 +109,8 @@ export class ConversationRowComponent {
         isWaitOverdue(this.conversation(), this.rules()?.overdueAfterMs ?? null, this.now())
     );
     protected readonly isReplying = computed(() => !this.isClosed() && this.conversation().state === 'processing');
-    protected readonly preview = computed(() =>
-        this.isReplying() ? 'Bot is replying…' : this.conversation().last_message_preview || 'No messages yet'
-    );
+    // While the bot replies the template says so instead, with its animated dots.
+    protected readonly preview = computed(() => this.conversation().last_message_preview || 'No messages yet');
     protected readonly sender = computed(() =>
         this.isReplying() ? null : senderPrefix(this.conversation(), this.myUserId())
     );

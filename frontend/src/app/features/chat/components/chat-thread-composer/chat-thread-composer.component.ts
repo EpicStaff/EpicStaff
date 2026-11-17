@@ -78,7 +78,6 @@ function parseExtraData(text: string): { value: Record<string, unknown> | null; 
     return { value: null, error: EXTRA_DATA_ERROR };
 }
 
-// The icons of the inbox's In progress section and of Mine.
 const ROLES: { id: ChatComposerRole; label: string; icon: string }[] = [
     { id: 'visitor', label: 'Visitor', icon: 'user-outline' },
     { id: 'operator', label: 'Operator', icon: 'headset' },

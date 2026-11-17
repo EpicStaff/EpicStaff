@@ -76,7 +76,15 @@
                 @if (sender(); as from) {
                     <span class="conversation-row__sender">{{ from }}</span>
                 }
-                {{ preview() }}
+                @if (isReplying()) {
+                    Bot is replying<span
+                        class="conversation-row__replying-dots"
+                        aria-hidden="true"
+                        ><span>.</span><span>.</span><span>.</span></span
+                    >
+                } @else {
+                    {{ preview() }}
+                }
             </span>
             @if (closeWord(); as word) {
                 <span

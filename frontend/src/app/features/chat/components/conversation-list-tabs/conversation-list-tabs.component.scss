@@ -67,13 +67,16 @@
 }
 
 // Narrower than at the column's default width (402px), as the column shrinks with the screen or is dragged in: 28px
-// tall, as the search row under it (318px at the column's minimum). Not on phones: the column is narrow there by
-// nature, and the switch stays a finger's size.
+// tall, as the search row under it (318px at the column's minimum), and a smaller label to suit. Not on phones: the
+// column is narrow there by nature, and the switch stays a finger's size.
 @media (min-width: #{bp.$breakpoint-phone + 0.02px}) {
     @container (max-width: 401px) {
         .conversation-list-tabs__tab {
             height: 28px;
             padding: 0 8px;
+            font-size: var(--text-body-small-large-size);
+            font-weight: var(--text-body-small-large-weight);
+            line-height: var(--text-body-small-large-line-height);
         }
     }
 }
