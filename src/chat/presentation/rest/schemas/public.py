@@ -158,7 +158,11 @@ class SendMessageInput(BaseSchema):
     content: NulFreeStr = ""
     action: ActionObject | None = Field(
         default=None,
-        description="The visitor's answer to an offered action; the flow gets it as `action`.",
+        description=(
+            "The visitor's answer to an offered action; the flow gets it as `action`. "
+            "Untrusted: the service doesn't check it against the offered actions, "
+            "so the flow must validate it before acting on it."
+        ),
     )
     chat_extra_data: ExtraDataObject | None = Field(
         default=None, description=EXTRA_DATA_DESCRIPTION
