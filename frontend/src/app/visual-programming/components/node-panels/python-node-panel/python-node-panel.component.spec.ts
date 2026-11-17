@@ -727,6 +727,60 @@ describe('PythonNodePanelComponent Input List and main() signature', () => {
             expect(panel.pythonCode).toBe('def main(count: int, extra, *args):\n    return count\n');
         });
     });
+
+    describe('dirty state of the Input List', () => {
+        // No main(): the rows never rewrite the code, so only the Input List can make the panel dirty.
+        const CODE_WITHOUT_MAIN = '# no entrypoint yet\n';
+
+        it('stays clean when the only row of a node without inputs is removed', () => {
+            open(CODE_WITHOUT_MAIN, {});
+
+            click('.delete-icon', 0);
+
+            expect(rows()).toEqual([]);
+            expect(panel.isDirty()).toBe(false);
+        });
+
+        it('stays clean when Add Input adds a row that is left empty', () => {
+            open(CODE_WITHOUT_MAIN, {});
+
+            click('.add-pair-btn');
+
+            expect(rows().length).toBe(2);
+            expect(panel.isDirty()).toBe(false);
+        });
+
+        it('turns dirty when a row of a node without inputs is named', () => {
+            open(CODE_WITHOUT_MAIN, {});
+
+            typeKey(0, 'topic');
+
+            expect(panel.pythonCode).toBe(CODE_WITHOUT_MAIN);
+            expect(panel.isDirty()).toBe(true);
+        });
+
+        it('turns dirty when the variable path of a named row changes', () => {
+            open(CODE_WITHOUT_MAIN, { topic: 'variables.topic' });
+            const valueInput = fixture.nativeElement.querySelector(
+                'input[aria-autocomplete="list"]'
+            ) as HTMLInputElement;
+
+            valueInput.value = 'subject';
+            valueInput.dispatchEvent(new Event('input'));
+            fixture.detectChanges();
+
+            expect(panel.createUpdatedNode().input_map).toEqual({ topic: 'variables.subject' });
+            expect(panel.isDirty()).toBe(true);
+        });
+
+        it('turns dirty when a named row is removed', () => {
+            open(CODE_WITHOUT_MAIN, { topic: 'variables.topic' });
+
+            click('.delete-icon', 0);
+
+            expect(panel.isDirty()).toBe(true);
+        });
+    });
 });
 
 type DrawnBoxStyle = 'display' | 'paddingTop';

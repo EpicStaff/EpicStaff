@@ -325,6 +325,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         const testInput = (raw['test_input'] as { key: string; value: string }[] | undefined) ?? [];
         const stripped = {
             ...raw,
+            // What the rows save as: an unnamed row (the one a node without inputs opens with, or a new empty one) is no change.
+            input_map: inputMapFromRows(this.inputMapPairs.getRawValue()),
             test_input: testInput.map((p) => ({ key: p.key, value: '' })),
             secret_ids: [...this.selectedSecretIds()].sort(),
             use_storage: this.useStorage(),
