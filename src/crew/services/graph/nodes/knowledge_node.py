@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any
 
+from clients.errors import ClientError
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.state import State
@@ -15,6 +16,7 @@ from src.shared.models import RagSearchConfig
 
 class KnowledgeNode(BaseNode):
     TYPE = "KNOWLEDGE"
+    LABEL = "Knowledge Retriever node"
 
     def __init__(
         self,
@@ -89,10 +91,7 @@ class KnowledgeNode(BaseNode):
         query = self._build_query(input_)
 
         if not query.strip():
-            raise ValueError(
-                f"Knowledge node '{self.node_name}' received an empty search query: "
-                "set a query or map an input that resolves to non-empty text."
-            )
+            raise KnowledgeSearchError(f"{self._display_name()} got an empty query.")
 
         rag_search_config = self.rag_search_config.model_dump() if self.rag_search_config else {}
         try:
@@ -113,9 +112,16 @@ class KnowledgeNode(BaseNode):
                 node_name=self.node_name,
                 execution_order=execution_order,
             )
-        except (RuntimeError, TimeoutError, ValueError) as e:
+        # The service's text can quote internal hosts or its response body, so it is only logged.
+        except (ClientError, RuntimeError, TimeoutError, ValueError) as e:
+            logger.opt(exception=e).error(
+                "Knowledge search failed: {error} (session_id={session_id}, node_name={node_name})",
+                error=str(e),
+                session_id=self.session_id,
+                node_name=self.node_name,
+            )
             raise KnowledgeSearchError(
-                f"Knowledge node '{self.node_name}' search failed: {e}"
+                f"{self._display_name()} couldn't search its collection."
             ) from e
 
         if not results:

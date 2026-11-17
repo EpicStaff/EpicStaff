@@ -14,8 +14,9 @@ import pytest
 from dotdict import DotDict
 from loguru import logger
 
+from services.agent_task_service import AgentTaskError
 from services.graph.events import StopEvent
-from services.graph.exceptions import InvalidStatePathError
+from services.graph.exceptions import InvalidStatePathError, NodeConfigurationError
 from services.graph.nodes.agent_node import AgentNode
 from services.graph.nodes.task_node import TaskNode
 from services.graph.remembered_outputs import RememberedOutputsStore
@@ -223,22 +224,78 @@ async def test_result_is_stored_at_the_output_variable_path(
         assert state["variables"].output.a.b == 1
 
 
-@NODE_KINDS
+async def _streamed_error(node) -> list[str]:
+    """Run a node that must fail; return the error texts it streamed."""
+    state = {"state_history": [], "variables": DotDict({}), "system_variables": {}}
+    messages = []
+    with pytest.raises(NodeConfigurationError):
+        await node.run(state=state, writer=messages.append)
+    return [
+        message.message_data.details
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+
+
 @pytest.mark.parametrize(
-    ("agent_definition", "error"),
-    [(None, "agent_definition"), (AgentDefinitionData(id=1, name="researcher"), "llm")],
-    ids=["no-agent", "agent-without-llm"],
+    ("build_node", "agent_definition", "expected"),
+    [
+        (_task_node, None, 'Task node "task_node_1" has no agent chosen.'),
+        (_agent_node, None, 'Agent node "agent_node_1" has no agent chosen.'),
+        (
+            _task_node,
+            AgentDefinitionData(id=1, name="researcher"),
+            'Agent "researcher" in Task node "task_node_1" has no LLM.',
+        ),
+        (
+            _agent_node,
+            AgentDefinitionData(id=1, name="researcher"),
+            'Agent "researcher" in Agent node "agent_node_1" has no LLM.',
+        ),
+    ],
+    ids=["task-no-agent", "agent-node-no-agent", "task-agent-without-llm", "agent-node-agent-without-llm"],
 )
-async def test_misconfigured_node_fails_without_calling_the_agent(
-    build_node, stream_type, remembered_outputs, agent_definition, error
+async def test_misconfigured_node_streams_the_fact_without_calling_the_agent(
+    build_node, remembered_outputs, agent_definition, expected
 ):
     service = FakeAgentService()
     node = build_node(service, remembered_outputs, agent_definition=agent_definition)
 
-    with pytest.raises(ValueError, match=error):
-        await _run(node)
-
+    assert await _streamed_error(node) == [expected]
     assert service.dispatched is None
+
+
+async def test_error_text_names_the_node_by_its_label_and_the_message_keeps_the_runtime_name(
+    remembered_outputs,
+):
+    runtime_name = "Writer #1 #352"
+    agent_without_llm = AgentDefinitionData(id=1, name="researcher")
+    node = AgentNode(
+        session_id=SESSION_ID,
+        node_name=runtime_name,
+        stop_event=StopEvent(),
+        agent_node_data=AgentNodeData(
+            node_name=runtime_name,
+            agent_definition=agent_without_llm,
+            tasks=[AgentNodeTaskData(name="task_a", order=0, instructions="Write.")],
+        ),
+        agent_task_service=FakeAgentService(),
+    )
+    state = {"state_history": [], "variables": DotDict({}), "system_variables": {}}
+    messages = []
+
+    with pytest.raises(NodeConfigurationError):
+        await node.run(state=state, writer=messages.append)
+
+    (error_message,) = [
+        message
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+    assert error_message.message_data.details == (
+        'Agent "researcher" in Agent node "Writer #1" has no LLM.'
+    )
+    assert error_message.name == runtime_name
 
 
 @NODE_KINDS
@@ -247,6 +304,25 @@ async def test_agent_failure_propagates(build_node, stream_type, remembered_outp
 
     with pytest.raises(RuntimeError, match="agent unreachable"):
         await _run(node)
+
+
+@NODE_KINDS
+async def test_agent_task_error_streams_its_fact_on_the_error_card(
+    build_node, stream_type, remembered_outputs
+):
+    fact = 'The provider rejected the API key for model "gpt-4o".'
+    node = build_node(FakeAgentService(error=AgentTaskError(fact)), remembered_outputs)
+    state = {"state_history": [], "variables": DotDict({}), "system_variables": {}}
+    messages = []
+
+    with pytest.raises(AgentTaskError):
+        await node.run(state=state, writer=messages.append)
+
+    assert [
+        message.message_data.details
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ] == [fact]
 
 
 @NODE_KINDS
@@ -548,10 +624,12 @@ async def test_agent_node_renders_every_tasks_instructions(remembered_outputs):
     ]
 
 
-async def test_agent_node_without_tasks_fails_without_calling_the_agent(remembered_outputs):
+async def test_agent_node_without_tasks_streams_the_fact_without_calling_the_agent(
+    remembered_outputs,
+):
     service = FakeAgentService()
 
-    with pytest.raises(ValueError, match="no tasks"):
-        await _run(_agent_node(service, remembered_outputs, tasks=[]))
-
+    assert await _streamed_error(_agent_node(service, remembered_outputs, tasks=[])) == [
+        'Agent node "agent_node_1" has no tasks.'
+    ]
     assert service.dispatched is None

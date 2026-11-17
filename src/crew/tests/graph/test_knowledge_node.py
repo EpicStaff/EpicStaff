@@ -2,8 +2,17 @@ import asyncio
 from unittest.mock import MagicMock
 
 import pytest
+from dotdict import DotDict
+from loguru import logger
 
+from clients.errors import (
+    ClientBadGatewayError,
+    ClientNotAvailableError,
+    ClientTimeoutError,
+    ClientValidationError,
+)
 from services.graph.events import StopEvent
+from services.graph.exceptions import KnowledgeSearchError
 from services.graph.nodes.knowledge_node import KnowledgeNode
 from services.knowledge_search_service import KnowledgeSearchService
 from src.shared.flow_templates import RefusedPlaceholderError
@@ -305,3 +314,71 @@ def test_refused_query_placeholder_fails_before_any_search():
         )
 
     assert service.searches == []
+
+
+def run_node(node: KnowledgeNode) -> list:
+    """Run the node through BaseNode.run and return the streamed message data."""
+    state = {"variables": DotDict({}), "state_history": [], "system_variables": {}}
+    messages = []
+    with pytest.raises(KnowledgeSearchError):
+        asyncio.run(node.run(state, writer=messages.append))
+    return [
+        message.message_data.details
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+
+
+@pytest.fixture
+def captured_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING")
+    yield records
+    logger.remove(sink_id)
+
+
+def test_empty_query_streams_the_fact_without_searching():
+    service = RecordingKnowledgeSearchService()
+    node = make_node(service)
+    node.node_name = "Search docs #1 #12"
+    node.query_template = "   "
+
+    assert run_node(node) == ['Knowledge Retriever node "Search docs #1" got an empty query.']
+    assert service.searches == []
+
+
+@pytest.mark.parametrize(
+    ("service_error", "logged_text"),
+    [
+        (
+            ClientBadGatewayError("<html>502 at http://knowledge-internal:8001 key=sk-abc123</html>"),
+            "knowledge-internal:8001",
+        ),
+        (
+            ClientValidationError('{"detail": "rag 2 at http://knowledge-internal:8001 not indexed"}'),
+            "knowledge-internal:8001",
+        ),
+        (
+            ClientNotAvailableError("Knowledge service is unreachable at knowledge-internal:8001."),
+            "knowledge-internal:8001",
+        ),
+        # KnowledgeSearchService turns a client timeout into its own TimeoutError text.
+        (ClientTimeoutError("knowledge-internal:8001 timed out"), "Knowledge search timeout"),
+    ],
+    ids=["5xx", "4xx", "unreachable", "timeout"],
+)
+def test_failed_search_streams_the_fact_and_logs_the_service_text(
+    monkeypatch, captured_logs, service_error, logged_text
+):
+    class FailingKnowledgeClient(FakeKnowledgeClient):
+        def search_with_usage(self, **kwargs):
+            raise service_error
+
+    monkeypatch.setattr("services.knowledge_search_service.KnowledgeClient", FailingKnowledgeClient)
+    node = make_node(KnowledgeSearchService(redis_service=MagicMock()))
+    node.node_name = "Search docs #1 #12"
+
+    assert run_node(node) == [
+        'Knowledge Retriever node "Search docs #1" couldn\'t search its collection.'
+    ]
+    assert any(logged_text in record for record in captured_logs)

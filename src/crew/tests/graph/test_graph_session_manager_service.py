@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
-import re
 from datetime import datetime
 from functools import partial
 from types import SimpleNamespace
@@ -25,7 +24,7 @@ from fakeredis import FakeAsyncRedis
 from loguru import logger
 from pydantic import ValidationError
 
-from models.graph_models import FinishMessageData, GraphMessage
+from models.graph_models import ErrorMessageData, FinishMessageData, GraphMessage
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
 from services.graph.graph_session_manager_service import GraphSessionManagerService
@@ -35,13 +34,10 @@ from src.crew.services.graph.session_audit_provider import emit_session_audit_ev
 from src.shared.audit.writers.session_writer import SessionAuditWriter
 from src.shared.models import SessionData
 from src.shared.models.graph_nodes import GraphData
-from src.shared.public_error import PublicErrorMessage
 from tests.graph.rebuild_counting_dict import RebuildCountingDict
 from tests.graph.recording_audit_client import RecordingAuditClient
 
-_PUBLIC_ERROR_PATTERN = re.compile(
-    rf"{re.escape(PublicErrorMessage.SESSION_EXECUTION_FAILED)} \(reference: [0-9a-f]{{12}}\)"
-)
+FLOW_FAILED = "The flow failed."
 
 
 def make_finish_chunk(
@@ -424,8 +420,7 @@ async def test_unserialisable_final_variables_end_the_session_as_error(
     assert [call.kwargs["status"] for call in status_calls] == ["run", "error"]
     # The TypeError's text names the unserialisable value; only the public
     # message reaches Redis.
-    assert _PUBLIC_ERROR_PATTERN.fullmatch(status_calls[-1].kwargs["error"])
-    assert "not JSON serializable" not in status_calls[-1].kwargs["error"]
+    assert status_calls[-1].kwargs["error"] == FLOW_FAILED
 
 
 @pytest.mark.asyncio
@@ -450,14 +445,14 @@ async def test_failed_session_does_not_write_final_variables(service, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_failed_session_reports_public_error_to_redis_and_audit(
-    service, monkeypatch
+async def test_failed_session_reports_the_flow_failed_fact_to_redis_and_audit(
+    service, monkeypatch, captured_logs
 ):
     """A crashing session must not put raw exception text into either sink.
 
     The Redis session status is what the frontend polls, and the audit
     session-end row is what the organization's trail keeps forever; both get
-    the generic message plus the correlation id that the log line carries.
+    the fixed fact, and the raw error goes only to the log.
     """
     audit_calls: list[tuple[str, dict]] = []
 
@@ -488,13 +483,97 @@ async def test_failed_session_reports_public_error_to_redis_and_audit(
 
     status_call = service.redis_service.aupdate_session_status.call_args_list[-1]
     assert status_call.kwargs["status"] == "error"
-    public_error = status_call.kwargs["error"]
-    assert _PUBLIC_ERROR_PATTERN.fullmatch(public_error)
-    assert secret not in public_error
+    assert status_call.kwargs["error"] == FLOW_FAILED
 
     end_call = audit_calls[-1][1]
     assert end_call["name"] == "Session Failed"
-    assert end_call["details"] == {"error": public_error}
+    assert end_call["details"] == {"error": FLOW_FAILED}
+    assert any(secret in line for line in captured_logs)
+
+
+def _error_chunk(session_id: int, details: str) -> tuple[str, GraphMessage]:
+    """The error card a failing node streams before its exception ends the run."""
+    return (
+        "custom",
+        GraphMessage(
+            session_id=session_id,
+            name="Save lead #3",
+            execution_order=1,
+            message_data=ErrorMessageData(details=details),
+        ),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("streamed", "expected_status_data", "expected_audit_error"),
+    [
+        pytest.param(
+            ["error"],
+            {},
+            'Key-Value node "Save lead #3" couldn\'t read its table.',
+            id="node-failed-after-its-error-card",
+        ),
+        # A parallel branch finished in the same step, after the failing node's card.
+        pytest.param(
+            ["error", "finish"],
+            {},
+            'Key-Value node "Save lead #3" couldn\'t read its table.',
+            id="node-failed-while-a-parallel-node-finished",
+        ),
+        # The node's step ended normally (its error went down an error route), so a
+        # later failure is not the node's.
+        pytest.param(
+            ["error", "values", "finish"],
+            {"error": FLOW_FAILED},
+            FLOW_FAILED,
+            id="failure-after-a-handled-node-error",
+        ),
+    ],
+)
+async def test_failed_session_after_a_node_error_card_shows_one_error_text(
+    service, monkeypatch, streamed, expected_status_data, expected_audit_error
+):
+    session_id = 48
+    node_error = 'Key-Value node "Save lead #3" couldn\'t read its table.'
+    chunk_by_kind = {
+        "error": _error_chunk(session_id, node_error),
+        "values": ("values", {"variables": DotDict({}), "state_history": []}),
+        "finish": make_finish_chunk(session_id, total_tokens=0),
+    }
+    chunks = [chunk_by_kind[kind] for kind in streamed]
+    audit_calls: list[dict] = []
+
+    class RecordingAuditWriter:
+        async def add_session_start(self, **kwargs):
+            audit_calls.append(kwargs)
+
+        async def add_session_end(self, **kwargs):
+            audit_calls.append(kwargs)
+
+    class GraphFailingAfterChunks:
+        async def astream(self, input, config, stream_mode):
+            for chunk in chunks:
+                yield chunk
+            raise RuntimeError("the node's raw error")
+
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.get_session_audit_writer",
+        RecordingAuditWriter,
+    )
+    _patch_builder(monkeypatch, GraphFailingAfterChunks())
+
+    await service.run_session(_session_data(session_id), StopEvent())
+    async with asyncio.timeout(1):
+        while len(audit_calls) < 2:
+            await asyncio.sleep(0)
+
+    status_call = service.redis_service.aupdate_session_status.call_args_list[-1]
+    assert status_call.kwargs["status"] == "error"
+    assert {
+        key: value for key, value in status_call.kwargs.items() if key not in ("session_id", "status")
+    } == expected_status_data
+    assert audit_calls[-1]["details"] == {"error": expected_audit_error}
 
 
 class _ReprCountingStr(str):

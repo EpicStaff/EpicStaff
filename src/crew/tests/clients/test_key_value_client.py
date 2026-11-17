@@ -7,6 +7,7 @@ import pytest
 from clients import key_value as key_value_module
 from clients.errors import (
     ClientBadGatewayError,
+    ClientError,
     ClientNotAvailableError,
     ClientTimeoutError,
     ClientValidationError,
@@ -79,6 +80,14 @@ def _respond_500(request):
     return httpx.Response(500, text="boom")
 
 
+def _respond_400_html(request):
+    return httpx.Response(400, text="<html>Bad Request</html>")
+
+
+def _respond_400_without_message(request):
+    return httpx.Response(400, text='{"detail": "Bad Request"}')
+
+
 def _time_out(request):
     raise httpx.ReadTimeout("slow", request=request)
 
@@ -88,11 +97,14 @@ def _time_out(request):
     ("respond", "error", "message"),
     [
         (_respond_404, ClientValidationError, "Key-value table 3 not found."),
-        (_respond_500, ClientBadGatewayError, None),
+        (_respond_500, ClientBadGatewayError, "boom"),
+        # Only Django's own `message` is a reason; any other 4xx body is not one.
+        (_respond_400_html, ClientError, "<html>Bad Request</html>"),
+        (_respond_400_without_message, ClientError, '{"detail": "Bad Request"}'),
         # After a read timeout Django may still be running the request, so it is not repeated.
-        (_time_out, ClientTimeoutError, None),
+        (_time_out, ClientTimeoutError, "Django did not respond in time."),
     ],
-    ids=["4xx", "5xx", "timeout"],
+    ids=["4xx", "5xx", "4xx-html", "4xx-without-message", "timeout"],
 )
 async def test_failure_is_reported_without_retrying(waits, respond, error, message):
     calls = []
@@ -102,8 +114,10 @@ async def test_failure_is_reported_without_retrying(waits, respond, error, messa
         return respond(request)
 
     client = await _started(handler)
-    with pytest.raises(error, match=message):
+    with pytest.raises(ClientError) as raised:
         await client.read(7, 3, ["a"])
+    assert type(raised.value) is error
+    assert raised.value.detail == message
     assert len(calls) == 1
     assert waits == []
 
