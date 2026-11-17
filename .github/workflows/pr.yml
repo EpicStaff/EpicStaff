@@ -384,6 +384,11 @@ jobs:
       - name: Test the deploy script
         run: python3 .github/scripts/test_deploy.py
 
+      - name: Test the GHCR cleanup rules
+        run: |
+          python -m pip install --quiet --require-hashes -r .github/requirements/requests.txt
+          python3 .github/scripts/test_ghcr_cleanup.py
+
       - name: Environment variable conventions
         run: python3 .github/scripts/check_env_conventions.py
 
