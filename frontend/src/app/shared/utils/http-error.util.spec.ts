@@ -3,7 +3,7 @@ import { ApiErrorItem } from '@shared/models';
 import { throwError } from 'rxjs';
 
 import { validationErrorsInterceptor } from '../../core/interceptors/validation-errors.interceptor';
-import { extractFieldErrorMessages, extractHttpErrorMessage } from './http-error.util';
+import { extractFieldErrorMessages, extractHttpErrorMessage, httpFailureReason } from './http-error.util';
 
 function badRequest(errors: Record<string, unknown>): HttpErrorResponse {
     return new HttpErrorResponse({ status: 400, error: { errors } });
@@ -176,5 +176,37 @@ describe('extractHttpErrorMessage', () => {
         const body = { errors: { name: ['This field is required.'] } };
 
         expect(extractHttpErrorMessage(errorResponse(400, body))).toBe('name: This field is required.');
+    });
+});
+
+describe('httpFailureReason', () => {
+    it.each([
+        ['an unreachable server', 0, new ProgressEvent('error'), "The server couldn't be reached."],
+        [
+            'the reason a refusal gave',
+            400,
+            { message: 'No node connected to start node' },
+            'No node connected to start node',
+        ],
+        ['the reason a server error gave', 500, { message: 'The flow is locked.' }, 'The flow is locked.'],
+        ['a refusal without a message', 400, null, 'The server rejected the request.'],
+        ['a server error without a message', 500, null, 'Something went wrong on the server.'],
+        ['a proxy error page', 502, '<html><body>Bad Gateway</body></html>', 'Something went wrong on the server.'],
+        ['an HTML refusal page', 404, '<!doctype html><title>Not Found</title>', 'The server rejected the request.'],
+        ['an empty body', 503, '', 'Something went wrong on the server.'],
+        [
+            'a success page that could not be parsed',
+            200,
+            { error: new SyntaxError('x'), text: '<!doctype html>' },
+            "The server's response couldn't be read.",
+        ],
+    ])('states %s', (_case, status, body, expected) => {
+        expect(httpFailureReason(errorResponse(status, body))).toBe(expected);
+    });
+
+    it('does not blame the server for a failure thrown before any request was sent', () => {
+        const thrownInTheApp = new TypeError("Cannot read properties of undefined (reading 'variables')");
+
+        expect(httpFailureReason(thrownInTheApp)).toBe('Something went wrong.');
     });
 });

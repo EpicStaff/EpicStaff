@@ -44,6 +44,22 @@ export function extractHttpErrorMessage(err: HttpErrorResponse, fallback?: strin
     return err?.message || (fallback ?? 'Unknown error');
 }
 
+/**
+ * Why a request failed, for the end of a "Couldn't …" toast: the server's own reason when it gave one,
+ * otherwise what kind of failure it was. Angular's own `message` ("Http failure response for …") is never shown.
+ */
+export function httpFailureReason(error: unknown): string {
+    // A failure thrown in the app before any request was sent says nothing about the server.
+    if (!(error instanceof HttpErrorResponse)) return 'Something went wrong.';
+    if (error.status === 0) return "The server couldn't be reached.";
+    // A success status that still failed: the body (an HTML page, say) couldn't be parsed.
+    if (error.status < 400) return "The server's response couldn't be read.";
+    const genericReason =
+        error.status >= 500 ? 'Something went wrong on the server.' : 'The server rejected the request.';
+    const reason = extractHttpErrorMessage(error, genericReason);
+    return reason === error.message ? genericReason : reason;
+}
+
 const HTML_DOCUMENT = /^\s*<(!doctype|html)/i;
 
 function collectErrorDetails(errors: unknown): string[] {

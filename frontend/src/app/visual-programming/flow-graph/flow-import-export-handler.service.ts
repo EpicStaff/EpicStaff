@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NodeType } from '@shared/models';
-import { downloadBlob, extractHttpErrorMessage, showExportExclusionWarning } from '@shared/utils';
+import { downloadBlob, httpFailureReason, showExportExclusionWarning } from '@shared/utils';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { GraphContentDto } from '../../features/flows/models/graph.model';
@@ -75,9 +75,20 @@ export class FlowImportExportService {
                                     'text/csv;charset=utf-8;'
                                 );
                             })
-                            .catch(() => this.toastService.error('Export failed', 3000, 'bottom-right'));
+                            .catch(() =>
+                                this.toastService.error(
+                                    `Couldn't export "${node.node_name}". Something went wrong.`,
+                                    3000,
+                                    'bottom-right'
+                                )
+                            );
                     },
-                    error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
+                    error: (error: HttpErrorResponse) =>
+                        this.toastService.error(
+                            `Couldn't export the nodes. ${httpFailureReason(error)}`,
+                            3000,
+                            'bottom-right'
+                        ),
                 });
         }
     }
@@ -145,7 +156,11 @@ export class FlowImportExportService {
                     showExportExclusionWarning(this.toastService, excluded, 'bottom-right');
                 },
                 error: (error: HttpErrorResponse) =>
-                    this.toastService.error(extractHttpErrorMessage(error, 'Export failed'), 3000, 'bottom-right'),
+                    this.toastService.error(
+                        `Couldn't export the nodes. ${httpFailureReason(error)}`,
+                        3000,
+                        'bottom-right'
+                    ),
             });
     }
 
@@ -251,13 +266,12 @@ export class FlowImportExportService {
                         );
                     }
                 },
-                error: (err: HttpErrorResponse) => {
-                    const rawMessage =
-                        (err.error as Record<string, string>)?.['message'] ??
-                        (err.error as Record<string, string>)?.['detail'] ??
-                        null;
-                    this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
-                },
+                error: (err: HttpErrorResponse) =>
+                    this.toastService.error(
+                        `Couldn't import the nodes. ${httpFailureReason(err)}`,
+                        3000,
+                        'bottom-right'
+                    ),
             });
     }
 }

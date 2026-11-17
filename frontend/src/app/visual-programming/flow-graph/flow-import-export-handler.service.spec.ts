@@ -1,8 +1,9 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { EXPORT_WARNING_DURATION_MS } from '@shared/constants';
 import { ExportResult, NodeType } from '@shared/models';
-import { NEVER, of } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 
 import { ImportExportService } from '../../core/services/import-export.service';
 import { FlowCopyImportFacadeService } from '../../features/flows/services/flow-copy-import-facade.service';
@@ -115,6 +116,19 @@ describe('FlowImportExportService — exporting', () => {
             expect(partialExport.mock.calls[0][1].classification_decision_table_node_list).toEqual([12]);
         });
 
+        it('states why the export failed', () => {
+            const toastError = vi.spyOn(TestBed.inject(ToastService), 'error').mockImplementation(() => undefined);
+            partialExport.mockReturnValue(
+                throwError(() => new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') }))
+            );
+
+            service.onExportAllAsJson(FLOW_ID, false);
+
+            expect(toastError.mock.calls.map(([message]) => message)).toEqual([
+                "Couldn't export the nodes. The server couldn't be reached.",
+            ]);
+        });
+
         it('says there is nothing to export for a flow with only Start and End, saved or not', () => {
             TestBed.inject(FlowService).setFlow({
                 nodes: [node('start', NodeType.START, 1), node('end', NodeType.END, 2)],
@@ -127,6 +141,48 @@ describe('FlowImportExportService — exporting', () => {
             expect(toastWarning.mock.calls[0][0]).toBe('No nodes to export');
             expect(partialExport).not.toHaveBeenCalled();
         });
+    });
+});
+
+describe('FlowImportExportService — importing', () => {
+    it('states why the import failed', () => {
+        TestBed.configureTestingModule({
+            providers: [
+                FlowImportExportService,
+                { provide: FlowSelectionManagerService, useValue: { selectedNodeIds: signal<string[]>([]) } },
+                { provide: ImportExportService, useValue: {} },
+                {
+                    provide: FlowCopyImportFacadeService,
+                    useValue: {
+                        partialImport: () =>
+                            throwError(
+                                () =>
+                                    new HttpErrorResponse({
+                                        status: 400,
+                                        error: { message: 'The file is not a node export.' },
+                                    })
+                            ),
+                    },
+                },
+                { provide: CdtExportImportService, useValue: {} },
+            ],
+        });
+        const toastError = vi.spyOn(TestBed.inject(ToastService), 'error').mockImplementation(() => undefined);
+        const fileInput = document.createElement('input');
+        vi.spyOn(document, 'createElement').mockReturnValue(fileInput);
+        vi.spyOn(fileInput, 'click').mockImplementation(() => undefined);
+        const onImported = vi.fn();
+
+        TestBed.inject(FlowImportExportService).onImportNodes(FLOW_ID, onImported);
+        // The user picks a file in the dialog the click opened.
+        Object.defineProperty(fileInput, 'files', { value: [new File(['{}'], 'nodes.json')] });
+        fileInput.dispatchEvent(new Event('change'));
+
+        expect(toastError.mock.calls.map(([message]) => message)).toEqual([
+            "Couldn't import the nodes. The file is not a node export.",
+        ]);
+        expect(onImported).not.toHaveBeenCalled();
+        vi.restoreAllMocks();
     });
 });
 

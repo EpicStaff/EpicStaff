@@ -1162,6 +1162,20 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(keyRun).toEqual(buttonRun);
         });
 
+        it('says why a run did not start', () => {
+            runGraph['runGraph'].mockReturnValue(
+                throwError(
+                    () => new HttpErrorResponse({ status: 400, error: { message: 'No node connected to start node' } })
+                )
+            );
+
+            header().run.emit();
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
+                "Couldn't run the flow. No node connected to start node"
+            );
+        });
+
         it('Ctrl+Enter saves unsaved changes before the run starts', () => {
             makeLiveFlowDirty();
 
@@ -1644,7 +1658,7 @@ describe('FlowVisualProgrammingComponent', () => {
         it.each([
             [404, TEST_RUN_NODE_GONE_MESSAGE],
             [403, "You don't have permission to run tests on this flow."],
-            [500, 'Failed to start test run: Boom'],
+            [500, "Couldn't start the test run. Boom"],
         ])('reports a %i as a toast', (httpStatus, message) => {
             rejectWith(httpStatus, { message: 'Boom' });
 
@@ -1917,6 +1931,46 @@ describe('FlowVisualProgrammingComponent', () => {
             return toast['error'].mock.calls.at(-1)![0] as string;
         }
 
+        it('lists every invalid node in the toast, each as a sentence', () => {
+            openFlow(
+                graphDto({
+                    task_node_list: [
+                        { ...liveTask, node_name: 'Summarise', node_number: 4, instructions: '' },
+                        {
+                            ...liveTask,
+                            id: 99,
+                            uuid: 'draft-task-uuid',
+                            node_name: 'Draft',
+                            node_number: 5,
+                            instructions: '',
+                        },
+                    ],
+                })
+            );
+
+            expect(saveAndReadToast()).toBe(
+                `Couldn't save the flow. "Summarise #4" is missing instructions. "Draft #5" is missing instructions.`
+            );
+        });
+
+        it('refuses to save, without blaming a node, when checking the nodes itself fails', () => {
+            // Instructions that are not text make the task check throw.
+            openFlow(graphDto({ task_node_list: [{ ...liveTask, instructions: 42 as unknown as string }] }));
+            vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+            expect(saveAndReadToast()).toBe("Couldn't save the flow. Something went wrong.");
+        });
+
+        it('says why a flow did not load', () => {
+            flowsApi['getGraphById'].mockReturnValue(
+                throwError(() => new HttpErrorResponse({ status: 404, error: { message: 'Flow not found.' } }))
+            );
+            paramMap$.next(convertToParamMap({ id: String(nextRouteId++) }));
+            fixture.detectChanges();
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith("Couldn't load the flow. Flow not found.");
+        });
+
         it('names a nameless task by its badge number, like the badge on the canvas', () => {
             openFlow(graphDto({ task_node_list: [{ ...liveTask, node_name: '  ', node_number: 8 }] }));
 
@@ -1948,7 +2002,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 })
             );
 
-            expect(saveAndReadToast()).toContain('"Summarise #4" is missing instructions');
+            expect(saveAndReadToast()).toBe(`Couldn't save the flow. "Summarise #4" is missing instructions.`);
         });
     });
 
@@ -1998,7 +2052,9 @@ describe('FlowVisualProgrammingComponent', () => {
             component.onGraphSave(flowService.getFlowState());
 
             expect(saveErrors.fieldMessages(canvasTask().id, 'instructions', SENT)).toEqual([REFUSED]);
-            expect(toast['error']).toHaveBeenCalledWith('Failed to save graph — fix the refused fields in "Task #2".');
+            expect(toast['error']).toHaveBeenCalledWith(
+                `Couldn't save the flow. Some fields in "Task #2" were refused.`
+            );
             expect(canvasTask().data.instructions).toBe(SENT);
             expect(component.hasUnsavedChanges()).toBe(true);
         });
@@ -2026,7 +2082,9 @@ describe('FlowVisualProgrammingComponent', () => {
             sidePanel.requestSaveNode(canvasTask());
 
             expect(saveErrors.fieldMessages(canvasTask().id, 'instructions', SENT)).toEqual([REFUSED]);
-            expect(toast['error']).toHaveBeenCalledWith('Failed to save node — fix the refused fields in "Task #2".');
+            expect(toast['error']).toHaveBeenCalledWith(
+                `Couldn't save the node. Some fields in "Task #2" were refused.`
+            );
 
             editInstructions('Use {topic}');
             flowsApi['bulkSaveGraph'].mockReturnValue(savedWithInstructions('Use {topic}'));
@@ -2041,7 +2099,9 @@ describe('FlowVisualProgrammingComponent', () => {
 
             component.onGraphSave(flowService.getFlowState());
 
-            expect(toast['error']).toHaveBeenCalledWith(expect.stringMatching(/^Failed to save graph: /));
+            expect(toast['error']).toHaveBeenCalledWith(
+                "Couldn't save the flow. nodes: This uuid is already used by another node of this flow."
+            );
             expect(saveErrors.errors().size).toBe(0);
         });
 
@@ -2055,9 +2115,29 @@ describe('FlowVisualProgrammingComponent', () => {
             component.onGraphSave(flowService.getFlowState());
 
             expect(toast['error']).toHaveBeenCalledWith(
-                'Failed to save graph — fix the refused fields in "Task #2".' +
+                `Couldn't save the flow. Some fields in "Task #2" were refused.` +
                     ' Also: Edge references node IDs not found in this graph: [9]'
             );
+        });
+
+        it.each([
+            [
+                'a server error without a message',
+                new HttpErrorResponse({ status: 500, error: null }),
+                "Couldn't save the flow. Something went wrong on the server.",
+            ],
+            [
+                'a refusal with the reason the server gave',
+                new HttpErrorResponse({ status: 400, error: { message: 'The flow is locked.' } }),
+                "Couldn't save the flow. The flow is locked.",
+            ],
+        ])('states %s when a save fails', (_case, error, expected) => {
+            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => error));
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(expected);
+            expect(component.hasUnsavedChanges()).toBe(true);
         });
 
         it.each([
@@ -2886,7 +2966,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
             expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
-                `Cannot save flow — fix the following node(s) first: "${livePython.node_name}" needs an execution timeout of at least ${TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds} seconds.`
+                `Couldn't save the flow. "${livePython.node_name}" needs an execution timeout of at least ${TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds} seconds.`
             );
         });
 
