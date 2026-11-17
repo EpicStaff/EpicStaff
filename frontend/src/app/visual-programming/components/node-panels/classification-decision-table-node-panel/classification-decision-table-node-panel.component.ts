@@ -47,7 +47,7 @@ import {
     SystemOneConfigStorageService,
 } from '@shared/services';
 import {
-    downloadBlob,
+    codeSuggestionKeyLabel,
     escapeHtml,
     formatNodeLabel,
     getProviderIconPath,
@@ -56,7 +56,10 @@ import {
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
-import { ImportExportService } from '../../../../core/services/import-export.service';
+import { ExportFormat } from '../../../../core/models/transfer-job.model';
+import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
+import { TransferExportService } from '../../../../core/services/transfer-export.service';
+import { TransferJobsService } from '../../../../core/services/transfer-jobs.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
@@ -118,7 +121,6 @@ import { routePortIdsWithTarget } from './cdt-decision-tree-dialog/cdt-decision-
 import { CdtDecisionTreeInput, CdtTreeLlmOption } from './cdt-decision-tree-dialog/cdt-decision-tree.model';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
 import { explainKeyMovesForRuleEdit } from './cdt-decision-tree-dialog/cdt-explain.identity';
-import { CdtExportImportService } from './cdt-export-import.service';
 import { cdtPromptCardChanges, CdtPromptCardMark, KEPT_PROMPT_CARD } from './cdt-prompt-card-changes';
 import { CdtSystemOneEntryComponent } from './cdt-system-one-entry/cdt-system-one-entry.component';
 import { cdtRowChanges } from './classification-decision-table-grid/cdt-row-changes';
@@ -243,6 +245,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private readonly diffState = inject(FlowDiffStateService);
     private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
+    private readonly isMac = inject(PLATFORM_IS_MAC);
     private flowService = inject(FlowService);
     private undoRedoService = inject(UndoRedoService);
 
@@ -335,14 +338,14 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     );
     public readonly preSecretsTooltip = computed(() =>
         this.canEditSecrets()
-            ? "Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            ? `Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
             : this.isReadOnly()
               ? 'Secrets assigned to this pre-computation code.'
               : "Secrets already assigned to this pre-computation code. You don't have permission to change which secrets are selected."
     );
     public readonly postSecretsTooltip = computed(() =>
         this.canEditSecrets()
-            ? "Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            ? `Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
             : this.isReadOnly()
               ? 'Secrets assigned to this post-computation code.'
               : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
@@ -378,8 +381,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly codeChange$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
-    private readonly importExportService = inject(ImportExportService);
-    private readonly cdtExportImportService = inject(CdtExportImportService);
+    private readonly transferJobs = inject(TransferJobsService);
+    private readonly transferExport = inject(TransferExportService);
     private readonly toastService = inject(ToastService);
     private readonly dialog = inject(Dialog);
     private readonly injector = inject(Injector);
@@ -1117,48 +1120,11 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     public exportAsJson(): void {
-        const backendId = this.node().backendId;
-        if (this.savedFlowStateService.hasUnsavedChanges() || backendId == null) {
-            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
-            return;
-        }
-        this.importExportService
-            .cdtExport(backendId, 'json')
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (blob) => downloadBlob(blob, this.buildFileName('json')),
-                error: () => this.toastService.error('Export failed.'),
-            });
+        this.exportAs('json');
     }
 
     public exportAsCsv(): void {
-        if (this.savedFlowStateService.hasUnsavedChanges()) {
-            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
-            return;
-        }
-        const exportData = this.cdtExportImportService.buildExportData({
-            nodeName: this.form.value.node_name ?? '',
-            preCode: this.preCode,
-            // Always empty: libraries now live only on the venv, and this CSV
-            // export carries no venv. See the note on CdtExportImportService.
-            preLibraries: [],
-            preExecutionTimeout: this.preExecutionTimeout.value,
-            preInputMap: this.serializeInputMap('pre_input_map'),
-            preOutputVariablePath: this.form.value.pre_output_variable_path || null,
-            preUseStorage: this.preUseStorage(),
-            postCode: this.postCode,
-            postLibraries: [],
-            postExecutionTimeout: this.postExecutionTimeout.value,
-            postInputMap: this.serializeInputMap('post_input_map'),
-            postOutputVariablePath: this.form.value.post_output_variable_path || null,
-            postUseStorage: this.postUseStorage(),
-            defaultLlmConfig: this.form.value.default_llm_config || null,
-            conditionGroups: this.conditionGroups(),
-            prompts: this.prompts(),
-            sections: this.sections(),
-        });
-        const csv = this.cdtExportImportService.exportToCsv(exportData);
-        this.cdtExportImportService.downloadFile(csv, this.buildFileName('csv'), 'text/csv;charset=utf-8;');
+        this.exportAs('csv');
     }
 
     // ── Decision tree ──
@@ -1226,14 +1192,22 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         };
     }
 
-    private buildFileName(extension: string): string {
-        const base = (this.form.value.node_name || 'classification-decision-table')
-            .toString()
-            .trim()
-            .replace(/[^a-z0-9-_]+/gi, '-')
-            .replace(/^-+|-+$/g, '')
-            .toLowerCase();
-        return `${base || 'cdt'}.${extension}`;
+    /** Exports the saved table as a background job; the panel's unsaved edits would not be in it. */
+    private exportAs(exportFormat: ExportFormat): void {
+        const backendId = this.node().backendId;
+        if (this.savedFlowStateService.hasUnsavedChanges() || backendId == null) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        // Not tied to the panel: an export the user started still downloads after they close it.
+        this.transferExport
+            .export(
+                this.transferJobs.startExport('classificationDecisionTables', {
+                    ids: [backendId],
+                    export_format: exportFormat,
+                })
+            )
+            .subscribe();
     }
 
     // ── Code editor handlers ──

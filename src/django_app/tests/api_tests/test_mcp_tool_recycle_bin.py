@@ -125,13 +125,14 @@ def test_a_binned_tool_is_not_reachable_by_id(auth_client, default_org, method, 
 
 
 @pytest.mark.django_db
-def test_bulk_export_rejects_a_binned_tool(auth_client, default_org):
+def test_export_rejects_a_binned_tool(auth_client, default_org):
     tool = _mcp_tool(default_org)
     tool.delete()
 
-    response = auth_client.post("/api/mcp-tools/bulk-export/", {"ids": [tool.id]}, format="json")
+    response = auth_client.post("/api/mcp-tools/export-jobs/", {"ids": [tool.id]}, format="json")
 
-    assert response.status_code == 400, response.status_code
+    assert response.status_code == 404, response.status_code
+    assert response.json()["code"] == "export_entities_not_found"
 
 
 @pytest.mark.django_db

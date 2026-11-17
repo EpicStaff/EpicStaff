@@ -43,4 +43,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
 # alembic.ini is read from here and finds the migrations relative to itself.
 WORKDIR /app/src/chat
 
+# Code and venv stay root-owned (read-only for the runtime user).
+RUN groupadd --system --gid 1000 app \
+ && useradd --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+USER app
+
 CMD alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port ${CHAT_PORT:?} --workers ${CHAT_WORKERS:?}

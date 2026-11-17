@@ -279,6 +279,9 @@ class ConversationRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     late_reply_run_id: Mapped[UUID | None] = mapped_column(Uuid)
     handoff_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set exactly while assigned_operator_id is, except on rows the previous release wrote during
+    # an upgrade: a holder without it, or a stale one without a holder. Not a CHECK yet: see 0003.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # SQL NULL for None, not JSON null, so "IS NULL" means "never set".
     chat_extra_data: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     is_signed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

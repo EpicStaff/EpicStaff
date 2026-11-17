@@ -379,7 +379,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     );
 
     protected getMinimapClasses(node: NodeModel): string[] {
-        const classes = getMinimapClassForNode(node);
+        const status = this.flowDiffState.nodeStatus(node.id);
+        const classes = status ? [`diff-${status}`] : getMinimapClassForNode(node);
         return this.unusedNodeIds().has(node.id) ? [...classes, 'is-unused'] : classes;
     }
 

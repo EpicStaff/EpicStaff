@@ -1,75 +1,60 @@
+<!-- The first row: the column's tab switch (projected by the column). -->
+<div class="conversation-list-toolbar__head">
+    <ng-content />
+</div>
+<!-- The field takes the row; Mine (Inbox) or New Test Chat (Bot Testing) follows it; without either it fills it. -->
 <div class="conversation-list-toolbar__search-row">
-    @if (!isCompact()) {
-        <!-- Escape is caught here, around the field: the shared search does not handle it. -->
-        <app-search
-            class="conversation-list-toolbar__search"
-            mod="small"
-            placeholder="Visitor number, visitor id or operator"
-            ariaLabel="Search conversations"
-            [searchTerm]="searchText()"
-            (searchTermChange)="onSearchText($event)"
-            (keydown.escape)="onEscape($event)"
-        />
-    }
-    @if (canCollapse()) {
+    <!-- Escape is caught here, around the field: the shared search does not handle it. -->
+    <app-search
+        class="conversation-list-toolbar__search"
+        mod="small"
+        placeholder="Search..."
+        ariaLabel="Search conversations"
+        hint="Visitor number, visitor id or operator"
+        [searchTerm]="searchText()"
+        (searchTermChange)="onSearchText($event)"
+        (keydown.escape)="onEscape($event)"
+    />
+    @if (showsMine()) {
         <button
             type="button"
-            class="conversation-list-toolbar__compact-toggle"
-            [attr.aria-label]="compactToggleLabel()"
-            [attr.aria-expanded]="!isCompact()"
-            [attr.aria-controls]="columnId()"
-            [matTooltip]="compactToggleLabel()"
-            [matTooltipPosition]="isCompact() ? 'right' : 'below'"
-            (click)="compactToggle.emit()"
+            class="conversation-list-toolbar__button conversation-list-toolbar__mine"
+            matTooltip="Only the conversations you took over"
+            [class.conversation-list-toolbar__button--pressed]="isMineOnly()"
+            [attr.aria-pressed]="isMineOnly()"
+            (click)="mineOnlyChange.emit(!isMineOnly())"
         >
             <app-svg-icon
-                icon="expand-sidebar"
-                size="0.85rem"
+                icon="headset"
+                width="8px"
+                height="9px"
             />
-            @if (isFilteredWhileCompact()) {
-                <span
-                    class="conversation-list-toolbar__filtered-dot"
-                    aria-hidden="true"
-                ></span>
-            }
+            Mine
         </button>
+    }
+    @if (showsNewTestChat()) {
+        <!-- The shared button shows why it is disabled itself; with nothing in the way it shows no tooltip. -->
+        <app-button
+            class="conversation-list-toolbar__new-test"
+            type="outline-primary"
+            mod="small"
+            [disabled]="!!testStartBlockedReason()"
+            [tooltip]="testStartBlockedReason() ?? ''"
+            (click)="testStartRequested.emit()"
+        >
+            <app-svg-icon
+                icon="plus"
+                size="12px"
+            />
+            New Test Chat
+        </app-button>
     }
 </div>
-@if (!isCompact()) {
-    @if (searchError(); as error) {
-        <p
-            class="conversation-list-toolbar__error text-body-small"
-            role="alert"
-        >
-            {{ error }}
-        </p>
-    }
-    <div class="conversation-list-toolbar__controls">
-        @if (canFilterMine()) {
-            <button
-                type="button"
-                class="conversation-list-toolbar__button"
-                matTooltip="Only the conversations you took over"
-                [class.conversation-list-toolbar__button--pressed]="isMineOnly()"
-                [attr.aria-pressed]="isMineOnly()"
-                (click)="mineOnlyChange.emit(!isMineOnly())"
-            >
-                Mine
-            </button>
-        }
-        <!-- Waiting is a queue and Closed a record, and both ignore this; their sections say so. -->
-        <button
-            type="button"
-            class="conversation-list-toolbar__button conversation-list-toolbar__sort"
-            [attr.aria-label]="sortName()"
-            matTooltip="Sorts In progress, Tests and Bot. Waiting for a person is always longest wait first, Closed most recently closed first."
-            (click)="toggleOrder()"
-        >
-            <app-svg-icon
-                icon="arrow-up-down"
-                size="14px"
-            />
-            {{ orderLabel() }}
-        </button>
-    </div>
+@if (searchError(); as error) {
+    <p
+        class="conversation-list-toolbar__error text-body-small"
+        role="alert"
+    >
+        {{ error }}
+    </p>
 }

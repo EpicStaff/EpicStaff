@@ -1,13 +1,17 @@
 import { ToastPosition, ToastService } from '../../services/notifications';
 import { EXPORT_WARNING_DURATION_MS } from '../constants/export-warning.constants';
-import { ExcludedExportEntity } from '../models/export-result.model';
+import { ExcludedExportEntity, ExcludedExportItem } from '../models/export-result.model';
 
 const ENTITY_LABELS: Record<string, { singular: string; plural: string }> = {
     AgentDefinition: { singular: 'agent', plural: 'agents' },
     PythonCodeTool: { singular: 'Python tool', plural: 'Python tools' },
     MCPTool: { singular: 'MCP tool', plural: 'MCP tools' },
     Flow: { singular: 'subflow', plural: 'subflows' },
+    SourceCollection: { singular: 'knowledge collection', plural: 'knowledge collections' },
 };
+
+// The most names listed per type, as many as the synchronous export's header carried.
+const MAX_NAMES_PER_TYPE = 5;
 
 const UNKNOWN_ENTITY_LABEL = { singular: 'item', plural: 'items' };
 
@@ -35,6 +39,26 @@ export function showExportExclusionWarning(
     if (warning) {
         toastService.warning(warning, EXPORT_WARNING_DURATION_MS, position);
     }
+}
+
+/**
+ * Groups the per-item exclusions an export job reports into one entry per type, in the order
+ * the types first appear. A hidden name (null) is counted but not listed.
+ *
+ *  [{ entity_type: 'Flow', entity_id: 4, name: 'Child' }, { entity_type: 'Flow', entity_id: 5, name: null }]
+ *    → [{ type: 'Flow', count: 2, names: ['Child'] }]
+ */
+export function groupExcludedExportItems(items: ExcludedExportItem[]): ExcludedExportEntity[] {
+    const byType = new Map<string, ExcludedExportEntity>();
+    for (const item of items) {
+        const entry = byType.get(item.entity_type) ?? { type: item.entity_type, count: 0, names: [] };
+        entry.count += 1;
+        if (item.name && entry.names.length < MAX_NAMES_PER_TYPE) {
+            entry.names.push(item.name);
+        }
+        byType.set(item.entity_type, entry);
+    }
+    return [...byType.values()];
 }
 
 function formatEntry(entry: ExcludedExportEntity): string {

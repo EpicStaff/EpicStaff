@@ -15,10 +15,11 @@ import {
 } from '@shared/components';
 import { ResourceCode, toSecretIds } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
-import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
+import { codeSuggestionKeyLabel, SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { merge, Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
+import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
 import { BUILDING_STATUSES, Venv } from '../../../../features/virtual-environments/models/venv.model';
 import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
 import { confirmBuildingVenv } from '../../../../features/virtual-environments/utils/confirm-building-venv';
@@ -111,7 +112,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     );
     public readonly secretsTooltip = computed(() =>
         this.canEditSecrets()
-            ? "Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            ? `Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
             : this.isReadOnly()
               ? 'Secrets assigned to this Python code.'
               : "Secrets already assigned to this Python code. You don't have permission to change which secrets are selected."
@@ -237,6 +238,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     private readonly permissionsService = inject(PermissionsService);
     private readonly flowService = inject(FlowService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
+    private readonly isMac = inject(PLATFORM_IS_MAC);
 
     constructor() {
         super();
@@ -323,6 +325,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         const testInput = (raw['test_input'] as { key: string; value: string }[] | undefined) ?? [];
         const stripped = {
             ...raw,
+            // What the rows save as: an unnamed row (the one a node without inputs opens with, or a new empty one) is no change.
+            input_map: inputMapFromRows(this.inputMapPairs.getRawValue()),
             test_input: testInput.map((p) => ({ key: p.key, value: '' })),
             secret_ids: [...this.selectedSecretIds()].sort(),
             use_storage: this.useStorage(),

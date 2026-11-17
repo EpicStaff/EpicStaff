@@ -194,8 +194,8 @@ export class InputMapComponent implements OnInit, OnChanges {
             this.addPair();
 
             setTimeout(() => {
-                this.pairs.at(0).markAsPristine();
-                this.pairs.at(0).markAsUntouched();
+                this.pairs.at(0)?.markAsPristine();
+                this.pairs.at(0)?.markAsUntouched();
                 this.pairs.updateValueAndValidity();
             });
         }
@@ -294,9 +294,6 @@ export class InputMapComponent implements OnInit, OnChanges {
                 this.testPairs.removeAt(tIdx, { emitEvent: false });
                 this.testPairs.markAsDirty();
             }
-        }
-        if (this.pairs.length === 0) {
-            this.addPair();
         }
     }
 
@@ -517,10 +514,6 @@ export class InputMapComponent implements OnInit, OnChanges {
         });
 
         this.attachKeyMirroringToAllPairs();
-
-        if (this.pairs.length === 0) {
-            this.addPair();
-        }
 
         if (changed) {
             this.pairs.markAsDirty();

@@ -1,6 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { HttpErrorResponse } from '@angular/common/http';
 import {
     afterNextRender,
     ChangeDetectionStrategy,
@@ -38,31 +37,22 @@ import {
 } from '@shared/directives';
 import { ActionCode, LabelTreeNode, ResourceCode } from '@shared/models';
 import {
-    AppStorageService,
     BulkDeleteService,
-    EmbeddingConfigStorageService,
-    EmbeddingModelsStorageService,
+    ImportedEntityStoragesService,
     LABELS_STORE,
-    LlmConfigStorageService,
-    LlmModelsStorageService,
-    LlmProvidersStorageService,
-    RealtimeConfigStorageService,
-    RealtimeModelsStorageService,
     SidebarWidthOptions,
     SidebarWidthService,
-    StorageService,
-    TranscriptionConfigStorageService,
-    TranscriptionModelsStorageService,
 } from '@shared/services';
 import {
     buildPreviewImportResult,
     enrichImportResult,
     escapeHtml,
-    extractHttpErrorMessage,
+    exportEnvelopeFile,
+    ExportFileFormat,
     ImportFileData,
     JsonObject,
     pluralize,
-    showExportExclusionWarning,
+    readExportEnvelope,
 } from '@shared/utils';
 import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
 import {
@@ -82,9 +72,16 @@ import {
     FlowNodesByFile,
     hasReviewableItems,
     ImportReviewDialogCloseResult,
+    InspectedImport,
+    ReviewItem,
     toFileNodeId,
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
+import {
+    describeTransferError,
+    IMPORT_WITHOUT_SUMMARY_MESSAGE,
+    TransferJobsService,
+} from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { isUsableCondition } from '../../../audit/models/audit-filter.models';
@@ -104,6 +101,8 @@ import { FlowsFilterSidebarComponent } from './components/flows-filter-sidebar/f
 import { FLOWS_SORT_MENU_ITEMS, FlowsSortMenuComponent } from './components/flows-sort-menu/flows-sort-menu.component';
 
 const FILTER_PANEL_WIDTH_KEY = 'flows-filter-panel';
+const FLOW_FILE_UNREADABLE_MESSAGE = 'Failed to read the flow file. Please check the file and try again.';
+const FLOW_IMPORT_FAILED_MESSAGE = 'Failed to import flow. Please check the file and try again.';
 const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth: 640 } satisfies SidebarWidthOptions;
 
 @Component({
@@ -150,26 +149,23 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private cdr = inject(ChangeDetectorRef);
     private importExportService = inject(ImportExportService);
     private flowCopyImport = inject(FlowCopyImportFacadeService);
+    private transferJobs = inject(TransferJobsService);
     private toastService = inject(ToastService);
     private labelsStorage = inject(LabelsStorageService);
     private importFlowSettings = inject(ImportFlowSettingsService);
     private destroyRef = inject(DestroyRef);
-    private appStorage = inject(AppStorageService);
+    private importedEntityStorages = inject(ImportedEntityStoragesService);
     private bulkDeleteService = inject(BulkDeleteService);
     private recycleBinSettings = inject(RecycleBinSettingsService);
 
-    private readonly storageInvalidationMap: Record<string, StorageService[]> = {
-        LLMModel: [inject(LlmModelsStorageService), inject(LlmProvidersStorageService)],
-        LLMConfig: [inject(LlmConfigStorageService)],
-        EmbeddingModel: [inject(EmbeddingModelsStorageService), inject(LlmProvidersStorageService)],
-        EmbeddingConfig: [inject(EmbeddingConfigStorageService)],
-        RealtimeModel: [inject(RealtimeModelsStorageService), inject(LlmProvidersStorageService)],
-        RealtimeConfig: [inject(RealtimeConfigStorageService)],
-        RealtimeTranscriptionModel: [inject(TranscriptionModelsStorageService), inject(LlmProvidersStorageService)],
-        RealtimeTranscriptionConfig: [inject(TranscriptionConfigStorageService)],
-    };
-
     public importOptionsOpen = signal(false);
+    /**
+     * From the pick of a file until a plain JSON import has finished, an archive's import has been accepted by the
+     * server, either fails, or the review dialog opens with its own progress: Import is disabled meanwhile, so a
+     * second click starts no second upload.
+     */
+    protected readonly isImporting = signal(false);
+    protected readonly importLabel = computed(() => (this.isImporting() ? 'Importing…' : 'Import'));
 
     public selectMode = this.flowStorageService.selectMode;
     public selectedFlowIds = this.flowStorageService.selectedFlowIds;
@@ -444,28 +440,29 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     }
 
     public onImportClick(): void {
+        if (this.isImporting()) return;
+
         const settings = this.importFlowSettings.requestSettings();
 
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.json';
+        input.accept = '.json,.zip';
         input.onchange = (event: Event) => {
             const file = (event.target as HTMLInputElement).files?.[0];
             if (!file) return;
 
-            from(file.text())
+            const endImporting = this._startImporting();
+            from(readExportEnvelope(file))
                 .pipe(
-                    map((text) => this._parseFileData(text)),
-                    switchMap((fileData) => this._importFlowFile(file, fileData, settings)),
-                    catchError((error: HttpErrorResponse) => {
-                        this.toastService.error(
-                            extractHttpErrorMessage(
-                                error,
-                                'Failed to read the flow file. Please check the file and try again.'
-                            )
-                        );
-                        return EMPTY;
-                    }),
+                    switchMap(({ format, data }) =>
+                        this._importFlowFile(
+                            data,
+                            this._importFunction(format, file, settings, endImporting),
+                            endImporting
+                        )
+                    ),
+                    catchError((error: unknown) => this._reportImportError(error, FLOW_FILE_UNREADABLE_MESSAGE)),
+                    finalize(endImporting),
                     takeUntilDestroyed(this.destroyRef)
                 )
                 .subscribe(({ result, fileData }) => this._finishFlowImport(result, fileData));
@@ -473,89 +470,120 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         input.click();
     }
 
-    private _parseFileData(text: string): ImportFileData {
-        try {
-            return JSON.parse(text) as ImportFileData;
-        } catch {
-            return {};
-        }
+    /**
+     * A `.zip` archive is imported as a background job, and `endImporting` is called once the server has accepted
+     * it; a plain `.json` export, of any version, by the synchronous import, which is the only one that takes JSON.
+     */
+    private _importFunction(
+        format: ExportFileFormat,
+        file: File,
+        settings: ImportFlowRequestOptions,
+        endImporting: () => void
+    ): () => Observable<ImportResult | null> {
+        return format === 'zip'
+            ? () =>
+                  this.flowCopyImport.startFlowArchiveImport(file, settings).pipe(
+                      tap(endImporting),
+                      switchMap((started) => this.transferJobs.waitForImport(started))
+                  )
+            : () => this.flowCopyImport.importFlow(file, settings);
     }
 
+    /**
+     * Inspects the file's envelope, never its archived files, and imports it straight away or after the user has
+     * reviewed the code it carries. A plain JSON export is imported synchronously: Import stays busy until it has
+     * finished. An archive is imported as a job: Import is free again once the server has accepted it, and
+     * TransferJobsStoreService announces the start. The review dialog shows its own progress, so `endImporting` is
+     * called when it opens.
+     */
     private _importFlowFile(
-        file: File,
         fileData: ImportFileData,
-        settings: ImportFlowRequestOptions
-    ): Observable<{ result: ImportResult; fileData: ImportFileData }> {
-        return this.importExportService.inspectFlow(file).pipe(
-            switchMap((inspection) => {
-                if (!hasReviewableItems(inspection.review_items)) {
-                    // A refusal over trigger nodes is explained by the facade and emits nothing: no toast here.
-                    return this.flowCopyImport.importFlow(file, settings).pipe(
-                        map((result) => ({ result, fileData })),
-                        catchError((error: HttpErrorResponse) => {
-                            this.toastService.error(
-                                extractHttpErrorMessage(
-                                    error,
-                                    'Failed to import flow. Please check the file and try again.'
-                                )
-                            );
-                            return EMPTY;
-                        })
-                    );
-                }
-
-                const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
-                    width: 'calc(100vw - 2rem)',
-                    height: 'calc(100vh - 2rem)',
-                    // On the dialog itself, not its first button: Enter imports from there.
-                    autoFocus: 'dialog',
-                    data: {
-                        importResult: buildPreviewImportResult(fileData),
-                        reviewItems: inspection.review_items,
-                        allFlowNodes: this._extractFlowNodesFromFile(fileData),
-                        // On a refusal over trigger nodes nothing is emitted, so the review dialog stays open.
-                        importFn: () => this.flowCopyImport.importFlow(file, settings),
-                    },
-                });
-
-                return reviewRef.closed.pipe(
-                    switchMap((closeResult) =>
-                        closeResult?.action === 'imported'
-                            ? of({ result: closeResult.result as ImportResult, fileData })
-                            : EMPTY
-                    )
-                );
+        importFn: () => Observable<ImportResult | null>,
+        endImporting: () => void
+    ): Observable<{ result: ImportResult | null; fileData: ImportFileData }> {
+        return this.importExportService.inspectFlow(exportEnvelopeFile(fileData)).pipe(
+            catchError((error: unknown) => this._reportImportError(error, FLOW_FILE_UNREADABLE_MESSAGE)),
+            switchMap(
+                (inspection): Observable<InspectedImport> =>
+                    hasReviewableItems(inspection.review_items)
+                        ? of({ kind: 'review', reviewItems: inspection.review_items })
+                        : // A refusal over trigger nodes is explained by the facade and emits nothing: no toast here.
+                          importFn().pipe(
+                              map((result): InspectedImport => ({ kind: 'imported', result })),
+                              catchError((error: unknown) => this._reportImportError(error, FLOW_IMPORT_FAILED_MESSAGE))
+                          )
+            ),
+            switchMap((inspected) => {
+                if (inspected.kind === 'imported') return of(inspected.result);
+                endImporting();
+                return this._reviewAndImport(inspected.reviewItems, fileData, importFn);
             }),
-            catchError((error: HttpErrorResponse) => {
-                this.toastService.error(
-                    extractHttpErrorMessage(error, 'Failed to read the flow file. Please check the file and try again.')
-                );
-                return EMPTY;
-            })
+            map((result) => ({ result, fileData }))
         );
     }
 
-    private _finishFlowImport(result: ImportResult, fileData: ImportFileData): void {
-        const enriched = enrichImportResult(result, fileData);
-
-        this.dialog.open(ImportResultDialogComponent, {
+    /** Emits the import's result once the review dialog has imported the file; nothing when the user cancels. */
+    private _reviewAndImport(
+        reviewItems: ReviewItem[],
+        fileData: ImportFileData,
+        importFn: () => Observable<ImportResult | null>
+    ): Observable<ImportResult | null> {
+        const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
-            data: { importResult: enriched },
+            // On the dialog itself, not its first button: Enter imports from there.
+            autoFocus: 'dialog',
+            data: {
+                importResult: buildPreviewImportResult(fileData),
+                reviewItems,
+                allFlowNodes: this._extractFlowNodesFromFile(fileData),
+                // On a refusal over trigger nodes nothing is emitted, so the review dialog stays open.
+                // The dialog's Import button reads "Importing…" while this runs.
+                importFn,
+            },
         });
 
-        this.invalidateStorages(result);
+        return reviewRef.closed.pipe(
+            switchMap((closeResult) =>
+                closeResult?.action === 'imported' ? of(closeResult.result as ImportResult | null) : EMPTY
+            )
+        );
+    }
+
+    /**
+     * Marks an import in flight and returns what ends it. Ending it twice is harmless: a job's end, long after its
+     * start was accepted, must not end a later import's busy state.
+     */
+    private _startImporting(): () => void {
+        this.isImporting.set(true);
+        let ended = false;
+        return () => {
+            if (ended) return;
+            ended = true;
+            this.isImporting.set(false);
+        };
+    }
+
+    private _reportImportError(error: unknown, fallback: string): Observable<never> {
+        this.toastService.error(describeTransferError(error, fallback));
+        return EMPTY;
+    }
+
+    private _finishFlowImport(result: ImportResult | null, fileData: ImportFileData): void {
+        if (result) {
+            this.dialog.open(ImportResultDialogComponent, {
+                width: 'calc(100vw - 2rem)',
+                height: 'calc(100vh - 2rem)',
+                data: { importResult: enrichImportResult(result, fileData) },
+            });
+            this.importedEntityStorages.invalidateImported(result);
+        } else {
+            this.toastService.warning(IMPORT_WITHOUT_SUMMARY_MESSAGE);
+        }
+
         this.labelsStorage.setActiveLabelFilter('all');
         this.flowStorageService.getFlows(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.labelsStorage.loadLabels(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-    }
-
-    private invalidateStorages(result: ImportResult): void {
-        const storagesToInvalidate = Object.entries(this.storageInvalidationMap)
-            .filter(([entityType]) => (result[entityType]?.total ?? 0) > 0)
-            .flatMap(([, storages]) => storages);
-
-        this.appStorage.invalidate(storagesToInvalidate);
     }
 
     private static readonly EXCLUDED_NODE_TYPES = new Set(['StartNode', 'EndNode']);
@@ -590,30 +618,13 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         this.flowStorageService.setSelectMode(false);
     }
 
-    public confirmExport(): void {
+    public exportSelectedFlows(): void {
         const ids = this.selectedFlowIds();
         if (ids.length === 0) {
             return;
         }
 
-        this.importExportService.bulkExportFlow(ids).subscribe({
-            next: ({ blob, excluded }) => {
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `flows_export_${Date.now()}.json`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-
-                this.flowStorageService.setSelectMode(false);
-
-                showExportExclusionWarning(this.toastService, excluded);
-            },
-            error: (error: HttpErrorResponse) => {
-                console.error('Bulk export failed:', error);
-                this.toastService.error(extractHttpErrorMessage(error, 'Failed to export the selected flows'));
-            },
-        });
+        this.flowCopyImport.exportFlows(ids, () => this.flowStorageService.setSelectMode(false));
     }
 
     public deleteSelectedFlows(): void {

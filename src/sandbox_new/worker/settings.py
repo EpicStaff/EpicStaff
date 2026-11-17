@@ -36,7 +36,8 @@ MAX_RESULT_SIZE = env.byte_size("SANDBOX_MAX_RESULT_SIZE")
 if MAX_RESULT_SIZE is None or MAX_RESULT_SIZE <= 0:
     raise ValueError("SANDBOX_MAX_RESULT_SIZE must be a positive size, not none.")
 
-# Defaults are the confining value: a missing setting must not unconfine the sandbox.
+# Defaults are the confining value: a missing setting must not unconfine the sandbox,
+# and env.bool rejects a malformed one, so only an explicit false value unconfines it.
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET", True)
 # Installs the per-uid egress firewall at startup; see worker/infrastructure/isolation/
 # egress_firewall.py. Fail closed: with this on, a worker that cannot install it (no

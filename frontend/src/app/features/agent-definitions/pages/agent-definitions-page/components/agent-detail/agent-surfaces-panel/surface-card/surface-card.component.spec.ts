@@ -105,6 +105,16 @@ describe('SurfaceCardComponent tool modes', () => {
 
         expect(card.buildCreateRequest('Research copy').mcp_tools).toContainEqual({ mcp_tool: 9, mode: 'allow' });
     });
+
+    it('switches a tool between allow and deny', () => {
+        const card = render().componentInstance;
+
+        card.toggleToolMode('mcp:3');
+        expect(card.buildCreateRequest('Research copy').mcp_tools).toContainEqual({ mcp_tool: 3, mode: 'deny' });
+
+        card.toggleToolMode('python:1');
+        expect(card.buildCreateRequest('Research copy').python_tools).toEqual([{ python_tool: 1, mode: 'allow' }]);
+    });
 });
 
 describe('SurfaceCardComponent invalid knowledge settings', () => {

@@ -122,6 +122,7 @@ def service():
         session_timeout_channel="session_timeout",
         stop_session_channel="stop_session",
         knowledge_search_service=Mock(),
+        secrets_cryptographer=Mock(),
     )
     return svc
 
