@@ -161,7 +161,8 @@ async def test_refused_template_placeholder_is_streamed_verbatim(captured_logs):
 
 
 @pytest.mark.asyncio
-async def test_stop_session_gets_an_empty_error_card_not_the_generic_message(captured_logs):
+async def test_a_stopped_node_streams_no_error_card(captured_logs):
+    # A stop isn't a failure: the session ends as stopped, and a card would read "<node> failed".
     node = StoppedNode(session_id=7, node_name="stopped", stop_event=StopEvent())
     messages = []
 
@@ -171,8 +172,7 @@ async def test_stop_session_gets_an_empty_error_card_not_the_generic_message(cap
     error_messages = [
         message for message in messages if message.message_data.message_type == "error"
     ]
-    assert len(error_messages) == 1
-    assert error_messages[0].message_data.details == ""
+    assert error_messages == []
     assert captured_logs == []
 
 

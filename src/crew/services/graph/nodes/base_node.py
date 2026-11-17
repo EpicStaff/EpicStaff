@@ -273,7 +273,9 @@ class BaseNode(ABC):
                 node_type=type(self).__name__,
                 ok=False,
             )
-            self.add_error_message(writer=writer, error=e, execution_order=execution_order)
+            # A stop isn't a failure: the session ends as stopped, so no error card.
+            if not isinstance(e, StopSession):
+                self.add_error_message(writer=writer, error=e, execution_order=execution_order)
             raise
 
     def get_input(self, state: State):
