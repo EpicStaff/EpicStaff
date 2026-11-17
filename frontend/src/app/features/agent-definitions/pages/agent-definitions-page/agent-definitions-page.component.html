@@ -212,6 +212,8 @@
                             [attr.data-tour]="store.isSelectedAgentFromLatestDraft() ? tourAnchors.createdAgent : null"
                             [agent]="store.selectedAgent()"
                             [isCreating]="store.isDraftingAgent()"
+                            [draftId]="store.agentDraftId()"
+                            [createdFromDraft]="store.isSelectedAgentFromLatestDraft()"
                             [focusRequest]="store.selectedAgentFocus()"
                             [saving]="store.saving()"
                             [surfaces]="store.surfaces()"
