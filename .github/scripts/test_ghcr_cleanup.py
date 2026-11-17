@@ -45,9 +45,7 @@ def deleted_ids(versions, children=None, branch_slugs=()) -> set[int]:
 
 class SlugTest(unittest.TestCase):
     def test_branch_names_slug_like_the_deploy_workflows(self):
-        self.assertEqual(
-            cleanup.slugify("ci/EST-4970-Dual--Deployment_"), "ci-est-4970-dual-deployment"
-        )
+        self.assertEqual(cleanup.slugify("ci/Dual--Deployment_"), "ci-dual-deployment")
         self.assertEqual(cleanup.slugify("release/v1.2.x"), "release-v1.2.x")
 
 
