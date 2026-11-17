@@ -1,5 +1,6 @@
 @use '../../../../styles/editor-header' as editor-header;
 @use '../../../../styles/editor-resize-handle' as resize-handle;
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
 
 :host ::ng-deep .monaco-editor {
     --vscode-focusBorder: transparent !important;
@@ -227,3 +228,7 @@
         }
     }
 }
+
+// Version diff (flow editor node panel, Changes tab): a yellow frame over the editor card's edge, as on the code
+// editor. The editor clips, so the mark around it draws the badge and the focus ring.
+@include diff-value-mark.marked-frame('.editor-container');

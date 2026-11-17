@@ -13,6 +13,7 @@ class EntityType(StrEnum):
     OPENAI_REALTIME_CONFIG = "OpenAIRealtimeConfig"
     ELEVENLABS_REALTIME_CONFIG = "ElevenLabsRealtimeConfig"
     GEMINI_REALTIME_CONFIG = "GeminiRealtimeConfig"
+    SYSTEM_ONE_CONFIG = "SystemOneConfig"
     VENV = "Venv"
     PYTHON_CODE_TOOL = "PythonCodeTool"
     MCP_TOOL = "MCPTool"
@@ -26,6 +27,7 @@ class EntityType(StrEnum):
     AUDIT_FILTER_PRESET = "AuditFilterPreset"
     AGENT_DEFINITION = "AgentDefinition"
     SURFACE = "Surface"
+    SOURCE_COLLECTION = "SourceCollection"
 
     AGENT_TAG = "AgentTag"
     CREW_TAG = "CrewTag"

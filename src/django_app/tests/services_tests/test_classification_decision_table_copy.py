@@ -2,10 +2,12 @@ import uuid
 
 import pytest
 
+from tables.models import SystemOneConfig
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationConditionGroupSection,
     ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     Graph,
 )
 from tables.services.copy_services.graph_copy_service import GraphCopyService
@@ -88,3 +90,33 @@ def test_copy_classification_decision_table_node_copies_use_storage_and_remaps_n
     assert new_group.next_node_id == new_target_node.id
     assert new_group.route_code == cd_group.route_code
     assert new_group.metadata == cd_group.metadata
+
+
+@pytest.mark.django_db
+def test_copy_keeps_system_one_entries(default_org):
+    config = SystemOneConfig.objects.create(
+        org=default_org, custom_name="jev", provider="typesafe", model_name="jev-1.14.0"
+    )
+    src = Graph.objects.create(name="src", org=default_org)
+    cdt_node = ClassificationDecisionTableNode.objects.create(graph=src, node_name="cdt")
+    questions = {"is_engineering": {"type": "noul", "instructions": "Engineering?"}}
+    ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=cdt_node,
+        prompt_key="company_check",
+        kind="system_one",
+        system_one_config=config,
+        questions=questions,
+        input_map={"company": "variables.company"},
+    )
+
+    new_graph = GraphCopyService().copy(src, org_id=default_org.id)
+
+    new_prompt = ClassificationDecisionTablePrompt.objects.get(cdt_node__graph=new_graph)
+    assert new_prompt.cdt_node_id != cdt_node.id
+    assert (
+        new_prompt.kind,
+        new_prompt.system_one_config_id,
+        new_prompt.questions,
+        new_prompt.input_map,
+    ) == ("system_one", config.id, questions, {"company": "variables.company"})
+    assert SystemOneConfig.objects.count() == 1

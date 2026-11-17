@@ -9,6 +9,9 @@ export interface AuditDateTimeParts {
     time: string;
 }
 
+// An empty time covers the whole day: from its first minute, or to its last.
+export const AUDIT_DEFAULT_TIME: Record<AuditDateBoundary, string> = { from: '00:00', to: '23:59' };
+
 const DATE_PATTERN = /^(\d{2})\.(\d{2})\.(\d{4})$/;
 const TIME_PATTERN = /^(\d{2}):(\d{2})$/;
 
@@ -29,8 +32,7 @@ export function combineAuditDateTime(
     const month = Number(dateMatch[2]) - 1;
     const year = Number(dateMatch[3]);
 
-    // An empty time covers the whole day: from its first minute, or to its last.
-    const time = parts.time || (boundary === 'from' ? '00:00' : '23:59');
+    const time = parts.time || AUDIT_DEFAULT_TIME[boundary];
     const timeMatch = TIME_PATTERN.exec(time);
     if (!timeMatch) {
         return undefined;

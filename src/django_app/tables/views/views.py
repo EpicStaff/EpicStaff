@@ -9,11 +9,7 @@ from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import (
-    OpenApiParameter,
-    OpenApiResponse,
-    extend_schema_view,
-)
+from drf_spectacular.utils import extend_schema_view
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
@@ -25,17 +21,19 @@ from rbac.access.principals import user_api_key_org_id
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.fields import resolve_active_org_id
 from rbac.scoping.mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedServiceViewSetMixin,
 )
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.settings import api_settings
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
+from src.shared.models import UserAction
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
 from tables.exceptions import (
@@ -43,21 +41,13 @@ from tables.exceptions import (
     DocumentConfigNotFoundException,
     InvalidChunkParametersException,
 )
-from tables.filters import SessionFilter, filter_sessions_by_id_search
-from tables.import_export.enums import EntityType
-from tables.import_export.export_format_strategies import (
-    CsvExportFormatStrategy,
-    JsonExportFormatStrategy,
-)
-from tables.import_export.export_tabular_projections.session import (
-    SessionTabularProjection,
-)
+from tables.filters import SessionFilter
 from tables.models import (
-    Graph,
     PythonCode,
     Session,
     SessionStorageFile,
     SessionWarningMessage,
+    TransferJob,
 )
 from tables.models.graph_models import (
     GraphSessionMessage,
@@ -75,7 +65,6 @@ from tables.serializers.quickstart_serializers import (
     QuickstartStatusSerializer,
 )
 from tables.serializers.serializers import (
-    BulkExportSerializer,
     BulkIdsSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
@@ -83,13 +72,16 @@ from tables.serializers.serializers import (
     ProcessRagIndexingSerializer,
     RunPythonCodeSerializer,
     RunSessionSerializer,
-    SessionExportAllSerializer,
     SessionTestRunSerializer,
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
+from tables.serializers.transfer_job_serializers import (
+    SESSION_EXPORT_MAX_IDS,
+    SessionExportJobCreateSerializer,
+)
 from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.converter_service import ConverterService
-from tables.services.import_export_service import ViewSetImportExportService
+from tables.services.knowledge_services.collection_last_edit import record_rag_change
 from tables.services.knowledge_services.indexing_service import IndexingService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.notification_email_sender import NotificationEmailSender
@@ -116,7 +108,9 @@ from tables.services.session_access import (
     get_accessible_session,
     get_runnable_graph,
 )
+from tables.services.session_export_selection import select_sessions_to_export
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.transfer_jobs.export_definitions import export_definition
 from tables.services.trigger_nodes import trigger_node_owns_python_code
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
@@ -153,6 +147,10 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.throttles import NotifyEmailThrottle
 from tables.utils.telegram_fields import load_telegram_trigger_fields
+from tables.views.mixins import ExportJobActionMixin
+from user_audit.context import mark_request_handled
+from user_audit.read_only import not_a_user_change, reads_only
+from user_audit.recorder import record_user_action
 from utils.graph_utils import runtime_node_name
 from utils.logger import logger
 
@@ -174,9 +172,21 @@ notification_email_sender = NotificationEmailSender()
 @extend_schema_view(
     retrieve=extend_schema(**SESSION_RETRIEVE_GET),
     destroy=extend_schema(**SESSION_DESTROY_DELETE),
+    export_jobs=extend_schema(
+        request=SessionExportJobCreateSerializer,
+        description=(
+            "Queue an export of sessions with their messages (those of nested "
+            "sub-sessions included): the sessions in `ids`, or else every top-level "
+            "session matching the filters. The job's archive holds `sessions.json` or "
+            f"`sessions.csv`. At most {SESSION_EXPORT_MAX_IDS} sessions: more ids, or "
+            "filters matching more, are a 400 (`too_many_sessions`); filters matching "
+            "none are a 404."
+        ),
+    ),
 )
 class SessionViewSet(
     OrgScopedChildViewSetMixin,
+    ExportJobActionMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.DestroyModelMixin,
@@ -189,16 +199,14 @@ class SessionViewSet(
     bulk deletion, and reporting aggregated status counts.
 
     Sessions are executions of a flow, so they are scoped as children of the
-    graph (FLOWS): view/status -> READ, export -> EXPORT, delete -> DELETE.
+    graph (FLOWS): view/status -> READ, export_jobs -> EXPORT, delete -> DELETE.
     """
 
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
-        "export": Permission.EXPORT,
-        "bulk_export": Permission.EXPORT,
-        "export_all": Permission.EXPORT,
+        "export_jobs": Permission.EXPORT,
         "statuses": Permission.READ,
         "bulk_delete": Permission.DELETE,
         "get_session_warnings": Permission.READ,
@@ -207,18 +215,8 @@ class SessionViewSet(
     org_filter_path = "graph__org_id"
     serializer_class = SessionSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.SESSION,
-            export_prefix="session",
-            filename_attr="id",
-            format_strategies={
-                "json": JsonExportFormatStrategy(),
-                "csv": CsvExportFormatStrategy(SessionTabularProjection()),
-            },
-        )
+    export_job_definition = export_definition(TransferJob.MainEntity.SESSION)
+    export_job_request_serializer_class = SessionExportJobCreateSerializer
 
     filterset_class = SessionFilter
     ordering_fields = [
@@ -255,132 +253,16 @@ class SessionViewSet(
 
         return qs
 
-    _FORMAT_QUERY_PARAM = OpenApiParameter(
-        name="export_format",
-        location=OpenApiParameter.QUERY,
-        description="Export format: 'json' (default) returns a structured JSON file; 'csv' returns a flat CSV of session messages.",
-        required=False,
-        type=str,
-        enum=["json", "csv"],
-        default="json",
-    )
-
-    @extend_schema(
-        description="Export a single session's messages as a downloadable file. "
-        "Includes messages from all nested sub-sessions.",
-        parameters=[_FORMAT_QUERY_PARAM],
-        responses={
-            200: OpenApiResponse(description="File download (application/json or text/csv)."),
-        },
-    )
-    @action(detail=True, methods=["get"])
-    def export(self, request, pk: int):
-        fmt = request.query_params.get("export_format", "json")
-        return self.import_export_service.export_entity(
-            self.get_object(), fmt=fmt, org_id=self.get_active_org_id(), user=request.user
-        )
-
-    @extend_schema(
-        description="Export messages from multiple sessions as a single downloadable file. "
-        "Includes messages from all nested sub-sessions for each requested session.",
-        request=BulkExportSerializer,
-        parameters=[_FORMAT_QUERY_PARAM],
-        responses={
-            200: OpenApiResponse(description="File download (application/json or text/csv)."),
-            400: OpenApiResponse(
-                description="Invalid request body or one or more session IDs do not exist."
+    def export_job_data(self, validated_data: dict) -> dict:
+        if "ids" in validated_data:
+            return validated_data
+        filters = {key: value for key, value in validated_data.items() if key != "export_format"}
+        return {
+            "ids": select_sessions_to_export(
+                self.get_active_org_id(), filters, limit=SESSION_EXPORT_MAX_IDS
             ),
-        },
-    )
-    @action(detail=False, methods=["post"], url_path="bulk-export")
-    def bulk_export(self, request):
-        serializer = BulkExportSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        entity_ids = serializer.validated_data["ids"]
-
-        existing_ids = (
-            Session.objects.visible_in_org(self.get_active_org_id())
-            .filter(id__in=entity_ids)
-            .values_list("id", flat=True)
-        )
-        if len(existing_ids) != len(entity_ids):
-            return Response(
-                {"message": "Some entity IDs do not exist"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        fmt = request.query_params.get("export_format", "json")
-        return self.import_export_service.bulk_export(
-            entity_ids, fmt=fmt, org_id=self.get_active_org_id(), user=request.user
-        )
-
-    @extend_schema(
-        description="Export messages from top-level sessions matching the given filters as a single downloadable file. "
-        "Includes messages from all nested sub-sessions.",
-        request=SessionExportAllSerializer,
-        parameters=[_FORMAT_QUERY_PARAM],
-        responses={
-            200: OpenApiResponse(description="File download (application/json or text/csv)."),
-            400: OpenApiResponse(description="Invalid request body."),
-            404: OpenApiResponse(description="No sessions match the given filters."),
-        },
-    )
-    @action(detail=False, methods=["post"], url_path="export_all")
-    def export_all(self, request):
-        serializer = SessionExportAllSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-
-        active_org_id = self.get_active_org_id()
-        if (
-            "graph_id" in data
-            and not Graph.objects.filter(id=data["graph_id"], org_id=active_org_id).exists()
-        ):
-            raise NotFound(f"Graph {data['graph_id']} not found")
-
-        qs = Session.objects.visible_in_org(active_org_id).filter(parent_session_id=None)
-
-        if "graph_id" in data:
-            qs = qs.filter(graph_id=data["graph_id"])
-        if "graph_name" in data:
-            qs = qs.filter(graph__name__iexact=data["graph_name"])
-        if "status" in data:
-            qs = qs.filter(status__in=data["status"])
-        if "created_at_after" in data:
-            qs = qs.filter(created_at__gte=data["created_at_after"])
-        if "created_at_before" in data:
-            qs = qs.filter(created_at__lte=data["created_at_before"])
-        if "finished_at_after" in data:
-            qs = qs.filter(finished_at__gte=data["finished_at_after"])
-        if "finished_at_before" in data:
-            qs = qs.filter(finished_at__lte=data["finished_at_before"])
-        if "id_search" in data:
-            qs = filter_sessions_by_id_search(qs, data["id_search"])
-
-        node_name = data.get("node_name")
-        if node_name:
-            qs = qs.filter(graphsessionmessage__name=node_name).distinct()
-
-        if data.get("is_error_cause"):
-            error_messages = GraphSessionMessage.objects.filter(
-                session=OuterRef("pk"), message_data__message_type="error"
-            )
-            if node_name:
-                error_messages = error_messages.filter(name=node_name)
-            qs = qs.filter(Exists(error_messages)).distinct()
-
-        session_ids = list(qs.values_list("id", flat=True))
-
-        if not session_ids:
-            return Response(
-                {"message": "No sessions match the given filters"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        fmt = request.query_params.get("export_format", "json")
-        return self.import_export_service.bulk_export(
-            session_ids, fmt=fmt, org_id=self.get_active_org_id(), user=request.user
-        )
+            "export_format": validated_data["export_format"],
+        }
 
     @extend_schema(**SESSION_STATUSES_GET)
     @action(detail=False, methods=["GET"])
@@ -410,17 +292,24 @@ class SessionViewSet(
         # sub-sessions removed by the parent_session cascade. The row lock keeps a
         # concurrent delete from removing a selected session before ours runs, so
         # the count matches what this request deleted.
+        org_id = self.get_active_org_id()
+        # Each deleted session records itself; a request that deleted none records nothing.
+        mark_request_handled()
         with transaction.atomic():
-            owned_session_ids = list(
-                Session.objects.visible_in_org(self.get_active_org_id())
+            owned_sessions = list(
+                Session.objects.visible_in_org(org_id)
                 .select_for_update(of=("self",))
                 .filter(id__in=ids)
+                .select_related("graph")
+                # Only what the record names: a session's JSON columns can be large.
+                .only("id", "graph__name")
                 .order_by("id")
-                .values_list("id", flat=True)
             )
-            Session.objects.filter(id__in=owned_session_ids).delete()
+            for session in owned_sessions:
+                record_user_action(action=UserAction.DELETED, org_id=org_id, target=session)
+            Session.objects.filter(id__in=[session.id for session in owned_sessions]).delete()
 
-        return Response({"deleted": len(owned_session_ids), "ids": ids}, status=status.HTTP_200_OK)
+        return Response({"deleted": len(owned_sessions), "ids": ids}, status=status.HTTP_200_OK)
 
     @extend_schema(**SESSION_WARNINGS_GET)
     @action(detail=True, methods=["get"], url_path="warnings")
@@ -445,6 +334,7 @@ class SessionViewSet(
 
 class RunSession(APIView):
     @extend_schema(**RUN_SESSION_POST)
+    @not_a_user_change
     def post(self, request):
         request_received_ts = time.time()
         logger.info("Received POST request to start a new session.")
@@ -539,9 +429,16 @@ class RunSession(APIView):
         except RunAdmissionRefusedError:
             # A refusal is the caller's answer (409), not a failure to start.
             raise
-        except Exception as e:
-            logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
-            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
+        except APIException as error:
+            # The run path raises its domain errors as APIExceptions. Any 4xx one (such as a
+            # flow without an entry point, an undeclared secret or a deleted LLM provider)
+            # keeps the existing 400 with its message in `error`. A 5xx one, like any other
+            # exception, goes to the global handler, which answers without the internal text
+            # (503 for an exhausted database pool).
+            if status.is_server_error(error.status_code):
+                raise
+            logger.warning("Session for graph_id {} not started: {}", graph_id, error)
+            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(error)})
 
         return Response(
             data={"session_id": session_id},
@@ -564,6 +461,7 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
     _NODE_ORG_PATH = "graph__org_id"
 
     @extend_schema(**RUN_SESSION_TEST_POST)
+    @not_a_user_change
     def post(self, request):
         # A test run starts a session, so it needs FLOWS.USE; it also executes the
         # node's stored code with a payload the caller wrote, a contributor-level
@@ -617,6 +515,7 @@ class GetUpdates(APIView):
 
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
+    @not_a_user_change
     def post(self, request, *args, **kwargs):
         session = get_accessible_session(
             request.user,
@@ -651,6 +550,7 @@ class NotifyEmailView(APIView):
         summary="Send a notification email",
         request=NotifyEmailSerializer,
     )
+    @not_a_user_change
     def post(self, request, *args, **kwargs):
         serializer = NotifyEmailSerializer(data=request.data)
         if not serializer.is_valid():
@@ -674,6 +574,7 @@ class RunPythonCodeAPIView(APIView):
     _org_context = OrgContextService()
 
     @extend_schema(**RUN_PYTHON_CODE_POST)
+    @not_a_user_change
     def post(self, request):
         serializer = RunPythonCodeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -755,6 +656,7 @@ class InitRealtimeAPIView(APIView):
     _org_context = OrgContextService()
 
     @extend_schema(**INIT_REALTIME_POST)
+    @not_a_user_change
     def post(self, request):
         logger.info("Received POST request to start a new session.")
 
@@ -913,7 +815,7 @@ class QuickstartView(APIView):
         provider = serializer.validated_data["provider"]
         api_key = serializer.validated_data.get("api_key")
         secret = serializer.validated_data.get("api_key_secret_id")
-        org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
             org_id=org_id,
@@ -976,11 +878,10 @@ class QuickstartApplyView(APIView):
     rbac_resource_type = ResourceType.LLM_CONFIGS
     # Checked one by one: a combined IntFlag passes `can()` when either bit is held.
     rbac_required_actions = (Permission.CREATE, Permission.UPDATE)
-    _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_APPLY_POST)
     def post(self, request):
-        org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        org_id = resolve_active_org_id(request)
         for required_action in self.rbac_required_actions:
             assert_org_permission(
                 user=request.user,
@@ -1031,7 +932,7 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
                 {"error": f"Unknown rag_type '{rag_type}'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        rag = self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
         assert_org_permission(
             request.user,
             org_id,
@@ -1051,14 +952,14 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
         secret_resolver = SecretResolver()
 
         embedding_api_key_secret_id = indexing_data["embedder_api_key_secret_id"]
-        embedding_api_key = secret_resolver.resolve(
+        embedding_api_key = secret_resolver.resolve_sealed(
             secret_id=embedding_api_key_secret_id,
             org_id=org_id,
         )
 
         llm_api_key_secret_id = indexing_data.get("llm_api_key_secret_id")
         if llm_api_key_secret_id is not None:
-            llm_api_key = secret_resolver.resolve(
+            llm_api_key = secret_resolver.resolve_sealed(
                 secret_id=llm_api_key_secret_id,
                 org_id=org_id,
             )
@@ -1089,6 +990,7 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
                 )
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)
+        record_rag_change(rag.base_rag_type.source_collection, changed=True)
 
         return Response(
             {
@@ -1115,6 +1017,7 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
     @extend_schema(
         request=ProcessRagIndexingEstimateSerializer, responses={200: OpenApiTypes.OBJECT}
     )
+    @reads_only
     def post(self, request):
         serializer = ProcessRagIndexingEstimateSerializer(data=request.data)
         if not serializer.is_valid():
@@ -1178,20 +1081,22 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                 {"error": f"Unknown rag_type '{rag_type}'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        rag = self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
         assert_org_permission(
             request.user,
             self.get_active_org_id(),
             ResourceType.KNOWLEDGE_SOURCES,
             Permission.UPDATE,
         )
+        cancelled = True
         try:
             with KnowledgeClient() as client:
                 client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
         except ClientResourceNotFoundError:
-            pass
+            cancelled = False  # No indexing was running.
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)
+        record_rag_change(rag.base_rag_type.source_collection, changed=cancelled)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

@@ -46,26 +46,6 @@
             <app-validation-errors [control]="form.get('full_name')!" />
         </div>
 
-        <div class="control">
-            <label
-                class="label"
-                for="profile-edit-email"
-            >
-                Email
-                <app-help-tooltip
-                    [text]="'Email address is read-only and cannot be changed here.'"
-                    ariaLabel="Email help"
-                    position="right"
-                />
-            </label>
-            <app-custom-input
-                [id]="'profile-edit-email'"
-                placeholder="Enter email..."
-                ariaLabel="Email"
-                formControlName="email"
-            />
-        </div>
-
         <div class="control top">
             <div class="label">
                 Picture

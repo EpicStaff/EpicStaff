@@ -6,6 +6,8 @@ PythonCodeSerializer — so these tests write the models directly, exactly as th
 paths do.
 """
 
+import re
+
 import pytest
 
 from tables.models import PythonCode
@@ -155,6 +157,8 @@ from tables.services.secrets.exceptions import UndeclaredSecretError
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 
+from tests.sealed_values import open_sealed
+
 
 @pytest.mark.django_db
 class TestSessionAborts:
@@ -216,5 +220,9 @@ class TestSessionAborts:
         session = Session.objects.get(pk=session_id)
         assert session.status != Session.SessionStatus.ERROR
         assert published
-        # The declared plaintext reaches crew on the wire.
-        assert "sk-val" in "".join(published)
+        # The declared secret reaches crew on the wire, sealed for transport.
+        wire = "".join(published)
+        assert "sk-val" not in wire
+        sealed_values = re.findall(r'"VAL_KEY":\s*"([^"]+)"', wire)
+        assert sealed_values
+        assert all(open_sealed(value) == "sk-val" for value in sealed_values)

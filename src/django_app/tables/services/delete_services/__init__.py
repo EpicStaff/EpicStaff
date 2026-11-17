@@ -14,6 +14,9 @@ from tables.services.delete_services.realtime_config_delete_service import (
     GeminiRealtimeConfigDeleteService,
     OpenAIRealtimeConfigDeleteService,
 )
+from tables.services.delete_services.system_one_config_delete_service import (
+    SystemOneConfigDeleteService,
+)
 
 __all__ = [
     "BaseDeleteService",
@@ -24,4 +27,5 @@ __all__ = [
     "GraphVersionDeleteService",
     "LLMConfigDeleteService",
     "OpenAIRealtimeConfigDeleteService",
+    "SystemOneConfigDeleteService",
 ]

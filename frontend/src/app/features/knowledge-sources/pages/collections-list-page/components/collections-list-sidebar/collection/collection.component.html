@@ -3,48 +3,107 @@
     [class.selected]="selected()"
     [appCollectionDropTarget]="collection().collection_id"
 >
-    <div class="header">
-        <!-- Opens the collection, from the keyboard too; its click reaches the card's handler. -->
-        <button
-            type="button"
-            #nameButton
-            class="name"
-            [attr.aria-pressed]="selected()"
-            appTooltipOnOverflow
-            [matTooltip]="collection().collection_name"
+    <!-- Kept off the card's click, which opens the collection or, in select mode, picks it. -->
+    @if (selectMode()) {
+        <div
+            class="card-control card-control--check"
+            (click)="$event.stopPropagation()"
         >
-            {{ collection().collection_name }}
-        </button>
+            <app-checkbox
+                [ariaLabel]="'Select ' + collection().collection_name"
+                [checked]="checked()"
+                (changed)="checkedChange.emit($event)"
+            />
+        </div>
+    }
 
-        @if (collection().document_count; as count) {
-            <span class="files-count"> {{ count }} files </span>
-        } @else {
-            <span class="files-count empty"> No files </span>
-        }
-    </div>
+    <div class="content">
+        <div class="header">
+            <!-- Opens the collection, from the keyboard too; its click reaches the card's handler. -->
+            <button
+                type="button"
+                #nameButton
+                class="name"
+                [attr.aria-pressed]="selected()"
+                appTooltipOnOverflow
+                [matTooltip]="collection().collection_name"
+            >
+                {{ collection().collection_name }}
+            </button>
 
-    @if (collection().rag_configurations.length) {
-        <div class="rag-configs">
-            @for (config of collection().rag_configurations; track config.rag_type) {
-                <div
-                    class="rag-badge"
-                    [style.color]="ragStatusConfig[config.status].color"
-                >
+            @if (collection().document_count; as count) {
+                <span class="files-count"> {{ count }} files </span>
+            } @else {
+                <span class="files-count empty"> No files </span>
+            }
+        </div>
+
+        <div class="footer">
+            @if (collection().rag_configurations.length) {
+                <div class="rag-configs">
+                    @for (config of collection().rag_configurations; track config.rag_type) {
+                        <div
+                            class="rag-badge"
+                            [style.color]="ragStatusConfig[config.status].color"
+                        >
+                            <app-svg-icon
+                                [icon]="ragStatusConfig[config.status].icon"
+                                size="12px"
+                            />
+                            <span class="rag-badge__name">{{ ragTypeConfig[config.rag_type].name }}</span>
+                        </div>
+                    }
+                </div>
+            } @else {
+                <div class="no-rag">
                     <app-svg-icon
-                        [icon]="ragStatusConfig[config.status].icon"
+                        icon="not-allowed"
                         size="12px"
                     />
-                    <span class="rag-badge__name">{{ ragTypeConfig[config.rag_type].name }}</span>
+                    <span>{{ collection().document_count ? 'No RAG initialized' : 'Empty' }}</span>
+                </div>
+            }
+
+            @if (!selectMode()) {
+                <div
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
+                    class="card-control card-control--more"
+                    (click)="$event.stopPropagation()"
+                >
+                    <button
+                        #moreTrigger="cdkMenuTriggerFor"
+                        type="button"
+                        class="more-button"
+                        [attr.aria-label]="'More actions for ' + collection().collection_name"
+                        matTooltip="More actions"
+                        [cdkMenuTriggerFor]="moreMenu"
+                        [cdkMenuPosition]="menuPositions"
+                        [class.more-button--open]="moreTrigger.isOpen()"
+                    >
+                        <app-svg-icon
+                            icon="dots-vertical"
+                            size="16px"
+                        />
+                    </button>
+                    <ng-template #moreMenu>
+                        <div
+                            cdkMenu
+                            class="card-menu"
+                        >
+                            <!-- An export is a job: while it runs, a second one is not started. -->
+                            <button
+                                cdkMenuItem
+                                type="button"
+                                class="card-menu__item"
+                                [cdkMenuItemDisabled]="exporting()"
+                                (cdkMenuItemTriggered)="exportRequested.emit()"
+                            >
+                                {{ exporting() ? 'Exporting…' : 'Export' }}
+                            </button>
+                        </div>
+                    </ng-template>
                 </div>
             }
         </div>
-    } @else {
-        <div class="no-rag">
-            <app-svg-icon
-                icon="not-allowed"
-                size="12px"
-            />
-            <span>{{ collection().document_count ? 'No RAG initialized' : 'Empty' }}</span>
-        </div>
-    }
+    </div>
 </div>

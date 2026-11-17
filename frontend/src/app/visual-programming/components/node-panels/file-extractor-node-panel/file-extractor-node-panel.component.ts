@@ -1,22 +1,33 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
 
 import { FileExtractorNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
+import { mapFieldRowChanges } from '../../../utils/diff';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
-interface InputMapPair {
-    key: string;
-    value: string;
-}
+import { inputMapFromRows } from '../../input-map/input-map-rows';
 @Component({
     selector: 'app-file-extractor-node-panel',
-    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, ValidationErrorsComponent],
+    imports: [
+        ReactiveFormsModule,
+        CustomInputComponent,
+        InputMapComponent,
+        ValidationErrorsComponent,
+        DiffFieldMarkComponent,
+    ],
     templateUrl: './file-extractor-node-panel.component.html',
     styleUrls: ['./file-extractor-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractorNodeModel> {
+    /** Changes tab of a version preview: what a restore does to each Input List row; `null` anywhere else. */
+    protected readonly inputMapRowChanges = computed(() => mapFieldRowChanges(this.panelDiff(), 'input_map'));
+
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
+
     constructor() {
         super();
     }
@@ -42,8 +53,7 @@ export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractor
     }
 
     protected createUpdatedNode(): FileExtractorNodeModel {
-        const validInputPairs = this.getValidInputPairs();
-        const inputMapValue = this.createInputMapFromPairs(validInputPairs);
+        const inputMapValue = inputMapFromRows(this.inputMapPairs.getRawValue());
 
         return {
             ...this.node(),
@@ -73,22 +83,5 @@ export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractor
                 })
             );
         }
-    }
-
-    private getValidInputPairs(): AbstractControl[] {
-        return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value as InputMapPair;
-            return value.key?.trim() !== '' || value.value?.trim() !== '';
-        });
-    }
-
-    private createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
-        return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
-            const pair = curr.value as InputMapPair;
-            if (pair.key?.trim()) {
-                acc[pair.key.trim()] = pair.value;
-            }
-            return acc;
-        }, {});
     }
 }

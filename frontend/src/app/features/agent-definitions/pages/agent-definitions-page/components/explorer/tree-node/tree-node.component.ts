@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 import { DragHoverDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
@@ -9,13 +9,14 @@ import { StorageDragService } from '../../../../../../files/services/storage-dra
 import { ExplorerSelection } from '../../../../../models/explorer.model';
 import { BranchTreeNode, nodeKey } from '../../../../../models/tree-node.model';
 import { AgentDragService } from '../../../../../services/agent-drag.service';
+import { AgentsPageStore } from '../../../../../services/agents-page-store.service';
 import { SurfaceDragService } from '../../../../../services/surface-drag.service';
 import {
     ExplorerMenuItem,
     ExplorerMenuPosition,
     ExplorerMenuSubject,
 } from '../explorer-context-menu/explorer-menu.model';
-import { menuPositionFromClick, treeNodeMenuItems } from '../explorer-menu.util';
+import { isTreeNodeMenuItemAllowed, menuPositionFromClick, treeNodeMenuItems } from '../explorer-menu.util';
 
 export interface ExplorerTreeMenuEvent {
     node: ExplorerMenuSubject;
@@ -41,7 +42,7 @@ export interface ExplorerTreeAttachSurfaceEvent {
 
 @Component({
     selector: 'app-tree-node',
-    imports: [AppSvgIconComponent, DragHoverDirective, MatTooltipModule, TooltipOnOverflowDirective],
+    imports: [AppSvgIconComponent, CheckboxComponent, DragHoverDirective, MatTooltipModule, TooltipOnOverflowDirective],
     templateUrl: './tree-node.component.html',
     styleUrls: ['./tree-node.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,6 +52,7 @@ export class TreeNodeComponent implements OnInit {
     private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly agentDrag = inject(AgentDragService);
     private readonly permissionService = inject(PermissionsService);
+    private readonly store = inject(AgentsPageStore);
 
     node = input.required<BranchTreeNode>();
     depth = input(0);
@@ -143,9 +145,13 @@ export class TreeNodeComponent implements OnInit {
 
     readonly childIndent = computed(() => this.depth() + 1);
 
-    private readonly hoverMenuItems = computed(() =>
-        treeNodeMenuItems(this.node()).filter((i) => this.permissionService.can(i.resource, i.action))
-    );
+    private readonly hoverMenuItems = computed(() => {
+        const node = this.node();
+        const surfaces = this.store.surfaces();
+        return treeNodeMenuItems(node).filter((item) =>
+            isTreeNodeMenuItemAllowed(node, item, surfaces, this.permissionService)
+        );
+    });
 
     readonly showHoverMenu = computed(() => this.hoverMenuItems().length > 0);
 
@@ -153,7 +159,23 @@ export class TreeNodeComponent implements OnInit {
         this.expanded.set(!this.expanded());
     }
 
+    readonly showExportCheckbox = computed(() => this.node().kind === 'agent' && this.store.agentExportMode());
+
+    readonly isExportChecked = computed(() => {
+        const n = this.node();
+        return n.kind === 'agent' && this.store.selectedAgentIds().has(n.agentId);
+    });
+
+    onExportCheckboxChange(): void {
+        const n = this.node();
+        if (n.kind === 'agent') this.store.toggleAgentSelection(n.agentId);
+    }
+
     onRowClick(): void {
+        if (this.showExportCheckbox()) {
+            this.onExportCheckboxChange();
+            return;
+        }
         this.selectNode.emit(this.node());
     }
 
@@ -211,7 +233,10 @@ export class TreeNodeComponent implements OnInit {
 
     // ---- agent drag & drop (onto a group block, see ExplorerGroupBlockComponent) ----
     readonly isDraggableAgent = computed(
-        () => this.node().kind === 'agent' && this.permissionService.can(ResourceCode.Agents, ActionCode.Update)
+        () =>
+            this.node().kind === 'agent' &&
+            !this.store.agentExportMode() &&
+            this.permissionService.can(ResourceCode.Agents, ActionCode.Update)
     );
 
     onAgentDragStart(event: DragEvent): void {

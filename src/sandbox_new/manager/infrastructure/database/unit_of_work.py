@@ -3,8 +3,16 @@ from typing import Protocol, Self, cast
 from piccolo.engine import Engine, engine_finder
 
 from manager.application.ports import AbstractUnitOfWork
-from manager.domain.ports import AbstractVenvRepository
-from manager.infrastructure.database.venvs.repository import PiccoloVenvRepository
+from manager.domain.ports import (
+    AbstractCustomLibraryRepository,
+    AbstractVenvRepository,
+    AbstractWheelRepository,
+)
+from manager.infrastructure.database.venvs.repository import (
+    PiccoloCustomLibraryRepository,
+    PiccoloVenvRepository,
+    PiccoloWheelRepository,
+)
 
 
 class Transaction(Protocol):
@@ -38,6 +46,8 @@ class PiccoloUnitOfWork(AbstractUnitOfWork):
         self._engine: Engine = resolved_engine
         self._transaction: Transaction | None = None
         self._venv_repo: AbstractVenvRepository | None = None
+        self._custom_library_repo: AbstractCustomLibraryRepository | None = None
+        self._wheel_repo: AbstractWheelRepository | None = None
         self._committed = False
 
     async def __aenter__(self) -> Self:
@@ -54,6 +64,8 @@ class PiccoloUnitOfWork(AbstractUnitOfWork):
         await self.transaction.__aexit__(exc_type, exc_value, traceback)
         self._transaction = None
         self._venv_repo = None
+        self._custom_library_repo = None
+        self._wheel_repo = None
         self._committed = False
 
     async def commit(self):
@@ -74,3 +86,15 @@ class PiccoloUnitOfWork(AbstractUnitOfWork):
         if self._venv_repo is None:
             self._venv_repo = PiccoloVenvRepository()
         return self._venv_repo
+
+    @property
+    def custom_library_repo(self) -> AbstractCustomLibraryRepository:
+        if self._custom_library_repo is None:
+            self._custom_library_repo = PiccoloCustomLibraryRepository()
+        return self._custom_library_repo
+
+    @property
+    def wheel_repo(self) -> AbstractWheelRepository:
+        if self._wheel_repo is None:
+            self._wheel_repo = PiccoloWheelRepository()
+        return self._wheel_repo

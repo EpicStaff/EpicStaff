@@ -8,10 +8,11 @@
         [isRunning]="isRunning()"
         [runStatus]="activeRunStatus()"
         [isPreviewMode]="isPreviewing()"
-        [hasUnsavedChanges]="hasUnsavedChangesSignal()"
+        [saveStatus]="saveStatus()"
         (save)="onHeaderSave()"
         (saveVersion)="onSaveVersion()"
         (viewVersionHistory)="onViewVersionHistory()"
+        (exportFlow)="onExportFlow()"
         (viewSessions)="handleViewSessions()"
         (run)="handleRunFlow()"
         (getCurl)="handleGetCurl()"
@@ -40,6 +41,7 @@
             <app-flow-version-preview
                 [version]="version"
                 [flowsLight]="availableFlowLights()"
+                [liveFlow]="currentFlowState()"
                 (closed)="onPreviewExit()"
                 (openShortcuts)="openShortcutsModal($event)"
             />

@@ -23,6 +23,7 @@ import {
 } from '@shared/components';
 import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
+import { DEFAULT_INITIAL_STATE, isSetInitialState } from '../../core/constants/default-node-data';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import {
     EMPTY_VALIDATION_RESULT,
@@ -32,6 +33,8 @@ import {
     type PersistentVariablesValidationResult,
     validatePersistentVariables,
 } from '../../services/persistent-variables.validator';
+import { CodeChange } from '../../utils/diff';
+import { CodeDiffViewComponent } from '../code-diff-view/code-diff-view.component';
 import {
     AutocompleteItem,
     AutocompleteOverlayComponent,
@@ -43,21 +46,24 @@ export interface DomainDialogData {
     initialData: Record<string, unknown>;
     /** Who created and who last edited the Start node whose variables these are. */
     authorship: AuthorshipDetailsSource;
+    /**
+     * Changes tab of a version preview, a Start node a restore changes: its variables on the canvas and in the version,
+     * as JSON, shown as a diff instead of the editor. `null` anywhere else: the live editor, the Preview tab, or
+     * variables a restore leaves as they are.
+     */
+    variablesDiff: CodeChange | null;
 }
-
-export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
-    variables: {
-        context: null,
-    },
-    persistent_variables: {
-        user: [],
-        organization: [],
-    },
-};
 
 @Component({
     selector: 'app-domain-dialog',
-    imports: [JsonEditorComponent, OverlayModule, AppSvgIconComponent, AuthorshipFooterComponent, MatTooltip],
+    imports: [
+        JsonEditorComponent,
+        OverlayModule,
+        AppSvgIconComponent,
+        AuthorshipFooterComponent,
+        CodeDiffViewComponent,
+        MatTooltip,
+    ],
     encapsulation: ViewEncapsulation.None,
     template: `
         <!-- Escape is handled here, ahead of the tooltip of the focused control, which would take the first one. -->
@@ -107,15 +113,24 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                     </ul>
                 }
                 <div class="json-editor-section">
-                    <app-json-editor
-                        class="json-editor"
-                        [jsonData]="initialStateJson"
-                        [readonly]="isReadOnly()"
-                        (jsonChange)="onInitialStateChange($event)"
-                        (validationChange)="onJsonValidChange($event)"
-                        (editorReady)="onEditorReady($event)"
-                        [fullHeight]="true"
-                    ></app-json-editor>
+                    @if (data.variablesDiff; as variables) {
+                        <app-code-diff-view
+                            class="json-editor"
+                            language="json"
+                            [current]="variables.current"
+                            [version]="variables.version"
+                        />
+                    } @else {
+                        <app-json-editor
+                            class="json-editor"
+                            [jsonData]="initialStateJson"
+                            [readonly]="isReadOnly()"
+                            (jsonChange)="onInitialStateChange($event)"
+                            (validationChange)="onJsonValidChange($event)"
+                            (editorReady)="onEditorReady($event)"
+                            [fullHeight]="true"
+                        ></app-json-editor>
+                    }
                 </div>
             </div>
 
@@ -364,12 +379,7 @@ export class DomainDialogComponent implements OnDestroy {
 
     private initializeJsonEditor(): void {
         const initial = this.data?.initialData as Record<string, unknown> | undefined;
-        const isEmptyObject =
-            initial && typeof initial === 'object' && !Array.isArray(initial)
-                ? Object.keys(initial).length === 0
-                : true;
-
-        if (initial && !isEmptyObject) {
+        if (isSetInitialState(initial)) {
             try {
                 this.initialStateJson = JSON.stringify(initial, null, 2);
                 this.isJsonValid = true;

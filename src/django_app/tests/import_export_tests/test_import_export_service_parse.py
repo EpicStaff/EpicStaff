@@ -1,7 +1,7 @@
 """
-Tests for ViewSetImportExportService._parse_and_validate via inspect_entity().
+Tests for reading and checking an export file, through ViewSetImportExportService.inspect_entity().
 
-All cases are DB-free: inspect_entity calls _parse_and_validate then InspectService.inspect,
+All cases are DB-free: inspect_entity reads and checks the envelope, then InspectService.inspect,
 neither of which touches the ORM.
 """
 
@@ -23,11 +23,7 @@ from tables.services.import_export_service import ViewSetImportExportService
 @pytest.fixture
 def service():
     """A ViewSetImportExportService for PythonCodeTool — no DB access required."""
-    return ViewSetImportExportService(
-        entity_type=EntityType.PYTHON_CODE_TOOL,
-        export_prefix="python_code_tool",
-        filename_attr="name",
-    )
+    return ViewSetImportExportService(EntityType.PYTHON_CODE_TOOL)
 
 
 def _file(raw: bytes) -> io.BytesIO:
@@ -35,7 +31,7 @@ def _file(raw: bytes) -> io.BytesIO:
 
 
 # ---------------------------------------------------------------------------
-# _parse_and_validate guard cases (exercised via inspect_entity)
+# envelope guard cases (exercised via inspect_entity)
 # ---------------------------------------------------------------------------
 
 
@@ -89,6 +85,32 @@ class TestParseAndValidateGuards:
         with pytest.raises(ValidationError) as exc_info:
             service.inspect_entity(_file(payload))
         assert expected_message in str(exc_info.value.detail)
+
+    @pytest.mark.parametrize(
+        ("version", "shown_as"),
+        [
+            (None, "null"),
+            ("5", '"5"'),
+            ("abc", '"abc"'),
+            ([1], "[1]"),
+            ({"major": 5}, '{"major": 5}'),
+            (True, "true"),
+            (4.5, "4.5"),
+        ],
+    )
+    def test_non_integer_version_raises_validation_error(self, service, version, shown_as):
+        payload = json.dumps(
+            {"main_entity": "PythonCodeTool", "version": version, "PythonCodeTool": []}
+        ).encode()
+        with pytest.raises(ValidationError) as exc_info:
+            service.inspect_entity(_file(payload))
+        assert f"File version must be a whole number, got {shown_as}" in str(
+            exc_info.value.detail
+        )
+
+    def test_missing_version_imports_as_version_one(self, service):
+        payload = b'{"main_entity": "PythonCodeTool", "PythonCodeTool": []}'
+        assert service.inspect_entity(_file(payload)) == {"review_items": []}
 
     def test_valid_payload_returns_review_items(self, service):
         payload = (

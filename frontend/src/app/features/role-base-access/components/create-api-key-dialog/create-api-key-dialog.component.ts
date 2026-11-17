@@ -61,7 +61,6 @@ export class CreateApiKeyDialogComponent {
 
     readonly step = signal<'pending' | 'created'>('pending');
     readonly loading = signal(false);
-    readonly copiedToClipboard = signal(false);
     readonly showStepper = signal(false);
     /** A key is issued for exactly one organization: the one the user is working in. */
     protected readonly orgId = this.activeOrgService.activeOrgId;
@@ -147,8 +146,8 @@ export class CreateApiKeyDialogComponent {
     }
 
     /** Form validity is not a signal, so it stays out of here: `onCreate` guards an invalid form itself. */
-    readonly isEnterSubmitDisabled = computed(() =>
-        this.step() === 'pending' ? this.loading() || this.orgId() === null : !this.copiedToClipboard()
+    readonly isEnterSubmitDisabled = computed(
+        () => this.step() === 'pending' && (this.loading() || this.orgId() === null)
     );
 
     onEnterSubmit(): void {

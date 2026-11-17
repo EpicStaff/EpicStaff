@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import copy
+import logging
 import re
 
+import httpx2
 import pytest
 from app import logging_utils
 from app.logging_utils import (
@@ -12,10 +14,16 @@ from app.logging_utils import (
     redact,
     redact_messages,
     redact_payload,
+    redact_urls,
     redact_value,
+    route_mcp_sdk_logs_to_loguru,
     summarize_validation_error,
+    url_origin,
 )
+from loguru import logger
 from pydantic import BaseModel, ValidationError
+
+from tests.log_capture import assert_masked_exception, capture_logs_at, log_line_starting_with
 
 _DIGEST_PATTERN = re.compile(r"^<redacted len=(\d+) digest=[0-9a-f]{12}>$")
 _TEST_DIGEST_KEY = b"deterministic-test-key"
@@ -585,3 +593,154 @@ def test_format_exception_for_log_reports_a_validation_error_class():
     assert "sk-live-abcdef" not in formatted
     for marker in _PYDANTIC_LEAK_MARKERS:
         assert marker not in formatted
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "for url 'http://agent:pw@host:8080/mcp/sk-1/sse?api_key=k#frag' failed",
+            "for url 'http://host:8080 failed",
+        ),
+        (
+            "Redirect to https://host/mcp/sk-1/ not followed",
+            "Redirect to https://host not followed",
+        ),
+        ("http://agent:p@ss@host/sse", "http://host"),
+        ("https://host/users/@me", "https://host"),
+        ("http://host?api_key=k", "http://host"),
+        ("HTTPS://Host/sk-1", "HTTPS://Host"),
+        ("http://[::1]:8000/sse", "http://[::1]:8000"),
+        ("from http://a/sk-1 to https://b/sk-2.", "from http://a to https://b"),
+        ("no url here: host/sk-1", "no url here: host/sk-1"),
+        ("xhttps://host/sk-1 _https://h/sk-2", "xhttps://host _https://h"),
+        ("https://agent:pa'ss@host/mcp/sk-1/sse", "https://host"),
+        ('https://agent:pa"ss@host/mcp/sk-1/sse', "https://host"),
+        ("for url 'https://host/mcp/it's/sk-1' failed", "for url 'https://host failed"),
+    ],
+    ids=[
+        "every-part",
+        "inside-a-sentence",
+        "at-sign-in-password",
+        "at-sign-in-path",
+        "query-only",
+        "upper-case-scheme",
+        "ipv6",
+        "two-urls",
+        "no-url",
+        "scheme-glued-to-a-word",
+        "single-quote-in-password",
+        "double-quote-in-password",
+        "single-quote-in-path",
+    ],
+)
+def test_redact_urls_keeps_only_each_url_origin(text, expected):
+    assert redact_urls(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("http://agent:pw@host:8080/mcp/sk-1/sse?api_key=k#frag", "http://host:8080"),
+        ("https://agent:p@ss@host/sse", "https://host"),
+        ("https://agent:pa'ss@host/mcp/sk-1/sse", "https://host"),
+        ('https://agent:pa"ss@host/mcp/sk-1/sse', "https://host"),
+        ("https://host/mcp/it's/sk-1", "https://host"),
+        ("http://[::1]:8000/sse", "http://[::1]:8000"),
+        ("https://host", "https://host"),
+        (httpx2.URL("http://host:9000/mcp/sk-1?api_key=k"), "http://host:9000"),
+    ],
+    ids=[
+        "every-part",
+        "at-sign-in-password",
+        "single-quote-in-password",
+        "double-quote-in-password",
+        "single-quote-in-path",
+        "ipv6",
+        "origin-only",
+        "httpx2-url",
+    ],
+)
+def test_url_origin_keeps_only_the_origin(url, expected):
+    assert url_origin(url) == expected
+
+
+# The mcp SDK's log records, routed as main() routes them (the root conftest does it once
+# per session; routing again here is a no-op unless the idempotence breaks).
+
+
+def _pydantic_error_quoting(value: str) -> ValidationError:
+    class _Notification(BaseModel):
+        level: int
+
+    try:
+        _Notification(level=value)
+    except ValidationError as error:
+        return error
+    raise AssertionError("expected a ValidationError")
+
+
+def test_an_sdk_exception_is_logged_as_class_name_and_digest_only():
+    payload_marker = "SERVER-PAYLOAD-SECRET-1122"
+    route_mcp_sdk_logs_to_loguru()
+
+    with capture_logs_at("WARNING") as logs:
+        logging.getLogger("client").warning(
+            "Failed to validate notification: %s",
+            "notifications/message",
+            exc_info=_pydantic_error_quoting(payload_marker),
+        )
+
+    line = log_line_starting_with(logs, "Failed to validate notification: ")
+    assert line.startswith("Failed to validate notification: notifications/message: ")
+    assert_masked_exception(line, "ValidationError")
+    assert payload_marker not in line
+    assert "Traceback" not in line
+
+
+def test_routing_the_sdk_logs_twice_forwards_each_record_once():
+    route_mcp_sdk_logs_to_loguru()
+    route_mcp_sdk_logs_to_loguru()
+
+    with capture_logs_at("WARNING") as logs:
+        logging.getLogger("mcp.client.sse").warning("endpoint refused")
+
+    assert log_line_starting_with(logs, "endpoint refused") == "endpoint refused"
+
+
+def test_sdk_debug_and_info_records_are_never_forwarded(caplog):
+    # Even when something lowers the root logger's level: the SDK's DEBUG lines carry
+    # tool arguments and results.
+    caplog.set_level(logging.DEBUG)
+    route_mcp_sdk_logs_to_loguru()
+
+    with capture_logs_at("DEBUG") as logs:
+        sdk_logger = logging.getLogger("mcp.client.streamable_http")
+        sdk_logger.debug("Sending client message: TOOL-ARGUMENTS")
+        sdk_logger.info("SSE message: TOOL-RESULT")
+
+    assert logs == []
+
+
+def test_an_unrenderable_sdk_record_is_logged_as_a_fixed_line():
+    route_mcp_sdk_logs_to_loguru()
+
+    with capture_logs_at("WARNING") as logs:
+        logging.getLogger("mcp.client.sse").warning("%d events", "not-a-number")
+
+    assert log_line_starting_with(logs, "unrenderable") == "unrenderable mcp.client.sse log record"
+
+
+def test_a_forwarded_sdk_line_names_the_sdk_logger_and_call_site():
+    route_mcp_sdk_logs_to_loguru()
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="WARNING", format="{name}:{function} {message}")
+    try:
+        logging.getLogger("mcp.client.sse").warning("endpoint refused")
+    finally:
+        logger.remove(sink_id)
+
+    assert lines == [
+        "mcp.client.sse:test_a_forwarded_sdk_line_names_the_sdk_logger_and_call_site "
+        "endpoint refused\n"
+    ]

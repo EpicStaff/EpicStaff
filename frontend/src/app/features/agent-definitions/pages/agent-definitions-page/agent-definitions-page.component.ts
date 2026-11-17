@@ -12,6 +12,7 @@ import {
     Injector,
     OnInit,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -26,7 +27,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { escapeHtml } from '@shared/utils';
+import { escapeHtml, takeQueryParams } from '@shared/utils';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
@@ -37,7 +38,7 @@ import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-age
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
-import { AgentDefinition } from '../../models/agent-definition.model';
+import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../models/agent-definition.model';
 import { ExplorerSectionId, GroupAssignTarget } from '../../models/explorer.model';
 import { CreateSurfaceRequest } from '../../models/surface.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryConfig, SurfaceCategoryId } from '../../models/surface-category.model';
@@ -55,7 +56,11 @@ import { DetailCrumb, DetailHeaderComponent } from './components/detail-header/d
 import { EmptyDetailComponent } from './components/empty-detail/empty-detail.component';
 import { ExplorerComponent } from './components/explorer/explorer.component';
 import { ExplorerMenuSubject } from './components/explorer/explorer-context-menu/explorer-menu.model';
-import { GROUP_MENU_ACTION } from './components/explorer/explorer-menu.util';
+import {
+    AGENTS_SECTION_MENU_ACTION,
+    canDuplicateAgent,
+    GROUP_MENU_ACTION,
+} from './components/explorer/explorer-menu.util';
 import {
     ExplorerTreeAttachSurfaceEvent,
     ExplorerTreeMenuEvent,
@@ -126,7 +131,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     /** Can the selected item (agent or surface) be duplicated in the active org? */
     protected readonly canDuplicateSelected = computed<boolean>(() => {
         this.permissions.active();
-        if (this.store.selectedAgent()) return this.permissions.can(ResourceCode.Agents, ActionCode.Create);
+        const agent = this.store.selectedAgent();
+        if (agent) return canDuplicateAgent(agent.id, this.store.surfaces(), this.permissions);
         if (this.store.selectedSurface()) return this.permissions.can(ResourceCode.Surfaces, ActionCode.Create);
         return false;
     });
@@ -155,7 +161,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         read: ElementRef,
     });
 
-    private preselectApplied = false;
+    // `?agentId=` and `?surfaceId=`, taken from the URL at init and applied once the agent list has loaded
+    private queryPreselect: Partial<Record<'agentId' | 'surfaceId', string>> = {};
     private sawLoading = false;
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
@@ -253,30 +260,26 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         });
 
         effect(() => {
-            if (this.preselectApplied) return;
             const loading = this.store.loading();
             if (loading) {
                 this.sawLoading = true;
                 return;
             }
-            if (!this.sawLoading) return;
-            this.preselectApplied = true;
-            this.applySurfaceIdPreselect();
+            // Only the end of a load reruns this: not the lists and selection the preselect reads and sets.
+            if (this.sawLoading) untracked(() => this.applyQueryPreselect());
         });
     }
 
-    private applySurfaceIdPreselect(): void {
-        const raw = this.route.snapshot.queryParamMap.get('surfaceId');
-        if (raw == null) return;
-        void this.router.navigate([], {
-            relativeTo: this.route,
-            queryParams: { surfaceId: null },
-            queryParamsHandling: 'merge',
-            replaceUrl: true,
-        });
-        const surfaceId = Number(raw);
-        if (!Number.isFinite(surfaceId)) return;
-        const surface = this.store.surfaces().find((s) => s.id === surfaceId);
+    /** `?agentId=` selects that agent; `?surfaceId=` opens that surface where it lives. An unknown id is ignored. */
+    private applyQueryPreselect(): void {
+        const { agentId, surfaceId } = this.queryPreselect;
+        this.queryPreselect = {};
+        if (agentId != null) {
+            const id = Number(agentId);
+            if (this.store.agents().some((agent) => agent.id === id)) this.store.selectAgent(id);
+        }
+        if (surfaceId == null) return;
+        const surface = this.store.surfaces().find((s) => s.id === Number(surfaceId));
         if (!surface) return;
         if (surface.owner_agent != null) {
             this.store.selectAgent(surface.owner_agent);
@@ -286,6 +289,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     ngOnInit(): void {
+        this.queryPreselect = takeQueryParams(this.route, this.router, ['agentId', 'surfaceId']);
         this.store.load();
     }
 
@@ -399,6 +403,48 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             });
         }
         this.hasUnsavedChanges.set(false);
+    }
+
+    onSelectedInstructionList(instructionList: AgentInstruction[]): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.updateInstructionList(agentId, instructionList);
+    }
+
+    onCreateSurfaceForSelected(event: { body: CreateSurfaceRequest; place: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.createSurfaceForAgent(agentId, event.body, event.place);
+    }
+
+    onSetSharedForSelected(event: { surfaceIds: number[]; category: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.setSharedSurfacesInCategory(event.surfaceIds, agentId, event.category);
+    }
+
+    onDropSharedForSelected(event: { surfaceId: number; category: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.dropSharedSurfaceOnAgent(event.surfaceId, agentId, event.category);
+    }
+
+    onSetSurfacePlacesForSelected(event: { surfaceId: number; places: AgentSurfacePlace[] }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.setSurfacePlaces(event.surfaceId, agentId, event.places);
+    }
+
+    onDetachSurfaceForSelected(surfaceId: number): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.detachSurfaceFromAgent(surfaceId, agentId);
+    }
+
+    onMakeAgentSpecificCopyForSelected(surfaceId: number): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.makeAgentSpecificCopy(surfaceId, agentId);
     }
 
     onCreateSurface(body: CreateSurfaceRequest): void {
@@ -532,6 +578,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             this.openExplorerAgentDetails(event);
             return;
         }
+        if (event.action === 'export' && event.node.kind === 'agent') {
+            this.store.exportAgent(event.node.agentId);
+            return;
+        }
         if (this.applyGroupMenuAction(event)) return;
         this.guardUnsaved(() => this.applyExplorerTreeMenu(event));
     }
@@ -622,6 +672,12 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     private applyExplorerTreeMenu({ node, action }: ExplorerTreeMenuEvent): void {
+        if (node.kind === 'section-header') {
+            if (action === AGENTS_SECTION_MENU_ACTION.import) this.store.importAgents();
+            else if (action === AGENTS_SECTION_MENU_ACTION.export) this.store.startAgentExport();
+            return;
+        }
+
         if (node.kind === 'agent') {
             if (action === 'delete') this.onDeleteAgentById(node.agentId);
             else if (action === 'duplicate') this.store.duplicateAgent(node.agentId);

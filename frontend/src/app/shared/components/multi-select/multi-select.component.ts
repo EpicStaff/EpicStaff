@@ -89,6 +89,15 @@ export class MultiSelectComponent implements OnInit {
     showClearFilter = input<boolean>(false);
     /** Text of the primary (save) button. */
     saveLabel = input<string>('Save Selection');
+    /** When set, a header with this title and a "selected / total" count tops the dropdown. */
+    headerTitle = input<string | null>(null);
+    /** When set, a footer button with this text ticks every item without saving (e.g. "Show All"). */
+    selectAllLabel = input<string | null>(null);
+    /**
+     * `outlined`: the table column picker's look — rows keep their look when checked (the checkbox alone
+     * shows the state), light checkboxes, and line-coloured frame and row borders.
+     */
+    variant = input<'default' | 'outlined'>('default');
     readonlyView = input<boolean>(false);
     /** When true (default), selected items float to the top of the list (within their group). */
     sortSelectedToTop = input<boolean>(true);
@@ -305,6 +314,16 @@ export class MultiSelectComponent implements OnInit {
 
     clearFilter() {
         this.tempSelected.set([]);
+    }
+
+    /** Ticks every enabled item; a disabled item keeps its current state. */
+    selectAll(): void {
+        const current = this.tempSelected();
+        this.tempSelected.set(
+            this.items()
+                .filter((item) => !item.disabled || current.includes(item.value))
+                .map((item) => item.value)
+        );
     }
 
     save() {

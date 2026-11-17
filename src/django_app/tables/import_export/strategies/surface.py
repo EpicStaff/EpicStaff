@@ -1,4 +1,4 @@
-from agents.models import Surface, SurfaceMcpTool, SurfacePythonTool
+from agents.models import Surface, SurfaceKnowledge, SurfaceMcpTool, SurfacePythonTool
 from django.db.models import Q
 from rbac.authorship import resolve_author
 
@@ -6,6 +6,12 @@ from tables.import_export.constants import MAX_REUSE_CANDIDATES
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.surface import SurfaceImportSerializer
+from tables.import_export.serializers.surface_knowledge import (
+    KNOWLEDGE_PREFETCH,
+    create_knowledge,
+    knowledge_key_of_entries,
+    knowledge_key_of_rows,
+)
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
     compared_values,
@@ -33,6 +39,9 @@ class SurfaceStrategy(EntityImportExportStrategy):
             instance.python_tools.values_list("python_tool_id", flat=True)
         )
         deps[EntityType.MCP_TOOL] = list(instance.mcp_tools.values_list("mcp_tool_id", flat=True))
+        deps[EntityType.SOURCE_COLLECTION] = list(
+            instance.knowledge.values_list("collection_id", flat=True)
+        )
 
         return deps
 
@@ -41,6 +50,7 @@ class SurfaceStrategy(EntityImportExportStrategy):
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Surface:
         tools = data.pop("tools", {})
+        knowledge = data.pop("knowledge", [])
         data.pop("owner_agent", None)
         data.pop("id", None)
 
@@ -63,6 +73,9 @@ class SurfaceStrategy(EntityImportExportStrategy):
 
         self._create_python_tools(surface, tools, id_mapper)
         self._create_mcp_tools(surface, tools, id_mapper)
+        create_knowledge(
+            SurfaceKnowledge, {"surface": surface}, knowledge, id_mapper, kwargs.get("org_id")
+        )
 
         return surface
 
@@ -72,13 +85,13 @@ class SurfaceStrategy(EntityImportExportStrategy):
         # a shared row -- an agent's owned surface may not be listed by another
         # agent or node, and would be deleted together with its owner. SQL
         # narrows on stored columns; the tool sets are compared in Python.
-        content_key = self.entry_content_key(data, id_mapper)
+        content_key = self.entry_content_key(data, id_mapper, org_id)
         candidates = filter_by_name_or_renamed_copy(
             Surface.objects.filter(
                 self.get_org_scope_q(org_id),
                 owner_agent__isnull=True,
                 instructions=content_key[0],
-            ).prefetch_related("python_tools", "mcp_tools"),
+            ).prefetch_related("python_tools", "mcp_tools", *KNOWLEDGE_PREFETCH),
             import_values(self.serializer_class, data, ("name",)).get("name"),
         )[:MAX_REUSE_CANDIDATES]
         return next(
@@ -90,11 +103,14 @@ class SurfaceStrategy(EntityImportExportStrategy):
             None,
         )
 
-    def entry_content_key(self, data: dict, id_mapper: IDMapper) -> tuple:
+    def entry_content_key(
+        self, data: dict, id_mapper: IDMapper, org_id: int | None = None
+    ) -> tuple:
         """Return the content an exported surface entry is matched on.
 
         Instructions as the import serializer stores them (the model default
-        when missing) plus the remapped python and MCP tool sets with modes;
+        when missing) plus the remapped python and MCP tool sets with modes and
+        the knowledge entries whose collection resolves in `org_id`;
         equal to `surface_content_key` of an equivalent stored surface.
         """
         tools = data.get("tools", {})
@@ -115,15 +131,17 @@ class SurfaceStrategy(EntityImportExportStrategy):
             instructions["instructions"],
             frozenset(python_tool_pairs),
             frozenset(mcp_tool_pairs),
+            knowledge_key_of_entries(data.get("knowledge", []), id_mapper, org_id),
         )
 
     @staticmethod
     def surface_content_key(surface: Surface) -> tuple:
-        """Return `entry_content_key` for a stored surface (tools prefetched)."""
+        """Return `entry_content_key` for a stored surface (tools and knowledge prefetched)."""
         return (
             surface.instructions,
             frozenset((row.python_tool_id, row.mode) for row in surface.python_tools.all()),
             frozenset((row.mcp_tool_id, row.mode) for row in surface.mcp_tools.all()),
+            knowledge_key_of_rows(surface.knowledge.all()),
         )
 
     def get_org_scope_q(self, org_id: int) -> Q:

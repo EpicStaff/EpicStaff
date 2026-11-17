@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { ToastService } from '../../../../../services/notifications';
 import { AgentNodeTaskUi } from '../../../../core/models/agent-node.model';
+import { NodeSaveErrorsStore } from '../../../../services/node-save-errors.store';
 import { AgentTasksTableComponent } from './agent-tasks-table.component';
 
 function task(tempId: string, instructions: string): AgentNodeTaskUi {
@@ -21,6 +22,56 @@ function instructionsTextareas(fixture: ComponentFixture<AgentTasksTableComponen
         (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLTextAreaElement>('.att-cell--instructions textarea')
     );
 }
+
+describe('AgentTasksTableComponent instructions a save refused', () => {
+    const REFUSED = "Placeholder '{topic!r}' is not allowed.";
+
+    function shownSaveErrors(fixture: ComponentFixture<AgentTasksTableComponent>): string[] {
+        return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('app-node-save-errors li')).map(
+            (item) => item.textContent!.trim()
+        );
+    }
+
+    function outlinedRows(fixture: ComponentFixture<AgentTasksTableComponent>): number[] {
+        return Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll('.att-cell--instructions .att-textarea-highlight')
+        ).flatMap((cell, index) => (cell.classList.contains('att-textarea-highlight--invalid') ? [index] : []));
+    }
+
+    it('outlines the task and says why under the table, until its instructions are edited', () => {
+        const fixture = createTable([task('a', 'Fine'), task('b', 'Say {topic!r}')]);
+        // As the agent panel binds it: the table's edits come back as its tasks.
+        fixture.componentInstance.tasksChange.subscribe((tasks) => fixture.componentRef.setInput('tasks', tasks));
+        TestBed.inject(NodeSaveErrorsStore).setAll(
+            new Map([
+                [
+                    'agent-1',
+                    [
+                        {
+                            field: 'instructions',
+                            child: { list: 'tasks', key: 'b', position: 1 },
+                            sentValue: 'Say {topic!r}',
+                            messages: [REFUSED],
+                        },
+                    ],
+                ],
+            ])
+        );
+        fixture.componentRef.setInput('nodeId', 'agent-1');
+        fixture.detectChanges();
+
+        expect(shownSaveErrors(fixture)).toEqual([`Task 2 instructions: ${REFUSED}`]);
+        expect(outlinedRows(fixture)).toEqual([1]);
+
+        const refusedTextarea = instructionsTextareas(fixture)[1];
+        refusedTextarea.value = 'Say {topic}';
+        refusedTextarea.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(shownSaveErrors(fixture)).toEqual([]);
+        expect(outlinedRows(fixture)).toEqual([]);
+    });
+});
 
 describe('AgentTasksTableComponent instructions focus', () => {
     it('emits the index of the row whose instructions cell was focused', () => {

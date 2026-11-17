@@ -7,10 +7,9 @@ function makeNode(type: NodeType): NodeModel {
     return {
         id: 'n1',
         backendId: null,
+        nodeUuid: null,
         type,
         node_name: 'test',
-        color: '#000',
-        icon: 'icon',
         ports: null,
         position: { x: 0, y: 0 },
         size: { width: 100, height: 60 },

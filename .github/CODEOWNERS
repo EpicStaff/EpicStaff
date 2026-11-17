@@ -56,6 +56,9 @@
 /.github/workflows/                                           @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /.github/dependabot.yml                                       @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /.github/scripts/                                             @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/.github/requirements/                                        @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/.gitleaksignore                                              @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/.gitleaks.toml                                               @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /.github/CODEOWNERS                                           @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 
 # Legal and policy

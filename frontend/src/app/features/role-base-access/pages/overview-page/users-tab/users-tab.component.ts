@@ -1,6 +1,16 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    input,
+    linkedSignal,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
@@ -16,6 +26,7 @@ import {
     SearchComponent,
     SelectItem,
     StopButtonComponent,
+    TableColumnPickerComponent,
     TableRow,
     UserAvatarComponent,
 } from '@shared/components';
@@ -69,6 +80,7 @@ const STATUS_ITEMS: SelectItem[] = [
     imports: [
         AppTableComponent,
         AppTableCellDirective,
+        TableColumnPickerComponent,
         ButtonComponent,
         SearchComponent,
         LoadingSpinnerComponent,
@@ -88,6 +100,9 @@ const STATUS_ITEMS: SelectItem[] = [
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UsersTabComponent {
+    /** `?search=`, bound from the URL: seeds the search box, as a link to one item does. */
+    readonly search = input<string>();
+
     // Takes the focus when an action removes or swaps the row button that had it.
     private readonly mainAction = viewChild<ButtonComponent>('mainAction');
 
@@ -106,7 +121,7 @@ export class UsersTabComponent {
     private aggregatedUsers = signal<AggregatedUser[]>([]);
 
     usersData = computed<TableRow[]>(() => this.aggregatedUsers().map((u) => this.mapToRow(u)));
-    searchTerm = signal('');
+    searchTerm = linkedSignal(() => this.search() ?? '');
     isLoading = signal(true);
     readonly orgFilterIds = signal<number[]>([]);
     readonly reloadTrigger = signal(0);
@@ -131,25 +146,27 @@ export class UsersTabComponent {
     });
 
     columns = computed<AppTableColumnDef[]>(() => [
-        { key: 'user', label: 'USER', width: 'minmax(200px, 2fr)' },
+        { key: 'user', label: 'User', width: '240px', pinned: 'start' },
         {
             key: 'roles',
-            label: 'ROLE',
+            label: 'Role',
             width: 'minmax(150px, 1.5fr)',
+            hideable: false,
             filterItems: this.roleFilterItems(),
         },
         {
             key: 'organization',
-            label: 'ORGANIZATION',
+            label: 'Organization',
             width: 'minmax(175px, 1.5fr)',
+            hideable: false,
             filterItems: this.orgFilterItems(),
             filterKind: 'multi',
             filterServerSide: true,
             defaultValues: this.activeOrgDefault(),
         },
-        { key: 'lastActive', label: 'LAST ACTIVE', width: 'minmax(140px, 1.5fr)' },
-        { key: 'status', label: 'STATUS', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'end' },
+        { key: 'lastActive', label: 'Last Active', width: 'minmax(140px, 1.5fr)' },
+        { key: 'status', label: 'Status', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
+        { key: 'actions', label: 'Actions', width: 'max-content', pinned: 'end' },
     ]);
 
     /** Permission-aware; rendered together in the ACTIONS cell (see `actions` ng-template). */

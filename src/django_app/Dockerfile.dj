@@ -60,7 +60,9 @@ COPY --from=builder /app /app
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
 # trace, see the litellm finding in docs/backend-runtime-fetch-audit.md) — django_app imports
-# it via tables/services/llm_clients/litellm_client.py.
+# it via tables/services/llm_clients/litellm_client.py. The daily model-map
+# refresh in tables/utils/litellm_model_info.py is a separate fetch, off unless
+# LITELLM_MODEL_COST_REFRESH_ENABLED is true.
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -70,3 +72,13 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
 WORKDIR /app/src/django_app
 
 RUN chmod +x ./entrypoint.sh
+
+# Code and venv stay root-owned (read-only for the runtime user); only the
+# volumes (media_data, plugin_spa, /tmp) are writable. These chowns reach only a
+# new, empty volume; the volume-permissions service fixes existing ones.
+RUN groupadd --system --gid 1000 app \
+ && useradd --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
+ && mkdir -p /app/src/django_app/media /srv/plugin-spa \
+ && chown app:app /app/src/django_app/media /srv/plugin-spa
+
+USER app

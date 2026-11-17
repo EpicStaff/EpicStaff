@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 import pytest
 from django.test import Client, override_settings
-from django.urls import clear_url_caches
+from django.urls import Resolver404, clear_url_caches, resolve
 
 import django_app.urls
 import django_app.yasg
@@ -15,6 +15,9 @@ import django_app.yasg
 pytestmark = pytest.mark.django_db
 
 DOC_PATHS = ("/api/schema/", "/swagger/", "/redoc/")
+RUN_SESSION_STREAM_DOC_PATH = "/api/run-session/subscribe/1/swagger/"
+SWAGGER_TOKEN_PATH = "/api/auth/swagger-token/"
+WRONG_CREDENTIALS = {"username": "nobody@example.com", "password": "wrong-password"}
 
 
 def _rebuild_urlconf() -> None:
@@ -49,3 +52,26 @@ def test_disabling_debug_leaves_the_api_reachable():
     with debug(enabled=False):
         assert Client().get("/api/schema/").status_code == 404
         assert Client().get("/api/auth/login/").status_code != 404
+
+
+def test_swagger_token_endpoint_is_served_in_debug():
+    with debug(enabled=True):
+        response = Client().post(SWAGGER_TOKEN_PATH, data=WRONG_CREDENTIALS)
+        assert response.status_code != 404
+
+
+def test_swagger_token_endpoint_is_absent_outside_debug():
+    with debug(enabled=False):
+        response = Client().post(SWAGGER_TOKEN_PATH, data=WRONG_CREDENTIALS)
+        assert response.status_code == 404
+
+
+def test_run_session_stream_doc_stub_is_absent_outside_debug():
+    with debug(enabled=False), pytest.raises(Resolver404):
+        resolve(RUN_SESSION_STREAM_DOC_PATH)
+
+
+def test_run_session_stream_doc_stub_is_mounted_in_debug():
+    with debug(enabled=True):
+        match = resolve(RUN_SESSION_STREAM_DOC_PATH)
+        assert match.url_name == "run-session-subscribe-swagger"

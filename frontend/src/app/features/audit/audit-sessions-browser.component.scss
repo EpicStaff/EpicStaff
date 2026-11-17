@@ -1,3 +1,13 @@
+@use 'audit-layout' as layout;
+
+// a tab of the Audit page fills its body, so the footer stays at the bottom however few rows there are
+:host {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
 .audit-browser {
     display: flex;
     flex-direction: column;
@@ -8,24 +18,11 @@
     font-size: 13px;
 }
 
-.audit-browser__header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 16px 20px 12px;
-}
-
-.audit-browser__title {
-    color: var(--color-text-primary);
-    font-size: var(--text-h1-size);
-    font-weight: var(--text-h1-weight);
-}
-
+// no top line of its own: the page header or the tab row above already draws one
 .audit-browser__body {
     display: flex;
     flex: 1;
     min-height: 0;
-    border-top: 1px solid var(--color-divider-regular);
 }
 
 .audit-browser__main {
@@ -62,7 +59,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 20px;
+    height: layout.$audit-toolbar-height;
+    padding: 0 20px;
 }
 
 .audit-browser__search {
@@ -388,10 +386,12 @@
 
 .audit-browser__footer {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 10px 20px;
+    height: layout.$audit-footer-height;
+    padding: 0 20px;
     border-top: 1px solid var(--color-divider-regular);
 }
 

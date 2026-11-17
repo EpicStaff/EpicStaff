@@ -1902,6 +1902,20 @@ def test_get_node_trigger_never_exposes_test_payload(org_a, mock_telegram_servic
     assert "private@example.com" not in json.dumps(result, default=str)
 
 
+@pytest.mark.django_db
+def test_get_node_does_not_expose_node_uuid(org_a):
+    from tables.models.graph_models import FileExtractorNode
+    from tables.services.flow_assistant import get_node
+
+    org_graph = Graph.objects.create(name="Uuid Flow", org=org_a)
+    node = FileExtractorNode.objects.create(graph=org_graph, node_name="extract")
+
+    result = get_node(org_graph.pk, str(node.pk))
+
+    assert "uuid" not in result["config"]
+    assert str(node.uuid) not in json.dumps(result, default=str)
+
+
 # ── Fix 17: CDT serialization + pre/post python summaries ────────────────────
 
 
@@ -3464,3 +3478,82 @@ def test_session_tools_treat_a_binned_flows_sessions_as_missing(org_a):
     assert get_recent_sessions(flow.pk)["sessions"] == []
     assert "error" in get_session_detail(flow.pk, session.pk)
     assert "error" in get_session_messages(flow.pk, session.pk)
+
+
+@pytest.mark.django_db
+def test_get_node_classification_decision_table_lists_prompt_entries(graph, org_a):
+    from tables.models import SystemOneConfig
+    from tables.models.graph_models import (
+        ClassificationDecisionTableNode,
+        ClassificationDecisionTablePrompt,
+    )
+    from tables.services.flow_assistant import get_node
+
+    node = ClassificationDecisionTableNode.objects.create(graph=graph, node_name="router")
+    config = SystemOneConfig.objects.create(
+        org=org_a, custom_name="jev", provider="typesafe", model_name="jev-1.14.0"
+    )
+    llm_config = LLMConfig.objects.create(custom_name="llm", org=org_a)
+    questions = {"is_engineering": {"type": "noul", "instructions": "Engineering?"}}
+    ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=node,
+        prompt_key="company_check",
+        kind="system_one",
+        system_one_config=config,
+        questions=questions,
+        input_map={"company": "variables.company"},
+        result_variable="company_check",
+    )
+    ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=node,
+        prompt_key="a_llm_entry",
+        llm_config=llm_config,
+        prompt_text="secret prompt text",
+        result_variable="sentiment",
+    )
+
+    entries = get_node(graph.pk, str(node.pk))["prompt_entries"]
+
+    assert entries == [
+        {
+            "prompt_key": "a_llm_entry",
+            "kind": "llm",
+            "result_variable": "sentiment",
+            "llm_config_id": llm_config.id,
+        },
+        {
+            "prompt_key": "company_check",
+            "kind": "system_one",
+            "result_variable": "company_check",
+            "system_one_config": {
+                "name": "jev",
+                "provider": "typesafe",
+                "model_version": "jev-1.14.0",
+            },
+            "input_map": {"company": "variables.company"},
+            "questions": questions,
+        },
+    ]
+
+
+@pytest.mark.django_db
+def test_get_node_prompt_entry_whose_config_was_deleted_has_no_config(graph, org_a):
+    from tables.models import SystemOneConfig
+    from tables.models.graph_models import (
+        ClassificationDecisionTableNode,
+        ClassificationDecisionTablePrompt,
+    )
+    from tables.services.flow_assistant import get_node
+
+    node = ClassificationDecisionTableNode.objects.create(graph=graph, node_name="router")
+    config = SystemOneConfig.objects.create(
+        org=org_a, custom_name="jev", provider="typesafe", model_name="jev-1.14.0"
+    )
+    ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=node, prompt_key="company_check", kind="system_one", system_one_config=config
+    )
+    config.delete()
+
+    [entry] = get_node(graph.pk, str(node.pk))["prompt_entries"]
+
+    assert entry["system_one_config"] is None

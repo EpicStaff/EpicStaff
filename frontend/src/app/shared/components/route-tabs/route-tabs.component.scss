@@ -1,7 +1,14 @@
 :host {
     display: flex;
-    gap: 0;
+    gap: 1rem;
+    justify-content: space-between;
+    align-items: center;
     border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.tabs-wrapper {
+    display: flex;
+    gap: 0;
 }
 
 .route-tab {
@@ -49,5 +56,29 @@
             color: var(--transparent-white-8);
             pointer-events: none;
         }
+    }
+}
+
+// Scrollable (Settings): the strip scrolls, so it would clip the tabs' -1px pull onto the host border. The strip
+// takes the pull instead: its bottom row lies on the host border, so the active underline still overlaps it. When the
+// tabs overflow, the thin scrollbar of the app's global style (_scrollbar.scss) takes the bottom of the strip: the
+// underline then sits just above the scrollbar, the border under it.
+:host(.route-tabs--scrollable) {
+    min-width: 0;
+
+    .tabs-wrapper {
+        position: relative;
+        flex: 1 1 auto;
+        min-width: 0;
+        margin-bottom: -1px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: thin;
+    }
+
+    .route-tab {
+        flex-shrink: 0;
+        margin-bottom: 0;
+        white-space: nowrap;
     }
 }

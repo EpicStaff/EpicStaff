@@ -7,7 +7,20 @@ status the gateway renders it as.
 
 from utils.exceptions import CustomAPIExeption
 
-__all__ = ["VenvInUseError"]
+__all__ = ["UnknownCustomLibraryError", "VenvInUseError"]
+
+
+class UnknownCustomLibraryError(CustomAPIExeption):
+    """Raised when a venv names a stored library the organization does not have.
+
+    Worded as unknown rather than forbidden on purpose: a library of another
+    organization and a library that was never created have to read the same, or
+    the refusal says which private package names exist.
+    """
+
+    status_code = 400
+    default_detail = "This organization has no custom library by that name."
+    default_code = "unknown_custom_library"
 
 
 class VenvInUseError(CustomAPIExeption):

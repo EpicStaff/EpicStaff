@@ -142,9 +142,17 @@ RESOURCE_TYPE_METADATA = [
     },
     {
         "code": ResourceType.AUDIT.value,
-        "label": "Audit",
+        "label": "Flow Session Audit",
         "group": "admin",
         "description": "Org-wide session execution trace: browse and export",
+        "applicable_actions": ["read", "export"],
+        "platform_actions": [],
+    },
+    {
+        "code": ResourceType.USER_AUDIT.value,
+        "label": "User Actions Audit",
+        "group": "admin",
+        "description": "Org-wide log of who changed what: browse and export",
         "applicable_actions": ["read", "export"],
         "platform_actions": [],
     },
@@ -177,6 +185,14 @@ RESOURCE_TYPE_METADATA = [
         "label": "Venvs",
         "group": "workspace",
         "description": "Python virtual environments that back code nodes and python tools",
+        "applicable_actions": ["create", "read", "update", "delete"],
+        "platform_actions": [],
+    },
+    {
+        "code": ResourceType.CUSTOM_LIBRARIES.value,
+        "label": "Custom Libraries",
+        "group": "workspace",
+        "description": "Private Python packages the organization uploads for its venvs to install",
         "applicable_actions": ["create", "read", "update", "delete"],
         "platform_actions": [],
     },
@@ -318,6 +334,16 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "create": (("key_value_tables", "read"),),
         "update": (("key_value_tables", "read"),),
         "delete": (("key_value_tables", "read"),),
+    },
+    ResourceType.VENVS.value: {
+        "create": (("venvs", "read"), ("custom_libraries", "read")),
+        "update": (("venvs", "read"), ("custom_libraries", "read")),
+        "delete": (("venvs", "read"),),
+    },
+    ResourceType.CUSTOM_LIBRARIES.value: {
+        "create": (("custom_libraries", "read"),),
+        "update": (("custom_libraries", "read"),),
+        "delete": (("custom_libraries", "read"),),
     },
     ResourceType.CHATS.value: {
         # No flows:read for read: the inbox shows a run's id as text without it.

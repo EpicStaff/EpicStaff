@@ -26,6 +26,10 @@ Logs, from `src/`: `docker compose logs chat` for the chat service, and `logs ep
     seconds from 60 to 2147483647, and each `…_DEFAULT` no larger than its `…_MAX`.
   - `CHAT_WIDGET_URL`: an absolute https URL (plain http only for a single-label host or a
     private or loopback IP), with no `"`, `<`, `>` or whitespace: it goes into the embed snippet.
+  - `CHAT_WIDGET_INTEGRITY`: empty, or one or more space-separated `sha256-`, `sha384-` or
+    `sha512-` hashes in standard base64 at their full length. A valid hash that does not match
+    the script makes the browser block the widget (an integrity error in the page's console):
+    recompute it for the pinned `CHAT_WIDGET_URL`, or leave it empty with the rolling URL.
   - `CHAT_ACTION_MAX_BYTES`, `CHAT_EXTRA_DATA_MAX_BYTES`: plain positive numbers.
 - **Migration failure in the log**: `alembic upgrade head` runs before uvicorn. Check that
   `CHAT_DB_*` match the `chatdb` container and that `chatdb` is healthy.

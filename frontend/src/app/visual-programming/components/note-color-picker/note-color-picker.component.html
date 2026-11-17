@@ -1,0 +1,50 @@
+<button
+    #triggerButton
+    type="button"
+    class="trigger"
+    [class.trigger--open]="open()"
+    (click)="toggle()"
+>
+    <span
+        class="trigger__dot"
+        [style.background]="color()"
+    ></span>
+    <svg
+        class="trigger__chevron"
+        [class.trigger__chevron--open]="open()"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+    >
+        <path
+            d="M6 9l6 6 6-6"
+            stroke="currentColor"
+            stroke-width="2"
+            fill="none"
+            stroke-linecap="round"
+        />
+    </svg>
+</button>
+
+<ng-template #dropdownTemplate>
+    <div class="dropdown">
+        @for (c of colors; track c) {
+            <button
+                type="button"
+                class="dropdown__item"
+                [class.dropdown__item--selected]="c === color()"
+                (click)="selectColor(c)"
+            >
+                <span
+                    class="dropdown__dot"
+                    [style.background]="c"
+                ></span>
+                <span
+                    class="dropdown__preview"
+                    [style.--preview-bg]="c"
+                    >Aa</span
+                >
+            </button>
+        }
+    </div>
+</ng-template>

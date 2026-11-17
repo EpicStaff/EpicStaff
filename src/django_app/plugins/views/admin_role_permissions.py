@@ -1,4 +1,3 @@
-from rbac.access.principals import limit_org_ids_to_api_key, user_api_key_org_id
 from rbac.models.enums import Permission, ResourceType
 from rbac.views.cross_org_base import CrossOrgAdminViewSet
 from rest_framework.response import Response
@@ -38,7 +37,7 @@ class PluginRolePermissionViewSet(CrossOrgAdminViewSet):
 
     def rows(self, request):
         # A key caller's org is its key's, so `?org_id=` is neither required nor read.
-        org_id = user_api_key_org_id(request)
+        org_id = self.key_org_id(request)
         if org_id is None:
             query = RequiredOrganizationQuerySerializer(data=request.query_params)
             query.is_valid(raise_exception=True)
@@ -47,7 +46,7 @@ class PluginRolePermissionViewSet(CrossOrgAdminViewSet):
         return Response(PluginRoleRowsResponseSerializer(result).data)
 
     def retrieve(self, request, role_id: int):
-        org_id = user_api_key_org_id(request)
+        org_id = self.key_org_id(request)
         if org_id is None:
             query = OptionalOrganizationQuerySerializer(data=request.query_params)
             query.is_valid(raise_exception=True)
@@ -57,7 +56,7 @@ class PluginRolePermissionViewSet(CrossOrgAdminViewSet):
             role_id,
             org_id,
             scopes=getattr(request, "_rbac_org_scopes", None),
-            limit_to_org_ids=limit_org_ids_to_api_key(request, None),
+            limit_to_org_ids=self.key_org_ids(request),
         )
         return Response(PluginRolePermissionsResponseSerializer(result).data)
 

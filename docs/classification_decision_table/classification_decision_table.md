@@ -116,7 +116,24 @@ So `continue_flag = True` only keeps evaluation going across rows that match **w
 
 ### Input Map Path Resolution
 
-`_resolve_input_map` / `_resolve_path` (no `eval()`) resolve `input_map` values against state. Supports dot access (`variables.chat_id`) and bracket access with dynamic keys (`variables.shared[variables.chat_id].inbox`). Resolve context is limited to: `variables`, `system_variables`, `session_id`, `node_name`.
+The pre-computation, post-computation and System One input maps are read with the same grammar as a regular node's input map (`src/crew/utils/map_variables.py`: `split_default`, `walk_state_path`, `to_plain_data`), through `_resolve_input_map` / `_read_state_path`. Bracket rules live in `src/shared/state_path.py` (`dynamic_key_path_refusal`), which crew applies at run time and Django on save and import. No `eval()` is used.
+
+- **Roots.** A path starts at `variables`, `system_variables`, `session_id` or `node_name`. (A regular node accepts only `variables`.) The root is always written by name, never read from a dynamic key: `[variables.k]` or `.[variables.k]` is refused, because the value of `variables.k` would pick a whole root such as `variables` or `system_variables`.
+- **Segments.** Dot access (`variables.chat_id`) and list indices (`variables.messages[0]`). No segment may start with `_`. An entry must name a path: `''` or `'|null'` is refused, default or not, because a path with no segment would read the whole state.
+- **Dynamic keys.** A bracket holding a path, such as `variables.shared[variables.chat_id].inbox`, reads that path first and uses its value as the key or index. The `_` rule applies to its segments too; the value itself may start with `_`, because it is looked up as a key, never as an attribute. A bracket holds either list index digits or one dotted path of word segments. Anything else is refused rather than read some other way: nested brackets (`m[a[b]]`, `m[variables.ids[0]]`), a sign (`m[-1]`), or a default inside the bracket (`m[variables.i|0]`; the default starts at the first `|`, so it leaves the bracket open).
+- **Defaults.** `path|default` is used when a name in the path is not found, or when a dynamic key is not a key of the mapping it reads (`variables.shared[variables.chat_id].inbox|null` on the first message of a chat that has no entry yet): `|null` / `|none` give `None`, `|true` / `|false` a bool (any letter case), digits an int (`|0`), anything else the text itself (`|-1` is the text `"-1"`). A path that is found keeps its value, even `None`. A default does not cover a list index the list does not have, whether written (`messages[5]`) or read from a dynamic key; a regular node fails on a missing list index too.
+- **Values.** The value is passed as plain JSON data. A path that reads a built-in method (`variables.update`, `variables.name.upper`) is refused.
+
+**Failures.** An entry without a path, a path that is not found and has no default, a missing list index, a `_` segment, an unsupported bracket and a path that reads a method all fail the table before the sandbox or System One call. The table then routes to `next_error_node` (or END) with an error message that names the map, the entry and the path, never a value:
+
+- `Pre-computation input map entry '<name>' has no variable path.`
+- `Pre-computation input map entry '<name>': variable path '<path>' was not found and has no default (write '<path>|null' to allow a missing value).`
+- `Post-computation input map entry '<name>': variable path '<path>' reads a list index that its value does not have.`
+- `Prompt '<id>' input map entry '<name>': Variable path '<path>' is not allowed: path segments cannot start with '_'.` (a System One entry, reported as `Error in condition '<group_name>': ...`)
+
+A regular node is more lenient: a missing path without a default becomes `None` (or `"not found"` in an end node's output map) and only logs a warning.
+
+Saving or importing a flow refuses, in any of these maps, an entry without a path, a path starting with a bracket, a `_` segment (dynamic key paths included) and an unsupported bracket (`src/django_app/tables/validators/run_refusal_validator.py`). The input map of an LLM prompt is not checked, because crew never reads it. Whether a path exists is only known at run time.
 
 ## Expressions and Manipulations (Sandboxed)
 
@@ -133,7 +150,7 @@ Prompts live in the `prompts` dict on the node, keyed by id:
 
 ```python
 class PromptConfigData(BaseModel):
-    prompt_text: str  # template with {var_name} interpolation
+    prompt_text: str  # template with {var_name} / {var[key]} placeholders
     llm_id: int | None = None
     output_schema: dict | str = {}  # JSON Schema for structured output
     result_variable: str = "prompt_result"  # state variable to store the result
@@ -141,7 +158,35 @@ class PromptConfigData(BaseModel):
     llm_data: LLMData | None = None  # resolved at runtime
 ```
 
-The prompt is rendered with `str.format(**variables)` and sent via `litellm.acompletion`. When `output_schema` is non-empty it is applied as a `response_format` of `{"type": "json_schema", "json_schema": {"name": ..., "schema": <output_schema>, "strict": True}}`; a string schema is JSON-parsed first. If `output_schema` is empty or invalid JSON, the request is sent without `response_format`. The response is parsed via `extract_first_json_object`, stored at `result_variable`, and `variable_mappings` extract individual fields into other state variables.
+The prompt is rendered by `src/shared/flow_templates.py` (the same rule applies to task and agent instructions and knowledge queries; its module docstring is the full rule). `{{` / `}}` are literal braces. Each placeholder becomes `str()` of a flow value:
+
+- `{var_name}` is the variable of exactly that name (`{user-id}` works too).
+- `{context[user_input]}` and `{context.user_input}` both read key `user_input` of the `context` value; `{items[0]}` reads an index of a list. Only plain JSON data is walked, by key or index; attributes are never read, because attribute access on a live value can reach the crew process environment.
+
+Two kinds of placeholder fail the node before the LLM is called, with a public error that names the placeholder, and route the table to its error node: a path segment starting with `_` (`{context._x}`, `{data[__class__]}`), and a conversion such as `{topic!r}`. A prompt that names a value that does not exist (a missing variable, key or index) is sent as written, with nothing substituted. So is a prompt holding a positional placeholder (`{}`, `{0}`), a format spec (`{topic:>10}`), a JSON example such as `{"label": "x"}` — even next to real placeholders — or a lone brace; write example braces as `{{` and `}}`. The rendered prompt is sent via `litellm.acompletion`. When `output_schema` is non-empty it is applied as a `response_format` of `{"type": "json_schema", "json_schema": {"name": ..., "schema": <output_schema>, "strict": True}}`; a string schema is JSON-parsed first. If `output_schema` is empty or invalid JSON, the request is sent without `response_format`. The response is parsed via `extract_first_json_object`, stored at `result_variable`, and `variable_mappings` extract individual fields into other state variables.
+
+The JSON-LLM helper (`run_json_llm`, `extract_first_json_object`) lives in `src/shared/system_one/json_llm.py`.
+
+## System One entries
+
+A System One entry is a prompt with `kind: "system_one"` and a `system_one_config`: either TypeSafe Jev or an LLM config. It asks typed questions (`noul`, `choice`, `score`) about a JSON state and returns structured answers. Switching the provider changes only the config, not the table.
+
+**Row pattern.** Row 1 runs the entry (`prompt_id` set, Continue on). Rows below route on the stored result: `<result_variable>.answers.<question>.noul|choice|score|confidence`, for example `company_check.answers.is_engineering.noul > 0.8`.
+
+**State sent.** The entry's input map becomes one JSON object, read as described in **Input Map Path Resolution**. A missing path fails the entry unless it has a default, such as `variables.region|null`. If every value is `None`, the entry fails before any call.
+
+**Result.** Stored under the result variable as `{answers, provider, model_version}`.
+
+**Errors** (reported as `Error in condition '<group_name>': ...`, then `next_error_node`):
+- `System One entry '<id>' has no config.`
+- `System One entry '<id>' has no valid questions.`
+- `System One entry '<id>' has no input values.`
+- `Prompt '<id>' input map entry '<name>': ...` — a path of the entry's input map cannot be read (see **Input Map Path Resolution**).
+- `System One call failed for prompt '<id>': <message>`. The message comes from the adapter. TypeSafe messages are in `src/shared/system_one/typesafe_adapter.py` (for example "TypeSafe rejected the API key.", "TypeSafe rate limit reached.", "TypeSafe is unreachable.", "TypeSafe returned a malformed answer.").
+
+**Cost.** TypeSafe: input tokens x the pinned Jev price in `src/shared/system_one/constants.py`. LLM: the litellm cost.
+
+**Run message.** The prompt message carries `provider` and `model_version`. `prompt_text` is the state sent, `raw_response` is the stored result JSON.
 
 ## Message Ordering
 
@@ -149,22 +194,24 @@ CDT messages (start, condition-group result, manipulation, prompt, finish) are t
 
 ## Export
 
-A CDT node can be exported on its own via `GET /api/classification-decision-table-node/{id}/export`. The `export_format` query parameter selects the output:
+A CDT node can be exported on its own as a background job, like every export. The `export_format` in the body selects what the job's `.zip` holds:
 
 ```
-GET /api/classification-decision-table-node/{id}/export?export_format=json   # default
-GET /api/classification-decision-table-node/{id}/export?export_format=csv
+POST /api/classification-decision-table-node/export-jobs/   {"ids": [<node id>], "export_format": "json"}   # default
+POST /api/classification-decision-table-node/export-jobs/   {"ids": [<node id>], "export_format": "csv"}
 ```
+
+It answers `202 {"job_id"}`; poll `GET /api/transfer-jobs/{job_id}/` and download the archive once the job completes. A node outside the active organization is a `404 export_entities_not_found`.
 
 ### JSON (`export_format=json`, default)
 
-Reuses the partial-export pipeline (`GraphPartialExportService`), so the file is structurally identical to a [partial node export](../import_export/PARTIAL_NODE_IMPORT_EXPORT.md) of a single CDT node — the node plus its transitive dependencies (LLM configs, prompts' configs, referenced Python code). Because of this, a JSON export **is re-importable** into any existing graph via the graph `partial-import` endpoint, which returns the node unsaved for the flow editor to place on the canvas; it is persisted when the user saves the flow.
+Reuses the partial-export pipeline (`GraphPartialExportService`), so the file is structurally identical to a [partial node export](../import_export/PARTIAL_NODE_IMPORT_EXPORT.md) of a single CDT node — the node plus its transitive dependencies (LLM configs, prompts' configs, referenced Python code). The archive holds it as `export.json`. Because of this, the archive **is re-importable** into any existing graph via the graph `partial-import` endpoint, which returns the node unsaved for the flow editor to place on the canvas; it is persisted when the user saves the flow.
 
-The filename is prefixed `CDT_` (e.g. `CDT_my_node_20260611.json`).
+The archive's file name is prefixed `CDT_` (e.g. `CDT_my_node_2026-06-11.zip`).
 
 ### CSV (`export_format=csv`)
 
-Produced by `export_condition_groups_csv()` in `tables/import_export/tabular/classification_decision_table.py`. This is a **read-only, human-readable report** — it flattens the node's rules into a spreadsheet and **cannot be re-imported**. Use it for review, sharing, or auditing decision logic outside the app.
+Produced by `export_condition_groups_csv()` in `tables/import_export/tabular/classification_decision_table.py`. The archive holds it as `CDT_<node name>_<date>.csv`. This is a **read-only, human-readable report** — it flattens the node's rules into a spreadsheet and **cannot be re-imported**. Use it for review, sharing, or auditing decision logic outside the app.
 
 The file is laid out as several labelled sections:
 
@@ -226,4 +273,4 @@ API: `POST/GET/DELETE /api/classification-decision-table-node/`
 
 ## Tests
 
-`src/crew/tests/graph/subgraphs/test_classification_decision_table_node.py` covers routing (first-match, fall-through, explicit route terminal with `continue_flag=True`, continue-then-route, default, error→next_error_node), `dock_visible` skipping, field expressions, manipulation write-back, and prompt `output_schema` application. The sandbox (`RunPythonCodeService.run_code`) and `litellm.acompletion` are mocked.
+`src/crew/tests/graph/subgraphs/test_classification_decision_table_node.py` covers routing (first-match, fall-through, explicit route terminal with `continue_flag=True`, continue-then-route, default, error→next_error_node), `dock_visible` skipping, field expressions, manipulation write-back, prompt `output_schema` application, and input map path resolution (defaults compared with a regular node's, dynamic keys, failures). The sandbox (`RunPythonCodeService.run_code`) and `litellm.acompletion` are mocked.

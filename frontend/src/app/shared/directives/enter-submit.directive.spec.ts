@@ -18,6 +18,10 @@ import { EnterSubmitDirective } from './enter-submit.directive';
                 [checked]="checked"
                 (checkedChange)="checked = $event"
             />
+            <div
+                class="code-editor-input"
+                tabindex="0"
+            ></div>
         </form>
     `,
 })
@@ -59,6 +63,16 @@ describe('EnterSubmitDirective', () => {
         pressEnter(fixture.nativeElement.querySelector('app-toggle-switch input'));
 
         expect(fixture.componentInstance.checked).toBe(true);
+        expect(fixture.componentInstance.submits).toBe(0);
+    });
+
+    it('lets Enter in a code editor that takes text through EditContext insert a newline without submitting', () => {
+        const fixture = mount();
+        const editorInput: HTMLElement = fixture.nativeElement.querySelector('.code-editor-input');
+        Object.defineProperty(editorInput, 'editContext', { value: {} });
+
+        pressEnter(editorInput);
+
         expect(fixture.componentInstance.submits).toBe(0);
     });
 });

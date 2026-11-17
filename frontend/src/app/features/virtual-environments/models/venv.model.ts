@@ -62,6 +62,8 @@ export interface VenvLib {
     specification: string;
     version: string | null;
     description: string | null;
+    // Whether the build resolves this name against an uploaded custom library instead of PyPI.
+    is_custom: boolean;
 }
 
 export interface VenvLibUpdate {

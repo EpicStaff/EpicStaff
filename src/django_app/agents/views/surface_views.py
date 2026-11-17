@@ -13,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
+from user_audit.read_only import reads_only
 
 from agents.models.surface_models import Surface
 from agents.serializers.surface_serializers import (
@@ -103,6 +104,7 @@ class SurfaceViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.Mod
         },
     )
     @action(detail=False, methods=["post"], url_path="combine")
+    @reads_only
     def combine(self, request):
         ctx = self.get_serializer_context()
         request_serializer = SurfaceCombineRequestSerializer(data=request.data, context=ctx)

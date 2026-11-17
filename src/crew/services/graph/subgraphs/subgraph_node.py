@@ -16,6 +16,7 @@ from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
 from src.shared.models.storage_scope import StorageCredentials
 from utils import map_variables_to_input
 from utils.set_output_variables import set_output_variables
+from utils.state_path import split_state_path
 
 
 class SubGraphNode:
@@ -98,6 +99,7 @@ class SubGraphNode:
             knowledge_search_service=self.session_graph_builder.knowledge_search_service,
             agent_task_service=self.session_graph_builder.agent_task_service,
             key_value_client=self.session_graph_builder.key_value_client,
+            secrets_cryptographer=self.session_graph_builder.secrets_cryptographer,
             stop_event=self.stop_event,
         )
 
@@ -112,6 +114,9 @@ class SubGraphNode:
         subgraph_execution_id = str(uuid4())
 
         subgraph_input = self._prepare_subgraph_input(state)
+        # Rejected before the child flow runs, which would otherwise do its work for nothing.
+        if self.output_variable_path:
+            split_state_path(self.output_variable_path)
 
         sysvars = state.get("system_variables") or {}
         state["system_variables"] = sysvars  # ensure attached before deep-copy

@@ -33,3 +33,34 @@ class NotifyEmailThrottle(SimpleRateThrottle):
         else:
             ident = self.get_ident(request)
         return self.cache_format % {"scope": self.scope, "ident": ident}
+
+
+class TransferJobCreateThrottle(SimpleRateThrottle):
+    """
+    Throttle for starting transfer jobs, one bucket for all of them: every export
+    job (each `POST .../export-jobs/` and `POST /api/graphs/{id}/partial-export-jobs/`)
+    and import uploads (`POST /api/graphs/import-jobs/`,
+    `POST /api/source-collections/import-jobs/`, `POST /api/agent-definitions/import-jobs/`).
+
+    The unfinished-job limit caps how many jobs run at once; this caps how
+    fast one caller can start them, since a job that fails fast frees its slot
+    at once. Keyed on the caller's user id, so a personal API key shares its
+    owner's bucket. Rate is driven by the `transfer_job_create` scope (env var
+    `DJANGO_TRANSFER_JOB_CREATE_THROTTLE_RATE`).
+
+    A pinned principal has no user id; it is keyed on its own
+    `rate_limit_key`. The view refuses it after throttling, so this only keeps
+    the key well-defined.
+    """
+
+    scope = "transfer_job_create"
+
+    def get_cache_key(self, request, view):
+        user = getattr(request, "user", None)
+        if is_pinned_org_principal(user):
+            ident = user.rate_limit_key
+        elif getattr(user, "pk", None) is not None and user.is_authenticated:
+            ident = str(user.pk)
+        else:
+            ident = self.get_ident(request)
+        return self.cache_format % {"scope": self.scope, "ident": ident}

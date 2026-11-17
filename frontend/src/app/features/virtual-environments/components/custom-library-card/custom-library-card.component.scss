@@ -1,0 +1,67 @@
+.custom-library-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-width: 0;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background-color: var(--color-flow-card-bg);
+    box-shadow: var(--shadow-raised);
+    cursor: pointer;
+
+    &__title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    &__name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-text-primary);
+    }
+
+    &__trailing {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex-shrink: 0;
+        height: 28px;
+    }
+
+    &__meta {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__meta-date {
+        color: var(--color-text-primary);
+    }
+
+    &__icon-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--color-ks-transparent-text-60);
+        cursor: pointer;
+
+        &:hover {
+            color: var(--color-text-primary);
+            background-color: var(--color-ghost-btn-hover);
+        }
+    }
+}

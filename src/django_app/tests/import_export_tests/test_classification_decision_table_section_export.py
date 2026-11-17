@@ -4,14 +4,13 @@ a string UUID (or null), not a raw uuid.UUID object."""
 import json
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from tables.models.graph_models import ClassificationConditionGroup
-from rbac.models import Organization, OrganizationUser
 from tables.import_export.enums import EntityType
+from tables.models import TransferJob
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY
+from tests.transfer_job_helpers import export_via_job
 
 
 def _condition_groups_of(export_data, cdt_node):
@@ -26,31 +25,17 @@ def _condition_groups_of(export_data, cdt_node):
 class TestCDTSectionExportJsonSerializability:
     """CDT exports return valid JSON (section field is serializable)."""
 
-    def test_graph_export_with_cdt_sections_returns_valid_json(
-        self, auth_client, default_org, cdt_condition_group_factory
-    ):
-        graph, *_ = cdt_condition_group_factory(default_org)
-
-        url = reverse("graphs-export", kwargs={"pk": graph.id})
-        response = auth_client.get(url)
-
-        assert response.status_code == 200
-        # json.loads/dumps throws if a raw UUID object made it into the payload.
-        export_data = json.loads(response.content)
-        assert json.dumps(export_data) is not None
-
     def test_partial_export_with_cdt_node_returns_valid_json(
         self, auth_client, default_org, cdt_condition_group_factory
     ):
         graph, cdt_node, *_ = cdt_condition_group_factory(default_org)
 
-        url = reverse("graphs-partial-export", kwargs={"pk": graph.id})
+        url = reverse("graphs-partial-export-jobs", kwargs={"pk": graph.id})
         payload = {"classification_decision_table_node_list": [str(cdt_node.id)]}
-        response = auth_client.post(url, payload, format="json")
+        exported = export_via_job(auth_client, url, payload)
 
-        assert response.status_code == 200
-        export_data = json.loads(response.content)
-        assert json.dumps(export_data) is not None
+        assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+        assert json.dumps(exported.envelope) is not None
 
     def test_cdt_node_direct_export_returns_valid_json(
         self, default_org, export_service, cdt_condition_group_factory
@@ -171,32 +156,3 @@ class TestCDTSectionExportRoundTrip:
         assert new_group.section is not None
         assert new_group.section.name == section.name
         assert new_group.section.metadata == section.metadata
-
-
-@pytest.mark.django_db
-class TestCDTSectionExportCrossOrgAccess:
-    def test_accessing_other_org_cdt_export_returns_404(
-        self, org_admin_role, api_client, cdt_condition_group_factory
-    ):
-        """A user scoped to their own org gets 404 (not 403) for another org's
-        graph — row-level scoping, not an org-membership permission gate."""
-        org1 = Organization.objects.create(name="Org 1")
-        org2 = Organization.objects.create(name="Org 2")
-
-        user = get_user_model().objects.create_user(
-            email="user@org1.example.com", password="StrongPass123!"
-        )
-        OrganizationUser.objects.create(user=user, org=org1, role=org_admin_role)
-
-        graph, *_ = cdt_condition_group_factory(org2, graph_name="org2-graph")
-
-        refresh = RefreshToken.for_user(user)
-        api_client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}",
-            HTTP_X_ORGANIZATION_ID=str(org1.id),
-        )
-
-        url = reverse("graphs-export", kwargs={"pk": graph.id})
-        response = api_client.get(url)
-
-        assert response.status_code == 404

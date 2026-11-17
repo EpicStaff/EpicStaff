@@ -1,0 +1,117 @@
+// The title's and the search's design minimums and the labelled Capabilities width come from the component
+// (TITLE_MIN_WIDTH, SEARCH_MIN_WIDTH, CAPABILITIES_LABELLED_WIDTH), which lays the toolbar out with the same numbers:
+// --llm-library-title-min-width, --llm-library-search-min-width and --llm-library-capabilities-width.
+
+// Stays put while the sections scroll under it. It takes over the page's 20px top padding (margin -20px,
+// padding 24px), so it looks the same stuck as at rest. Sticky offsets count from inside the scrolling page's
+// padding, so top: -20px is what pins it flush to the page's top edge; with 0, the cards showed in the 20px above it.
+// The host is the sticky box, a block spanning the width. Its containing block is the section component's root,
+// <section class="llm-library">: it sticks only while that section runs on below it, so an overflow other than
+// visible on .llm-library, or the section ending early (shorter than the scrolled page), would break the sticking.
+:host {
+    position: sticky;
+    top: -20px;
+    z-index: 1;
+    display: block;
+    margin-top: -20px;
+    padding: 24px 0;
+    background: var(--color-background-body);
+    border-bottom: 1px solid var(--graphite-750);
+}
+
+// Layouts picked in the component from measured widths (toolbarLayout): beside the title with labels; beside
+// it icon-only, the title shrinking to its minimum and its subtitle wrapping; under the title (--stacked) in two rows.
+// Beside the title, the toolbar sits midway between the tabs' line and this header's line: centred on the
+// title block, 24px above and below it.
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+
+    // 16px from the subtitle to the search.
+    &--stacked {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+}
+
+.header-left {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    gap: 6px;
+    min-width: var(--llm-library-title-min-width);
+}
+
+.header--stacked .header-left {
+    min-width: 0;
+}
+
+// Line heights stay the inherited ones (the reset's 1.2 for headings, the body's 1.5): the type tokens' 1 and 1.3
+// would change the header's height.
+.title {
+    margin: 0;
+    font-size: var(--text-h3-size);
+    font-weight: var(--text-h3-weight);
+    color: var(--fog-200);
+}
+
+.subtitle {
+    margin: 0;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    color: var(--fog-alpha-60);
+}
+
+// A zero basis: the toolbar takes the room the title leaves. Its min-width (bound in the template) is what its
+// controls need with the search at its minimum, so the title gives way down to its own minimum first.
+.header-right {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+
+    // With labels the search gives way from 278px down to its minimum before the controls go icon-only.
+    > app-search {
+        flex: 0 1 278px;
+        min-width: var(--llm-library-search-min-width);
+    }
+
+    > app-button,
+    > app-bulk-select-dropdown,
+    > .filter {
+        flex-shrink: 0;
+    }
+}
+
+// Icon-only beside the title: the search takes all the room the icons leave.
+.header--icons .header-right > app-search {
+    flex: 1 1 var(--llm-library-search-min-width);
+}
+
+// Row 1 the search, full width; row 2 the controls at their natural widths from the left. The component drops
+// labels from that row (the action's first) before it would wrap to a third.
+.header--stacked .header-right {
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+
+    > app-search {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+}
+
+.filter {
+    position: relative;
+    display: flex;
+    align-items: center;
+
+    // Fixed at the width "All capabilities" takes, so picking a shorter option does not resize it.
+    &--labelled {
+        width: var(--llm-library-capabilities-width);
+    }
+}

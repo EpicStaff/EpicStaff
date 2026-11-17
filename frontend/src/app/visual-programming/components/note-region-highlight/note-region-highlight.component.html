@@ -1,0 +1,44 @@
+<div
+    class="note-region-highlight"
+    [class.is-interactive]="resizable()"
+    [style.transform]="'translate(' + region().x + 'px,' + region().y + 'px)'"
+    [style.width.px]="region().width"
+    [style.height.px]="region().height"
+    [style.--region-color]="region().color || '#D9D9D9'"
+    (pointerdown)="resizeStart.emit({ event: $event, direction: 'move' })"
+>
+    @if (resizable()) {
+        <div
+            class="region-handle region-handle--n"
+            (pointerdown)="resizeStart.emit({ event: $event, direction: 'n' })"
+        ></div>
+        <div
+            class="region-handle region-handle--s"
+            (pointerdown)="resizeStart.emit({ event: $event, direction: 's' })"
+        ></div>
+        <div
+            class="region-handle region-handle--e"
+            (pointerdown)="resizeStart.emit({ event: $event, direction: 'e' })"
+        ></div>
+        <div
+            class="region-handle region-handle--w"
+            (pointerdown)="resizeStart.emit({ event: $event, direction: 'w' })"
+        ></div>
+        <div
+            class="region-handle region-handle--ne"
+            (pointerdown)="resizeStart.emit({ event: $event, direction: 'ne' })"
+        ></div>
+        <div
+            class="region-handle region-handle--nw"
+            (pointerdown)="resizeStart.emit({ event: $event, direction: 'nw' })"
+        ></div>
+        <div
+            class="region-handle region-handle--se"
+            (pointerdown)="resizeStart.emit({ event: $event, direction: 'se' })"
+        ></div>
+        <div
+            class="region-handle region-handle--sw"
+            (pointerdown)="resizeStart.emit({ event: $event, direction: 'sw' })"
+        ></div>
+    }
+</div>

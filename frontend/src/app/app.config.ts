@@ -15,6 +15,7 @@ import { SAFE_MARKED_OPTIONS_PROVIDER } from './core/config/safe-markdown-option
 import { ProfileTourProgressStore, provideGuidedTours, TOUR_PROGRESS_STORE } from './core/guided-tour';
 import { activeOrgInterceptor } from './core/interceptors/active-org.interceptor';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
+import { blobErrorInterceptor } from './core/interceptors/blob-error.interceptor';
 import { forbiddenInterceptor } from './core/interceptors/forbidden.interceptor';
 import { networkConnectionInterceptor } from './core/interceptors/network-connection.interceptor';
 import { preflightPermissionInterceptor } from './core/interceptors/preflight-permission.interceptor';
@@ -52,6 +53,8 @@ export const appConfig: ApplicationConfig = {
                 validationErrorsInterceptor,
                 forbiddenInterceptor,
                 networkConnectionInterceptor,
+                // Last, so every interceptor above reads a body and not a Blob.
+                blobErrorInterceptor,
             ])
         ),
         provideMarkdown({ markedOptions: SAFE_MARKED_OPTIONS_PROVIDER }),

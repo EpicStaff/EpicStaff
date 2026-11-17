@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideLocationMocks } from '@angular/common/testing';
-import { signal } from '@angular/core';
+import { NgZone, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
@@ -1300,7 +1300,7 @@ describe('ChatPageComponent', () => {
             userScrolls();
             IntersectionObserverStub.current().intersect();
             // Runs the after-render check the landed page scheduled.
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => TestBed.tick());
 
             expect(chatApi.getMessages.mock.calls.map((call) => (call as unknown[])[1])).toEqual(['m-0', 'old-0']);
             expect(fixture.nativeElement.querySelector('.thread__older')).toBeNull();
@@ -1317,7 +1317,7 @@ describe('ChatPageComponent', () => {
             userScrolls();
             IntersectionObserverStub.current().intersect();
             // Runs the after-render check the landed page scheduled.
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => TestBed.tick());
             expect(chatApi.getMessages).toHaveBeenCalledTimes(1);
         });
 
@@ -1398,7 +1398,7 @@ describe('ChatPageComponent', () => {
             chatApi.getMessages.mockReturnValueOnce(of(thread(CHAT_MESSAGES_PAGE_SIZE)));
             userScrolls();
             IntersectionObserverStub.current().intersect();
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => TestBed.tick());
             expect(chatApi.getMessages).toHaveBeenCalledTimes(1);
         });
 

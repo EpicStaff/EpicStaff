@@ -1,26 +1,92 @@
-import re
+from typing import Any
 
 from dotdict import DotDict
 from loguru import logger
+from services.graph.exceptions import InvalidStatePathError
+
+from utils.state_path import split_state_path
+
+_JSON_SCALAR_TYPES = (str, int, float, bool, type(None))
+
+# What `walk_state_path` returns when a named segment is absent from the value it reads.
+MISSING = object()
 
 
-def _clean_value(v):
-    """Recursively convert proxy objects (DotDict, etc.) to plain types."""
-    if hasattr(v, "model_dump"):
-        v = v.model_dump()
-    if isinstance(v, dict):
-        return _clean_dict(v)
-    if isinstance(v, list):
-        return _clean_list(v)
-    return v
+class _NotPlainDataError(Exception): ...
 
 
-def _clean_dict(d: dict) -> dict:
-    return {k: _clean_value(v) for k, v in d.items()}
+def _copy_plain_data(value):
+    """Copy `value` as plain JSON data, converting DotDict/DotList and models on the way.
+
+    Raises:
+        _NotPlainDataError: `value` holds anything else, such as a bound method.
+    """
+    if hasattr(value, "model_dump"):
+        value = value.model_dump()
+    if isinstance(value, dict):
+        return {key: _copy_plain_data(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_copy_plain_data(item) for item in value]
+    if isinstance(value, _JSON_SCALAR_TYPES):
+        return value
+    raise _NotPlainDataError
 
 
-def _clean_list(lst: list) -> list:
-    return [_clean_value(v) for v in lst]
+def split_default(mapped_path: str) -> tuple[str, bool, Any]:
+    """Split an input map value `path|default` into the path, whether it has a default, and the default.
+
+    The default is read up to the end of the value: `null` / `none` is None, `true` / `false`
+    a bool (any letter case), digits an int, anything else the text itself.
+    """
+    if "|" not in mapped_path:
+        return mapped_path, False, None
+    path, default = mapped_path.split("|", 1)
+    if default.lower() in ("null", "none"):
+        return path, True, None
+    if default.lower() == "true":
+        return path, True, True
+    if default.lower() == "false":
+        return path, True, False
+    if default.isdigit():
+        return path, True, int(default)
+    return path, True, default
+
+
+def walk_state_path(value: Any, segments: list[str]) -> Any:
+    """Follow the segments of a split state path from `value`, the way input maps read state.
+
+    A word segment is read as an attribute, which a DotDict answers with its key; when it is
+    absent the result is MISSING. A `[N]` segment indexes the value, and its IndexError,
+    KeyError or TypeError propagates. The result is not checked; see `to_plain_data`.
+    """
+    for segment in segments:
+        if segment.startswith("["):
+            value = value[int(segment[1:-1])]
+        else:
+            try:
+                value = getattr(value, segment)
+            except AttributeError:
+                return MISSING
+    return value
+
+
+def to_plain_data(value: Any, path: str) -> Any:
+    """Return a plain JSON copy of `value`, which was read from the state at `path`.
+
+    Raises:
+        InvalidStatePathError: `value` is not plain data, such as a built-in method.
+    """
+    try:
+        return _copy_plain_data(value)
+    except _NotPlainDataError:
+        # Attribute access on the resolved value finds a method of its type (DotDict, list,
+        # str, ...) before any stored key of that name; the live method must not reach a
+        # node, whose templates could walk from it into the process.
+        raise InvalidStatePathError(
+            f"Variable path '{path}' reads a built-in method instead of flow data: "
+            "either the path goes past a text, number or list value, or a segment is named "
+            "like a method (such as 'items' or 'update') — rename that variable."
+        ) from None
 
 
 def map_variables_to_input(
@@ -32,6 +98,9 @@ def map_variables_to_input(
     This function extracts values from `variables` based on the given mapping,
     allowing for structured transformation of variable names into a dictionary.
 
+    A path that is not found takes its `|default` (see `split_default`); without one it
+    becomes None, or "not found" with `set_missing_variables`, and a warning is logged.
+
     Args:
         variables (DotDict): A dictionary-like object containing variables.
         map (dict): A dictionary specifying mappings, where keys represent
@@ -40,6 +109,11 @@ def map_variables_to_input(
 
     Returns:
         dict: A dictionary with mapped keys and corresponding values from `variables`.
+
+    Raises:
+        InvalidStatePathError: A path has no segment (`''`, `'|null'`), a path segment
+            starts with `_`, or the path resolves to something other than plain JSON data,
+            such as a built-in method.
 
     Example:
         Given the following `variables`:
@@ -69,63 +143,32 @@ def map_variables_to_input(
         ```
     """
     output_dict = {}
-    pattern = re.compile(r"\w+|\[\d+\]")
 
-    for output_key, input_key in map.items():
-        # Check for default value using pipe syntax: path|default
-        default_value = None
-        has_default = False
-        if "|" in input_key:
-            parts = input_key.split("|", 1)
-            input_key = parts[0]
-            default_value = parts[1]
-            has_default = True
-            if default_value.lower() in ("null", "none"):
-                default_value = None
-            elif default_value.lower() == "true":
-                default_value = True
-            elif default_value.lower() == "false":
-                default_value = False
-            elif default_value.isdigit():
-                default_value = int(default_value)
+    for output_key, mapped_path in map.items():
+        input_key, has_default, default_value = split_default(mapped_path)
 
-        # Normal variable path handling
-        keys: list[str] = pattern.findall(input_key)
+        keys = split_state_path(input_key)
+        # Checked before the default, which must not stand in for a path never written.
+        if not keys:
+            raise InvalidStatePathError(f"Input map entry '{output_key}' has no variable path.")
         if keys[0] != "variables":
             raise ValueError(f"`{input_key}` does not contain name `variables` for {output_key}")
-        keys = keys[1:]
 
-        value = variables
-        for key in keys:
-            if key.startswith("[") and key.endswith("]"):  # Handle list indices
-                index = int(key[1:-1])
-                value = value[index]
+        value = walk_state_path(variables, keys[1:])
+        if value is MISSING:
+            if has_default:
+                value = default_value
+            elif set_missing_variables:
+                logger.warning("Cannot find variable `{}`. Set it to 'not found'.", input_key)
+                value = "not found"
             else:
-                try:
-                    value = getattr(value, key)
-                except AttributeError:
-                    if has_default:
-                        value = default_value
-                        break
-                    elif set_missing_variables:
-                        logger.warning(
-                            f"Cannot find variable `{key}` for `{input_key}`. Setted {key} = 'not found'"
-                        )
-                        value = "not found"
-                    else:
-                        logger.warning(
-                            f"Variable `{key}` not found for `{input_key}` (output_key=`{output_key}`). Setting to None."
-                        )
-                        value = None
-                        break
+                logger.warning(
+                    "Variable `{}` not found (output_key=`{}`). Setting to None.",
+                    input_key,
+                    output_key,
+                )
+                value = None
 
-        if hasattr(value, "model_dump"):
-            value = value.model_dump()
-        if isinstance(value, dict):
-            value = _clean_dict(value)
-        if isinstance(value, list):
-            value = _clean_list(value)
-
-        output_dict[output_key] = value
+        output_dict[output_key] = to_plain_data(value, input_key)
 
     return output_dict

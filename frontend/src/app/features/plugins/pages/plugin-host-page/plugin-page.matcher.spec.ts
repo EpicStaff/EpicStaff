@@ -8,7 +8,7 @@ import { pluginPageMatcher } from './plugin-page.matcher';
 @Component({ template: '' })
 class StubPageComponent {}
 
-@Component({ template: '' })
+@Component({ selector: 'app-fallback-page', template: '' })
 class FallbackPageComponent {}
 
 function segments(...paths: string[]): UrlSegment[] {

@@ -1,14 +1,15 @@
 import itertools
 import json
-import re
 from typing import Any
 
-import litellm
+from dotdict import DotDict
+from foundation.cryptographer import AbstractCryptographer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
-from litellm.types.utils import CostPerToken
 from loguru import logger
+from pydantic import ValidationError
+from services.graph.exceptions import InvalidStatePathError
 from services.run_python_code_service import RunPythonCodeService
 from src.crew.models.graph_models import (
     GraphMessage,
@@ -17,29 +18,26 @@ from src.crew.models.state import State
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
-from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
-from src.shared.models import LLMConfigData, LLMData, PythonCodeData, TokenUsage
+from src.crew.services.secret_decryption import (
+    SecretDecryptionError,
+    decrypt_llm_data,
+    decrypt_system_one_config,
+)
+from src.shared.flow_templates import RefusedPlaceholderError, render_template
+from src.shared.models import PythonCodeData
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
 from src.shared.models.storage_scope import StorageCredentials
-
-# litellm reports json_schema support for these providers, but their APIs reject it
-# ("This response_format type is unavailable now") and only accept json_object.
-JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
-
-
-def _custom_cost_per_token(llm_config: LLMConfigData) -> CostPerToken | None:
-    """Return the config's own token prices, or None when it does not set both."""
-    if llm_config.input_cost_per_token is None or llm_config.output_cost_per_token is None:
-        return None
-    return CostPerToken(
-        input_cost_per_token=llm_config.input_cost_per_token,
-        output_cost_per_token=llm_config.output_cost_per_token,
-    )
-
+from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SYSTEM_ONE_QUESTIONS_ADAPTER
+from src.shared.state_path import split_state_path_segments
+from src.shared.system_one.adapter import SystemOneError, evaluate
+from src.shared.system_one.json_llm import run_json_llm
+from utils.map_variables import MISSING, split_default, to_plain_data, walk_state_path
+from utils.set_output_variables import set_output_variables
+from utils.state_path import split_dynamic_key_path, split_state_path
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -88,33 +86,39 @@ def main(expressions, variables):
 """
 
 
-def extract_first_json_object(text: str) -> Any:
-    """Extract the first JSON object from a text string."""
-    cleaned = text.replace("```", "")
-    cleaned = re.sub(r"\bjson\b", "", cleaned, flags=re.IGNORECASE)
-
-    start = cleaned.find("{")
-    if start == -1:
-        return text
-
-    depth = 0
-    for i in range(start, len(cleaned)):
-        ch = cleaned[i]
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                candidate = cleaned[start : i + 1]
-                try:
-                    return json.loads(candidate)
-                except Exception:
-                    return text
-    return text
-
-
 class ClassificationDecisionTableNodeError(Exception):
     """Custom exception for errors related to ClassificationDecisionTableNode."""
+
+
+def _read_state_path(roots: DotDict, path: str) -> Any:
+    """Read `path` from `roots` with the regular input map grammar, plus dynamic keys.
+
+    A dynamic key (`messages[variables.index]`) is read as a path first, and its value is
+    then used as the key or index. Nested dynamic keys are not supported.
+
+    Returns:
+        The value as plain data, or MISSING when a named segment is absent, the dynamic
+        key's own path included, or when a dynamic key is not a key of the mapping it reads.
+
+    Raises:
+        InvalidStatePathError: A segment starts with `_`, dynamic key paths included, a
+            bracket holds something other than a list index or one variable path, or the
+            path reads something other than plain data.
+        LookupError, TypeError: A list index, written or read from a dynamic key, is not in
+            the value it reads.
+    """
+    fragments = split_dynamic_key_path(path)
+    value = walk_state_path(roots, split_state_path_segments(fragments[0]))
+    for key_path, fragment in zip(fragments[1::2], fragments[2::2], strict=True):
+        if value is MISSING:
+            return MISSING
+        key = _read_state_path(roots, key_path)
+        # A key absent from a mapping is a missing name, so a default covers it, as it
+        # covers the first message of a chat that has no entry yet.
+        if key is MISSING or (isinstance(value, dict) and key not in value):
+            return MISSING
+        value = walk_state_path(value[key], split_state_path_segments(fragment))
+    return MISSING if value is MISSING else to_plain_data(value, path)
 
 
 class ClassificationDecisionTableNodeSubgraph:
@@ -126,6 +130,7 @@ class ClassificationDecisionTableNodeSubgraph:
         node_data: ClassificationDecisionTableNodeData,
         graph_builder: StateGraph,
         stop_event: StopEvent,
+        secrets_cryptographer: AbstractCryptographer,
         redis_service=None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         storage_credentials: StorageCredentials | None = None,
@@ -135,6 +140,7 @@ class ClassificationDecisionTableNodeSubgraph:
         self.session_id = session_id
         self.node_name = node_data.node_name
         self.stop_event = stop_event
+        self.secrets_cryptographer = secrets_cryptographer
         self.redis_service = redis_service
         self.custom_session_message_writer = (
             custom_session_message_writer or CustomSessionMessageWriter()
@@ -161,76 +167,58 @@ class ClassificationDecisionTableNodeSubgraph:
             # Audit must never break the primary pipeline.
             logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")
 
-    @staticmethod
-    def _resolve_path(path_expr: str, ctx: dict):
-        """Safely resolve a dot/bracket path expression against a context dict.
+    def _resolve_input_map(
+        self, input_map: dict[str, str] | None, state: State, label: str
+    ) -> dict:
+        """Resolve an input map against state like a regular node's, `path|default` included.
 
-        Supports:
-          - dot access:    "variables.chat_id"
-          - bracket access with dynamic key: "variables.messages[variables.index].text"
-          - direct lookup: "session_id"
+        Unlike a regular node, a path that is not found and has no default fails the table
+        instead of passing None. A path may start at `variables`, `system_variables`,
+        `session_id` or `node_name`, and may hold dynamic keys (see `_read_state_path`).
 
-        No eval() is used.
+        Args:
+            label: Names the map in the error, such as "Pre-computation".
+
+        Raises:
+            ClassificationDecisionTableNodeError: A path cannot be read; the message names
+                the entry and its path, never a value.
         """
-        import re
-
-        # Tokenise into dot-segments and bracket-segments
-        # e.g. "variables.messages[variables.index].text"
-        #   → ["variables", "messages", "[variables.index]", "text"]
-        tokens: list[str] = []
-        for part in re.split(r"\.(?![^\[]*\])", path_expr):
-            # Split bracket sub-expressions within each part
-            sub = re.split(r"(\[[^\]]+\])", part)
-            for s in sub:
-                if s:
-                    tokens.append(s)
-
-        value = None
-        for i, token in enumerate(tokens):
-            if token.startswith("[") and token.endswith("]"):
-                # Bracket access — resolve the inner expression recursively
-                inner = token[1:-1]
-                key = ClassificationDecisionTableNodeSubgraph._resolve_path(inner, ctx)
-                value = value[key]
-            elif i == 0:
-                # First token — look up in context
-                if token in ctx:
-                    value = ctx[token]
-                else:
-                    raise KeyError(f"'{token}' not found in context")
-            else:
-                # Block dunder/underscore tokens: the author-controlled path
-                # could otherwise reach Python internals (e.g. __globals__).
-                if token.startswith("_"):
-                    raise KeyError(f"'{token}' is not an allowed path segment")
-                # Dot access — try getattr, then [] for dict-like objects
-                try:
-                    value = getattr(value, token)
-                except AttributeError:
-                    value = value[token]
-        return value
-
-    def _resolve_input_map(self, input_map: dict[str, str] | None, state: State) -> dict:
-        """Resolve input_map path expressions against state, returning a flat dict of values."""
         if not input_map:
             return {}
 
-        resolve_ctx: dict = {
-            "variables": state["variables"],
-            "system_variables": state.get("system_variables", {}),
-            "session_id": self.session_id,
-            "node_name": self.node_name,
-        }
-
+        roots = DotDict(
+            {
+                "variables": state["variables"],
+                "system_variables": state.get("system_variables", {}),
+                "session_id": self.session_id,
+                "node_name": self.node_name,
+            }
+        )
         resolved: dict = {}
-
-        for local_name, path_expr in input_map.items():
+        for name, mapped_path in input_map.items():
+            entry = f"{label} input map entry '{name}'"
+            path, has_default, default = split_default(mapped_path)
+            # An unfilled editor row arrives as ''. With no segment the walk would return
+            # every root, so the whole state would go to the sandbox or System One provider.
+            if not split_state_path_segments(path):
+                raise ClassificationDecisionTableNodeError(f"{entry} has no variable path.")
             try:
-                resolved[local_name] = self._resolve_path(path_expr, resolve_ctx)
-            except Exception as e:
-                logger.warning(f"Input map resolve failed for '{local_name}' = '{path_expr}': {e}")
-                resolved[local_name] = None
-
+                value = _read_state_path(roots, path)
+            except InvalidStatePathError as error:
+                raise ClassificationDecisionTableNodeError(f"{entry}: {error}") from error
+            except (LookupError, TypeError):
+                raise ClassificationDecisionTableNodeError(
+                    f"{entry}: variable path '{path}' reads a list index that its value "
+                    "does not have."
+                ) from None
+            if value is MISSING:
+                if not has_default:
+                    raise ClassificationDecisionTableNodeError(
+                        f"{entry}: variable path '{path}' was not found and has no default "
+                        f"(write '{path}|null' to allow a missing value)."
+                    )
+                value = default
+            resolved[name] = value
         return resolved
 
     async def _execute_computation(
@@ -245,7 +233,11 @@ class ClassificationDecisionTableNodeSubgraph:
         if python_code is None or not python_code.code.strip():
             return
 
-        inputs = self._resolve_input_map(input_map, state)
+        # Rejected before the sandbox call, which would otherwise run for nothing.
+        if output_variable_path:
+            split_state_path(output_variable_path)
+
+        inputs = self._resolve_input_map(input_map, state, label)
 
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
             python_code_data=python_code,
@@ -260,8 +252,6 @@ class ClassificationDecisionTableNodeSubgraph:
             )
 
         if output_variable_path:
-            from utils.set_output_variables import set_output_variables
-
             output = json.loads(result["result_data"])
             set_output_variables(
                 state=state,
@@ -447,111 +437,105 @@ def main(**kwargs) -> dict:
         variables = json.loads(result["result_data"])
         state["variables"].update(variables)
 
-    async def _run_json_llm(
-        self, prompt: str, llm: LLMData, output_schema: dict | str | None = None
-    ) -> tuple[Any, TokenUsage]:
-        """Call LLM via litellm and parse JSON response."""
-        llm_config = llm.config
-        litellm.drop_params = True
+    def _render_prompt(self, prompt_id: str, prompt_text: str, variables: dict) -> str:
+        """Fill `{var_name}` and data-path placeholders (`{a.b}`, `{a[0]}`) from `variables`.
 
-        response_format = None
-        schema = output_schema
-        if isinstance(schema, str) and schema.strip():
-            try:
-                schema = json.loads(schema)
-            except (ValueError, TypeError):
-                logger.warning(
-                    "Prompt output_schema is not valid JSON; sending request without a response_format."
-                )
-                schema = None
-        messages = [{"role": "user", "content": prompt}]
-        if isinstance(schema, dict) and schema:
-            if llm.provider.lower().strip() in JSON_OBJECT_ONLY_PROVIDERS:
-                response_format = {"type": "json_object"}
-                # json_object mode carries no schema and requires the word "json" in the
-                # prompt; the user-written prompt guarantees neither, so state both here.
-                messages.insert(
-                    0,
-                    {
-                        "role": "system",
-                        "content": (
-                            "Respond with a JSON object that matches this JSON schema: "
-                            f"{json.dumps(schema)}"
-                        ),
-                    },
-                )
-            else:
-                response_format = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "cdt_prompt_output",
-                        "schema": schema,
-                        "strict": True,
-                    },
-                }
+        The prompt is sent as written, nothing filled, when a placeholder names a missing
+        variable, key or index, or when `render_template` leaves the whole template unrendered.
 
-        model = litellm_call_model(llm.provider, llm_config.model, llm_config.deployment_id)
-        logger.debug("Calling litellm model={} (row provider {})", model, llm.provider)
-        params = {
-            "model": model,
-            **llm_config.to_litellm_kwargs(provider=litellm_routed_provider(model)),
-            "response_format": response_format,
-            "base_url": llm_config.base_url,
-            "api_version": llm_config.api_version,
-            "api_key": llm_config.api_key,
-            "extra_headers": llm_config.extra_headers,
-            "stream": False,
-        }
-        resp = await litellm.acompletion(**{**params, "messages": messages})
-
-        custom_cost_per_token = _custom_cost_per_token(llm_config)
+        Raises:
+            ClassificationDecisionTableNodeError: The prompt holds a refused placeholder.
+        """
         try:
-            if custom_cost_per_token is not None:
-                # Not completion_cost: with a custom price it bills Anthropic cache reads
-                # twice, since litellm's prompt_tokens already include them. Cached
-                # prompt tokens are billed at the input price.
-                prompt_cost, completion_cost = litellm.cost_per_token(
-                    model=model,
-                    prompt_tokens=resp.usage.prompt_tokens,
-                    completion_tokens=resp.usage.completion_tokens,
-                    custom_cost_per_token=custom_cost_per_token,
-                )
-                cost = prompt_cost + completion_cost
-            else:
-                cost = litellm.completion_cost(completion_response=resp)
-        except Exception:
-            cost = 0.0  # litellm raises for models without a pricing entry — don't crash CDT
-
-        cached_tokens = 0
-        details = (
-            getattr(resp.usage, "prompt_tokens_details", None) if hasattr(resp, "usage") else None
-        )
-        if details is not None:
-            cached_tokens = getattr(details, "cached_tokens", 0) or 0
-
-        usage = TokenUsage(
-            total_tokens=getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") else 0,
-            prompt_tokens=getattr(resp.usage, "prompt_tokens", 0) if hasattr(resp, "usage") else 0,
-            completion_tokens=getattr(resp.usage, "completion_tokens", 0)
-            if hasattr(resp, "usage")
-            else 0,
-            successful_requests=1,
-            cached_prompt_tokens=cached_tokens,
-            total_cost_usd=cost,
-        )
-
-        content = resp.choices[0].message.content
-        if not isinstance(content, str):
-            return content, usage
-        return extract_first_json_object(content), usage
-
-    def _render_prompt(self, prompt_text: str, variables: dict) -> str:
-        """Render prompt template with variable interpolation using {var_name} syntax."""
-        try:
-            return prompt_text.format(**variables)
-        except (KeyError, IndexError):
-            # If template vars don't match, return as-is
+            rendered = render_template(prompt_text, variables)
+        except RefusedPlaceholderError as error:
+            raise ClassificationDecisionTableNodeError(f"Prompt '{prompt_id}': {error}") from error
+        if rendered.unrendered_reason:
+            logger.warning(
+                "Classification node '{}' prompt sent as written, no placeholder filled: {}",
+                self.node_name,
+                rendered.unrendered_reason,
+            )
+        if rendered.missing:
             return prompt_text
+        return rendered.text
+
+    def _store_prompt_result(
+        self, prompt_config: PromptConfigData, result: Any, state: State
+    ) -> str:
+        """Store a prompt result under its result variable and apply variable_mappings.
+
+        Returns the result variable name.
+        """
+        result_var = prompt_config.result_variable or "prompt_result"
+        state["variables"].update({result_var: result})
+
+        # Apply variable_mappings: extract specific fields from result into state variables
+        if prompt_config.variable_mappings and isinstance(result, dict):
+            for state_var, result_field in prompt_config.variable_mappings.items():
+                if result_field in result:
+                    state["variables"].update({state_var: result[result_field]})
+                    logger.debug("Mapped result.{} -> variables.{}", result_field, state_var)
+        return result_var
+
+    async def _execute_system_one_prompt(
+        self, prompt_id: str, prompt_config: PromptConfigData, state: State
+    ) -> dict:
+        """Run a System One entry and store its answers under the result variable.
+
+        Every failure is raised as ClassificationDecisionTableNodeError with our own
+        wording, so provider and validation text never reaches the session messages.
+        """
+        config = prompt_config.system_one_config
+        if config is None:
+            raise ClassificationDecisionTableNodeError(
+                f"System One entry '{prompt_id}' has no config."
+            )
+
+        try:
+            questions = SYSTEM_ONE_QUESTIONS_ADAPTER.validate_python(prompt_config.questions)
+        except ValidationError:
+            raise ClassificationDecisionTableNodeError(
+                f"System One entry '{prompt_id}' has no valid questions."
+            ) from None
+
+        state_sent = self._resolve_input_map(
+            prompt_config.input_map, state, f"Prompt '{prompt_id}'"
+        )
+        if all(value is None for value in state_sent.values()):
+            raise ClassificationDecisionTableNodeError(
+                f"System One entry '{prompt_id}' has no input values."
+            )
+
+        try:
+            decrypted_config = decrypt_system_one_config(config, self.secrets_cryptographer)
+        except SecretDecryptionError as error:
+            raise ClassificationDecisionTableNodeError(
+                f"System One entry '{prompt_id}': {error}"
+            ) from None
+
+        try:
+            result, usage = await evaluate(decrypted_config, state_sent, questions)
+        except SystemOneError as error:
+            logger.opt(exception=error).error(
+                "System One call failed for prompt '{}' in node '{}'", prompt_id, self.node_name
+            )
+            raise ClassificationDecisionTableNodeError(
+                f"System One call failed for prompt '{prompt_id}': {error}"
+            ) from error
+
+        stored = result.model_dump(mode="json")
+        result_var = self._store_prompt_result(prompt_config, stored, state)
+
+        return {
+            "prompt_text": json.dumps(state_sent, indent=2),
+            "raw_response": json.dumps(stored),
+            "parsed_result": stored,
+            "result_variable": result_var,
+            "usage": usage.model_dump(),
+            "provider": result.provider,
+            "model_version": result.model_version,
+        }
 
     async def _execute_prompt(self, prompt_id: str, state: State) -> dict:
         """Execute an LLM prompt referenced by ID. Stores result in variables.
@@ -561,6 +545,9 @@ def main(**kwargs) -> dict:
             logger.warning(f"Prompt ID '{prompt_id}' not found in prompt library, skipping.")
             return {}
 
+        if prompt_config.kind == SYSTEM_ONE_PROMPT_KIND:
+            return await self._execute_system_one_prompt(prompt_id, prompt_config, state)
+
         llm_data = prompt_config.llm_data
         if llm_data is None:
             raise ClassificationDecisionTableNodeError(
@@ -568,8 +555,9 @@ def main(**kwargs) -> dict:
             )
 
         # Render prompt with current variables
-        variables_dict = state["variables"].model_dump()
-        rendered_prompt = self._render_prompt(prompt_config.prompt_text, variables_dict)
+        # Plain data: the prompt is the flow author's text and must not reach live DotDict objects.
+        variables_dict = state["variables"].deep_dump()
+        rendered_prompt = self._render_prompt(prompt_id, prompt_config.prompt_text, variables_dict)
 
         logger.debug(
             "Executing prompt '{}', result_variable='{}'",
@@ -578,9 +566,16 @@ def main(**kwargs) -> dict:
         )
 
         try:
-            result, usage = await self._run_json_llm(
+            decrypted_llm_data = decrypt_llm_data(llm_data, self.secrets_cryptographer)
+        except SecretDecryptionError as error:
+            raise ClassificationDecisionTableNodeError(
+                f"LLM config of prompt '{prompt_id}': {error}"
+            ) from None
+
+        try:
+            result, usage = await run_json_llm(
                 prompt=rendered_prompt,
-                llm=llm_data,
+                llm=decrypted_llm_data,
                 output_schema=prompt_config.output_schema,
             )
         except Exception as e:
@@ -601,16 +596,7 @@ def main(**kwargs) -> dict:
             type(result).__name__,
         )
 
-        # Store result in state variables under result_variable
-        result_var = prompt_config.result_variable or "prompt_result"
-        state["variables"].update({result_var: result})
-
-        # Apply variable_mappings: extract specific fields from result into state variables
-        if prompt_config.variable_mappings and isinstance(result, dict):
-            for state_var, result_field in prompt_config.variable_mappings.items():
-                if result_field in result:
-                    state["variables"].update({state_var: result[result_field]})
-                    logger.debug("Mapped result.{} -> variables.{}", result_field, state_var)
+        result_var = self._store_prompt_result(prompt_config, result, state)
 
         return {
             "prompt_text": rendered_prompt,
@@ -682,7 +668,7 @@ def main(**kwargs) -> dict:
             # Execute pre-computation
             try:
                 await self._execute_pre_computation(state)
-            except ClassificationDecisionTableNodeError as e:
+            except (ClassificationDecisionTableNodeError, InvalidStatePathError) as e:
                 logger.error(f"Pre-computation error: {e}")
                 state["system_variables"]["nodes"][self.node_name]["result_node"] = (
                     self.node_data.next_error_node or END
@@ -820,6 +806,8 @@ def main(**kwargs) -> dict:
                                 parsed_result=prompt_result.get("parsed_result"),
                                 result_variable=prompt_result.get("result_variable", ""),
                                 usage=prompt_result.get("usage", {}),
+                                provider=prompt_result.get("provider"),
+                                model_version=prompt_result.get("model_version"),
                             )
                             await self._publish_message(msg)
 
@@ -887,7 +875,7 @@ def main(**kwargs) -> dict:
             # Execute post-computation (sandboxed via RunPythonCodeService)
             try:
                 await self._execute_post_computation(state)
-            except ClassificationDecisionTableNodeError as e:
+            except (ClassificationDecisionTableNodeError, InvalidStatePathError) as e:
                 logger.error(f"Post-computation error: {e}")
                 return await route_to_error_node(state, writer, public_details=str(e))
 

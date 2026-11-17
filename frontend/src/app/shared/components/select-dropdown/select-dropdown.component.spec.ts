@@ -4,6 +4,18 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { SelectDropdownComponent } from './select-dropdown.component';
 import { SelectDropdownListItem } from './select-dropdown.model';
 
+beforeEach(() =>
+    vi.stubGlobal(
+        'ResizeObserver',
+        class {
+            observe(): void {}
+            unobserve(): void {}
+            disconnect(): void {}
+        }
+    )
+);
+afterEach(() => vi.unstubAllGlobals());
+
 function open(items: SelectDropdownListItem[]): {
     fixture: ComponentFixture<SelectDropdownComponent>;
     panel: HTMLElement;
@@ -38,6 +50,17 @@ const GROUPED: SelectDropdownListItem[] = [
     { name: 'Tickets', value: 3, group: 'Support' },
     { name: 'Notes', value: 4, group: 'No group' },
 ];
+
+// jsdom has no ResizeObserver; the open panel only needs it to exist. Without this stub the
+// spec passed only when an earlier spec in the same worker left a ResizeObserver behind.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
 
 describe('SelectDropdownComponent list sections', () => {
     it('shows a title above each run of items of the same group', () => {

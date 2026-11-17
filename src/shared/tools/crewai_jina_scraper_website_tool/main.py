@@ -1,5 +1,10 @@
 # Jina Website Reader Tool
+#
+# `api_key` is NOT a function parameter: args_schema.json declares it with
+# "input_type": "user_input", so it is set in the tool configuration and the
+# sandbox injects it as a module-level global -- the agent never sees it.
 import requests
+from epicstaff_common import require_setting, safe_error_message
 
 
 # Copied verbatim from web_fetch_tool/main.py's `_ssrf_guard` (kept in sync
@@ -117,13 +122,12 @@ def _guarded_get(url, headers=None, timeout=15):
     )
 
 
-def main(website_url: str, api_key: str) -> str:
+def main(website_url: str, **kwargs) -> str:
     """
     Read website content using Jina.ai and return markdown content.
 
     Args:
         website_url (str): The URL of the website to read.
-        api_key (str): Your Jina.ai API key.
 
     Returns:
         str: Content from Jina.ai or error message.
@@ -131,6 +135,11 @@ def main(website_url: str, api_key: str) -> str:
     ok, err = _ssrf_guard(website_url)
     if not ok:
         return err
+
+    try:
+        api_key = require_setting(globals(), "api_key")
+    except RuntimeError as error:
+        return f"Error: {safe_error_message(error)}"
 
     headers = {"Authorization": f"Bearer {api_key}"}
     try:

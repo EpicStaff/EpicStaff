@@ -1,4 +1,7 @@
+from functools import partial
+
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed, UnsupportedMediaType
@@ -9,6 +12,12 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from src.shared.models import UserAction
+from user_audit.actor import Actor, actor_from_request
+from user_audit.background import run_off_request
+from user_audit.recorder import record_for_user_orgs
+from user_audit.targets import describe_user
+from utils.logger import logger
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.access.principals import user_api_key_org_id
@@ -19,6 +28,7 @@ from rbac.exceptions import (
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.identity.first_setup import FirstSetupService
 from rbac.identity.first_setup_mode import FirstSetupMode
+from rbac.identity.passwords.failure_description import describe_failure
 from rbac.identity.passwords.recovery import PasswordRecoveryService
 from rbac.identity.refresh_cookie import (
     clear_refresh_cookie,
@@ -54,6 +64,7 @@ from rbac.serializers.auth import (
     TokenIntrospectRequestSerializer,
 )
 from rbac.throttles import (
+    LoginAccountThrottle,
     LoginIpThrottle,
     LoginThrottle,
     PasswordResetConfirmThrottle,
@@ -83,9 +94,40 @@ def _require_json_body(request) -> None:
         raise UnsupportedMediaType(request.content_type)
 
 
+def _user_actor(user) -> Actor:
+    return Actor(user_id=user.pk, email=user.email, api_key_name=None)
+
+
+# The longest valid email address; anything longer is cut so one request
+# cannot write megabytes into the log.
+_LOGGED_ACCOUNT_MAX_LENGTH = 254
+
+
+def _log_failed_login(request, email) -> None:
+    """Record a refused login with the account it named and the caller's address.
+
+    The address is resolved the way the login throttles resolve it, so the log
+    line matches the bucket that counts the attempt. `!r` keeps a submitted
+    value with line breaks on one log line.
+
+    The account is logged as typed, so a password typed into the email field
+    lands in the log. Accepted: naming the targeted account is the point of
+    the line, and the log is operator-only.
+    """
+    account = email[:_LOGGED_ACCOUNT_MAX_LENGTH] if isinstance(email, str) else None
+    # Bound above, so exempt from the logger's 200-character cut, which would
+    # otherwise drop the address after a long account.
+    logger.bind(audit=True).warning(
+        "login_failed account={account!r} address={address!r}",
+        account=account,
+        address=LoginIpThrottle().get_ident(request),
+    )
+
+
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
-    throttle_classes = [LoginThrottle, LoginIpThrottle]
+    throttle_classes = [LoginThrottle, LoginIpThrottle, LoginAccountThrottle]
+    throttle_account_field = "email"
     parser_classes = [JSONParser]
 
     _validator = AuthValidationService()
@@ -96,14 +138,48 @@ class LoginView(TokenObtainPairView):
         # Shape-check both fields and aggregate missing/blank errors
         # before delegating to simplejwt. Wrong-credential errors stay a
         # flat 401 to avoid user-enumeration leaks.
-        self._validator.validate_login(request.data)
-        response = super().post(request, *args, **kwargs)
+        cleaned = self._validator.validate_login(request.data)
+        try:
+            response = super().post(request, *args, **kwargs)
+        except AuthenticationFailed:
+            _log_failed_login(request, request.data.get("email"))
+            self._record_sign_in(cleaned["email"], UserAction.SIGN_IN_FAILED)
+            raise
         if response.status_code == 200:
+            self._record_sign_in(cleaned["email"], UserAction.SIGNED_IN)
             refresh_token = response.data.pop("refresh", None)
             if refresh_token:
                 remember_me = bool(request.data.get("remember_me", False))
                 set_refresh_cookie(response, refresh_token, remember_me=remember_me)
         return response
+
+    @staticmethod
+    def _record_sign_in(login: str, action: str) -> None:
+        # Best-effort, and skipped with the switch off: it must never change the login's
+        # response.
+        if not settings.USER_AUDIT_TRAIL_ENABLED:
+            return
+        if action == UserAction.SIGN_IN_FAILED:
+            # After the 401 is sent: the work below takes time only for an existing account.
+            run_off_request(partial(_record_sign_in_for_account, login, action))
+        else:
+            _record_sign_in_for_account(login, action)
+
+
+def _record_sign_in_for_account(login: str, action: str) -> None:
+    # The login is read only to find the account, the way the serializer's backend does; an
+    # unknown login records nothing, and the password is never read. Never raises, on the
+    # request thread or off it; a failure is logged only by where it was raised, because
+    # its message and locals can hold the login email.
+    try:
+        user_model = get_user_model()
+        user = user_model.objects.filter(**{user_model.USERNAME_FIELD: login}).first()
+        if user is not None:
+            record_for_user_orgs(action=action, actor=_user_actor(user))
+    except Exception as error:
+        logger.error(
+            "Failed to record user action {} for a login {}", action, describe_failure(error)
+        )
 
 
 class LogoutView(APIView):
@@ -129,6 +205,9 @@ class LogoutView(APIView):
             status=status.HTTP_205_RESET_CONTENT,
         )
         clear_refresh_cookie(response)
+        actor = actor_from_request(request)
+        if actor is not None:
+            record_for_user_orgs(action=UserAction.SIGNED_OUT, actor=actor)
         return response
 
 
@@ -258,8 +337,12 @@ class TokenIntrospectView(APIView):
         except (InvalidToken, AuthenticationFailed, TokenError):
             return Response({"active": False}, status=status.HTTP_200_OK)
 
+        # A deactivated organization grants its members nothing, so realtime,
+        # which admits a connection only to a listed org, must not see it.
         org_ids = list(
-            OrganizationUser.objects.filter(user_id=user.pk).values_list("org_id", flat=True)
+            OrganizationUser.objects.filter(user_id=user.pk, org__is_active=True).values_list(
+                "org_id", flat=True
+            )
         )
 
         return Response(
@@ -303,7 +386,8 @@ class ApiKeyValidateView(APIView):
 class SwaggerTokenView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [LoginThrottle, LoginIpThrottle]
+    throttle_classes = [LoginThrottle, LoginIpThrottle, LoginAccountThrottle]
+    throttle_account_field = "username"
 
     @extend_schema(**SWAGGER_TOKEN_POST)
     def post(self, request):
@@ -313,7 +397,13 @@ class SwaggerTokenView(APIView):
                 "password": request.data.get("password"),
             }
         )
-        if not serializer.is_valid():
+        try:
+            is_valid = serializer.is_valid()
+        except AuthenticationFailed:
+            _log_failed_login(request, request.data.get("username"))
+            raise
+        if not is_valid:
+            _log_failed_login(request, request.data.get("username"))
             return Response(
                 {"error": "Invalid credentials"},
                 status=status.HTTP_401_UNAUTHORIZED,
@@ -387,7 +477,12 @@ class PasswordResetConfirmView(APIView):
     )
     def post(self, request):
         cleaned = self._validator.validate_password_reset_confirm(request.data)
-        self._service.confirm_reset(cleaned["token"], cleaned["new_password"])
+        user = self._service.confirm_reset(cleaned["token"], cleaned["new_password"])
+        record_for_user_orgs(
+            action=UserAction.PASSWORD_RESET,
+            actor=_user_actor(user),
+            target_description=describe_user(user),
+        )
         return Response(
             {"detail": "Password has been reset."},
             status=status.HTTP_200_OK,
@@ -424,10 +519,16 @@ class AdminPasswordResetView(APIView):
     )
     def post(self, request):
         cleaned = self._validator.validate_admin_password_reset(request.data)
-        self._service.admin_reset(
+        target = self._service.admin_reset(
             request.user,
             cleaned["user_id"],
             cleaned["new_password"],
+        )
+        record_for_user_orgs(
+            action=UserAction.PASSWORD_RESET,
+            actor=actor_from_request(request),
+            target_description=describe_user(target),
+            org_user_id=target.pk,
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -494,6 +595,7 @@ class ResetUserView(APIView):
             email=cleaned["email"],
             password=cleaned["password"],
             display_name=cleaned["display_name"],
+            actor=request.user,
         )
         tokens = TokenPair.for_user(user)
 

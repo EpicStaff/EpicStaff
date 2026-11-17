@@ -7,9 +7,9 @@ DATABASE_URL = f"postgresql+asyncpg://{settings.DB_USER}:{settings.DB_PASSWORD}@
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,  # Set to True only for debugging
-    # Every service shares Postgres's max_connections (default 100), and the
-    # manager only runs a periodic timeout sweep plus schedule syncs, so 10
-    # connections is ample.
+    # Every service shares crewdb's max_connections (set in crewdb's command in
+    # docker-compose.yaml), and the manager only runs a periodic timeout sweep
+    # plus schedule syncs, so 10 connections is ample.
     pool_size=5,
     max_overflow=5,
     pool_pre_ping=True,

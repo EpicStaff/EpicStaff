@@ -356,7 +356,8 @@ class Message:
     created_at: datetime
     # The operator who wrote it; None for visitor, bot and system messages.
     author_user_id: int | None
-    # The visitor's answer to an offered action; only user messages carry one.
+    # The visitor's answer to an offered action; only user messages carry one. Untrusted: the
+    # service doesn't check it against the offered actions, so the flow must validate it.
     action: dict | None = None
     # Operator messages only: the name visitors saw on it when it was sent (the operator's alias
     # on the desk, else the desk's operator name). Kept as sent: a later rename does not rewrite it.

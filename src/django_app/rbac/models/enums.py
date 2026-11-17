@@ -16,13 +16,15 @@ class ResourceType(models.TextChoices):
     PROJECTS = "projects", "Projects"
     LLM_CONFIGS = "llm_configs", "LLM Configs"
     SECRETS = "secrets", "Secrets"
-    AUDIT = "audit", "Audit"
+    AUDIT = "audit", "Flow Session Audit"
+    USER_AUDIT = "user_audit", "User Actions Audit"
     VOICE = "voice", "Voice"
     SURFACES = "surfaces", "Surfaces"
     WEBHOOKS = "webhooks", "Webhooks"
     KEY_VALUE_TABLES = "key_value_tables", "Key-Value Tables"
     VENVS = "venvs", "Venvs"
     CHATS = "chats", "Conversations"
+    CUSTOM_LIBRARIES = "custom_libraries", "Custom Libraries"
 
 
 class Permission(IntFlag):

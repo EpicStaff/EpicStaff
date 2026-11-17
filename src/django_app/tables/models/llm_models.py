@@ -3,6 +3,7 @@ from django.db import models
 from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 from src.shared.models.ai_providers import REASONING_EFFORT_VALUES
+from src.shared.system_one.constants import LLM_PROVIDER, OPENAI_PROVIDER, TYPESAFE_PROVIDER
 
 from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
 from tables.models.provider import Provider
@@ -161,6 +162,64 @@ class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableMod
 
     def get_default_model(self):
         return DefaultLLMConfig.load()
+
+
+class SystemOneConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
+    """An organization's setup for one System One provider, used by CDT prompt entries of kind system_one.
+
+    The database forbids only the other provider's fields; which fields a provider
+    needs is checked when saving (SystemOneConfigSerializer) and when running (crew),
+    so deleting a linked secret or LLM config clears the link instead of failing.
+    """
+
+    class Provider(models.TextChoices):
+        TYPESAFE = TYPESAFE_PROVIDER, "TypeSafe"
+        OPENAI = OPENAI_PROVIDER, "OpenAI"
+        LLM = LLM_PROVIDER, "LLM"
+
+    custom_name = models.TextField()
+    provider = models.CharField(max_length=32, choices=Provider.choices)
+    model_name = models.CharField(max_length=64, null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="system_one_configs",
+    )
+    llm_config = models.ForeignKey(
+        "LLMConfig",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="system_one_configs",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(OrgScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "custom_name"],
+                name="unique_systemoneconfig_name_per_org",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        provider__in=[TYPESAFE_PROVIDER, OPENAI_PROVIDER],
+                        llm_config__isnull=True,
+                    )
+                    | models.Q(
+                        provider=LLM_PROVIDER,
+                        model_name__isnull=True,
+                        api_key_secret__isnull=True,
+                    )
+                ),
+                name="systemoneconfig_provider_fields",
+            ),
+        ]
+
+    def __str__(self):
+        return self.custom_name
 
 
 # ---------------------------------------------------------------------------

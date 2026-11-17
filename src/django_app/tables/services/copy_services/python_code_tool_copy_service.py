@@ -6,6 +6,7 @@ from tables.models.python_models import PythonCodeTool
 from tables.serializers.utils.description_sanitizer import sanitize_description
 from tables.services.copy_services.base_copy_service import BaseCopyService
 from tables.services.copy_services.helpers import copy_python_code, next_copy_name
+from tables.services.secrets.secret_use_service import SecretActor
 
 
 class PythonCodeToolCopyService(BaseCopyService):
@@ -26,7 +27,10 @@ class PythonCodeToolCopyService(BaseCopyService):
                 base_name=base_name,
                 also_taken=Q(built_in=True),
             )
-            new_code = copy_python_code(tool.python_code)
+            new_code = copy_python_code(
+                tool.python_code,
+                actor=SecretActor.for_user(user, target_org_id),
+            )
 
             new_tool = PythonCodeTool.objects.create(
                 name=new_name,

@@ -1,10 +1,16 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { HttpRequest, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter, Router, Routes } from '@angular/router';
+import { ResourceCode } from '@shared/models';
+import { NEVER } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
+import { VenvDialogComponent } from '../../components/venv-dialog/venv-dialog.component';
+import { CustomLibrary } from '../../models/custom-library.model';
 import { Venv, VenvStatus } from '../../models/venv.model';
 import { VenvsListPageComponent } from './venvs-list-page.component';
 
@@ -92,6 +98,7 @@ describe('VenvsListPageComponent', () => {
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
+                provideRouter([]),
                 { provide: ConfigService, useValue: { apiUrl: API_URL } },
                 { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
                 { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
@@ -101,6 +108,12 @@ describe('VenvsListPageComponent', () => {
         fixture = TestBed.createComponent(VenvsListPageComponent);
         host = fixture.nativeElement as HTMLElement;
         http = TestBed.inject(HttpTestingController);
+        fixture.detectChanges();
+
+        // The custom libraries tab loads its list with the page; these tests are about the venvs.
+        for (const request of http.match((candidate) => candidate.url === `${API_URL}custom-libraries/`)) {
+            request.flush({ count: 0, limit: 1000, offset: 0, next: null, previous: null, result: [] });
+        }
         fixture.detectChanges();
     });
 
@@ -199,5 +212,243 @@ describe('VenvsListPageComponent', () => {
 
         // A poll without the search would answer with every venv and undo the narrowing.
         expect(answerList([venv(1, 'alpha', 'completed')]).params.get('search')).toBe('alp');
+    });
+});
+
+describe('VenvsListPageComponent ?venvId= deep link', () => {
+    const VENVS = [venv(1, 'alpha'), venv(2, 'beta')];
+
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
+    function configure(canEdit: boolean, routes: Routes = []): ReturnType<typeof vi.fn> {
+        const openDialog = vi.fn(() => ({ closed: NEVER }));
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                provideRouter(routes),
+                { provide: ConfigService, useValue: { apiUrl: API_URL } },
+                { provide: PermissionsService, useValue: { can: () => canEdit, canAny: () => canEdit } },
+                { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
+                { provide: Dialog, useValue: { open: openDialog } },
+            ],
+        });
+        return openDialog;
+    }
+
+    function answerList(): void {
+        TestBed.inject(HttpTestingController)
+            .expectOne((request) => request.url === `${API_URL}venvs/`)
+            .flush({ count: 2, limit: 1000, offset: 0, next: null, previous: null, result: VENVS });
+    }
+
+    async function openAt(
+        url: string,
+        canEdit: boolean
+    ): Promise<{ fixture: ComponentFixture<VenvsListPageComponent>; openDialog: ReturnType<typeof vi.fn> }> {
+        const openDialog = configure(canEdit);
+        await TestBed.inject(Router).navigateByUrl(url);
+        const fixture = TestBed.createComponent(VenvsListPageComponent);
+        fixture.detectChanges();
+        answerList();
+        fixture.detectChanges();
+        await fixture.whenStable();
+        return { fixture, openDialog };
+    }
+
+    it('opens the venv as a card click does', async () => {
+        const { openDialog } = await openAt('/?venvId=2', true);
+
+        expect(openDialog).toHaveBeenCalledExactlyOnceWith(
+            VenvDialogComponent,
+            expect.objectContaining({ data: { venv: VENVS[1] } })
+        );
+    });
+
+    it('focuses the card instead, for a viewer who cannot edit venvs', async () => {
+        const { fixture, openDialog } = await openAt('/?venvId=2', false);
+
+        expect(openDialog).not.toHaveBeenCalled();
+        const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('app-venv-card');
+        expect(cards[1].contains(document.activeElement)).toBe(true);
+    });
+
+    it('drops the param from the URL without cancelling a navigation the user starts while the list loads', async () => {
+        let letThrough: (allowed: boolean) => void = () => undefined;
+        // held at its guard until the list has loaded: a sidenav click that is still on its way
+        const openDialog = configure(true, [
+            {
+                path: 'slow',
+                canActivate: [() => new Promise<boolean>((resolve) => (letThrough = resolve))],
+                children: [],
+            },
+        ]);
+        const router = TestBed.inject(Router);
+        await router.navigateByUrl('/?venvId=2');
+        TestBed.createComponent(VenvsListPageComponent).detectChanges();
+        await new Promise((resolve) => setTimeout(resolve));
+        expect(router.url).toBe('/');
+
+        const navigation = router.navigateByUrl('/slow');
+        await new Promise((resolve) => setTimeout(resolve));
+        answerList();
+        letThrough(true);
+
+        expect(await navigation).toBe(true);
+        expect(router.url).toBe('/slow');
+        expect(openDialog).toHaveBeenCalledOnce();
+    });
+
+    it('opens nothing for an unknown venv id', async () => {
+        const { fixture, openDialog } = await openAt('/?venvId=999', true);
+
+        expect(openDialog).not.toHaveBeenCalled();
+        expect((fixture.nativeElement as HTMLElement).contains(document.activeElement)).toBe(false);
+    });
+});
+
+describe('VenvsListPageComponent custom libraries tab', () => {
+    let fixture: ComponentFixture<VenvsListPageComponent>;
+    let host: HTMLElement;
+    let http: HttpTestingController;
+
+    function library(id: number, name: string): CustomLibrary {
+        return {
+            id,
+            name,
+            owner: null,
+            status: 'completed',
+            error: null,
+            created_at: '2026-01-02T03:04:05Z',
+            updated_at: '2026-01-02T03:04:05Z',
+        };
+    }
+
+    function renderedLibraryNames(): string[] {
+        return Array.from(host.querySelectorAll('.custom-library-card__name')).map((node) => node.textContent!.trim());
+    }
+
+    function render(canReadCustomLibraries: boolean, libraries: CustomLibrary[] = []): void {
+        TestBed.configureTestingModule({
+            imports: [VenvsListPageComponent],
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                provideRouter([]),
+                { provide: ConfigService, useValue: { apiUrl: API_URL } },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode) =>
+                            resource === ResourceCode.CustomLibraries ? canReadCustomLibraries : true,
+                        canAny: () => true,
+                    },
+                },
+                { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
+            ],
+        });
+
+        fixture = TestBed.createComponent(VenvsListPageComponent);
+        host = fixture.nativeElement as HTMLElement;
+        http = TestBed.inject(HttpTestingController);
+        fixture.detectChanges();
+
+        const pending = http.match((request) => request.url === `${API_URL}venvs/`);
+        pending[0].flush({ count: 0, limit: 1000, offset: 0, next: null, previous: null, result: [] });
+        fixture.detectChanges();
+
+        // The libraries list is fetched with the page, not with its tab.
+        for (const request of http.match((candidate) => candidate.url === `${API_URL}custom-libraries/`)) {
+            request.flush({
+                count: libraries.length,
+                limit: 1000,
+                offset: 0,
+                next: null,
+                previous: null,
+                result: libraries,
+            });
+        }
+        fixture.detectChanges();
+    }
+
+    function tab(label: string): HTMLElement | undefined {
+        return Array.from(host.querySelectorAll<HTMLElement>('.tabs-left app-tab-button')).find((button) =>
+            button.textContent!.includes(label)
+        );
+    }
+
+    beforeEach(() => {
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        );
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('hides the tab from a caller who may not read custom libraries', () => {
+        render(false);
+
+        expect(tab('Custom Libraries')).toBeUndefined();
+        expect(http.match((request) => request.url === `${API_URL}custom-libraries/`)).toHaveLength(0);
+    });
+
+    it('swaps the list, the create button and the venv toolbar when the tab is opened', () => {
+        render(true);
+        expect(host.querySelector('.filter-trigger')).not.toBeNull();
+
+        tab('Custom Libraries')!.querySelector('button')!.click();
+        fixture.detectChanges();
+
+        // Nothing is fetched on the way in: the list was loaded with the page.
+        expect(http.match((request) => request.url === `${API_URL}custom-libraries/`)).toHaveLength(0);
+        expect(host.querySelector('.custom-libraries__empty')).not.toBeNull();
+        // The libraries tab has a search and an order of its own; the venv filter is not part of it.
+        expect(host.querySelector('.filter-trigger')).toBeNull();
+        expect(host.querySelector('.search')).not.toBeNull();
+        expect(host.querySelector('.header-actions')!.textContent).toContain('Create custom library');
+    });
+
+    it('narrows and orders the libraries without asking the backend again', () => {
+        render(true, [library(1, 'zeta-utils'), library(2, 'alpha-utils'), library(3, 'beta-utils')]);
+        tab('Custom Libraries')!.querySelector('button')!.click();
+        fixture.detectChanges();
+
+        const search = host.querySelector<HTMLInputElement>('.search__input')!;
+        search.value = 'alpha';
+        search.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(renderedLibraryNames()).toEqual(['alpha-utils']);
+        expect(http.match(() => true)).toHaveLength(0);
+
+        search.value = '';
+        search.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        host.querySelector<HTMLElement>('.tabs-right .menu-trigger')!.click();
+        fixture.detectChanges();
+        Array.from(document.querySelectorAll<HTMLElement>('.sort-menu .menu-item'))
+            .find((item) => item.textContent!.includes('A to Z'))!
+            .click();
+        fixture.detectChanges();
+
+        expect(renderedLibraryNames()).toEqual(['alpha-utils', 'beta-utils', 'zeta-utils']);
+        expect(http.match(() => true)).toHaveLength(0);
     });
 });

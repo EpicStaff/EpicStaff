@@ -1,4 +1,5 @@
 @use '../../../../../styles/editor-header' as editor-header;
+@use '../../../../../styles/diff-value-mark' as diff-value-mark;
 
 :host ::ng-deep .monaco-editor {
     --vscode-focusBorder: transparent !important;
@@ -22,6 +23,10 @@
         flex: none;
     }
 }
+
+// The version diff's mark on a changed code (flow editor node panel, Changes tab only): a yellow frame over the
+// card's edge. The card clips, so the mark around it draws the badge and the focus ring.
+@include diff-value-mark.marked-frame('.editor-container');
 
 // Default and compact (`compactHeader`) headers share the JSON editor's header base.
 .editor-header {

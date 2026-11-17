@@ -1,11 +1,15 @@
 from django.db import transaction
+from django.forms.models import model_to_dict
 from loguru import logger
 from rbac.authorship import record_last_edits, resolve_author
+from src.shared.models import UserAction
+from src.shared.system_one.constants import OPENAI_DECISIONS_MODELS, OPENAI_PROVIDER
 from tables.models.default_models import DefaultModels
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
 from tables.models.llm_models import (
     LLMConfig,
     LLMModel,
+    SystemOneConfig,
 )
 from tables.models.provider import Provider
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
@@ -16,6 +20,8 @@ from tables.models.tag_models import (
 )
 from tables.models.user import User
 from tables.services.secrets import secret_service
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 from utils.singleton_meta import SingletonMeta
 
 QUICKSTART_UNEXPECTED_ERROR_MESSAGE = "Quickstart failed. Please try again or contact support."
@@ -36,10 +42,17 @@ class QuickstartCustomModelError(QuickstartError):
 class QuickstartService(metaclass=SingletonMeta):
     QUICKSTART_TAG = "quickstart:latest"
 
+    # `llm_config` holds LLMConfig field values that replace the model defaults for
+    # that provider's quickstart config. A provider without it keeps the defaults.
     PROVIDER_CONFIGS = {
         "openai": {
-            "llm_model": "gpt-4o-mini",
+            "llm_model": "gpt-6-luna",
             "embedding_model": "text-embedding-3-small",
+            # gpt-6-luna is a reasoning model: its reasoning tokens count against
+            # max_tokens, so the default 4096 can end a long agent step with
+            # finish_reason=length and little visible text. Low effort and a budget
+            # below the model's 128000 output limit leave room for the answer.
+            "llm_config": {"reasoning_effort": "low", "max_tokens": 100000},
         },
         "gemini": {
             "llm_model": "gemini-1.5-pro",
@@ -71,6 +84,9 @@ class QuickstartService(metaclass=SingletonMeta):
         Exactly one of `api_key` (cold start — a Secret is created and named after
         the bundle) or `secret` (reuse — nothing is created) is expected; the
         serializer enforces that. A `user` that is not a real user leaves the rows unauthored.
+
+        Records a `created` user action for every row the run created, in the request's
+        context; a reused Secret is not one of them. Outside a request nothing is recorded.
 
         A failure returns `{"success": False, "error": <message>, "unexpected": <bool>}`.
         A `QuickstartError` carries its own user-facing message (`unexpected` is False);
@@ -112,9 +128,15 @@ class QuickstartService(metaclass=SingletonMeta):
                 )
 
                 realtime_configs = []
+                system_one_configs = []
                 if provider == "openai":
                     realtime_configs.append(
                         self._create_openai_realtime_config(
+                            bundle_secret, config_name, org_id=org_id, author=author
+                        )
+                    )
+                    system_one_configs.append(
+                        self._create_openai_system_one_config(
                             bundle_secret, config_name, org_id=org_id, author=author
                         )
                     )
@@ -130,7 +152,18 @@ class QuickstartService(metaclass=SingletonMeta):
                     embedding_config=embedding_config,
                     org_id=org_id,
                 )
-                record_last_edits([llm_config, embedding_config, *realtime_configs], user)
+                record_last_edits(
+                    [llm_config, embedding_config, *realtime_configs, *system_one_configs], user
+                )
+                created_secrets = [] if secret else [bundle_secret]
+                for created in [
+                    *created_secrets,
+                    llm_config,
+                    embedding_config,
+                    *realtime_configs,
+                    *system_one_configs,
+                ]:
+                    record_user_action(action=UserAction.CREATED, org_id=org_id, target=created)
 
             logger.success(f"Quickstart configuration: {config_name} created successfully!")
             return {
@@ -207,11 +240,15 @@ class QuickstartService(metaclass=SingletonMeta):
         """
         Applies the given quickstart config to the organization's DefaultModels row.
         Sets all relevant FKs based on what configs exist for that config_name.
+
+        Records an `updated` user action on the row when this changed it; an apply that
+        changed nothing records nothing, not even the request's fallback record.
         """
         llm = LLMConfig.objects.filter(custom_name=config_name, org_id=org_id).first()
         embedding = EmbeddingConfig.objects.filter(custom_name=config_name, org_id=org_id).first()
 
         dm = DefaultModels.load_for_org(org_id)
+        defaults_before = model_to_dict(dm)
         if llm:
             dm.agent_llm_config = llm
             dm.agent_fcm_llm_config = llm
@@ -219,7 +256,12 @@ class QuickstartService(metaclass=SingletonMeta):
             dm.memory_llm_config = llm
         if embedding:
             dm.memory_embedding_config = embedding
+        changed = model_to_dict(dm) != defaults_before
         dm.save()
+        if changed:
+            record_user_action(action=UserAction.UPDATED, org_id=org_id, target=dm)
+        else:
+            mark_request_handled()
         return dm
 
     def is_synced(self, last_config: dict, *, org_id: int) -> bool:
@@ -250,12 +292,14 @@ class QuickstartService(metaclass=SingletonMeta):
         author: User | None,
     ) -> LLMConfig:
         llm_model = self._get_or_create_llm_model(provider=provider, org_id=org_id, author=author)
+        provider_overrides = self.PROVIDER_CONFIGS[provider.name].get("llm_config", {})
         return LLMConfig.objects.create(
             model=llm_model,
             custom_name=config_name,
             org_id=org_id,
             api_key_secret=secret,
             created_by=author,
+            **provider_overrides,
         )
 
     def _create_embedder_config(
@@ -285,6 +329,18 @@ class QuickstartService(metaclass=SingletonMeta):
             custom_name=config_name,
             api_key_secret=secret,
             transcription_api_key_secret=secret,
+            org_id=org_id,
+            created_by=author,
+        )
+
+    def _create_openai_system_one_config(
+        self, secret: Secret, config_name: str, org_id: int, author: User | None
+    ) -> SystemOneConfig:
+        return SystemOneConfig.objects.create(
+            custom_name=config_name,
+            provider=OPENAI_PROVIDER,
+            model_name=OPENAI_DECISIONS_MODELS[0],
+            api_key_secret=secret,
             org_id=org_id,
             created_by=author,
         )
@@ -376,6 +432,7 @@ class QuickstartService(metaclass=SingletonMeta):
             is_custom=True,
             created_by=author,
         )
+        record_user_action(action=UserAction.CREATED, org_id=org_id, target=model)
         logger.info(
             "Created custom {} {} for provider {} in org {}",
             model_class.__name__,
@@ -432,6 +489,7 @@ class QuickstartService(metaclass=SingletonMeta):
         config_models = [
             LLMConfig,
             EmbeddingConfig,
+            SystemOneConfig,
         ]
 
         for model in config_models:

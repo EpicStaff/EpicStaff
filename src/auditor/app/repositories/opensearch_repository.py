@@ -130,5 +130,26 @@ class OpenSearchAuditRepository(AuditRepository[T]):
 
         return events, next_cursor
 
+    async def distinct_values(self, query: dict[str, Any], field: str, limit: int) -> list[str]:
+        body: dict[str, Any] = {
+            "query": query,
+            "size": 0,
+            "track_total_hits": False,
+            "aggs": {
+                "values": {
+                    "terms": {
+                        "field": field,
+                        "size": limit,
+                        # Key order is exact across shards (doc-count order is not) and
+                        # makes which values survive the `limit` cut deterministic.
+                        "order": {"_key": "asc"},
+                        "exclude": [""],
+                    }
+                }
+            },
+        }
+        response = await self._client.search(index=self._index.read_pattern, body=body)
+        return [bucket["key"] for bucket in response["aggregations"]["values"]["buckets"]]
+
     async def close(self) -> None:
         await self._client.close()

@@ -69,7 +69,6 @@
                     [value]="apiKey"
                     infoType="warning"
                     info="This is the only time the key is shown. Store it securely — you won't be able to see it again."
-                    (onCopied)="copiedToClipboard.set(true)"
                 />
             </div>
         }
@@ -92,7 +91,6 @@
         } @else {
             <app-button
                 type="primary"
-                [disabled]="!copiedToClipboard()"
                 (click)="onClose()"
                 >Done
             </app-button>

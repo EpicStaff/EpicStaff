@@ -51,14 +51,34 @@ x-communication-env: &communication-env
   REALTIME_CHANNELS_INVALIDATE_CHANNEL: ${REALTIME_CHANNELS_INVALIDATE_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
-# Bounded container logs (50 MB at most), for services a plugin can make log at will: a plugin's
-# flood of requests writes a line per request to plugins_egress's log, and its failing queries
-# to plugins_db's.
+x-secrets-encryption-env: &secrets-encryption-env
+  SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:?}
+  SECRETS_ENCRYPTION_PREVIOUS_KEYS: ${SECRETS_ENCRYPTION_PREVIOUS_KEYS:?}
+
+x-secrets-transport-env: &secrets-transport-env
+  SECRETS_TRANSPORT_KEY: ${SECRETS_TRANSPORT_KEY:?}
+  SECRETS_TRANSPORT_PREVIOUS_KEYS: ${SECRETS_TRANSPORT_PREVIOUS_KEYS:?}
+  SECRETS_TRANSPORT_HKDF_INFO: ${SECRETS_TRANSPORT_HKDF_INFO:?}
+
+# Bounded container logs (50 MB per container at most), set on every service: Docker's default
+# json-file log never rotates, so anything that makes a service log at will fills the host disk.
+# epicstaff-nginx writes a line per public request; a plugin's flood of requests does the same
+# to plugins_egress's log, and its failing queries to plugins_db's.
 x-bounded-logs: &bounded-logs
   driver: json-file
   options:
     max-size: "10m"
     max-file: "5"
+
+# Our own service images run as uid 1000 and need no capability, so they get none, and
+# no-new-privileges keeps a setuid binary from giving one back. The root filesystem is
+# read-only: each service mounts its own /tmp, and its volumes are its only other writable paths.
+x-hardened: &hardened
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
 
 #x-communication-env: &communication_env
 #  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
@@ -74,23 +94,54 @@ x-bounded-logs: &bounded-logs
 #  COMMUNICATION_STORAGE_NAME: ${COMMUNICATION_STORAGE_NAME}
 
 services:
+  # The service images run as uid 1000. Volumes that earlier root images created stay
+  # root-owned (Docker copies image ownership only into a new, empty volume), so this
+  # one-shot hands them to uid 1000 before their services start. It changes only entries
+  # that are wrong, so later runs do nearly nothing. -h changes a symlink itself, never
+  # what it points at. DAC_READ_SEARCH lets it into 0700 directories owned by uid 1000.
+  # The volumes may be in use (an up against a running stack): -ignore_readdir_race keeps a
+  # file deleted mid-walk from failing the run and blocking the dependents.
+  volume-permissions:
+    logging: *bounded-logs
+    restart: "no"
+    image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
+    container_name: ${INSTANCE_PREFIX?}volume-permissions
+    user: "0"
+    read_only: true
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+    volumes:
+      - media_data:/volumes/media_data
+      - plugin_spa:/volumes/plugin_spa
+      - auditor_data:/volumes/auditor_data
+    command: [find, /volumes/media_data, /volumes/plugin_spa, /volumes/auditor_data,
+              -ignore_readdir_race, "(", "!", -uid, "1000", -o, "!", -gid, "1000", ")", -exec, chown, -h, "1000:1000", "{}", "+"]
+
   django_app:
+    <<: *hardened
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
     build:
       context: .
       dockerfile: ./django_app/Dockerfile.dj
-    container_name: django_app
+    container_name: ${INSTANCE_PREFIX?}django_app
     # The graph message stream consumer is named after the hostname; a fixed one lets a
     # recreated container resume the entries its predecessor left unacknowledged at once.
     hostname: django_app
     command: ./entrypoint.sh
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *retention-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *retention-env, *secrets-encryption-env, *secrets-transport-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
-      DB_USER: ${DB_USER:?}
-      DB_PASSWORD: ${DB_PASSWORD:?}
+      DJANGO_DB_USER: ${DJANGO_DB_USER:?}
+      DJANGO_DB_PASSWORD: ${DJANGO_DB_PASSWORD:?}
       # Role names only: apply_service_grants grants these roles, which crewdb creates,
       # their table privileges after migrate.
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
@@ -100,6 +151,8 @@ services:
       DJANGO_SGI_THREADS: ${DJANGO_SGI_THREADS:?}
       DJANGO_SGI_MAX_REQUESTS: ${DJANGO_SGI_MAX_REQUESTS:?}
       DJANGO_SGI_MAX_REQUESTS_JITTER: ${DJANGO_SGI_MAX_REQUESTS_JITTER:?}
+      DJANGO_SGI_MAX_CONCURRENT_REQUESTS: ${DJANGO_SGI_MAX_CONCURRENT_REQUESTS:?}
+      DJANGO_SGI_ADMISSION_TIMEOUT: ${DJANGO_SGI_ADMISSION_TIMEOUT:?}
       DJANGO_DB_POOL_MIN_SIZE: ${DJANGO_DB_POOL_MIN_SIZE:?}
       DJANGO_DB_POOL_MAX_SIZE: ${DJANGO_DB_POOL_MAX_SIZE:?}
       DJANGO_DB_POOL_TIMEOUT: ${DJANGO_DB_POOL_TIMEOUT:?}
@@ -128,8 +181,10 @@ services:
       DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE:?}
       DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE:?}
       DJANGO_NOTIFY_EMAIL_THROTTLE_RATE: ${DJANGO_NOTIFY_EMAIL_THROTTLE_RATE:?}
+      DJANGO_TRANSFER_JOB_CREATE_THROTTLE_RATE: ${DJANGO_TRANSFER_JOB_CREATE_THROTTLE_RATE:?}
       DJANGO_LOGIN_THROTTLE_RATE: ${DJANGO_LOGIN_THROTTLE_RATE:?}
       DJANGO_LOGIN_IP_THROTTLE_RATE: ${DJANGO_LOGIN_IP_THROTTLE_RATE:?}
+      DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE: ${DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE:?}
       DJANGO_TOKEN_REFRESH_THROTTLE_RATE: ${DJANGO_TOKEN_REFRESH_THROTTLE_RATE:?}
       DJANGO_NUM_PROXIES: ${DJANGO_NUM_PROXIES:?}
       DJANGO_FIRST_SETUP_MODE: ${DJANGO_FIRST_SETUP_MODE:?}
@@ -146,6 +201,11 @@ services:
       DJANGO_ORG_STORAGE_QUOTA: ${DJANGO_ORG_STORAGE_QUOTA:?}
       DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE: ${DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE:?}
       DJANGO_MAX_ARCHIVE_FILE_SIZE: ${DJANGO_MAX_ARCHIVE_FILE_SIZE:?}
+      DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE: ${DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE:?}
+      DJANGO_MAX_KNOWLEDGE_ARCHIVE_ENTRIES: ${DJANGO_MAX_KNOWLEDGE_ARCHIVE_ENTRIES:?}
+      DJANGO_MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE: ${DJANGO_MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE:?}
+      DJANGO_MAX_EXPORT_ENVELOPE_SIZE: ${DJANGO_MAX_EXPORT_ENVELOPE_SIZE:?}
+      DJANGO_TRANSFER_ARCHIVE_TTL: ${DJANGO_TRANSFER_ARCHIVE_TTL:?}
       DJANGO_UPLOAD_PART_SIZE: ${DJANGO_UPLOAD_PART_SIZE:?}
       DJANGO_UPLOAD_MAX_CONCURRENCY: ${DJANGO_UPLOAD_MAX_CONCURRENCY:?}
       DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG: ${DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG:?}
@@ -157,6 +217,7 @@ services:
       MALLOC_ARENA_MAX: ${DJANGO_MALLOC_ARENA_MAX:?}
       DJANGO_MALLOC_TRIM_INTERVAL: ${DJANGO_MALLOC_TRIM_INTERVAL:?}
       DJANGO_GRAPH_MESSAGE_BATCH_SIZE: ${DJANGO_GRAPH_MESSAGE_BATCH_SIZE:?}
+      LITELLM_MODEL_COST_REFRESH_ENABLED: ${LITELLM_MODEL_COST_REFRESH_ENABLED:?}
 
       SANDBOX_MAX_EXECUTION_TIMEOUT: ${SANDBOX_MAX_EXECUTION_TIMEOUT:?}
       SANDBOX_DEFAULT_EXECUTION_TIMEOUT: ${SANDBOX_DEFAULT_EXECUTION_TIMEOUT:?}
@@ -170,7 +231,7 @@ services:
       SANDBOX_PORT: ${SANDBOX_PORT:?}
       SANDBOX_CLIENT_TIMEOUT: ${SANDBOX_CLIENT_TIMEOUT:?}
 
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       AUDITOR_URL: ${AUDITOR_URL:?}
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       AUDIT_TOKEN_TTL_SECONDS: ${AUDIT_TOKEN_TTL_SECONDS:?}
@@ -200,7 +261,10 @@ services:
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
       PLUGINS_DEV_API_PORT: ${PLUGINS_DEV_API_PORT:?}
     volumes:
-      - media_data:/app/media
+      - media_data:/app/src/django_app/media
+      # On disk, not tmpfs: request bodies over FILE_UPLOAD_MAX_MEMORY_SIZE spool here, up to
+      # one plugin package (PLUGINS_MAX_PACKAGE_MB) twice per upload.
+      - django_app_tmp:/tmp
       # Approved plugins' SPA files, published here and served by epicstaff-nginx (read-only).
       - plugin_spa:/srv/plugin-spa
     networks:
@@ -209,6 +273,8 @@ services:
           - djangoapp
           - django
     depends_on:
+      volume-permissions:
+        condition: service_completed_successfully
       crewdb:
         condition: service_healthy
       redis:
@@ -224,14 +290,18 @@ services:
       retries: 100
 
   realtime:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/realtime:${IMAGE_TAG:?}
-    container_name: realtime
+    container_name: ${INSTANCE_PREFIX?}realtime
     build:
       context: .
       dockerfile: ./realtime/Dockerfile.realtime
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *secrets-transport-env]
       REALTIME_HOST: ${REALTIME_HOST:?}
       REALTIME_PORT: ${REALTIME_PORT:?}
       REALTIME_SGI_WORKERS: ${REALTIME_SGI_WORKERS:?}
@@ -268,12 +338,16 @@ services:
         condition: service_started
 
   manager:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/manager:${IMAGE_TAG:?}
     build:
       context: .
       dockerfile: ./manager/Dockerfile.man
-    container_name: manager_container
+    container_name: ${INSTANCE_PREFIX?}manager_container
     environment:
       <<: [*docker-env, *database-env, *redis-env, *communication-env, *retention-env]
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
@@ -293,6 +367,8 @@ services:
     tty: true
     stdin_open: true
     depends_on:
+      volume-permissions:
+        condition: service_completed_successfully
       crewdb:
         condition: service_healthy
       redis:
@@ -307,13 +383,19 @@ services:
         condition: service_healthy
 
   crewdb:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/crewdb:${IMAGE_TAG:?}
     build:
       context: ./crewdb
       dockerfile: Dockerfile.crewdb
-    container_name: crewdb
-    command: ["postgres", "-c", "port=${DB_PORT:?}"]
+    container_name: ${INSTANCE_PREFIX?}crewdb
+    # max_connections: Postgres's default of 100 is too few for django_app, which holds up to
+    # DJANGO_SGI_WORKERS x DJANGO_DB_POOL_MAX_SIZE + 8 next to the ~50 of the other services:
+    # 6 x 15 + 8 + 50 = 148 with the production defaults, of the 197 left after Postgres's 3
+    # superuser slots (see DJANGO_DB_POOL_MAX_SIZE in env.yaml). scripts/test_envtool.py reads
+    # this value.
+    command: ["postgres", "-c", "port=${DB_PORT:?}", "-c", "max_connections=200"]
     environment:
       POSTGRES_USER: ${DB_USER:?}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?}
@@ -321,6 +403,8 @@ services:
       POSTGRES_HOST: ${DB_HOST:?}
       POSTGRES_PORT: ${DB_PORT:?}
       PGDATA: ${PGDATA:?}
+      DJANGO_DB_USER: ${DJANGO_DB_USER:?}
+      DJANGO_DB_PASSWORD: ${DJANGO_DB_PASSWORD:?}
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
       MANAGER_DB_PASSWORD: ${MANAGER_DB_PASSWORD:?}
       KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
@@ -348,8 +432,9 @@ services:
       start_period: 15s
 
   redis:
-    image: redis
-    container_name: redis
+    image: redis:8.10.3@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
+    container_name: ${INSTANCE_PREFIX?}redis
+    logging: *bounded-logs
     restart: unless-stopped
     networks:
       - backend-network
@@ -382,14 +467,18 @@ services:
       start_period: 5s
 
   crew:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/crew:${IMAGE_TAG:?}
     build:
       context: .
       dockerfile: ./crew/Dockerfile.crew
-    container_name: crew
+    container_name: ${INSTANCE_PREFIX?}crew
     environment:
-      <<: [*docker-env, *redis-env, *communication-env]
+      <<: [*docker-env, *redis-env, *communication-env, *secrets-transport-env]
       CREW_LOG_LEVEL: ${CREW_LOG_LEVEL:?}
       CREW_MAX_CONCURRENT_SESSIONS: ${CREW_MAX_CONCURRENT_SESSIONS:?}
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT:?}
@@ -401,7 +490,7 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_TIMEOUT: ${AGENT_RESULT_TIMEOUT:?}
       CREW_TOKEN_BUDGET: ${CREW_TOKEN_BUDGET:?}
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
       AUDITOR_URL: ${AUDITOR_URL:?}
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       CREW_KEY_VALUE_TIMEOUT: ${CREW_KEY_VALUE_TIMEOUT:?}
@@ -490,8 +579,8 @@ services:
   #       condition: service_started
 
   storage:
-    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
-    container_name: storage
+    image: rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
+    container_name: ${INSTANCE_PREFIX?}storage
     environment:
       RUSTFS_ACCESS_KEY: ${STORAGE_USER:?}
       RUSTFS_SECRET_KEY: ${STORAGE_PASSWORD:?}
@@ -508,11 +597,12 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging: *bounded-logs
     restart: unless-stopped
 
   storage-init:
-    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
-    container_name: storage-init
+    image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
+    container_name: ${INSTANCE_PREFIX?}storage-init
     networks:
       - backend-network
     depends_on:
@@ -541,36 +631,43 @@ services:
       'http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}?policy') &&
       case $$status in 2??) echo 'Avatars are readable without credentials.' ;; *) echo \"Bucket policy failed: HTTP $$status\" && exit 1 ;; esac
       "
+    logging: *bounded-logs
     restart: on-failure
 
   frontend:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/frontend:${IMAGE_TAG:?}
     build:
       context: ../frontend
       dockerfile: Dockerfile.fe
       target: production
-    container_name: epicstaff-frontend
+    container_name: ${INSTANCE_PREFIX?}epicstaff-frontend
     environment:
       API_URL: ${API_URL:?}
       REALTIME_API_URL: ${REALTIME_API_URL:?}
       AUDITOR_API_URL: ${AUDITOR_API_URL:?}
       CHAT_ENABLED: ${CHAT_ENABLED:?}
       CHAT_API_URL: ${CHAT_API_URL:?}
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
     networks:
       - frontend-network
 
   webhook:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?}
-    container_name: webhook
+    container_name: ${INSTANCE_PREFIX?}webhook
     build:
       context: .
       dockerfile: ./webhook/Dockerfile
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *secrets-transport-env]
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
 
@@ -599,10 +696,14 @@ services:
 
   epicstaff-nginx:
     image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
-    container_name: epicstaff-nginx
+    container_name: ${INSTANCE_PREFIX?}epicstaff-nginx
+    # Long syntax: `docker compose config --no-interpolate` (src/nginx/tests/check_templates.sh)
+    # still shows each container port, which it cannot read out of "${VAR}:80".
     ports:
-      - "80:80"
-      - "443:443"
+      - target: 80
+        published: ${NGINX_HTTP_PORT:?}
+      - target: 443
+        published: ${NGINX_HTTPS_PORT:?}
     environment:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?}
       NGINX_SSL_MODE: ${NGINX_SSL_MODE:?}
@@ -611,6 +712,8 @@ services:
       NGINX_TRUSTED_PROXIES: ${NGINX_TRUSTED_PROXIES:?}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
+      # django_app's server count: one upstream server per server's own port, DJANGO_PORT + 1 up.
+      DJANGO_SGI_WORKERS: ${DJANGO_SGI_WORKERS:?}
       FRONTEND_HOST: ${FRONTEND_HOST:?}
       FRONTEND_PORT: ${FRONTEND_PORT:?}
       REALTIME_HOST: ${REALTIME_HOST:?}
@@ -642,6 +745,8 @@ services:
       # .localhost names and docker-compose.plugins-dev.yaml is in the command: that file publishes
       # 80 and 443 on 127.0.0.1 only, publishes 8082, and alone sets PLUGINS_DEV_LOOPBACK_ONLY.
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
+      # The body cap of the import-job upload routes, as Django applies it.
+      DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE: ${DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
       # Entrypoint hooks use the long syntax so a missing file stops `up` with an
@@ -675,6 +780,18 @@ services:
       - type: bind
         source: ./nginx/docker-entrypoint.d/18-check-trusted-proxies.envsh
         target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/19-derive-knowledge-archive-size.envsh
+        target: /docker-entrypoint.d/19-derive-knowledge-archive-size.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/19-render-django-upstream.envsh
+        target: /docker-entrypoint.d/19-render-django-upstream.envsh
         read_only: true
         bind:
           create_host_path: false
@@ -714,6 +831,7 @@ services:
       # catches a crash-looping nginx (restarting), not one that runs but stops answering.
       retries: 3
       start_period: 10s
+    logging: *bounded-logs
     restart: always
 
 
@@ -723,26 +841,28 @@ services:
   # See settings/email.py's EMAIL_HOST comment for the full rationale — do
   # not remove this gate or give DJANGO_EMAIL_HOST a live prod default.
   mailpit:
-    container_name: mailpit
-    image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
+    container_name: ${INSTANCE_PREFIX?}mailpit
+    image: axllent/mailpit:v1.33.1@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
     profiles: ["dev"]
     ports:
       - "1025:1025"   # SMTP
       - "8025:8025"   # web UI: http://localhost:8025/
     networks:
       - backend-network
+    logging: *bounded-logs
 
   agent:
     image: ghcr.io/epicstaff/agent:${IMAGE_TAG:?}
-    container_name: agent
+    container_name: ${INSTANCE_PREFIX?}agent
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
+    logging: *bounded-logs
     restart: unless-stopped
     # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
     stop_grace_period: 5m
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *secrets-transport-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:?}
@@ -773,16 +893,18 @@ services:
       - backend-network
 
   # Audit trail stack (opensearch, auditor). Gated behind profiles: ["auditor"]: they start only when
-  # COMPOSE_PROFILES includes "auditor"; AUDIT_TRAIL_ENABLED=true then makes them do work.
+  # COMPOSE_PROFILES includes "auditor"; either audit switch set to true then makes them do work.
   # Nothing outside the profile may depend_on them, or a stack without the audit trail would not start.
   opensearch:
+    logging: *bounded-logs
     restart: unless-stopped
-    image: opensearchproject/opensearch:2.19.1
-    container_name: opensearch
+    image: opensearchproject/opensearch:2.19.1@sha256:72fe2fc84be8295906b8efca020b46c58ed45c8da60cd9b8b49e1991e38e89a4
+    container_name: ${INSTANCE_PREFIX?}opensearch
     profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
     environment:
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       discovery.type: single-node
       bootstrap.memory_lock: "true"
       OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:?}
@@ -809,9 +931,10 @@ services:
       start_period: 30s
 
   auditor:
+    logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:?}
-    container_name: auditor
+    container_name: ${INSTANCE_PREFIX?}auditor
     profiles: ["auditor"]
     build:
       context: .
@@ -820,7 +943,8 @@ services:
     environment:
       <<: [*docker-env, *redis-env]
       AUDITOR_DEBUG: ${AUDITOR_DEBUG:?}
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       AUDITOR_PORT: ${AUDITOR_PORT:?}
       AUDITOR_LOG_LEVEL: ${AUDITOR_LOG_LEVEL:?}
       AUDIT_STORAGE_BACKEND: ${AUDIT_STORAGE_BACKEND:?}
@@ -841,6 +965,8 @@ services:
     volumes:
       - auditor_data:/app/export_data
     depends_on:
+      volume-permissions:
+        condition: service_completed_successfully
       opensearch:
         condition: service_started
       redis:
@@ -853,12 +979,18 @@ services:
       start_period: 5s
 
   knowledge_new:
+    <<: *hardened
+    logging: *bounded-logs
     restart: unless-stopped
-    container_name: knowledge_new
+    container_name: ${INSTANCE_PREFIX?}knowledge_new
     image: ghcr.io/epicstaff/knowledge_new:${IMAGE_TAG:?}
     build:
       context: .
       dockerfile: ./knowledge_new/Dockerfile
+    volumes:
+      # On disk, not tmpfs: a GraphRAG index import spools its whole archive here (up to
+      # DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE) and unpacks its document tables to rewrite them.
+      - knowledge_new_tmp:/tmp
     networks:
       - backend-network
     depends_on:
@@ -869,7 +1001,7 @@ services:
       storage:
         condition: service_healthy
     environment:
-      <<: [*docker-env, *database-env, *storage-env, *communication-env]
+      <<: [*docker-env, *database-env, *storage-env, *communication-env, *secrets-transport-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       KNOWLEDGE_DEBUG: ${KNOWLEDGE_DEBUG:?}
@@ -886,11 +1018,14 @@ services:
   # COMPOSE_PROFILES includes "chat"; CHAT_ENABLED=true then exposes the feature in nginx and the UI.
   # Nothing outside the profile may depend_on them, or a stack without chat would not start.
   chat:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     image: ghcr.io/epicstaff/chat:${IMAGE_TAG:?}
     build:
       context: .
       dockerfile: ./chat/Dockerfile
-    container_name: chat
+    container_name: ${INSTANCE_PREFIX?}chat
     hostname: chat
     profiles: ["chat"]
     environment:
@@ -909,6 +1044,7 @@ services:
       DJANGO_API_KEY: ${DJANGO_API_KEY:?}
       CHAT_PUBLIC_BASE_URL: ${CHAT_PUBLIC_BASE_URL:?}
       CHAT_WIDGET_URL: ${CHAT_WIDGET_URL:?}
+      CHAT_WIDGET_INTEGRITY: ${CHAT_WIDGET_INTEGRITY?}
       CHAT_CALLBACK_URL: ${CHAT_CALLBACK_URL:?}
       CHAT_TRUSTED_PROXIES: ${CHAT_TRUSTED_PROXIES:?}
       CHAT_DJANGO_TIMEOUT: ${CHAT_DJANGO_TIMEOUT:?}
@@ -951,12 +1087,13 @@ services:
       timeout: 10s
       retries: 20
       start_period: 20s
+    logging: *bounded-logs
     restart: unless-stopped
 
   chatdb:
     # Same major as crewdb (ankane/pgvector v0.5.1 is Postgres 15); no extensions needed here.
     image: postgres:15@sha256:c961aa287d8698297cb26cdfadfbe9fd2cbaf77e53cfffe9636e8d8a1e4d842c
-    container_name: chatdb
+    container_name: ${INSTANCE_PREFIX?}chatdb
     profiles: ["chat"]
     environment:
       POSTGRES_USER: ${CHAT_DB_USER:?}
@@ -971,6 +1108,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+    logging: *bounded-logs
     restart: unless-stopped
 
   # The plugin node. Gated behind profiles: ["plugins"]: it starts only when COMPOSE_PROFILES
@@ -982,7 +1120,7 @@ services:
     build:
       context: .
       dockerfile: ./es_plugins/Dockerfile
-    container_name: es_plugins
+    container_name: ${INSTANCE_PREFIX?}es_plugins
     hostname: es_plugins
     profiles: ["plugins"]
     user: root
@@ -1070,7 +1208,7 @@ services:
   # own socket (plugins_db/pg_hba.conf). See docs/plugins/operator/enable-plugins.md.
   plugins_db:
     image: postgres:17.11@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
-    container_name: plugins_db
+    container_name: ${INSTANCE_PREFIX?}plugins_db
     hostname: plugins_db
     profiles: ["plugins"]
     # reserved_connections: slots only plugins_admin (pg_use_reserved_connections) may take once
@@ -1112,7 +1250,7 @@ services:
     build:
       context: ./plugins_egress
       dockerfile: Dockerfile
-    container_name: plugins_egress
+    container_name: ${INSTANCE_PREFIX?}plugins_egress
     hostname: plugins_egress
     profiles: ["plugins"]
     read_only: true
@@ -1155,8 +1293,9 @@ services:
 
   sandbox_new:
     image: ghcr.io/epicstaff/sandbox_new:${IMAGE_TAG:?}
+    logging: *bounded-logs
     restart: unless-stopped
-    container_name: sandbox_new
+    container_name: ${INSTANCE_PREFIX?}sandbox_new
     build:
       context: .
       dockerfile: ./sandbox_new/Dockerfile
@@ -1184,11 +1323,8 @@ services:
       retries: 20
       start_period: 30s
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
-      STORAGE_HOST: ${STORAGE_HOST:?}
-      STORAGE_PORT: ${STORAGE_PORT:?}
-      STORAGE_SSL: ${STORAGE_SSL:?}
-      STORAGE_BUCKET: ${STORAGE_BUCKET:?}
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *secrets-transport-env]
+      SANDBOX_CUSTOM_LIBRARY_BUCKET: ${SANDBOX_CUSTOM_LIBRARY_BUCKET:?}
       SANDBOX_HOST: ${SANDBOX_HOST:?}
       SANDBOX_PORT: ${SANDBOX_PORT:?}
       SANDBOX_DEBUG: ${SANDBOX_DEBUG:?}
@@ -1231,20 +1367,28 @@ services:
       - KILL  # signal the dropped-privilege child's process group on timeout.
 
 volumes:
+  # External, so a `docker compose down -v` never deletes them; INSTANCE_PREFIX keeps each
+  # instance on its own copy when several run on one Docker host.
   sandbox_venvs:
     external: true
+    name: ${INSTANCE_PREFIX?}sandbox_venvs
   crew_pgdata:
     external: true
+    name: ${INSTANCE_PREFIX?}crew_pgdata
   media_data:
     external: true
+    name: ${INSTANCE_PREFIX?}media_data
   opensearch_data:
     external: true
+    name: ${INSTANCE_PREFIX?}opensearch_data
   redis_data: {}
   code_instances: {}
   rustfs_data: {}
   auditor_data: {}
   chat_pgdata: {}
   plugin_spa: {}
+  django_app_tmp: {}
+  knowledge_new_tmp: {}
   es_plugins_data: {}
   plugins_pgdata: {}
   plugin_egress_policy: {}

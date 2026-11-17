@@ -1,0 +1,26 @@
+@use '../../../styles/header-layout' as header;
+
+.audit-page {
+    @include header.headerLayout();
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background-color: var(--color-background-body);
+
+    // the shared 80px header, so its bottom line meets the one under the sidebar logo
+    .header {
+        @include header.pageHeader();
+    }
+
+    .tabs {
+        padding: 4px 1.5rem 0 header.$page-inset-left;
+    }
+
+    &__body {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+    }
+}

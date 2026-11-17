@@ -3,9 +3,11 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 
 # Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
 # sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
-# never executes arbitrary Python code. A service that gains a dependency with
-# no Linux wheel will fail the build rather than silently regain source
-# execution.
+# never executes arbitrary Python code. foundation is the one audited
+# exception: a first-party local path dependency with no wheel of its own,
+# carved out via UV_NO_BINARY_PACKAGE below. It is pure Python, so it still
+# needs no compiler. A service that gains a dependency with no Linux wheel will
+# fail the build rather than silently regain source execution.
 #
 # UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
 # interpreter instead of using the digest-pinned base image above, silently
@@ -19,6 +21,7 @@ RUN pip install --no-cache-dir uv==0.11.21
 # `regex`, pulled by nltk) look CWD-local and get blocked. Keeping it a sibling
 # of the app dir avoids that while a single `COPY /app` still carries both.
 ENV UV_NO_BUILD=1 \
+    UV_NO_BINARY_PACKAGE=foundation \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
@@ -31,6 +34,7 @@ WORKDIR /app/src
 
 # Copy only dependency descriptors first (better layer caching)
 COPY ./knowledge_new/pyproject.toml ./knowledge_new/uv.lock ./knowledge/
+COPY ./foundation /app/src/foundation
 
 WORKDIR /app/src/knowledge
 
@@ -55,6 +59,25 @@ ENV TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
 RUN mkdir -p /app/.cache/tokie \
  && /app/.venv/bin/python -c "import tiktoken; tiktoken.get_encoding('o200k_base'); tiktoken.get_encoding('cl100k_base')" \
  && /app/.venv/bin/python -c "from tokie import Tokenizer; Tokenizer.from_pretrained('openai-community/gpt2').save('/app/.cache/tokie/gpt2.tkz')"
+
+# NLTK stopwords corpus for the HTML chunker's stopword_removal option, read
+# from NLTK_DATA at runtime (see html_chunker.py; nltk.download is never called
+# there). Fetched from a fixed nltk_data commit and checked against the sha256
+# of that zip, which is also the sha256_checksum the NLTK index on the gh-pages
+# branch publishes for it. The index.xml stored at the same commit lags behind
+# and lists an older hash, so do not take the hash from there.
+# To update: pick the newer commit, compute the sha256 of
+# packages/corpora/stopwords.zip at that commit, check it against the
+# stopwords entry in gh-pages/index.xml, and change both ARGs together.
+ARG NLTK_DATA_COMMIT=98e14261eaec2244af1db4ec5b282112444495aa
+ARG NLTK_STOPWORDS_SHA256=48c0e52d8b52546e827f53761fb30300c0ab94f70660d28bd65ba0a86270946b
+RUN mkdir -p /app/.cache/nltk_data/corpora \
+ && /app/.venv/bin/python -c "import hashlib, io, sys, urllib.request, zipfile; \
+data = urllib.request.urlopen('https://raw.githubusercontent.com/nltk/nltk_data/${NLTK_DATA_COMMIT}/packages/corpora/stopwords.zip', timeout=60).read(); \
+digest = hashlib.sha256(data).hexdigest(); \
+digest == '${NLTK_STOPWORDS_SHA256}' or sys.exit(f'stopwords.zip sha256 mismatch: {digest}'); \
+zipfile.ZipFile(io.BytesIO(data)).extractall('/app/.cache/nltk_data/corpora')" \
+ && test -s /app/.cache/nltk_data/corpora/stopwords/english
 
 # Copy application source
 COPY ./knowledge_new /app/src/knowledge
@@ -81,6 +104,7 @@ COPY --from=builder /app /app
 # HF_HUB_OFFLINE=1 makes any huggingface_hub (Python) call fail loudly instead
 # of phoning home; it does not reach tokie, which is why the baked tokenizer
 # file above exists.
+# NLTK_DATA points nltk.data.find at the stopwords corpus baked above.
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
 # trace, see the litellm finding in docs/backend-runtime-fetch-audit.md).
@@ -93,9 +117,16 @@ ENV PATH="/app/.venv/bin:$PATH" \
     TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken \
     CUSTOM_TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken \
     HF_HUB_OFFLINE=1 \
+    NLTK_DATA=/app/.cache/nltk_data \
     LITELLM_LOCAL_MODEL_COST_MAP=True
 
 WORKDIR /app/src/knowledge
+
+# Code and venv stay root-owned (read-only for the runtime user).
+RUN groupadd --system --gid 1000 app \
+ && useradd --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+USER app
 
 # Run module
 CMD uvicorn main:app --host 0.0.0.0 --port ${KNOWLEDGE_PORT:?}

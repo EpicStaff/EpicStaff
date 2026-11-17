@@ -1,4 +1,7 @@
-import { CDT_DEFAULT_LLM_LABEL } from './cdt.constants';
+import { SystemOneConfig } from '@shared/models';
+
+import { PromptConfig } from '../../../core/models/classification-decision-table.model';
+import { CDT_DEFAULT_LLM_LABEL, CDT_NO_SYSTEM_ONE_CONFIG_LABEL } from './cdt.constants';
 
 /**
  * Resolves the display label for an LLM config id.
@@ -15,4 +18,21 @@ export function resolveLlmLabel(
     }
     const found = options.find((l) => l.id === llmId);
     return found ? found.label : CDT_DEFAULT_LLM_LABEL;
+}
+
+/**
+ * Resolves the model label of a prompt entry: the System One config's name for a
+ * System One entry (`CDT_NO_SYSTEM_ONE_CONFIG_LABEL` when none is set or it no
+ * longer exists), the LLM label otherwise.
+ */
+export function resolvePromptModelLabel(
+    prompt: PromptConfig,
+    llmOptions: ReadonlyArray<{ id: number; label: string }>,
+    systemOneConfigs: ReadonlyArray<SystemOneConfig>
+): string {
+    if (prompt.kind !== 'system_one') {
+        return resolveLlmLabel(prompt.llm_config, llmOptions);
+    }
+    const config = systemOneConfigs.find((candidate) => candidate.id === prompt.system_one_config);
+    return config?.custom_name ?? CDT_NO_SYSTEM_ONE_CONFIG_LABEL;
 }

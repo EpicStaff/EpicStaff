@@ -227,6 +227,7 @@ class KnowledgeSearchService:
             "message_type": "extracted_chunks",
             "rag_type": rag_type,
             "collection_id": collection_id,
+            "rag_id": request.rag_id,
             "retrieved_chunks": len(chunks),
             "knowledge_query": request.query,
             "rag_search_config": request.search_config.model_dump(),

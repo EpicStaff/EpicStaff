@@ -4,11 +4,13 @@ import {
     AuditConditionJoin,
     AuditFilterOp,
     AuditFilterState,
+    AuditIdFilter,
     createAuditCondition,
     DEFAULT_MATCH_SCOPE,
     EMPTY_AUDIT_FILTER,
 } from '../models/audit-filter.models';
-import { QUERY_EXAMPLES } from '../models/audit-filter-options';
+import { QUERY_EXAMPLES, SESSION_FIELD_CATALOG } from '../models/audit-filter-options';
+import { USER_ACTION_FIELD_CATALOG } from '../models/audit-user-action-filter-options';
 import { auditFilterToQueryText } from './audit-query-text.util';
 import { queryToBuilderState } from './audit-query-to-builder.util';
 import { compileAuditFilter } from './compile-audit-filter.util';
@@ -23,7 +25,7 @@ const current: AuditFilterState = {
 };
 
 function condition(op: AuditFilterOp, value: string, key = '', join: AuditConditionJoin = 'and'): AuditCondition {
-    return { ...createAuditCondition(), join, key, op, value };
+    return { ...createAuditCondition([op]), join, key, value };
 }
 
 function group(join: AuditConditionJoin, ...conditions: AuditCondition[]): AuditConditionGroup {
@@ -63,7 +65,7 @@ function expected(fields: Partial<AuditFilterState>): unknown {
 }
 
 function toBuilder(query: string): unknown {
-    return withoutIds(queryToBuilderState(query, current));
+    return withoutIds(queryToBuilderState(query, current, SESSION_FIELD_CATALOG));
 }
 
 describe('queryToBuilderState', () => {
@@ -148,7 +150,7 @@ describe('queryToBuilderState', () => {
 
         it.each(cases)('%s', (_name, fields) => {
             const state: AuditFilterState = { ...EMPTY_AUDIT_FILTER, ...fields };
-            const filters = compileAuditFilter(state).filters;
+            const filters = compileAuditFilter(state, SESSION_FIELD_CATALOG).filters;
             expect(filters).toBeDefined();
             const text = auditFilterToQueryText(filters!);
             expect(toBuilder(text)).toEqual(expected(fields));
@@ -158,7 +160,7 @@ describe('queryToBuilderState', () => {
     describe('hand-written queries', () => {
         it('clears the Builder for an empty query and keeps the non-Builder fields', () => {
             expect(toBuilder('   ')).toEqual(expected({}));
-            expect(queryToBuilderState('', current)?.mode).toBe('builder');
+            expect(queryToBuilderState('', current, SESSION_FIELD_CATALOG)?.mode).toBe('builder');
         });
 
         it.each<[string, Partial<AuditFilterState>]>([
@@ -294,7 +296,7 @@ describe('queryToBuilderState', () => {
             ['agent together with tool', 'agent = 1 and tool = a'],
             ['field unavailable for the chosen kind', 'kind = session and status = failed'],
         ])('%s', (_name, query) => {
-            expect(queryToBuilderState(query, current)).toBeNull();
+            expect(queryToBuilderState(query, current, SESSION_FIELD_CATALOG)).toBeNull();
         });
     });
 
@@ -309,5 +311,136 @@ describe('queryToBuilderState', () => {
                 output: [group('or', condition('contains', 'Greetings'))],
             }),
         ]);
+    });
+});
+
+describe('queryToBuilderState for user actions', () => {
+    const userActionCurrent: AuditFilterState = { ...EMPTY_AUDIT_FILTER, mode: 'query', searchText: 'needle' };
+
+    function toUserActionBuilder(query: string): AuditFilterState | null {
+        return queryToBuilderState(query, userActionCurrent, USER_ACTION_FIELD_CATALOG);
+    }
+
+    function textOf(state: AuditFilterState | null, field: string): unknown {
+        return state?.textConditions?.[field]?.map((item) => ({
+            join: item.join,
+            conditions: item.conditions.map(({ join, op, value }) => ({ join, op, value })),
+        }));
+    }
+
+    it('fills the action, text and date fields from a query', () => {
+        const state = toUserActionBuilder(
+            'action in (created, renamed) and target_name : "Inv" and event_time >= "2026-01-01T00:00:00Z"'
+        );
+
+        expect(state?.selections).toEqual({ action: { op: 'in', values: ['created', 'renamed'] } });
+        expect(textOf(state, 'target_name')).toEqual([
+            { join: 'or', conditions: [{ join: 'and', op: 'contains', value: 'Inv' }] },
+        ]);
+        expect(state?.dateFrom).toBe('2026-01-01T00:00:00Z');
+        expect(state?.searchText).toBe('needle');
+    });
+
+    it('reads `action = x` as a one-value selection, like the sessions select fields', () => {
+        expect(toUserActionBuilder('ACTION != signed_in')?.selections).toEqual({
+            action: { op: 'not_in', values: ['signed_in'] },
+        });
+    });
+
+    it.each([
+        ['target_type in ("flow")', { op: 'in', values: ['flow'] }],
+        ['target_type not in ("flow", "python node")', { op: 'not_in', values: ['flow', 'python node'] }],
+        ['target_type = "python node"', { op: 'in', values: ['python node'] }],
+        // the loaded list is not consulted: a type it lacks still shows on the card and its chip
+        ['target_type in ("webhook trigger")', { op: 'in', values: ['webhook trigger'] }],
+    ])('reads `%s` as picked target types', (query, selection) => {
+        expect(toUserActionBuilder(query)?.selections).toEqual({ target_type: selection });
+    });
+
+    it('tells a picked target type of flow from the Flow picker', () => {
+        const state = toUserActionBuilder(
+            'target_type in ("flow") and ' +
+                '((target_type = "flow" and target_id in ("12")) or (parent_type = "flow" and parent_id in ("12")))'
+        );
+
+        expect(state?.selections).toEqual({
+            target_type: { op: 'in', values: ['flow'] },
+            flow_id: { op: 'in', values: ['12'] },
+        });
+    });
+
+    it.each(['in', 'not_in'] as const)('round-trips Flow, User and Target type %s through Query Code', (op) => {
+        const state: AuditFilterState = {
+            ...EMPTY_AUDIT_FILTER,
+            selections: {
+                actor_user_id: { op, values: ['3', '41'] },
+                target_type: { op, values: ['python node'] },
+                flow_id: { op, values: ['12'] },
+            },
+        };
+        const filters = compileAuditFilter(state, USER_ACTION_FIELD_CATALOG).filters;
+
+        const restored = toUserActionBuilder(filters === undefined ? '' : auditFilterToQueryText(filters));
+
+        expect(restored?.selections).toEqual(state.selections);
+    });
+
+    it.each<[string, Partial<AuditIdFilter>]>([
+        ['number >= 5 and number <= 9', { mode: 'range', from: '5', to: '9' }],
+        ['number <= 9 and number >= 5', { mode: 'range', from: '5', to: '9' }],
+        ['number >= 5', { mode: 'range', from: '5' }],
+        ['number > 5', { mode: 'gt', value: '5' }],
+        ['number < 5', { mode: 'lt', value: '5' }],
+        ['number = 5', { mode: 'equals', value: '5' }],
+        ['number in (4, 7)', { mode: 'in', values: ['4', '7'] }],
+    ])('reads `%s` into the ID filter', (query, id) => {
+        const state = toUserActionBuilder(query);
+
+        expect(state?.idFilters).toEqual({ number: { ...EMPTY_AUDIT_FILTER.id, ...id } });
+        expect(state?.selections).toBeUndefined();
+    });
+
+    it.each<Partial<AuditIdFilter>>([
+        { mode: 'range', from: '5', to: '9' },
+        { mode: 'gt', value: '5' },
+        { mode: 'lt', value: '5' },
+        { mode: 'equals', value: '5' },
+        { mode: 'in', values: ['4', '7'] },
+    ])('round-trips the ID filter %o through Query Code', (id) => {
+        const idFilters = { number: { ...EMPTY_AUDIT_FILTER.id, ...id } };
+        const filters = compileAuditFilter({ ...EMPTY_AUDIT_FILTER, idFilters }, USER_ACTION_FIELD_CATALOG).filters;
+
+        const restored = toUserActionBuilder(filters === undefined ? '' : auditFilterToQueryText(filters));
+
+        expect(restored?.idFilters).toEqual(idFilters);
+    });
+
+    it('reads `actor_user_id = 5` as a one-member selection', () => {
+        expect(toUserActionBuilder('actor_user_id = 5')?.selections).toEqual({
+            actor_user_id: { op: 'in', values: ['5'] },
+        });
+    });
+
+    it.each([
+        [
+            'a flow match with different ids on each side',
+            '(target_type = "flow" and target_id in ("1")) or (parent_type = "flow" and parent_id in ("2"))',
+        ],
+        ['a member id that is not a number', 'actor_user_id in ("ann")'],
+        ['a field kept for Query Code', 'actor_email : "ann@"'],
+        ['a session field', 'status in (failed)'],
+        ['an action the Builder does not list', 'action in (frobnicate)'],
+        ['a field kept for Query Code', 'route = "POST api/graphs/<pk>/copy/"'],
+        ['an operator a picked list cannot show', 'target_type : flow'],
+        ['an exact number plus a range bound', 'number = 3 and number >= 1'],
+        ['a number that is not a number', 'number = abc'],
+        ['a number operator the ID filter does not offer', 'number != 3'],
+        ['the sessions ID', 'session_id = 3'],
+    ])('leaves %s to Query Code', (_case, query) => {
+        expect(toUserActionBuilder(query)).toBeNull();
+    });
+
+    it('leaves a user action field to Query Code on the sessions tab', () => {
+        expect(queryToBuilderState('action in (created)', current, SESSION_FIELD_CATALOG)).toBeNull();
     });
 });

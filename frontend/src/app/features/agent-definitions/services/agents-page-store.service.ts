@@ -1,13 +1,19 @@
-﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
+﻿import { HttpErrorResponse } from '@angular/common/http';
+import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
+import { ExportOptionsDialogService } from '@shared/services';
 import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
-import { catchError, debounceTime, groupBy, mergeMap, tap } from 'rxjs/operators';
+import { catchError, debounceTime, groupBy, mergeMap, switchMap, tap } from 'rxjs/operators';
 
+import { wasHandledByForbiddenInterceptor } from '../../../core/interceptors/forbidden-interceptor-handled.util';
+import { TransferExportService } from '../../../core/services/transfer-export.service';
+import { StartedTransferJob, TransferJobsService } from '../../../core/services/transfer-jobs.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ToastService } from '../../../services/notifications';
+import { ImportWithReviewService } from '../../flows/components/import-review-dialog/import-with-review.service';
 import {
     AgentDefaultSurface,
     AgentDefinition,
@@ -119,6 +125,10 @@ export class AgentsPageStore {
     private readonly catalogs: SurfaceCatalogsStore = inject(SurfaceCatalogsStore);
     private readonly destroyRef = inject(DestroyRef);
     private readonly permissionService = inject(PermissionsService);
+    private readonly importWithReview = inject(ImportWithReviewService);
+    private readonly transferJobs = inject(TransferJobsService);
+    private readonly transferExport = inject(TransferExportService);
+    private readonly exportOptionsDialog = inject(ExportOptionsDialogService);
     private readonly groupsStore = inject(AgentGroupsStorageService);
     private readonly collapsedGroupsKey = collapsedGroupsStorageKey(inject(ProfileService).currentUserSignal()?.id);
 
@@ -159,6 +169,14 @@ export class AgentsPageStore {
     readonly visibleSections = signal<Set<ExplorerSectionId>>(loadVisibleSections());
 
     readonly storageActivated = signal<boolean>(false);
+    readonly agentExportMode = signal<boolean>(false);
+    readonly selectedAgentIds = signal<Set<number>>(new Set());
+    readonly selectedAgentCount = computed<number>(() => this.selectedAgentIds().size);
+    readonly allAgentsSelected = computed<boolean>(() => {
+        const agents = this.agents();
+        const selected = this.selectedAgentIds();
+        return agents.length > 0 && agents.every((a) => selected.has(a.id));
+    });
 
     /** The org's groups, sorted by name. */
     readonly groups = computed<LabelDto[]>(() =>
@@ -796,7 +814,7 @@ export class AgentsPageStore {
             });
     }
 
-    retrySurfaces(): void {
+    reloadSurfaces(): void {
         this.surfacesError.set(null);
         this.surfacesApi
             .getSurfaces()
@@ -1207,20 +1225,26 @@ export class AgentsPageStore {
     duplicateAgent(id: number): void {
         const src = this.agents().find((a) => a.id === id);
         if (!src) return;
-        const existingNames = this.agents().map((a) => a.name);
         this.saving.set(true);
-        this.agentsApi.copy(src, computeUniqueCopyName(src.name, existingNames)).subscribe({
-            next: (created) => {
-                this.agents.update((list) => [...list, created]);
-                this.selectAgent(created.id);
-                this.saving.set(false);
-                this.toast.success('Agent duplicated');
-            },
-            error: (err) => {
-                this.saving.set(false);
-                this.toast.error(this.extractError(err, 'Failed to duplicate agent'));
-            },
-        });
+        this.agentsApi
+            .copy(src.id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (created) => {
+                    this.agents.update((list) => [...list, created]);
+                    // The server clones the owned surfaces too. Reload always: our list may miss surfaces
+                    // the source gained elsewhere, so it cannot tell whether there is anything to show.
+                    this.reloadSurfaces();
+                    this.selectAgent(created.id);
+                    this.saving.set(false);
+                    this.toast.success('Agent duplicated');
+                },
+                error: (err) => {
+                    this.saving.set(false);
+                    if (wasHandledByForbiddenInterceptor(err)) return;
+                    this.toast.error(this.extractError(err, 'Failed to duplicate agent'));
+                },
+            });
     }
 
     deleteAgent(id: number): void {
@@ -1241,6 +1265,66 @@ export class AgentsPageStore {
                 this.toast.error(this.extractError(err, 'Failed to delete agent'));
             },
         });
+    }
+
+    startAgentExport(): void {
+        this.selectedAgentIds.set(new Set());
+        this.agentExportMode.set(true);
+    }
+
+    cancelAgentExport(): void {
+        this.agentExportMode.set(false);
+        this.selectedAgentIds.set(new Set());
+    }
+
+    toggleAgentSelection(id: number): void {
+        this.selectedAgentIds.update((ids) => {
+            const next = new Set(ids);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }
+
+    toggleSelectAllAgents(): void {
+        this.selectedAgentIds.set(this.allAgentsSelected() ? new Set() : new Set(this.agents().map((a) => a.id)));
+    }
+
+    /** Leaves export mode once the server has accepted the job; a refused start keeps the ticks to try again. */
+    confirmAgentExport(): void {
+        const existing = new Set(this.agents().map((a) => a.id));
+        const ids = [...this.selectedAgentIds()].filter((id) => existing.has(id));
+        if (ids.length === 0) {
+            this.toast.info('Select at least one agent to export.');
+            return;
+        }
+        this.exportAgents(ids, () => this.cancelAgentExport());
+    }
+
+    exportAgent(id: number): void {
+        if (!this.agents().some((a) => a.id === id)) return;
+        this.exportAgents([id]);
+    }
+
+    importAgents(): void {
+        this.importWithReview
+            .pickAndImport({
+                entityLabel: 'agent',
+                entityLabelPlural: 'agents',
+                inspect: (file) => this.agentsApi.inspectImport(file),
+                importFile: (file) => this.agentsApi.importAgents(file),
+                importArchive: (file) =>
+                    this.transferJobs
+                        .startImport('agentDefinitions', file)
+                        .pipe(switchMap((started) => this.transferJobs.waitForImport(started))),
+                accept: '.json,.zip',
+            })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+                this.toast.success('Agents imported successfully.');
+                this.load();
+                this.catalogs.reloadLoadedCatalogs();
+            });
     }
 
     deleteSurface(id: number): void {
@@ -1275,6 +1359,39 @@ export class AgentsPageStore {
         const message = (err as { error?: { message?: unknown } })?.error?.message;
         const prefix = 'instruction_list: ';
         return typeof message === 'string' && message.startsWith(prefix) ? message.slice(prefix.length) : null;
+    }
+
+    /**
+     * Asks for the export options, then exports the agents as a background job, which outlives this page; nothing
+     * runs when the user cancels. TransferExportService downloads the archive, warns about the dependencies left out
+     * and reports a failure; an agent that is gone (404) also reloads the list.
+     */
+    private exportAgents(ids: number[], onStarted?: () => void): void {
+        this.exportOptionsDialog
+            .ask(ids.length, { singular: 'agent', plural: 'agents' })
+            .pipe(
+                switchMap(({ includeKnowledge }) =>
+                    this.transferExport.export(this.startAgentExportJob(ids, includeKnowledge, onStarted))
+                )
+            )
+            .subscribe();
+    }
+
+    private startAgentExportJob(
+        ids: number[],
+        includeKnowledge: boolean,
+        onStarted?: () => void
+    ): Observable<StartedTransferJob> {
+        return this.transferJobs.startExport('agentDefinitions', { ids, include_knowledge: includeKnowledge }).pipe(
+            tap({
+                next: () => onStarted?.(),
+                error: (error: unknown) => {
+                    if (error instanceof HttpErrorResponse && error.status === 404) {
+                        this.load();
+                    }
+                },
+            })
+        );
     }
 
     private extractError(err: unknown, fallback: string): string {

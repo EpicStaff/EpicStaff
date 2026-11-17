@@ -1,3 +1,5 @@
+export type { MappedSaveErrors, SaveErrorsByNodeId, SaveFieldError } from './bulk-save-errors';
+export { mapBulkSaveErrors } from './bulk-save-errors';
 export { clearStaleIds } from './clear-stale-ids';
 export { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from './diff';
 export { toDirtyComparableFlowState } from './edge-waypoints.helpers';

@@ -37,6 +37,15 @@ MAX_CALL_DURATION_SECONDS = humanize.to_time("30m")
 # voice permission, and turning this on writes one row per audio frame.
 PERSIST_RAW_AUDIO = env.bool("REALTIME_PERSIST_RAW_AUDIO", False)
 
+SECRETS_TRANSPORT_KEY = env.secret("SECRETS_TRANSPORT_KEY")
+# `none` reads as None; an empty value or a stray comma yields empty items.
+SECRETS_TRANSPORT_PREVIOUS_KEYS = [
+    key for key in env.list("SECRETS_TRANSPORT_PREVIOUS_KEYS") or [] if key
+]
+# HKDF info the transport key is derived with: a wire contract with django_app, the producer.
+# Read from the environment, which compose shares with every service.
+SECRETS_TRANSPORT_HKDF_INFO = env.str("SECRETS_TRANSPORT_HKDF_INFO")
+
 DJANGO_HOST = env.str("DJANGO_HOST")
 DJANGO_PORT = env.int("DJANGO_PORT")
 DJANGO_AUTH_URL = env.str("DJANGO_AUTH_URL")

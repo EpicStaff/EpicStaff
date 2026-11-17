@@ -1,0 +1,16 @@
+// One error message shown under a field: red text on a red tint, with a red rule on its left.
+@mixin item {
+    display: flex;
+    align-items: center;
+    // A minimum, not a height: a long message (a server refusal) wraps onto more lines.
+    min-height: 28px;
+    border-radius: var(--radius-sm);
+    border-left: 2px solid var(--color-status-error);
+    background: var(--red-alpha-8-flat);
+    color: var(--color-status-error);
+    font-weight: var(--text-body-small-weight);
+    font-size: var(--text-body-small-size);
+    line-height: var(--text-body-small-line-height);
+    letter-spacing: 0;
+    padding: 0.25rem 0.5rem;
+}

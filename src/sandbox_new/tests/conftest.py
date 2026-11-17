@@ -28,6 +28,12 @@ _TEST_ENVIRONMENT = {
     "STORAGE_HOST": "localhost",
     "STORAGE_SSL": "false",
     "STORAGE_BUCKET": "sandbox",
+    "STORAGE_USER": "sandbox",
+    "STORAGE_PASSWORD": "sandbox",
+    "SANDBOX_CUSTOM_LIBRARY_BUCKET": "sandbox-custom-libraries",
+    "SECRETS_TRANSPORT_KEY": "sandbox-tests-transport-key",
+    "SECRETS_TRANSPORT_PREVIOUS_KEYS": "none",
+    "SECRETS_TRANSPORT_HKDF_INFO": "epicstaff.secrets.transport.v1",
 }
 
 for _name, _value in _TEST_ENVIRONMENT.items():
@@ -40,6 +46,7 @@ from src.shared.bench_log import BENCH_LEVEL  # noqa: E402
 from tests.builders import make_venv  # noqa: E402
 from tests.fakes import (  # noqa: E402
     FakeClock,
+    FakeFileStorage,
     FakeIsolationProbe,
     FakeJobDispatcher,
     FakeJobFailureSink,
@@ -48,6 +55,21 @@ from tests.fakes import (  # noqa: E402
     FakeUVProvider,
     FakeVenvRepository,
 )
+from tests.transport_secrets import TRANSPORT_KEY
+
+
+@pytest.fixture(autouse=True)
+def transport_settings(monkeypatch):
+    """Point the transport settings at the key the tests seal secrets with.
+
+    Patched on ``settings`` rather than left to the environment, so a developer's own key
+    cannot leak in. The service's cryptographer provider reads these when it builds; a
+    sealed value is made with ``tests.transport_secrets.seal``.
+    """
+    import settings
+
+    monkeypatch.setattr(settings, "SECRETS_TRANSPORT_KEY", TRANSPORT_KEY)
+    monkeypatch.setattr(settings, "SECRETS_TRANSPORT_PREVIOUS_KEYS", [])
 
 
 @pytest.fixture
@@ -77,6 +99,11 @@ def venv_repository() -> FakeVenvRepository:
 @pytest.fixture
 def uow(venv_repository: FakeVenvRepository) -> FakeUnitOfWork:
     return FakeUnitOfWork(venv_repository)
+
+
+@pytest.fixture
+def file_storage() -> FakeFileStorage:
+    return FakeFileStorage()
 
 
 @pytest.fixture

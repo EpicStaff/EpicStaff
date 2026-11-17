@@ -47,6 +47,9 @@ export const CDT_EXPRESSION_EDITOR_POPUP_WIDTH = 660;
 /** Fallback display label used when no LLM config is selected. */
 export const CDT_DEFAULT_LLM_LABEL = 'Default LLM';
 
+/** Fallback display label used when a System One entry has no config, or its config was deleted. */
+export const CDT_NO_SYSTEM_ONE_CONFIG_LABEL = 'No config';
+
 // ── Route Code / Continue copy ────────────────────────────────────────────────
 
 /** Width of the "Enable Continue?" confirmation, from the design. */
@@ -71,6 +74,20 @@ export const CDT_ROUTE_CONTINUE_COPY = {
     },
     /** Toast when the connection could not be removed, so Continue stays off. */
     enableContinueFailed: "Couldn't remove the connection from this route code, so Continue was not enabled.",
+} as const;
+
+// ── Column freeze ─────────────────────────────────────────────────────────────
+
+/** Column group ids of the Expression and Manipulation Params groups. */
+export const CDT_EXPR_PARAMS_GROUP_ID = 'expr-params-group';
+export const CDT_MANIP_PARAMS_GROUP_ID = 'manip-params-group';
+
+/** The frozen columns may take up at most this share of the table width, so some of the table still scrolls. */
+export const CDT_FREEZE_MAX_WIDTH_RATIO = 0.9;
+
+export const CDT_FREEZE_COPY = {
+    /** Toast when a freeze is refused for being too wide. */
+    tooWide: 'These columns are too wide to freeze.',
 } as const;
 
 // ── Header auto-collapse ──────────────────────────────────────────────────────

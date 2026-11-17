@@ -18,3 +18,16 @@ export function getHeaderRowError(name: string, value: string, otherNames: reado
     if (LINE_BREAK_PATTERN.test(value)) return HEADER_VALUE_LINE_BREAK_ERROR;
     return null;
 }
+
+export const NAME_REQUIRED_ERROR = 'Name is required';
+export const VALUE_REQUIRED_ERROR = 'Value is required';
+export const NAME_DUPLICATE_ERROR = 'Duplicate name';
+
+/** The row check without the HTTP header rules: any name, duplicates compared exactly. Empty rows are ignored. */
+export function getRowError(name: string, value: string, otherNames: readonly string[]): string | null {
+    const trimmedName = name.trim();
+    if (!trimmedName) return value.trim() ? NAME_REQUIRED_ERROR : null;
+    if (otherNames.some((other) => other.trim() === trimmedName)) return NAME_DUPLICATE_ERROR;
+    if (!value.trim()) return VALUE_REQUIRED_ERROR;
+    return null;
+}

@@ -27,10 +27,12 @@ import {
     SearchComponent,
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
-import { downloadBlob, escapeHtml } from '@shared/utils';
-import { catchError, EMPTY, filter, finalize, Observable, switchMap, tap } from 'rxjs';
+import { escapeHtml } from '@shared/utils';
+import { filter, finalize, Observable, switchMap, tap } from 'rxjs';
 
+import { TransferExportService } from '../../../../core/services/transfer-export.service';
 import { ToastService } from '../../../../services/notifications';
+import { AUDIT_FIELD_CATALOG, AuditLookupOptions } from '../../models/audit-domain.models';
 import {
     AuditEnumOption,
     AuditFilterMode,
@@ -38,7 +40,6 @@ import {
     AuditMatchScopeState,
 } from '../../models/audit-filter.models';
 import { AuditPreset, AuditPresetScope } from '../../models/audit-preset.models';
-import { AuditPresetsApiService } from '../../services/audit-presets-api.service';
 import { AuditPresetsStorageService } from '../../services/audit-presets-storage.service';
 import { buildPresetBody, restorePresetState } from '../../utils/audit-preset-body.util';
 import { selectionState, toggleAll, toggleOne } from '../../utils/audit-preset-selection.util';
@@ -131,6 +132,7 @@ export class AuditPresetsComponent implements OnInit {
     public readonly currentFilter = input.required<AuditFilterState>();
     public readonly agentOptions = input<AuditEnumOption[]>([]);
     public readonly toolOptions = input<AuditEnumOption[]>([]);
+    public readonly lookupOptions = input<AuditLookupOptions>({});
     public readonly openCreateOnInit = input<boolean>(false);
     public readonly presetApplied = output<AuditFilterState>();
     public readonly queryCopied = output<string>();
@@ -156,6 +158,7 @@ export class AuditPresetsComponent implements OnInit {
     protected readonly loadError = computed(() => this.presetsStorage.loadError());
 
     private readonly vocabularies = computed<AuditFilterVocabularies>(() => ({
+        ...this.lookupOptions(),
         agents: this.agentOptions(),
         tools: this.toolOptions(),
     }));
@@ -197,7 +200,7 @@ export class AuditPresetsComponent implements OnInit {
         if (editor === null) {
             return [];
         }
-        return describeAuditFilter({ ...editor.state, mode: 'builder' }, this.vocabularies()).filter(
+        return describeAuditFilter({ ...editor.state, mode: 'builder' }, this.catalog, this.vocabularies()).filter(
             (chip) => chip.key !== 'matchScope'
         );
     });
@@ -213,9 +216,11 @@ export class AuditPresetsComponent implements OnInit {
     ];
 
     protected readonly unavailableHint = "Created outside the filters panel — it can't be opened here";
+    protected readonly catalog = inject(AUDIT_FIELD_CATALOG);
+    protected readonly hasMatchScope = this.catalog.domain === 'sessions';
 
     private readonly presetsStorage = inject(AuditPresetsStorageService);
-    private readonly presetsApi = inject(AuditPresetsApiService);
+    private readonly transferExport = inject(TransferExportService);
     private readonly toastService = inject(ToastService);
     private readonly confirmationDialog = inject(ConfirmationDialogService);
     private readonly destroyRef = inject(DestroyRef);
@@ -281,7 +286,7 @@ export class AuditPresetsComponent implements OnInit {
             return;
         }
         const name = editor.name.trim();
-        const filterBody = buildPresetBody(editor.state);
+        const filterBody = buildPresetBody(editor.state, this.catalog);
         const request =
             editor.presetId === null
                 ? this.presetsStorage.createPreset(name, filterBody, this.scope() === 'shared')
@@ -346,7 +351,9 @@ export class AuditPresetsComponent implements OnInit {
 
     protected overwrite(card: AuditPresetCard): void {
         this.closeMenu(card.preset.id);
-        this.presetsStorage.updatePreset(card.preset.id, { filter_body: buildPresetBody(this.currentFilter()) });
+        this.presetsStorage.updatePreset(card.preset.id, {
+            filter_body: buildPresetBody(this.currentFilter(), this.catalog),
+        });
     }
 
     protected copyQuery(card: AuditPresetCard): void {
@@ -362,8 +369,7 @@ export class AuditPresetsComponent implements OnInit {
             {
                 title: 'Delete preset?',
                 message: `Are you sure you want to delete <strong>${escapeHtml(preset.name)}</strong> preset?`,
-                caution:
-                    "It will <strong>disappear</strong> from your presets list, and the filters and match scope saved in it <strong>will be lost</strong>. You'll have to set them up manually next time.",
+                caution: `It will <strong>disappear</strong> from your presets list, and the ${this.hasMatchScope ? 'filters and match scope' : 'filters'} saved in it <strong>will be lost</strong>. You'll have to set them up manually next time.`,
                 confirmText: 'Delete',
             },
             () => this.presetsStorage.deletePreset(preset.id)
@@ -400,19 +406,18 @@ export class AuditPresetsComponent implements OnInit {
         this.selectedIds.update((selected) => toggleAll(selected, this.listedIds()));
     }
 
+    // Selecting ends once the server has taken the export; the job runs on, in the jobs panel.
     protected exportSelected(): void {
         if (!this.canExportSelected()) {
             return;
         }
         this.isExporting.set(true);
-        this.download(this.presetsApi.exportPresets(this.selectedInScope()), `audit-presets-export-${Date.now()}.json`)
-            .pipe(finalize(() => this.isExporting.set(false)))
-            .subscribe(() => this.stopSelecting());
+        this.exportPresets(this.selectedInScope(), () => this.stopSelecting());
     }
 
     protected exportPreset(preset: AuditPreset): void {
         this.closeMenu(preset.id);
-        this.download(this.presetsApi.exportPreset(preset.id), `${preset.name}.json`).subscribe();
+        this.exportPresets([preset.id]);
     }
 
     protected openImport(fileInput: HTMLInputElement): void {
@@ -502,22 +507,22 @@ export class AuditPresetsComponent implements OnInit {
             );
     }
 
-    // A generic toast on export failure is deliberate: the error body arrives as a Blob, and decoding it
-    // for a message is not worth it for the rare 400 (an id that is no longer visible).
-    private download(request: Observable<Blob>, filename: string): Observable<Blob> {
-        return request.pipe(
-            tap({
-                next: (blob) => downloadBlob(blob, filename),
-                error: (error: HttpErrorResponse) => this.toastError(error, 'Could not export presets.'),
+    /** Exports as a background job, which outlives this panel; TransferExportService reports how it ends. */
+    private exportPresets(ids: number[], onAccepted?: () => void): void {
+        const start = this.presetsStorage.startExport(ids).pipe(
+            tap(() => {
+                if (!this.destroyRef.destroyed) {
+                    onAccepted?.();
+                }
             }),
-            catchError(() => EMPTY),
-            takeUntilDestroyed(this.destroyRef)
+            finalize(() => this.isExporting.set(false))
         );
+        this.transferExport.export(start).subscribe();
     }
 
     private toCard(preset: AuditPreset): AuditPresetCard {
-        const state = restorePresetState(preset.filter_body);
-        const chips = state === null ? [] : describeAuditFilter(state, this.vocabularies());
+        const state = restorePresetState(preset.filter_body, this.catalog);
+        const chips = state === null ? [] : describeAuditFilter(state, this.catalog, this.vocabularies());
         return {
             preset,
             state,

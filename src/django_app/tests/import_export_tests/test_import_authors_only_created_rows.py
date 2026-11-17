@@ -43,6 +43,7 @@ from tables.models import (
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
     StartNode,
+    SystemOneConfig,
     WebhookTrigger,
 )
 from tables.models.audit_filter_preset_models import AuditFilterPreset
@@ -58,7 +59,9 @@ from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 NODE_ENTITY_TYPES = frozenset(NODE_TYPE_TO_ENTITY_TYPE.values())
-EXPORT_ONLY_ENTITY_TYPES = frozenset({EntityType.SESSION})
+# A knowledge collection imports only from an archive, which these round trips do not
+# build; its authorship is tested in test_source_collection_import.py.
+EXPORT_ONLY_ENTITY_TYPES = frozenset({EntityType.SESSION, EntityType.SOURCE_COLLECTION})
 # Needs the sandbox service to export or import at all; covered separately.
 OUT_OF_PROCESS_ENTITY_TYPES = frozenset({EntityType.VENV})
 
@@ -155,6 +158,16 @@ def _gemini_realtime_config(org, author, provider):
     )
 
 
+def _system_one_config(org, author, provider):
+    return SystemOneConfig.objects.create(
+        custom_name="imported-system-one",
+        provider="typesafe",
+        model_name="jev-1.14.0",
+        org=org,
+        created_by=author,
+    )
+
+
 def _python_code_tool(org, author, provider):
     python_code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     tool = PythonCodeTool.objects.create(
@@ -232,6 +245,7 @@ SOURCE_FACTORIES: dict[EntityType, SourceFactory] = {
     EntityType.OPENAI_REALTIME_CONFIG: _openai_realtime_config,
     EntityType.ELEVENLABS_REALTIME_CONFIG: _elevenlabs_realtime_config,
     EntityType.GEMINI_REALTIME_CONFIG: _gemini_realtime_config,
+    EntityType.SYSTEM_ONE_CONFIG: _system_one_config,
     EntityType.PYTHON_CODE_TOOL: _python_code_tool,
     EntityType.MCP_TOOL: _mcp_tool,
     EntityType.WEBHOOK_TRIGGER: _webhook_trigger,
@@ -261,10 +275,7 @@ def _authored_top_level_entity_types() -> list[EntityType]:
         and entity_type not in NODE_ENTITY_TYPES
         and entity_type not in EXPORT_ONLY_ENTITY_TYPES
         and entity_type not in OUT_OF_PROCESS_ENTITY_TYPES
-        and (
-            _strategy_model(entity_type) is None
-            or has_author_field(_strategy_model(entity_type))
-        )
+        and (_strategy_model(entity_type) is None or has_author_field(_strategy_model(entity_type)))
     ]
 
 
