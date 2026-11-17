@@ -1195,6 +1195,46 @@ async def test_each_timer_reads_each_desk_in_index_order_and_stops_at_the_batch(
     assert _per_desk_limit(plan)["Plans"][0] is read, shown
 
 
+PURGE_OTHER_ORGS = 4
+
+
+async def _seed_other_orgs(session_factory):
+    """The inbox's rows again under other orgs, then fresh statistics: the purge reads one org of
+    many, and with a single org in the table a sequential scan is as good a plan as any."""
+    bindings = [make_binding(org_id=org_id) for org_id in range(2, PURGE_OTHER_ORGS + 2) for _ in range(INBOX_BINDINGS)]
+    async with session_factory() as session:
+        await session.execute(insert(BindingRow), [values_of(binding) for binding in bindings])
+        rows = [_inbox_row(binding, desk, index) for index in range(INBOX_ROWS_PER_BINDING) for desk, binding in enumerate(bindings)]
+        await session.execute(insert(ConversationRow), [values_of(row) for row in rows])
+        await session.commit()
+    engine = session_factory.kw["bind"]
+    async with engine.connect() as connection:
+        await connection.exec_driver_sql("ANALYZE conversation")
+        await connection.commit()
+
+
+@pytest.mark.parametrize("plan_cache_mode", ["force_generic_plan", "force_custom_plan"], ids=["generic plan", "custom plan"])
+async def test_retention_purge_reads_one_org_range_of_its_index_and_deletes_by_primary_key(session_factory, uow_factory, plan_cache_mode):
+    """The purge runs per org and per batch every night: its batch is a range of the org's
+    idle rows by last activity, and the delete finds each row by primary key. Neither
+    may scan the whole conversation table, open and closed rows of every org alike."""
+    await _seed_inbox(session_factory)
+    await _seed_other_orgs(session_factory)
+    cutoff = utcnow() - timedelta(seconds=INBOX_ROWS_PER_BINDING * 4 // 5)
+
+    plan = await _generic_plan_of(session_factory, uow_factory, (), lambda conversations: conversations.delete_inactive_batch(1, cutoff, 500), plan_cache_mode)
+
+    nodes, shown = list(_plan_nodes(plan)), json.dumps(plan, indent=1)
+    assert all(node["Node Type"] != "Seq Scan" for node in nodes if node.get("Relation Name") == "conversation"), shown
+    # A plan made for the actual cutoff may bitmap-read a short due range and sort it: still one
+    # org's range of the index, never the table.
+    (batch,) = [node for node in nodes if node.get("Index Name") == "ix_conversation_org_id_idle_activity"]
+    assert batch["Node Type"] in ("Index Scan", "Bitmap Index Scan"), shown
+    assert batch["Index Cond"].startswith("((org_id = ") and " < " in batch["Index Cond"], shown
+    (delete_read,) = [node for node in nodes if node.get("Index Name") == "conversation_pkey"]
+    assert delete_read["Index Cond"].startswith("(id = ANY "), shown
+
+
 # A day's deadline across Kyiv's clock changes in 2026: summer time ends on 25 October (the local
 # day before is 25 hours long) and starts on 29 March (23 hours).
 DST_CHANGES = {"summer time ends": datetime(2026, 10, 25, 12, 0, tzinfo=UTC), "summer time starts": datetime(2026, 3, 29, 12, 0, tzinfo=UTC)}
