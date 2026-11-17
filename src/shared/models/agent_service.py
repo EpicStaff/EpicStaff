@@ -281,7 +281,12 @@ class LoopResult(BaseModel):
     stop_reason: str
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
     error: str | None = None
-    """Failure detail when stop_reason indicates a failure (llm_error/timeout); None on success."""
+    """User-safe fact when stop_reason indicates a failure (llm_error/timeout); None on success.
+
+    Never the raw exception text: crew shows it to the user as it is.
+    """
+    error_code: str | None = None
+    """Stable machine code for ``error`` (e.g. ``llm_auth``, ``agent_timeout``); None on success."""
     tasks: list[TaskRunSummary] | None = None
     """Per-task summaries for ``LIST_OF_TASKS`` runs; ``None`` for ``SINGLE_TASK`` runs."""
     structured_output: Any = None

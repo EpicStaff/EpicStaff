@@ -61,7 +61,7 @@ async def test_load_failure_publishes_agent_error_to_per_run_stream_and_acks():
     assert publish_calls[0]["stream"] == "agent.results:run-a"
     assert publish_calls[0]["ttl_s"] == 3600
     assert publish_calls[0]["fields"]["type"] == "agent.error"
-    assert json.loads(publish_calls[0]["fields"]["payload"])["error"] == "request blob missing"
+    assert json.loads(publish_calls[0]["fields"]["payload"])["error"] == {"code": "agent_failed", "detail": "The agent failed.", "attr": None}
     client.ack.assert_awaited_once_with("agent.requests", "agent-executors", "1-0")
 
 
@@ -94,7 +94,7 @@ async def test_request_handler_redacts_payload_except_request_key():
     assert request_key_value in debug_logs
 
 
-async def test_pre_emitter_failure_logs_the_exception_class_without_its_message():
+async def test_pre_emitter_failure_keeps_the_exception_text_out_of_the_log_and_the_payload():
     client, publish_calls = _make_recording_client()
     loader = MagicMock()
     secret_marker = "LOAD_SECRET_24680"
@@ -115,5 +115,5 @@ async def test_pre_emitter_failure_logs_the_exception_class_without_its_message(
     assert "RuntimeError" in failure_line
     assert "<redacted" in failure_line
     assert secret_marker not in failure_line
-    assert json.loads(publish_calls[0]["fields"]["payload"])["error"] == raw_error_text
+    assert json.loads(publish_calls[0]["fields"]["payload"])["error"] == {"code": "agent_failed", "detail": "The agent failed.", "attr": None}
 

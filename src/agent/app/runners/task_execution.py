@@ -112,7 +112,9 @@ async def run_task_through_loop(
     result = await deps.loop.run(context, tools, emitter, stop)
 
     if output_schema and result.stop_reason in FAILURE_STOP_REASONS:
-        raise AgentServiceError(result.error or f"agent loop failed ({result.stop_reason})")
+        raise AgentServiceError.from_failed_loop(
+            result.error or f"agent loop failed ({result.stop_reason})", result
+        )
 
     if output_schema:
         # A loop cut off by max_iter keeps text written before its last tool results.

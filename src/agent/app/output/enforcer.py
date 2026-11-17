@@ -62,9 +62,10 @@ class StructuredOutputEnforcer:
 
             if result.stop_reason in FAILURE_STOP_REASONS:
                 context.tool_choice = None
-                raise AgentServiceError(
+                raise AgentServiceError.from_failed_loop(
                     result.error
-                    or f"agent loop failed ({result.stop_reason}) during schema enforcement"
+                    or f"agent loop failed ({result.stop_reason}) during schema enforcement",
+                    result,
                 )
 
             if capture.args is None:
@@ -103,9 +104,9 @@ class StructuredOutputEnforcer:
 
             logger.opt(lazy=True).debug(
                 "schema_enforce attempt={} correlation_id={} ok=False error={}",
-                lambda: attempt,
+                lambda attempt=attempt: attempt,
                 lambda: context.correlation_id,
-                lambda: redact_value(outcome.error),
+                lambda outcome=outcome: redact_value(outcome.error),
             )
             corrective = (
                 f"Your answer did not match the schema: {outcome.error}. "

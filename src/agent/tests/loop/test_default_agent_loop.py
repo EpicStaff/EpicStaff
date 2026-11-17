@@ -743,14 +743,15 @@ async def test_llm_raises_returns_llm_error_no_on_error():
     assert result.stop_reason == "llm_error"
     assert result.iterations == 0
     assert result.tool_invocations == 0
-    assert result.error == "LLM down"
+    # Not a litellm error, so nothing says the LLM request failed.
+    assert (result.error_code, result.error) == ("agent_failed", "The agent failed.")
 
     error_events = [payload for name, payload in emitter.events if name == "on_error"]
     assert len(error_events) == 0
 
 
-async def test_llm_error_logs_the_exception_class_without_its_message():
-    """The llm_error log line carries no raw exception text; LoopResult.error still does."""
+async def test_llm_error_reaches_neither_the_log_nor_the_result_as_raw_text():
+    """The llm_error log line names the exception class; LoopResult.error holds the user's fact."""
     secret_marker = "LLM_CRASH_SECRET_13579"
     raw_error_text = f"provider rejected sk-live-{secret_marker}"
     emitter = RecordingEmitter()
@@ -767,7 +768,21 @@ async def test_llm_error_logs_the_exception_class_without_its_message():
     assert "RuntimeError" in error_line
     assert "<redacted" in error_line
     assert secret_marker not in "\n".join(messages)
-    assert result.error == raw_error_text
+    assert result.error == "The agent failed."
+
+
+async def test_a_timeout_error_without_a_time_limit_is_a_failed_agent():
+    llm = FakeLLMClient([], chat_raises=TimeoutError("read timed out"))
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(
+        make_context(max_execution_time=None),
+        StubToolRegistry({}),
+        RecordingEmitter(),
+        MaxIterAndNoToolCalls(max_iter=5),
+    )
+
+    assert (result.error_code, result.error) == ("agent_failed", "The agent failed.")
 
 
 async def test_timeout_fires_mid_execution():
@@ -799,8 +814,8 @@ async def test_timeout_fires_mid_execution():
     result = await loop.run(context, tools, emitter, stop)
 
     assert result.stop_reason == "timeout"
-    assert result.error is not None
-    assert "exceeded" in result.error
+    assert result.error_code == "agent_timeout"
+    assert result.error == 'Agent "test-agent" didn\'t finish within 0.05 seconds.'
 
     error_events = [payload for name, payload in emitter.events if name == "on_error"]
     assert len(error_events) == 0
@@ -1361,16 +1376,24 @@ async def test_trigger_error_switches_to_fallback(error_type):
 
 
 @pytest.mark.parametrize(
-    "error_type",
+    ("error_type", "expected_code", "expected_error"),
     [
-        litellm.BadRequestError,
-        litellm.ContextWindowExceededError,
-        litellm.ContentPolicyViolationError,
-        litellm.APIError,
+        (litellm.BadRequestError, "llm_failed", 'The LLM request for model "fake-model" failed.'),
+        (
+            litellm.ContextWindowExceededError,
+            "llm_context_window",
+            'The prompt is too long for model "fake-model".',
+        ),
+        (
+            litellm.ContentPolicyViolationError,
+            "llm_content_refused",
+            'The provider of model "fake-model" refused the request because of its content policy.',
+        ),
+        (litellm.APIError, "llm_failed", 'The LLM request for model "fake-model" failed.'),
     ],
-    ids=lambda error_type: error_type.__name__,
+    ids=lambda value: value.__name__ if isinstance(value, type) else None,
 )
-async def test_request_errors_do_not_switch(error_type):
+async def test_request_errors_do_not_switch(error_type, expected_code, expected_error):
     emitter = RecordingEmitter()
     error = _provider_error(error_type)
     llm = FakeLLMClient([error, text_chunks("never reached")])
@@ -1378,7 +1401,7 @@ async def test_request_errors_do_not_switch(error_type):
     result = await _run(llm, _context_with_fallback(), emitter)
 
     assert result.stop_reason == "llm_error"
-    assert result.error == str(error)
+    assert (result.error_code, result.error) == (expected_code, expected_error)
     assert _called_models(llm) == [_PRIMARY_MODEL]
     assert emitter.llm_fallbacks == []
 
@@ -1403,7 +1426,8 @@ async def test_without_fallback_a_trigger_error_fails_the_run_as_before():
     result = await _run(llm, _context_with_fallback(fallback=None), emitter)
 
     assert result.stop_reason == "llm_error"
-    assert result.error == str(error)
+    assert result.error_code == "llm_rate_limit"
+    assert result.error == 'The provider\'s rate limit for model "fake-model" was reached.'
     assert _called_models(llm) == [_PRIMARY_MODEL]
     assert emitter.llm_fallbacks == []
 
@@ -1429,7 +1453,7 @@ async def test_trigger_error_on_the_fallback_after_the_switch_fails_the_run_unch
     result = await _run(llm, _context_with_fallback(), emitter, tools={"ping": lambda args: "pong"})
 
     assert result.stop_reason == "llm_error"
-    assert result.error == str(fallback_error)
+    assert result.error == 'The provider\'s rate limit for model "claude-sonnet-4-5" was reached.'
     assert _called_models(llm) == [_PRIMARY_MODEL, _FALLBACK_MODEL, _FALLBACK_MODEL]
     assert len(emitter.llm_fallbacks) == 1
 
@@ -1455,31 +1479,19 @@ async def test_final_answer_call_switches_to_fallback():
     assert "tool_choice" not in llm.received_configs[-1]
 
 
-@pytest.mark.parametrize(
-    ("fallback", "expected_error"),
-    [
-        (
-            _FALLBACK_LLM,
-            'Primary LLM "Key A" failed with RateLimitError; '
-            'fallback LLM "Key B" failed with AuthenticationError.',
-        ),
-        (
-            LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet-4-5")),
-            'Primary LLM "Key A" failed with RateLimitError; '
-            'fallback LLM "claude-sonnet-4-5" failed with AuthenticationError.',
-        ),
-    ],
-    ids=["named-configs", "unnamed-config-uses-model"],
-)
-async def test_fallback_failure_names_both_configs_and_error_classes(fallback, expected_error):
+async def test_fallback_failure_states_the_fallback_models_own_error():
     emitter = RecordingEmitter()
     llm = FakeLLMClient([_provider_error(litellm.RateLimitError), _provider_error(litellm.AuthenticationError)])
 
-    result = await _run(llm, _context_with_fallback(fallback=fallback), emitter)
+    with capture_logs_at("ERROR") as logs:
+        result = await _run(llm, _context_with_fallback(), emitter)
 
     assert result.stop_reason == "llm_error"
-    assert result.error == expected_error
+    assert result.error_code == "llm_auth"
+    assert result.error == 'The provider rejected the API key for model "claude-sonnet-4-5".'
     assert _called_models(llm) == [_PRIMARY_MODEL, _FALLBACK_MODEL]
+    error_line = log_line_starting_with(logs, "loop llm_error")
+    assert "FallbackLLMFailedError" in error_line
 
 
 async def test_cancelled_run_does_not_call_the_fallback():

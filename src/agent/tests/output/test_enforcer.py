@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 from app.emitters.base import Emitter
+from foundation.schemas import ErrorDetailSchema
 from app.exceptions import (
     AgentServiceError,
     InvalidOutputSchemaError,
@@ -324,9 +325,10 @@ class FailingLoop(AgentLoop):
     Tracks how many times run() was called.
     """
 
-    def __init__(self, stop_reason: str, error: str | None) -> None:
+    def __init__(self, stop_reason: str, error: str | None, error_code: str | None = None) -> None:
         self._stop_reason = stop_reason
         self._error = error
+        self._error_code = error_code
         self.call_count = 0
 
     async def run(
@@ -344,19 +346,21 @@ class FailingLoop(AgentLoop):
             stop_reason=self._stop_reason,
             token_usage=TokenUsage(),
             error=self._error,
+            error_code=self._error_code,
         )
 
 
 async def test_llm_error_during_enforcement_raises_agent_service_error():
-    """Loop returns llm_error → AgentServiceError with the original message, not SchemaValidationError."""
-    loop = FailingLoop(stop_reason="llm_error", error="boom")
+    """Loop returns llm_error → AgentServiceError carrying the loop's fact, not SchemaValidationError."""
+    fact = 'The provider rejected the API key for model "gpt-4o".'
+    loop = FailingLoop(stop_reason="llm_error", error=fact, error_code="llm_auth")
     enforcer = StructuredOutputEnforcer(loop, max_retries=2)
     context = _make_context()
 
     with pytest.raises(AgentServiceError) as exc_info:
         await enforcer.enforce(context, OBJECT_SCHEMA, FakeEmitter())
 
-    assert "boom" in str(exc_info.value)
+    assert exc_info.value.error == ErrorDetailSchema(code="llm_auth", detail=fact)
     assert not isinstance(exc_info.value, SchemaValidationError)
     assert loop.call_count == 1
     assert context.tool_choice is None
@@ -387,6 +391,7 @@ async def test_failure_stop_reason_with_no_error_message_uses_fallback():
         await enforcer.enforce(context, OBJECT_SCHEMA, FakeEmitter())
 
     assert "llm_error" in str(exc_info.value)
+    assert exc_info.value.error is None
 
 
 # ---------------------------------------------------------------------------
