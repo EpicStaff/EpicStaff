@@ -580,7 +580,7 @@ services:
   #       condition: service_started
 
   storage:
-    image: rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
+    image: rustfs/rustfs:1.0.5@sha256:b81d16a90ee25bd9511280127ca1471788c6e874cf0f0da759645f46b2dc1d74
     container_name: ${INSTANCE_PREFIX?}storage
     environment:
       RUSTFS_ACCESS_KEY: ${STORAGE_USER:?}
@@ -696,7 +696,7 @@ services:
       start_period: 5s
 
   epicstaff-nginx:
-    image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
+    image: nginx:1.31.8@sha256:165ddde8751e75a1c907d24ef10d9f6deb08b57e0fe56caf67512486aff76d82
     container_name: ${INSTANCE_PREFIX?}epicstaff-nginx
     # Long syntax: `docker compose config --no-interpolate` (src/nginx/tests/check_templates.sh)
     # still shows each container port, which it cannot read out of "${VAR}:80".
