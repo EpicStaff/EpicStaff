@@ -63,3 +63,8 @@ class IndexEstimateOutputSchema(BaseSchema):
     document_count: int
     chunk_count: int
     embedding: EmbeddingEstimateSchema
+
+
+class DocumentIdRewriteInputSchema(BaseSchema):
+    # Old document id, as stored in the parquet tables -> the importing side's id.
+    document_id_map: dict[str, int] = Field(min_length=1)

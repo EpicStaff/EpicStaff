@@ -12,6 +12,10 @@ from tables.import_export.schemas import ImportSettings
 class EntityImportExportStrategy(ABC):
     entity_type: EntityType
 
+    # True: an entry is reused when it matches an existing row, even as the
+    # file's main entity. Every other type always creates its main entity.
+    reuse_when_main: bool = False
+
     # Define these in a subclass to enable CSV export for the entity.
     # CSV_FIELDS: list of column names written to the CSV header.
     # csv_row_mapper: transforms a raw exported dict into a flat CSV row.
@@ -73,7 +77,7 @@ class EntityImportExportStrategy(ABC):
 
         settings_kwargs = vars(settings) if settings is not None else {}
         create_kwargs = {**settings_kwargs, **kwargs}
-        if is_main:
+        if is_main and not self.reuse_when_main:
             instance = self.create_entity(data, id_mapper, **create_kwargs)
         else:
             existing = self.find_existing(data, id_mapper, org_id=kwargs.get("org_id"))

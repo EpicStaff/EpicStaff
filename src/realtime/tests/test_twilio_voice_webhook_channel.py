@@ -5,8 +5,11 @@ from urllib.parse import urlparse, parse_qs
 
 import pytest
 
+from tests.conftest import seal
 from utils.twilio_signature import _compute_signature
 
+
+pytestmark = pytest.mark.usefixtures("app_transport_cryptographer")
 
 CHANNEL_TOKEN = "chan-tok-1"
 AUTH_TOKEN = "test-auth-token-1234567890"
@@ -62,7 +65,7 @@ def _channel_with_nested_webhook_trigger(
         "realtime_agent_definition": 42,
         "twilio": {
             "account_sid": "AC123",
-            "auth_token": AUTH_TOKEN,
+            "auth_token": seal(AUTH_TOKEN),
             "phone_number": "+10000000000",
             "webhook_trigger": {
                 "id": 1,
@@ -214,12 +217,18 @@ async def test_signed_calls_filling_a_channels_quota_never_drop_another_channels
 
 
 def _legacy_only_channel():
-    return {"realtime_agent": 42, "realtime_agent_definition": None, "twilio": {"auth_token": AUTH_TOKEN}}
+    return {"realtime_agent": 42, "realtime_agent_definition": None, "twilio": {"auth_token": seal(AUTH_TOKEN)}}
 
 
 def _channel_without_auth_token():
     channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain="fallback.example.ngrok.io")
     channel["twilio"]["auth_token"] = None
+    return channel
+
+
+def _channel_with_undecryptable_auth_token():
+    channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain="fallback.example.ngrok.io")
+    channel["twilio"]["auth_token"] = AUTH_TOKEN
     return channel
 
 
@@ -235,6 +244,12 @@ def _channel_without_auth_token():
         ),
         # A missing auth token must fail closed, never skip signature validation.
         (_channel_without_auth_token, {"auth_token": None}, 503, "Twilio auth not configured"),
+        # An auth token the transport key cannot open fails closed the same way.
+        (
+            _channel_with_undecryptable_auth_token,
+            {"base_url": "https://fallback.example.ngrok.io"},
+            503, "Twilio auth not configured",
+        ),
         (
             lambda: _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None),
             {}, 503, "No tunnel domain configured for this channel's webhook_trigger.",
@@ -242,7 +257,7 @@ def _channel_without_auth_token():
         # Django no longer accepts the removed legacy staff agent as a destination.
         (_legacy_only_channel, {}, 404, re.compile(r"(?i)legacy.*42|42.*legacy")),
     ],
-    ids=["bad-signature", "no-auth-token", "no-tunnel", "legacy-agent-only"],
+    ids=["bad-signature", "no-auth-token", "undecryptable-auth-token", "no-tunnel", "legacy-agent-only"],
 )
 async def test_call_is_refused_without_twiml(
     resolve_channel, isolated_stream_token_repository, channel, request_kwargs, status, detail
@@ -265,3 +280,20 @@ async def test_call_is_refused_without_twiml(
     else:
         assert refused.value.detail == detail
     assert isolated_stream_token_repository.consume(pending_token, bound_key=CHANNEL_TOKEN) is True
+
+
+@pytest.mark.asyncio
+async def test_an_undecryptable_auth_token_is_logged_by_field_name_only(resolve_channel, captured_log_messages):
+    from api.main import twilio_voice_webhook_channel
+    from fastapi import HTTPException
+
+    resolve_channel(_channel_with_undecryptable_auth_token())
+
+    with pytest.raises(HTTPException):
+        await twilio_voice_webhook_channel(
+            CHANNEL_TOKEN, request=_fake_request(base_url="https://fallback.example.ngrok.io")
+        )
+
+    logs = "\n".join(captured_log_messages)
+    assert "twilio.auth_token could not be decrypted" in logs
+    assert AUTH_TOKEN not in logs

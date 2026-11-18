@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
-import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     CustomInputComponent,
     GoToButtonComponent,
@@ -18,14 +18,10 @@ import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { linkedEntityFormat, mapFieldRowChanges } from '../../../utils/diff';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { inputMapFromRows } from '../../input-map/input-map-rows';
 import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 
 const MISSING_FLOW_MESSAGE = "This node's flow was deleted.";
-
-interface InputMapPair {
-    key: string;
-    value: string;
-}
 
 @Component({
     selector: 'app-subgraph-node-panel',
@@ -148,8 +144,7 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
             }
         }
 
-        const validInputPairs = this.getValidInputPairs();
-        const inputMapValue = this.createInputMapFromPairs(validInputPairs);
+        const inputMapValue = inputMapFromRows(this.inputMapPairs.getRawValue());
 
         return {
             ...this.node(),
@@ -181,23 +176,6 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
                 })
             );
         }
-    }
-
-    private getValidInputPairs(): AbstractControl[] {
-        return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value as InputMapPair;
-            return value.key?.trim() !== '' || value.value?.trim() !== '';
-        });
-    }
-
-    private createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
-        return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
-            const pair = curr.value as InputMapPair;
-            if (pair.key?.trim()) {
-                acc[pair.key.trim()] = pair.value;
-            }
-            return acc;
-        }, {});
     }
 
     public getSelectedFlowUrl(): string | null {

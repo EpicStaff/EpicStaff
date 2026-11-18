@@ -1,4 +1,5 @@
 import { AuditConditionGroup, createAuditConditionGroup } from '../../audit/models/audit-filter.models';
+import { DEEP_TEXT_OPERATORS } from '../../audit/models/audit-filter-options';
 
 export type ToolSortOrder = 'default' | 'last_modified' | 'name_asc' | 'name_desc' | 'most_used' | 'unused_first';
 
@@ -27,7 +28,7 @@ export const EMPTY_TOOLS_FILTER: ToolsFilterState = {
     sortOrder: 'default',
     includedToolIds: null,
     includedLabelIds: null,
-    customConditions: [createAuditConditionGroup()],
+    customConditions: [createAuditConditionGroup(DEEP_TEXT_OPERATORS)],
 };
 
 /** Sort orders that require per-tool usage counts to compute. */

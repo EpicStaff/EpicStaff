@@ -15,7 +15,7 @@ import {
     viewChildren,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, MultiSelectComponent, SelectItem } from '@shared/components';
+import { AppSvgIconComponent, HelpTooltipComponent, MultiSelectComponent, SelectItem } from '@shared/components';
 
 import { ToastService } from '../../../../../services/notifications';
 import { AgentNodeTaskUi } from '../../../../core/models/agent-node.model';
@@ -41,6 +41,7 @@ interface ResolvedTaskRef extends AgentNodeTaskUi {
     imports: [
         DragDropModule,
         AppSvgIconComponent,
+        HelpTooltipComponent,
         MatTooltipModule,
         MultiSelectComponent,
         VariableHighlightTextareaComponent,

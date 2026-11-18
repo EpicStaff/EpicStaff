@@ -28,6 +28,7 @@ from .plugins import *
 from .redis import *
 from .rest_framework import *
 from .sandbox import *
+from .secrets import *
 from .spectacular import *
 from .storage import *
 from .templates import *

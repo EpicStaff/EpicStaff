@@ -349,10 +349,9 @@ def _session_item(messages, session_id=7):
 
 
 def _render_csv(data) -> list[dict]:
-    response = CsvExportFormatStrategy(SessionTabularProjection()).render(
-        data, EntityType.SESSION, "session", "7"
-    )
-    reader = csv.DictReader(io.StringIO(response.content.decode()))
+    stream = io.StringIO(newline="")
+    CsvExportFormatStrategy(SessionTabularProjection()).write(data, EntityType.SESSION, stream)
+    reader = csv.DictReader(io.StringIO(stream.getvalue()))
     assert reader.fieldnames == SessionTabularProjection.FIELDS
     return list(reader)
 

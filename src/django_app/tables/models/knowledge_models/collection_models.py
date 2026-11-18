@@ -26,7 +26,7 @@ def clean_collection_description(description: str) -> str:
     return _C0_CONTROL_CHARS_RE.sub("", _WHITESPACE_CONTROL_CHARS_RE.sub(" ", description)).strip()
 
 
-def _is_bare_file_name(file_name: str) -> bool:
+def is_bare_file_name(file_name: str) -> bool:
     """
     True when file_name is a plain file name carrying no path component.
 
@@ -195,7 +195,7 @@ class DocumentMetadata(SoftDeleteFields):
         indexes = [models.Index(fields=["source_collection"])]
 
     def save(self, *args, **kwargs):
-        if self.file_name and not _is_bare_file_name(self.file_name):
+        if self.file_name and not is_bare_file_name(self.file_name):
             raise SuspiciousFileOperation(
                 f"file_name {self.file_name!r} must be a plain file name, not a path"
             )

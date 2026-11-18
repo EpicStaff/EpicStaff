@@ -26,7 +26,7 @@ jobs:
   # Skipping per pull request is only safe because of the weekly cron above: that
   # run is what catches a CVE published against a dependency nobody touched.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       py: ${{ steps.filter.outputs.py }}
       fe: ${{ steps.filter.outputs.fe }}
@@ -81,7 +81,7 @@ jobs:
     # folder holds one report per week rather than one per push.
     needs: changes
     if: needs.changes.outputs.py == 'true' || needs.changes.outputs.fe == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

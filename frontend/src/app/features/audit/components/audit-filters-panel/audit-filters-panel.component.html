@@ -69,7 +69,49 @@
     </div>
 
     <div class="filters-panel__body">
-        @if (activeTab() === 'builder') {
+        @if (activeTab() === 'builder' && !isSessions) {
+            <div class="filters-panel__groups">
+                @for (builderSection of builderSections; track builderSection.section) {
+                    <p class="filters-panel__section">{{ builderSection.title }}</p>
+
+                    @for (builderField of builderSection.fields; track builderField.field) {
+                        <app-audit-filter-group
+                            [label]="builderField.label"
+                            [summary]="summaryOf(builderField.field)"
+                            (cleared)="clearField(builderField.field)"
+                        >
+                            @switch (builderField.kind) {
+                                @case ('id') {
+                                    <app-audit-id-filter
+                                        [filter]="idFilterOf(builderField.field)"
+                                        (filterChange)="setIdFilter(builderField.field, $event)"
+                                    />
+                                }
+                                @case ('text') {
+                                    <app-audit-condition-filter
+                                        [groups]="textConditionsOf(builderField)"
+                                        (groupsChange)="setTextConditions(builderField.field, $event)"
+                                        [operators]="builderField.operators"
+                                        [showKey]="false"
+                                    />
+                                }
+                                @default {
+                                    <app-audit-flow-filter
+                                        [options]="optionsOf(builderField)"
+                                        [filter]="selectionOf(builderField.field)"
+                                        (filterChange)="setSelection(builderField.field, $event)"
+                                    />
+                                }
+                            }
+                        </app-audit-filter-group>
+                    }
+
+                    @if (builderSection.section === 'quick') {
+                        <ng-container [ngTemplateOutlet]="dateGroup" />
+                    }
+                }
+            </div>
+        } @else if (activeTab() === 'builder') {
             <div class="filters-panel__groups">
                 <app-audit-match-scope
                     [scope]="filter().matchScope"
@@ -210,16 +252,7 @@
                     />
                 </app-audit-filter-group>
 
-                <app-audit-filter-group
-                    label="Date"
-                    [summary]="summaryOf('date')"
-                    (cleared)="clearField('date')"
-                >
-                    <app-audit-date-filter
-                        [range]="dateRange()"
-                        (rangeChange)="setDateRange($event)"
-                    />
-                </app-audit-filter-group>
+                <ng-container [ngTemplateOutlet]="dateGroup" />
 
                 <p class="filters-panel__section">Deep filters</p>
 
@@ -317,10 +350,12 @@
             </div>
         } @else if (activeTab() === 'query') {
             <div class="filters-panel__query">
-                <app-audit-match-scope
-                    [scope]="filter().matchScope"
-                    (scopeChange)="setMatchScope($event)"
-                />
+                @if (isSessions) {
+                    <app-audit-match-scope
+                        [scope]="filter().matchScope"
+                        (scopeChange)="setMatchScope($event)"
+                    />
+                }
 
                 <div class="filters-panel__query-header">
                     <label
@@ -358,7 +393,7 @@
                     id="audit-query"
                     class="filters-panel__query-input"
                     rows="4"
-                    placeholder='e.g. status in (failed) and name == "Session Start"'
+                    [placeholder]="catalog.queryPlaceholder"
                     [value]="filter().query"
                     (input)="setQuery($event)"
                 ></textarea>
@@ -430,6 +465,7 @@
                 [currentFilter]="filter()"
                 [agentOptions]="agentOptions()"
                 [toolOptions]="toolOptions()"
+                [lookupOptions]="lookupOptions()"
                 [openCreateOnInit]="isCreatingPreset()"
                 (presetApplied)="presetApplied.emit($event)"
                 (queryCopied)="openQuery($event)"
@@ -440,6 +476,7 @@
                 [currentFilter]="filter()"
                 [agentOptions]="agentOptions()"
                 [toolOptions]="toolOptions()"
+                [lookupOptions]="lookupOptions()"
                 (presetApplied)="presetApplied.emit($event)"
                 (queryCopied)="openQuery($event)"
             />
@@ -480,3 +517,16 @@
         </div>
     }
 </div>
+
+<ng-template #dateGroup>
+    <app-audit-filter-group
+        label="Date"
+        [summary]="summaryOf('date')"
+        (cleared)="clearField('date')"
+    >
+        <app-audit-date-filter
+            [range]="dateRange()"
+            (rangeChange)="setDateRange($event)"
+        />
+    </app-audit-filter-group>
+</ng-template>

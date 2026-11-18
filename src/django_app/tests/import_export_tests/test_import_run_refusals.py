@@ -1,17 +1,23 @@
-"""Import refuses a flow holding a template or state path crew would refuse; partial import does not."""
+"""Import refuses a flow holding a template or state path crew would refuse, synchronously and
+as a job; partial import does not."""
+
+import os
 
 import pytest
 from django.urls import reverse
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
+from tables.import_export.export_format_strategies import ArchiveExportFormatStrategy
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.partial_export_service import (
     GraphPartialExportService,
     NodeRef,
 )
-from tables.models import Graph
+from tables.import_export.schemas import ImportSettings
+from tables.models import Graph, TransferJob
 from tables.models.graph_models import (
     AgentNode,
     AgentNodeTask,
@@ -19,8 +25,13 @@ from tables.models.graph_models import (
     ClassificationDecisionTablePrompt,
     TaskNode,
 )
+from tables.services.transfer_jobs.archive_store import TransferArchiveStore
+from tables.services.transfer_jobs.job_service import TransferJobService
+from tables.services.transfer_jobs.runner import IMPORT_ARCHIVE_NAME, TransferJobRunner
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.storage_backend_fake import FakeStorageBackend
+from utils.exception_handler import flatten_error_detail
 
 REFUSED_UNDERSCORE_KEY = (
     "Placeholder '{a._b}' is not allowed: '_b' starts with '_'. Rename that variable or key."
@@ -53,6 +64,16 @@ def _classification_prompt_with_refused_text(graph):
     )
 
 
+def _classification_input_map_with_refused_path(graph):
+    ClassificationDecisionTableNode.objects.create(
+        graph=graph, node_name="Classifier", pre_input_map={"x": "variables._x|null"}
+    )
+    return (
+        "Node 'Classifier' of flow 'Source', field 'pre_input_map': Variable path "
+        "'variables._x' is not allowed: path segments cannot start with '_'."
+    )
+
+
 def _task_with_refused_output_path(graph):
     TaskNode.objects.create(graph=graph, node_name="Writer", output_variable_path="variables._out")
     return (
@@ -61,13 +82,33 @@ def _task_with_refused_output_path(graph):
     )
 
 
-def _export_file(graph):
-    export_data = (
-        ExportService(entity_registry)
-        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
-        .data
+def _export(graph):
+    return ExportService(entity_registry).export_entities(
+        EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
     )
-    return data_to_json_file(data=export_data, filename="flow.json")
+
+
+def _export_file(graph):
+    return data_to_json_file(data=_export(graph).data, filename="flow.json")
+
+
+@pytest.fixture
+def export_archive_path(source):
+    """The path of `source` exported as an archive, taken once a test has seeded its nodes."""
+    paths = []
+
+    def _write():
+        paths.append(ArchiveExportFormatStrategy().render_to_file(_export(source)))
+        return paths[-1]
+
+    yield _write
+    for path in paths:
+        os.unlink(path)
+
+
+@pytest.fixture
+def backend():
+    return FakeStorageBackend()
 
 
 @pytest.fixture
@@ -89,6 +130,9 @@ def source(acme):
         pytest.param(_task_with_refused_instructions, id="task-instructions"),
         pytest.param(_agent_task_with_refused_instructions, id="agent-task-instructions"),
         pytest.param(_classification_prompt_with_refused_text, id="classification-prompt"),
+        pytest.param(
+            _classification_input_map_with_refused_path, id="classification-table-input-map"
+        ),
         pytest.param(_task_with_refused_output_path, id="state-path"),
     ],
 )
@@ -104,6 +148,54 @@ def test_an_import_with_a_run_refusal_is_a_400_and_creates_no_flow(
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
     assert response.data["message"] == expected_message
+    assert Graph.objects.count() == graph_count_before
+
+
+@pytest.mark.django_db
+def test_an_import_job_with_a_run_refusal_is_refused_before_anything_is_stored(
+    admin_acme, acme, source, export_archive_path, backend
+):
+    expected_message = _task_with_refused_instructions(source)
+
+    with pytest.raises(ValidationError) as refused:
+        TransferJobService().start_import(
+            user=admin_acme,
+            org_id=acme.id,
+            entity_type=EntityType.GRAPH,
+            settings=ImportSettings(),
+            archive_path=export_archive_path(),
+            store=TransferArchiveStore(backend=backend),
+        )
+
+    # The upload route answers 400 with this message, as the synchronous import does.
+    assert flatten_error_detail(refused.value.detail) == expected_message
+    assert not TransferJob.objects.exists()
+    assert backend.objects == {}
+
+
+@pytest.mark.django_db
+def test_an_import_job_whose_stored_archive_holds_a_run_refusal_fails_with_the_refusal(
+    admin_acme, acme, source, export_archive_path, backend
+):
+    expected_message = _task_with_refused_instructions(source)
+    store = TransferArchiveStore(backend=backend)
+    job = TransferJob.objects.create(
+        org=acme,
+        created_by=admin_acme,
+        kind=TransferJob.Kind.IMPORT,
+        main_entity=TransferJob.MainEntity.FLOW,
+        request={"settings": {}},
+    )
+    with open(export_archive_path(), "rb") as archive:
+        job.archive_key = store.upload_file(job.id, IMPORT_ARCHIVE_NAME, archive)
+    job.save(update_fields=["archive_key"])
+    graph_count_before = Graph.objects.count()
+
+    TransferJobRunner(store=store).run(job.id)
+
+    job.refresh_from_db()
+    assert job.status == TransferJob.Status.FAILED
+    assert job.error == {"code": "invalid_file", "message": expected_message}
     assert Graph.objects.count() == graph_count_before
 
 

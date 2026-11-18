@@ -7,9 +7,10 @@ on:
         description: 'Select target server'
         required: true
         type: choice
+        # Not test3: its branch instance resets through the deploy's reset_database input, and its
+        # developer instance is never reset.
         options:
           - test2
-          - test3
       confirm_nuke:
         description: 'Type "NUKE" to confirm reset'
         required: true
@@ -36,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd /home/developer/EpicStaff
+          cd "${APP_DIR:?APP_DIR is not set: add it to the .env of the self-hosted runner}"
           
           echo ">> Starting database reset on ${{ github.event.inputs.target_server }}..."
           

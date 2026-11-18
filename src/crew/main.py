@@ -4,6 +4,7 @@ import gc
 import settings
 from clients.key_value import KeyValueClient
 from clients.sandbox import SandboxClient
+from foundation.cryptographer import FernetRotatedCryptographer
 from services.agent_task_service import AgentTaskService
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.knowledge_search_service import KnowledgeSearchService
@@ -45,6 +46,13 @@ async def main():
         api_key=settings.DJANGO_API_KEY,
         timeout=settings.KEY_VALUE_TIMEOUT,
     )
+    # Opens the secrets django_app seals for transport, for the nodes that call an LLM
+    # from crew itself; everything else crew forwards still sealed.
+    secrets_cryptographer = FernetRotatedCryptographer(
+        settings.SECRETS_TRANSPORT_KEY,
+        settings.SECRETS_TRANSPORT_PREVIOUS_KEYS,
+        hkdf_info=settings.SECRETS_TRANSPORT_HKDF_INFO.encode(),
+    )
     session_manager_service = GraphSessionManagerService(
         redis_service=redis_service,
         session_schema_channel=settings.SESSION_SCHEMA_CHANNEL,
@@ -53,6 +61,7 @@ async def main():
         python_code_executor_service=python_code_executor_service,
         # Note:  Used for process human_input
         knowledge_search_service=knowledge_search_service,
+        secrets_cryptographer=secrets_cryptographer,
         agent_task_service=agent_task_service,
         key_value_client=key_value_client,
         max_concurrent_sessions=settings.MAX_CONCURRENT_SESSIONS,

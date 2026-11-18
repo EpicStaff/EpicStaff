@@ -1,7 +1,6 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
-import { ActionCode, ExportResult, ResourceCode } from '@shared/models';
-import { toExportResult } from '@shared/utils';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { map, Observable, tap } from 'rxjs';
 
 import { withPermission } from '../../../core/http/permission-context';
@@ -62,18 +61,6 @@ export class AgentDefinitionsApiService {
 
     delete(id: number): Observable<void> {
         return this.http.delete<void>(`${this.baseUrl}${id}/`, { headers: this.httpHeaders });
-    }
-
-    exportAgent(id: number): Observable<ExportResult> {
-        return this.http
-            .get(`${this.baseUrl}${id}/export/`, { observe: 'response', responseType: 'blob' })
-            .pipe(map(toExportResult));
-    }
-
-    bulkExportAgents(ids: number[]): Observable<ExportResult> {
-        return this.http
-            .post(`${this.baseUrl}bulk-export/`, { ids }, { observe: 'response', responseType: 'blob' })
-            .pipe(map(toExportResult));
     }
 
     inspectImport(file: File): Observable<InspectResult> {

@@ -9,8 +9,9 @@ open.
 import asyncio
 
 import pytest
+from miniopy_async import S3Error
 
-from infrastructure.graphrag import storages
+from infrastructure.graphrag import s3_client
 from infrastructure.graphrag.storages import S3Storage
 
 
@@ -63,7 +64,7 @@ def fake_minio(monkeypatch):
     _FakeMinio.objects = {}
     _FakeMinio.fail_put = False
     _FakeMinio.release_first_put = None
-    monkeypatch.setattr(storages, "Minio", _FakeMinio)
+    monkeypatch.setattr(s3_client, "Minio", _FakeMinio)
     return _FakeMinio
 
 
@@ -116,7 +117,7 @@ async def test_concurrent_operations_do_not_close_each_others_session(storage, f
 
 async def test_early_return_paths_close_their_session(storage, fake_minio):
     async def missing(self, bucket_name, object_name):
-        raise storages.S3Error("NoSuchKey", "missing", "", "", "", None)
+        raise S3Error("NoSuchKey", "missing", "", "", "", None)
 
     fake_minio.get_object = missing
 

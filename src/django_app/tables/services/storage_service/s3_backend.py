@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+from collections.abc import Iterator
 
 import boto3
 from boto3.s3.transfer import TransferConfig
@@ -312,6 +313,21 @@ class S3StorageBackend(AbstractStorageBackend):
                 raise RangeNotSatisfiable(head["ContentLength"]) from error
             raise
         return response["Body"].read(), response["ContentRange"]
+
+    def iter_object(self, path: str, chunk_size: int) -> Iterator[bytes]:
+        """Yield the object at `path` in chunks, never holding it whole in memory."""
+        full_path = self._full_path(path)
+        try:
+            response = self.client.get_object(Bucket=self.bucket_name, Key=full_path)
+        except ClientError as error:
+            if error.response["Error"]["Code"] == "NoSuchKey":
+                raise FileNotFoundError(f"File does not exist: {path}") from error
+            raise
+        body = response["Body"]
+        try:
+            yield from body.iter_chunks(chunk_size)
+        finally:
+            body.close()
 
     def download(self, path: str) -> bytes:
         full_path = self._full_path(path)

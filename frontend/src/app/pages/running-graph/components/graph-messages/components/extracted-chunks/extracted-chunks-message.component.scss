@@ -169,11 +169,20 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    padding-right: 34px;
 }
 
 .chunk-order {
     font-weight: 500;
     color: var(--indigo-450);
+
+    &--link {
+        text-decoration: none;
+
+        &:is(:hover, :focus-visible) {
+            text-decoration: underline;
+        }
+    }
 }
 
 .chunk-source {

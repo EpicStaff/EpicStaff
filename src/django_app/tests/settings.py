@@ -8,6 +8,17 @@ os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 
 from django_app.settings import *  # noqa: E402
 
+# The suite creates and drops its own database, which needs CREATEDB: the crewdb superuser
+# has it, django_app's own role (DJANGO_DB_USER) does not.
+DATABASES = {
+    **DATABASES,
+    "default": {
+        **DATABASES["default"],
+        "USER": env.str("DB_USER"),
+        "PASSWORD": env.str("DB_PASSWORD"),
+    },
+}
+
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,
     # Real JWT/API-key authentication so `auth_client` (Authorization: Bearer
@@ -37,3 +48,7 @@ STORAGES = {
 # suite runs in `open` mode. Tests for the gate itself opt in explicitly with
 # @override_settings(FIRST_SETUP_MODE="cli_only").
 FIRST_SETUP_MODE = FirstSetupMode.OPEN
+
+# Pinned off so the suite does not depend on src/.env: a test that runs on-commit callbacks
+# would otherwise start a real sender. Tests of the trail turn it on with the `settings` fixture.
+USER_AUDIT_TRAIL_ENABLED = False

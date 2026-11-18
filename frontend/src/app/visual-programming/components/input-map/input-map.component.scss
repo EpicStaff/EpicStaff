@@ -1,5 +1,6 @@
 @use '../../styles/node-panel-controls.scss' as controls;
 @use '../../../../styles/diff-value-mark' as diff-value-mark;
+@use '../../../../styles/validation-message';
 
 .input-map-container {
     display: flex;
@@ -39,10 +40,21 @@
     gap: 0.75rem;
     width: 100%;
     min-width: 0;
+
+    // With no rows the list would still take a slot in the container's gap, doubling the space above Add Input.
+    &:empty {
+        display: none;
+    }
 }
 
 .input-map-item {
     width: 100%;
+}
+
+// Under a named row without a variable path, styled like a field's validation error.
+.missing-path-message {
+    @include validation-message.item;
+    margin-top: 0.5rem;
 }
 
 .input-map-fields {

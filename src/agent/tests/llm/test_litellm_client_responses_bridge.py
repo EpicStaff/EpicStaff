@@ -25,6 +25,7 @@ from shared.models.agent_service import AgentSpec
 from shared.models.ai_providers import LLMConfigData, LLMData
 
 from tests.cancellation import never_cancelled
+from tests.secret_sealing import agent_cryptographer, seal
 
 _RESPONSES_API_REPLY = {
     "id": "resp_1",
@@ -91,7 +92,7 @@ def _model_config(provider: str, llm_config: LLMConfigData) -> dict:
     context = AgentContext(
         agent=agent, attachments=[], correlation_id="c", is_cancelled=never_cancelled
     )
-    return _build_model_config(context)
+    return _build_model_config(context, agent_cryptographer())
 
 
 @pytest.mark.parametrize(
@@ -107,7 +108,7 @@ async def test_reasoning_model_with_tools_completes_through_the_responses_api(
         provider,
         LLMConfigData(
             model="gpt-6-luna",
-            api_key="sk-test",
+            api_key=seal("sk-test"),
             base_url=base_url,
             api_version=api_version,
             reasoning_effort="high",

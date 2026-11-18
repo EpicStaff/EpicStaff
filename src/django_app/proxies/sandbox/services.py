@@ -52,6 +52,22 @@ def pair_with_bindings(
     return pairs
 
 
+def _name_or_none(
+    client: SandboxVenvClient | SandboxCustomLibraryClient, resource_id: str
+) -> str | None:
+    """The name the sandbox stores for an environment or library, or None when it could
+    not be asked.
+
+    Best effort: the name only labels a user-action record, which must not fail the
+    change it describes for want of it.
+    """
+    try:
+        return client.retrieve(resource_id).get("name")
+    except Exception:
+        logger.exception("Could not read the name of sandbox resource {}", resource_id)
+        return None
+
+
 class VenvService:
     """The sandbox's environments and their bindings, handled as one resource."""
 
@@ -147,13 +163,17 @@ class VenvService:
         with self.client_class() as client:
             return client.update(binding.resource_id, data)
 
-    def delete(self, binding: SandboxVenvBinding) -> None:
+    def delete(self, binding: SandboxVenvBinding) -> str | None:
         """Delete an environment nothing runs in any more, upstream and here.
 
         `PythonCode.venv` is PROTECTed, so the delete would fail regardless; the
         refusal is raised first so the caller is told what is in the way instead of
         getting an integrity error, and so the upstream environment is never removed
         before that is known.
+
+        Returns:
+            The environment's name, read just before it is removed, since nothing can
+            tell it afterwards; None when the sandbox could not be asked.
 
         Raises:
             VenvInUseError: Some Python code still points at it. Rendered as 409.
@@ -163,8 +183,10 @@ class VenvService:
             raise VenvInUseError(self._describe_owners(code_ids))
 
         with self.client_class() as client:
+            name = _name_or_none(client, binding.resource_id)
             client.remove(binding.resource_id)
         binding.delete()
+        return name
 
     def remove_upstream(self, venv_ids: Iterable[int]) -> None:
         """Delete environments a caller created upstream, after that caller rolled back.
@@ -354,15 +376,26 @@ class CustomLibraryService:
         )
         return binding, library
 
-    def delete(self, binding: SandboxCustomLibraryBinding) -> None:
+    def delete(self, binding: SandboxCustomLibraryBinding) -> str | None:
         """Delete a library no venv names any more, upstream and here.
 
         Which venvs name it is the sandbox's to answer, not this database's: it
         refuses with a 409 while one still does, and the binding is then left alone.
+
+        Returns:
+            The library's name, read just before it is removed, since nothing can
+            tell it afterwards; None when the sandbox could not be asked.
         """
         with self.client_class() as client:
+            name = _name_or_none(client, binding.resource_id)
             client.remove(binding.resource_id)
         binding.delete()
+        return name
+
+    def name(self, binding: SandboxCustomLibraryBinding) -> str | None:
+        """The library's name as the sandbox stores it; None when it could not be asked."""
+        with self.client_class() as client:
+            return _name_or_none(client, binding.resource_id)
 
     def list_wheels(self, binding: SandboxCustomLibraryBinding) -> list[dict]:
         """Every version of this library, as the sandbox reports them."""

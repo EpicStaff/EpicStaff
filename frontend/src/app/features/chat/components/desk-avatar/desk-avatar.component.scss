@@ -4,8 +4,8 @@
     position: relative;
     display: inline-flex;
     flex-shrink: 0;
-    width: 36px;
-    height: 36px;
+    width: 24px;
+    height: 24px;
 }
 
 .desk-avatar__picture {
@@ -14,22 +14,21 @@
     justify-content: center;
     width: 100%;
     height: 100%;
-    border-radius: 8px;
-    color: var(--color-text-on-bright);
+    border-radius: 4px;
+    background-color: var(--desk-avatar-fill, var(--transparent-white-8));
+    color: var(--color-text-primary);
     overflow: hidden;
     user-select: none;
+}
 
-    // Not a desk (All desks): the user avatar's neutral wash.
-    &--neutral {
-        background-color: var(--transparent-white-8);
-        color: var(--color-text-primary);
-    }
+.desk-avatar__icon {
+    color: var(--color-text-secondary);
 }
 
 .desk-avatar__initials {
-    font-size: var(--text-body-bold-size);
-    font-weight: var(--text-body-bold-weight);
-    line-height: var(--text-body-bold-line-height);
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
+    line-height: var(--text-body-small-large-line-height);
 }
 
 // The mark sits in a page-coloured socket on the bottom-right corner, so every shape reads on every fill. The three
@@ -79,5 +78,4 @@
     position: absolute;
     top: -6px;
     right: -6px;
-    box-shadow: 0 0 0 2px var(--color-background-body);
 }

@@ -82,6 +82,7 @@
                 [max]="max()"
                 step="any"
                 [ngModel]="value() ?? min()"
+                [ngModelOptions]="{ standalone: true }"
                 (input)="onSliderChange($event)"
                 (blur)="onTouched()"
                 [disabled]="isDisabled()"

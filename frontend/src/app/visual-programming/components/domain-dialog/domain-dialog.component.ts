@@ -21,8 +21,10 @@ import {
     AuthorshipFooterComponent,
     JsonEditorComponent,
 } from '@shared/components';
+import { codeSuggestionKeyLabel } from '@shared/utils';
 import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
+import { PLATFORM_IS_MAC } from '../../../core/services/platform-is-mac.token';
 import { DEFAULT_INITIAL_STATE, isSetInitialState } from '../../core/constants/default-node-data';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import {
@@ -97,7 +99,7 @@ export interface DomainDialogData {
                         ></app-svg-icon>
                         <span>
                             Place your cursor inside <code>user</code> or <code>organization</code> arrays and press
-                            <kbd>Ctrl+Space</kbd> to pick variables from <code>context</code>.
+                            <kbd>{{ suggestionKeyLabel }}</kbd> to pick variables from <code>context</code>.
                         </span>
                     </div>
                 }
@@ -313,6 +315,10 @@ export class DomainDialogComponent implements OnDestroy {
     /** Opened with the editor's injector, so this is the preview's or the live editor's state. */
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
+    protected get suggestionKeyLabel(): string {
+        return codeSuggestionKeyLabel(this.isMac);
+    }
+
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
     private overlayService = inject(Overlay);
     private viewContainerRef = inject(ViewContainerRef);
@@ -323,7 +329,9 @@ export class DomainDialogComponent implements OnDestroy {
     private contextObject: Record<string, unknown> | null = null;
     private keyDownDisposable: import('monaco-editor').IDisposable | null = null;
     private cursorDisposable: import('monaco-editor').IDisposable | null = null;
+    private suggestionKeyBinding: import('monaco-editor').IDisposable | null = null;
     private destroyRef = inject(DestroyRef);
+    private readonly isMac = inject(PLATFORM_IS_MAC);
 
     private getEditorContext(): {
         editor: import('monaco-editor').editor.IStandaloneCodeEditor;
@@ -373,6 +381,7 @@ export class DomainDialogComponent implements OnDestroy {
         this.closeOverlay();
         this.keyDownDisposable?.dispose();
         this.cursorDisposable?.dispose();
+        this.suggestionKeyBinding?.dispose();
     }
 
     // --- JSON Editor setup ---
@@ -448,7 +457,19 @@ export class DomainDialogComponent implements OnDestroy {
     private setupAutocomplete(): void {
         if (!this.monacoEditor) return;
 
-        this.monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => this.handleCtrlSpace());
+        // Ctrl+Space the way Monaco binds it: WinCtrl is Ctrl on a Mac, CtrlCmd is Ctrl elsewhere. macOS takes ⌃Space
+        // for switching the input source, so ⌘I (Ctrl+I elsewhere, Monaco's other suggestion key) opens it too.
+        const ctrlSpace = this.isMac
+            ? monaco.KeyMod.WinCtrl | monaco.KeyCode.Space
+            : monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space;
+        // An action, not addCommand: a command binds for the whole page and is never removed, so after this dialog
+        // closed these keys would stop opening suggestions in every other code editor.
+        this.suggestionKeyBinding = this.monacoEditor.addAction({
+            id: 'domain-dialog.pick-variable',
+            label: 'Pick a variable from context',
+            keybindings: [ctrlSpace, monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI],
+            run: () => this.handleSuggestionKey(),
+        });
 
         this.keyDownDisposable = this.monacoEditor.onKeyDown((e: import('monaco-editor').IKeyboardEvent) => {
             if (!this.overlayRef?.hasAttached() || !this.autocompleteInstance) return;
@@ -500,9 +521,9 @@ export class DomainDialogComponent implements OnDestroy {
         });
     }
 
-    // --- Ctrl+Space handler ---
+    // --- Suggestion key handler ---
 
-    private handleCtrlSpace(): void {
+    private handleSuggestionKey(): void {
         if (this.overlayRef?.hasAttached()) {
             this.closeOverlay();
             return;
@@ -529,7 +550,7 @@ export class DomainDialogComponent implements OnDestroy {
                 this.contextObject = null;
                 this.currentPath = [];
                 this.openOverlay(
-                    'Define variables inside "context" object first, then use Ctrl+Space here to pick them.'
+                    `Define variables inside "context" object first, then use ${this.suggestionKeyLabel} here to pick them.`
                 );
             }
         } else {

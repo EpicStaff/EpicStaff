@@ -50,6 +50,13 @@ const binding = (overrides: Partial<ChatBinding>): ChatBinding => ({
     ...overrides,
 });
 
+// Each displayed name where the user can type it: the bot's on create and in the settings, the operator's in the settings.
+const NAME_FIELDS_BY_MODE: [ChatBinding | null, 'bot_display_name' | 'operator_display_name'][] = [
+    [null, 'bot_display_name'],
+    [binding({}), 'bot_display_name'],
+    [binding({}), 'operator_display_name'],
+];
+
 const NOTHING_MISSING: ChatContractMissing = {
     missing_start_node: false,
     missing_end_node: false,
@@ -148,13 +155,22 @@ describe('ChatBindingsDialogComponent', () => {
     }
 
     /** Types `value` into the number field bound to `controlName`, as the user does. */
-    function typeNumber(controlName: string, value: number): void {
+    function inputOf(controlName: string): HTMLInputElement {
         const host: HTMLElement = fixture.nativeElement;
         const input = host.querySelector<HTMLInputElement>(`[formControlName="${controlName}"] input`);
         if (!input) throw new Error(`No input for ${controlName}`);
-        input.value = String(value);
+        return input;
+    }
+
+    function typeText(controlName: string, text: string): void {
+        const input = inputOf(controlName);
+        input.value = text;
         input.dispatchEvent(new Event('input'));
         fixture.detectChanges();
+    }
+
+    function typeNumber(controlName: string, value: number): void {
+        typeText(controlName, String(value));
     }
 
     function clickSave(): void {
@@ -189,11 +205,71 @@ describe('ChatBindingsDialogComponent', () => {
     afterEach(() => vi.unstubAllGlobals());
 
     it('patches only the fields that changed', () => {
-        chatApi.updateBinding.mockReturnValue(of(binding({ name: 'Sales' })));
+        chatApi.updateBinding.mockReturnValue(of(binding({ operator_display_name: 'Helpers' })));
         const component = open(binding({}));
-        component.form.controls.name.setValue('Sales');
+        component.form.controls.operator_display_name.setValue('Helpers');
         component.submit();
-        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { name: 'Sales' });
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { operator_display_name: 'Helpers' });
+    });
+
+    it('shows the allowed origins as one comma-separated text and sends what is typed as a list', async () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({})));
+        const component = open(binding({ allowed_origins: ['https://a.example', 'https://b.example'] }));
+        // The field's ngModel writes the input a microtask later.
+        await fixture.whenStable();
+        expect(inputOf('allowed_origins').value).toBe('https://a.example, https://b.example');
+
+        // Commas, spaces and both together separate; the empty pieces they leave are dropped.
+        typeText('allowed_origins', ' https://a.example,https://c.example  https://d.example, ');
+        component.submit();
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', {
+            allowed_origins: ['https://a.example', 'https://c.example', 'https://d.example'],
+        });
+    });
+
+    it('leaves unchanged allowed origins out of the PATCH, however they are retyped', () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({ max_turns: 100 })));
+        const component = open(binding({ allowed_origins: ['https://a.example', 'https://b.example'] }));
+        typeText('allowed_origins', 'https://a.example https://b.example');
+        typeNumber('max_turns', 100);
+        component.submit();
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { max_turns: 100 });
+    });
+
+    it("sends the General fields edited in the settings, the bot name not following the desk's name", () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({ name: 'Sales', graph_id: 6 })));
+        const component = open(binding({ bot_display_name: 'Ava' }));
+        component.form.controls.name.setValue('Sales');
+        expect(component.form.controls.bot_display_name.value).toBe('Ava');
+        component.form.controls.graph_id.setValue(6);
+        component.form.controls.identity_mode.setValue('signed');
+        component.submit();
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', {
+            name: 'Sales',
+            graph_id: 6,
+            identity_mode: 'signed',
+        });
+    });
+
+    it('checks the stored flow again on opening the settings, showing the stored errors until it answers', () => {
+        const check$ = new Subject<ChatContractCheck>();
+        chatApi.checkContract.mockReturnValueOnce(check$);
+        open(binding({ is_active: false, contract_errors: ['end node lacks reply'] }));
+        expect(chatApi.checkContract).toHaveBeenCalledWith(5);
+        expect(text('.bindings-dialog__contract-error')).toEqual(['end node lacks reply']);
+
+        check$.next(contractCheck());
+        fixture.detectChanges();
+        expect(text('.bindings-dialog__contract-error')).toEqual([]);
+    });
+
+    it('checks the contract of a flow picked in the settings live', () => {
+        const component = open(binding({}));
+        chatApi.checkContract.mockReturnValueOnce(of(contractCheck(['start node lacks chat_history'])));
+        component.form.controls.graph_id.setValue(6);
+        fixture.detectChanges();
+        expect(chatApi.checkContract).toHaveBeenLastCalledWith(6);
+        expect(text('.bindings-dialog__contract-error')).toEqual(['start node lacks chat_history']);
     });
 
     it('checks the contract of a picked flow live and shows a missing flow as an error', () => {
@@ -326,13 +402,9 @@ describe('ChatBindingsDialogComponent', () => {
         expect(body).toEqual(expect.objectContaining({ bot_display_name: 'Ava', operator_display_name: 'Support' }));
     });
 
-    it('never fills the bot name from the name while editing, and requires both names within 64 characters', () => {
-        const component = open(binding({ bot_display_name: 'Ava' }));
-        component.form.controls.name.setValue('Sales');
-        expect(component.form.controls.bot_display_name.value).toBe('Ava');
-
-        for (const field of ['bot_display_name', 'operator_display_name'] as const) {
-            const control = component.form.controls[field];
+    it('requires both names within 64 characters: the bot name on create, the operator name in the settings', () => {
+        for (const [edited, field] of NAME_FIELDS_BY_MODE) {
+            const control = open(edited).form.controls[field];
             // As typing does.
             control.markAsDirty();
             control.setValue('');
@@ -362,8 +434,8 @@ describe('ChatBindingsDialogComponent', () => {
             `Remove the invisible or control character U+${codePoint}: visitors would not see it.`;
 
         it('refuses a typed name with a control, format or filler character, naming it, on either name field', () => {
-            const component = open(binding({}));
-            for (const field of ['bot_display_name', 'operator_display_name'] as const) {
+            for (const [edited, field] of NAME_FIELDS_BY_MODE) {
+                const component = open(edited);
                 const control = component.form.controls[field];
                 control.markAsDirty();
                 control.markAsTouched();
@@ -378,32 +450,36 @@ describe('ChatBindingsDialogComponent', () => {
                     fixture.detectChanges();
                     expect(errorUnder(field)).toBe(reason(name));
                 }
+                component.submit();
             }
-            component.submit();
+            expect(chatApi.createBinding).not.toHaveBeenCalled();
             expect(chatApi.updateBinding).not.toHaveBeenCalled();
         });
 
         it('keeps the joiner and variation selectors 15 and 16 that emoji need', () => {
-            const component = open(binding({}));
+            const component = open(null);
             const control = component.form.controls.bot_display_name;
             control.markAsDirty();
             control.setValue(`Ava ${String.fromCodePoint(0x1f469, 0x200d, 0x1f4bb, 0x2764, 0xfe0f, 0x2764, 0xfe0e)}`);
             expect(control.valid).toBe(true);
         });
 
-        it('lets other edits through when a name stored before the rules breaks them, until that name is typed in', () => {
-            chatApi.updateBinding.mockReturnValue(of(binding({ name: 'Sales' })));
+        it('lets other edits through when names stored before the rules break them, until such a name is typed in', () => {
+            chatApi.updateBinding.mockReturnValue(of(binding({ max_turns: 100 })));
             const stored = around(0x200b);
-            const component = open(binding({ bot_display_name: stored }));
+            const component = open(binding({ bot_display_name: stored, operator_display_name: stored }));
             expect(component.form.controls.bot_display_name.valid).toBe(true);
-            component.form.controls.name.setValue('Sales');
+            expect(component.form.controls.operator_display_name.valid).toBe(true);
+            component.form.controls.max_turns.setValue(100);
             component.submit();
-            expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { name: 'Sales' });
+            expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { max_turns: 100 });
 
-            const control = component.form.controls.bot_display_name;
-            control.markAsDirty();
-            control.setValue(`${stored}!`);
-            expect(control.hasError('publicName')).toBe(true);
+            for (const field of ['bot_display_name', 'operator_display_name'] as const) {
+                const control = component.form.controls[field];
+                control.markAsDirty();
+                control.setValue(`${stored}!`);
+                expect(control.hasError('publicName')).toBe(true);
+            }
         });
 
         it("checks a new desk's names from the start, the bot name taken from the desk name included", () => {
@@ -492,31 +568,51 @@ describe('ChatBindingsDialogComponent', () => {
         expect(component.form.controls.daily_token_budget.hasError('required')).toBe(true);
         expect(component.form.valid).toBe(false);
         component.submit();
-        expect(chatApi.createBinding).not.toHaveBeenCalled();
-        expect(component.activeTab()).toBe('limits');
+        // Creating shows General alone: the missing default is said above the form.
+        expect(component.activeTab()).toBe('general');
+        expect(component.errorMessage()).toBe(
+            "Couldn't fill in this desk's default settings. Close the dialog and try again."
+        );
     });
 
-    it('splits the form into tabs and Save opens the first tab with an invalid field', () => {
-        open(null);
-        const host: HTMLElement = fixture.nativeElement;
+    it('creates on General alone, without tabs; the settings open on General, the first of four tabs', () => {
+        const host = (): HTMLElement => fixture.nativeElement;
         const visibleTabs = () =>
-            Array.from(host.querySelectorAll<HTMLElement>('.bindings-dialog__tab')).map((tab) => !tab.hidden);
-        expect(text('app-tab-button')).toEqual(['General', 'Limits', 'Handoff', 'Inactivity']);
+            Array.from(host().querySelectorAll<HTMLElement>('.bindings-dialog__tab')).map((tab) => !tab.hidden);
+        open(null);
+        expect(host().querySelector('app-tab-button')).toBeNull();
         expect(visibleTabs()).toEqual([true, false, false, false]);
 
-        (host.querySelectorAll('app-tab-button button')[2] as HTMLButtonElement).click();
+        open(binding({}));
+        expect(text('app-tab-button')).toEqual(['General', 'Limits', 'Handoff', 'Inactivity']);
+        expect(visibleTabs()).toEqual([true, false, false, false]);
+        (host().querySelectorAll('app-tab-button button')[2] as HTMLButtonElement).click();
         fixture.detectChanges();
         expect(visibleTabs()).toEqual([false, false, true, false]);
+    });
 
-        // The name is still empty: Save stays clickable so it can lead the user to it.
-        const save = Array.from(host.querySelectorAll<HTMLButtonElement>('.bindings-dialog__actions button')).find(
-            (button) => button.textContent?.trim() === 'Save'
-        ) as HTMLButtonElement;
+    it('opens the first settings tab with an invalid field on Save, General included', () => {
+        const component = open(binding({}));
+        component.activeTab.set('handoff');
+        component.form.controls.daily_token_budget.setValue(null);
+        fixture.detectChanges();
+        // Save stays clickable so it can lead the user to the field.
+        const save = Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+                '.bindings-dialog__actions button'
+            )
+        ).find((button) => button.textContent?.trim() === 'Save') as HTMLButtonElement;
         expect(save.disabled).toBe(false);
         save.click();
         fixture.detectChanges();
-        expect(chatApi.createBinding).not.toHaveBeenCalled();
-        expect(visibleTabs()).toEqual([true, false, false, false]);
+        expect(chatApi.updateBinding).not.toHaveBeenCalled();
+        expect(component.activeTab()).toBe('limits');
+
+        component.form.controls.name.setValue('   ');
+        save.click();
+        fixture.detectChanges();
+        expect(chatApi.updateBinding).not.toHaveBeenCalled();
+        expect(component.activeTab()).toBe('general');
     });
 
     describe('style and inactivity rules', () => {
@@ -795,17 +891,22 @@ describe('ChatBindingsDialogComponent', () => {
 
             it('warns that switching to Support closes the conversations silent for longer, on General too', () => {
                 const component = open(binding({ style: 'ongoing', on_response_timeout: 'wait' }));
-                edit(() => component.form.controls.style.setValue('support'));
+                edit(() => radios()[0].click());
                 expect(component.activeTab()).toBe('general');
                 expect(shownEffects()).toEqual(['Conversations with no message for more than 24 hours close.']);
                 expect(
                     (fixture.nativeElement as HTMLElement)
-                        .querySelector('.bindings-dialog__backlog .hint-message')
+                        .querySelector('.bindings-dialog__tab:not([hidden]) .bindings-dialog__backlog .hint-message')
                         ?.classList.contains('hint-message--warning')
                 ).toBe(true);
 
                 showInactivity(component);
                 expect(shownEffects()).toEqual(['Conversations with no message for more than 24 hours close.']);
+
+                // Back to Ongoing before saving: nothing to warn about.
+                component.activeTab.set('general');
+                edit(() => radios()[1].click());
+                expect(shownEffects()).toEqual([]);
             });
 
             it('describes Save by the warning while it applies, so it is read before saving from any tab', () => {
@@ -857,14 +958,14 @@ describe('ChatBindingsDialogComponent', () => {
             });
 
             it('warns that a shorter response time with hand back hands back more visitors, both effects listed', () => {
-                const component = open(binding({ style: 'ongoing' }));
+                const component = open(binding({}));
                 showInactivity(component);
                 edit(() => {
                     type(component.form.controls.response_time_minutes, 1);
-                    component.form.controls.style.setValue('support');
+                    type(component.form.controls.close_after_hours, 1);
                 });
                 expect(shownEffects()).toEqual([
-                    'Conversations with no message for more than 24 hours close.',
+                    'Conversations with no message for more than 1 hour close.',
                     'Visitors who have waited for a person for more than 1 minute go back to the bot, including ' +
                         'ones an operator has taken over, with the hand-back notice.',
                 ]);
@@ -972,7 +1073,11 @@ describe('ChatBindingsDialogComponent', () => {
         clickSave();
 
         expect(chatApi.createBinding).not.toHaveBeenCalled();
-        expect(component.activeTab()).toBe('limits');
+        // Not on the General a new desk shows: said above the form, and marked on the hidden fields.
+        expect(component.activeTab()).toBe('general');
+        expect(component.errorMessage()).toBe(
+            "Couldn't fill in this desk's default settings. Close the dialog and try again."
+        );
         for (const field of [
             'token_budget_per_conversation',
             'daily_token_budget',
@@ -1047,10 +1152,11 @@ describe('ChatBindingsDialogComponent', () => {
         const announcement = (): string | undefined =>
             text('.bindings-dialog__form > [role="alert"]').find((message) => message !== '');
 
-        /** Saves a renamed bot, which the server refuses with `body`. */
+        /** Creates a desk with both names, which the server refuses with `body`. */
         function saveRefused(body: unknown): ChatBindingsDialogComponent {
-            chatApi.updateBinding.mockReturnValue(refused(body));
-            const component = open(binding({}));
+            chatApi.createBinding.mockReturnValue(refused(body));
+            const component = open(null);
+            component.form.patchValue({ name: 'Portal', graph_id: 5 });
             component.form.controls.bot_display_name.setValue('Mike');
             component.form.controls.operator_display_name.setValue('Helpers');
             component.submit();
@@ -1097,7 +1203,7 @@ describe('ChatBindingsDialogComponent', () => {
                 'Displayed bot name: Must be plain text: U+202E is not allowed. ' +
                     'Displayed operator name: Must be at most 64 characters.'
             );
-            // The first refused field's tab; the other refusal waits on its own tab.
+            // General, the one a new desk shows; the other refusal waits on its own (hidden) tab.
             expect(component.activeTab()).toBe('general');
             component.activeTab.set('handoff');
             fixture.detectChanges();
@@ -1151,6 +1257,11 @@ describe('ChatBindingsDialogComponent', () => {
         open(binding({}));
         expect(text('.bindings-dialog__title')).toEqual(['Desk settings']);
         expect(text('.bindings-dialog__actions app-button')).toContain('Rotate key');
+    });
+
+    it('offers no Delete desk: the desk toolbar deletes a desk', () => {
+        open(binding({}));
+        expect(text('.bindings-dialog__actions app-button')).toEqual(['Rotate key', 'Cancel', 'Save']);
     });
 
     it('rotates the key after a danger confirm and diffs later saves against the rotated binding', () => {

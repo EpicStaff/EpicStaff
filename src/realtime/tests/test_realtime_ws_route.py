@@ -5,15 +5,17 @@ working ASGI websocket TestClient). Token introspection is Django's, an external
 so it is replaced; so is ConversationService, which would connect to the AI provider.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from infrastructure.persistence.connection_repository import ConnectionRepository
 from src.shared.models import RealtimeAgentChatData
-from tests.conftest import TOKEN
+from tests.conftest import TOKEN, seal
 
-pytestmark = pytest.mark.asyncio
+PLAINTEXT_API_KEY = "sk-summarization-plaintext"
+
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("app_transport_cryptographer")]
 
 MEMBER = {"active": True, "user_id": 1, "org_ids": [1], "is_superadmin": False}
 OTHER_ORG_MEMBER = {"active": True, "user_id": 2, "org_ids": [2], "is_superadmin": False}
@@ -26,7 +28,7 @@ def _chat_data(connection_key: str, **overrides) -> RealtimeAgentChatData:
         **{
             "connection_key": connection_key,
             "org_id": 1,
-            "rt_api_key": "fake_key",
+            "rt_api_key": seal(PLAINTEXT_API_KEY),
             "rt_base_url": None,
             "rt_model_name": "test_model",
             "wake_word": "wake",
@@ -68,6 +70,21 @@ def started_sessions(monkeypatch):
     return sessions
 
 
+@pytest.fixture
+def summarization_clients(monkeypatch, started_sessions):
+    from api import main as main_module
+
+    clients = []
+    recording_service = main_module.ConversationService
+
+    def record(**kwargs):
+        clients.append(kwargs["summ_client"])
+        return recording_service(**kwargs)
+
+    monkeypatch.setattr(main_module, "ConversationService", record)
+    return clients
+
+
 async def _connect(monkeypatch, user_info, connection_key="key", token=TOKEN, saved=None):
     from api import main as main_module
 
@@ -95,6 +112,8 @@ async def _connect(monkeypatch, user_info, connection_key="key", token=TOKEN, sa
         pytest.param(SUPERADMIN, TOKEN, "k-no-org-sa", _chat_data("k-no-org-sa", org_id=None), 1011, id="session-without-org-superadmin"),
         # A malformed per-org base URL is refused cleanly instead of escaping to uvicorn.
         pytest.param(MEMBER, TOKEN, "k-bad-url", _chat_data("k-bad-url", rt_base_url="my-proxy.internal"), 1011, id="scheme-less-base-url"),
+        # A key the transport key cannot open is refused cleanly instead of escaping to uvicorn.
+        pytest.param(MEMBER, TOKEN, "k-unsealed", _chat_data("k-unsealed", rt_api_key=PLAINTEXT_API_KEY), 1011, id="undecryptable-api-key"),
     ],
 )
 async def test_connection_is_refused_before_any_session_starts(
@@ -116,3 +135,22 @@ async def test_allowed_user_starts_the_session_once(monkeypatch, started_session
     first.close.assert_not_awaited()
     assert started_sessions == [key]
     second.close.assert_awaited_once_with(code=1011)
+
+
+async def test_summaries_are_requested_with_the_decrypted_api_key(monkeypatch, summarization_clients):
+    await _connect(monkeypatch, MEMBER, "k-summary", saved=_chat_data("k-summary"))
+    (summarization_client,) = summarization_clients
+
+    with patch("infrastructure.summarization.openai_summarization_client.AsyncOpenAI") as openai_sdk:
+        openai_sdk.return_value.chat.completions.create = AsyncMock()
+        await summarization_client.summarize_buffer("hello")
+
+    assert openai_sdk.call_args.kwargs["api_key"] == PLAINTEXT_API_KEY
+
+
+async def test_an_undecryptable_api_key_is_logged_by_field_name_only(monkeypatch, started_sessions, captured_log_messages):
+    await _connect(monkeypatch, MEMBER, "k-leak", saved=_chat_data("k-leak", rt_api_key=PLAINTEXT_API_KEY))
+
+    logs = "\n".join(captured_log_messages)
+    assert "rt_api_key could not be decrypted" in logs
+    assert PLAINTEXT_API_KEY not in logs

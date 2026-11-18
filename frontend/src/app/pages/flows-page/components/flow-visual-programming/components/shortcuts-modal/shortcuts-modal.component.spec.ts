@@ -4,11 +4,12 @@ import { NgZone } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActionCode, GetMeResponse, ResourceCode, ShortcutSettings } from '@shared/models';
 
+import { PLATFORM_IS_MAC } from '../../../../../../core/services/platform-is-mac.token';
 import { GetGraphLightRequest } from '../../../../../../features/flows/models/graph.model';
 import { ProfileService } from '../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../services/config';
 import { ToastMessage, ToastService } from '../../../../../../services/notifications';
-import { KeymapService, PLATFORM_IS_MAC } from '../../../../../../visual-programming/services/keymap.service';
+import { KeymapService } from '../../../../../../visual-programming/services/keymap.service';
 import { grantPermissions } from '../../../../../../visual-programming/utils/testing/permissions.fixture';
 import { ShortcutsModalComponent } from './shortcuts-modal.component';
 
@@ -166,14 +167,19 @@ describe('ShortcutsModalComponent', () => {
     }
 
     function render(): void {
-        fixture.detectChanges();
-        TestBed.tick();
+        const zone = TestBed.inject(NgZone);
+        zone.run(() => {
+            fixture.detectChanges();
+            TestBed.tick();
+        });
         for (let round = 0; round < 5 && frames.size > 0; round++) {
             const due = [...frames.values()];
             frames.clear();
-            TestBed.inject(NgZone).run(() => due.forEach((callback) => callback(0)));
-            fixture.detectChanges();
-            TestBed.tick();
+            zone.run(() => {
+                due.forEach((callback) => callback(0));
+                fixture.detectChanges();
+                TestBed.tick();
+            });
         }
     }
 
@@ -1760,8 +1766,10 @@ describe('ShortcutsModalComponent', () => {
             fixture = TestBed.createComponent(ShortcutsModalComponent);
             fixture.componentRef.setInput('open', true);
             fixture.componentRef.setInput('pos', { top: 10, left: 10 });
-            fixture.detectChanges();
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => {
+                fixture.detectChanges();
+                TestBed.tick();
+            });
             layOut(() => (columnLayout() === '3 columns' ? 5 : 2), 900);
 
             expect(isFading()).toBe(true);

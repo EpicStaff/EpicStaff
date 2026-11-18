@@ -215,19 +215,6 @@ class ProcessRagIndexingEstimateSerializer(ProcessRagIndexingSerializer):
         return attrs
 
 
-class BulkExportSerializer(serializers.Serializer):
-    ids = serializers.ListField(
-        child=serializers.IntegerField(min_value=1),
-        allow_empty=False,
-        help_text="List of entity IDs",
-    )
-
-    def validate_ids(self, ids: list[int]) -> list[int]:
-        # Callers compare the number of rows found against len(ids), so a
-        # repeated id would otherwise be reported as a missing entity.
-        return list(dict.fromkeys(ids))
-
-
 class BulkDeleteQuerySerializer(serializers.Serializer):
     dry_run = serializers.BooleanField(
         default=False,

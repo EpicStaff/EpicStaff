@@ -344,6 +344,13 @@
         padding: 0 1rem;
         font-size: var(--text-body-medium-size);
         font-weight: var(--text-body-medium-weight);
+
+        // While an import is on its way: inactive, as an outline app-button is, but it keeps the focus.
+        &[aria-disabled='true'] {
+            color: var(--inactive-purple);
+            background: transparent;
+            cursor: default;
+        }
     }
 
     &__cog {

@@ -30,7 +30,13 @@
         cdkTrapFocus
         [cdkTrapFocusAutoCapture]="true"
     >
-        @for (item of items(); track item.id) {
+        @for (item of items(); track item.id; let isFirst = $first) {
+            @if (item.separated && !isFirst) {
+                <div
+                    class="chat-action-menu__separator"
+                    role="separator"
+                ></div>
+            }
             <button
                 type="button"
                 class="chat-action-menu__item"

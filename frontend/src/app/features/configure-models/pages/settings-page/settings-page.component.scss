@@ -49,5 +49,9 @@
     flex-direction: column;
     flex: 1;
     overflow: auto;
+    // Keeps the scrollbar's room even when the content fits. Without it the width the LLM Library measures
+    // changes as the scrollbar comes and goes, so its layout (cards per row, toolbar stage) can flip back and
+    // forth on resize — visible as flicker in Firefox.
+    scrollbar-gutter: stable;
     padding: 20px 40px 20px header.$page-inset-left;
 }

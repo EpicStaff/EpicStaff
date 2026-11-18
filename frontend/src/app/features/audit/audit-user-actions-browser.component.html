@@ -1,0 +1,298 @@
+<div class="audit-browser">
+    <div class="audit-browser__body">
+        <div class="audit-browser__main">
+            <div class="audit-browser__toolbar">
+                <input
+                    #searchInput
+                    class="audit-browser__search"
+                    type="text"
+                    placeholder="Search emails and names..."
+                    aria-label="Search emails and names"
+                    [value]="appliedSearchText()"
+                    (input)="onSearchInput(searchInput.value)"
+                    (keydown.enter)="applySearch(searchInput.value)"
+                />
+                <button
+                    class="audit-browser__tool-btn"
+                    type="button"
+                    aria-controls="audit-filters-panel"
+                    [attr.aria-expanded]="isFiltersPanelOpen()"
+                    [class.is-active]="isFiltersPanelOpen()"
+                    (click)="toggleFiltersPanel()"
+                >
+                    <app-svg-icon
+                        icon="filter"
+                        size="14px"
+                    />
+                    Filters
+                    @if (appliedChips().length > 0) {
+                        <span class="audit-browser__filter-count">({{ appliedChips().length }})</span>
+                    }
+                </button>
+                <button
+                    class="audit-browser__tool-btn"
+                    type="button"
+                    [class.is-active]="areColumnsExpanded()"
+                    (click)="areColumnsExpanded.set(!areColumnsExpanded())"
+                >
+                    {{ areColumnsExpanded() ? 'Collapse All Rows' : 'Expand All Rows' }}
+                </button>
+                <span class="audit-browser__toolbar-spacer"></span>
+                <app-action-dropdown-button
+                    *appHasPermission="[ResourceCode.UserAudit, ActionCode.Export]"
+                    [label]="exportLabel()"
+                    [buttonWidth]="null"
+                    [items]="exportItems"
+                    [loading]="exportingFormat() !== null"
+                    [disabled]="isLoading() || loadError() || rows().length === 0"
+                    (mainClick)="exportFiltered('json')"
+                    (itemClick)="onExportItemSelected($event)"
+                />
+            </div>
+
+            @if (appliedChips().length > 0) {
+                <div class="audit-browser__subbar">
+                    <app-audit-filter-chips
+                        class="audit-browser__chips"
+                        [chips]="appliedChips()"
+                        (removed)="removeFilter($event)"
+                        (cleared)="clearFilters()"
+                    />
+                </div>
+            }
+
+            @if (isPartial()) {
+                <p class="audit-browser__notice">Results are partial — narrow the search to see everything.</p>
+            }
+
+            <div class="audit-browser__table-wrap">
+                @if (isLoading()) {
+                    <p class="audit-browser__state">Loading...</p>
+                } @else if (loadError()) {
+                    <p class="audit-browser__state audit-browser__state--error">
+                        {{
+                            loadErrorMessage()
+                                ? 'Invalid search: ' + loadErrorMessage()
+                                : 'Failed to load user actions.'
+                        }}
+                    </p>
+                } @else if (rows().length === 0) {
+                    <p class="audit-browser__state">No matching records found</p>
+                } @else {
+                    <table
+                        class="audit-table"
+                        [class.audit-table--expanded]="areColumnsExpanded()"
+                        [style.width.px]="resizableColumns.tableWidth()"
+                    >
+                        <colgroup>
+                            @for (width of resizableColumns.widths(); track $index) {
+                                <!-- the last column is left auto so it absorbs any width the viewport has to spare -->
+                                <col [style.width.px]="$last ? null : width" />
+                            }
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                @for (column of columns; track $index; let index = $index, isLast = $last) {
+                                    <th>
+                                        {{ column.label }}
+                                        <!-- the last column stays flexible, so it does not resize -->
+                                        @if (!isLast) {
+                                            <span
+                                                class="audit-table__resize-handle"
+                                                aria-hidden="true"
+                                                (pointerdown)="resizableColumns.start($event, index)"
+                                                (pointermove)="resizableColumns.move($event)"
+                                                (lostpointercapture)="resizableColumns.stop()"
+                                            ></span>
+                                        }
+                                    </th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (row of rows(); track row.event.id) {
+                                <tr>
+                                    <td>{{ row.event.number }}</td>
+                                    <td class="audit-table__date">
+                                        {{ row.event.event_time | date: 'MMM dd yyyy HH:mm:ss' }}
+                                    </td>
+                                    <td>
+                                        <app-audit-highlight
+                                            [text]="row.event.actor_email"
+                                            [term]="highlightTerm()"
+                                        />
+                                        @if (row.event.actor_api_key_name; as apiKeyName) {
+                                            <span class="audit-name-label"> via API key {{ apiKeyName }}</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span [class]="'audit-action audit-action--' + row.actionTone">{{
+                                            row.actionLabel
+                                        }}</span>
+                                    </td>
+                                    <td>{{ row.targetType }}</td>
+                                    <td>
+                                        @if (row.targetUrl; as targetUrl) {
+                                            <a
+                                                class="audit-link"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                [href]="targetUrl"
+                                            >
+                                                <span class="audit-link__text">
+                                                    <app-audit-highlight
+                                                        [text]="row.targetName"
+                                                        [term]="highlightTerm()"
+                                                    />
+                                                </span>
+                                                <app-svg-icon
+                                                    icon="arrow-up-right"
+                                                    size="16px"
+                                                />
+                                                <span class="visually-hidden"> {{ row.targetLinkHint }}</span>
+                                            </a>
+                                        } @else {
+                                            <app-audit-highlight
+                                                [text]="row.targetName"
+                                                [term]="highlightTerm()"
+                                            />
+                                        }
+                                    </td>
+                                    <td>{{ row.event.target_id }}</td>
+                                    <td>
+                                        @if (row.parentUrl; as parentUrl) {
+                                            <a
+                                                class="audit-link"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                [href]="parentUrl"
+                                            >
+                                                <span class="audit-link__text">
+                                                    <ng-container
+                                                        [ngTemplateOutlet]="parentText"
+                                                        [ngTemplateOutletContext]="{ $implicit: row }"
+                                                    />
+                                                </span>
+                                                <app-svg-icon
+                                                    icon="arrow-up-right"
+                                                    size="16px"
+                                                />
+                                                <span class="visually-hidden"> {{ newTabHint }}</span>
+                                            </a>
+                                        } @else {
+                                            <ng-container
+                                                [ngTemplateOutlet]="parentText"
+                                                [ngTemplateOutletContext]="{ $implicit: row }"
+                                            />
+                                        }
+                                    </td>
+                                    <td>{{ row.event.parent_id }}</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <footer class="audit-browser__footer">
+                <div class="audit-pager">
+                    <span class="audit-pager__label">Actions per page:</span>
+                    <app-number-stepper
+                        class="audit-pager__size"
+                        size="sm"
+                        ariaLabel="Actions per page"
+                        [alwaysShowButtons]="true"
+                        [integer]="true"
+                        [min]="minPageSize"
+                        [max]="maxPageSize"
+                        [step]="pageSizeStep"
+                        [value]="pageSize()"
+                        (changed)="setPageSize($event)"
+                    />
+
+                    <!-- aria-disabled, not disabled: a page button keeps the focus when its page is the last one. -->
+                    <button
+                        class="audit-pager__nav"
+                        type="button"
+                        [attr.aria-disabled]="!canGoNewer()"
+                        (click)="goToFirstPage()"
+                        aria-label="First page"
+                        matTooltip="First page"
+                    >
+                        «
+                    </button>
+                    <button
+                        class="audit-pager__nav"
+                        type="button"
+                        [attr.aria-disabled]="!canGoNewer()"
+                        (click)="goToNewerPage()"
+                    >
+                        ‹ Newer
+                    </button>
+                    <button
+                        class="audit-pager__nav audit-pager__nav--primary"
+                        type="button"
+                        [attr.aria-disabled]="!canGoOlder()"
+                        (click)="goToOlderPage()"
+                    >
+                        Older ›
+                    </button>
+                </div>
+
+                <div class="audit-summary">
+                    <span class="audit-summary__key">TIMES IN:</span>
+                    <span>{{ timeZoneLabel }}</span>
+                    <span class="audit-summary__key">IN VIEW:</span>
+                    <span>{{ rows().length }} actions</span>
+                </div>
+            </footer>
+        </div>
+
+        @if (isFiltersPanelOpen()) {
+            <aside
+                #panel
+                id="audit-filters-panel"
+                class="audit-browser__panel"
+                [style.flex-basis.px]="panelWidth()"
+            >
+                <div
+                    class="resizable-sidebar-handle audit-browser__panel-handle"
+                    sidebarAriaLabel="Resize side panel"
+                    [sidebarSide]="'right'"
+                    [appResizableSidebar]="panelWidthKey"
+                    [sidebarTarget]="panel"
+                    [sidebarMinWidth]="panelWidthOptions.minWidth"
+                    [sidebarMaxWidth]="panelWidthOptions.maxWidth"
+                ></div>
+                <app-audit-filters-panel
+                    [lookupOptions]="lookupOptions()"
+                    [(filter)]="draftFilter"
+                    (closed)="closeFiltersPanel()"
+                    (applied)="applyFilters()"
+                    (cleared)="clearFilters()"
+                    (presetApplied)="applyFilters($event)"
+                    [queryError]="queryError()"
+                />
+            </aside>
+        }
+    </div>
+</div>
+
+<!-- the parent's name and type, shown alone or as a link's text -->
+<ng-template
+    #parentText
+    let-row
+>
+    <app-audit-highlight
+        [text]="row.parentName"
+        [term]="highlightTerm()"
+    />
+    @if (row.parentType; as parentType) {
+        <span class="audit-name-label">
+            @if (row.parentName) {
+                ·
+            }
+            {{ parentType }}
+        </span>
+    }
+</ng-template>
