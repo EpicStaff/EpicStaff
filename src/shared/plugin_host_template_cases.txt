@@ -1,0 +1,48 @@
+# PLUGINS_HOST_TEMPLATE cases every validator must agree on: django_app's
+# plugins.configuration.host_template (tests/plugins_tests/test_plugins_system_checks.py),
+# scripts/envtool.py (scripts/test_envtool.py) and nginx's
+# 16-normalize-plugins-enabled.envsh (src/nginx/tests/check_templates.sh).
+#
+# One case per line: `accept <template>` or `refuse <rule> <template>`. <rule> names the rule
+# the template breaks, for the suites that check the message: placement, parent, affix,
+# label-length, host-length, reserved or placeholder. `<empty>` stands for an empty value.
+# Templates are written exactly as entered: case and a trailing dot, which envtool's wizard
+# normalises, are covered by each suite's own tests.
+#
+# Every template here is judged with EpicStaff at https://epicstaff.example.com: an accepted
+# one is the same site and never names EpicStaff's own host.
+
+accept {id}-app.example.com
+accept app-{id}.example.com
+accept {id}.plugins.example.com
+accept ab{id}.example.com
+accept abc-{id}.example.com
+accept abc--{id}.example.com
+accept {id}-a--b.example.com
+accept {id}0.example.com
+accept {id}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com
+accept {id}.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbb.example.com
+refuse placement <empty>
+refuse placement plugins.example.com
+refuse placement {id}.{id}.example.com
+refuse placement {id}{id}.example.com
+refuse placement app.{id}.example.com
+refuse parent {id}
+refuse parent {id}.localhost
+refuse parent {id}.plugins_x.example.com
+refuse parent {id}.-plugins.example.com
+refuse parent {id}.plugins..example.com
+refuse parent {id}..example.com
+refuse parent {id}.example.com:8443
+refuse affix -{id}.example.com
+refuse affix {id}-.example.com
+refuse affix {id}_app.example.com
+refuse affix {id}}.example.com
+refuse affix {{id}.example.com
+refuse label-length {id}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com
+refuse host-length {id}.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbb.example.com
+refuse reserved x{id}.example.com
+refuse reserved ab--{id}.example.com
+refuse reserved {id}--x.example.com
+refuse placeholder {id}.plugins.invalid
+refuse placeholder {id}-app.example.invalid

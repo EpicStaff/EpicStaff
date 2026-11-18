@@ -13,7 +13,7 @@ browser
 epicstaff-nginx
   ├─ EpicStaff's host ─────────▶ frontend (EpicStaff's web app) and django_app (EpicStaff's API)
   │
-  └─ <id>.<plugins base domain>, one host per plugin
+  └─ <plugin host>, one host per plugin (PLUGINS_HOST_TEMPLATE with the plugin's id)
        ├─ the page's files ─────▶ the plugin's published page, served by nginx
        ├─ /.well-known/epicstaff/ ─▶ the platform config (from django_app) and the sign-in callback pages
        └─ /api/** ─▶ gateway check: django_app decides ─▶ es_plugins, the plugin node
@@ -42,7 +42,7 @@ A plugin without a backend needs only nginx and django_app: its page is static f
    organization ([Give people permissions](../how-to/user-permissions.md)). While the app is open, the
    sidebar shows the app instead: a way back to EpicStaff, a switcher between apps and the menu the app's
    manifest declares ([App menu](../reference/manifest.md#app-menu)).
-2. EpicStaff's address `/plugins/<id>/<path>` shows a frame of `https://<id>.<plugins base domain>/<path>`, with the
+2. EpicStaff's address `/plugins/<id>/<path>` shows a frame of `https://<plugin host>/<path>`, with the
    organization in `es_org` ([Frame protocol](../reference/frame-protocol.md#the-frame)).
 3. nginx serves the plugin's published files, from the approved package, and lets only EpicStaff frame them.
 4. The page loads its platform config from its own `/.well-known/epicstaff/config.json`, which nginx asks django_app
@@ -63,7 +63,7 @@ A plugin without a backend needs only nginx and django_app: its page is static f
 
 ### A request to the plugin's backend
 
-1. The page calls `https://<id>.<plugins base domain>/api/…` with the token, or a public path without one.
+1. The page calls `https://<plugin host>/api/…` with the token, or a public path without one.
 2. nginx asks django_app's gateway check, with the request's headers only: whether the plugin is in service and up,
    whether the path is canonical, and then whether it is a public path within its limits, or carries a valid token of
    a person who may use the plugin ([Serve public paths](../how-to/public-paths.md#what-the-gateway-checks-in-order),

@@ -35,3 +35,25 @@
     margin: 0;
     font-size: 0.875rem;
 }
+
+.hint {
+    margin: 0.375rem 0 0;
+}
+
+// Keeps the button's sizing as a direct child had it: capped at the panel's width and free to shrink, so the
+// button still collapses to its icon when its label doesn't fit.
+.actions {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+}
+
+// Out of the flow, beside the button: showing it moves nothing.
+.spinner {
+    position: absolute;
+    top: 50%;
+    left: 100%;
+    margin-left: 0.75rem;
+    transform: translateY(-50%);
+}

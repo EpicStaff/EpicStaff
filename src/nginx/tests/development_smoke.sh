@@ -25,7 +25,7 @@
 #
 # Settings, from the environment:
 #   SMOKE_BASE_URL            EpicStaff's origin, as in DJANGO_FRONTEND_BASE_URL, e.g. http://epicstaff.localhost
-#   SMOKE_PLUGINS_BASE_DOMAIN PLUGINS_BASE_DOMAIN, e.g. plugins.epicstaff.localhost
+#   SMOKE_PLUGINS_HOST_TEMPLATE PLUGINS_HOST_TEMPLATE, e.g. {id}.plugins.epicstaff.localhost
 #   SMOKE_PLUGIN              an installed, running plugin with a backend, a page and the public path
 #                             GET /api/ping, active in SMOKE_ORG_ID, e.g. weather
 #   SMOKE_ORG_ID              that organization's id
@@ -42,15 +42,16 @@
 # standard input, and keys are compared by sha256 digest.
 #
 # Usage:
-#   SMOKE_BASE_URL=http://epicstaff.localhost SMOKE_PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+#   SMOKE_BASE_URL=http://epicstaff.localhost SMOKE_PLUGINS_HOST_TEMPLATE='{id}.plugins.epicstaff.localhost' \
 #   SMOKE_PLUGIN=weather SMOKE_ORG_ID=3 SMOKE_SUPERADMIN_EMAIL=root@example.com \
 #   SMOKE_SUPERADMIN_PASSWORD=... SMOKE_DEV_API_PORT=8082 SMOKE_NODE_KEY=... \
 #   bash src/nginx/tests/development_smoke.sh
 set -euo pipefail
 
 base_url=${SMOKE_BASE_URL:?set SMOKE_BASE_URL, e.g. http://epicstaff.localhost}
-plugins_base_domain=${SMOKE_PLUGINS_BASE_DOMAIN:?set SMOKE_PLUGINS_BASE_DOMAIN, e.g. plugins.epicstaff.localhost}
+host_template=${SMOKE_PLUGINS_HOST_TEMPLATE:?set SMOKE_PLUGINS_HOST_TEMPLATE, e.g. \{id\}.plugins.epicstaff.localhost}
 plugin=${SMOKE_PLUGIN:?set SMOKE_PLUGIN to an installed plugin with a backend and a page, e.g. weather}
+plugin_host_name=${host_template/\{id\}/$plugin}
 org_id=${SMOKE_ORG_ID:?set SMOKE_ORG_ID}
 : "${SMOKE_SUPERADMIN_EMAIL:?set SMOKE_SUPERADMIN_EMAIL}"
 : "${SMOKE_SUPERADMIN_PASSWORD:?set SMOKE_SUPERADMIN_PASSWORD}"
@@ -84,7 +85,7 @@ base_url=${base_url%/}
 authority=${base_url#*://}
 port_suffix=""
 case "$authority" in *:*) port_suffix=":${authority#*:}" ;; esac
-plugin_url="${base_url%%://*}://$plugin.$plugins_base_domain$port_suffix"
+plugin_url="${base_url%%://*}://$plugin_host_name$port_suffix"
 frame_ancestors="frame-ancestors 'self' $base_url"
 development_api="http://127.0.0.1:$api_port"
 
@@ -496,7 +497,7 @@ if [ -z "$lan_address" ]; then
   skip "nothing of EpicStaff answers on this machine's LAN address" "this machine has no LAN address"
 else
   answered=""
-  for target in "80 $plugin.$plugins_base_domain" "443 $plugin.$plugins_base_domain" "$api_port localhost"; do
+  for target in "80 $plugin_host_name" "443 $plugin_host_name" "$api_port localhost"; do
     read -r port host_name <<< "$target"
     # 7: the connection was refused; 28: it timed out (a firewall). Anything else reached a server.
     code=0
