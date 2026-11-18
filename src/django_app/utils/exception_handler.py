@@ -86,7 +86,7 @@ def _upstream_message(text: str) -> str:
     return detail if isinstance(detail, str) and detail else text
 
 
-def _client_error_as_api_exception(exc: ClientError) -> APIException:
+def client_error_as_api_exception(exc: ClientError) -> APIException:
     """Translate a transport error from a proxied microservice into a DRF exception.
 
     An upstream 4xx is the caller's own request coming back refused, so it keeps its
@@ -207,7 +207,7 @@ def custom_exception_handler(exc, context):
         # serializer would report, so the 400 message names the field.
         exc = ValidationError(exc.field_errors())
     elif isinstance(exc, ClientError):
-        exc = _client_error_as_api_exception(exc)
+        exc = client_error_as_api_exception(exc)
     elif isinstance(exc, OutboundClientError):
         exc = _outbound_client_error_as_api_exception(exc)
     elif _is_database_pool_exhausted(exc):

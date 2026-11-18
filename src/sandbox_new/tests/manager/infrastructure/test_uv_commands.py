@@ -80,6 +80,8 @@ async def test_a_venv_that_was_never_initialised_is_refused(venv_path, tmp_path)
         "-e /etc",
         "/etc",
         "requests @ file:///etc",
+        "requests==1\n-e .",
+        "requests\r-e /etc",
     ],
 )
 async def test_a_line_no_library_could_have_written_never_reaches_uv(commands, venv_path, line):

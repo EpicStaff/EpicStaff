@@ -22,7 +22,6 @@ from user_audit.targets import TargetDescription, target_type
 
 from proxies.models import AbstractBinding
 from proxies.sandbox.models import SandboxCustomLibraryBinding, SandboxVenvBinding
-from proxies.sandbox.serializers import VenvWriteSerializer
 from proxies.sandbox.services import CustomLibraryService, VenvService
 
 
@@ -98,13 +97,6 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
         return Response(self._as_response(self.service_class().retrieve(binding), binding))
 
     def create(self, request: Request) -> Response:
-        """Create a venv in the sandbox and bind it to the active org.
-
-        Raises:
-            ValidationError: Some library name is not a package name with optional
-                extras, or a custom library carries extras. Rendered as 400 under `libs`.
-        """
-        VenvWriteSerializer(data=request.data).is_valid(raise_exception=True)
         binding, venv = self.service_class().create(
             request.data,
             org_id=self.get_active_org_id(),
@@ -125,13 +117,8 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
             Http404: No venv with this id in the active org.
             SecretUseDeniedError: The libraries change and the caller lacks secrets:USE.
                 Rendered as a 400 under `libs`.
-            ValidationError: Some library name is not a package name with optional
-                extras, or a custom library carries extras. Rendered as 400 under `libs`.
         """
         binding = self._get_binding_or_404(pk)
-        # Before the secret-use gate: that one may ask the sandbox for the current
-        # libraries, which a body refused anyway has no reason to cost.
-        VenvWriteSerializer(data=request.data).is_valid(raise_exception=True)
         service = self.service_class()
         check_venv_write(
             actor_from_request(request),

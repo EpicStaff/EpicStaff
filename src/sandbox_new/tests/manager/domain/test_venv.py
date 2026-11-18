@@ -9,7 +9,9 @@ from manager.domain.models import Library, Venv, check_requirement
 from tests.builders import make_library, make_venv
 
 
-@pytest.mark.parametrize("specification", ["", ">=2.0", ">=1.0,<2", "==1.2.3", "~=1.4"])
+@pytest.mark.parametrize(
+    "specification", ["", ">=2.0", ">=1.0,<2", "==1.2.3", "~=1.4", "!=1.5", "==1.*"]
+)
 def test_library_accepts_valid_version_specifications(specification):
     assert make_library(specification=specification).specification == specification
 
@@ -25,7 +27,11 @@ def test_library_accepts_valid_versions(version):
     assert make_library(specification="", version=version).version == version
 
 
-@pytest.mark.parametrize("version", ["01.2", "v1.2", "1.2.3.", "latest"])
+# The version is pinned into the requirement line uv reads, so a line break or an
+# option after it would reach uv too.
+@pytest.mark.parametrize(
+    "version", ["01.2", "v1.2", "1.2.3.", "latest", "1.0\n", "1.0\n-i http://x", "1.0 -r x"]
+)
 def test_library_rejects_invalid_versions(version):
     with pytest.raises(ValidationError):
         make_library(specification="", version=version)
@@ -69,7 +75,6 @@ def test_library_accepts_a_distribution_name_with_optional_extras(name, requirem
         "./local/path",
         "foo @ file:///etc",
         "git+https://example.com/repo.git",
-        "requests>=2",
         "requests; python_version<'3'",
         "requests ",
         "-requests",
@@ -78,16 +83,43 @@ def test_library_accepts_a_distribution_name_with_optional_extras(name, requirem
         "requests[socks]\n",
         "requests[ socks]",
         "requests[socks];python_version<'3'",
-        "requests[socks]>=2",
         "requests[]",
         "requests[socks,]",
         "requests[socks",
         "requests[-e]",
         "[socks]",
+        "six\u2028-i http://x",
+        "six\x85-i http://x",
+        "requests\\",
+        "six\n-c x",
+        "six\n-f x",
+        "six\n--extra-index-url http://x",
+        "http://example.com/requests-2.31.0-py3-none-any.whl",
     ],
 )
 def test_library_rejects_anything_but_a_distribution_name_with_optional_extras(name):
     with pytest.raises(ValidationError):
+        make_library(name=name, specification="")
+
+
+# Earlier releases let a version bound into the name; it now belongs in the
+# specification only, and the refusal says so.
+@pytest.mark.parametrize(
+    "name",
+    [
+        "numpy>=1",
+        "pydantic>=2,<3",
+        "requests==2.31.0",
+        "requests[socks]>=2",
+        "numpy(>=1)",
+        "numpy (>=1)",
+        "numpy >=1",
+        "numpy===1.0",
+        "numpy>=1\n-r /etc/passwd",
+    ],
+)
+def test_library_refuses_a_version_bound_in_its_name(name):
+    with pytest.raises(ValidationError, match="put a version in the specification"):
         make_library(name=name, specification="")
 
 
@@ -146,6 +178,24 @@ def test_a_stored_library_the_rules_now_refuse_still_reads_with_the_reason():
 
     assert library.name == "numpy>=1"
     assert "Library name 'numpy>=1' is not a package name" in library.rejection
+    assert "put a version in the specification" in library.rejection
+
+
+def test_a_venv_does_not_count_a_rejected_library_as_a_repeat():
+    """A rejected library never builds, so it cannot clash with another entry."""
+    rejected = {"name": "numpy", "specification": "===1.0"}
+
+    venv = make_venv(
+        libs=[
+            make_library(name="numpy"),
+            Library.from_stored(rejected),
+            Library.from_stored(rejected),
+            Library.from_stored({"name": "numpy>=1"}),
+            Library.from_stored({"name": "numpy>=1"}),
+        ]
+    )
+
+    assert [lib.rejection is None for lib in venv.libs] == [True, False, False, False, False]
 
 
 def test_a_valid_stored_library_reads_as_an_ordinary_one():
@@ -162,6 +212,26 @@ def test_a_venv_holding_a_refused_stored_library_is_not_buildable():
         venv.assert_buildable()
 
 
+def test_a_refused_venv_names_each_entry_and_gives_each_reason_once():
+    venv = make_venv(
+        libs=[
+            Library.from_stored({"name": "numpy", "specification": "===1.0"}),
+            Library.from_stored({"name": "pandas", "specification": "===1.0"}),
+            Library.from_stored({"name": "numpy", "specification": "===1.0"}),
+            Library.from_stored({"name": "scipy>=1", "specification": ""}),
+        ]
+    )
+
+    with pytest.raises(VenvLibrariesRejectedError) as refused:
+        venv.assert_buildable()
+
+    message = str(refused.value)
+    assert message.count("uses arbitrary equality") == 1
+    assert "'numpy', 'pandas': Version specification '===1.0' uses arbitrary equality" in message
+    assert message.count("is not a package name") == 1
+    assert "'scipy>=1': Library name 'scipy>=1' is not a package name" in message
+
+
 def test_a_venv_of_valid_libraries_is_buildable():
     make_venv(libs=[make_library(name="requests[socks]")]).assert_buildable()
 
@@ -174,10 +244,73 @@ def test_replacing_the_libraries_makes_a_refused_venv_buildable_again():
     venv.assert_buildable()
 
 
-@pytest.mark.parametrize("specification", [">=1.0\n", ">=\n1.0", "===\n/etc", ">=1.0,\t<2"])
-def test_library_rejects_a_specification_that_spans_lines(specification):
-    with pytest.raises(ValidationError):
+@pytest.mark.parametrize(
+    "specification",
+    [
+        ">=1.0\n",
+        ">=\n1.0",
+        ">=1.0\r<2",
+        ">=1.0,\t<2",
+        ">=1.0,\u00a0<2",
+        ">=1.0,\u2028<2",
+        ">=1.0,\x85<2",
+        ">=1.0,\x0b<2",
+    ],
+)
+def test_library_rejects_a_specification_with_whitespace_other_than_a_plain_space(
+    specification,
+):
+    with pytest.raises(ValidationError, match="whitespace other than plain spaces"):
         make_library(specification=specification)
+
+
+# packaging takes any token after `===` as its version, so each of these parses as a
+# specifier set and would reach uv's requirement line as written.
+ARBITRARY_EQUALITY_SPECIFICATIONS = [
+    "===1.0",
+    "===/etc",
+    "===x\\",
+    "=== --index-url=http://evil.example/simple",
+    ">=1, === -r/etc/passwd",
+]
+
+
+@pytest.mark.parametrize("specification", ARBITRARY_EQUALITY_SPECIFICATIONS)
+def test_library_refuses_arbitrary_equality_in_its_specification(specification):
+    with pytest.raises(ValidationError, match=r"arbitrary equality \('==='\); use '=='"):
+        make_library(specification=specification)
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        {"name": "numpy", "specification": "===1.0"},
+        {"name": "numpy", "specification": "=== --index-url=http://evil.example/simple"},
+    ],
+)
+def test_a_stored_library_with_arbitrary_equality_reads_as_rejected(stored):
+    library = Library.from_stored(stored)
+
+    assert "arbitrary equality" in library.rejection
+    with pytest.raises(VenvLibrariesRejectedError, match="arbitrary equality"):
+        make_venv(libs=[library]).assert_buildable()
+
+
+@pytest.mark.parametrize("line", ["numpy===1.0", "numpy>=1, === -r/etc/passwd"])
+def test_check_requirement_refuses_arbitrary_equality(line):
+    with pytest.raises(ValueError, match="arbitrary equality"):
+        check_requirement(line)
+
+
+# packaging skips an empty clause, uv refuses the line over it.
+@pytest.mark.parametrize("specification", [",>=1", ">=1,,<2", ">=1,", ",", ">=1, ,<2"])
+def test_library_refuses_a_specification_with_an_empty_clause(specification):
+    with pytest.raises(ValidationError, match="has an empty clause"):
+        make_library(specification=specification)
+
+
+def test_library_accepts_a_plain_equality_pin_in_place_of_arbitrary_equality():
+    assert make_library(specification="==1.0").requirement == "requests==1.0"
 
 
 def test_library_accepts_a_specification_with_spaces_after_its_commas():
@@ -199,6 +332,22 @@ def test_venv_accepts_a_name_of_letters_digits_spaces_hyphens_and_underscores(na
 def test_venv_rejects_a_name_with_any_other_character(name):
     with pytest.raises(ValidationError):
         make_venv(name=name)
+
+
+def test_venv_accepts_a_name_as_long_as_its_column():
+    assert make_venv(name="v" * 255).name == "v" * 255
+
+
+def test_venv_rejects_a_name_longer_than_its_column():
+    with pytest.raises(ValidationError, match="at most 255 characters"):
+        make_venv(name="v" * 256)
+
+
+def test_venv_rename_rejects_a_name_longer_than_its_column():
+    venv = make_venv(name="old")
+    with pytest.raises(ValidationError):
+        venv.rename("v" * 256)
+    assert venv.name == "old"
 
 
 def test_venv_rename_rejects_a_name_with_any_other_character():

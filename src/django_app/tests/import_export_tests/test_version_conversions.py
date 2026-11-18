@@ -963,19 +963,46 @@ class TestV4ToV5:
 
         assert data[EntityType.VENV][0]["libs"] == [{"name": "httpx", "specification": ""}]
 
-    def test_extras_are_dropped(self):
-        """A venv library is a name and a specifier; there is nowhere to put extras."""
-        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("x", "requests[socks]>=2")]})
+    @pytest.mark.parametrize(
+        ("libraries", "expected"),
+        [
+            ("requests[socks]>=2", {"name": "requests[socks]", "specification": ">=2"}),
+            (
+                "requests[security,socks]",
+                {"name": "requests[security,socks]", "specification": ""},
+            ),
+            ("httpx[socks,http2]<1", {"name": "httpx[http2,socks]", "specification": "<1"}),
+        ],
+    )
+    def test_extras_stay_on_the_name(self, libraries, expected):
+        """The sandbox takes extras on the library name, so nothing is lost."""
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("x", libraries)]})
 
-        assert data[EntityType.VENV][0]["libs"] == [{"name": "requests", "specification": ">=2"}]
+        assert data[EntityType.VENV][0]["libs"] == [expected]
+
+    def test_a_library_with_extras_and_one_without_are_different_environments(self):
+        data = v4_to_v5(
+            {
+                EntityType.PYTHON_CODE_TOOL: [
+                    _tool("plain", "requests"),
+                    _tool("socks", "requests[socks]"),
+                ]
+            }
+        )
+
+        assert [venv["libs"] for venv in data[EntityType.VENV]] == [
+            [{"name": "requests", "specification": ""}],
+            [{"name": "requests[socks]", "specification": ""}],
+        ]
 
     @pytest.mark.parametrize(
         "libraries",
         ["httpx>=0.28", "requests[socks]>=2", "httpx ../../etc/passwd", "pydantic==2.0,<3"],
     )
     @pytest.mark.parametrize("owner", ["x", "Tool #2", "Інструмент", "y" * 400])
-    def test_what_it_produces_is_accepted_by_the_importer(self, libraries, owner):
-        """The converter feeds the venv serializer, so its output has to pass it."""
+    def test_what_it_produces_has_the_shape_the_importer_reads(self, libraries, owner):
+        """The converter feeds the venv serializer, so its output has to pass it.
+        Whether the values build is the sandbox's call, not checked here."""
         data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool(owner, libraries)]})
 
         for venv in data.get(EntityType.VENV, []):

@@ -63,19 +63,40 @@ def check_library_name(value: str, /) -> str:
 
 
 def check_specification(value: str, /) -> str:
-    """Accept a PEP 440 specifier set written on one line.
+    """Accept a PEP 440 specifier set with no whitespace but plain spaces, no empty
+    clause and no `===`.
 
     Raises:
-        ValueError: The value spans lines, holds a tab, or is not a specifier set.
+        ValueError: The value holds whitespace other than a plain space, has an empty
+            clause (a leading, trailing or doubled comma), is not a specifier set, or
+            has a clause using arbitrary equality (`===`).
     """
     # `SpecifierSet` reads any whitespace around an operator as padding, a line
     # break included, so the break would reach uv inside the requirement line.
     if any(character.isspace() and character != " " for character in value):
-        raise ValueError(f"Version specification {value!r} must be on one line, with no tabs.")
+        raise ValueError(
+            f"Version specification {value!r} must not contain whitespace other than "
+            "plain spaces: no line breaks, tabs or other space characters."
+        )
     try:
-        SpecifierSet(value)
+        specifiers = SpecifierSet(value)
     except InvalidSpecifier as e:
         raise ValueError(f"Invalid version specification: '{value}'") from e
+    # packaging skips an empty clause. uv refuses a leading or doubled comma, which
+    # would only surface as a failed build, and accepts a trailing one; all three are
+    # refused here so the rule stays one rule and the error comes at declaration.
+    if value.strip() and any(not clause.strip() for clause in value.split(",")):
+        raise ValueError(
+            f"Version specification {value!r} has an empty clause: remove the leading, "
+            "trailing or doubled comma, for example '>=1,<2'."
+        )
+    # Arbitrary equality takes any token as its version, `===/etc` and `=== -r/x`
+    # included, so the requirement line would hand uv whatever follows it.
+    if any(specifier.operator == "===" for specifier in specifiers):
+        raise ValueError(
+            f"Version specification {value!r} uses arbitrary equality ('==='); "
+            "use '==' to pin a version, for example '==1.0'."
+        )
     return value
 
 
@@ -163,6 +184,10 @@ class Library(ValueObject):
         Raises:
             ValueError: A custom library carries extras.
         """
+        # Pydantic runs this again when a venv takes the library in, constructed or
+        # not; a library already read back as rejected must not raise there.
+        if self.rejection is not None:
+            return self
         if self.is_custom and self.distribution_name != self.name:
             raise ValueError(
                 f"Custom library {self.name!r} cannot take extras; "
@@ -172,7 +197,8 @@ class Library(ValueObject):
 
     @model_validator(mode="after")
     def validate_version_against_specification(self) -> "Library":
-        if self.version is None:
+        # Re-run when a venv takes the library in; see reject_extras_on_a_custom_library.
+        if self.rejection is not None or self.version is None:
             return self
         if not SpecifierSet(self.specification).contains(self.version, prereleases=True):
             raise ValueError(
@@ -211,7 +237,9 @@ class Library(ValueObject):
 
 class Venv(Entity):
     id: int | None = Field(default=None, frozen=True)
-    name: str = Field(min_length=1, pattern=r"^[A-Za-z0-9 _-]+$")
+    # At most the 255 characters of its column, so a longer name is refused as invalid
+    # instead of failing at the database.
+    name: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9 _-]+$")
     libs: list[Library] = Field(default_factory=list)
     hash: str | None = None
     status: VenvStatus = VenvStatus.DECLARED
@@ -228,13 +256,17 @@ class Venv(Entity):
         Two entries for one package give the resolver two requirements it cannot both
         honour, and it fails the whole build over it. Names reach here canonicalized,
         so `Pydantic` and `pydantic` count as the same package. They are compared in
-        full, extras included: `requests` next to `requests[socks]` is allowed.
+        full, extras included: `requests` next to `requests[socks]` is allowed. A
+        library read back rejected (`Library.from_stored`) is skipped: it never builds.
 
         Raises:
             ValueError: Some package is declared more than once.
         """
         seen: set[str] = set()
         for library in value:
+            # A rejected library never builds, so it cannot conflict with another.
+            if library.rejection is not None:
+                continue
             if library.name in seen:
                 raise ValueError(f"Library '{library.name}' is declared more than once.")
             seen.add(library.name)
@@ -262,15 +294,27 @@ class Venv(Entity):
             for library in self.libs
         ]
 
-    def assert_buildable(self):
+    def assert_buildable(self) -> None:
         """Refuse to build while some library is one an older release stored.
+
+        Entries refused for exactly the same reasons are grouped, so the message names
+        each such group once rather than repeating it per entry.
 
         Raises:
             VenvLibrariesRejectedError: Some library is rejected; names each one.
         """
-        rejections = [library.rejection for library in self.libs if library.rejection]
-        if rejections:
-            raise VenvLibrariesRejectedError(reasons=" ".join(rejections))
+        entries_by_reason: dict[str, list[str]] = {}
+        for library in self.libs:
+            if library.rejection is not None:
+                entries = entries_by_reason.setdefault(library.rejection, [])
+                if library.name not in entries:
+                    entries.append(library.name)
+        if entries_by_reason:
+            reasons = " ".join(
+                f"{', '.join(repr(name) for name in names)}: {reason.rstrip('.')}."
+                for reason, names in entries_by_reason.items()
+            )
+            raise VenvLibrariesRejectedError(reasons=reasons)
 
     def uses_custom_library(self, name: str, /) -> bool:
         """Whether this venv names that stored library at all.

@@ -19,11 +19,7 @@ from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
-from tables.import_export.serializers.venv import (
-    VenvImportSerializer,
-    VenvLibraryImportSerializer,
-    split_version_bound_from_name,
-)
+from tables.import_export.serializers.venv import VenvImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
 
 # Mirrors VenvStatus in the sandbox service; the gateway passes the value through.
@@ -49,18 +45,16 @@ class VenvStrategy(EntityImportExportStrategy):
         """The environment as the file carries it.
 
         Raises:
-            ValidationError: It installs a custom library, which no file can carry, or
-                a library this release would refuse on import. Rendered as 400.
+            ValidationError: It installs a custom library, which no file can carry.
+                Rendered as 400.
         """
         venv = VenvService().retrieve(instance)
         libs = venv.get("libs") or []
         self._assert_no_custom_libraries(venv.get("name"), libs)
-        exported_libs = [self._export_lib(lib) for lib in libs]
-        self._assert_importable_libraries(venv.get("name"), exported_libs)
         return {
             "id": instance.pk,
             "name": venv.get("name"),
-            "libs": exported_libs,
+            "libs": [self._export_lib(lib) for lib in libs],
         }
 
     def get_org_scope_q(self, org_id: int) -> Q:
@@ -136,49 +130,18 @@ class VenvStrategy(EntityImportExportStrategy):
         )
 
     @staticmethod
-    def _assert_importable_libraries(name: str | None, exported_libs: list[dict]) -> None:
-        """Refuse to write out a library the import of this same release refuses.
-
-        An older release stored names such as `numpy>=1` verbatim, and specifications
-        the import now refuses. `_export_lib` splits a name that is a name plus a
-        version bound; any entry still refused after that, such as a name carrying a
-        marker, a bound next to a specification of its own, or a specification the
-        resolver cannot read, would make a file nobody can import. Each entry is held
-        to the import's own serializer, so the two cannot drift apart.
-
-        Raises:
-            ValidationError: Some library is not one the import accepts.
-        """
-        refused_names = [
-            repr(lib["name"])
-            for lib in exported_libs
-            if not VenvLibraryImportSerializer(data=lib).is_valid()
-        ]
-        if not refused_names:
-            return
-        raise ValidationError(
-            f"Venv '{name}' declares libraries that can no longer be imported "
-            f"({', '.join(refused_names)}). Replace them with a package name and a "
-            "valid version specification before exporting."
-        )
-
-    @staticmethod
     def _export_lib(lib: dict) -> dict:
         """One library as the file carries it: a name and what to resolve it against.
 
         `version` is not carried: it holds the author's pin and the build's own
         result in one field, so a pin with no specification of its own is written
-        out as a specifier instead, and a resolved version is dropped. A version bound
-        an older release stored inside the name is moved to the specification.
+        out as a specifier instead, and a resolved version is dropped.
         """
         specification = lib.get("specification") or ""
         version = lib.get("version")
         if not specification and version:
             specification = f"=={version}"
-        name, specification = split_version_bound_from_name(
-            str(lib.get("name") or ""), specification
-        )
-        return {"name": name, "specification": specification}
+        return {"name": lib.get("name"), "specification": specification}
 
     @staticmethod
     def _library_key(libs: list[dict]) -> frozenset[tuple[str, str, bool]]:
@@ -191,14 +154,12 @@ class VenvStrategy(EntityImportExportStrategy):
         library and a package index entry of that name are two different packages,
         and reusing one for the other would install something the file never asked
         for.
-
-        A version bound an older release left in the name is split off first, on both
-        sides, so `numpy>=1` from an old file matches `numpy` with `>=1`.
         """
-        keys = set()
-        for lib in libs:
-            name, specification = split_version_bound_from_name(
-                str(lib.get("name") or ""), (lib.get("specification") or "").strip()
+        return frozenset(
+            (
+                canonicalize_name(lib.get("name") or ""),
+                (lib.get("specification") or "").strip(),
+                bool(lib.get("is_custom")),
             )
-            keys.add((canonicalize_name(name), specification, bool(lib.get("is_custom"))))
-        return frozenset(keys)
+            for lib in libs
+        )

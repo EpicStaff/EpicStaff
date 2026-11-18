@@ -85,9 +85,15 @@ class _Environments:
 def _parse_libraries(value: str, *, owner: str | None) -> list[dict]:
     """Split a v4 library string into the name and specifier pairs v5 carries.
 
-    Anything pip itself would not read is dropped with a warning rather than
-    failing the import: a legacy file cannot be edited to fix it, and a flow that
-    arrives without one library is worth more than one that does not arrive.
+    Extras stay on the name (`requests[socks]`), where the sandbox takes them.
+
+    An entry `Requirement` cannot read at all is dropped with a warning instead of
+    being passed on. This is a decision about converting the legacy format, not a
+    rule about what a library may be: released versions of this converter have always
+    dropped such entries, so passing them on for the sandbox to refuse would make
+    v4 files that import today fail outright, and a legacy file cannot be edited to
+    fix it. Everything that does parse goes to the sandbox, which decides whether
+    it can be built.
     """
     libraries = []
     for entry in (value or "").split():
@@ -98,13 +104,8 @@ def _parse_libraries(value: str, *, owner: str | None) -> list[dict]:
                 "Dropping library '{}' of '{}' while converting to v5: {}", entry, owner, error
             )
             continue
+        name = requirement.name
         if requirement.extras:
-            # A venv library is a name and a specifier; there is nowhere to put extras.
-            logger.warning(
-                "Dropping extras {} from library '{}' of '{}' while converting to v5",
-                sorted(requirement.extras),
-                requirement.name,
-                owner,
-            )
-        libraries.append({"name": requirement.name, "specification": str(requirement.specifier)})
+            name = f"{name}[{','.join(sorted(requirement.extras))}]"
+        libraries.append({"name": name, "specification": str(requirement.specifier)})
     return libraries

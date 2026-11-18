@@ -296,24 +296,28 @@ def test_create_stores_and_returns_whether_a_library_is_custom(client, venv_repo
     assert [lib.is_custom for lib in venv_repository.rows[body["id"]].libs] == [False, True]
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "six\n-i http://internal-host:9/simple",
-        "-e /etc",
-        "/etc",
-        "requests[socks]\n-i x",
-        "requests[ socks]",
-        "requests[socks];python_version<'3'",
-        "requests[]",
-    ],
-)
+# One case per kind of refusal: which names and specifications are refused is pinned
+# by the domain tables.
 def test_create_rejects_a_library_name_uv_would_read_as_more_than_a_package(
-    client, venv_repository, name
+    client, venv_repository
 ):
-    response = client.post("/venvs", json={"name": "data", "libs": [{"name": name}]})
+    response = client.post(
+        "/venvs",
+        json={"name": "data", "libs": [{"name": "six\n-i http://internal-host:9/simple"}]},
+    )
 
     assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert venv_repository.rows == {}
+
+
+def test_create_rejects_a_specification_using_arbitrary_equality(client, venv_repository):
+    response = client.post(
+        "/venvs",
+        json={"name": "data", "libs": [{"name": "numpy", "specification": "===/etc"}]},
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "use '=='" in response.text
     assert venv_repository.rows == {}
 
 
@@ -374,3 +378,59 @@ def test_a_venv_holding_a_library_an_older_release_stored_still_lists_and_retrie
     assert [venv["name"] for venv in listed.json()["result"]] == ["legacy", "valid"]
     assert retrieved.status_code == status_codes.HTTP_200_OK
     assert [lib["name"] for lib in retrieved.json()["libs"]] == ["numpy>=1"]
+
+
+def test_create_refuses_a_version_bound_in_a_library_name(client, venv_repository):
+    """Export files of earlier releases carry `numpy>=1` as the name; the refusal says
+    where the version goes."""
+    response = client.post("/venvs", json={"name": "data", "libs": [{"name": "numpy>=1"}]})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "put a version in the specification" in response.text
+    assert venv_repository.rows == {}
+
+
+# The name's column holds 255 characters: a longer one is a 400, not a database error.
+def test_create_accepts_a_venv_name_as_long_as_its_column(client, venv_repository):
+    response = client.post("/venvs", json={"name": "v" * 255, "libs": []})
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+    assert venv_repository.rows[response.json()["id"]].name == "v" * 255
+
+
+def test_create_refuses_a_venv_name_longer_than_its_column(client, venv_repository):
+    response = client.post("/venvs", json={"name": "v" * 256, "libs": []})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "at most 255 characters" in response.text
+    assert venv_repository.rows == {}
+
+
+def test_update_accepts_a_venv_name_as_long_as_its_column(client, venv_repository):
+    stored = venv_repository.seed(make_venv(name="old"))[0]
+
+    response = client.patch(f"/venvs/{stored.id}", json={"name": "v" * 255})
+
+    assert response.status_code == status_codes.HTTP_200_OK
+    assert venv_repository.rows[stored.id].name == "v" * 255
+
+
+def test_update_refuses_a_venv_name_longer_than_its_column(client, venv_repository):
+    stored = venv_repository.seed(make_venv(name="old"))[0]
+
+    response = client.patch(f"/venvs/{stored.id}", json={"name": "v" * 256})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "at most 255 characters" in response.text
+    assert venv_repository.rows[stored.id].name == "old"
+
+
+def test_create_refuses_a_specification_with_an_empty_clause(client, venv_repository):
+    response = client.post(
+        "/venvs",
+        json={"name": "data", "libs": [{"name": "numpy", "specification": ">=1,,<2"}]},
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "has an empty clause" in response.text
+    assert venv_repository.rows == {}
