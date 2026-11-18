@@ -16,6 +16,7 @@ class DashboardReport(models.Model):
     roles_builtin = models.PositiveIntegerField(default=0)
     roles_custom = models.PositiveIntegerField(default=0)
     users = models.PositiveIntegerField(default=0)
+    knowledge_total = models.PositiveIntegerField(default=0)
     knowledge_naive = models.PositiveIntegerField(default=0)
     knowledge_graph = models.PositiveIntegerField(default=0)
     knowledge_not_indexed = models.PositiveIntegerField(default=0)
