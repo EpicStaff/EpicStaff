@@ -75,9 +75,11 @@
     align-items: flex-start;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    background: var(--amber-alpha-8);
+    background: var(--color-warning-background);
     border-left: 3px solid var(--color-warning);
     border-radius: var(--radius-sm);
+    // A warning on a yellow background is written in yellow too.
+    color: var(--color-warning);
     font-size: 0.875rem;
     line-height: 1.5;
 
@@ -95,7 +97,6 @@
         border-top: none;
         border-right: none;
         border-bottom: none;
-        color: inherit;
         font-family: inherit;
         text-align: left;
         cursor: pointer;
