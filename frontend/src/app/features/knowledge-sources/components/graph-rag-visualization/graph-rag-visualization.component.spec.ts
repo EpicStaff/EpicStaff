@@ -212,7 +212,7 @@ describe('GraphRagVisualizationComponent', () => {
         it('shows the total entity and relationship counts after a successful load', () => {
             flushInitial(buildVisualizationData(5));
 
-            expect(normalizedText('.visualization__stats')).toBe('Total Entities: 5 Total Relationships: 1');
+            expect(normalizedText('.visualization__stats')).toBe('of 5/Relationships: 1');
         });
 
         it('builds entity type filters from loaded data', () => {
@@ -314,25 +314,8 @@ describe('GraphRagVisualizationComponent', () => {
                 .find((tooltip) => tooltip.message === 'This graph has no communities to group by')!;
         }
 
-        it('starts ungrouped, colored by type, with a type color swatch next to every entity type', () => {
+        it('starts grouped by community, without type swatches, keeping the type filters usable', () => {
             flushInitial(buildVisualizationData(4));
-
-            expect(groupByCommunitySwitch().checked).toBe(false);
-            expect(getSceneService().paintsByCommunity).toBe(false);
-            expect(typeSwatchCount()).toBe(2);
-        });
-
-        it('names the switch for assistive technology', () => {
-            flushInitial();
-
-            expect(groupByCommunitySwitch().getAttribute('aria-label')).toBe('Group by community');
-        });
-
-        it('colors nodes by community and hides the type swatches while grouped, keeping the type filters usable', () => {
-            flushInitial(buildVisualizationData(4));
-
-            groupByCommunitySwitch().click();
-            fixture.detectChanges();
 
             expect(groupByCommunitySwitch().checked).toBe(true);
             expect(getSceneService().paintsByCommunity).toBe(true);
@@ -341,7 +324,24 @@ describe('GraphRagVisualizationComponent', () => {
             expect(typeFilterCheckboxes().every((checkbox) => !checkbox.disabled)).toBe(true);
         });
 
-        it('returns to type colors and swatches when ungrouped', () => {
+        it('names the switch for assistive technology', () => {
+            flushInitial();
+
+            expect(groupByCommunitySwitch().getAttribute('aria-label')).toBe('Group by community');
+        });
+
+        it('colors nodes by type with a swatch next to every entity type once ungrouped', () => {
+            flushInitial(buildVisualizationData(4));
+
+            groupByCommunitySwitch().click();
+            fixture.detectChanges();
+
+            expect(groupByCommunitySwitch().checked).toBe(false);
+            expect(getSceneService().paintsByCommunity).toBe(false);
+            expect(typeSwatchCount()).toBe(2);
+        });
+
+        it('returns to community colors without type swatches when grouped again', () => {
             flushInitial(buildVisualizationData(4));
 
             groupByCommunitySwitch().click();
@@ -349,9 +349,9 @@ describe('GraphRagVisualizationComponent', () => {
             groupByCommunitySwitch().click();
             fixture.detectChanges();
 
-            expect(groupByCommunitySwitch().checked).toBe(false);
-            expect(getSceneService().paintsByCommunity).toBe(false);
-            expect(typeSwatchCount()).toBe(2);
+            expect(groupByCommunitySwitch().checked).toBe(true);
+            expect(getSceneService().paintsByCommunity).toBe(true);
+            expect(typeSwatchCount()).toBe(0);
         });
 
         it('disables the switch and explains why when no entity has a community', () => {
