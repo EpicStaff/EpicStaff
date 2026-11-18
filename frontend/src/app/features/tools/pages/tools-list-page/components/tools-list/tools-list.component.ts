@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
     AppIncludeExcludeDialogComponent,
     AppIncludeExcludeDialogData,
@@ -29,21 +30,13 @@ import {
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
-import {
-    buildPreviewImportResult,
-    downloadBlob,
-    extractHttpErrorMessage,
-    ImportFileData,
-    isFocusLost,
-    movedToRecycleBinMessage,
-} from '@shared/utils';
-import { EMPTY, from, Observable, of } from 'rxjs';
-import { catchError, map, switchMap, tap } from 'rxjs/operators';
+import { isFocusLost, movedToRecycleBinMessage, takeQueryParams } from '@shared/utils';
+import { map, tap } from 'rxjs/operators';
 
-import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
+import { TransferExportService } from '../../../../../../core/services/transfer-export.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
-import { ImportReviewDialogComponent } from '../../../../../flows/components/import-review-dialog/import-review-dialog.component';
+import { ImportWithReviewService } from '../../../../../flows/components/import-review-dialog/import-with-review.service';
 import { ToolUsageDialogComponent } from '../../../../components/tool-usage-dialog/tool-usage-dialog.component';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
@@ -101,6 +94,10 @@ export class ToolsListComponent implements OnInit {
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
     private readonly port = inject<ToolsListPort<Tool>>(TOOLS_LIST_PORT);
+    private readonly transferExport = inject(TransferExportService);
+    private readonly importWithReview = inject(ImportWithReviewService);
+    private readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
 
     public readonly viewState = inject(ToolsViewStorageService);
 
@@ -110,6 +107,8 @@ export class ToolsListComponent implements OnInit {
 
     private readonly allTools = signal<Tool[]>([]);
     private readonly usageById = signal<Map<number, GetBulkToolUsageItem>>(new Map());
+    // `?toolId=`, taken from the URL at init and opened after the first load
+    private linkedToolId: string | undefined;
 
     public readonly loadingMessage = computed(() => `Loading ${this.port.entityLabelPlural}...`);
     public readonly emptyMessage = computed(() => `No ${this.port.entityLabelPlural} found.`);
@@ -141,6 +140,7 @@ export class ToolsListComponent implements OnInit {
                 labelIds: t.labels ?? [],
                 favorite: t.is_favorite,
                 builtIn: this.port.isBuiltIn(t),
+                copyBlockedReason: this.port.copyBlockedReason?.(t),
                 ...toUsageVmFields(usage, t.id, showUsage),
             }));
     });
@@ -196,6 +196,7 @@ export class ToolsListComponent implements OnInit {
     }
 
     public ngOnInit(): void {
+        this.linkedToolId = takeQueryParams(this.route, this.router, ['toolId']).toolId;
         this.loadTools();
 
         this.port.createdEvent$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((newTool) => {
@@ -268,15 +269,7 @@ export class ToolsListComponent implements OnInit {
                     });
                 return;
             case 'export':
-                this.port
-                    .exportOne(payload.tool.id)
-                    .pipe(takeUntilDestroyed(this.destroyRef))
-                    .subscribe({
-                        next: (blob) => downloadBlob(blob, this.port.exportFileName(payload.tool.name)),
-                        error: (err: HttpErrorResponse) => {
-                            this.handleStaleResource(err, `Failed to export "${payload.tool.name}".`);
-                        },
-                    });
+                this.exportTools([payload.tool.id]);
                 return;
             case 'view_details': {
                 const tool = this.findToolById(payload.tool.id);
@@ -372,74 +365,16 @@ export class ToolsListComponent implements OnInit {
     }
 
     private handleImport(): void {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json,application/json';
-        input.onchange = (event: Event) => {
-            const file = (event.target as HTMLInputElement).files?.[0];
-            if (!file) return;
-
-            from(file.text())
-                .pipe(
-                    map((text) => this._parseFileData(text)),
-                    switchMap((fileData) => this._importToolFile(file, fileData)),
-                    catchError((err: HttpErrorResponse) => {
-                        this.toastService.error(
-                            extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
-                        );
-                        return EMPTY;
-                    }),
-                    takeUntilDestroyed(this.destroyRef)
-                )
-                .subscribe(() => this._finishToolImport());
-        };
-        input.click();
-    }
-
-    private _parseFileData(text: string): ImportFileData {
-        try {
-            return JSON.parse(text) as ImportFileData;
-        } catch {
-            return {};
-        }
-    }
-
-    private _importToolFile(file: File, fileData: ImportFileData): Observable<unknown> {
-        return this.port.inspectFile(file).pipe(
-            switchMap((inspection) => {
-                if (!hasReviewableItems(inspection.review_items)) {
-                    return this.port.importFile(file).pipe(
-                        catchError((err: HttpErrorResponse) => {
-                            this.toastService.error(
-                                extractHttpErrorMessage(err, `Failed to import ${this.port.entityLabelPlural}.`)
-                            );
-                            return EMPTY;
-                        })
-                    );
-                }
-
-                const dialogRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
-                    width: 'calc(100vw - 2rem)',
-                    height: 'calc(100vh - 2rem)',
-                    autoFocus: false,
-                    data: {
-                        importResult: buildPreviewImportResult(fileData),
-                        reviewItems: inspection.review_items,
-                        importFn: () => this.port.importFile(file),
-                    },
-                });
-
-                return dialogRef.closed.pipe(
-                    switchMap((closeResult) => (closeResult?.action === 'imported' ? of(closeResult.result) : EMPTY))
-                );
-            }),
-            catchError((err: HttpErrorResponse) => {
-                this.toastService.error(
-                    extractHttpErrorMessage(err, `Failed to read the ${this.port.entityLabel} file.`)
-                );
-                return EMPTY;
+        this.importWithReview
+            .pickAndImport({
+                entityLabel: this.port.entityLabel,
+                entityLabelPlural: this.port.entityLabelPlural,
+                inspect: (file) => this.port.inspectFile(file),
+                importFile: (file) => this.port.importFile(file),
+                accept: '.json,.zip',
             })
-        );
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this._finishToolImport());
     }
 
     private _finishToolImport(): void {
@@ -453,17 +388,7 @@ export class ToolsListComponent implements OnInit {
             this.toastService.info('Select at least one tool to export.');
             return;
         }
-        this.port
-            .bulkExport(ids)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (blob) => downloadBlob(blob, this.port.bulkExportFileName()),
-                error: (err: HttpErrorResponse) => {
-                    this.toastService.error(
-                        err.error?.message || `Failed to export selected ${this.port.entityLabelPlural}.`
-                    );
-                },
-            });
+        this.exportTools(ids);
     }
 
     private openIncludeExcludeDialog(initialTab: IncludeExcludeTab): void {
@@ -512,10 +437,18 @@ export class ToolsListComponent implements OnInit {
     }
 
     private handleBulkDuplicate(): void {
-        const ids = Array.from(this.viewState.selectedIds());
-        const requests = ids.map((id) => {
-            return this.port.copy(id);
+        const selected = Array.from(this.viewState.selectedIds());
+        const copyable = selected.filter((id) => {
+            const tool = this.findToolById(id);
+            return !!tool && !this.port.copyBlockedReason?.(tool);
         });
+        const skipped = selected.length - copyable.length;
+        if (skipped > 0) {
+            this.toastService.info(
+                `${skipped} ${this.port.entityLabel}(s) read secrets you may not use and will not be duplicated.`
+            );
+        }
+        const requests = copyable.map((id) => this.port.copy(id));
         runSettledBulk(requests, {
             destroyRef: this.destroyRef,
             toast: this.toastService,
@@ -728,6 +661,7 @@ export class ToolsListComponent implements OnInit {
                 next: (tools) => {
                     this.allTools.set(tools);
                     this.isLoaded.set(true);
+                    this.openLinkedTool();
                 },
                 error: (err: HttpErrorResponse) => {
                     this.error.set(
@@ -740,6 +674,31 @@ export class ToolsListComponent implements OnInit {
 
     public reload(): void {
         this.loadTools();
+    }
+
+    /**
+     * Exports the tools as a background job, which outlives this page. TransferExportService reports a failure; a
+     * tool that is gone (404, 410) also refreshes the list.
+     */
+    private exportTools(ids: number[]): void {
+        const start = this.port.startExport(ids).pipe(
+            tap({
+                error: (error: unknown) => {
+                    if (error instanceof HttpErrorResponse && (error.status === 404 || error.status === 410)) {
+                        this.loadTools();
+                    }
+                },
+            })
+        );
+        this.transferExport.export(start).subscribe();
+    }
+
+    /** `?toolId=` opens that tool as a card click does, once, after the first load. An unknown id is ignored. */
+    private openLinkedTool(): void {
+        const toolId = this.linkedToolId;
+        this.linkedToolId = undefined;
+        const tool = toolId == null ? undefined : this.findToolById(Number(toolId));
+        if (tool) this.onConfigure(tool);
     }
 
     private handleStaleResource(err: HttpErrorResponse, defaultMessage: string): void {

@@ -7,6 +7,7 @@ from utils.exceptions import CustomAPIExeption
 from tables.constants.knowledge_constants import (
     ALLOWED_FILE_TYPES,
 )
+from tables.import_export.enums import EntityType
 
 if TYPE_CHECKING:
     # Only a type here: the import service imports this module.
@@ -20,6 +21,23 @@ __all__ = ["CustomAPIExeption"]
 class GraphEntryPointException(CustomAPIExeption):
     status_code = 400
     default_detail = "No node connected to start node"
+
+
+class SubflowEntryPointException(GraphEntryPointException):
+    """Raised on run when a flow a Subflow node uses has no node connected to its Start.
+
+    Names that flow and the node, since the flow the user ran may well be fine.
+    """
+
+    default_code = "subflow_entry_point_missing"
+
+    def __init__(self, *, flow_name: str, subflow_node_label: str):
+        super().__init__(
+            detail=(
+                f'Flow "{flow_name}" (used by Subflow node "{subflow_node_label}") '
+                "has no node connected to its Start."
+            )
+        )
 
 
 class GraphNotFoundError(CustomAPIExeption):
@@ -77,6 +95,23 @@ class FlowWithTriggerNodesRequiresUsePermissionError(CustomAPIExeption):
         "importing or restoring it requires the Use permission on flows."
     )
     default_code = "flow_with_trigger_nodes_requires_use_permission"
+
+
+class CodeWithSecretsRequiresSecretsUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on secrets would copy or restore code that reads secrets.
+
+    Covers copying a flow or tool, restoring a flow version or creating a flow from
+    one, and restoring a recycle-bin item that brings such code back: the result is the
+    caller's own code, which reads the secrets for them. The message names no action,
+    as the bulk recycle-bin restore shows it verbatim. Editing such code is a 400 field
+    error of the save instead, so a client can tell the two apart.
+    """
+
+    status_code = 403
+    default_detail = (
+        "This contains code that reads secrets. This action requires the Use permission on secrets."
+    )
+    default_code = "code_with_secrets_requires_secrets_use_permission"
 
 
 class CodeRunTargetNotFoundError(Exception):
@@ -1044,3 +1079,123 @@ class InvalidTestRunPayloadError(CustomAPIExeption):
     def __init__(self, messages: list[str]):
         self.errors = messages
         super().__init__(detail={"payload": messages}, code=self.default_code)
+
+
+class ExportEntitiesNotFoundError(CustomAPIExeption):
+    """An export named an id that is no item the caller may export from the active organization.
+
+    404, like any other organization's row: the message names no id, so it tells
+    nothing about which ids exist in another organization, or which one is missing.
+    """
+
+    status_code = 404
+    default_code = "export_entities_not_found"
+    default_detail = "Some entity IDs do not exist"
+
+
+class TooManyTransferJobsError(CustomAPIExeption):
+    """Starting a transfer job would pass the caller's or the organization's unfinished-job limit."""
+
+    status_code = 429
+    default_code = "too_many_jobs"
+    default_detail = "Too many exports or imports are running; wait for one to finish."
+
+
+class TransferJobRequiresUserError(CustomAPIExeption):
+    """The caller is no user (a system API key, a plugin service account) who could own a job.
+
+    A job runs with its creator's permissions and only its creator may read it,
+    so a caller with no user row cannot start one.
+    """
+
+    status_code = 403
+    default_code = "transfer_job_requires_user"
+    default_detail = "Exports and imports are started by a user or a personal API key."
+
+
+class TransferJobNotReadyError(CustomAPIExeption):
+    """The job's archive cannot be downloaded: it is not a completed export."""
+
+    status_code = 409
+    default_code = "job_not_ready"
+    default_detail = "The job has no archive to download yet."
+
+
+class TransferJobArchiveRemovedError(CustomAPIExeption):
+    """The export completed, but its archive was deleted to make room for the creator's newer ones."""
+
+    status_code = 410
+    default_code = "archive_removed"
+    default_detail = "This archive was deleted to make room for newer exports. Export again."
+
+
+class TransferJobRunningError(CustomAPIExeption):
+    """The job cannot be deleted while it runs; it can once it has finished."""
+
+    status_code = 409
+    default_code = "job_running"
+    default_detail = "The job is running; it can be removed once it has finished."
+
+
+class TooManySessionsToExportError(CustomAPIExeption):
+    """A session export by filters matches more sessions than one export job may carry."""
+
+    status_code = 400
+    default_code = "too_many_sessions"
+
+    def __init__(self, limit: int):
+        super().__init__(
+            detail=f"More than {limit} sessions match these filters; narrow them and export again."
+        )
+
+
+class UseImportJobError(CustomAPIExeption):
+    """A `.zip` carrying knowledge collections was sent to a synchronous import.
+
+    Only an import job reads a collection's files out of an archive. The message
+    names the import job that takes the archive's main entity.
+    """
+
+    status_code = 400
+    default_code = "use_import_job"
+    default_detail = "This archive carries knowledge collections; import it as an import job."
+
+    _JOB_BY_MAIN_ENTITY = {
+        EntityType.GRAPH: "a flow import job",
+        EntityType.SOURCE_COLLECTION: "a knowledge collection import job",
+        EntityType.AGENT_DEFINITION: "an agent import job",
+    }
+
+    def __init__(self, main_entity: object = None):
+        # The main entity is read from an uploaded file, so it may be any JSON value.
+        job = self._JOB_BY_MAIN_ENTITY.get(main_entity) if isinstance(main_entity, str) else None
+        super().__init__(
+            detail=(
+                f"This archive carries knowledge collections; import it as {job}." if job else None
+            )
+        )
+
+
+class ImportArchiveTooLargeError(CustomAPIExeption):
+    """An import upload is larger than `MAX_KNOWLEDGE_ARCHIVE_SIZE`."""
+
+    status_code = 413
+    default_code = "archive_too_large"
+    default_detail = "The archive is larger than the import size limit."
+
+
+class ImportArchiveRejectedError(CustomAPIExeption):
+    """An uploaded archive an import job would refuse; refused before the job is created.
+
+    Carries the code the import itself reports for the same archive (`invalid_archive`,
+    `use_sync_import`, ...), so a client sees one code whether the archive is refused
+    at upload or by the job.
+    """
+
+    status_code = 400
+    default_code = "invalid_file"
+
+    def __init__(self, code: str, message: str):
+        super().__init__(detail=message)
+        # The error envelope reads the code from default_code.
+        self.default_code = code

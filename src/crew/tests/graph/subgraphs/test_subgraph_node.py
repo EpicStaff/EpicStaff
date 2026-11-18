@@ -7,13 +7,16 @@ nodes execute in-process through FakePythonCodeExecutorService.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from dotdict import DotDict
 from langgraph.graph import StateGraph
+from litellm.types.utils import ModelResponse, Usage
 
 from models.state import State
 from services.graph.events import StopEvent
+from services.graph.exceptions import InvalidStatePathError
 from services.graph.graph_builder import SessionGraphBuilder
 from services.graph.subgraphs.subgraph_node import SubGraphNode
 from src.shared.models import (
@@ -24,8 +27,15 @@ from src.shared.models import (
     PythonNodeData,
     SubGraphData,
 )
-from src.shared.models.graph_nodes import SubGraphNodeData
+from src.shared.models.ai_providers import LLMConfigData, LLMData
+from src.shared.models.graph_nodes import (
+    ClassificationConditionGroupData,
+    ClassificationDecisionTableNodeData,
+    PromptConfigData,
+    SubGraphNodeData,
+)
 from tests.graph.test_graph_builder import FakePythonCodeExecutorService
+from tests.secrets_cryptographer import TEST_SECRETS_CRYPTOGRAPHER
 
 pytestmark = pytest.mark.asyncio
 
@@ -61,6 +71,7 @@ def _subgraph_node(
             "knowledge_search_service": None,
             "agent_task_service": None,
             "key_value_client": None,
+            "secrets_cryptographer": None,
             **services,
         }
     )
@@ -249,3 +260,61 @@ async def test_child_nodes_use_the_parents_services():
     updated = await node.run(_parent_state(), writer=lambda message: None)
 
     assert updated["variables"].result.out == "stored k"
+
+
+async def test_child_classification_table_decrypts_with_the_parents_cryptographer():
+    """A CDT prompt in a child flow reaches its LLM with the plaintext key only if the
+    parent's cryptographer is passed down."""
+    child = GraphData(
+        name="child",
+        entrypoint="classify_1",
+        end_node=None,
+        classification_decision_table_node_list=[
+            ClassificationDecisionTableNodeData(
+                node_name="classify_1",
+                condition_groups=[
+                    ClassificationConditionGroupData(
+                        group_name="row0", order=0, prompt_id="classify", next_node="__end__"
+                    )
+                ],
+                prompts={
+                    "classify": PromptConfigData(
+                        prompt_text="Classify",
+                        llm_data=LLMData(
+                            provider="openai",
+                            config=LLMConfigData(
+                                model="gpt-4o-mini",
+                                api_key=TEST_SECRETS_CRYPTOGRAPHER.encrypt("sk-plain"),
+                            ),
+                        ),
+                        result_variable="label",
+                    )
+                },
+            )
+        ],
+    )
+    node = _subgraph_node(
+        child, "variables.result", secrets_cryptographer=TEST_SECRETS_CRYPTOGRAPHER
+    )
+    reply = ModelResponse(
+        model="gpt-4o-mini",
+        choices=[{"message": {"role": "assistant", "content": '{"label": "x"}'}}],
+        usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+    )
+
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=reply) as completion:
+        await node.run(_parent_state(), writer=lambda message: None)
+
+    assert completion.call_args.kwargs["api_key"] == "sk-plain"
+
+
+async def test_underscore_output_path_fails_before_the_child_flow_runs():
+    node = _subgraph_node(_python_child("def main(): return {'done': True}"), "variables.__class__.status")
+    state = _parent_state()
+    messages = []
+
+    with pytest.raises(InvalidStatePathError, match=r"'variables\.__class__\.status'"):
+        await node.run(state, writer=messages.append)
+
+    assert messages == []
+    assert state["variables"].deep_dump() == PARENT

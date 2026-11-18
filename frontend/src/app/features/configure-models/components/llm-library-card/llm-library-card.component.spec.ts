@@ -16,6 +16,16 @@ const MODEL: LlmLibraryModel = {
     isDeprecated: false,
 };
 
+// The names show their full text in a tooltip when cut, which watches their size; jsdom has no ResizeObserver.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 function render(canWrite: boolean): {
     fixture: ComponentFixture<LlmLibraryCardComponent>;
     overlay: HTMLElement;

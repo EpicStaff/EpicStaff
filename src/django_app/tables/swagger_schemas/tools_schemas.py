@@ -1,3 +1,7 @@
+from agents.serializers.agent_definition_serializers import (
+    AgentDefinitionCopyRequestSerializer,
+    AgentDefinitionReadSerializer,
+)
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -11,9 +15,10 @@ from tables.serializers.model_serializers import (
     McpToolSerializer,
     PythonCodeToolSerializer,
 )
-from tables.serializers.serializers import BulkExportSerializer, BulkIdsSerializer
+from tables.serializers.serializers import BulkIdsSerializer
 from tables.serializers.utils.bulk_ids import BULK_DELETE_MAX_IDS
 from tables.swagger_schemas.common_schemas import (
+    CODE_WITH_SECRETS_403_RESPONSE,
     FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
     UNAUTHORIZED_401_RESPONSE,
 )
@@ -102,6 +107,8 @@ def _copy_post_schema(
     built_in_note: str,
     error_400_description: str,
     error_400_example: dict | None,
+    error_403: OpenApiResponse | None = None,
+    error_404: OpenApiResponse | None = None,
 ) -> dict:
     responses = {
         201: OpenApiResponse(
@@ -110,6 +117,10 @@ def _copy_post_schema(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     }
+    if error_403 is not None:
+        responses[403] = error_403
+    if error_404 is not None:
+        responses[404] = error_404
     if error_400_example is not None:
         responses[400] = OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -140,9 +151,15 @@ def _copy_post_schema(
 PYTHON_CODE_TOOL_COPY_POST = _copy_post_schema(
     model_name="PythonCodeTool",
     response_serializer=PythonCodeToolSerializer,
-    built_in_note="Built-in tools (`built_in=True`) cannot be copied and return a 400 error.",
+    built_in_note=(
+        "Built-in tools (`built_in=True`) cannot be copied and return a 400 error. A tool "
+        "whose code declares a secret requires USE on secrets: the copied code is the "
+        "caller's own. Without it the response is 403 "
+        "`code_with_secrets_requires_secrets_use_permission` and nothing is written."
+    ),
     error_400_description="Built-in tools cannot be copied.",
     error_400_example={"message": "Cannot copy a built-in tool."},
+    error_403=CODE_WITH_SECRETS_403_RESPONSE,
 )
 MCP_TOOL_COPY_POST = _copy_post_schema(
     model_name="McpTool",
@@ -241,65 +258,13 @@ MCP_TOOL_BULK_DELETE_POST = {
 }
 
 
-def _export_get_schema(*, model_name: str) -> dict:
-    return {
-        "summary": f"Export a {model_name}",
-        "description": (
-            f"Downloads a single `{model_name}` (identified by the id in the "
-            "URL) as a JSON bundle file, scoped to the active org. The "
-            f"response is a raw file download — not a `{model_name}` "
-            "representation — shaped like "
-            f'`{{"{model_name}": [{{...}}], "Label": [...], '
-            f'"main_entity": "{model_name}", "version": <int>}}`, suitable '
-            "for later re-import via the `import` action."
-        ),
-        "request": None,
-        "responses": {
-            200: OpenApiTypes.BINARY,
-            401: UNAUTHORIZED_401_RESPONSE,
-        },
-    }
-
-
-def _bulk_export_post_schema(*, model_name: str) -> dict:
-    return {
-        "summary": f"Bulk export {model_name}s",
-        "description": (
-            f"Downloads multiple `{model_name}` rows (identified by `ids`, "
-            "scoped to the active org) as a single JSON bundle file. The "
-            f"response is a raw file download — not a list of `{model_name}` "
-            "representations — shaped like "
-            f'`{{"{model_name}": [{{...}}], "Label": [...], '
-            f'"main_entity": "{model_name}", "version": <int>}}`, suitable '
-            "for later re-import via the `import` action."
-        ),
-        "request": BulkExportSerializer,
-        "responses": {
-            200: OpenApiTypes.BINARY,
-            400: OpenApiResponse(
-                response=OpenApiTypes.STR,
-                description="One or more requested `ids` do not exist (or are not visible to the active org).",
-                examples=[
-                    OpenApiExample(
-                        "Missing ids",
-                        value={"message": "Some entity IDs do not exist"},
-                        response_only=True,
-                        status_codes=["400"],
-                    ),
-                ],
-            ),
-            401: UNAUTHORIZED_401_RESPONSE,
-        },
-    }
-
-
 def _import_post_schema(*, model_name: str) -> dict:
     return {
         "summary": f"Import {model_name}(s)",
         "description": (
-            f"Imports one or more `{model_name}` rows from a JSON bundle file "
-            "previously produced by the `export`/`bulk-export` actions "
-            "(multipart form upload), scoped to the active org. "
+            f"Imports one or more `{model_name}` rows from an export file "
+            "(multipart form upload), scoped to the active org: the `.zip` an "
+            "export job produced, or the plain `.json` of an older export. "
             "`import_labels` controls whether labels included in the bundle "
             "are also created/attached (defaults to `true`). The response is "
             "an import summary — a dict keyed by entity type name, each with "
@@ -331,10 +296,45 @@ def _import_post_schema(*, model_name: str) -> dict:
     }
 
 
-PYTHON_CODE_TOOL_EXPORT_GET = _export_get_schema(model_name="PythonCodeTool")
-PYTHON_CODE_TOOL_BULK_EXPORT_POST = _bulk_export_post_schema(model_name="PythonCodeTool")
 PYTHON_CODE_TOOL_IMPORT_POST = _import_post_schema(model_name="PythonCodeTool")
 
-MCP_TOOL_EXPORT_GET = _export_get_schema(model_name="McpTool")
-MCP_TOOL_BULK_EXPORT_POST = _bulk_export_post_schema(model_name="McpTool")
 MCP_TOOL_IMPORT_POST = _import_post_schema(model_name="McpTool")
+
+AGENT_DEFINITION_IMPORT_POST = _import_post_schema(model_name="AgentDefinition")
+
+AGENT_DEFINITION_COPY_POST = {
+    **_copy_post_schema(
+        model_name="AgentDefinition",
+        response_serializer=AgentDefinitionReadSerializer,
+        built_in_note=(
+            "Requires CREATE on agents, and also CREATE on surfaces when the agent owns "
+            "surfaces. Settings, LLM configs, the group and the realtime settings are "
+            "copied. Shared default surfaces are linked to the copy as they are; every "
+            "surface the agent owns is cloned for the copy with its tools, storage items "
+            "and knowledge, and gets its own numbered name. The realtime wake word is "
+            "copied unchanged."
+        ),
+        error_400_description=(
+            "`name` is not a string, blank, or longer than the agent name column "
+            "(`name` errors); or a concurrent copy took the picked name: retry the "
+            "request (`message`)."
+        ),
+        error_400_example={"message": "A copy with that name was just created; please retry."},
+        error_403=OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description=(
+                "The caller lacks CREATE on agents (`permission_denied`), or the agent owns "
+                "surfaces and the caller lacks CREATE on surfaces "
+                "(`agent_with_owned_surfaces_requires_surfaces_create_permission`). Nothing "
+                "is written."
+            ),
+        ),
+        error_404=OpenApiResponse(
+            description=(
+                "No such agent in the active organization: missing, in the recycle bin, or "
+                "another organization's."
+            )
+        ),
+    ),
+    "request": AgentDefinitionCopyRequestSerializer,
+}

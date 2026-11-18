@@ -1,8 +1,8 @@
 """Realtime forwards the embedder credential Django resolved for it.
 
-Voice-agent knowledge search calls knowledge_new the same way crew does, and
-realtime likewise has no SECRET_KEY, so it can only pass along the plaintext
-it was given.
+Voice-agent knowledge search calls knowledge_new the same way crew does. Django
+seals the credential with the transport key and knowledge_new decrypts it, so
+realtime passes it along exactly as it was given, still sealed.
 """
 
 from unittest.mock import AsyncMock

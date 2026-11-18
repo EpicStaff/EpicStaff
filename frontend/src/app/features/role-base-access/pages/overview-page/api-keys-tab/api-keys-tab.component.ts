@@ -8,6 +8,8 @@ import {
     DestroyRef,
     ElementRef,
     inject,
+    input,
+    linkedSignal,
     signal,
     viewChild,
 } from '@angular/core';
@@ -21,11 +23,10 @@ import {
     ConfirmationDialogService,
     DeleteButtonComponent,
     LoadingSpinnerComponent,
-    MultiSelectComponent,
-    MultiSelectTriggerDirective,
     SearchComponent,
     SelectItem,
     StopButtonComponent,
+    TableColumnPickerComponent,
     TableRow,
     UserAvatarComponent,
 } from '@shared/components';
@@ -34,6 +35,7 @@ import { getRelativeTime } from '@shared/utils';
 import { combineLatest, debounceTime, distinctUntilChanged, EMPTY, forkJoin, map, of, switchMap } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
 
+import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../services/notifications';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
@@ -66,12 +68,11 @@ const STATUS_ITEMS: SelectItem[] = [
     imports: [
         AppTableComponent,
         AppTableCellDirective,
+        TableColumnPickerComponent,
         AppSvgIconComponent,
         CdkConnectedOverlay,
         CdkOverlayOrigin,
         LoadingSpinnerComponent,
-        MultiSelectComponent,
-        MultiSelectTriggerDirective,
         SearchComponent,
         StatusBadgeComponent,
         UserAvatarComponent,
@@ -84,12 +85,16 @@ const STATUS_ITEMS: SelectItem[] = [
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ApiKeysTabComponent {
+    /** `?search=`, bound from the URL: seeds the search box, as a link to one item does. */
+    readonly search = input<string>();
+
     // Takes the focus back when a menu action or a row action removes the control that had it.
     private readonly bulkButton = viewChild.required<ElementRef<HTMLButtonElement>>('bulkButton');
 
     private readonly apiKeysService = inject(AdminApiKeysService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly organizationsService = inject(OrganizationsStorageService);
+    private readonly activeOrgService = inject(ActiveOrgService);
     private readonly confirmation = inject(ConfirmationDialogService);
     private readonly toast = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
@@ -102,7 +107,7 @@ export class ApiKeysTabComponent {
     private readonly selectedIds = signal<ReadonlySet<number>>(new Set());
     protected readonly keys = signal<GetApiKeyWithOwnerResponse[]>([]);
 
-    protected readonly searchTerm = signal('');
+    protected readonly searchTerm = linkedSignal(() => this.search() ?? '');
     protected readonly ownerFilterId = signal<number | null>(null);
     protected readonly statusFilter = signal<ApiKeyStatus | null>(null);
     protected readonly orgFilterIds = signal<number[]>([]);
@@ -125,6 +130,15 @@ export class ApiKeysTabComponent {
         this.readableOrgs().map((o) => ({ name: o.name, value: o.id }))
     );
 
+    /** Preselected org filter — follows the active org, but only if the caller can read API keys there.
+     *  Otherwise stays empty so the load falls back to all readable orgs. */
+    private readonly activeOrgDefault = computed<number[] | undefined>(() => {
+        const id = this.activeOrgService.activeOrgId();
+        if (id === null) return undefined;
+        if (this.permissionsService.isSuperadmin) return [id];
+        return this.readableOrgs().some((o) => o.id === id) ? [id] : undefined;
+    });
+
     protected readonly ownerFilterItems = computed<SelectItem[]>(() => {
         const items: SelectItem[] = [...this.knownOwners().entries()]
             .sort(([, a], [, b]) => a.name.localeCompare(b.name))
@@ -135,28 +149,39 @@ export class ApiKeysTabComponent {
     protected readonly columns = computed<AppTableColumnDef[]>(() => [
         {
             key: 'owner',
-            label: 'OWNER',
-            width: 'minmax(180px, 1.5fr)',
+            label: 'Owner',
+            width: '220px',
+            pinned: 'start',
             filterItems: this.ownerFilterItems(),
             filterKind: 'single',
             filterSearchable: true,
             filterServerSide: true,
         },
-        { key: 'name', label: 'NAME', width: 'minmax(140px, 1.5fr)' },
-        { key: 'orgName', label: 'ORGANIZATION', width: 'minmax(140px, 1.5fr)' },
-        { key: 'key', label: 'KEY', width: 'minmax(140px, 1.2fr)' },
-        { key: 'created', label: 'CREATED', width: 'minmax(110px, 1fr)' },
-        { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
-        { key: 'lastUsed', label: 'LAST USED', width: 'minmax(100px, 1fr)' },
+        { key: 'name', label: 'Name', width: 'minmax(140px, 1.5fr)', hideable: false },
+        {
+            key: 'orgName',
+            label: 'Organization',
+            width: 'minmax(140px, 1.5fr)',
+            hideable: false,
+            filterItems: this.orgFilterItems(),
+            filterKind: 'multi',
+            filterSearchable: true,
+            filterServerSide: true,
+            defaultValues: this.activeOrgDefault(),
+        },
+        { key: 'key', label: 'Key', width: 'minmax(140px, 1.2fr)' },
+        { key: 'created', label: 'Created', width: 'minmax(110px, 1fr)' },
+        { key: 'expires', label: 'Expires', width: 'minmax(100px, 1fr)' },
+        { key: 'lastUsed', label: 'Last Used', width: 'minmax(100px, 1fr)' },
         {
             key: 'status',
-            label: 'STATUS',
+            label: 'Status',
             width: 'minmax(120px, 1fr)',
             filterItems: STATUS_ITEMS,
             filterKind: 'single',
             filterServerSide: true,
         },
-        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end' },
+        { key: 'actions', label: 'Actions', width: 'max-content', pinned: 'end' },
     ]);
 
     /** Revoke is offered only for active keys the caller can retire. */
@@ -243,13 +268,11 @@ export class ApiKeysTabComponent {
         return this.permissionsService.canInOrg(row['orgId'] as number, ResourceCode.ApiKeys, ActionCode.Delete);
     }
 
-    onOrgFilterChange(values: unknown[]): void {
-        this.orgFilterIds.set(values.map((v) => Number(v)).filter((n) => Number.isFinite(n)));
-    }
-
     onFilterChange({ key, values }: { key: string; values: unknown[] }): void {
         const first = values[0] ?? null;
-        if (key === 'owner') {
+        if (key === 'orgName') {
+            this.orgFilterIds.set(values.map((v) => Number(v)).filter((n) => Number.isFinite(n)));
+        } else if (key === 'owner') {
             this.ownerFilterId.set(first === null ? null : Number(first));
         } else if (key === 'status') {
             this.statusFilter.set(first === null ? null : (first as ApiKeyStatus));

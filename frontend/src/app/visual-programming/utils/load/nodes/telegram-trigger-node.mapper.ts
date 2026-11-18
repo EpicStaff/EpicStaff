@@ -10,6 +10,7 @@ export function mapTelegramTriggerNodeToModel(tn: GetTelegramTriggerNodeRequest)
     return {
         id: generateUuid(),
         backendId: tn.id,
+        nodeUuid: tn.uuid,
         type: NodeType.TELEGRAM_TRIGGER,
         node_name: tn.node_name,
         nodeNumber: tn.node_number ?? undefined,

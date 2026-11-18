@@ -45,6 +45,7 @@ REQUIRED = {
     "CHAT_INTERNAL_API_KEY": "i" * 32,
     "CHAT_PUBLIC_BASE_URL": "http://localhost",
     "CHAT_WIDGET_URL": "https://cdn.example.test/epicchat/embed.js",
+    "CHAT_WIDGET_INTEGRITY": "",
     "CHAT_CALLBACK_URL": "http://chat:8200/chat/internal/v1/session-callbacks",
     "CHAT_TRUSTED_PROXIES": "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16",
     "CHAT_ACTION_MAX_BYTES": "262144",
@@ -336,3 +337,41 @@ def test_the_widget_url_is_an_absolute_https_url_or_an_internal_http_one(load, u
 def test_startup_refuses_a_widget_url_that_is_not_one_or_would_break_the_snippet(load, url):
     with pytest.raises(ValidationError, match="CHAT_WIDGET_URL"):
         load(CHAT_WIDGET_URL=url)
+
+
+# Digests of real content: the pinned v3.0.2 embed.js (sha384) and the empty string (sha256, sha512).
+SHA384 = "sha384-zJxl4o8r/3cYp2rLJAbAh/qSKfhfKx5+7fMzyqwLwky1qbdFmzmzA5wDKo3wuE8N"
+SHA256 = "sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU="
+SHA512 = "sha512-z4PhNX7vuL3xVChQ1m2AB9Yg5AULVxXcg/SpIdNs6c5H0NE8XYXysP+DGNKHfuwvY7kxvUdBeoGlODJ6+SfaPg=="
+
+
+@pytest.mark.parametrize("value, expected", [
+    (SHA384, SHA384),
+    (SHA256, SHA256),
+    (SHA512, SHA512),
+    (f"{SHA384} {SHA512}", f"{SHA384} {SHA512}"),
+    (f"  {SHA384}   {SHA256} ", f"{SHA384} {SHA256}"),
+    # Empty, blank or none: the snippet carries no integrity attribute.
+    ("", None),
+    ("   ", None),
+    ("none", None),
+])
+def test_the_widget_integrity_is_space_separated_sri_hashes_or_nothing(load, value, expected):
+    assert load(CHAT_WIDGET_INTEGRITY=value).CHAT_WIDGET_INTEGRITY == expected
+
+
+@pytest.mark.parametrize("value", [
+    SHA384.removeprefix("sha384-"),  # no algorithm
+    SHA384.replace("sha384-", "sha1-"),
+    SHA384.replace("sha384-", "md5-"),
+    SHA384[:-1],  # truncated paste: the browser would block the widget
+    SHA256.removesuffix("="),
+    SHA384.replace("/", "_").replace("+", "-"),  # base64url, not base64
+    f"{SHA384},{SHA512}",
+    f'{SHA384}" onload="alert(1)',  # it goes into a quoted HTML attribute
+    f"{SHA384}<script>",
+    f"{SHA384} sha384-",
+])
+def test_startup_refuses_a_widget_integrity_that_is_not_sri_hashes(load, value):
+    with pytest.raises(ValidationError, match="CHAT_WIDGET_INTEGRITY"):
+        load(CHAT_WIDGET_INTEGRITY=value)

@@ -86,6 +86,8 @@ describe('node metadata save', () => {
             position: POSITION,
             size: { width: 420, height: 260 },
             backgroundColor: '#ffd1d1',
+            fontSize: null,
+            linkedRegion: null,
         });
     });
 

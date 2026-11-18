@@ -14,7 +14,7 @@ them coincide.
 import pytest
 from proxies.sandbox.models import SandboxVenvBinding
 from rbac.models import Organization
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from rbac.models.enums import Permission, ResourceType
 
@@ -125,6 +125,31 @@ class TestExport:
             {"name": "httpx", "specification": ">=0.28"}
         ]
 
+    def test_an_environment_built_on_a_stored_package_is_not_written_out(
+        self, default_org, sandbox
+    ):
+        """A custom library exists only for the organization that uploaded it, and the
+        file can carry its name but not the package. Exported anyway, that name would
+        be resolved against a package index on the other side."""
+        binding = upstream_venv(
+            sandbox,
+            default_org,
+            libs=[
+                {"name": "acme-core", "specification": ">=1.0", "is_custom": True},
+                {"name": "httpx", "specification": ">=0.28"},
+            ],
+            venv_id=4711,
+        )
+
+        with pytest.raises(ValidationError) as refusal:
+            export_tool(tool_in(default_org, binding), default_org)
+
+        message = str(refusal.value.detail)
+        assert "scraper-venv" in message
+        assert "acme-core" in message
+        # The ordinary library of the same environment is nobody's business here.
+        assert "httpx" not in message
+
     def test_a_built_in_tools_environment_of_another_org_stays_out(
         self, default_org, target_org, sandbox
     ):
@@ -187,6 +212,14 @@ class TestImport:
             pytest.param("other-name", None, id="another-name"),
             pytest.param(None, [{"name": "httpx", "specification": ">=0.29"}], id="another-spec"),
             pytest.param(None, [], id="no-libraries"),
+            # A package this installation stores is not the one a package index
+            # answers to that name, so an environment built on it is another
+            # environment.
+            pytest.param(
+                None,
+                [{"name": "httpx", "specification": ">=0.28", "is_custom": True}],
+                id="a-stored-package-of-the-same-name",
+            ),
         ],
     )
     def test_an_environment_that_differs_is_not_reused(

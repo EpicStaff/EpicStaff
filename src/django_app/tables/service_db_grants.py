@@ -26,13 +26,17 @@ class TableGrant:
     """Privileges on one table.
 
     Attributes:
-        privileges: Table-level privileges, e.g. ``("SELECT", "DELETE")``.
+        privileges: Table-level privileges, e.g. ``("SELECT", "DELETE")``. Empty for a
+            role that holds only column privileges on the table.
+        select_columns: Columns granted SELECT on their own, for a role that may read
+            only those columns of the table.
         update_columns: Columns granted UPDATE on their own, for a role that may change
             only those columns of the table.
     """
 
     table: str
     privileges: tuple[str, ...]
+    select_columns: tuple[str, ...] = ()
     update_columns: tuple[str, ...] = ()
 
 
@@ -64,8 +68,8 @@ MANAGER_GRANTS = ServiceRoleGrants(
         # The retention job deletes expired sessions. Its FOR UPDATE SKIP LOCKED needs UPDATE
         # on at least one column.
         TableGrant("tables_session", (SELECT, DELETE), update_columns=("finished_at",)),
-        # ScheduleService reads the schedule triggers and records their runs.
-        TableGrant("tables_scheduletriggernode", (SELECT, UPDATE)),
+        # ScheduleService only reads the schedule triggers; django_app writes them.
+        TableGrant("tables_scheduletriggernode", (SELECT,)),
         # Deleted by the temporary storage credentials cleanup and with their session.
         TableGrant("storage_credentials_temp_account", (SELECT, DELETE)),
         # The temporary storage credentials cleanup reads when a run finished
@@ -101,6 +105,23 @@ MANAGER_GRANTS = ServiceRoleGrants(
     ),
 )
 
+KNOWLEDGE_LLM_CONFIG_COLUMNS = (
+    "id",
+    "model_id",
+    "temperature",
+    "top_p",
+    "max_tokens",
+    "presence_penalty",
+    "frequency_penalty",
+    "logit_bias",
+    "seed",
+    "reasoning_effort",
+    "input_cost_per_token",
+    "output_cost_per_token",
+)
+KNOWLEDGE_LLM_MODEL_COLUMNS = ("id", "llm_provider_id", "name", "base_url", "api_version")
+KNOWLEDGE_EMBEDDING_CONFIG_COLUMNS = ("id", "custom_name", "task_type", "is_visible", "model_id")
+
 KNOWLEDGE_GRANTS = ServiceRoleGrants(
     service="knowledge",
     role_variable="KNOWLEDGE_DB_USER",
@@ -108,13 +129,17 @@ KNOWLEDGE_GRANTS = ServiceRoleGrants(
         # Configuration the knowledge service reads but never changes.
         TableGrant("tables_provider", (SELECT,)),
         TableGrant("tables_embeddingmodel", (SELECT,)),
-        TableGrant("tables_embeddingconfig", (SELECT,)),
         TableGrant("tables_sourcecollection", (SELECT,)),
         TableGrant("tables_documentmetadata", (SELECT,)),
         TableGrant("tables_documentcontent", (SELECT,)),
         TableGrant("tables_baseragtype", (SELECT,)),
-        TableGrant("tables_llmconfig", (SELECT,)),
-        TableGrant("tables_llmmodel", (SELECT,)),
+        # Only the columns the knowledge ORM maps (EmbeddingConfig in .../models/common.py,
+        # LLMConfig and LLMModel in .../models/graph.py under
+        # src/knowledge_new/infrastructure/database): the service never reads credentials
+        # such as extra_headers, it receives them resolved in each request.
+        TableGrant("tables_embeddingconfig", (), select_columns=KNOWLEDGE_EMBEDDING_CONFIG_COLUMNS),
+        TableGrant("tables_llmconfig", (), select_columns=KNOWLEDGE_LLM_CONFIG_COLUMNS),
+        TableGrant("tables_llmmodel", (), select_columns=KNOWLEDGE_LLM_MODEL_COLUMNS),
         # Rows django_app creates and the knowledge service updates while it indexes
         # (status, indexing usage), but never inserts or deletes.
         TableGrant("tables_naiverag", (SELECT, UPDATE)),
@@ -133,7 +158,8 @@ KNOWLEDGE_GRANTS = ServiceRoleGrants(
 REALTIME_GRANTS = ServiceRoleGrants(
     service="realtime",
     role_variable="REALTIME_DB_USER",
-    tables=(TableGrant("realtime_session_items", READ_WRITE),),
+    # Realtime only appends events. SELECT is for INSERT ... RETURNING and the refresh after it.
+    tables=(TableGrant("realtime_session_items", (SELECT, INSERT)),),
     sequences=(SequenceGrant("realtime_session_items_id_seq", (USAGE,)),),
 )
 
@@ -163,12 +189,19 @@ def grant_statements(grants: ServiceRoleGrants, role: str) -> list[str]:
     for table_grant in grants.tables:
         table = quote_identifier(table_grant.table)
         statements.append(f"REVOKE ALL ON TABLE {table} FROM {quoted_role}")
-        statements.append(
-            f"GRANT {', '.join(table_grant.privileges)} ON TABLE {table} TO {quoted_role}"
-        )
-        if table_grant.update_columns:
-            columns = ", ".join(quote_identifier(column) for column in table_grant.update_columns)
-            statements.append(f"GRANT UPDATE ({columns}) ON TABLE {table} TO {quoted_role}")
+        if table_grant.privileges:
+            statements.append(
+                f"GRANT {', '.join(table_grant.privileges)} ON TABLE {table} TO {quoted_role}"
+            )
+        for privilege, privilege_columns in (
+            (SELECT, table_grant.select_columns),
+            (UPDATE, table_grant.update_columns),
+        ):
+            if privilege_columns:
+                columns = ", ".join(quote_identifier(column) for column in privilege_columns)
+                statements.append(
+                    f"GRANT {privilege} ({columns}) ON TABLE {table} TO {quoted_role}"
+                )
     for sequence_grant in grants.sequences:
         sequence = quote_identifier(sequence_grant.sequence)
         statements.append(f"REVOKE ALL ON SEQUENCE {sequence} FROM {quoted_role}")

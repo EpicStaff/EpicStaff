@@ -11,6 +11,7 @@ The environment lives in the sandbox service, replaced here by the `sandbox` fix
 import json
 
 import pytest
+from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
@@ -101,6 +102,26 @@ def test_the_environment_the_node_runs_in_travels_with_it(
     assert venv["id"] == binding.pk
     assert venv["name"] == "scraper-venv"
     assert venv["libs"] == [{"name": "httpx", "specification": ">=0.28"}]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("entity_type", "make_node"), NODE_TYPES)
+def test_a_node_whose_environment_uses_a_stored_package_is_not_exported(
+    acme, acme_graph, sandbox, entity_type, make_node
+):
+    """Copying the node out would carry the name of a package only this organization
+    holds, and the pasting side would resolve it against a package index."""
+    binding = upstream_venv(
+        sandbox,
+        acme,
+        libs=[{"name": "acme-core", "specification": ">=1.0", "is_custom": True}],
+        venv_id=4711,
+    )
+
+    with pytest.raises(ValidationError) as refusal:
+        export_node(entity_type, make_node(acme_graph, binding), acme)
+
+    assert "acme-core" in str(refusal.value.detail)
 
 
 @pytest.mark.django_db

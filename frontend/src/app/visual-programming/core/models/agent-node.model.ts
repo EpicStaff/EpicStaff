@@ -1,5 +1,6 @@
 import { AuthorshipFields } from '@shared/models';
 
+import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
 import { InlineSurface } from './task-node.model';
 
@@ -33,7 +34,7 @@ export interface AgentNodeTaskWrite {
     context_task_ids?: number[];
 }
 
-export interface AgentNode extends AuthorshipFields, NumberedNodeDto {
+export interface AgentNode extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
     id: number;
     created_at: string;
     updated_at?: string;

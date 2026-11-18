@@ -1,4 +1,5 @@
 import pytest
+from django.db import IntegrityError, transaction
 
 from tables.models import LLMConfig, SystemOneConfig
 from tables.services.secrets import secret_service
@@ -42,6 +43,16 @@ def _typesafe(secret_id, **overrides):
     }
 
 
+def _openai(secret_id, **overrides):
+    return {
+        "custom_name": "luna",
+        "provider": "openai",
+        "model_name": "gpt-6-luna",
+        "api_key_secret_id": secret_id,
+        **overrides,
+    }
+
+
 @pytest.mark.django_db
 def test_create_typesafe_config_lands_in_active_org(admin_client, acme, acme_secret, admin_acme):
     response = admin_client.post(URL, _typesafe(acme_secret.id), format="json")
@@ -49,6 +60,14 @@ def test_create_typesafe_config_lands_in_active_org(admin_client, acme, acme_sec
     config = SystemOneConfig.objects.get(id=response.json()["id"])
     assert (config.org_id, config.created_by_id) == (acme.id, admin_acme.id)
     assert response.json()["api_key_secret_id"] == acme_secret.id
+
+
+@pytest.mark.django_db
+def test_create_openai_config(admin_client, acme_secret):
+    response = admin_client.post(URL, _openai(acme_secret.id), format="json")
+    assert response.status_code == 201, response.json()
+    assert response.json()["api_key_secret_id"] == acme_secret.id
+    assert response.json()["model_name"] == "gpt-6-luna"
 
 
 @pytest.mark.django_db
@@ -66,13 +85,53 @@ def test_create_llm_backed_config(admin_client, acme_llm_config):
         ({"api_key_secret_id": None}, "api_key_secret_id"),
         ({"model_name": "jev-9.9.9"}, "model_name"),
         ({"model_name": None}, "model_name"),
-        ({"provider": "openai"}, "provider"),
+        ({"model_name": "gpt-6-luna"}, "model_name"),
     ],
 )
 def test_invalid_typesafe_config_is_refused(admin_client, acme_secret, overrides, field):
     response = admin_client.post(URL, _typesafe(acme_secret.id, **overrides), format="json")
     assert response.status_code == 400
     assert field in str(response.json())
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "overrides,field",
+    [
+        ({"api_key_secret_id": None}, "api_key_secret_id"),
+        ({"model_name": None}, "model_name"),
+        ({"model_name": "jev-1.14.0"}, "model_name"),
+    ],
+)
+def test_invalid_openai_config_is_refused(admin_client, acme_secret, overrides, field):
+    response = admin_client.post(URL, _openai(acme_secret.id, **overrides), format="json")
+    assert response.status_code == 400
+    assert field in str(response.json())
+
+
+@pytest.mark.django_db
+def test_openai_config_with_llm_config_is_refused(admin_client, acme_secret, acme_llm_config):
+    response = admin_client.post(
+        URL, _openai(acme_secret.id, llm_config=acme_llm_config.id), format="json"
+    )
+    assert response.status_code == 400
+    assert "llm_config" in str(response.json())
+
+
+@pytest.mark.django_db
+def test_typesafe_config_still_updates(admin_client, acme_secret):
+    created = admin_client.post(URL, _typesafe(acme_secret.id), format="json").json()
+    response = admin_client.patch(f"{URL}{created['id']}/", {"custom_name": "renamed"}, format="json")
+    assert response.status_code == 200, response.json()
+    assert response.json()["custom_name"] == "renamed"
+
+
+@pytest.mark.django_db
+def test_openai_config_with_llm_config_is_refused_by_the_database(acme, acme_llm_config):
+    with pytest.raises(IntegrityError), transaction.atomic():
+        SystemOneConfig.objects.create(
+            custom_name="luna", provider="openai", llm_config=acme_llm_config, org=acme
+        )
 
 
 @pytest.mark.django_db

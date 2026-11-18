@@ -35,25 +35,27 @@
             >
         </div>
     } @else {
-        <div class="bindings-dialog__tabs">
-            @for (tab of tabs; track tab.id) {
-                <app-tab-button
-                    mod="sm"
-                    [active]="tab.id === activeTab()"
-                    (action)="activeTab.set(tab.id)"
-                >
-                    {{ tab.label }}
-                </app-tab-button>
-                @if (!$last) {
-                    <div
-                        class="bindings-dialog__tab-divider"
-                        aria-hidden="true"
+        @if (tabs().length > 1) {
+            <div class="bindings-dialog__tabs">
+                @for (tab of tabs(); track tab.id) {
+                    <app-tab-button
+                        mod="sm"
+                        [active]="tab.id === activeTab()"
+                        (action)="activeTab.set(tab.id)"
                     >
-                        /
-                    </div>
+                        {{ tab.label }}
+                    </app-tab-button>
+                    @if (!$last) {
+                        <div
+                            class="bindings-dialog__tab-divider"
+                            aria-hidden="true"
+                        >
+                            /
+                        </div>
+                    }
                 }
-            }
-        </div>
+            </div>
+        }
         <form
             class="bindings-dialog__form"
             [formGroup]="form"
@@ -74,7 +76,7 @@
                 [hidden]="activeTab() !== 'general'"
             >
                 <div class="bindings-dialog__field">
-                    <!-- The dialog opens with the focus here, its first field. -->
+                    <!-- The dialog opens with the focus here, its first field, for a new desk and its settings alike. -->
                     <app-custom-input
                         cdkFocusInitial
                         label="Name"
@@ -120,7 +122,7 @@
                         [control]="form.controls.graph_id"
                     />
                 </div>
-                @for (contractError of contractErrors(); track contractError) {
+                @for (contractError of contractErrors(); track $index) {
                     <div class="bindings-dialog__contract-error text-body-small">{{ contractError }}</div>
                 }
                 @if (contractGaps(); as gaps) {
@@ -163,17 +165,19 @@
                         </label>
                     }
                 </fieldset>
+                <!-- The Inactivity tab's copy carries the id Save points at; this one is for the user switching here. -->
                 @if (isSwitchingToSupport() && backlogEffects().length) {
                     <ng-container
                         [ngTemplateOutlet]="backlogWarning"
                         [ngTemplateOutletContext]="{ id: null }"
                     />
                 }
-                <app-chips-input
+                <app-custom-input
                     label="Allowed origins"
                     formControlName="allowed_origins"
-                    inputPlaceholder="https://www.example.com"
-                    tooltipText="Sites allowed to embed this chat. Test conversations skip this check."
+                    placeholder="https://www.example.com"
+                    tooltipText="Sites allowed to embed this chat, separated by commas. Test conversations skip this check."
+                    autocomplete="off"
                 />
                 <app-select
                     label="Identity"
@@ -388,7 +392,7 @@
                         Applies to this desk's existing conversations too, once you save:
                     </p>
                     <ul class="bindings-dialog__backlog-effects">
-                        @for (effect of backlogEffects(); track effect) {
+                        @for (effect of backlogEffects(); track $index) {
                             <li>{{ effect }}</li>
                         }
                     </ul>

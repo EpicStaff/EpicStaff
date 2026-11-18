@@ -3,7 +3,7 @@ from django.db import models
 from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 from src.shared.models.ai_providers import REASONING_EFFORT_VALUES
-from src.shared.system_one.constants import LLM_PROVIDER, TYPESAFE_PROVIDER
+from src.shared.system_one.constants import LLM_PROVIDER, OPENAI_PROVIDER, TYPESAFE_PROVIDER
 
 from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
 from tables.models.provider import Provider
@@ -174,6 +174,7 @@ class SystemOneConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
 
     class Provider(models.TextChoices):
         TYPESAFE = TYPESAFE_PROVIDER, "TypeSafe"
+        OPENAI = OPENAI_PROVIDER, "OpenAI"
         LLM = LLM_PROVIDER, "LLM"
 
     custom_name = models.TextField()
@@ -203,7 +204,10 @@ class SystemOneConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
             ),
             models.CheckConstraint(
                 condition=(
-                    models.Q(provider=TYPESAFE_PROVIDER, llm_config__isnull=True)
+                    models.Q(
+                        provider__in=[TYPESAFE_PROVIDER, OPENAI_PROVIDER],
+                        llm_config__isnull=True,
+                    )
                     | models.Q(
                         provider=LLM_PROVIDER,
                         model_name__isnull=True,

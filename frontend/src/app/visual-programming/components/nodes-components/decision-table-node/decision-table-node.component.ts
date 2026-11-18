@@ -1,6 +1,7 @@
 import { CommonModule, NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { FFlowModule } from '@foblex/flow';
 import { NODE_COLORS, NODE_ICONS } from '@shared/models';
 import { formatNodeLabel } from '@shared/utils';
@@ -10,15 +11,16 @@ import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { DT_HEADER_HEIGHT, DT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
-import { CustomPortId } from '../../../core/models/port.model';
+import { CustomPortId, ViewPort } from '../../../core/models/port.model';
 import { FlowService } from '../../../services/flow.service';
+import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../../services/flow-settings.service';
 @Component({
     selector: 'app-decision-table-node',
     templateUrl: './decision-table-node.component.html',
     styleUrls: ['./decision-table-node.component.scss'],
-    imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle],
+    imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DecisionTableNodeComponent {
@@ -28,12 +30,14 @@ export class DecisionTableNodeComponent {
     private flowService = inject(FlowService);
     private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+    private readonly flowDiffState = inject(FlowDiffStateService);
 
     protected readonly nodeColors = NODE_COLORS;
     protected readonly nodeIcons = NODE_ICONS;
 
     public readonly headerHeightPx = DT_HEADER_HEIGHT;
     public readonly rowHeightPx = DT_ROW_HEIGHT;
+    protected readonly addedRouteLabel = 'Restore adds this condition';
 
     public getPortConnections(portId: CustomPortId): CustomPortId[] {
         return this.flowService.portConnectionsMap()[portId] ?? ['__none__'];
@@ -44,6 +48,18 @@ export class DecisionTableNodeComponent {
         return allGroups
             .filter((group) => group.valid !== false)
             .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+    }
+
+    /** On a version diff canvas: the routes only the current canvas has, which a restore removes. */
+    get removedRoutePorts(): ViewPort[] {
+        if (!this.flowDiffState.isActive()) return [];
+        return (this.node.ports ?? []).filter((port) => this.flowDiffState.isCurrentOnlyRoutePort(port.id));
+    }
+
+    /** On a version diff canvas: whether the group's route is only in the version, so a restore adds it. */
+    protected isAddedRoute(group: ConditionGroup): boolean {
+        const port = this.getPortForGroup(group);
+        return !!port && this.flowDiffState.isVersionOnlyPort(port.id);
     }
 
     get defaultNextNode() {

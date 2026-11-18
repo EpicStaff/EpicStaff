@@ -2,6 +2,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
 from tables.exceptions import (
+    CodeWithSecretsRequiresSecretsUsePermissionError,
     FlowWithTriggerNodesRequiresUsePermissionError,
     TriggerNodesRequireUsePermissionError,
 )
@@ -82,4 +83,36 @@ FLOW_WITH_TRIGGER_NODES_403_RESPONSE = OpenApiResponse(
             status_codes=["403"],
         ),
     ],
+)
+
+_CODE_WITH_SECRETS_403_EXAMPLE = OpenApiExample(
+    "Code with secrets requires Use on secrets",
+    value={
+        "status_code": 403,
+        "code": CodeWithSecretsRequiresSecretsUsePermissionError.default_code,
+        "message": CodeWithSecretsRequiresSecretsUsePermissionError.default_detail,
+    },
+    response_only=True,
+    status_codes=["403"],
+)
+
+CODE_WITH_SECRETS_403_RESPONSE = OpenApiResponse(
+    response=OpenApiTypes.OBJECT,
+    description=(
+        "The tool's code declares a secret and the caller lacks USE on secrets; nothing was "
+        "written. Also returned as the standard `permission_denied` 403 when the caller "
+        "lacks the endpoint's own permission."
+    ),
+    examples=[_CODE_WITH_SECRETS_403_EXAMPLE],
+)
+
+FLOW_WITH_TRIGGER_NODES_OR_SECRET_CODE_403_RESPONSE = OpenApiResponse(
+    response=OpenApiTypes.OBJECT,
+    description=(
+        "The flow or snapshot holds a trigger node (webhook, Telegram, schedule) and the "
+        "caller lacks USE on flows, or its code declares a secret (existing or not) and the "
+        "caller lacks USE on secrets; nothing was written. Also returned as the standard "
+        "`permission_denied` 403 when the caller lacks the endpoint's own permission."
+    ),
+    examples=[*FLOW_WITH_TRIGGER_NODES_403_RESPONSE.examples, _CODE_WITH_SECRETS_403_EXAMPLE],
 )

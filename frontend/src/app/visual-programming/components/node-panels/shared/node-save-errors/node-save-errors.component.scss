@@ -1,0 +1,25 @@
+@use '../../../../../../styles/validation-message';
+
+:host {
+    display: block;
+    width: 100%;
+}
+
+// Nothing to show: no box, so a flex or grid gap is not spent on it either.
+:host:empty {
+    display: none;
+}
+
+.node-save-errors {
+    display: flex;
+    flex-direction: column;
+    row-gap: 0.5rem;
+    margin: 0.5rem 0;
+    padding: 0;
+    list-style: none;
+    word-break: break-word;
+
+    &__item {
+        @include validation-message.item;
+    }
+}

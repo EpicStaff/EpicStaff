@@ -29,6 +29,7 @@ import {
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
     HelpTooltipComponent,
+    HintMessageComponent,
     JsonEditorComponent,
     JsonError,
     SelectComponent,
@@ -48,11 +49,19 @@ import {
     toSecretNames,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage, isClientError } from '@shared/utils';
+import {
+    codeSuggestionKeyLabel,
+    extractHttpErrorMessage,
+    isClientError,
+    isSecretCodeLocked,
+    SECRET_CODE_COPY_NEEDS_USE_MESSAGE,
+    SECRET_CODE_NEEDS_USE_MESSAGE,
+} from '@shared/utils';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY, Observable, of, timer } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
+import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
 import { BUILDING_STATUSES, Venv } from '../../../../features/virtual-environments/models/venv.model';
@@ -140,6 +149,8 @@ function writeParametersTableModeToStorage(enabled: boolean): void {
     }
 }
 
+let nextDialogId = 0;
+
 @Component({
     selector: 'app-create-custom-tool-dialog',
     imports: [
@@ -151,6 +162,7 @@ function writeParametersTableModeToStorage(enabled: boolean): void {
         ErrorBannerComponent,
         ExecutionTimeoutFieldComponent,
         HelpTooltipComponent,
+        HintMessageComponent,
         CodeEditorComponent,
         JsonEditorComponent,
         TextareaComponent,
@@ -178,6 +190,7 @@ export class CreateCustomToolDialogComponent {
     private readonly permissionsService = inject(PermissionsService);
     private readonly venvsApiService = inject(VenvsApiService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
+    private readonly isMac = inject(PLATFORM_IS_MAC);
     private readonly dialogData = inject<CreateCustomToolDialogData | null>(DIALOG_DATA, { optional: true });
 
     /** Rebound to the forked copy once a built-in tool is saved, so later saves update that copy. */
@@ -208,7 +221,7 @@ export class CreateCustomToolDialogComponent {
 
     public readonly jsonEditorOptions = computed<MonacoEditor.IStandaloneEditorConstructionOptions>(() => ({
         ...this.baseJsonEditorOptions,
-        readOnly: this.isBuiltIn(),
+        readOnly: this.isCodeReadOnly(),
     }));
 
     public readonly form = this.fb.group({
@@ -228,6 +241,9 @@ export class CreateCustomToolDialogComponent {
     public readonly ActiveEditor = ActiveEditor;
     public readonly variablesSchemaTooltip = VARIABLES_SCHEMA_TOOLTIP;
     public readonly builtInSaveTooltip = BUILT_IN_SAVE_TOOLTIP;
+    protected readonly secretCodeLockedMessage = SECRET_CODE_NEEDS_USE_MESSAGE;
+    /** Ties the copy button to its blocked reason for keyboard and screen-reader users, who never see the tooltip. */
+    protected readonly copyBlockedReasonId = `custom-tool-dialog-${nextDialogId++}-copy-blocked`;
 
     private readonly parametersTableView = viewChild(ParametersTableViewComponent);
 
@@ -236,8 +252,20 @@ export class CreateCustomToolDialogComponent {
     public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Tools));
     public readonly secretsTooltip = computed(() =>
         this.canEditSecrets()
-            ? "Secrets this tool's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            ? `Secrets this tool's code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
             : "Secrets already assigned to this tool's code. You don't have permission to change which secrets are selected."
+    );
+    /** Decided on the saved tool: the backend checks the secrets its code reads now, not the ones picked here. */
+    protected readonly isSecretCodeLocked = computed(() =>
+        isSecretCodeLocked(
+            toSecretIds(this.selectedTool()?.python_code?.secrets),
+            this.permissionsService.can(ResourceCode.Secrets, ActionCode.Use)
+        )
+    );
+    /** The code, its venv and the tool's variables (the values the code runs with) share one lock. */
+    protected readonly isCodeReadOnly = computed(() => this.isBuiltIn() || this.isSecretCodeLocked());
+    protected readonly copyBlockedReason = computed(() =>
+        this.isSecretCodeLocked() ? SECRET_CODE_COPY_NEEDS_USE_MESSAGE : null
     );
     public readonly selectedSecretIds = signal<number[]>(toSecretIds(this.selectedTool()?.python_code?.secrets));
     private readonly selectedSecretNames = signal<string[]>(toSecretNames(this.selectedTool()?.python_code?.secrets));
@@ -424,7 +452,7 @@ export class CreateCustomToolDialogComponent {
         }
 
         const tableView = this.parametersTableView();
-        if (tableView && !this.isBuiltIn() && !tableView.isValid()) {
+        if (tableView && !this.isCodeReadOnly() && !tableView.isValid()) {
             tableView.validate();
             this.confirmDialog
                 .confirm({
@@ -457,7 +485,7 @@ export class CreateCustomToolDialogComponent {
         writeParametersTableModeToStorage(false);
         this.parametersTableMode.set(false);
         this.parametersSwitchOn.set(false);
-        if (!this.isBuiltIn()) {
+        if (!this.isCodeReadOnly()) {
             this.form.controls.variablesJson.setValue(
                 JSON.stringify(serializeVariables(this.tableVariables()), null, 2)
             );
@@ -582,7 +610,7 @@ export class CreateCustomToolDialogComponent {
 
     public makeCopy(): void {
         const original = this.selectedTool();
-        if (!original || this.isCopying()) {
+        if (!original || this.isCopying() || this.copyBlockedReason()) {
             return;
         }
 
@@ -614,11 +642,13 @@ export class CreateCustomToolDialogComponent {
     }
 
     public submit(): void {
-        if (this.isSaving()) {
+        // A built-in tool's save is a copy: Enter must not start one the copy button refuses.
+        if (this.isSaving() || (this.isBuiltIn() && this.copyBlockedReason())) {
             return;
         }
 
-        if (this.parametersTableMode() && !this.isBuiltIn()) {
+        // Read-only variables go back exactly as loaded: a re-serialized table could differ from what is stored.
+        if (this.parametersTableMode() && !this.isCodeReadOnly()) {
             this.parametersTableView()?.validate();
             this.form.controls.variablesJson.setValue(
                 JSON.stringify(serializeVariables(this.tableVariables()), null, 2)
@@ -774,7 +804,7 @@ export class CreateCustomToolDialogComponent {
         if (this.form.invalid) {
             return 'Please fill in all required fields';
         }
-        if (this.parametersTableMode() && !this.isBuiltIn() && !(this.parametersTableView()?.isValid() ?? true)) {
+        if (this.parametersTableMode() && !this.isCodeReadOnly() && !(this.parametersTableView()?.isValid() ?? true)) {
             return 'Please fix the parameter errors before saving';
         }
         if (!this.isJsonValid()) {
@@ -796,7 +826,7 @@ export class CreateCustomToolDialogComponent {
         return toCreatePayload(
             { ...this.form.getRawValue(), executionTimeout: this.executionTimeoutSeconds() },
             this.selectedSecretIds(),
-            { entrypoint: source?.python_code?.entrypoint }
+            { entrypoint: source?.python_code?.entrypoint, globalKwargs: source?.python_code?.global_kwargs }
         );
     }
 

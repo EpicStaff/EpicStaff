@@ -223,3 +223,33 @@
 :host-context(app-flow-base-node:hover) .decision-table__header .title-column.has-node-number {
     @include mixins.node-title-with-number-shown;
 }
+
+// Version diff canvas: the status border of an added or removed table (a changed one only has its
+// badge), drawn the way the outline is (an inset shadow). After the selected rule, so it wins there too.
+:host-context(.diff-added) .decision-table {
+    box-shadow: inset 0 0 0 2px var(--color-diff-added);
+}
+
+:host-context(.diff-deleted) .decision-table {
+    box-shadow: inset 0 0 0 2px var(--color-diff-deleted);
+}
+
+// A route only the version has: a restore adds it.
+.decision-table .decision-table__group--added .group-name {
+    color: var(--color-diff-added);
+}
+
+// A route only the current canvas has: a restore removes it. The row fades, but not its connector, so
+// the removed edge visibly starts from a full-strength dot.
+.decision-table .decision-table__group--removed {
+    .group-name {
+        color: var(--color-diff-deleted);
+        opacity: var(--diff-deleted-opacity);
+        text-decoration: line-through;
+    }
+
+    // The hollow centre of an output connector: the node surface behind it.
+    .port-circle {
+        background-color: var(--color-nodes-background);
+    }
+}

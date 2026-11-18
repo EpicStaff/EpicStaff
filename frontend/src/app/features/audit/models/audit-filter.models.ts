@@ -1,5 +1,7 @@
 import { generateUuid } from '@shared/utils';
 
+import { AuditTextField } from './audit-domain.models';
+import { DEEP_TEXT_OPERATORS, ERROR_OPERATORS, JSON_OPERATORS } from './audit-filter-options';
 import { AuditEventKind, AuditEventStatus, AuditNodeType } from './audit-session.models';
 
 export type AuditFilterOp =
@@ -115,6 +117,11 @@ export interface AuditFilterState {
     prompt: AuditConditionGroup[];
     messageText: AuditConditionGroup[];
     tokens: AuditNumberFilter;
+    // Builder filters of a field catalog (user actions), by field name. Left out of the sessions filter,
+    // so a sessions state saves and compiles exactly as before they existed.
+    selections?: Record<string, AuditValuesFilter>;
+    textConditions?: Record<string, AuditConditionGroup[]>;
+    idFilters?: Record<string, AuditIdFilter>;
 }
 
 export interface AuditConditionGroup {
@@ -136,24 +143,52 @@ export const EMPTY_AUDIT_FILTER: AuditFilterState = {
     nodeTypes: [],
     flow: { op: 'in', values: [] },
     id: { mode: 'in', from: '', to: '', value: '', values: [] },
-    error: [createAuditConditionGroup()],
-    input: [createAuditConditionGroup()],
-    output: [createAuditConditionGroup()],
-    details: [createAuditConditionGroup()],
+    error: [createAuditConditionGroup(ERROR_OPERATORS)],
+    input: [createAuditConditionGroup(JSON_OPERATORS)],
+    output: [createAuditConditionGroup(JSON_OPERATORS)],
+    details: [createAuditConditionGroup(JSON_OPERATORS)],
     agent: { op: 'in', values: [] },
     tool: { op: 'in', values: [] },
-    task: [createAuditConditionGroup()],
-    prompt: [createAuditConditionGroup()],
-    messageText: [createAuditConditionGroup()],
+    task: [createAuditConditionGroup(DEEP_TEXT_OPERATORS)],
+    prompt: [createAuditConditionGroup(DEEP_TEXT_OPERATORS)],
+    messageText: [createAuditConditionGroup(DEEP_TEXT_OPERATORS)],
     tokens: { op: 'gt', value: '' },
 };
 
-export function createAuditCondition(): AuditCondition {
-    return { id: generateUuid(), join: 'and', key: '', op: 'contains', value: '' };
+// Shared, so an unset catalog field hands the Builder the same empty value on every change detection.
+const EMPTY_SELECTION: AuditValuesFilter = { op: 'in', values: [] };
+const EMPTY_TEXT_CONDITIONS = new Map<AuditFilterOp, AuditConditionGroup[]>();
+
+export function catalogSelection(state: AuditFilterState, field: string): AuditValuesFilter {
+    return state.selections?.[field] ?? EMPTY_SELECTION;
 }
 
-export function createAuditConditionGroup(): AuditConditionGroup {
-    return { id: generateUuid(), join: 'or', conditions: [createAuditCondition()] };
+export function catalogIdFilter(state: AuditFilterState, field: string): AuditIdFilter {
+    return state.idFilters?.[field] ?? EMPTY_AUDIT_FILTER.id;
+}
+
+export function catalogTextConditions(state: AuditFilterState, textField: AuditTextField): AuditConditionGroup[] {
+    const saved = state.textConditions?.[textField.field];
+    if (saved !== undefined) {
+        return saved;
+    }
+    const [firstOperator] = textField.operators;
+    let empty = EMPTY_TEXT_CONDITIONS.get(firstOperator);
+    if (empty === undefined) {
+        empty = [createAuditConditionGroup(textField.operators)];
+        EMPTY_TEXT_CONDITIONS.set(firstOperator, empty);
+    }
+    return empty;
+}
+
+// A new condition takes the first of its field's operators: one the field does not offer would still be
+// sent, while its dropdown could not show it.
+export function createAuditCondition(operators: AuditFilterOp[]): AuditCondition {
+    return { id: generateUuid(), join: 'and', key: '', op: operators[0], value: '' };
+}
+
+export function createAuditConditionGroup(operators: AuditFilterOp[]): AuditConditionGroup {
+    return { id: generateUuid(), join: 'or', conditions: [createAuditCondition(operators)] };
 }
 
 export function removeAuditCondition(

@@ -1,10 +1,10 @@
-import { AfterViewInit, Directive, ElementRef, inject, input, NgZone, OnDestroy } from '@angular/core';
+import { AfterViewInit, Directive, ElementRef, inject, input, NgZone, OnDestroy, OnInit } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 
 @Directive({
     selector: '[appTooltipOnOverflow][matTooltip]',
 })
-export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
+export class TooltipOnOverflowDirective implements OnInit, AfterViewInit, OnDestroy {
     readonly appTooltipOnOverflow = input<string>('');
 
     private readonly hostRef = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -16,8 +16,13 @@ export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
     private frameId: number | null = null;
     private readonly onInput = (): void => this.schedule();
 
-    ngAfterViewInit(): void {
+    // Off until measured. Set before the tooltip's host binding is first checked: a host checked again in dev mode
+    // (Eager change detection) would otherwise see the binding change after its check.
+    ngOnInit(): void {
         this.tooltip.disabled = true;
+    }
+
+    ngAfterViewInit(): void {
         this.ngZone.runOutsideAngular(() => {
             const host = this.hostRef.nativeElement;
             this.resizeObserver = new ResizeObserver(() => this.schedule());

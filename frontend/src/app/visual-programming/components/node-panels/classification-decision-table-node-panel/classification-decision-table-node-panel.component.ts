@@ -32,6 +32,7 @@ import {
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
     HelpTooltipComponent,
+    HintMessageComponent,
     JsonEditorComponent,
     LlmModelSelectorComponent,
     SelectComponent,
@@ -45,14 +46,24 @@ import {
     SecretsStorageService,
     SystemOneConfigStorageService,
 } from '@shared/services';
-import { downloadBlob, formatNodeLabel, getProviderIconPath } from '@shared/utils';
+import {
+    codeSuggestionKeyLabel,
+    escapeHtml,
+    formatNodeLabel,
+    getProviderIconPath,
+    SECRET_CODE_NEEDS_USE_MESSAGE,
+} from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
-import { ImportExportService } from '../../../../core/services/import-export.service';
+import { ExportFormat } from '../../../../core/models/transfer-job.model';
+import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
+import { TransferExportService } from '../../../../core/services/transfer-export.service';
+import { TransferJobsService } from '../../../../core/services/transfer-jobs.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { CODE_DIFF_HINT_EXPAND_EDITOR, CODE_DIFF_HINT_EXPAND_PANEL } from '../../../core/constants/code-diff-hints';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
@@ -65,19 +76,41 @@ import {
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
 import { FlowService } from '../../../services/flow.service';
+import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
+import { NodeSaveErrorsStore } from '../../../services/node-save-errors.store';
 import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
+import {
+    changesAnyFieldIn,
+    codeChangeFor,
+    fieldChangeFor,
+    FieldName,
+    keyedItemJsonChangeFor,
+    linkedEntityFormat,
+    mapFieldRowChanges,
+    showsFieldMarks,
+} from '../../../utils/diff';
 import {
     isValidOutputSchema,
     OUTPUT_SCHEMA_JSON_ERROR,
     OUTPUT_SCHEMA_RULE_ERROR,
 } from '../../../utils/validation/output-schema.validator';
+import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { inputMapFromRows } from '../../input-map/input-map-rows';
+import {
+    MissingReferenceNoteComponent,
+    ROUTE_DIFF_FIELDS,
+} from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import { routeTargetFormat } from '../shared/diff/route-target-format';
+import { NodeSaveErrorsComponent } from '../shared/node-save-errors/node-save-errors.component';
 import {
     CDT_HEADER_COLLAPSE_AT,
     CDT_HEADER_COLLAPSE_MIN_SCROLLABLE,
@@ -88,8 +121,9 @@ import { routePortIdsWithTarget } from './cdt-decision-tree-dialog/cdt-decision-
 import { CdtDecisionTreeInput, CdtTreeLlmOption } from './cdt-decision-tree-dialog/cdt-decision-tree.model';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
 import { explainKeyMovesForRuleEdit } from './cdt-decision-tree-dialog/cdt-explain.identity';
-import { CdtExportImportService } from './cdt-export-import.service';
+import { cdtPromptCardChanges, CdtPromptCardMark, KEPT_PROMPT_CARD } from './cdt-prompt-card-changes';
 import { CdtSystemOneEntryComponent } from './cdt-system-one-entry/cdt-system-one-entry.component';
+import { cdtRowChanges } from './classification-decision-table-grid/cdt-row-changes';
 import {
     CdtEnableContinueRequest,
     CdtRuleIdentityEdit,
@@ -123,10 +157,18 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         HasPermissionDirective,
         IfFlowEditableDirective,
         ExecutionTimeoutFieldComponent,
+        HintMessageComponent,
         MatTooltipModule,
+        MissingReferenceNoteComponent,
+        DiffFieldMarkComponent,
+        CodeDiffViewComponent,
+        NodeSaveErrorsComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
-    styleUrls: ['./classification-decision-table-node-panel.component.scss'],
+    styleUrls: [
+        './classification-decision-table-node-panel.component.scss',
+        './classification-decision-table-node-panel.diff-marks.scss',
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel<ClassificationDecisionTableNodeModel> {
@@ -135,6 +177,75 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
     private readonly addPromptButton = viewChild<ButtonComponent>('addPromptButton');
 
+    protected readonly routeDiffFields = ROUTE_DIFF_FIELDS;
+    /**
+     * Changes tab of a version preview, widened panel: a changed pre / post-computation code, shown as a diff in the
+     * code column of its tab. The narrow panel's editor gets the field mark instead.
+     */
+    protected readonly preCodeDiff = computed(() =>
+        this.isExpanded() ? codeChangeFor(this.panelDiff(), 'pre_computation.code') : null
+    );
+    protected readonly postCodeDiff = computed(() =>
+        this.isExpanded() ? codeChangeFor(this.panelDiff(), 'post_computation.code') : null
+    );
+    /** The field the mark around a code column looks up; none while the column shows the diff instead. */
+    protected readonly preCodeMarkField = computed<FieldName | null>(() =>
+        this.preCodeDiff() ? null : 'pre_computation.code'
+    );
+    protected readonly postCodeMarkField = computed<FieldName | null>(() =>
+        this.postCodeDiff() ? null : 'post_computation.code'
+    );
+    /** Changes tab of a version preview: a restore changes something shown on the tab, which flags its link. */
+    protected readonly preComputationChanged = computed(() =>
+        changesAnyFieldIn(this.panelDiff(), ['pre_computation', 'pre_use_storage'])
+    );
+    protected readonly postComputationChanged = computed(() =>
+        changesAnyFieldIn(this.panelDiff(), ['post_computation', 'post_use_storage'])
+    );
+    /** Any change of a prompt: the diff names a prompt and its fields by its item (`prompts[]`, `prompts[].prompt_text`). */
+    protected readonly promptsChanged = computed(() => changesAnyFieldIn(this.panelDiff(), ['prompts[]']));
+    /**
+     * Changes tab of a version preview: what a restore does to each Input List row of the pre / post-computation. The
+     * input map is diffed as one value, so its keys are compared here. `null` anywhere else.
+     */
+    protected readonly preInputMapRowChanges = computed(() =>
+        mapFieldRowChanges(this.panelDiff(), 'pre_computation.input_map')
+    );
+    protected readonly postInputMapRowChanges = computed(() =>
+        mapFieldRowChanges(this.panelDiff(), 'post_computation.input_map')
+    );
+    /** Changes tab of a version preview: what a restore does to the prompt cards; `null` anywhere else. */
+    private readonly promptCardChanges = computed(() => cdtPromptCardChanges(this.panelDiff()));
+    protected readonly removedPrompts = computed(() => this.promptCardChanges()?.removed ?? []);
+    /**
+     * The default LLM has no control in the panel, yet every prompt without its own LLM runs with it: the Changes tab
+     * shows it as a line of its own, only when a restore changes it.
+     */
+    protected readonly defaultLlmChanged = computed(() => {
+        const diff = this.panelDiff();
+        return showsFieldMarks(diff) && fieldChangeFor(diff, 'default_llm_config') !== null;
+    });
+    /** How a diff tooltip names an LLM config: by its name, else as "LLM #id" (a config that no longer exists). */
+    protected readonly llmFormat = linkedEntityFormat(
+        'LLM',
+        (id) => this.llmConfigOptions().find((option) => option.id === id)?.label
+    );
+    protected readonly defaultLlmName = computed(() => {
+        const id = this.node().data.table?.default_llm_config;
+        return id == null ? 'Not set' : this.llmFormat(id);
+    });
+    /** Changes tab of a version preview: the changed output schema of the prompt in the side editor, as a JSON diff. */
+    protected readonly sideSchemaDiff = computed(() => {
+        const prompt = this.sideEditorPrompt();
+        if (!prompt || this.sideEditorView() !== 'schema') return null;
+        return keyedItemJsonChangeFor(this.panelDiff(), 'prompts', prompt.id, 'output_schema');
+    });
+    protected readonly schemaDiffHint = CODE_DIFF_HINT_EXPAND_EDITOR;
+
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    private readonly diffState = inject(FlowDiffStateService);
+    private readonly nodeSaveErrors = inject(NodeSaveErrorsStore);
+    private readonly isMac = inject(PLATFORM_IS_MAC);
     private flowService = inject(FlowService);
     private undoRedoService = inject(UndoRedoService);
 
@@ -164,6 +275,17 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public sections = signal<CdtSection[]>([]);
+    /** Changes tab of a version preview: what a restore does to the grid's rows; `null` anywhere else. */
+    protected readonly rowChanges = computed(() =>
+        cdtRowChanges(this.panelDiff(), this.conditionGroups(), this.sections(), (key) =>
+            this.diffState.nodeIdOfKey(key)
+        )
+    );
+    /** A route's tooltip names the node it leads to on the canvas. */
+    protected readonly routeTargetFormat = routeTargetFormat(
+        (key) => this.diffState.nodeIdOfKey(key),
+        () => this.flowService.nodes()
+    );
     public prompts = signal<Record<string, PromptConfig>>({});
     /**
      * Route-code output ports wired to a canvas node, resolved like the decision
@@ -199,6 +321,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public pendingPromptName = signal<string>('');
     public newPromptId = '';
     public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
+    protected readonly codeDiffHint = CODE_DIFF_HINT_EXPAND_PANEL;
+    protected readonly secretCodeLockedMessage = SECRET_CODE_NEEDS_USE_MESSAGE;
     private readonly schemaDrafts = signal<Record<string, string>>({});
     private readonly schemaErrors = signal<Record<string, string>>({});
 
@@ -214,17 +338,31 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     );
     public readonly preSecretsTooltip = computed(() =>
         this.canEditSecrets()
-            ? "Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            ? `Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
             : this.isReadOnly()
               ? 'Secrets assigned to this pre-computation code.'
               : "Secrets already assigned to this pre-computation code. You don't have permission to change which secrets are selected."
     );
     public readonly postSecretsTooltip = computed(() =>
         this.canEditSecrets()
-            ? "Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            ? `Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
             : this.isReadOnly()
               ? 'Secrets assigned to this post-computation code.'
               : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
+    );
+    /**
+     * A block's code reads secrets and the user lacks Secrets:Use: that code and its storage toggle (which edits
+     * the code) are locked, the rest is not.
+     */
+    protected readonly isPreCodeLocked = computed(
+        () =>
+            !this.isReadOnly() &&
+            this.flowReadOnly.isSecretCodeLocked(this.node().data.table?.pre_computation?.secret_ids ?? [])
+    );
+    protected readonly isPostCodeLocked = computed(
+        () =>
+            !this.isReadOnly() &&
+            this.flowReadOnly.isSecretCodeLocked(this.node().data.table?.post_computation?.secret_ids ?? [])
     );
     public readonly preSelectedSecretIds = signal<number[]>([]);
     public readonly postSelectedSecretIds = signal<number[]>([]);
@@ -243,8 +381,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly codeChange$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
-    private readonly importExportService = inject(ImportExportService);
-    private readonly cdtExportImportService = inject(CdtExportImportService);
+    private readonly transferJobs = inject(TransferJobsService);
+    private readonly transferExport = inject(TransferExportService);
     private readonly toastService = inject(ToastService);
     private readonly dialog = inject(Dialog);
     private readonly injector = inject(Injector);
@@ -261,6 +399,20 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public promptEntries = computed(() => {
         const p = this.prompts();
         return Object.entries(p).map(([id, config]) => ({ id, ...config }));
+    });
+
+    /** Per prompt key, why the last save refused its text, until it is edited. */
+    protected readonly promptTextSaveErrors = computed<ReadonlyMap<string, readonly string[]>>(() => {
+        const nodeId = this.node().id;
+        return new Map(
+            Object.entries(this.prompts()).map(([key, prompt]) => [
+                key,
+                this.nodeSaveErrors.fieldMessages(nodeId, 'prompt_text', prompt.prompt_text ?? '', {
+                    list: 'prompt_configs',
+                    key,
+                }),
+            ])
+        );
     });
 
     public sideEditorPrompt = computed(() => {
@@ -373,6 +525,16 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         return [{ name: 'Unselected', value: '' }, ...nodeItems];
     });
+
+    /** What a restore does to the card of a version prompt (Changes tab of a version preview). */
+    protected promptCardMark(promptId: string): CdtPromptCardMark {
+        return this.promptCardChanges()?.cards.get(promptId) ?? KEPT_PROMPT_CARD;
+    }
+
+    /** The diff path of one field of a prompt, as its field mark looks it up. */
+    protected promptFieldPath(promptId: string, field: string): string {
+        return `prompts[key=${promptId}].${field}`;
+    }
 
     get activeColor(): string {
         return 'var(--accent-color)';
@@ -516,6 +678,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             post_computation_code: this.postCode,
             post_use_storage: this.postUseStorage(),
             pre_computation: {
+                // Keeps the stored fields the panel does not edit (entrypoint, global_kwargs).
+                ...currentNode.data.table?.pre_computation,
                 code: this.preCode,
                 input_map: preInputMap,
                 output_variable_path: this.form.value.pre_output_variable_path || undefined,
@@ -524,6 +688,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 execution_timeout: this.preExecutionTimeout.value,
             },
             post_computation: {
+                ...currentNode.data.table?.post_computation,
                 code: this.postCode,
                 input_map: postInputMap,
                 output_variable_path: this.form.value.post_output_variable_path || undefined,
@@ -780,7 +945,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.confirmationDialogService
             .confirm({
                 title: 'Delete Prompt',
-                message: `Are you sure you want to delete <strong>${id}</strong> prompt?`,
+                message: `Are you sure you want to delete <strong>${escapeHtml(id)}</strong> prompt?`,
                 confirmText: 'Delete',
                 cancelText: 'Cancel',
                 type: 'danger',
@@ -826,6 +991,17 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         } else {
             this.sideEditorPromptId.set(null);
         }
+    }
+
+    /**
+     * Enter or Space on a marked prompt card header (Changes tab), which is focusable, opens or closes the card. A
+     * key on the prompt-id button inside the header is left alone: the button's own click already toggles the card.
+     */
+    protected onPromptCardHeaderKey(event: Event, promptId: string): void {
+        if (event.target !== event.currentTarget) return;
+        // Space would also scroll the panel.
+        if (event instanceof KeyboardEvent && event.key === ' ') event.preventDefault();
+        this.toggleEditPrompt(promptId);
     }
 
     /** An open side editor follows the expanded entry; a System One entry has no prompt text or schema to show, so it closes. */
@@ -944,48 +1120,11 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     public exportAsJson(): void {
-        const backendId = this.node().backendId;
-        if (this.savedFlowStateService.hasUnsavedChanges() || backendId == null) {
-            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
-            return;
-        }
-        this.importExportService
-            .cdtExport(backendId, 'json')
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (blob) => downloadBlob(blob, this.buildFileName('json')),
-                error: () => this.toastService.error('Export failed.'),
-            });
+        this.exportAs('json');
     }
 
     public exportAsCsv(): void {
-        if (this.savedFlowStateService.hasUnsavedChanges()) {
-            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
-            return;
-        }
-        const exportData = this.cdtExportImportService.buildExportData({
-            nodeName: this.form.value.node_name ?? '',
-            preCode: this.preCode,
-            // Always empty: libraries now live only on the venv, and the export
-            // carries no venv. See the note on CdtExportImportService.
-            preLibraries: [],
-            preExecutionTimeout: this.preExecutionTimeout.value,
-            preInputMap: this.serializeInputMap('pre_input_map'),
-            preOutputVariablePath: this.form.value.pre_output_variable_path || null,
-            preUseStorage: this.preUseStorage(),
-            postCode: this.postCode,
-            postLibraries: [],
-            postExecutionTimeout: this.postExecutionTimeout.value,
-            postInputMap: this.serializeInputMap('post_input_map'),
-            postOutputVariablePath: this.form.value.post_output_variable_path || null,
-            postUseStorage: this.postUseStorage(),
-            defaultLlmConfig: this.form.value.default_llm_config || null,
-            conditionGroups: this.conditionGroups(),
-            prompts: this.prompts(),
-            sections: this.sections(),
-        });
-        const csv = this.cdtExportImportService.exportToCsv(exportData);
-        this.cdtExportImportService.downloadFile(csv, this.buildFileName('csv'), 'text/csv;charset=utf-8;');
+        this.exportAs('csv');
     }
 
     // ── Decision tree ──
@@ -1053,14 +1192,22 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         };
     }
 
-    private buildFileName(extension: string): string {
-        const base = (this.form.value.node_name || 'classification-decision-table')
-            .toString()
-            .trim()
-            .replace(/[^a-z0-9-_]+/gi, '-')
-            .replace(/^-+|-+$/g, '')
-            .toLowerCase();
-        return `${base || 'cdt'}.${extension}`;
+    /** Exports the saved table as a background job; the panel's unsaved edits would not be in it. */
+    private exportAs(exportFormat: ExportFormat): void {
+        const backendId = this.node().backendId;
+        if (this.savedFlowStateService.hasUnsavedChanges() || backendId == null) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        // Not tied to the panel: an export the user started still downloads after they close it.
+        this.transferExport
+            .export(
+                this.transferJobs.startExport('classificationDecisionTables', {
+                    ids: [backendId],
+                    export_format: exportFormat,
+                })
+            )
+            .subscribe();
     }
 
     // ── Code editor handlers ──
@@ -1203,15 +1350,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     private serializeInputMap(arrayName: string): Record<string, string> {
-        const arr = this.form.get(arrayName) as FormArray;
-        const result: Record<string, string> = {};
-        arr.controls.forEach((ctrl) => {
-            const pair = ctrl.value;
-            if (pair.key?.trim()) {
-                result[pair.key.trim()] = pair.value || '';
-            }
-        });
-        return result;
+        return inputMapFromRows((this.form.get(arrayName) as FormArray).getRawValue());
     }
 
     private cloneConditionGroups(groups: ConditionGroup[]): ConditionGroup[] {

@@ -67,6 +67,7 @@ class VersionPreview(TypedDict):
     snapshot: dict
     warnings: list[dict]
     node_authorship: dict[str, dict]
+    resolved_secrets: dict[str, int]
 
 
 class GraphVersioningService:
@@ -142,11 +143,16 @@ class GraphVersioningService:
 
         Runs the same conversion and dependency filtering as ``restore_version`` and
         ``create_graph_from_version``, then stops: nothing is persisted and no ids are
-        consumed. Only reads the database to check which dependencies still exist.
+        consumed. Only reads the database, to check which dependencies, secrets and
+        Key-Value tables still exist.
 
-        Secret declarations are not re-linked, so the ``secret_declaration_dropped``
-        warnings that a restore reports for deleted secrets are absent here — a preview
-        with no warnings can still produce warnings on restore.
+        Secret declarations are resolved by name in the version graph's organization, as a
+        restore re-links them, without a permission check and without writing: a declared
+        name that no longer resolves gets the ``secret_declaration_dropped`` warning a
+        restore would report, and one that resolves to a secret in the recycle bin gets the
+        restore's ``secret_in_recycle_bin`` warning. Declarations of nodes the filtering removed are not reported
+        (the node's own filter warning covers them), while a restore also lists each name
+        lost with such a node, so the two warning lists do not match one-to-one.
 
         Credential-named fields in the graph-level ``metadata`` are nulled, since old
         snapshots can hold them in plaintext. The recorded ``node_authorship`` and
@@ -158,13 +164,22 @@ class GraphVersioningService:
 
         Returns:
             ``snapshot``: the filtered snapshot, with the version's original node ids.
-            ``warnings``: the dependency-filtering warnings, keyed by those same ids.
+            ``warnings``: the dependency-filtering and secret-declaration warnings, keyed
+            by those same ids.
             ``node_authorship``: each recorded node's author and last editor with their
             times, keyed by the version's original node ids (see
             ``GraphVersioningManager.resolve_node_authorship``); empty for a version
             saved before node authorship was recorded.
+            ``resolved_secrets``: each name declared by a previewed node that a restore
+            would re-link, mapped to its secret id (see
+            ``GraphVersioningManager.resolve_secret_declarations``).
         """
         prepared = self._prepare(version)
+        resolved_secrets, secret_warnings = self._manager.resolve_secret_declarations(
+            declarations=prepared.converted_snapshot.get("secret_declarations"),
+            snapshot_nodes=prepared.filtered_snapshot["nodes"],
+            org_id=version.graph.org_id,
+        )
         snapshot = {
             **prepared.filtered_snapshot,
             "nodes": self._manager.bind_key_value_tables(
@@ -177,11 +192,12 @@ class GraphVersioningService:
         recorded_last_edits = snapshot.pop("node_last_edit", None)
         return {
             "snapshot": snapshot,
-            "warnings": list(prepared.filter_warnings),
+            "warnings": [*prepared.filter_warnings, *secret_warnings],
             "node_authorship": self._manager.resolve_node_authorship(
                 recorded_authorship=recorded_authorship,
                 recorded_last_edits=recorded_last_edits,
             ),
+            "resolved_secrets": resolved_secrets,
         }
 
     @transaction.atomic

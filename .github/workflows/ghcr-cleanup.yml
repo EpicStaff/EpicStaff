@@ -1,0 +1,43 @@
+name: GHCR cleanup
+
+# Deletes stale image versions from this repository's container packages; the rules are in
+# .github/scripts/ghcr_cleanup.py. Scheduled runs only report until the repository variable
+# GHCR_CLEANUP_DELETE is "true". Manual runs default to a dry run.
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only report what would be deleted"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ghcr-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install dependencies
+        run: python -m pip install --quiet --require-hashes -r .github/requirements/requests.txt
+
+      - name: Clean up GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'schedule' && (vars.GHCR_CLEANUP_DELETE == 'true' && 'false' || 'true') || (inputs.dry_run && 'true' || 'false') }}
+        run: python .github/scripts/ghcr_cleanup.py

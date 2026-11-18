@@ -42,7 +42,12 @@ const ORGANIZATION: GetOrganizationResponse = {
     admins: [],
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
-    config: { audit_retention_days: 0 },
+    config: {
+        audit_retention_days: 0,
+        sessions_effective_days: 90,
+        conversations_effective_days: 90,
+        audit_effective_days: 90,
+    },
 };
 
 // Every type is on its 90-day instance default, so 365 days raises a retention and 30 days lowers it.

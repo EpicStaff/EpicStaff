@@ -12,11 +12,14 @@ import types
 import fakeredis
 import pytest
 from dotdict import DotDict
+from loguru import logger
 
 from services.graph.events import StopEvent
+from services.graph.exceptions import InvalidStatePathError
 from services.graph.nodes.agent_node import AgentNode
 from services.graph.nodes.task_node import TaskNode
 from services.graph.remembered_outputs import RememberedOutputsStore
+from src.shared.flow_templates import RefusedPlaceholderError
 from src.shared.models import (
     AgentDefinitionData,
     AgentNodeData,
@@ -288,20 +291,147 @@ async def test_task_node_returns_the_agent_run_summary(remembered_outputs):
         ("Write about {topic}", {"topic": "cats"}, "Write about cats"),
         ("Write about {missing}", {}, "Write about {missing}"),
         ('Return JSON like {"a": 1}', {}, 'Return JSON like {"a": 1}'),
+        ("Write {{topic}} about {topic}", {"topic": "cats"}, "Write {topic} about cats"),
+        ("Write about {topic.upper}", {"topic": "cats"}, "Write about {topic.upper}"),
+        ("Write about {topic[0]}", {"topic": "cats"}, "Write about {topic[0]}"),
+        ("Answer {context[user_input]}", {"context": {"user_input": "hi"}}, "Answer hi"),
+        ("Answer {context.user_input}", {"context": {"user_input": "hi"}}, "Answer hi"),
     ],
-    ids=["placeholder", "unknown-placeholder-kept", "json-example-verbatim"],
+    ids=[
+        "placeholder",
+        "unknown-placeholder-kept",
+        "json-example-verbatim",
+        "escaped-braces",
+        "attribute-of-text-left-as-written",
+        "index-into-text-left-as-written",
+        "key-path",
+        "dotted-key-path",
+    ],
 )
 async def test_task_instructions_are_rendered_from_the_input(
     remembered_outputs, instructions, variables, expected
 ):
     service = FakeAgentService()
     node = _task_node(
-        service, remembered_outputs, instructions=instructions, input_map={"topic": "variables.topic"}
+        service,
+        remembered_outputs,
+        instructions=instructions,
+        input_map={"topic": "variables.topic", "context": "variables.context"},
     )
 
     await _run(node, variables)
 
     assert service.dispatched.instructions == expected
+
+
+@pytest.fixture
+def warnings_logged():
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="WARNING", format="{message}")
+    yield lines
+    logger.remove(sink_id)
+
+
+@pytest.mark.parametrize(
+    ("instructions", "expected_warnings"),
+    [
+        ("Write about {topic}", []),
+        (
+            "Greet {0} about {topic}",
+            [
+                "Instructions sent as written, no placeholder filled: "
+                "Placeholder '{0}' has no variable name, so it is never filled."
+            ],
+        ),
+        (
+            "Write {missing} about {topic}, then {user.name} and {missing}",
+            [
+                "Instructions: no input value for placeholder {missing}; left as-is",
+                "Instructions: no input value for placeholder {user.name}; left as-is",
+            ],
+        ),
+    ],
+    ids=["rendered-no-warning", "unrendered-template-explains-why", "each-missing-placeholder-once"],
+)
+async def test_task_instructions_not_fully_rendered_leave_a_warning(
+    remembered_outputs, warnings_logged, instructions, expected_warnings
+):
+    node = _task_node(
+        FakeAgentService(),
+        remembered_outputs,
+        instructions=instructions,
+        input_map={"topic": "variables.topic"},
+    )
+
+    await _run(node, {"topic": "cats"})
+
+    assert [line.strip() for line in warnings_logged if "Instructions" in line] == expected_warnings
+
+
+def _task_node_with_instructions(service, store, instructions, input_map):
+    return _task_node(service, store, instructions=instructions, input_map=input_map)
+
+
+def _agent_node_with_instructions(service, store, instructions, input_map):
+    tasks = [AgentNodeTaskData(name="task_a", order=0, instructions=instructions)]
+    return _agent_node(service, store, tasks=tasks, input_map=input_map)
+
+
+@pytest.mark.parametrize(
+    "build_node",
+    [_task_node_with_instructions, _agent_node_with_instructions],
+    ids=["task-node", "agent-node"],
+)
+async def test_input_mapped_to_a_method_fails_before_the_agent_is_called(
+    build_node, remembered_outputs
+):
+    service = FakeAgentService()
+    node = build_node(
+        service,
+        remembered_outputs,
+        instructions="{fn.__globals__[ast].sys.modules[os].environ[REDIS_PASSWORD]}",
+        input_map={"fn": "variables.update"},
+    )
+
+    with pytest.raises(InvalidStatePathError, match="'variables.update'"):
+        await _run(node)
+
+    assert service.dispatched is None
+
+
+@pytest.mark.parametrize(
+    "build_node",
+    [_task_node_with_instructions, _agent_node_with_instructions],
+    ids=["task-node", "agent-node"],
+)
+async def test_refused_placeholder_fails_the_node_with_its_own_message_before_the_agent_is_called(
+    build_node, remembered_outputs
+):
+    service = FakeAgentService()
+    node = build_node(
+        service,
+        remembered_outputs,
+        instructions="Answer {context._x}",
+        input_map={"context": "variables.context"},
+    )
+    state = {
+        "state_history": [],
+        "variables": DotDict({"context": {"_x": "hidden value"}}),
+        "system_variables": {},
+    }
+    messages = []
+
+    with pytest.raises(RefusedPlaceholderError) as raised:
+        await node.run(state=state, writer=messages.append)
+
+    assert service.dispatched is None
+    error_details = [
+        message.message_data.details
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+    assert error_details == [str(raised.value)]
+    assert "hidden value" not in error_details[0]
 
 
 async def test_task_instructions_are_rendered_afresh_on_every_run(remembered_outputs):

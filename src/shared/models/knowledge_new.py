@@ -46,6 +46,7 @@ class FoundChunk(ValueObject):
     similarity: float
     text: str
     source: str = ""
+    document_id: int | None = None
 
 
 class NaiveSearchConfig(ValueObject):

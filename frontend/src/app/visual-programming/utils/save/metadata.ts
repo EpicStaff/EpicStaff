@@ -10,10 +10,14 @@ export function toNoteMetadata(node: GraphNoteModel): {
     position: { x: number; y: number };
     size: { width: number; height: number };
     backgroundColor: string | null;
+    fontSize: number | null;
+    linkedRegion: GraphNoteModel['data']['linkedRegion'] | null;
 } {
     return {
         ...toNodeMetadata(node),
         size: node.size,
         backgroundColor: node.data.backgroundColor ?? null,
+        fontSize: node.data.fontSize ?? null,
+        linkedRegion: node.data.linkedRegion ?? null,
     };
 }

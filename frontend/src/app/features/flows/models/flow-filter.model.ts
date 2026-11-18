@@ -1,6 +1,7 @@
 import { CustomFilterCondition as SharedCustomFilterCondition } from '@shared/models';
 
 import { AuditConditionGroup, createAuditConditionGroup } from '../../audit/models/audit-filter.models';
+import { DEEP_TEXT_OPERATORS } from '../../audit/models/audit-filter-options';
 
 export type { CustomFilterClause, FilterOperator, LogicalCombinator } from '@shared/models';
 export { evaluateCustomCondition, FILTER_OPERATOR_LABELS, FILTER_OPERATOR_ORDER } from '@shared/models';
@@ -26,5 +27,5 @@ export const EMPTY_FLOWS_FILTER: FlowsFilterState = {
     sortOrder: 'default',
     includedFlowIds: null,
     includedLabelIds: null,
-    customConditions: [createAuditConditionGroup()],
+    customConditions: [createAuditConditionGroup(DEEP_TEXT_OPERATORS)],
 };

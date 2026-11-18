@@ -184,19 +184,15 @@ describe('findNearestFreePosition', () => {
     });
 
     it('returns proposed position as fallback when no free spot in search radius', () => {
-        // Create a wall of nodes that fills the entire search radius
-        const nodes: NodeModel[] = [];
-        for (let dx = -50; dx <= 50; dx++) {
-            for (let dy = -50; dy <= 50; dy++) {
-                nodes.push(
-                    makeNode({
-                        id: `n_${dx}_${dy}`,
-                        position: { x: dx * GRID_CELL_SIZE, y: dy * GRID_CELL_SIZE },
-                        size: { width: GRID_CELL_SIZE, height: GRID_CELL_SIZE },
-                    })
-                );
-            }
-        }
+        // A single node large enough to cover every candidate in the search radius
+        const margin = 40 * GRID_CELL_SIZE;
+        const nodes: NodeModel[] = [
+            makeNode({
+                id: 'wall',
+                position: { x: -margin - bounds.width, y: -margin - bounds.height },
+                size: { width: 2 * margin + 2 * bounds.width, height: 2 * margin + 2 * bounds.height },
+            }),
+        ];
 
         const proposed = { x: 0, y: 0 };
         const result = findNearestFreePosition(proposed, bounds, nodes, getExactBounds);

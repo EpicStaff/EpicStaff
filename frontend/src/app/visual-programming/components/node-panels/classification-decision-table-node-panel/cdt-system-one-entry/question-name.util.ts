@@ -43,6 +43,7 @@ const PYTHON_IDENTIFIER = /^[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}]*
 
 export const MAX_CHOICE_OPTIONS = 255;
 export const MAX_SCORE_LEVELS = 10;
+export const MAX_SYSTEM_ONE_QUESTIONS = 400;
 
 const QUESTION_KEYS: ReadonlySet<string> = new Set(['type', 'instructions', 'criteria']);
 
@@ -77,12 +78,12 @@ export function isCompleteQuestion(name: string, question: unknown): question is
         case 'choice': {
             if (!isRecord(criteria)) return false;
             const options = Object.values(criteria);
-            return options.length >= 1 && options.length <= MAX_CHOICE_OPTIONS && areStrings(options);
+            return options.length >= 2 && options.length <= MAX_CHOICE_OPTIONS && areStrings(options);
         }
         case 'score':
             return (
                 Array.isArray(criteria) &&
-                criteria.length >= 1 &&
+                criteria.length >= 2 &&
                 criteria.length <= MAX_SCORE_LEVELS &&
                 areStrings(criteria)
             );

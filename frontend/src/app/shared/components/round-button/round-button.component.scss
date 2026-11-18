@@ -31,4 +31,10 @@
         color: var(--white);
         font-weight: 500;
     }
+
+    // Same look as a disabled toggle switch: faded, and no hover or click.
+    &--disabled {
+        opacity: 0.45;
+        pointer-events: none;
+    }
 }

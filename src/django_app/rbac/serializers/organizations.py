@@ -1,4 +1,7 @@
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from src.shared.retention import DataType
 from tables.models.user import User
 
 from rbac.models import Organization, OrganizationConfig
@@ -45,12 +48,38 @@ class OrganizationConfigSerializer(serializers.ModelSerializer):
     ModelSerializer, nested by field name matching the relation's own
     related_name, rather than reaching across the relation with a dotted
     `source=` on the parent serializer).
+
+    The `*_effective_days` fields are the data retention actually applied
+    (0 = unlimited), named as in the /retention/ endpoint. They are computed
+    from the loaded config row and settings.RETENTION_POLICY, so they add no
+    queries.
     """
+
+    sessions_effective_days = serializers.SerializerMethodField()
+    conversations_effective_days = serializers.SerializerMethodField()
+    audit_effective_days = serializers.SerializerMethodField()
 
     class Meta:
         model = OrganizationConfig
-        fields = ["audit_retention_days"]
+        fields = [
+            "audit_retention_days",
+            "sessions_effective_days",
+            "conversations_effective_days",
+            "audit_effective_days",
+        ]
         read_only_fields = fields
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_sessions_effective_days(self, config: OrganizationConfig) -> int:
+        return config.effective_retention_days(DataType.SESSIONS)
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_conversations_effective_days(self, config: OrganizationConfig) -> int:
+        return config.effective_retention_days(DataType.CONVERSATIONS)
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_audit_effective_days(self, config: OrganizationConfig) -> int:
+        return config.effective_retention_days(DataType.AUDIT)
 
 
 class OrganizationResponseSerializer(serializers.ModelSerializer):

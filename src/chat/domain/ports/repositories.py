@@ -62,7 +62,8 @@ class AbstractBindingRepository(abc.ABC):
         """Write only `broken_reason` (and `updated_at`), so a concurrent edit of other columns survives."""
 
     @abc.abstractmethod
-    async def delete(self, binding_id: UUID, org_id: int) -> bool: ...
+    async def delete(self, binding_id: UUID, org_id: int) -> str | None:
+        """Delete the org's binding and return the name it had; None when there was none."""
 
 
 class AbstractConversationRepository(abc.ABC):
@@ -178,17 +179,18 @@ class AbstractConversationRepository(abc.ABC):
 
     @abc.abstractmethod
     async def delete_inactive_batch(self, org_id: int, cutoff: datetime, limit: int) -> int:
-        """Delete up to `limit` of the org's closed conversations last active before `cutoff`,
-        oldest first, and return how many went. Their messages, events, visitor tokens and callback receipts
-        go with them (ON DELETE CASCADE). The caller commits; fewer than `limit` means none is
-        left that this call could take.
+        """Delete up to `limit` of the org's conversations last active before `cutoff`, open or
+        closed, oldest first, and return how many went. Their messages, events, visitor tokens
+        and callback receipts go with them (ON DELETE CASCADE). The caller commits; fewer than
+        `limit` means none is left that this call could take.
 
-        Last active is the last message, or the creation when there is none. Open conversations
-        are never deleted, and neither is a closed one whose run's callback is still owed (a
-        receipt that keeps its secret). Rows are locked FOR UPDATE SKIP LOCKED: a row another
-        transaction holds is skipped, not waited for. On a row such a transaction changed and
-        committed meanwhile, the conversation's own columns are checked again under the row
-        lock; the receipt test (NOT EXISTS) uses the statement's snapshot.
+        Last active is the last message, or the creation when there is none. A conversation
+        with a run in progress (`starting` or `running`) is never deleted, and neither is one
+        whose run's callback is still owed (a receipt that keeps its secret). Rows are locked
+        FOR UPDATE SKIP LOCKED: a row another transaction holds is skipped, not waited for. On a
+        row such a transaction changed and committed meanwhile (a new message, a claimed run
+        slot), the conversation's own columns are checked again under the row lock; the receipt
+        test (NOT EXISTS) uses the statement's snapshot.
         """
 
 

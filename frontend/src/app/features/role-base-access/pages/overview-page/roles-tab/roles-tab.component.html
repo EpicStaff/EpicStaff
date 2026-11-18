@@ -6,6 +6,7 @@
     />
     <span class="count-label"> {{ rows().length }} roles </span>
     <div class="toolbar-actions">
+        <app-table-column-picker [table]="table" />
         @if (canCreateOrCopyAnywhere()) {
             <app-button
                 #mainAction
@@ -20,6 +21,8 @@
 </div>
 
 <app-table
+    #table
+    layoutKey="workspace-roles"
     [columns]="columns()"
     [data]="rows()"
     [selectable]="false"

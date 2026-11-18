@@ -39,8 +39,10 @@
                 [class.selector__btn--open]="open()"
                 [class.selector__btn--placeholder]="!selectedItem() && !(allowCustomValue() && selectedValue())"
                 [class.selector__btn--transparent]="transparent()"
+                [class.selector__btn--toolbar]="appearance() === 'toolbar'"
+                [class.selector__btn--icon-only]="showsOnlyIcon()"
                 [attr.aria-expanded]="open()"
-                [matTooltip]="tooltip()"
+                [matTooltip]="triggerTooltip()"
                 (click)="toggle()"
             >
                 @if (loading()) {
@@ -60,6 +62,13 @@
                             class="selector__dot"
                             [style.background-color]="dotColor"
                         ></span>
+                    }
+                    @if (showsOnlyIcon()) {
+                        <app-svg-icon
+                            class="selector__trigger-icon"
+                            [icon]="triggerIcon()!"
+                            size="16px"
+                        />
                     }
                     <span
                         class="selector__text"
@@ -108,6 +117,7 @@
         [cdkTrapFocusAutoCapture]="true"
         [attr.data-tour]="dropdownDataAnchor()"
         [class.selector__dropdown--boxed]="variant() === 'boxed'"
+        [class.selector__dropdown--toolbar]="appearance() === 'toolbar'"
     >
         @if (showSearch()) {
             <div class="selector__search-wrapper">
@@ -120,6 +130,16 @@
                     [placeholder]="searchPlaceholder()"
                     [attr.aria-label]="searchPlaceholder()"
                 />
+                @if (showCreate()) {
+                    <button
+                        type="button"
+                        class="selector__add-btn"
+                        aria-label="Create item"
+                        (click)="onCreate.emit()"
+                    >
+                        +
+                    </button>
+                }
             </div>
         }
 
@@ -192,12 +212,30 @@
             }
 
             @if (!hasVisibleItems() && !(allowCustomValue() && search().trim())) {
-                <div
-                    class="selector__option selector__option--empty"
-                    [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
-                >
-                    No items available
-                </div>
+                @if (showSearch()) {
+                    <div class="selector__search-not-found">
+                        <app-svg-icon
+                            icon="not-allowed"
+                            size="16px"
+                        />
+                        <span class="selector__search-not-found--primary">
+                            {{ searchNotFoundText() }}
+                        </span>
+                        <span class="selector__search-not-found--secondary">
+                            Try another name
+                            @if (showCreate()) {
+                                <span>or click + to create</span>
+                            }
+                        </span>
+                    </div>
+                } @else {
+                    <div
+                        class="selector__option selector__option--empty"
+                        [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
+                    >
+                        No items available
+                    </div>
+                }
             }
         </div>
     </div>

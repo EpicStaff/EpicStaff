@@ -166,6 +166,11 @@ async def test_an_answer_missing_a_question_is_a_system_one_error(mock_completio
         (with_answers(seniority={"probabilities": {"0": 0, "1": -3, "2": 0}}), "seniority"),
         (with_answers(seniority={"probabilities": {"0": None}}), "seniority"),
         pytest.param(
+            with_answers(seniority={"probabilities": {"0": float("nan"), "1": 1, "2": 0}}),
+            "seniority",
+            id="nan-score-probability",
+        ),
+        pytest.param(
             with_answers(is_engineering={"noul": 10**400}), "is_engineering", id="huge-noul"
         ),
         pytest.param(

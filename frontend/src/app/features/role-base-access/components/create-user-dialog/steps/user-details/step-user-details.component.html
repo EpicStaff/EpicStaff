@@ -18,30 +18,47 @@
         <!--            />-->
         <!--        </div>-->
         <!--        <app-validation-errors [control]="form.get('full_name')!" />-->
-        <div class="control">
-            <label
-                class="label"
-                for="user-details-email"
-            >
-                <span>Email<span class="required">*</span></span>
-                <app-help-tooltip
-                    [text]="'The user\'s login email address. Must be unique across the system.'"
-                    ariaLabel="Email help"
-                    position="right"
-                ></app-help-tooltip>
-            </label>
+        @if (editMode()) {
+            <div class="control">
+                <span class="label">
+                    Email
+                    <app-help-tooltip
+                        [text]="'The user\'s login email address. It cannot be changed.'"
+                        ariaLabel="Email help"
+                        position="right"
+                    ></app-help-tooltip>
+                </span>
+                <app-custom-input
+                    [readonly]="true"
+                    formControlName="email"
+                />
+            </div>
+        } @else {
+            <div class="control">
+                <label
+                    class="label"
+                    for="user-details-email"
+                >
+                    <span>Email<span class="required">*</span></span>
+                    <app-help-tooltip
+                        [text]="'The user\'s login email address. Must be unique across the system.'"
+                        ariaLabel="Email help"
+                        position="right"
+                    ></app-help-tooltip>
+                </label>
 
-            <!-- The dialog opens with the focus here, its first field. -->
-            <app-custom-input
-                cdkFocusInitial
-                [id]="'user-details-email'"
-                (blur)="trimEmail()"
-                placeholder="Enter user email..."
-                ariaLabel="Email"
-                formControlName="email"
-            />
-        </div>
-        <app-validation-errors [control]="form.get('email')!" />
+                <!-- The dialog opens with the focus here, its first field. -->
+                <app-custom-input
+                    cdkFocusInitial
+                    [id]="'user-details-email'"
+                    (blur)="trimEmail()"
+                    placeholder="Enter user email..."
+                    ariaLabel="Email"
+                    formControlName="email"
+                />
+            </div>
+            <app-validation-errors [control]="form.get('email')!" />
+        }
         @if (!editMode()) {
             <div class="control">
                 <label

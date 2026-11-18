@@ -44,7 +44,7 @@ concurrency:
 jobs:
   stack:
     name: Plugin platform stack, browsers and smokes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
       # Matches the service Dockerfiles: without this uv may fetch its own interpreter instead
@@ -70,7 +70,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv and PyYAML
-        run: python -m pip install --no-cache-dir uv==0.11.21 pyyaml
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt -r .github/requirements/pyyaml.txt
 
       - name: Describe the Docker host
         run: bash .github/scripts/describe_docker_host.sh

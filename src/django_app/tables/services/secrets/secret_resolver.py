@@ -1,17 +1,23 @@
 import re
+from functools import cached_property
 
+from django.conf import settings
+from foundation.cryptographer import FernetRotatedCryptographer
 from pydantic import BaseModel
 from tables.models import Secret
-from tables.services.secrets.encryption import secret_encryption
+from tables.services.secrets.encryption import MAX_TEXT_BYTES, secret_encryption
 from tables.services.secrets.exceptions import (
     SecretDecryptionError,
     SecretResolutionError,
 )
 
+# Wire contract, duplicated per consumer (agent, realtime, knowledge, sandbox, webhook): no shared owner.
+_SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
+
 _SECRET_ID_SUFFIX = "_secret_id"
 
 # The reserved pair, beside the <field>_secret_id convention: the names a node's
-# code asks for resolve into a {name: plaintext} dict. No collision —
+# code asks for resolve into a {name: sealed value} dict. No collision:
 # "secret_names".endswith("_secret_id") is False.
 _NAMED_NAMES_FIELD = "secret_names"
 _NAMED_VALUES_FIELD = "secrets"
@@ -20,7 +26,6 @@ _NAMED_VALUES_FIELD = "secrets"
 # values of any header dict whose field name ends with "extra_headers"
 # (`extra_headers`, `embedder_extra_headers`, `rag_llm_extra_headers`, ...).
 _HEADER_FIELD_SUFFIX = "extra_headers"
-_SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
 
 
 def extract_secret_marker_names(headers: dict | None) -> set[str]:
@@ -39,7 +44,17 @@ def extract_secret_marker_names(headers: dict | None) -> set[str]:
 
 
 class SecretResolver:
-    """Turns Secret references into plaintext at the point of use."""
+    """Turns Secret references into plaintext, or into transport-sealed values for other services."""
+
+    @cached_property
+    def _transport_cryptographer(self) -> FernetRotatedCryptographer:
+        """Seals outgoing values with SECRETS_TRANSPORT_KEY."""
+        return FernetRotatedCryptographer(
+            settings.SECRETS_TRANSPORT_KEY,
+            settings.SECRETS_TRANSPORT_PREVIOUS_KEYS,
+            hkdf_info=settings.SECRETS_TRANSPORT_HKDF_INFO.encode(),
+            max_data_size=MAX_TEXT_BYTES,
+        )
 
     def _fetch(self, *, secret_id: int, org_id: int, context: str) -> Secret:
         """Load a Secret scoped to `org_id`, or raise."""
@@ -66,6 +81,18 @@ class SecretResolver:
 
         secret = self._fetch(secret_id=secret_id, org_id=org_id, context=context)
         return self._decrypt(secret=secret, context=context)
+
+    def resolve_sealed(
+        self, *, secret_id: int | None, org_id: int, context: str = ""
+    ) -> str | None:
+        """Resolve like `resolve`, then seal the plaintext with the transport key.
+
+        For values that leave django_app; the receiving service decrypts them.
+        """
+        plaintext = self.resolve(secret_id=secret_id, org_id=org_id, context=context)
+        if plaintext is None:
+            return None
+        return self._transport_cryptographer.encrypt(plaintext)
 
     def resolve_many(
         self, *, secret_ids: list[int | None], org_id: int, context: str = ""
@@ -105,8 +132,18 @@ class SecretResolver:
             if name in rows
         }
 
+    def resolve_named_sealed(
+        self, *, names: list[str], org_id: int, context: str = ""
+    ) -> dict[str, str]:
+        """Resolve like `resolve_named`, then seal every value with the transport key."""
+        resolved = self.resolve_named(names=names, org_id=org_id, context=context)
+        return {
+            name: self._transport_cryptographer.encrypt(plaintext)
+            for name, plaintext in resolved.items()
+        }
+
     def resolve_payload(self, *, payload: BaseModel, org_id: int) -> BaseModel:
-        """Deep-copy `payload` and fill every plaintext slot from its carrier."""
+        """Deep-copy `payload` and fill every secret slot from its carrier, sealed for transport."""
         resolved = payload.model_copy(deep=True)
         self._fill(node=resolved, org_id=org_id)
         return resolved
@@ -152,7 +189,7 @@ class SecretResolver:
             setattr(
                 model,
                 target,
-                self.resolve(
+                self.resolve_sealed(
                     secret_id=secret_id,
                     org_id=org_id,
                     context=f"{model_cls.__name__}.{target}",
@@ -172,7 +209,7 @@ class SecretResolver:
         setattr(
             model,
             _NAMED_VALUES_FIELD,
-            self.resolve_named(
+            self.resolve_named_sealed(
                 names=getattr(model, _NAMED_NAMES_FIELD),
                 org_id=org_id,
                 context=f"{model_cls.__name__}.{_NAMED_VALUES_FIELD}",
@@ -182,10 +219,12 @@ class SecretResolver:
     def resolve_header_markers(
         self, *, headers: dict[str, str] | None, org_id: int, context: str = ""
     ) -> dict[str, str] | None:
-        """Return `headers` with `epicstaff_secret(<name>)` markers replaced by plaintext.
+        """Return `headers` with each `epicstaff_secret(<name>)` marker holding its secret.
 
-        All marker names resolve in one query against `org_id`'s secrets. Returns a
-        new dict; the input is never modified, so a persisted copy keeps its markers.
+        The secret's value replaces the name, sealed for transport: the marker keeps its
+        syntax and becomes `epicstaff_secret(<ciphertext>)`; the receiving service decrypts
+        it. All marker names resolve in one query against `org_id`'s secrets. Returns a new
+        dict; the input is never modified, so a persisted copy keeps its markers.
 
         Raises:
             SecretResolutionError: A marker names a secret `org_id` does not have.
@@ -197,9 +236,9 @@ class SecretResolver:
         if not names:
             return dict(headers)
 
-        resolved = self.resolve_named(names=sorted(names), org_id=org_id, context=context)
+        sealed = self.resolve_named_sealed(names=sorted(names), org_id=org_id, context=context)
 
-        missing = names - resolved.keys()
+        missing = names - sealed.keys()
         if missing:
             raise SecretResolutionError(
                 detail=(
@@ -210,7 +249,9 @@ class SecretResolver:
 
         return {
             key: (
-                _SECRET_MARKER_RE.sub(lambda m: resolved[m.group(1)], value)
+                _SECRET_MARKER_RE.sub(
+                    lambda match: f"epicstaff_secret({sealed[match.group(1)]})", value
+                )
                 if isinstance(value, str)
                 else value
             )
@@ -218,7 +259,7 @@ class SecretResolver:
         }
 
     def _fill_header_markers(self, *, model: BaseModel, field_name: str, org_id: int) -> None:
-        """Replace `epicstaff_secret(<name>)` markers in a header dict with plaintext."""
+        """Replace each marker name in a header dict with its secret's value, sealed for transport."""
         headers = getattr(model, field_name)
         if not headers:
             return

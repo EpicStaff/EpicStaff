@@ -1,6 +1,6 @@
 tool-data:
   name: "Natural Language To SQL Tool"
-  description: "Converts natural language into SQL queries and executes them on the provided database. Requires db_uri and api_key tool configuration fields. In read-only mode (default), the database connection rejects INSERT, UPDATE, DELETE and DROP statements."
+  description: "Converts natural language into SQL queries and executes them on the provided database. Requires db_uri and api_key tool configuration fields. In read-only mode (default), the tool runs only single SELECT statements, each in a read-only transaction (postgresql and mysql only). For real isolation, set db_uri to a database user that has only SELECT grants."
   args-schema: "args_schema.json"
   code-file: "main.py"
   entrypoint: "main"

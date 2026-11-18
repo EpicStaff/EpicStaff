@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 from dataclasses import dataclass
+from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -59,7 +60,12 @@ class TicketService:
         return ticket, self._ttl_seconds
 
     def consume(self, ticket: str) -> TicketHolder | None:
-        """Redeem `ticket` once; None when it is unknown, expired, malformed or its user is gone."""
+        """Redeem `ticket` once; None when it is unknown, expired, malformed or its user is gone.
+
+        A deactivated user gets None, as an API key of theirs would be
+        refused: a ticket issued just before the deactivation must not open
+        a stream after it.
+        """
         if not isinstance(ticket, str) or not ticket:
             return None
         raw = self._redis().getdel(self._key(ticket))
@@ -72,7 +78,7 @@ class TicketService:
             api_key_org_id = int(org_part) if separator else None
         except ValueError:
             return None
-        user = get_user_model().objects.filter(pk=user_id).first()
+        user = get_user_model().objects.filter(pk=user_id, is_active=True).first()
         if user is None:
             return None
         return TicketHolder(user=user, api_key_org_id=api_key_org_id)
@@ -87,3 +93,19 @@ sse_ticket_service = TicketService(
     prefix="rbac:sse_ticket:",
     ttl_seconds=settings.SSE_TICKET_TTL,
 )
+
+
+# Long enough for the browser to navigate to the URL right after asking for it.
+TRANSFER_DOWNLOAD_TICKET_TTL_SECONDS = 60
+
+
+def transfer_download_ticket_service(job_id: UUID) -> TicketService:
+    """Return the ticket store for downloading the archive of transfer job `job_id`.
+
+    The job id is part of the key, so a ticket opens only the job it was issued
+    for: on another job's download URL it is an unknown ticket, and stays unused.
+    """
+    return TicketService(
+        prefix=f"rbac:transfer_download_ticket:{job_id}:",
+        ttl_seconds=TRANSFER_DOWNLOAD_TICKET_TTL_SECONDS,
+    )

@@ -1,5 +1,6 @@
-from main import main
 from typing import List
+
+import main
 
 # Dummy embedding function for testing
 def embed(text: str) -> List[float]:
@@ -7,15 +8,16 @@ def embed(text: str) -> List[float]:
     return [0.1] * 128
 
 # Monkey-patch the embed function in main.py
-import main
 main.embed = embed
 
 if __name__ == "__main__":
+    # The sandbox injects tool configuration values as module globals.
+    main.connection_string = "couchbase://localhost"
+    main.username = "Administrator"
+    main.password = "password"
+
     result = main.main(
         query="Find relevant documents about AI",
-        connection_string="couchbase://localhost",
-        username="Administrator",
-        password="password",
         bucket_name="my_bucket",
         scope_name="my_scope",
         collection_name="my_collection",

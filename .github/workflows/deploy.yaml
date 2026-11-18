@@ -2,7 +2,7 @@ name: Deploy on self-hosted
 
 on:
   push:
-    branches: [main]
+    branches: [main, developer]
 
   workflow_dispatch:
     inputs:
@@ -15,11 +15,19 @@ on:
           - test2
           - test3
       branch:
-        description: "Branch to deploy (test3 only, test2 always deploys main)"
+        description: "Branch to deploy to test3's branch instance (test2 always deploys main)"
         required: false
-        default: "main"
-      nuke_db:
-        description: "Reset database (Nuke DB)? Only applies to test3, ignored for test2."
+        default: "developer"
+      reset_database:
+        description: "Reset the branch instance's database to empty (test3 only)"
+        type: boolean
+        default: false
+      audit:
+        description: "Run the audit trail (opensearch, auditor) on the branch instance (test3 only)"
+        type: boolean
+        default: false
+      chat:
+        description: "Run the chat service on the branch instance (test3 only)"
         type: boolean
         default: false
       # regenerate_env defaulting to true means every push to main rewrites test2's
@@ -41,7 +49,7 @@ permissions:
 jobs:
   resolve:
     name: Resolve target/ref/tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       server: ${{ steps.r.outputs.server }}
       ref: ${{ steps.r.outputs.ref }}
@@ -51,16 +59,21 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
           INPUT_SERVER: ${{ github.event.inputs.server }}
           INPUT_BRANCH: ${{ github.event.inputs.branch }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "push" ] || [ "$INPUT_SERVER" = "test2" ]; then
+          if [ "$EVENT_NAME" = "push" ] && [ "$GIT_REF" = "refs/heads/developer" ]; then
+            SERVER="test3-dev"
+            REF="developer"
+            TAG="developer"
+          elif [ "$EVENT_NAME" = "push" ] || [ "$INPUT_SERVER" = "test2" ]; then
             SERVER="test2"
             REF="main"
             TAG="latest"
           elif [ "$INPUT_SERVER" = "test3" ]; then
-            SERVER="test3"
+            SERVER="test3-branch"
             REF="$INPUT_BRANCH"
             # slugify: lowercase, replace non-[a-z0-9.] with '-', collapse, trim
             TAG=$(echo "$REF" \
@@ -111,8 +124,8 @@ jobs:
           REGENERATE_ENV_INPUT: ${{ github.event.inputs.regenerate_env || 'true' }}
         run: |
           set -euo pipefail
-          git config --global --add safe.directory /home/developer/EpicStaff
-          cd /home/developer/EpicStaff
+          git config --global --add safe.directory "$APP_DIR"
+          cd "$APP_DIR"
           git fetch --prune
           git checkout main
           git pull --ff-only origin main
@@ -121,14 +134,19 @@ jobs:
           export REGENERATE_ENV="$REGENERATE_ENV_INPUT"
           bash .github/scripts/deploy.sh main
 
-  deploy_test_3:
-    name: Deploy to test3 (manual branch)
+  deploy_test_3_developer:
+    name: Deploy developer to test3's developer instance
     needs: [resolve, build]
-    if: ${{ needs.resolve.outputs.server == 'test3' }}
+    if: ${{ needs.resolve.outputs.server == 'test3-dev' }}
     runs-on: [self-hosted, test3]
+    # A burst of merges builds only the newest (build-and-push cancels superseded builds), and this
+    # group keeps only the newest waiting deploy. A running deploy is never interrupted.
     concurrency:
-      group: epicstaff-deploy-test3
+      group: epicstaff-deploy-test3-dev
       cancel-in-progress: false
+    env:
+      APP_DIR: /srv/epicstaff/developer
+      EPICSTAFF_SLICE: epicstaff-dev.slice
     steps:
       - name: Login to ghcr.io
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
@@ -137,21 +155,82 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Deploy selected branch to test3
+      - name: Deploy developer
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$APP_DIR"
+          cd "$APP_DIR"
+          git fetch --prune
+          git checkout developer
+          git pull --ff-only origin developer
+          export IMAGE_TAG
+          # The developer instance keeps its database: an automatic deploy never resets it.
+          export NUKE_DB=false
+          export REGENERATE_ENV=true
+          bash .github/scripts/deploy.sh developer
+
+  deploy_test_3:
+    name: Deploy a branch to test3's branch instance
+    needs: [resolve, build]
+    if: ${{ needs.resolve.outputs.server == 'test3-branch' }}
+    runs-on: [self-hosted, test3]
+    concurrency:
+      group: epicstaff-deploy-test3-branch
+      cancel-in-progress: false
+    env:
+      APP_DIR: /srv/epicstaff/branch
+      EPICSTAFF_SLICE: epicstaff-branch.slice
+    steps:
+      - name: Refuse a branch without the two-instance deploy
+        shell: bash
+        env:
+          BRANCH: ${{ github.event.inputs.branch }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$APP_DIR"
+          cd "$APP_DIR"
+          git fetch --prune
+          # An older branch brings fixed container names, port 80 and a reset of the wrong volume.
+          if ! git show "origin/$BRANCH:.github/scripts/deploy.sh" | grep -q EPICSTAFF_SLICE; then
+            echo "Branch $BRANCH predates the two-instance deploy on test-3: merge developer into it and run again." >&2
+            exit 1
+          fi
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy selected branch
         shell: bash
         env:
           IMAGE_TAG: ${{ needs.resolve.outputs.tag }}
           BRANCH: ${{ github.event.inputs.branch }}
-          NUKE_DB_INPUT: ${{ github.event.inputs.nuke_db }}
+          RESET_DATABASE_INPUT: ${{ github.event.inputs.reset_database }}
           REGENERATE_ENV_INPUT: ${{ github.event.inputs.regenerate_env }}
+          AUDIT_INPUT: ${{ github.event.inputs.audit }}
+          CHAT_INPUT: ${{ github.event.inputs.chat }}
         run: |
           set -euo pipefail
-          git config --global --add safe.directory /home/developer/EpicStaff
-          cd /home/developer/EpicStaff
-          git fetch --prune
+          cd "$APP_DIR"
           git checkout "$BRANCH"
           git pull --ff-only origin "$BRANCH"
+          # Shell values win over deploy.env, so the run's checkboxes decide the optional stacks;
+          # an empty COMPOSE_PROFILES starts the core only.
+          profiles=()
+          [ "$AUDIT_INPUT" = "true" ] && profiles+=(auditor)
+          [ "$CHAT_INPUT" = "true" ] && profiles+=(chat)
+          COMPOSE_PROFILES=$(IFS=,; echo "${profiles[*]:-}")
+          export COMPOSE_PROFILES
+          export SESSION_AUDIT_TRAIL_ENABLED="$AUDIT_INPUT"
+          export USER_AUDIT_TRAIL_ENABLED="$AUDIT_INPUT"
+          export CHAT_ENABLED="$CHAT_INPUT"
           export IMAGE_TAG
-          export NUKE_DB="$NUKE_DB_INPUT"
+          export NUKE_DB="$RESET_DATABASE_INPUT"
           export REGENERATE_ENV="$REGENERATE_ENV_INPUT"
           bash .github/scripts/deploy.sh "$BRANCH"

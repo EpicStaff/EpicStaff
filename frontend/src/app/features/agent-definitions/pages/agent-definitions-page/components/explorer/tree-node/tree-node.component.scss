@@ -76,6 +76,11 @@
         flex-shrink: 0;
     }
 
+    &__check {
+        display: inline-flex;
+        flex-shrink: 0;
+    }
+
     &__icon {
         flex-shrink: 0;
 

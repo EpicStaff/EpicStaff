@@ -2,31 +2,20 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    gap: 8px;
     height: 100%;
     padding: 24px;
     container-type: inline-size;
 
-    &__header {
+    &__search {
+        flex-shrink: 0;
+    }
+
+    &__toolbar {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        width: 100%;
-        margin-bottom: 12px;
-    }
-
-    &__header-label {
-        font-weight: var(--text-h2-weight);
-        color: var(--color-text-primary);
-        font-size: var(--text-h2-size);
+        gap: 8px;
         min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    &__header-count {
-        font-weight: 400;
-        color: var(--color-text-muted);
     }
 
     &__items {
@@ -35,7 +24,6 @@
         align-items: center;
         overflow: auto;
         width: 100%;
-        margin-top: 8px;
         gap: 8px;
     }
 
@@ -50,19 +38,19 @@
         color: var(--color-text-primary);
         text-align: center;
     }
+
+    &__no-match {
+        margin: 1rem 0;
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        text-align: center;
+    }
 }
 
-// app-select's :host defaults to flex-grow: 1, meant for horizontal flex-row
-// toolbars where it should stretch to fill available width. Inside this
-// vertical (column) sidebar, the same flex-grow instead stretches it to fill
-// all leftover vertical space, pushing the collections list down.
+// app-select's :host grows to fill its flex row: here it takes the toolbar's width beside the export control.
 ::ng-deep app-select.rag-select {
-    flex-grow: 0;
-    flex-shrink: 0;
-}
-
-::ng-deep .collections-sidebar__header > app-button {
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     min-width: 0;
-    max-width: 45%;
 }

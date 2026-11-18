@@ -1,7 +1,7 @@
 ARG TARGET=production
 
 # ─── Stage: deps ─────────────────────────────────────────────────────────────
-FROM node:24.15.0 AS deps
+FROM node:24.15.0@sha256:f22d6a1f082c02f292e86929b5b0442ac2e5eaf438a5dea9b1566601c3e05940 AS deps
 
 WORKDIR /app
 
@@ -37,7 +37,9 @@ COPY . .
 RUN npm run build -- --configuration production
 
 # ─── Stage: production ────────────────────────────────────────────────────────
-FROM docker.io/library/nginx:alpine AS production
+# Pinned to the same multi-arch index digest as the epicstaff-nginx gateway in
+# src/docker-compose.yaml.
+FROM docker.io/library/nginx:1.31.6-trixie@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86 AS production
 
 COPY --from=build /app/dist/epicstaff-frontend/browser/ /usr/share/nginx/html/
 

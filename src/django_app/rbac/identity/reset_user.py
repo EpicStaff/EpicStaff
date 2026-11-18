@@ -1,5 +1,7 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.db import transaction
+from utils.logger import logger
 
 from rbac.governance.authorship import SnapshotAuthorshipScrubService
 from rbac.identity.bootstrap_lock import acquire_bootstrap_lock
@@ -22,19 +24,44 @@ class ResetUserService:
     created here — personal keys come only from POST /api/profile/api-keys/.
 
     Returns the new user. The view layer wraps it in the response payload.
+    Once the transaction commits, writes one audit log line naming the actor,
+    how many users were deleted and the new superadmin.
     """
 
     _bootstrap = SuperadminBootstrap()
 
     @transaction.atomic
-    def reset(self, *, email: str, password: str, display_name: str | None = None):
+    def reset(
+        self,
+        *,
+        email: str,
+        password: str,
+        display_name: str | None = None,
+        actor: AbstractBaseUser | None = None,
+    ):
+        """Replace every user with one superadmin.
+
+        Args:
+            actor: The superadmin who asked for the reset; None means the CLI.
+        """
         acquire_bootstrap_lock()
 
         SnapshotAuthorshipScrubService().scrub_every_user()
         UserModel = get_user_model()  # noqa: N806
+        users_deleted = UserModel.objects.count()
         UserModel.objects.all().delete()  # user keys cascade; system key survives
 
         result = self._bootstrap.provision(
             email=email, password=password, display_name=display_name
+        )
+        actor_email = getattr(actor, "email", "cli")
+        new_superadmin_email = result.user.email
+        transaction.on_commit(
+            lambda: logger.bind(audit=True).info(
+                "ResetUserService.reset actor={actor} users_deleted={deleted} new_superadmin={new}",
+                actor=actor_email,
+                deleted=users_deleted,
+                new=new_superadmin_email,
+            )
         )
         return result.user

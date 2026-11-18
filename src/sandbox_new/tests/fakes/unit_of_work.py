@@ -5,16 +5,33 @@ orchestrator tests assert on: an operation that fails must not commit.
 """
 
 from manager.application.ports import AbstractUnitOfWork
-from manager.domain.ports import AbstractVenvRepository
+from manager.domain.ports import (
+    AbstractCustomLibraryRepository,
+    AbstractVenvRepository,
+    AbstractWheelRepository,
+)
 
-from tests.fakes.repositories import FakeVenvRepository
+from tests.fakes.repositories import (
+    FakeCustomLibraryRepository,
+    FakeVenvRepository,
+    FakeWheelRepository,
+)
 
 __all__ = ["FakeUnitOfWork"]
 
 
 class FakeUnitOfWork(AbstractUnitOfWork):
-    def __init__(self, venv_repo: AbstractVenvRepository | None = None) -> None:
+    def __init__(
+        self,
+        venv_repo: AbstractVenvRepository | None = None,
+        custom_library_repo: AbstractCustomLibraryRepository | None = None,
+        wheel_repo: AbstractWheelRepository | None = None,
+    ) -> None:
         self._venv_repo = venv_repo if venv_repo is not None else FakeVenvRepository()
+        self._custom_library_repo = (
+            custom_library_repo if custom_library_repo is not None else FakeCustomLibraryRepository()
+        )
+        self._wheel_repo = wheel_repo if wheel_repo is not None else FakeWheelRepository()
         self.entered = 0
         self.commits = 0
         self.rollbacks = 0
@@ -35,3 +52,11 @@ class FakeUnitOfWork(AbstractUnitOfWork):
     @property
     def venv_repo(self) -> AbstractVenvRepository:
         return self._venv_repo
+
+    @property
+    def custom_library_repo(self) -> AbstractCustomLibraryRepository:
+        return self._custom_library_repo
+
+    @property
+    def wheel_repo(self) -> AbstractWheelRepository:
+        return self._wheel_repo

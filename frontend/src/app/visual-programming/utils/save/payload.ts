@@ -1,3 +1,4 @@
+import { DEFAULT_KEY_VALUE_MODE, MISSING_END_OUTPUT_MAP } from '../../core/constants/default-node-data';
 import { slugifyPortName } from '../../core/helpers/helpers';
 import { isNumberedNodeType } from '../../core/helpers/node-number.util';
 import { AgentNodeTaskUi, AgentNodeTaskWrite } from '../../core/models/agent-node.model';
@@ -205,8 +206,8 @@ function buildCdtNodePayload(
         pre_python_code: isPythonCodeBlockSaved(preCodeValue, preSecretIds)
             ? {
                   code: preCodeValue,
-                  entrypoint: 'main',
-                  global_kwargs: {},
+                  entrypoint: preComp?.entrypoint ?? 'main',
+                  global_kwargs: preComp?.global_kwargs ?? {},
                   secret_ids: preSecretIds,
                   execution_timeout: preComp?.execution_timeout,
               }
@@ -217,8 +218,8 @@ function buildCdtNodePayload(
         post_python_code: isPythonCodeBlockSaved(postCodeValue, postSecretIds)
             ? {
                   code: postCodeValue,
-                  entrypoint: 'main',
-                  global_kwargs: {},
+                  entrypoint: postComp?.entrypoint ?? 'main',
+                  global_kwargs: postComp?.global_kwargs ?? {},
                   secret_ids: postSecretIds,
                   execution_timeout: postComp?.execution_timeout,
               }
@@ -293,9 +294,15 @@ function buildAgentTasksPayload(tasks: AgentNodeTaskUi[]): AgentNodeTaskWrite[] 
     });
 }
 
+// The node uuid is sent on create only: the backend keeps it immutable and rejects a changed one on update.
 function createdNodeItemKeys(node: NodeModel): CreatedNodeItemKeys {
     const hint = isNumberedNodeType(node.type) ? node.nodeNumber : undefined;
-    return { id: null, temp_id: node.id, ...(hint != null ? { node_number_hint: hint } : {}) };
+    return {
+        id: null,
+        temp_id: node.id,
+        ...(node.nodeUuid != null ? { uuid: node.nodeUuid } : {}),
+        ...(hint != null ? { node_number_hint: hint } : {}),
+    };
 }
 
 export function buildBulkSavePayload(
@@ -427,7 +434,7 @@ export function buildBulkSavePayload(
         })),
         end_node_list: nodeItems(nodeDiff.endNodes, (n) => ({
             graph: graphId,
-            output_map: n.data.output_map ?? { context: 'variables.context' },
+            output_map: n.data.output_map ?? { ...MISSING_END_OUTPUT_MAP },
             metadata: toNodeMetadata(n),
         })),
         subgraph_node_list: nodeItems(nodeDiff.subgraphNodes, (n) => ({
@@ -497,7 +504,7 @@ export function buildBulkSavePayload(
             input_map: n.input_map || {},
             output_variable_path: null,
             key_value_table: n.data?.key_value_table ?? null,
-            mode: n.data?.mode ?? 'read',
+            mode: n.data?.mode ?? DEFAULT_KEY_VALUE_MODE,
             entries: n.data?.entries ?? [],
             metadata: toNodeMetadata(n),
         })),

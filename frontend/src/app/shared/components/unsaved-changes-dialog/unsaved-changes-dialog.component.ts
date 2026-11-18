@@ -19,6 +19,8 @@ export interface UnsavedChangesDialogData {
     cancelText?: string;
     type?: 'warning' | 'danger' | 'info';
     showDontSave?: boolean;
+    /** False hides Save, and Enter then does nothing: for a change that cannot be saved from the dialog. */
+    showSave?: boolean;
     appearance?: 'default' | 'neutral';
     onSave?: () => Observable<boolean>;
 }

@@ -140,6 +140,18 @@
     }
 }
 
+// Changes tab of a version preview: a restore changes something on this tab. A plain dot, no icon, so the tab
+// links keep their width.
+.tab-link__changed-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 4px;
+    border-radius: 50%;
+    background-color: var(--color-diff-changed);
+    vertical-align: middle;
+}
+
 .tab-separator {
     color: var(--white-alpha-20);
     font-size: 0.875rem;
@@ -159,6 +171,12 @@
     app-classification-decision-table-grid {
         flex: 1;
         min-height: 0;
+    }
+
+    // Lined up with the tabs row above the grid.
+    .routes-missing-reference-note {
+        flex-shrink: 0;
+        margin: 0.5rem 1rem 1rem;
     }
 }
 
@@ -192,6 +210,19 @@
         display: flex;
         flex-direction: column;
         @include mixins.editor-pane-corner;
+
+        // The editor's mark frame follows the column's rounded corner.
+        app-code-editor {
+            border-radius: inherit;
+        }
+    }
+
+    // While shown, the mark around the code column takes the column's place in the row.
+    .code-editor-mark.diff-field-mark--shown {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
     }
 }
 

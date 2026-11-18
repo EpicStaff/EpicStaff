@@ -195,6 +195,12 @@ async def test_a_transport_failure_is_a_system_one_error(raised, message):
             httpx.Response(200, json={**RECORDED, "usage": {"input_tokens": "many"}}),
             id="malformed-usage",
         ),
+        pytest.param(
+            httpx.Response(
+                200, content=json.dumps(RECORDED).replace('"score": 0.48', '"score": NaN')
+            ),
+            id="nan-score",
+        ),
     ],
 )
 async def test_a_malformed_body_is_a_system_one_error(response):

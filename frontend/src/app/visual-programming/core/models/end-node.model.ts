@@ -1,6 +1,8 @@
 import { AuthorshipFields } from '@shared/models';
 
-export interface EndNode extends AuthorshipFields {
+import { NodeIdentityDto } from './node-identity.model';
+
+export interface EndNode extends AuthorshipFields, NodeIdentityDto {
     id: number;
     created_at: string;
     graph: number;

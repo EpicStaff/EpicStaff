@@ -52,6 +52,17 @@ describe('clearStaleIds', () => {
         expect(orphaned!.backendId).toBeNull(); // cleared -> treated as new (temp_id)
     });
 
+    it('keeps the node uuid of a node resurrected by undo, so it is re-created with its old identity', () => {
+        const resurrected = { ...node('resurrected-uuid', 3), nodeUuid: 'stable-node-uuid' };
+        const previous: FlowModel = { nodes: [], connections: [] };
+        const current: FlowModel = { nodes: [resurrected], connections: [] };
+
+        const [result] = clearStaleIds(previous, current).nodes;
+
+        expect(result.backendId).toBeNull();
+        expect(result.nodeUuid).toBe('stable-node-uuid');
+    });
+
     it('clears data on a connection whose edge id is not in the baseline', () => {
         const previous: FlowModel = { nodes: [], connections: [connection('c-keep', 10)] };
         const current: FlowModel = {
@@ -177,6 +188,7 @@ describe('clearStaleIds', () => {
             last_edited_by: null,
             last_edited_at: null,
             id: 50,
+            uuid: null,
             metadata: {},
             node_number: 1,
             node_name: 'Agent #1',

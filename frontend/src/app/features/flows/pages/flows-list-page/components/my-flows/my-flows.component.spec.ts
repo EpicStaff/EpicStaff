@@ -1,15 +1,17 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
+import { OverlayContainer } from '@angular/cdk/overlay';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
-import { EXPORT_WARNING_DURATION_MS } from '@shared/constants';
-import { ActionCode, ExcludedExportEntity, ResourceCode, UserSummary } from '@shared/models';
+import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
 import { Observable, of, throwError } from 'rxjs';
 
-import { ImportExportService } from '../../../../../../core/services/import-export.service';
+import { TransferExportService } from '../../../../../../core/services/transfer-export.service';
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
+import { ConfigService } from '../../../../../../services/config';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
@@ -19,6 +21,9 @@ import { FlowsStorageService } from '../../../../services/flows-storage.service'
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
 import { RunGraphService } from '../../../../services/run-graph-session.service';
 import { MyFlowsComponent } from './my-flows.component';
+
+const SECRETS_REFUSAL_MESSAGE =
+    'This contains code that reads secrets. This action requires the Use permission on secrets.';
 
 const SOURCE_FLOW: GetGraphLightRequest = { id: 7, uuid: 'uuid-7', name: 'Support Flow', description: '' };
 
@@ -55,7 +60,7 @@ describe('MyFlowsComponent copy action', () => {
                 { provide: ToastService, useValue: { success: toastSuccess, error: toastError } },
                 { provide: ConfirmationDialogService, useValue: {} },
                 { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
-                { provide: ImportExportService, useValue: {} },
+                { provide: TransferExportService, useValue: {} },
             ],
         });
     });
@@ -132,6 +137,36 @@ describe('MyFlowsComponent copy action', () => {
 
         expect(toastError).toHaveBeenCalledWith('Failed to copy flow');
         consoleError.mockRestore();
+    });
+
+    it('explains a copy refused over code that reads secrets, with no toast and no reload', () => {
+        const confirm = vi.fn();
+        TestBed.overrideProvider(ConfirmationDialogService, { useValue: { confirm } });
+        copyFlow.mockReturnValue(
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 403,
+                        error: {
+                            status_code: 403,
+                            code: 'code_with_secrets_requires_secrets_use_permission',
+                            message: SECRETS_REFUSAL_MESSAGE,
+                        },
+                    })
+            )
+        );
+
+        openCopyDialog('Support Flow');
+
+        expect(confirm).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+                title: 'Use permission required',
+                message: 'This flow contains code that reads secrets.',
+                caution: '<strong>Copying</strong> it requires the <strong>Use</strong> permission on secrets.',
+            })
+        );
+        expect(toastError).not.toHaveBeenCalled();
+        expect(getFlows).toHaveBeenCalledOnce();
     });
 });
 
@@ -215,9 +250,14 @@ function render({ flows, canWrite = true, fetchedFlow }: Setup): Rendered {
                     can: (_resource: ResourceCode, action: ActionCode) => canWrite || action === ActionCode.Read,
                 },
             },
-            { provide: ToastService, useValue: { error: toastError, success: vi.fn() } },
+            {
+                provide: ToastService,
+                useValue: { error: toastError, success: vi.fn() },
+            },
             { provide: RunGraphService, useValue: {} },
-            { provide: ImportExportService, useValue: {} },
+            provideHttpClient(),
+            provideHttpClientTesting(),
+            { provide: ConfigService, useValue: { apiUrl: '/api/' } },
         ],
     });
     const fixture = TestBed.createComponent(MyFlowsComponent);
@@ -246,14 +286,22 @@ function expandSubflows(fixture: ComponentFixture<MyFlowsComponent>, flowCard: H
     fixture.detectChanges();
 }
 
-function chooseViewDetails(fixture: ComponentFixture<MyFlowsComponent>, menuButton: HTMLButtonElement): void {
+function chooseMenuItem(
+    fixture: ComponentFixture<MyFlowsComponent>,
+    menuButton: HTMLButtonElement,
+    label: string
+): void {
     menuButton.click();
     fixture.detectChanges();
     const item = Array.from(
         fixture.nativeElement.querySelectorAll('.context-menu .menu-item') as NodeListOf<HTMLElement>
-    ).find((menuItem) => menuItem.textContent?.trim() === 'View Details')!;
+    ).find((menuItem) => menuItem.textContent?.trim() === label)!;
     item.click();
     fixture.detectChanges();
+}
+
+function chooseViewDetails(fixture: ComponentFixture<MyFlowsComponent>, menuButton: HTMLButtonElement): void {
+    chooseMenuItem(fixture, menuButton, 'View Details');
 }
 
 describe('MyFlowsComponent "View Details"', () => {
@@ -366,63 +414,85 @@ describe('MyFlowsComponent select mode', () => {
 });
 
 describe('MyFlowsComponent export action', () => {
-    const toastWarning = vi.fn();
-    const toastSuccess = vi.fn();
-
-    function exportFlowWith(excluded: ExcludedExportEntity[]): void {
-        toastWarning.mockReset();
-        toastSuccess.mockReset();
-        window.URL.createObjectURL = vi.fn(() => 'blob:x');
-        window.URL.revokeObjectURL = vi.fn();
-        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
-
-        TestBed.configureTestingModule({
-            providers: [
-                provideRouter([]),
-                {
-                    provide: FlowsStorageService,
-                    useValue: {
-                        filteredFlows: signal([]),
-                        isFlowsLoaded: signal(false),
-                        selectMode: signal(false),
-                        selectedFlowIds: signal([]),
-                        getFlows: () => of([]),
-                    },
-                },
-                { provide: LabelsStorageService, useValue: { activeLabelFilter: signal('all') } },
-                { provide: FlowsApiService, useValue: {} },
-                { provide: RunGraphService, useValue: {} },
-                { provide: ToastService, useValue: { success: toastSuccess, warning: toastWarning, error: vi.fn() } },
-                { provide: ConfirmationDialogService, useValue: {} },
-                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
-                {
-                    provide: ImportExportService,
-                    useValue: { exportFlow: () => of({ blob: new Blob(['{}']), excluded }) },
-                },
-            ],
-        });
-        const fixture = TestBed.createComponent(MyFlowsComponent);
-        fixture.detectChanges();
-        fixture.componentInstance.handleFlowCardAction({ action: 'export', flow: SOURCE_FLOW });
+    function overlayElement(): HTMLElement {
+        return TestBed.inject(OverlayContainer).getContainerElement();
     }
 
-    afterEach(() => vi.restoreAllMocks());
+    function openExportOptions(fixture: ComponentFixture<MyFlowsComponent>, host: HTMLElement): HTMLButtonElement {
+        const menuButton = cardMenuButton(card(host, 'Test Flow 1'));
+        chooseMenuItem(fixture, menuButton, 'Export');
+        return menuButton;
+    }
 
-    it('warns, with a long duration, about entities left out of the export', () => {
-        exportFlowWith([{ type: 'AgentDefinition', count: 2, names: ['A', 'B'] }]);
-
-        expect(toastSuccess).toHaveBeenCalledWith('Flow "Support Flow" exported successfully');
-        expect(toastWarning).toHaveBeenCalledWith(
-            expect.stringContaining('A, B'),
-            EXPORT_WARNING_DURATION_MS,
-            undefined
+    function includeKnowledgeBox(): HTMLInputElement {
+        const option = [...overlayElement().querySelectorAll('label')].find((label) =>
+            label.textContent?.includes('Include knowledge data')
         );
+        return option!.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    }
+
+    function clickDialogButton(fixture: ComponentFixture<MyFlowsComponent>, label: string): void {
+        [...overlayElement().querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+            .find((button) => button.textContent?.trim() === label)!
+            .click();
+        fixture.detectChanges();
+    }
+
+    it('asks for the export options in a dialog and exports the flow with knowledge data by default', () => {
+        const { fixture, host } = render({ flows: [FLOW] });
+
+        openExportOptions(fixture, host);
+        expect(overlayElement().querySelector('[role="dialog"] h2')?.textContent?.trim()).toBe('Export 1 flow');
+        expect(includeKnowledgeBox().checked).toBe(true);
+        clickDialogButton(fixture, 'Export');
+
+        const start = TestBed.inject(HttpTestingController).expectOne('/api/graphs/export-jobs/');
+        expect(start.request.body).toEqual({ ids: [FLOW.id], include_knowledge: true });
+        expect(overlayElement().textContent).not.toContain('Include knowledge data');
     });
 
-    it('shows no warning when nothing was excluded', () => {
-        exportFlowWith([]);
+    it('exports the flow without knowledge data once the box is cleared', () => {
+        const { fixture, host } = render({ flows: [FLOW] });
 
-        expect(toastSuccess).toHaveBeenCalled();
-        expect(toastWarning).not.toHaveBeenCalled();
+        openExportOptions(fixture, host);
+        includeKnowledgeBox().click();
+        fixture.detectChanges();
+        clickDialogButton(fixture, 'Export');
+
+        const start = TestBed.inject(HttpTestingController).expectOne('/api/graphs/export-jobs/');
+        expect(start.request.body).toEqual({ ids: [FLOW.id], include_knowledge: false });
+    });
+
+    it("exports nothing on Cancel and closes back to the card's ⋮ button", async () => {
+        const { fixture, host } = render({ flows: [FLOW] });
+
+        const menuButton = openExportOptions(fixture, host);
+        clickDialogButton(fixture, 'Cancel');
+
+        TestBed.inject(HttpTestingController).expectNone('/api/graphs/export-jobs/');
+        expect(overlayElement().textContent).not.toContain('Include knowledge data');
+        await vi.waitFor(() => expect(document.activeElement).toBe(menuButton));
+    });
+
+    it("closes back to the card's ⋮ button once the export has started, as the menu item is gone", async () => {
+        const { fixture, host } = render({ flows: [FLOW] });
+
+        const menuButton = openExportOptions(fixture, host);
+        clickDialogButton(fixture, 'Export');
+
+        TestBed.inject(HttpTestingController).expectOne('/api/graphs/export-jobs/');
+        await vi.waitFor(() => expect(document.activeElement).toBe(menuButton));
+    });
+
+    it('starts with knowledge data included again after it was cleared and cancelled', () => {
+        const { fixture, host } = render({ flows: [FLOW] });
+
+        openExportOptions(fixture, host);
+        includeKnowledgeBox().click();
+        fixture.detectChanges();
+        clickDialogButton(fixture, 'Cancel');
+        openExportOptions(fixture, host);
+
+        expect(includeKnowledgeBox().checked).toBe(true);
     });
 });

@@ -21,8 +21,11 @@ import {
     AuthorshipFooterComponent,
     JsonEditorComponent,
 } from '@shared/components';
+import { codeSuggestionKeyLabel } from '@shared/utils';
 import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
+import { PLATFORM_IS_MAC } from '../../../core/services/platform-is-mac.token';
+import { DEFAULT_INITIAL_STATE, isSetInitialState } from '../../core/constants/default-node-data';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import {
     EMPTY_VALIDATION_RESULT,
@@ -32,6 +35,8 @@ import {
     type PersistentVariablesValidationResult,
     validatePersistentVariables,
 } from '../../services/persistent-variables.validator';
+import { CodeChange } from '../../utils/diff';
+import { CodeDiffViewComponent } from '../code-diff-view/code-diff-view.component';
 import {
     AutocompleteItem,
     AutocompleteOverlayComponent,
@@ -43,21 +48,24 @@ export interface DomainDialogData {
     initialData: Record<string, unknown>;
     /** Who created and who last edited the Start node whose variables these are. */
     authorship: AuthorshipDetailsSource;
+    /**
+     * Changes tab of a version preview, a Start node a restore changes: its variables on the canvas and in the version,
+     * as JSON, shown as a diff instead of the editor. `null` anywhere else: the live editor, the Preview tab, or
+     * variables a restore leaves as they are.
+     */
+    variablesDiff: CodeChange | null;
 }
-
-export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
-    variables: {
-        context: null,
-    },
-    persistent_variables: {
-        user: [],
-        organization: [],
-    },
-};
 
 @Component({
     selector: 'app-domain-dialog',
-    imports: [JsonEditorComponent, OverlayModule, AppSvgIconComponent, AuthorshipFooterComponent, MatTooltip],
+    imports: [
+        JsonEditorComponent,
+        OverlayModule,
+        AppSvgIconComponent,
+        AuthorshipFooterComponent,
+        CodeDiffViewComponent,
+        MatTooltip,
+    ],
     encapsulation: ViewEncapsulation.None,
     template: `
         <!-- Escape is handled here, ahead of the tooltip of the focused control, which would take the first one. -->
@@ -91,7 +99,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                         ></app-svg-icon>
                         <span>
                             Place your cursor inside <code>user</code> or <code>organization</code> arrays and press
-                            <kbd>Ctrl+Space</kbd> to pick variables from <code>context</code>.
+                            <kbd>{{ suggestionKeyLabel }}</kbd> to pick variables from <code>context</code>.
                         </span>
                     </div>
                 }
@@ -107,15 +115,24 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                     </ul>
                 }
                 <div class="json-editor-section">
-                    <app-json-editor
-                        class="json-editor"
-                        [jsonData]="initialStateJson"
-                        [readonly]="isReadOnly()"
-                        (jsonChange)="onInitialStateChange($event)"
-                        (validationChange)="onJsonValidChange($event)"
-                        (editorReady)="onEditorReady($event)"
-                        [fullHeight]="true"
-                    ></app-json-editor>
+                    @if (data.variablesDiff; as variables) {
+                        <app-code-diff-view
+                            class="json-editor"
+                            language="json"
+                            [current]="variables.current"
+                            [version]="variables.version"
+                        />
+                    } @else {
+                        <app-json-editor
+                            class="json-editor"
+                            [jsonData]="initialStateJson"
+                            [readonly]="isReadOnly()"
+                            (jsonChange)="onInitialStateChange($event)"
+                            (validationChange)="onJsonValidChange($event)"
+                            (editorReady)="onEditorReady($event)"
+                            [fullHeight]="true"
+                        ></app-json-editor>
+                    }
                 </div>
             </div>
 
@@ -298,6 +315,10 @@ export class DomainDialogComponent implements OnDestroy {
     /** Opened with the editor's injector, so this is the preview's or the live editor's state. */
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
+    protected get suggestionKeyLabel(): string {
+        return codeSuggestionKeyLabel(this.isMac);
+    }
+
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
     private overlayService = inject(Overlay);
     private viewContainerRef = inject(ViewContainerRef);
@@ -308,7 +329,9 @@ export class DomainDialogComponent implements OnDestroy {
     private contextObject: Record<string, unknown> | null = null;
     private keyDownDisposable: import('monaco-editor').IDisposable | null = null;
     private cursorDisposable: import('monaco-editor').IDisposable | null = null;
+    private suggestionKeyBinding: import('monaco-editor').IDisposable | null = null;
     private destroyRef = inject(DestroyRef);
+    private readonly isMac = inject(PLATFORM_IS_MAC);
 
     private getEditorContext(): {
         editor: import('monaco-editor').editor.IStandaloneCodeEditor;
@@ -358,18 +381,14 @@ export class DomainDialogComponent implements OnDestroy {
         this.closeOverlay();
         this.keyDownDisposable?.dispose();
         this.cursorDisposable?.dispose();
+        this.suggestionKeyBinding?.dispose();
     }
 
     // --- JSON Editor setup ---
 
     private initializeJsonEditor(): void {
         const initial = this.data?.initialData as Record<string, unknown> | undefined;
-        const isEmptyObject =
-            initial && typeof initial === 'object' && !Array.isArray(initial)
-                ? Object.keys(initial).length === 0
-                : true;
-
-        if (initial && !isEmptyObject) {
+        if (isSetInitialState(initial)) {
             try {
                 this.initialStateJson = JSON.stringify(initial, null, 2);
                 this.isJsonValid = true;
@@ -438,7 +457,19 @@ export class DomainDialogComponent implements OnDestroy {
     private setupAutocomplete(): void {
         if (!this.monacoEditor) return;
 
-        this.monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => this.handleCtrlSpace());
+        // Ctrl+Space the way Monaco binds it: WinCtrl is Ctrl on a Mac, CtrlCmd is Ctrl elsewhere. macOS takes ⌃Space
+        // for switching the input source, so ⌘I (Ctrl+I elsewhere, Monaco's other suggestion key) opens it too.
+        const ctrlSpace = this.isMac
+            ? monaco.KeyMod.WinCtrl | monaco.KeyCode.Space
+            : monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space;
+        // An action, not addCommand: a command binds for the whole page and is never removed, so after this dialog
+        // closed these keys would stop opening suggestions in every other code editor.
+        this.suggestionKeyBinding = this.monacoEditor.addAction({
+            id: 'domain-dialog.pick-variable',
+            label: 'Pick a variable from context',
+            keybindings: [ctrlSpace, monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI],
+            run: () => this.handleSuggestionKey(),
+        });
 
         this.keyDownDisposable = this.monacoEditor.onKeyDown((e: import('monaco-editor').IKeyboardEvent) => {
             if (!this.overlayRef?.hasAttached() || !this.autocompleteInstance) return;
@@ -490,9 +521,9 @@ export class DomainDialogComponent implements OnDestroy {
         });
     }
 
-    // --- Ctrl+Space handler ---
+    // --- Suggestion key handler ---
 
-    private handleCtrlSpace(): void {
+    private handleSuggestionKey(): void {
         if (this.overlayRef?.hasAttached()) {
             this.closeOverlay();
             return;
@@ -519,7 +550,7 @@ export class DomainDialogComponent implements OnDestroy {
                 this.contextObject = null;
                 this.currentPath = [];
                 this.openOverlay(
-                    'Define variables inside "context" object first, then use Ctrl+Space here to pick them.'
+                    `Define variables inside "context" object first, then use ${this.suggestionKeyLabel} here to pick them.`
                 );
             }
         } else {

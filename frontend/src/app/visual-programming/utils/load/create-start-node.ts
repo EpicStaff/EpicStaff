@@ -8,6 +8,7 @@ export function createStartNode(): StartNodeModel {
     return {
         id: generateUuid(),
         backendId: null,
+        nodeUuid: generateUuid(),
         type: NodeType.START,
         node_name: '__start__',
         data: { initialState: {} },

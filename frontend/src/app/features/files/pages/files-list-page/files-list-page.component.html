@@ -11,6 +11,12 @@
                 </h1>
             </div>
             <div class="header-actions">
+                <!-- Loaded with the Knowledge Sources tab, as the page it imports into. -->
+                @defer (when isKnowledgeSourcesActive(); prefetch on idle) {
+                    @if (isKnowledgeSourcesActive()) {
+                        <app-collections-import />
+                    }
+                }
                 @if (activeTabBtn(); as btn) {
                     @if (btn.permitted) {
                         <app-button
@@ -27,7 +33,7 @@
         </header>
         <nav class="tabs">
             <div class="tabs-left">
-                @for (tab of tabs; track tab.link; let last = $last) {
+                @for (tab of tabs; track tab.link) {
                     @if (tab.isPermitted()) {
                         <!-- RouterLink makes a non-link host focusable; the tab's own button already takes Tab and Enter. -->
                         <app-tab-button
@@ -48,9 +54,6 @@
                         >
                             {{ tab.label }}
                         </app-tab-button>
-                        @if (!last) {
-                            <span class="tab-sep">/</span>
-                        }
                     }
                 }
             </div>

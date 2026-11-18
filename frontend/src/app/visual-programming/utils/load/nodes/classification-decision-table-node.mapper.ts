@@ -75,6 +75,7 @@ export function mapClassificationDecisionTableNodeToModel(
     return {
         id: generateUuid(),
         backendId: n.id,
+        nodeUuid: n.uuid,
         type: NodeType.CLASSIFICATION_TABLE,
         node_name: n.node_name,
         nodeNumber: n.node_number ?? undefined,
@@ -95,6 +96,8 @@ export function mapClassificationDecisionTableNodeToModel(
                 next_error_node: null, // resolved in ref-resolvers/classification-decision-table-refs.ts
                 pre_computation: {
                     code: n.pre_python_code?.code ?? '',
+                    entrypoint: n.pre_python_code?.entrypoint,
+                    global_kwargs: n.pre_python_code?.global_kwargs,
                     input_map: n.pre_input_map ?? {},
                     output_variable_path: n.pre_output_variable_path ?? null,
                     secret_ids: toSecretIds(n.pre_python_code?.secrets),
@@ -103,6 +106,8 @@ export function mapClassificationDecisionTableNodeToModel(
                 },
                 post_computation: {
                     code: n.post_python_code?.code ?? '',
+                    entrypoint: n.post_python_code?.entrypoint,
+                    global_kwargs: n.post_python_code?.global_kwargs,
                     input_map: n.post_input_map ?? {},
                     output_variable_path: n.post_output_variable_path ?? null,
                     secret_ids: toSecretIds(n.post_python_code?.secrets),

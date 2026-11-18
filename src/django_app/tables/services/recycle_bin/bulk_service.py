@@ -9,14 +9,20 @@ from tables.services.recycle_bin.bulk_results import BulkFailure, BulkPurgeResul
 from tables.services.recycle_bin.purge_service import PurgeService
 from tables.services.recycle_bin.registry import BinResource
 from tables.services.recycle_bin.restore_service import RestoreService
+from tables.services.secrets.secret_code_inspector import secret_code_access
 from tables.services.trigger_nodes import trigger_node_access
+from user_audit.context import mark_request_handled
 from utils.logger import logger
 
 _UNEXPECTED_FAILURE = "Something went wrong with this item. Try it again on its own."
 
 
 class RecycleBinBulkService:
-    """Each item is its own transaction, so one failing item doesn't undo or stop the others."""
+    """Each item is its own transaction, so one failing item doesn't undo or stop the others.
+
+    Each restored or purged item records its own user action; a request that changed no
+    item records nothing, its fallback record included.
+    """
 
     @classmethod
     def restore_many(
@@ -24,16 +30,19 @@ class RecycleBinBulkService:
     ) -> BulkRestoreResult:
         """Restore `ids` in order, or every item of the org's bin when `ids` is None.
 
-        An item `user` may not restore (it brings trigger nodes back without flows:USE)
-        is reported as failed with that refusal; the others are still restored.
+        An item `user` may not restore (it brings trigger nodes back without flows:USE,
+        or code declaring secrets without secrets:USE) is reported as failed with that
+        refusal; the others are still restored.
 
         Raises:
             NotInRecycleBinError: an id isn't in this org's bin; nothing is restored.
         """
+        mark_request_handled()
         result = BulkRestoreResult()
         for root in cls._roots(resource, org_id, ids):
             try:
                 trigger_node_access.assert_user_may_restore(user, org_id, root)
+                secret_code_access.assert_user_may_restore(user, org_id, root)
                 result.restored.append(RestoreService.restore(root))
             except Exception as error:  # one item mustn't stop the rest; reported per item
                 result.failed.append(cls._failure(resource, root, error))
@@ -57,6 +66,7 @@ class RecycleBinBulkService:
         Raises:
             NotInRecycleBinError: an id isn't in this org's bin; nothing is purged.
         """
+        mark_request_handled()
         result = BulkPurgeResult()
         for root in cls._roots(resource, org_id, ids):
             pk = root.pk

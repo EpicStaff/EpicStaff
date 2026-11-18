@@ -50,10 +50,23 @@ def vision_api_image_urls(monkeypatch) -> list[str]:
 TOOL_CALLS = {
     "crewai_txt_search_tool_tool": lambda tool, source: tool.main(txt=source, search_query="needle"),
     "crewai_xml_search_tool": lambda tool, source: tool.main(search_query="needle", xml=source),
-    "crewai_ocr_tool": lambda tool, source: tool.main(openai_api_key="test-key", image_path_url=source),
-    "crewai_vision_tool": lambda tool, source: tool.main(image_path_url=source, openai_api_key="test-key"),
+    "crewai_ocr_tool": lambda tool, source: tool.main(image_path_url=source),
+    "crewai_vision_tool": lambda tool, source: tool.main(image_path_url=source),
     "crewai_github_search_tool": lambda tool, source: tool.main(search_query="needle", repo_path_or_url=source),
 }
+
+# The sandbox injects tool configuration values as module globals.
+TOOL_CONFIG = {
+    "crewai_ocr_tool": {"openai_api_key": "test-key"},
+    "crewai_vision_tool": {"openai_api_key": "test-key"},
+}
+
+
+def load_configured_tool(tool_dir):
+    tool = load_tool(tool_dir)
+    for name, value in TOOL_CONFIG.get(tool_dir, {}).items():
+        setattr(tool, name, value)
+    return tool
 
 
 LOCAL_SOURCE_FORMS = {
@@ -73,7 +86,7 @@ def test_local_source_is_refused_without_opening_it(
     local_file.write_text(f"<root><item>needle {SECRET}</item></root>\n")
     local_source = tmp_path if tool_dir == "crewai_github_search_tool" else local_file
     source = LOCAL_SOURCE_FORMS[source_form](local_source)
-    tool = load_tool(tool_dir)
+    tool = load_configured_tool(tool_dir)
 
     result = TOOL_CALLS[tool_dir](tool, source)
 
@@ -136,7 +149,7 @@ def _serve_git_repo(monkeypatch, url):
 def test_url_source_is_fetched_and_searched(tool_dir, url, serve, expected, monkeypatch, vision_api_image_urls):
     if serve:
         serve(monkeypatch, url)
-    tool = load_tool(tool_dir)
+    tool = load_configured_tool(tool_dir)
 
     result = TOOL_CALLS[tool_dir](tool, url)
 

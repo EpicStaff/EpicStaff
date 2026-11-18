@@ -1,17 +1,21 @@
 __all__ = [
+    "ArtifactStorageError",
     "ChunkingError",
     "ChunksNotIndexedError",
     "DocumentNotFoundError",
     "EmbeddingConfigNotFoundError",
     "EmbeddingError",
     "FileTextExtractingError",
+    "GraphArtifactsNotReadyError",
     "GraphRagConfigNotFoundError",
+    "InvalidArtifactArchiveError",
     "KnowledgeError",
     "NoPreviewChunksProducedError",
     "NotRunningOperationError",
     "RagInProcessingError",
     "RagNotFoundError",
     "RepositoryError",
+    "SecretDecryptError",
     "UnsupportedError",
 ]
 
@@ -41,6 +45,10 @@ class ChunkingError(KnowledgeError):
 
 class EmbeddingError(KnowledgeError):
     default_message = "{embedder} failed to embed text."
+
+
+class SecretDecryptError(KnowledgeError):
+    default_message = "Could not decrypt {field}: it is not a value sealed with the transport key."
 
 
 class RepositoryError(KnowledgeError):
@@ -79,3 +87,15 @@ class NotRunningOperationError(KnowledgeError):
 
 class RagInProcessingError(KnowledgeError):
     default_message = "Cannot remove RAG(id={rag_id}) while it is being processed."
+
+
+class InvalidArtifactArchiveError(KnowledgeError):
+    default_message = "Invalid artifact archive: {reason}."
+
+
+class GraphArtifactsNotReadyError(KnowledgeError):
+    default_message = "Graph artifacts not ready for RAG(id={rag_id})."
+
+
+class ArtifactStorageError(KnowledgeError):
+    default_message = "Could not delete {failed_count} object(s) under '{prefix}'."

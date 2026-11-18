@@ -2,7 +2,7 @@ from django_app.settings import env
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
+    "DEFAULT_PAGINATION_CLASS": "utils.pagination.DefaultLimitOffsetPagination",
     "PAGE_SIZE": 50,
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
@@ -28,10 +28,12 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "login": env.str("DJANGO_LOGIN_THROTTLE_RATE"),
         "login_ip": env.str("DJANGO_LOGIN_IP_THROTTLE_RATE"),
+        "login_account": env.str("DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE"),
         "password_reset_request": env.str("DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE"),
         "password_reset_request_ip": env.str("DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE"),
         "password_reset_confirm": env.str("DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE"),
         "token_refresh": env.str("DJANGO_TOKEN_REFRESH_THROTTLE_RATE"),
         "notify_email": env.str("DJANGO_NOTIFY_EMAIL_THROTTLE_RATE"),
+        "transfer_job_create": env.str("DJANGO_TRANSFER_JOB_CREATE_THROTTLE_RATE"),
     },
 }

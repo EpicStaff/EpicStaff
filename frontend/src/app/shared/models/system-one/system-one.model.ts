@@ -1,12 +1,12 @@
 import { AuthorshipFields } from '../authorship.model';
 
-export type SystemOneProvider = 'typesafe' | 'llm';
+export type SystemOneProvider = 'typesafe' | 'openai' | 'llm';
 
 export interface SystemOneConfig extends AuthorshipFields {
     id: number;
     custom_name: string;
     provider: SystemOneProvider;
-    /** The Jev version; set for the TypeSafe provider only. */
+    /** The Jev version (TypeSafe) or the OpenAI model; unset for the LLM provider. */
     model_name: string | null;
     api_key_secret_id: number | null;
     /** The LLM config answering the questions; set for the LLM provider only. */

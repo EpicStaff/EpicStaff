@@ -1,7 +1,24 @@
+import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
+import { TemplatePortal } from '@angular/cdk/portal';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    input,
+    OnDestroy,
+    OnInit,
+    signal,
+    TemplateRef,
+    viewChild,
+    ViewContainerRef,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import {
+    AppSvgIconComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
@@ -12,6 +29,7 @@ import {
     TableRow,
     UserAvatarComponent,
 } from '@shared/components';
+import { OverflowBadgeDirective, OverflowItemDirective, OverflowItemsDirective } from '@shared/directives';
 import { ActionCode, FullMembership, ResourceCode, UserRole } from '@shared/models';
 import { catchError, concat, EMPTY, map, Observable, of, toArray } from 'rxjs';
 
@@ -37,46 +55,53 @@ interface MembershipSnapshot {
     roleId: number;
 }
 
+interface RoleChip {
+    roleId: number;
+    roleName: string;
+    userCount: number;
+}
+
 @Component({
     selector: 'app-org-members-editor',
     templateUrl: './org-members-editor.component.html',
     styleUrls: ['./org-members-editor.component.scss'],
     imports: [
+        AppSvgIconComponent,
         AppTableCellDirective,
         AppTableComponent,
         LoadingSpinnerComponent,
+        MatTooltipModule,
+        OverflowBadgeDirective,
+        OverflowItemDirective,
+        OverflowItemsDirective,
+        OverlayModule,
         SearchComponent,
         SelectComponent,
         UserAvatarComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class OrgMembersEditorComponent implements OnInit {
+export class OrgMembersEditorComponent implements OnInit, OnDestroy {
     organizationId = input.required<number | null>();
     isEditMode = input.required<boolean>();
 
-    private destroyRef = inject(DestroyRef);
-    private toast = inject(ToastService);
-    private adminUserService = inject(AdminUserService);
-    private memberships = inject(MembershipsService);
-    private profileService = inject(ProfileService);
-    private permissionsService = inject(PermissionsService);
-    private rolesService = inject(RolesService);
+    private readonly overflowDir = viewChild(OverflowItemsDirective);
+    private readonly overflowDropdown = viewChild.required<TemplateRef<unknown>>('overflowDropdown');
 
     usersTableData = signal<TableRow[]>([]);
     searchTerm = signal('');
     isUsersLoading = signal(true);
     selectedUsers = signal<TableRow[]>([]);
+    bulkRoleId = signal<number | null>(null);
+    readonly roleItems = signal<SelectItem[]>([]);
+    private readonly originalMembershipByUserId = signal<Map<number, MembershipSnapshot>>(new Map());
+
     /**
      * Fed to the table's `initialSelectedIds`, which re-applies the ids and emits `selectionChange`
      * on every new value. Changing only when the id set changes lets that round trip settle.
      */
     selectionIds = computed(() => [...this.selectedUserIds()], { equal: haveSameIds });
-    bulkRoleId = signal<number | null>(null);
     selectedUserIds = computed(() => new Set(this.selectedUsers().map((r) => r['id'] as number)));
-    readonly roleItems = signal<SelectItem[]>([]);
-
-    private readonly originalMembershipByUserId = signal<Map<number, MembershipSnapshot>>(new Map());
 
     readonly canManageMembers = computed(() => {
         if (this.permissionsService.isSuperadmin) return true;
@@ -98,10 +123,60 @@ export class OrgMembersEditorComponent implements OnInit {
             (row['email'] as string)?.toLowerCase().includes(term);
     });
 
+    /** Chips grouped by role: one chip per distinct role across all selected users. */
+    readonly roleChips = computed<RoleChip[]>(() => {
+        const countByRole = new Map<number, RoleChip>();
+        for (const row of this.selectedUsers()) {
+            const roleId = row['role'] as number | null;
+            if (roleId == null) continue;
+            const existing = countByRole.get(roleId);
+            if (existing) {
+                existing.userCount++;
+            } else {
+                const roleName = this.roleItems().find((item) => item.value === roleId)?.name ?? String(roleId);
+                countByRole.set(roleId, { roleId, roleName, userCount: 1 });
+            }
+        }
+        return [...countByRole.values()];
+    });
+
+    /** The subset of roleChips hidden by the overflow container — shown in the overflow dropdown. */
+    readonly hiddenChips = computed<RoleChip[]>(() => {
+        const count = this.overflowDir()?.overflowCount() ?? 0;
+        const chips = this.roleChips();
+        return chips.slice(chips.length - count);
+    });
+
+    /** Tooltip text per chip: comma-joined user names currently assigned to that role. */
+    readonly chipTooltips = computed<Map<number, string>>(() => {
+        const tooltips = new Map<number, string>();
+        for (const row of this.selectedUsers()) {
+            const roleId = row['role'] as number | null;
+            if (roleId == null) continue;
+            const existing = tooltips.get(roleId);
+            const userName = (row['name'] as string) || (row['email'] as string);
+            tooltips.set(roleId, existing ? `${existing}, ${userName}` : userName);
+        }
+        return tooltips;
+    });
+
     readonly columns: AppTableColumnDef[] = [
         { key: 'user', label: 'User', width: '1fr' },
         { key: 'role', label: 'Role', width: '1fr' },
     ];
+
+    private destroyRef = inject(DestroyRef);
+    private toast = inject(ToastService);
+    private adminUserService = inject(AdminUserService);
+    private memberships = inject(MembershipsService);
+    private profileService = inject(ProfileService);
+    private permissionsService = inject(PermissionsService);
+    private rolesService = inject(RolesService);
+    private overlay = inject(Overlay);
+    private overlayPositionBuilder = inject(OverlayPositionBuilder);
+    private vcr = inject(ViewContainerRef);
+    private overflowOverlayRef: OverlayRef | null = null;
+    private recentlyRemovedUserIds = new Set<number>();
 
     ngOnInit(): void {
         if (!this.canManageMembers()) {
@@ -144,21 +219,24 @@ export class OrgMembersEditorComponent implements OnInit {
     }
 
     onSelection(items: TableRow[]): void {
-        const previouslySelectedIds = this.selectedUserIds();
+        const removedIds = this.recentlyRemovedUserIds;
+        this.recentlyRemovedUserIds = new Set();
+        const effectiveItems = items.filter((r) => !removedIds.has(r['id'] as number));
+        const previouslySelectedIds = new Set([...this.selectedUserIds(), ...removedIds]);
         const bulkRoleId = this.bulkRoleId();
-        let selection = items;
+        let selection = effectiveItems;
 
         if (bulkRoleId !== null) {
             // Only role-less rows that just joined the selection follow the bulk role,
             // so manual overrides and existing members keep the role they already have.
             const idsToAssign = new Set(
-                newRoleLessRows(items, previouslySelectedIds)
+                newRoleLessRows(effectiveItems, previouslySelectedIds)
                     .filter((r) => this.isRowEditable(r))
                     .map((r) => r['id'] as number)
             );
             if (idsToAssign.size) {
                 this.setRoleInTableData(idsToAssign, bulkRoleId);
-                selection = withRole(items, idsToAssign, bulkRoleId);
+                selection = withRole(effectiveItems, idsToAssign, bulkRoleId);
             }
         }
 
@@ -183,12 +261,61 @@ export class OrgMembersEditorComponent implements OnInit {
 
         const idsToAssign = new Set(
             this.selectedUsers()
-                .filter((r) => this.isRowEditable(r))
+                .filter((r) => r['role'] == null && this.isRowEditable(r))
                 .map((r) => r['id'] as number)
         );
         if (!idsToAssign.size) return;
         this.setRoleInTableData(idsToAssign, value);
         this.selectedUsers.update((rows) => withRole(rows, idsToAssign, value));
+    }
+
+    ngOnDestroy(): void {
+        this.closeOverflowMenu();
+    }
+
+    removeChip(roleId: number): void {
+        const userIdsToRemove = new Set(
+            this.selectedUsers()
+                .filter((r) => r['role'] === roleId)
+                .map((r) => r['id'] as number)
+        );
+        this.recentlyRemovedUserIds = userIdsToRemove;
+        this.selectedUsers.update((rows) => rows.filter((r) => !userIdsToRemove.has(r['id'] as number)));
+    }
+
+    openOverflowMenu(origin: HTMLElement): void {
+        if (this.overflowOverlayRef) {
+            this.closeOverflowMenu();
+            return;
+        }
+        const positionStrategy = this.overlayPositionBuilder
+            .flexibleConnectedTo(origin)
+            .withPositions([
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+            ])
+            .withPush(false);
+
+        this.overflowOverlayRef = this.overlay.create({
+            positionStrategy,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            hasBackdrop: true,
+            backdropClass: 'transparent-backdrop',
+            minWidth: 200,
+        });
+
+        this.overflowOverlayRef
+            .backdropClick()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.closeOverflowMenu());
+
+        this.overflowOverlayRef.attach(new TemplatePortal(this.overflowDropdown(), this.vcr));
+    }
+
+    closeOverflowMenu(): void {
+        this.overflowOverlayRef?.detach();
+        this.overflowOverlayRef?.dispose();
+        this.overflowOverlayRef = null;
     }
 
     /**

@@ -7,13 +7,19 @@ on:
         description: 'Select target server'
         required: true
         type: choice
+        # Not test3: its branch instance resets through the deploy's reset_database input, and its
+        # developer instance is never reset.
         options:
           - test2
-          - test3
       confirm_nuke:
         description: 'Type "NUKE" to confirm reset'
         required: true
         type: string
+
+# No token rights: both steps run local commands on the self-hosted runner and
+# never check out the repository or call the GitHub API. Declaring this keeps
+# the token's scope in the code instead of in the repository's default setting.
+permissions: {}
 
 jobs:
   nuke_database:
@@ -31,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd /home/developer/EpicStaff
+          cd "${APP_DIR:?APP_DIR is not set: add it to the .env of the self-hosted runner}"
           
           echo ">> Starting database reset on ${{ github.event.inputs.target_server }}..."
           

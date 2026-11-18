@@ -24,7 +24,9 @@ SNAPSHOT_ONLY_MODEL = "epicstaff-snapshot-reasoner"
 
 
 @pytest.fixture
-def snapshot_path(monkeypatch, tmp_path_factory):
+def snapshot_path(monkeypatch, settings, tmp_path_factory):
+    # The snapshot is read only with the refresh on; these tests are about reading it.
+    settings.LITELLM_MODEL_COST_REFRESH_ENABLED = True
     path = tmp_path_factory.mktemp("litellm_snapshot") / "litellm_model_cost_snapshot.json"
     monkeypatch.setattr(litellm, "model_cost", dict(litellm.model_cost))
     monkeypatch.setenv("LITELLM_MODEL_COST_SNAPSHOT_PATH", str(path))
@@ -227,7 +229,7 @@ def test_newer_snapshot_clears_the_cache(snapshot_path):
         ("azure_ai", "gpt-5.4-mini", ["none", "low", "medium", "high", "xhigh"]),
         ("azure_ai", "o3", ["low", "medium", "high"]),
         ("azure_ai", "claude-sonnet-4-6", ["none", "low", "medium", "high", "max"]),
-        ("azure_ai", "deepseek-r1", ["none", "low", "medium", "high"]),
+        ("azure_ai", "deepseek-r1", []),
         ("moonshot", "kimi-k3", ["low", "high", "max"]),
         ("openai", "gpt-4o", []),
     ],
