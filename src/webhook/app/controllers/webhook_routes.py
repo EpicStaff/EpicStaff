@@ -72,7 +72,7 @@ async def handle_webhook(
     # Body is read only after authentication so that anonymous callers cannot force the
     # service to buffer and parse a large request body on the single asyncio event loop.
     try:
-        body = await request.json()
+        payload = await request.json()
     except ValueError as e:
         # request.json() runs json.loads over the raw bytes: malformed JSON raises
         # JSONDecodeError and a body that is not valid UTF-8 raises UnicodeDecodeError.
@@ -80,7 +80,7 @@ async def handle_webhook(
         logger.warning(f"Webhook PATH: {custom_path} | CONFIG ID: {config_id} | invalid JSON body.")
         raise HTTPException(status_code=400, detail="Invalid JSON body") from e
 
-    if not isinstance(body, dict):
+    if not isinstance(payload, dict):
         logger.warning(
             f"Webhook PATH: {custom_path} | CONFIG ID: {config_id} | body is not a JSON object."
         )
@@ -89,7 +89,7 @@ async def handle_webhook(
     try:
         await redis.publish_webhook(
             path=custom_path,
-            payload=body,
+            payload=payload,
             config_id=config_id,
         )
     except NoWebhookSubscriberError as e:
