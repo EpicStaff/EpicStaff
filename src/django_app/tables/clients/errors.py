@@ -48,3 +48,18 @@ class ClientResourceNotFoundError(ClientError):
     status_code = 404
     public_detail = "The upstream resource was not found."
     code = "upstream_resource_not_found"
+
+
+class ClientConflictError(ClientError):
+    """Target service responded 409 — the resource is in a state that does not allow the request."""
+
+    status_code = 409
+    public_detail = "The upstream resource is not in a state that allows the request."
+    code = "upstream_resource_conflict"
+
+
+class KnowledgeGraphNotIndexedError(ClientConflictError):
+    """The graph RAG exists but has no index output yet; indexing resolves it."""
+
+    public_detail = "The graph has not been indexed yet. Run indexing to view it."
+    code = "graph_not_indexed"
