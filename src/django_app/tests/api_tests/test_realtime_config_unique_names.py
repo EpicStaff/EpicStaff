@@ -125,3 +125,60 @@ def test_same_name_in_another_org_is_allowed(acme_client, beta, model, route, me
 
     assert response.status_code == 201
     assert model.objects.filter(custom_name="dup").count() == 2
+
+
+@pytest.mark.parametrize("model, route, message", PROVIDERS)
+def test_preexisting_duplicates_stay_readable(acme_client, acme, model, route, message):
+    first = model.objects.create(custom_name="dup", org=acme)
+    second = model.objects.create(custom_name="dup", org=acme)
+
+    for config in (first, second):
+        response = acme_client.get(_detail_url(route, config.pk))
+        assert response.status_code == 200
+        assert response.data["custom_name"] == "dup"
+
+
+@pytest.mark.parametrize("model, route, message", PROVIDERS)
+def test_put_keeping_a_duplicated_name_is_400(acme_client, acme, model, route, message):
+    model.objects.create(custom_name="dup", org=acme)
+    config = model.objects.create(custom_name="dup", org=acme)
+
+    response = acme_client.put(
+        _detail_url(route, config.pk), {"custom_name": "dup"}, format="json"
+    )
+
+    assert response.status_code == 400
+    assert response.data["message"] == f"custom_name: {message}"
+
+
+@pytest.mark.parametrize("model, route, message", PROVIDERS)
+def test_put_renaming_a_duplicated_config_to_a_free_name_is_200(
+    acme_client, acme, model, route, message
+):
+    model.objects.create(custom_name="dup", org=acme)
+    config = model.objects.create(custom_name="dup", org=acme)
+
+    response = acme_client.put(
+        _detail_url(route, config.pk), {"custom_name": "unique"}, format="json"
+    )
+
+    assert response.status_code == 200
+    config.refresh_from_db()
+    assert config.custom_name == "unique"
+    assert model.objects.filter(org=acme, custom_name="dup").count() == 1
+
+
+@pytest.mark.parametrize("model, route, message", PROVIDERS)
+def test_patch_without_custom_name_on_a_duplicated_config_is_200(
+    acme_client, acme, model, route, message
+):
+    model.objects.create(custom_name="dup", org=acme)
+    config = model.objects.create(custom_name="dup", org=acme)
+
+    response = acme_client.patch(
+        _detail_url(route, config.pk), {"model_name": config.model_name}, format="json"
+    )
+
+    assert response.status_code == 200
+    config.refresh_from_db()
+    assert config.custom_name == "dup"

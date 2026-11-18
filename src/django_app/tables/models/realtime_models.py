@@ -21,18 +21,18 @@ class AudioFormatChoices(models.TextChoices):
 # ---------------------------------------------------------------------------
 # Provider-specific realtime configuration models
 # ---------------------------------------------------------------------------
+# Unlike LLMConfig, EmbeddingConfig and SystemOneConfig, these models have no DB
+# unique constraint on (org, custom_name). Existing installs may already hold
+# duplicate names that we chose not to rename, so uniqueness is enforced only by
+# the serializer validator. Postgres cannot add a unique constraint that skips
+# existing rows, so adding one later needs a data migration that renames the
+# duplicates first.
 
 
 class OpenAIRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "openai_realtime_config"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["org", "custom_name"],
-                name="unique_openairealtimeconfig_name_per_org",
-            ),
-        ]
 
     custom_name = models.CharField(max_length=250)
     api_key_secret = models.ForeignKey(
@@ -68,12 +68,6 @@ class ElevenLabsRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Mode
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "elevenlabs_realtime_config"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["org", "custom_name"],
-                name="unique_elevenlabsrealtimeconfig_name_per_org",
-            ),
-        ]
 
     custom_name = models.CharField(max_length=250)
     api_key_secret = models.ForeignKey(
@@ -103,12 +97,6 @@ class GeminiRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "gemini_realtime_config"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["org", "custom_name"],
-                name="unique_geminirealtimeconfig_name_per_org",
-            ),
-        ]
 
     custom_name = models.CharField(max_length=250)
     api_key_secret = models.ForeignKey(
