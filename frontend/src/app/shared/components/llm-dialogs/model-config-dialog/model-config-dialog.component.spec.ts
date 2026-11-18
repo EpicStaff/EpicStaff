@@ -7,7 +7,6 @@ import {
     CatalogProvider,
     EmbeddingConfig,
     GetLlmConfigRequest,
-    LLMModel,
     ModelSchemas,
     Secret,
 } from '@shared/models';
@@ -106,6 +105,8 @@ const STORED_CONFIG: GetLlmConfigRequest = {
     id: 3,
     custom_name: 'support assistant',
     model: 11,
+    provider: 'openai',
+    model_name: 'gpt-large',
     api_key_secret_id: null,
     parameters: { temperature: 0.2, max_tokens: 10000, seed: 42 },
     connection: {},
@@ -121,18 +122,6 @@ const STORED_CONFIG: GetLlmConfigRequest = {
     created_by: null,
     last_edited_by: null,
     last_edited_at: null,
-};
-
-const STORED_MODEL: LLMModel = {
-    id: 11,
-    name: 'gpt-large',
-    description: null,
-    is_visible: true,
-    is_custom: false,
-    predefined: true,
-    supports_reasoning: false,
-    reasoning_efforts: [],
-    llm_provider: 1,
 };
 
 /** The fields the catalog replaced; no write may carry them any more. */
@@ -195,8 +184,6 @@ function renderEdit(config: GetLlmConfigRequest = STORED_CONFIG, schemas: ModelS
     const rendered = render({ kind: 'llm', configId: config.id });
     answer(rendered, '/api/ai-models/providers/', [OPENAI]);
     answer(rendered, '/api/llm-configs/3/', config);
-    answer(rendered, '/api/llm-models/11/', STORED_MODEL);
-    answer(rendered, '/api/providers/', { results: [{ id: 1, name: 'openai' }] });
     answer(rendered, '/api/ai-models/models/', [LARGE_MODEL, SMALL_MODEL], { provider: 'openai' });
     answer(rendered, '/api/ai-models/schemas/', schemas, { model: 'gpt-large' });
     return rendered;
@@ -370,6 +357,20 @@ describe('ModelConfigDialogComponent', () => {
     });
 
     describe('a stored config opened for editing', () => {
+        it('shows the provider and the model the config names itself, without looking its model up', () => {
+            const rendered = renderEdit();
+
+            expect(element(rendered.fixture).querySelector('.dialog__provider .selector__btn')!.textContent).toContain(
+                'OpenAI'
+            );
+            expect(element(rendered.fixture).querySelector('.dialog__model .selector__btn')!.textContent).toContain(
+                'gpt-large'
+            );
+            rendered.http.expectNone(
+                (candidate) => candidate.url.startsWith('/api/llm-models/') || candidate.url === '/api/providers/'
+            );
+        });
+
         it('is fitted to its own model, lists what that changed, and saves without the unsupported setting', () => {
             const schemas: ModelSchemas = {
                 ...LARGE_SCHEMAS,
@@ -612,6 +613,8 @@ describe('ModelConfigDialogComponent', () => {
             id: 5,
             custom_name: 'search index',
             model: 21,
+            provider: 'openai',
+            model_name: 'embed-large',
             api_key_secret_id: 3,
             is_visible: true,
             extra_headers: {},
@@ -655,10 +658,6 @@ describe('ModelConfigDialogComponent', () => {
             const rendered = render({ kind: 'embedding', configId: 5 }, [PROD_KEY]);
             answer(rendered, '/api/ai-models/providers/', [OPENAI], { kind: 'embedding' });
             answer(rendered, '/api/embedding-configs/5/', STORED_EMBEDDING);
-            answer(rendered, '/api/embedding-models/', {
-                results: [{ id: 21, name: 'embed-large', embedding_provider: 2 }],
-            });
-            answer(rendered, '/api/providers/', { results: [{ id: 2, name: 'openai' }] });
             answer(rendered, '/api/ai-models/models/', [], { provider: 'openai' });
             answer(rendered, '/api/ai-models/schemas/', EMBEDDING_SCHEMAS, { model: 'embed-large' });
 

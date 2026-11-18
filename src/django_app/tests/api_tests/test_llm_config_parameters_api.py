@@ -92,7 +92,7 @@ def test_create_with_a_model_id_and_no_parameters_stores_the_model_defaults(clie
     assert response.data["parameters"] == GPT_4O_DEFAULTS
     assert response.data["connection"] == {}
     assert (response.data["needs_review"], response.data["review_reasons"]) == (False, [])
-    assert "provider" not in response.data and "model_name" not in response.data
+    assert (response.data["provider"], response.data["model_name"]) == ("openai", "gpt-4o")
     assert LLMConfig.objects.get(id=response.data["id"]).parameters == GPT_4O_DEFAULTS
 
 
@@ -270,8 +270,8 @@ def test_half_a_pair_gets_400_naming_the_missing_half(client, gpt_4o, body, mess
     assert response.data["message"].startswith(message_start)
 
 
-def test_model_id_and_pair_together_get_400(client, gpt_4o):
-    response = _create(client, model=gpt_4o.id, provider="openai", model_name="gpt-4o")
+def test_model_id_and_a_pair_naming_another_model_get_400(client, gpt_4o):
+    response = _create(client, model=gpt_4o.id, provider="openai", model_name="gpt-4o-mini")
 
     assert response.status_code == 400
     assert response.data["message"].startswith("model: ")

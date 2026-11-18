@@ -5,6 +5,7 @@ and the flat fields the catalog replaced are refused by name."""
 from collections.abc import Mapping
 
 from django.db import transaction
+from drf_spectacular.utils import extend_schema_field
 from rbac.access.asserts import assert_org_permission
 from rbac.authorship.policy import resolve_author
 from rbac.models.enums import Permission, ResourceType
@@ -53,6 +54,22 @@ def reject_removed_fields(data: object, field_names: tuple[str, ...]) -> None:
         raise serializers.ValidationError({name: [_REMOVED_FIELD_MESSAGE] for name in sent})
 
 
+@extend_schema_field({"type": "string", "nullable": True})
+class _ModelIdentityField(serializers.CharField):
+    """On write, names the config's model; on read, the stored model's provider or model name.
+
+    Reads null when the config has no model (or its model has no provider). Null is
+    accepted on write so a client can send a response back as it read it; the parent
+    serializer resolves or checks written values in `validate`.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(required=False, allow_null=True, **kwargs)
+
+    def get_attribute(self, config):
+        return self.parent._model_identity(config.model)[self.field_name]
+
+
 class CatalogConfigFieldsMixin(serializers.Serializer):
     """Check a config's `parameters` and `connection` against the model catalog on write.
 
@@ -61,10 +78,13 @@ class CatalogConfigFieldsMixin(serializers.Serializer):
     keeps the provider may leave out a required connection field the stored config already
     lacked: that config shows "needs review" instead.
 
-    A config names its model either by `model` (a row id) or by the write-only pair
+    A config names its model either by `model` (a row id) or by the pair
     `provider` + `model_name`, resolved by `CatalogModelResolver` in the active
     organization; a new custom row it returns is saved in the same transaction as the
-    config. A create without `parameters` stores the model's
+    config. Reads return the pair as stored (the provider row's name and the model row's
+    name) next to `model`, so a client needs no model list to show a config. A write may
+    send that pair back with `model`: it is ignored when it names that same model, and
+    refused when it names another. A create without `parameters` stores the model's
     defaults. `needs_review` and `review_reasons` say how far a stored config has drifted
     from the catalog.
 
@@ -75,8 +95,8 @@ class CatalogConfigFieldsMixin(serializers.Serializer):
     model_kind: ModelKind
     provider_field: str
 
-    provider = serializers.CharField(write_only=True, required=False)
-    model_name = serializers.CharField(write_only=True, required=False)
+    provider = _ModelIdentityField()
+    model_name = _ModelIdentityField()
     needs_review = serializers.SerializerMethodField()
     review_reasons = serializers.SerializerMethodField()
 
@@ -86,10 +106,13 @@ class CatalogConfigFieldsMixin(serializers.Serializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        provider = attrs.pop("provider", None)
-        model_name = attrs.pop("model_name", None)
-        if provider is not None or model_name is not None:
-            attrs["model"] = self._model_named(attrs, provider, model_name)
+        sent_pair = {name: attrs.pop(name) for name in ("provider", "model_name") if name in attrs}
+        if sent_pair and "model" in attrs:
+            self._reject_pair_naming_another_model(attrs["model"], sent_pair)
+        elif sent_pair:
+            attrs["model"] = self._model_named(
+                sent_pair.get("provider"), sent_pair.get("model_name")
+            )
         if self.instance is None or self._changes_catalog_fields(attrs):
             self._validate_against_catalog(attrs)
         return attrs
@@ -150,11 +173,18 @@ class CatalogConfigFieldsMixin(serializers.Serializer):
             stored_connection=self.instance.connection if keeps_provider else None,
         )
 
-    def _model_named(self, attrs: dict, provider: str | None, model_name: str | None):
-        if "model" in attrs:
+    def _reject_pair_naming_another_model(self, model, sent_pair: dict) -> None:
+        identity = self._model_identity(model)
+        if any(value != identity[name] for name, value in sent_pair.items()):
             raise serializers.ValidationError(
-                {"model": ["Send either model or provider and model_name, not both."]}
+                {
+                    "model": [
+                        "provider and model_name must name the same model as model; send model alone to change it."
+                    ]
+                }
             )
+
+    def _model_named(self, provider: str | None, model_name: str | None):
         missing = [
             name
             for name, value in (("provider", provider), ("model_name", model_name))
@@ -186,6 +216,11 @@ class CatalogConfigFieldsMixin(serializers.Serializer):
         model = validated_data.get("model")
         if model is not None:
             validated_data["model"] = CatalogModelResolver().save_if_new(model)
+
+    def _model_identity(self, model) -> dict[str, str | None]:
+        """Return `model` as a response names it: provider and model name, null when absent."""
+        provider, model_name = self._catalog_names(model)
+        return {"provider": provider or None, "model_name": model_name or None}
 
     def _catalog_names(self, model) -> tuple[str, str]:
         """Return the provider and model name the catalog knows `model` by; empty without one."""

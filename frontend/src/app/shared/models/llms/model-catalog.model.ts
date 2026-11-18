@@ -40,6 +40,10 @@ export interface ConfigFieldError extends SchemaFieldError {
 
 /** The catalog-backed fields a stored LLM or embedding config carries. */
 export interface CatalogConfigFields {
+    /** Read-only: the name of the model's provider row (`openai`, `google_ai`); null when the config has no model. */
+    provider: string | null;
+    /** Read-only: the name of the config's model row; null when the config has no model. */
+    model_name: string | null;
     /** The model's settings, every one stored explicitly. */
     parameters: Record<string, unknown>;
     /** The provider's connection fields (endpoint, region, …); a secret one holds an `epicstaff_secret(<name>)` marker. */

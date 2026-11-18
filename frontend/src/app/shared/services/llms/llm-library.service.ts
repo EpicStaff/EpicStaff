@@ -1,6 +1,7 @@
 import { computed, inject, Injectable } from '@angular/core';
 import { PROVIDER_ICON_PATHS } from '@shared/constants';
 import {
+    CatalogConfigFields,
     EmbeddingModel,
     GetRealtimeTranscriptionModelRequest,
     LlmLibraryProviderGroup,
@@ -28,6 +29,40 @@ type AnyModel = LLMModel | EmbeddingModel | RealtimeModel | GetRealtimeTranscrip
 export interface ProviderWithModels<T extends { id: number; name: string } = AnyModel> {
     provider: LLMProvider;
     models: T[];
+}
+
+/** How a library card names its config's provider and model. */
+interface ModelNames {
+    providerName: string;
+    modelName: string;
+}
+
+/** Groups the cards of configs that have no model. */
+const UNKNOWN_PROVIDER = 'unknown';
+/** The model line of a card whose config has no model. */
+const NO_MODEL = 'No model';
+
+/** An LLM or embedding config names its own model; one with no model goes under an "Unknown" provider. */
+function ownModelNames(config: CatalogConfigFields): ModelNames {
+    return { providerName: config.provider ?? UNKNOWN_PROVIDER, modelName: config.model_name ?? NO_MODEL };
+}
+
+/**
+ * Names a realtime or transcription config's model by its id in the model and provider lists, which are small for
+ * these types; null leaves out a config whose model or provider is not listed.
+ */
+function joinedModelNames<TModel extends { id: number; name: string }>(
+    models: TModel[],
+    providers: LLMProvider[],
+    getProviderId: (model: TModel) => number
+): (modelId: number) => ModelNames | null {
+    const modelMap = new Map(models.map((m) => [m.id, m]));
+    const providerMap = new Map(providers.map((p) => [p.id, p]));
+    return (modelId) => {
+        const model = modelMap.get(modelId);
+        const provider = model && providerMap.get(getProviderId(model));
+        return model && provider ? { providerName: provider.name, modelName: model.name } : null;
+    };
 }
 
 /** The config's temperature setting; null when it has none, so its card shows none. */
@@ -72,16 +107,10 @@ export class LLMLibraryService {
         [ModelTypes.TRANSCRIPTION]: (m) => ((m as GetRealtimeTranscriptionModelRequest).is_custom ? 0 : 1),
     };
 
-    private buildProviderGroups<
-        TConfig extends { id: number; custom_name: string },
-        TModel extends { id: number; name: string },
-    >(
+    private buildProviderGroups<TConfig extends { id: number; custom_name: string }>(
         configs: TConfig[],
-        models: TModel[],
-        providers: LLMProvider[],
         type: ModelTypes,
-        getModelId: (config: TConfig) => number,
-        getProviderId: (model: TModel) => number,
+        getModelNames: (config: TConfig) => ModelNames | null,
         getTemperature: (config: TConfig) => number | null,
         getTags: (config: TConfig) => Tag[],
         getReview: (config: TConfig) => { needs_review: boolean; review_reasons: string[] } = () => ({
@@ -89,21 +118,17 @@ export class LLMLibraryService {
             review_reasons: [],
         })
     ): LlmLibraryProviderGroup[] {
-        const modelMap = new Map(models.map((m) => [m.id, m]));
-        const providerMap = new Map(providers.map((p) => [p.id, p]));
         const groupsMap = new Map<string, LlmLibraryProviderGroup>();
 
         for (const config of configs) {
-            const model = modelMap.get(getModelId(config));
-            if (!model) continue;
-            const provider = providerMap.get(getProviderId(model));
-            if (!provider) continue;
-            const groupKey = `${type}-${provider.id}`;
+            const names = getModelNames(config);
+            if (!names) continue;
+            const groupKey = `${type}-${names.providerName}`;
             if (!groupsMap.has(groupKey)) {
-                const iconKey = provider.name.toLowerCase();
+                const iconKey = names.providerName.toLowerCase();
                 groupsMap.set(groupKey, {
                     id: groupKey,
-                    providerName: provider.name,
+                    providerName: names.providerName,
                     providerIconPath: PROVIDER_ICON_PATHS[iconKey] ?? PROVIDER_ICON_PATHS['default'],
                     models: [],
                     configType: type,
@@ -112,7 +137,7 @@ export class LLMLibraryService {
             groupsMap.get(groupKey)!.models.push({
                 id: config.id,
                 customName: config.custom_name,
-                modelName: model.name,
+                modelName: names.modelName,
                 tags: getTags(config),
                 temperature: getTemperature(config),
                 usedByCount: null,
@@ -127,47 +152,45 @@ export class LLMLibraryService {
 
     public readonly providerGroups = computed<LlmLibraryProviderGroup[]>(() => {
         const providersByType = this.providersStorage.providersByType();
+        const realtimeModelNames = joinedModelNames(
+            this.realtimeModelsStorage.models(),
+            providersByType.get(ModelTypes.REALTIME) ?? [],
+            (m) => m.provider
+        );
+        const transcriptionModelNames = joinedModelNames(
+            this.transcriptionModelsStorage.models(),
+            providersByType.get(ModelTypes.TRANSCRIPTION) ?? [],
+            (m) => m.provider
+        );
 
         return [
             ...this.buildProviderGroups(
                 this.configStorage.configs(),
-                this.llmModelsStorage.models(),
-                providersByType.get(ModelTypes.LLM) ?? [],
                 ModelTypes.LLM,
-                (c) => c.model,
-                (m) => m.llm_provider,
+                ownModelNames,
                 temperatureOf,
                 (c) => c.tags,
                 (c) => c
             ),
             ...this.buildProviderGroups(
                 this.embeddingConfigStorage.configs(),
-                this.embeddingModelsStorage.models(),
-                providersByType.get(ModelTypes.EMBEDDING) ?? [],
                 ModelTypes.EMBEDDING,
-                (c) => c.model,
-                (m) => m.embedding_provider!,
+                ownModelNames,
                 temperatureOf,
                 () => [],
                 (c) => c
             ),
             ...this.buildProviderGroups(
                 this.realtimeConfigStorage.configs(),
-                this.realtimeModelsStorage.models(),
-                providersByType.get(ModelTypes.REALTIME) ?? [],
                 ModelTypes.REALTIME,
-                (c) => c.realtime_model,
-                (m) => m.provider,
+                (c) => realtimeModelNames(c.realtime_model),
                 () => 0,
                 () => []
             ),
             ...this.buildProviderGroups(
                 this.transcriptionConfigStorage.configs(),
-                this.transcriptionModelsStorage.models(),
-                providersByType.get(ModelTypes.TRANSCRIPTION) ?? [],
                 ModelTypes.TRANSCRIPTION,
-                (c) => c.realtime_transcription_model,
-                (m) => m.provider,
+                (c) => transcriptionModelNames(c.realtime_transcription_model),
                 () => 0,
                 () => []
             ),
@@ -175,19 +198,11 @@ export class LLMLibraryService {
     });
 
     loadLlmData(): Observable<void> {
-        return forkJoin({
-            configs: this.configStorage.getAllConfigs(),
-            models: this.llmModelsStorage.getModels(),
-            providers: this.providersStorage.getProvidersByType(ModelTypes.LLM),
-        }).pipe(map(() => void 0));
+        return this.configStorage.getAllConfigs().pipe(map(() => void 0));
     }
 
     loadEmbeddingData(): Observable<void> {
-        return forkJoin({
-            configs: this.embeddingConfigStorage.getAllConfigs(),
-            models: this.embeddingModelsStorage.getModels(),
-            providers: this.providersStorage.getProvidersByType(ModelTypes.EMBEDDING),
-        }).pipe(map(() => void 0));
+        return this.embeddingConfigStorage.getAllConfigs().pipe(map(() => void 0));
     }
 
     loadRealtimeData(): Observable<void> {

@@ -18,15 +18,11 @@ import {
     JsonSchemaProperty,
     ModelKind,
     ModelSchemas,
-    ModelTypes,
     REASONING_EFFORT_LABELS,
 } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
-    EmbeddingModelsStorageService,
     LlmConfigStorageService,
-    LlmModelsStorageService,
-    LlmProvidersStorageService,
     ModelCatalogService,
     SecretsStorageService,
 } from '@shared/services';
@@ -38,7 +34,7 @@ import {
     perTokenToPerMillion,
     trackPickedSecrets,
 } from '@shared/utils';
-import { catchError, debounceTime, EMPTY, forkJoin, map, Observable, of, startWith, Subject, switchMap } from 'rxjs';
+import { catchError, debounceTime, EMPTY, map, Observable, of, startWith, Subject, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { InputNumberComponent } from '../../app-input-number/input-number.component';
@@ -79,7 +75,6 @@ interface LoadedConfig {
 }
 
 const KIND_LABELS: Record<ModelConfigKind, string> = { llm: 'LLM', embedding: 'Embedding' };
-const MODEL_TYPES: Record<ModelConfigKind, ModelTypes> = { llm: ModelTypes.LLM, embedding: ModelTypes.EMBEDDING };
 /** Select options shown by name instead of their raw value. */
 const OPTION_LABELS: Record<string, Record<string, string>> = { reasoning_effort: REASONING_EFFORT_LABELS };
 const MODEL_SEARCH_DEBOUNCE_MS = 300;
@@ -222,9 +217,6 @@ export class ModelConfigDialogComponent implements OnInit {
     private readonly catalog = inject(ModelCatalogService);
     private readonly llmConfigStorage = inject(LlmConfigStorageService);
     private readonly embeddingConfigStorage = inject(EmbeddingConfigStorageService);
-    private readonly llmModelsStorage = inject(LlmModelsStorageService);
-    private readonly embeddingModelsStorage = inject(EmbeddingModelsStorageService);
-    private readonly providersStorage = inject(LlmProvidersStorageService);
     private readonly secretsStorage = inject(SecretsStorageService);
     private readonly toast = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
@@ -369,8 +361,6 @@ export class ModelConfigDialogComponent implements OnInit {
             .subscribe({
                 next: () => {
                     this.isSaving.set(false);
-                    // A typed model name may have added a custom model row the config lists must know.
-                    if ('provider' in reference) this.refreshModels();
                     this.toast.success(
                         this.isEditMode ? 'Configuration updated successfully.' : 'Configuration created successfully.'
                     );
@@ -425,38 +415,15 @@ export class ModelConfigDialogComponent implements OnInit {
             });
     }
 
-    /** The config, and the catalog names of its provider and model, read from its model row. */
+    /** The config, and the catalog names of its provider and model, which it carries itself. */
     private configWithModel(
         configId: number
     ): Observable<{ config: GetLlmConfigRequest | EmbeddingConfig; provider: string; modelName: string }> {
-        const providers$ = this.providersStorage.getProvidersByType(MODEL_TYPES[this.kind]);
-        if (this.isLlm) {
-            return this.llmConfigStorage.getConfigById(configId).pipe(
-                switchMap((config) =>
-                    forkJoin({ model: this.llmModelsStorage.getModelById(config.model), providers: providers$ }).pipe(
-                        map(({ model, providers }) => ({
-                            config,
-                            modelName: model.name,
-                            provider: providers.find((provider) => provider.id === model.llm_provider)?.name ?? '',
-                        }))
-                    )
-                )
-            );
-        }
-        return this.embeddingConfigStorage.getConfigById(configId).pipe(
-            switchMap((config) =>
-                forkJoin({ models: this.embeddingModelsStorage.getModels(), providers: providers$ }).pipe(
-                    map(({ models, providers }) => {
-                        const model = models.find((candidate) => candidate.id === config.model);
-                        return {
-                            config,
-                            modelName: model?.name ?? '',
-                            provider:
-                                providers.find((provider) => provider.id === model?.embedding_provider)?.name ?? '',
-                        };
-                    })
-                )
-            )
+        const config$: Observable<GetLlmConfigRequest | EmbeddingConfig> = this.isLlm
+            ? this.llmConfigStorage.getConfigById(configId)
+            : this.embeddingConfigStorage.getConfigById(configId);
+        return config$.pipe(
+            map((config) => ({ config, provider: config.provider ?? '', modelName: config.model_name ?? '' }))
         );
     }
 
@@ -594,13 +561,6 @@ export class ModelConfigDialogComponent implements OnInit {
         return this.embeddingConfigStorage
             .configs()
             .some((config) => config.custom_name.toLowerCase() === normalized && config.id !== this.configId);
-    }
-
-    private refreshModels(): void {
-        const models$: Observable<unknown> = this.isLlm
-            ? this.llmModelsStorage.getModels(undefined, undefined, true)
-            : this.embeddingModelsStorage.getModels(true);
-        models$.subscribe({ error: () => undefined });
     }
 }
 
