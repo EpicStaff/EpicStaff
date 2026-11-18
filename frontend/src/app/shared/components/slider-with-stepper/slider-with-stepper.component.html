@@ -46,6 +46,9 @@
                     (keydown.enter)="onValueInputKeydown($event)"
                     (blur)="onValueInputChange($event)"
                 />
+                @if (suffix()) {
+                    <span class="slider-stepper__suffix">{{ suffix() }}</span>
+                }
 
                 <button
                     type="button"

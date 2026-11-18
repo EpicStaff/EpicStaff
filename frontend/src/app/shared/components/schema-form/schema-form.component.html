@@ -1,0 +1,31 @@
+@for (group of groups(); track group.key) {
+    <section class="schema-form__group">
+        @if (group.label) {
+            <h4 class="schema-form__group-title text-body-large">{{ group.label }}</h4>
+        }
+        @for (field of group.fields; track field.name) {
+            <div
+                class="schema-form__field"
+                [attr.data-field]="field.name"
+            >
+                <app-schema-field
+                    class="schema-form__control"
+                    [property]="field.property"
+                    [control]="control(field.name)"
+                    [required]="field.required"
+                    [error]="fieldErrors()[field.name] ?? ''"
+                    [fieldId]="fieldId(field.name)"
+                    [optionLabels]="optionLabels()[field.name] ?? {}"
+                />
+                @if (field.resettable && !isDefault(field)) {
+                    <app-activate-button
+                        class="schema-form__reset"
+                        icon="refresh"
+                        [tooltip]="'Reset ' + (field.property.title ?? field.name) + ' to default'"
+                        (triggered)="resetField(field.name)"
+                    />
+                }
+            </div>
+        }
+    </section>
+}

@@ -120,6 +120,16 @@
         }
     }
 
+    &__suffix {
+        display: flex;
+        align-items: center;
+        padding-right: 4px;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--color-text-secondary);
+    }
+
     &__track-wrapper {
         position: relative;
         width: 100%;

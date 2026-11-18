@@ -109,6 +109,24 @@
         color: var(--fog-alpha-60);
     }
 
+    // The attention note before the section's Add (Figma: orange, 12px).
+    .section-review {
+        display: inline-flex;
+        flex-shrink: 0;
+        align-items: center;
+        gap: 4px;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--color-ks-status-processing);
+    }
+
+    // At the row's end, also in select mode, where the heading no longer fills the row.
+    .section-add {
+        flex-shrink: 0;
+        margin-left: auto;
+    }
+
     // Padding only while open: it moves with the collapse (see styles/_collapsible.scss).
     .section-body {
         display: flex;

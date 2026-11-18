@@ -3,7 +3,7 @@ import { ConnectedPosition } from '@angular/cdk/overlay';
 import { Component, ElementRef, output, viewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-/** The ⋮ button and its "View Details" menu of the LLM, embedding and voice config cards in the LLM Library. */
+/** The ⋮ button and its "View Details" menu of the LLM, embedding and voice config cards on the AI Models page. */
 @Component({
     selector: 'app-config-card-more-menu',
     imports: [MatTooltipModule, CdkMenuTrigger, CdkMenu, CdkMenuItem],

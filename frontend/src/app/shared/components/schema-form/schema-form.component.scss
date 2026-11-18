@@ -1,0 +1,33 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.schema-form {
+    &__group {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    &__group-title {
+        margin: 0;
+        color: var(--color-text-primary);
+    }
+
+    &__field {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    &__control {
+        flex: 1;
+        min-width: 0;
+    }
+
+    &__reset {
+        flex-shrink: 0;
+    }
+}

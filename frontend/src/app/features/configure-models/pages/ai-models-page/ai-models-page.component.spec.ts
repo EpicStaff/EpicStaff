@@ -1,9 +1,11 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { DebugElement, signal } from '@angular/core';
+import { Component, DebugElement, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
-import { AuthorshipDetailsDialogService } from '@shared/components';
+import { ActivatedRoute } from '@angular/router';
+import { AuthorshipDetailsDialogService, ModelConfigDialogComponent } from '@shared/components';
 import {
     ActionCode,
     ElevenLabsRealtimeConfig,
@@ -29,17 +31,18 @@ import { EMPTY, of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { ConfigCardMoreMenuComponent } from '../../components/config-card-more-menu/config-card-more-menu.component';
+import { DefaultLlmsSectionComponent } from '../../components/default-llms-section/default-llms-section.component';
+import { LlmLibraryCardComponent } from '../../components/llm-library-card/llm-library-card.component';
+import { RealtimeConfigDialogComponent } from '../../components/realtime-config-dialog/realtime-config-dialog.component';
+import { RealtimeProvider } from '../../components/realtime-config-form/realtime-config-form.component';
+import { SystemOneConfigDialogComponent } from '../../components/system-one-config-dialog/system-one-config-dialog.component';
+import { GetDefaultModelsResponse } from '../../models/default-models.model';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
-import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
-import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
-import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
-import { RealtimeConfigDialogComponent } from '../realtime-config-dialog/realtime-config-dialog.component';
-import { RealtimeProvider } from '../realtime-config-form/realtime-config-form.component';
-import { SystemOneConfigDialogComponent } from '../system-one-config-dialog/system-one-config-dialog.component';
-import { LlmLibrarySectionComponent } from './llm-library-section.component';
+import { AiModelsPageComponent } from './ai-models-page.component';
 
 // An LLM config and an embedding config may share an id; the card's config type decides which one is meant.
 const SHARED_ID = 3;
@@ -52,16 +55,11 @@ const LLM_CONFIG: GetLlmConfigRequest = {
     custom_name: 'gpt-4.1-chat',
     model: 10,
     api_key_secret_id: null,
-    temperature: 0.7,
-    top_p: null,
-    stop: null,
-    max_tokens: null,
-    presence_penalty: null,
-    frequency_penalty: null,
-    logit_bias: null,
-    seed: null,
+    parameters: { temperature: 0.7 },
+    connection: {},
+    needs_review: false,
+    review_reasons: [],
     timeout: null,
-    reasoning_effort: null,
     is_visible: true,
     input_cost_per_token: null,
     output_cost_per_token: null,
@@ -76,7 +74,10 @@ const EMBEDDING_CONFIG: EmbeddingConfig = {
     id: SHARED_ID,
     custom_name: 'text-embedding-3',
     model: 20,
-    task_type: 'retrieval_document',
+    parameters: { task_type: 'retrieval_document' },
+    connection: {},
+    needs_review: false,
+    review_reasons: [],
     api_key_secret_id: null,
     is_visible: true,
     extra_headers: {},
@@ -167,13 +168,39 @@ function libraryModel(configType: ModelTypes, id: number): LlmLibraryModel {
         temperature: 0.7,
         usedByCount: null,
         configType,
-        isDeprecated: false,
+        needsReview: false,
+        reviewReasons: [],
     };
 }
 
-function providerGroup(configType: ModelTypes, models: LlmLibraryModel[]): LlmLibraryProviderGroup {
-    return { id: `openai-${configType}`, providerName: 'OpenAI', providerIconPath: 'openai', models, configType };
+function providerGroup(
+    configType: ModelTypes,
+    models: LlmLibraryModel[],
+    providerName = 'OpenAI'
+): LlmLibraryProviderGroup {
+    return {
+        id: `${providerName}-${configType}`,
+        providerName,
+        providerIconPath: providerName.toLowerCase(),
+        models,
+        configType,
+    };
 }
+
+const NO_DEFAULTS: GetDefaultModelsResponse = {
+    id: 1,
+    agent_llm_config: null,
+    agent_fcm_llm_config: null,
+    voice_llm_config: null,
+    transcription_llm_config: null,
+    project_manager_llm_config: null,
+    memory_embedding_config: null,
+    memory_llm_config: null,
+};
+
+/** The Default Models body loads and saves on its own; the page only places it. */
+@Component({ selector: 'app-default-llms-section', template: '' })
+class DefaultLlmsSectionStubComponent {}
 
 // The header buttons collapse on overflow and observe their size; jsdom has no ResizeObserver.
 class ResizeObserverStub {
@@ -195,9 +222,23 @@ function render(
         voiceConfigs = [],
         systemOneConfigs = [],
         grantedActions = [],
-    }: { voiceConfigs?: VoiceConfig[]; systemOneConfigs?: SystemOneConfig[]; grantedActions?: ActionCode[] } = {}
+        providerGroups,
+        defaults = NO_DEFAULTS,
+        fragment = null,
+        expandAll = true,
+    }: {
+        voiceConfigs?: VoiceConfig[];
+        systemOneConfigs?: SystemOneConfig[];
+        grantedActions?: ActionCode[];
+        /** Replaces the one OpenAI group per config type built from `models`. */
+        providerGroups?: LlmLibraryProviderGroup[];
+        defaults?: GetDefaultModelsResponse;
+        fragment?: string | null;
+        /** Opens every section, as clicking each heading does; they start collapsed. */
+        expandAll?: boolean;
+    } = {}
 ): {
-    fixture: ComponentFixture<LlmLibrarySectionComponent>;
+    fixture: ComponentFixture<AiModelsPageComponent>;
     open: ReturnType<typeof vi.fn>;
     openDialog: ReturnType<typeof vi.fn>;
     runBulkDelete: ReturnType<typeof vi.fn>;
@@ -207,12 +248,13 @@ function render(
     const runBulkDelete = vi.fn(() => EMPTY);
     const libraryService = {
         providerGroups: signal(
-            [ModelTypes.LLM, ModelTypes.EMBEDDING].map((type) =>
-                providerGroup(
-                    type,
-                    models.filter((model) => model.configType === type)
+            providerGroups ??
+                [ModelTypes.LLM, ModelTypes.EMBEDDING].map((type) =>
+                    providerGroup(
+                        type,
+                        models.filter((model) => model.configType === type)
+                    )
                 )
-            )
         ),
         loadLlmData: () => of(undefined),
         loadEmbeddingData: () => of(undefined),
@@ -242,7 +284,15 @@ function render(
             },
             { provide: AuthorshipDetailsDialogService, useValue: { open } },
             { provide: BulkDeleteService, useValue: { run: runBulkDelete } },
-            { provide: DefaultModelsStorageService, useValue: { markDefaultModelsOutdated: vi.fn() } },
+            {
+                provide: DefaultModelsStorageService,
+                useValue: {
+                    defaultModels: signal(defaults),
+                    loadDefaultModels: () => of(defaults),
+                    markDefaultModelsOutdated: vi.fn(),
+                },
+            },
+            { provide: ActivatedRoute, useValue: { snapshot: { fragment } } },
             { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
             { provide: Dialog, useValue: { open: openDialog } },
             {
@@ -251,13 +301,23 @@ function render(
             },
         ],
     });
-    const fixture = TestBed.createComponent(LlmLibrarySectionComponent);
+    TestBed.overrideComponent(AiModelsPageComponent, {
+        remove: { imports: [DefaultLlmsSectionComponent] },
+        add: { imports: [DefaultLlmsSectionStubComponent] },
+    });
+    const fixture = TestBed.createComponent(AiModelsPageComponent);
     fixture.detectChanges();
+    if (expandAll) {
+        (fixture.nativeElement as HTMLElement)
+            .querySelectorAll<HTMLButtonElement>('.section-toggle[aria-expanded="false"]')
+            .forEach((toggle) => toggle.click());
+        fixture.detectChanges();
+    }
     return { fixture, open, openDialog, runBulkDelete };
 }
 
 /** Fires the card's "View Details" output, as choosing the menu item does; returns the card's ⋮ trigger. */
-function viewDetailsOn(fixture: ComponentFixture<LlmLibrarySectionComponent>, model: LlmLibraryModel): HTMLElement {
+function viewDetailsOn(fixture: ComponentFixture<AiModelsPageComponent>, model: LlmLibraryModel): HTMLElement {
     const cardElement = fixture.debugElement
         .queryAll(By.directive(LlmLibraryCardComponent))
         .find((debugElement) => (debugElement.componentInstance as LlmLibraryCardComponent).model() === model)!;
@@ -268,7 +328,7 @@ function viewDetailsOn(fixture: ComponentFixture<LlmLibrarySectionComponent>, mo
     return trigger;
 }
 
-describe('LlmLibrarySectionComponent "View Details"', () => {
+describe('AiModelsPageComponent "View Details"', () => {
     it('opens "Configuration Details" with the LLM config of an LLM card', () => {
         const llmModel = libraryModel(ModelTypes.LLM, SHARED_ID);
         const { fixture, open } = render([llmModel, libraryModel(ModelTypes.EMBEDDING, SHARED_ID)]);
@@ -297,15 +357,15 @@ describe('LlmLibrarySectionComponent "View Details"', () => {
     });
 });
 
-describe('LlmLibrarySectionComponent select mode', () => {
-    function headerButtonLabels(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
+describe('AiModelsPageComponent select mode', () => {
+    function headerButtonLabels(fixture: ComponentFixture<AiModelsPageComponent>): string[] {
         return Array.from(
-            (fixture.nativeElement as HTMLElement).querySelectorAll('.header-right > app-button'),
+            (fixture.nativeElement as HTMLElement).querySelectorAll('.header-right > :is(app-button, .add-button)'),
             (button) => button.textContent?.trim() ?? ''
         );
     }
 
-    function enterSelectMode(fixture: ComponentFixture<LlmLibrarySectionComponent>): void {
+    function enterSelectMode(fixture: ComponentFixture<AiModelsPageComponent>): void {
         (fixture.nativeElement as HTMLElement)
             .querySelector<HTMLButtonElement>('app-bulk-select-dropdown .bulk-select__main')!
             .click();
@@ -313,7 +373,7 @@ describe('LlmLibrarySectionComponent select mode', () => {
     }
 
     function tickCard(
-        fixture: ComponentFixture<LlmLibrarySectionComponent>,
+        fixture: ComponentFixture<AiModelsPageComponent>,
         model: LlmLibraryModel,
         selected: boolean
     ): void {
@@ -324,21 +384,21 @@ describe('LlmLibrarySectionComponent select mode', () => {
         fixture.detectChanges();
     }
 
-    function selectLabel(fixture: ComponentFixture<LlmLibrarySectionComponent>): string {
+    function selectLabel(fixture: ComponentFixture<AiModelsPageComponent>): string {
         const main = (fixture.nativeElement as HTMLElement).querySelector(
             'app-bulk-select-dropdown .bulk-select__main'
         )!;
         return main.textContent?.replace(/\s+/g, ' ').trim() ?? '';
     }
 
-    it('keeps "Add Configuration" in select mode until a card is ticked, then shows "Select (1)" and a red "Delete"', () => {
+    it('keeps "Add Model" in select mode until a card is ticked, then shows "Select (1)" and a red "Delete"', () => {
         const model = libraryModel(ModelTypes.LLM, SHARED_ID);
         const { fixture } = render([model], { grantedActions: [ActionCode.Create, ActionCode.Delete] });
 
         enterSelectMode(fixture);
 
         expect(fixture.componentInstance.selectMode()).toBe(true);
-        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+        expect(headerButtonLabels(fixture)).toEqual(['Add Model']);
         expect(selectLabel(fixture)).toBe('Select');
 
         tickCard(fixture, model, true);
@@ -377,21 +437,21 @@ describe('LlmLibrarySectionComponent select mode', () => {
         expect(fixture.componentInstance.selectedKeys().size).toBe(0);
         expect(fixture.componentInstance.selectMode()).toBe(true);
         expect(selectLabel(fixture)).toBe('Select');
-        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+        expect(headerButtonLabels(fixture)).toEqual(['Add Model']);
     });
 
     describe('with nothing ticked', () => {
-        function pressEscape(fixture: ComponentFixture<LlmLibrarySectionComponent>): void {
+        function pressEscape(fixture: ComponentFixture<AiModelsPageComponent>): void {
             document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             fixture.detectChanges();
         }
 
-        function clickOn(fixture: ComponentFixture<LlmLibrarySectionComponent>, element: Element): void {
+        function clickOn(fixture: ComponentFixture<AiModelsPageComponent>, element: Element): void {
             (element as HTMLElement).click();
             fixture.detectChanges();
         }
 
-        function cardElement(fixture: ComponentFixture<LlmLibrarySectionComponent>): Element {
+        function cardElement(fixture: ComponentFixture<AiModelsPageComponent>): Element {
             return (fixture.nativeElement as HTMLElement).querySelector('app-llm-library-card')!;
         }
 
@@ -418,7 +478,7 @@ describe('LlmLibrarySectionComponent select mode', () => {
         });
 
         it.each([
-            ['a card', (fixture: ComponentFixture<LlmLibrarySectionComponent>) => cardElement(fixture)],
+            ['a card', (fixture: ComponentFixture<AiModelsPageComponent>) => cardElement(fixture)],
             [
                 'an overlay',
                 () => {
@@ -504,7 +564,7 @@ describe('LlmLibrarySectionComponent select mode', () => {
         tickCard(fixture, model, false);
 
         expect(fixture.componentInstance.selectMode()).toBe(false);
-        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+        expect(headerButtonLabels(fixture)).toEqual(['Add Model']);
         expect((fixture.nativeElement as HTMLElement).querySelector('.llm-card__checkbox')).toBeNull();
     });
 
@@ -523,7 +583,7 @@ describe('LlmLibrarySectionComponent select mode', () => {
     });
 
     /** Chooses `item` in the menu of "Select (N)", which needs a ticked card. */
-    function chooseMenuItem(fixture: ComponentFixture<LlmLibrarySectionComponent>, item: string): void {
+    function chooseMenuItem(fixture: ComponentFixture<AiModelsPageComponent>, item: string): void {
         (fixture.nativeElement as HTMLElement)
             .querySelector<HTMLButtonElement>('app-bulk-select-dropdown .bulk-select__main')!
             .click();
@@ -550,20 +610,28 @@ describe('LlmLibrarySectionComponent select mode', () => {
         expect(fixture.componentInstance.allVisibleSelected()).toBe(true);
     });
 
-    it('opens the Add Configuration dialog from the header', () => {
+    it.each([
+        ['LLM', ModelConfigDialogComponent, { kind: 'llm' }],
+        ['Embedding', ModelConfigDialogComponent, { kind: 'embedding' }],
+        ['Voice', RealtimeConfigDialogComponent, { config: null, provider: 'openai' }],
+        ['System One', SystemOneConfigDialogComponent, { config: null }],
+    ])('opens the %s create dialog from the Add Model menu', (item, component, data) => {
         const { fixture, openDialog } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
             grantedActions: [ActionCode.Create],
         });
 
         (fixture.nativeElement as HTMLElement)
-            .querySelector<HTMLButtonElement>('app-llm-library-header .header-right > app-button button')!
+            .querySelector<HTMLButtonElement>('app-llm-library-header .header-right > .add-button')!
+            .click();
+        fixture.detectChanges();
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.add-menu__item'))
+            .find((button) => button.textContent?.trim() === item)!
             .click();
 
-        expect(openDialog).toHaveBeenCalledOnce();
-        expect(openDialog.mock.calls[0][0]).toBe(AddConfigurationDialogComponent);
+        expect(openDialog).toHaveBeenCalledExactlyOnceWith(component, expect.objectContaining({ data }));
     });
 
-    it('puts the focus on Add Configuration once a bulk delete is done', () => {
+    it('puts the focus on Add Model once a bulk delete is done', () => {
         const model = libraryModel(ModelTypes.LLM, SHARED_ID);
         const { fixture, runBulkDelete } = render([model], { grantedActions: [ActionCode.Create, ActionCode.Delete] });
         runBulkDelete.mockReturnValue(of([]));
@@ -576,10 +644,16 @@ describe('LlmLibrarySectionComponent select mode', () => {
         // A full tick: the focus moves in an after-render hook.
         TestBed.tick();
 
-        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+        expect(headerButtonLabels(fixture)).toEqual(['Add Model']);
         expect(document.activeElement).toBe(
-            (fixture.nativeElement as HTMLElement).querySelector('.header-right > app-button button')
+            (fixture.nativeElement as HTMLElement).querySelector('.header-right > .add-button')
         );
+    });
+
+    it('offers a read-only user no "Add Model" in the header', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], { grantedActions: [] });
+
+        expect(headerButtonLabels(fixture)).toEqual([]);
     });
 
     it('offers no select dropdown without the delete permission', () => {
@@ -588,7 +662,7 @@ describe('LlmLibrarySectionComponent select mode', () => {
         expect((fixture.nativeElement as HTMLElement).querySelector('app-bulk-select-dropdown')).toBeNull();
     });
 
-    it('orders the header as search, capabilities, Select, then Add Configuration or Delete', () => {
+    it('orders the header as search, capabilities, Select, then Add Model or Delete', () => {
         const model = libraryModel(ModelTypes.LLM, SHARED_ID);
         const { fixture } = render([model], {
             grantedActions: [ActionCode.Create, ActionCode.Delete],
@@ -597,11 +671,11 @@ describe('LlmLibrarySectionComponent select mode', () => {
         const headerOrder = (): string[] =>
             Array.from((fixture.nativeElement as HTMLElement).querySelector('.header-right')!.children, (child) => {
                 if (child.classList.contains('filter')) return 'filter';
-                if (child.tagName === 'APP-BUTTON') return child.textContent?.trim() ?? '';
+                if (['APP-BUTTON', 'BUTTON'].includes(child.tagName)) return child.textContent?.trim() ?? '';
                 return child.tagName.toLowerCase();
             });
 
-        expect(headerOrder()).toEqual(['app-search', 'filter', 'app-bulk-select-dropdown', 'Add Configuration']);
+        expect(headerOrder()).toEqual(['app-search', 'filter', 'app-bulk-select-dropdown', 'Add Model']);
 
         enterSelectMode(fixture);
         tickCard(fixture, model, true);
@@ -611,10 +685,7 @@ describe('LlmLibrarySectionComponent select mode', () => {
 });
 
 /** The voice card showing `config`, found by its custom name. */
-function voiceCard(
-    fixture: ComponentFixture<LlmLibrarySectionComponent>,
-    config: VoiceConfig
-): DebugElement | undefined {
+function voiceCard(fixture: ComponentFixture<AiModelsPageComponent>, config: VoiceConfig): DebugElement | undefined {
     return fixture.debugElement
         .queryAll(By.directive(LlmLibraryCardComponent))
         .find((card) => (card.componentInstance as LlmLibraryCardComponent).model().customName === config.custom_name);
@@ -624,15 +695,15 @@ function voiceCardButton(card: DebugElement, label: string): HTMLButtonElement {
     return (card.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
 }
 
-describe('LlmLibrarySectionComponent voice config cards', () => {
+describe('AiModelsPageComponent voice config cards', () => {
     it.each(Object.entries(VOICE_CONFIGS))(
-        'shows a %s card like an LLM card: custom name on top, model name below, no temperature',
+        'shows a %s card like an LLM card: its name on top, its model below, no temperature',
         (_, config) => {
             const { fixture } = render([], { voiceConfigs: [config] });
 
             const card = voiceCard(fixture, config)!.nativeElement as HTMLElement;
 
-            expect(card.querySelector('.llm-card__model')!.textContent!.trim()).toBe(config.custom_name);
+            expect(card.querySelector('.llm-card__label')!.textContent!.trim()).toBe(config.custom_name);
             expect(card.querySelector('.llm-card__name')!.textContent!.trim()).toBe(config.model_name);
             expect(card.textContent).not.toContain('°');
         }
@@ -716,35 +787,40 @@ describe('LlmLibrarySectionComponent voice config cards', () => {
     });
 });
 
-describe('LlmLibrarySectionComponent System One configs', () => {
-    function groupTitles(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
+describe('AiModelsPageComponent System One configs', () => {
+    function groupTitles(fixture: ComponentFixture<AiModelsPageComponent>): string[] {
         return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.section-title'), (title) =>
             title.textContent!.trim()
         );
     }
 
-    function cardNames(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
+    function cardNames(fixture: ComponentFixture<AiModelsPageComponent>): string[] {
         return fixture.debugElement
             .queryAll(By.directive(LlmLibraryCardComponent))
-            .map((card) => (card.nativeElement as HTMLElement).querySelector('.llm-card__model')!.textContent!.trim());
+            .map((card) => (card.nativeElement as HTMLElement).querySelector('.llm-card__label')!.textContent!.trim());
     }
 
-    it('lists them under "System One", showing the Jev version or the LLM config used', () => {
+    it('lists them under "System One", grouped by provider', () => {
         const { fixture } = render([], { systemOneConfigs: [TYPESAFE_CONFIG, LLM_BACKED_CONFIG] });
 
-        expect(groupTitles(fixture)).toEqual(['System One']);
-        const cards = fixture.debugElement.queryAll(By.directive(LlmLibraryCardComponent));
-        expect(
-            cards.map((card) =>
-                (card.nativeElement as HTMLElement).querySelector('.llm-card__name')!.textContent!.trim()
-            )
-        ).toEqual(['jev-1.14.0', 'LLM: gpt-4.1-chat']);
+        const systemOne = Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.library-section')
+        ).find((section) => section.querySelector('.section-title')!.textContent!.trim() === 'System One')!;
+        expect(Array.from(systemOne.querySelectorAll('.provider-name'), (name) => name.textContent!.trim())).toEqual([
+            'TypeSafe',
+            'LLM',
+        ]);
+        expect(cardNames(fixture)).toEqual(['Jev prod', 'Judge']);
     });
 
-    it('leaves the group out when there are none', () => {
+    it('says the section is empty when there are none', () => {
         const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)]);
 
-        expect(groupTitles(fixture)).not.toContain('System One');
+        expect(groupTitles(fixture)).toContain('System One');
+        const systemOne = Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.library-section')
+        ).find((section) => section.querySelector('.section-title')!.textContent!.trim() === 'System One')!;
+        expect(systemOne.querySelector('.empty-hint')?.textContent?.trim()).toBe('No configurations yet.');
     });
 
     it('narrows them by name with the shared search', () => {
@@ -827,15 +903,6 @@ describe('LlmLibrarySectionComponent System One configs', () => {
         ]);
     });
 
-    it('shows "LLM: not set" for an LLM config whose LLM config is gone', () => {
-        const { fixture } = render([], { systemOneConfigs: [{ ...LLM_BACKED_CONFIG, llm_config: null }] });
-
-        expect(cardNames(fixture)).toEqual(['Judge']);
-        expect((fixture.nativeElement as HTMLElement).querySelector('.llm-card__name')!.textContent!.trim()).toBe(
-            'LLM: not set'
-        );
-    });
-
     it('reloads them after an LLM config is deleted, since the server clears their link', () => {
         const { fixture, runBulkDelete } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
             systemOneConfigs: [LLM_BACKED_CONFIG],
@@ -854,8 +921,8 @@ describe('LlmLibrarySectionComponent System One configs', () => {
     });
 });
 
-describe('LlmLibrarySectionComponent sections', () => {
-    function sectionElement(fixture: ComponentFixture<LlmLibrarySectionComponent>, title: string): HTMLElement {
+describe('AiModelsPageComponent sections', () => {
+    function sectionElement(fixture: ComponentFixture<AiModelsPageComponent>, title: string): HTMLElement {
         return Array.from(
             (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.library-section')
         ).find((section) => section.querySelector('.section-title')!.textContent!.trim() === title)!;
@@ -869,19 +936,15 @@ describe('LlmLibrarySectionComponent sections', () => {
         ).join(' ');
     }
 
-    function toggle(fixture: ComponentFixture<LlmLibrarySectionComponent>, title: string): HTMLButtonElement {
+    function toggle(fixture: ComponentFixture<AiModelsPageComponent>, title: string): HTMLButtonElement {
         return sectionElement(fixture, title).querySelector<HTMLButtonElement>('.section-toggle')!;
     }
 
-    function sectionBox(fixture: ComponentFixture<LlmLibrarySectionComponent>, title: string): HTMLInputElement {
+    function sectionBox(fixture: ComponentFixture<AiModelsPageComponent>, title: string): HTMLInputElement {
         return sectionElement(fixture, title).querySelector<HTMLInputElement>('.section-checkbox input')!;
     }
 
-    function tick(
-        fixture: ComponentFixture<LlmLibrarySectionComponent>,
-        model: LlmLibraryModel,
-        selected: boolean
-    ): void {
+    function tick(fixture: ComponentFixture<AiModelsPageComponent>, model: LlmLibraryModel, selected: boolean): void {
         const card = fixture.debugElement
             .queryAll(By.directive(LlmLibraryCardComponent))
             .find((debugElement) => (debugElement.componentInstance as LlmLibraryCardComponent).model() === model)!;
@@ -889,14 +952,14 @@ describe('LlmLibrarySectionComponent sections', () => {
         fixture.detectChanges();
     }
 
-    function enterSelectMode(fixture: ComponentFixture<LlmLibrarySectionComponent>): void {
+    function enterSelectMode(fixture: ComponentFixture<AiModelsPageComponent>): void {
         (fixture.nativeElement as HTMLElement)
             .querySelector<HTMLButtonElement>('app-bulk-select-dropdown .bulk-select__main')!
             .click();
         fixture.detectChanges();
     }
 
-    it('heads LLM, Embeddings, Realtime and System One, in that order, each with its card count', () => {
+    it('heads LLM, Embeddings, Voice, System One and Default Models, in that order, each with its count', () => {
         const { fixture } = render(
             [
                 libraryModel(ModelTypes.LLM, SHARED_ID),
@@ -911,37 +974,77 @@ describe('LlmLibrarySectionComponent sections', () => {
                 (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.library-section'),
                 headingText
             )
-        ).toEqual(['LLM 2', 'Embeddings 1', 'Realtime 2', 'System One 1']);
+        ).toEqual(['LLM 2', 'Embeddings 1', 'Voice 2', 'System One 1', 'Default Models 0 of 2 roles assigned']);
     });
 
-    it('groups every realtime provider under the one Realtime section', () => {
+    it('groups every realtime provider under the one Voice section', () => {
         const { fixture } = render([], { voiceConfigs: Object.values(VOICE_CONFIGS) });
 
-        const voice = sectionElement(fixture, 'Realtime');
+        const voice = sectionElement(fixture, 'Voice');
 
         expect(Array.from(voice.querySelectorAll('.provider-name'), (name) => name.textContent!.trim())).toEqual([
             'OpenAI',
             'ElevenLabs',
             'Gemini',
         ]);
-        expect((fixture.nativeElement as HTMLElement).querySelectorAll('.library-section')).toHaveLength(1);
     });
 
-    it('starts open and lists the providers in the heading only while collapsed', () => {
-        const { fixture } = render([], { voiceConfigs: Object.values(VOICE_CONFIGS) });
-        expect(toggle(fixture, 'Realtime').getAttribute('aria-expanded')).toBe('true');
-        expect(headingText(sectionElement(fixture, 'Realtime'))).toBe('Realtime 3');
+    it('starts collapsed and lists the providers in the heading only while collapsed', () => {
+        const { fixture } = render([], { voiceConfigs: Object.values(VOICE_CONFIGS), expandAll: false });
+        expect(toggle(fixture, 'Voice').getAttribute('aria-expanded')).toBe('false');
+        expect(headingText(sectionElement(fixture, 'Voice'))).toBe('Voice 3 OpenAI, ElevenLabs, Gemini');
 
-        toggle(fixture, 'Realtime').click();
+        toggle(fixture, 'Voice').click();
         fixture.detectChanges();
 
-        expect(toggle(fixture, 'Realtime').getAttribute('aria-expanded')).toBe('false');
-        expect(headingText(sectionElement(fixture, 'Realtime'))).toBe('Realtime 3 OpenAI, ElevenLabs, Gemini');
+        expect(toggle(fixture, 'Voice').getAttribute('aria-expanded')).toBe('true');
+        expect(headingText(sectionElement(fixture, 'Voice'))).toBe('Voice 3');
+    });
 
-        toggle(fixture, 'Realtime').click();
-        fixture.detectChanges();
+    it('opens with Default Models expanded when the link asks for it', () => {
+        const { fixture } = render([], { fragment: 'default-models', expandAll: false });
 
-        expect(headingText(sectionElement(fixture, 'Realtime'))).toBe('Realtime 3');
+        expect(toggle(fixture, 'Default Models').getAttribute('aria-expanded')).toBe('true');
+        expect(toggle(fixture, 'LLM').getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('counts the default roles that have a config', () => {
+        const { fixture } = render([], { defaults: { ...NO_DEFAULTS, agent_llm_config: SHARED_ID } });
+
+        expect(headingText(sectionElement(fixture, 'Default Models'))).toBe('Default Models 1 of 2 roles assigned');
+    });
+
+    it("opens the embedding dialog from the Embeddings section's Add", () => {
+        const { fixture, openDialog } = render([], { grantedActions: [ActionCode.Create] });
+
+        const add = sectionElement(fixture, 'Embeddings').querySelector<HTMLButtonElement>('.section-add button')!;
+        expect(add.classList).toContain('btn-outline-ghost');
+        add.click();
+
+        expect(openDialog).toHaveBeenCalledExactlyOnceWith(
+            ModelConfigDialogComponent,
+            expect.objectContaining({ data: { kind: 'embedding' } })
+        );
+    });
+
+    it('offers no Add on a section without the create permission', () => {
+        const { fixture } = render([], { grantedActions: [ActionCode.Update, ActionCode.Delete] });
+
+        expect((fixture.nativeElement as HTMLElement).querySelector('.section-add')).toBeNull();
+    });
+
+    it('counts the configs that need review in the section heading', () => {
+        const reviewed = {
+            ...libraryModel(ModelTypes.LLM, 4),
+            needsReview: true,
+            reviewReasons: ['Deprecated model.'],
+        };
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID), reviewed], { expandAll: false });
+
+        expect(sectionElement(fixture, 'LLM').querySelector('.section-review')!.textContent!.trim()).toBe(
+            '1 needs review'
+        );
+        expect(sectionElement(fixture, 'Embeddings').querySelector('.section-review')).toBeNull();
     });
 
     it('stays in select mode when a section box is ticked right after entering it', () => {
@@ -983,18 +1086,18 @@ describe('LlmLibrarySectionComponent sections', () => {
     });
 });
 
-describe('LlmLibrarySectionComponent Capabilities filter and search', () => {
-    function sectionTitles(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
+describe('AiModelsPageComponent Capabilities filter and search', () => {
+    function sectionTitles(fixture: ComponentFixture<AiModelsPageComponent>): string[] {
         return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.section-title'), (title) =>
             title.textContent!.trim()
         );
     }
 
-    function emptyHint(fixture: ComponentFixture<LlmLibrarySectionComponent>): string | undefined {
+    function emptyHint(fixture: ComponentFixture<AiModelsPageComponent>): string | undefined {
         return (fixture.nativeElement as HTMLElement).querySelector('.empty-hint')?.textContent?.trim();
     }
 
-    function chooseCapability(fixture: ComponentFixture<LlmLibrarySectionComponent>, name: string): void {
+    function chooseCapability(fixture: ComponentFixture<AiModelsPageComponent>, name: string): void {
         (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.filter .selector__btn')!.click();
         fixture.detectChanges();
         Array.from(document.querySelectorAll<HTMLButtonElement>('.selector__option'))
@@ -1003,29 +1106,29 @@ describe('LlmLibrarySectionComponent Capabilities filter and search', () => {
         fixture.detectChanges();
     }
 
-    function search(fixture: ComponentFixture<LlmLibrarySectionComponent>, query: string): void {
+    function search(fixture: ComponentFixture<AiModelsPageComponent>, query: string): void {
         const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('app-search input')!;
         input.value = query;
         input.dispatchEvent(new Event('input'));
         fixture.detectChanges();
     }
 
-    function selectButton(fixture: ComponentFixture<LlmLibrarySectionComponent>): HTMLButtonElement | null {
+    function selectButton(fixture: ComponentFixture<AiModelsPageComponent>): HTMLButtonElement | null {
         return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
             'app-bulk-select-dropdown .bulk-select__main'
         );
     }
 
-    function selectLabel(fixture: ComponentFixture<LlmLibrarySectionComponent>): string {
+    function selectLabel(fixture: ComponentFixture<AiModelsPageComponent>): string {
         return selectButton(fixture)!.textContent!.replace(/\s+/g, ' ').trim();
     }
 
-    function enterSelectMode(fixture: ComponentFixture<LlmLibrarySectionComponent>): void {
+    function enterSelectMode(fixture: ComponentFixture<AiModelsPageComponent>): void {
         selectButton(fixture)!.click();
         fixture.detectChanges();
     }
 
-    function tick(fixture: ComponentFixture<LlmLibrarySectionComponent>, model: LlmLibraryModel): void {
+    function tick(fixture: ComponentFixture<AiModelsPageComponent>, model: LlmLibraryModel): void {
         const card = fixture.debugElement
             .queryAll(By.directive(LlmLibraryCardComponent))
             .find((debugElement) => (debugElement.componentInstance as LlmLibraryCardComponent).model() === model)!;
@@ -1039,38 +1142,51 @@ describe('LlmLibrarySectionComponent Capabilities filter and search', () => {
             { voiceConfigs: [OPENAI_VOICE_CONFIG], systemOneConfigs: [TYPESAFE_CONFIG] }
         );
 
-        chooseCapability(fixture, 'Realtime');
+        chooseCapability(fixture, 'Voice');
 
-        expect(sectionTitles(fixture)).toEqual(['Realtime']);
+        expect(sectionTitles(fixture)).toEqual(['Voice']);
 
         chooseCapability(fixture, 'All capabilities');
 
-        expect(sectionTitles(fixture)).toEqual(['LLM', 'Embeddings', 'Realtime', 'System One']);
+        expect(sectionTitles(fixture)).toEqual(['LLM', 'Embeddings', 'Voice', 'System One', 'Default Models']);
     });
 
-    it.each([
-        [
-            'a Capabilities option with no configs',
-            (fixture: ComponentFixture<LlmLibrarySectionComponent>) => chooseCapability(fixture, 'Realtime'),
-        ],
-        [
-            'a search nothing matches',
-            (fixture: ComponentFixture<LlmLibrarySectionComponent>) => search(fixture, 'no such config'),
-        ],
-    ])('says "No configurations match." and keeps Select when %s hides every card', (_case, hideAll) => {
+    it('says "No configurations match." and keeps Select when a search hides every card', () => {
         const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], { grantedActions: [ActionCode.Delete] });
 
-        hideAll(fixture);
+        search(fixture, 'no such config');
 
         expect(sectionTitles(fixture)).toEqual([]);
         expect(emptyHint(fixture)).toBe('No configurations match.');
         expect(selectButton(fixture)).not.toBeNull();
     });
 
-    it('says "No configurations yet." when there are none', () => {
-        const { fixture } = render([], { grantedActions: [ActionCode.Delete] });
+    it('shows a chosen section with no configs as empty', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)]);
 
+        chooseCapability(fixture, 'Voice');
+
+        expect(sectionTitles(fixture)).toEqual(['Voice']);
         expect(emptyHint(fixture)).toBe('No configurations yet.');
+    });
+
+    it('hides the provider groups and the sections a provider search does not match', () => {
+        const { fixture } = render([], {
+            providerGroups: [
+                providerGroup(ModelTypes.LLM, [libraryModel(ModelTypes.LLM, SHARED_ID)], 'OpenAI'),
+                providerGroup(ModelTypes.LLM, [libraryModel(ModelTypes.LLM, 4)], 'Anthropic'),
+                providerGroup(ModelTypes.EMBEDDING, [libraryModel(ModelTypes.EMBEDDING, SHARED_ID)], 'OpenAI'),
+            ],
+        });
+
+        search(fixture, 'anthropic');
+
+        expect(sectionTitles(fixture)).toEqual(['LLM']);
+        expect(
+            Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.provider-name'), (name) =>
+                name.textContent!.trim()
+            )
+        ).toEqual(['Anthropic']);
     });
 
     it('drops ticked cards the filter hides from the count and from the delete', () => {
@@ -1084,7 +1200,7 @@ describe('LlmLibrarySectionComponent Capabilities filter and search', () => {
         tick(fixture, embeddingModel);
         expect(selectLabel(fixture)).toBe('Select (2)');
 
-        chooseCapability(fixture, 'Embedding');
+        chooseCapability(fixture, 'Embeddings');
 
         expect(selectLabel(fixture)).toBe('Select (1)');
         (fixture.nativeElement as HTMLElement)
@@ -1118,5 +1234,46 @@ describe('LlmLibrarySectionComponent Capabilities filter and search', () => {
         fixture.detectChanges();
 
         expect(selectLabel(fixture)).toBe('Select (1)');
+    });
+});
+
+describe('AiModelsPageComponent card badges', () => {
+    function cardOf(fixture: ComponentFixture<AiModelsPageComponent>, model: LlmLibraryModel): DebugElement {
+        return fixture.debugElement
+            .queryAll(By.directive(LlmLibraryCardComponent))
+            .find((card) => (card.componentInstance as LlmLibraryCardComponent).model() === model)!;
+    }
+
+    function badge(card: DebugElement, kind: 'review' | 'default'): DebugElement | null {
+        return card.query(By.css(`.llm-card__badge--${kind}`));
+    }
+
+    it('marks a config that needs review, with its reasons in the tooltip', () => {
+        const reviewed: LlmLibraryModel = {
+            ...libraryModel(ModelTypes.LLM, SHARED_ID),
+            needsReview: true,
+            reviewReasons: ['Deprecated model.', 'base_url: This field is required.'],
+        };
+        const { fixture } = render([reviewed, libraryModel(ModelTypes.LLM, 4)]);
+
+        const marked = badge(cardOf(fixture, reviewed), 'review')!;
+
+        expect((marked.nativeElement as HTMLElement).textContent!.trim()).toBe('Needs review');
+        expect(marked.injector.get(MatTooltip).message).toBe('Deprecated model.\nbase_url: This field is required.');
+        expect(fixture.debugElement.queryAll(By.css('.llm-card__badge--review'))).toHaveLength(1);
+    });
+
+    it('marks the config a default role uses, naming the role, and not the embedding config sharing its id', () => {
+        const llmModel = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const embeddingModel = libraryModel(ModelTypes.EMBEDDING, SHARED_ID);
+        const { fixture } = render([llmModel, embeddingModel], {
+            defaults: { ...NO_DEFAULTS, agent_llm_config: SHARED_ID, agent_fcm_llm_config: SHARED_ID },
+        });
+
+        const marked = badge(cardOf(fixture, llmModel), 'default')!;
+
+        expect((marked.nativeElement as HTMLElement).textContent!.trim()).toBe('Default');
+        expect(marked.injector.get(MatTooltip).message).toBe('Agent LLM\nAgent Function Calling LLM');
+        expect(badge(cardOf(fixture, embeddingModel), 'default')).toBeNull();
     });
 });

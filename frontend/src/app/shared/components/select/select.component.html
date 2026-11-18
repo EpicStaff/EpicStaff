@@ -125,7 +125,7 @@
                     class="selector__search"
                     type="text"
                     [value]="search()"
-                    (input)="search.set($any($event.target).value)"
+                    (input)="setSearch($any($event.target).value)"
                     (keydown.enter)="commitCustomValue()"
                     [placeholder]="searchPlaceholder()"
                     [attr.aria-label]="searchPlaceholder()"

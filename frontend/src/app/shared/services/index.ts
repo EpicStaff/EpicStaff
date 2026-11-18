@@ -19,6 +19,7 @@ export * from './llms/llm-models.service';
 export * from './llms/llm-models-storage.service';
 export * from './llms/llm-providers.service';
 export * from './llms/llm-providers-storage.service';
+export * from './llms/model-catalog.service';
 export * from './llms/system-one-config.service';
 export * from './llms/system-one-config-storage.service';
 export * from './org-switch-url-rule.token';

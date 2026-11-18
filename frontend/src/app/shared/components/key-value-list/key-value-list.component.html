@@ -76,6 +76,20 @@
             </div>
         }
     }
+    @if (addLabel()) {
+        <button
+            type="button"
+            class="kv-list__add-btn"
+            (click)="addRow()"
+            [disabled]="isDisabled()"
+        >
+            <i
+                class="ti ti-plus"
+                aria-hidden="true"
+            ></i>
+            {{ addLabel() }}
+        </button>
+    }
 </div>
 
 <ng-template #suggestionsTemplate>

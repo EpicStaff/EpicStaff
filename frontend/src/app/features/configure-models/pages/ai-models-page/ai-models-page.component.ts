@@ -1,6 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { ComponentType } from '@angular/cdk/portal';
 import {
     afterNextRender,
     ChangeDetectionStrategy,
@@ -20,24 +19,31 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { ActivatedRoute } from '@angular/router';
 import {
     AppSvgIconComponent,
     AuthorshipDetailsDialogService,
     AuthorshipDetailsSource,
+    ButtonComponent,
     CheckboxComponent,
-    EmbeddingModelConfigDialogComponent,
     FetchErrorStateComponent,
-    LlmModelConfigDialogComponent,
     LoadingSpinnerComponent,
+    ModelConfigDialogComponent,
+    ModelConfigDialogData,
+    ModelConfigKind,
 } from '@shared/components';
 import { PROVIDER_ICON_PATHS } from '@shared/constants';
+import { HasPermissionDirective } from '@shared/directives';
 import {
+    ActionCode,
     BulkDeleteGroup,
     BulkDeleteLabel,
     BulkDeleteOutcome,
     LlmLibraryModel,
     LlmLibraryProviderGroup,
     ModelTypes,
+    ResourceCode,
     SystemOneConfig,
 } from '@shared/models';
 import {
@@ -52,7 +58,24 @@ import { forkJoin, Observable, of } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
-import { SYSTEM_ONE_LABEL } from '../../constants/llm-library-capabilities.constant';
+import { AI_MODELS_DEFAULTS_FRAGMENT } from '../../../../core/guards/settings.guard';
+import { DefaultLlmsSectionComponent } from '../../components/default-llms-section/default-llms-section.component';
+import {
+    LlmLibraryCardComponent,
+    LlmLibraryCardViewDetailsEvent,
+} from '../../components/llm-library-card/llm-library-card.component';
+import { LlmLibraryHeaderComponent } from '../../components/llm-library-header/llm-library-header.component';
+import {
+    RealtimeConfigDialogComponent,
+    RealtimeConfigDialogData,
+} from '../../components/realtime-config-dialog/realtime-config-dialog.component';
+import { RealtimeConfig, RealtimeProvider } from '../../components/realtime-config-form/realtime-config-form.component';
+import {
+    SystemOneConfigDialogComponent,
+    SystemOneConfigDialogData,
+} from '../../components/system-one-config-dialog/system-one-config-dialog.component';
+import { DEFAULT_LLMS_SECTIONS } from '../../constants/default-llms-sections.constant';
+import { AI_MODELS_SECTION_TITLES, SYSTEM_ONE_LABEL } from '../../constants/llm-library-capabilities.constant';
 import { SYSTEM_ONE_PROVIDERS } from '../../constants/system-one-providers.constant';
 import {
     LibraryCard,
@@ -80,21 +103,6 @@ import {
     packLlmLibraryRows,
     providerCreationOrder,
 } from '../../utils/llm-library-layout.util';
-import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
-import {
-    LlmLibraryCardComponent,
-    LlmLibraryCardViewDetailsEvent,
-} from '../llm-library-card/llm-library-card.component';
-import { LlmLibraryHeaderComponent } from '../llm-library-header/llm-library-header.component';
-import {
-    RealtimeConfigDialogComponent,
-    RealtimeConfigDialogData,
-} from '../realtime-config-dialog/realtime-config-dialog.component';
-import { RealtimeConfig, RealtimeProvider } from '../realtime-config-form/realtime-config-form.component';
-import {
-    SystemOneConfigDialogComponent,
-    SystemOneConfigDialogData,
-} from '../system-one-config-dialog/system-one-config-dialog.component';
 
 /** Realtime (voice) configs have no tags, temperature or deprecation, so the shared card shows only their names. */
 function toVoiceCardModel(config: RealtimeConfig): LlmLibraryModel {
@@ -106,7 +114,8 @@ function toVoiceCardModel(config: RealtimeConfig): LlmLibraryModel {
         temperature: null,
         usedByCount: null,
         configType: ModelTypes.REALTIME,
-        isDeprecated: false,
+        needsReview: false,
+        reviewReasons: [],
     };
 }
 
@@ -120,7 +129,8 @@ function toSystemOneCardModel(config: SystemOneConfig, llmConfigName: string | u
         temperature: null,
         usedByCount: null,
         configType: ModelTypes.LLM,
-        isDeprecated: false,
+        needsReview: false,
+        reviewReasons: [],
     };
 }
 
@@ -142,26 +152,43 @@ const LLM_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'LLM config', plural:
 const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding config', plural: 'embedding configs' };
 const SYSTEM_ONE_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'System One config', plural: 'System One configs' };
 
+/** A collapsible section of the page: one of the config sections, or Default Models. */
+type PageSectionKey = LibrarySectionKey | 'defaults';
+
+/** The default roles the page shows, in the Default Models section's order. */
+const DEFAULT_ROLE_CARDS = DEFAULT_LLMS_SECTIONS.flatMap((section) => section.cards);
+
+/** The Voice dialog has a fixed height, the others' maximum; the model config and System One dialogs size themselves. */
+const VOICE_DIALOG_SIZE = { height: '800px', maxHeight: '90vh', width: '560px' };
+
+/**
+ * Settings ▸ AI Models: the organization's LLM, Embeddings, Voice and System One configs, each a collapsible
+ * section of cards grouped by provider, and the Default Models section of per-role defaults.
+ */
 @Component({
-    selector: 'app-llm-library-section',
+    selector: 'app-ai-models-page',
     imports: [
         FormsModule,
+        MatTooltipModule,
+        HasPermissionDirective,
         LlmLibraryCardComponent,
         LlmLibraryHeaderComponent,
+        DefaultLlmsSectionComponent,
         AppSvgIconComponent,
+        ButtonComponent,
         LoadingSpinnerComponent,
         FetchErrorStateComponent,
         CheckboxComponent,
     ],
-    templateUrl: './llm-library-section.component.html',
-    styleUrls: ['./llm-library-section.component.scss'],
+    templateUrl: './ai-models-page.component.html',
+    styleUrls: ['./ai-models-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '(document:click)': 'onDocumentClick($event)',
         '(document:keydown.escape)': 'onDocumentEscape($event)',
     },
 })
-export class LlmLibrarySectionComponent implements OnInit {
+export class AiModelsPageComponent implements OnInit {
     private readonly header = viewChild.required(LlmLibraryHeaderComponent);
     private readonly libraryElement = viewChild<ElementRef<HTMLElement>>('library');
     private readonly sectionsElement = viewChild<ElementRef<HTMLElement>>('sectionList');
@@ -183,6 +210,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly injector = inject(Injector);
     private readonly overlayContainer = inject(OverlayContainer);
     private readonly document = inject(DOCUMENT);
+    private readonly route = inject(ActivatedRoute);
 
     readonly voiceProviders: VoiceProvider[] = [
         {
@@ -232,15 +260,23 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly libraryWidth = signal<number | null>(null);
 
     readonly configTypeSections: { type: ModelTypes; title: string; errorLabel: string; key: 'llm' | 'embedding' }[] = [
-        { type: ModelTypes.LLM, title: 'LLM', errorLabel: 'LLM', key: 'llm' },
-        { type: ModelTypes.EMBEDDING, title: 'Embeddings', errorLabel: 'Embedding', key: 'embedding' },
+        { type: ModelTypes.LLM, title: AI_MODELS_SECTION_TITLES.llm, errorLabel: 'LLM', key: 'llm' },
+        {
+            type: ModelTypes.EMBEDDING,
+            title: AI_MODELS_SECTION_TITLES.embedding,
+            errorLabel: 'Embedding',
+            key: 'embedding',
+        },
     ];
 
     /** Cards a row holds at the sections' width. */
     protected readonly cardsPerRow = computed(() => llmLibraryCardsPerRow(this.libraryWidth()));
 
-    /** Every section with a card or an error to show, before the Capabilities filter and the search. */
+    /** Every config section, before the Capabilities filter and the search. */
     private readonly unfilteredSections = computed(() => this.buildSections(''));
+    protected readonly hasAnyCard = computed(() =>
+        this.unfilteredSections().some((section) => section.selectionKeys.length > 0)
+    );
 
     /** The sections the search and the Capabilities filter leave. */
     protected readonly sections = computed<LibrarySection[]>(() => {
@@ -250,12 +286,35 @@ export class LlmLibrarySectionComponent implements OnInit {
         );
     });
 
-    /** Sections collapsed by the user; all start open, and the state lasts as long as the page. */
-    protected readonly collapsedSections = signal<ReadonlySet<LibrarySectionKey>>(new Set());
+    /** Sections opened by the user; all start collapsed, and the state lasts as long as the page. */
+    protected readonly expandedSections = signal<ReadonlySet<PageSectionKey>>(new Set());
 
-    /** Nothing to show at all; the search or the filter hiding every section is `hasNoMatches`. */
-    protected readonly hasNoConfigs = computed(() => this.unfilteredSections().length === 0);
-    protected readonly hasNoMatches = computed(() => !this.hasNoConfigs() && this.sections().length === 0);
+    /** Default Models has no providers or configs to match: it goes while a search or a filter is on. */
+    protected readonly showDefaults = computed(() => !this.searchQuery() && this.selectedSectionFilter() === null);
+    /** The search or the filter hides every section. */
+    protected readonly hasNoMatches = computed(() => this.sections().length === 0 && !this.showDefaults());
+
+    /** Default role titles per config, by selection key: a card with any shows "Default". */
+    protected readonly defaultRoles = computed<ReadonlyMap<string, string[]>>(() => {
+        const defaults = this.defaultModelsStorageService.defaultModels();
+        const roles = new Map<string, string[]>();
+        if (!defaults) return roles;
+        for (const card of DEFAULT_ROLE_CARDS) {
+            const configId = defaults[card.field];
+            if (configId === null) continue;
+            const key = llmLibrarySelectionKey(
+                card.configType === ModelTypes.EMBEDDING ? 'embedding' : 'llm',
+                configId
+            );
+            roles.set(key, [...(roles.get(key) ?? []), card.title]);
+        }
+        return roles;
+    });
+    protected readonly assignedRolesCount = computed(() => {
+        const defaults = this.defaultModelsStorageService.defaultModels();
+        return defaults ? DEFAULT_ROLE_CARDS.filter((card) => defaults[card.field] !== null).length : 0;
+    });
+    protected readonly totalRolesCount = DEFAULT_ROLE_CARDS.length;
 
     /** Keys of every card currently rendered (not hidden behind a section/provider error), collapsed or not. */
     private readonly visibleSelectionKeys = computed<ReadonlySet<string>>(
@@ -319,12 +378,16 @@ export class LlmLibrarySectionComponent implements OnInit {
     });
 
     protected readonly cardGap = LLM_LIBRARY_CARD_GAP;
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 
     constructor() {
         this.destroyRef.onDestroy(() => this.resizeObserver?.disconnect());
     }
 
     ngOnInit() {
+        if (this.route.snapshot.fragment === AI_MODELS_DEFAULTS_FRAGMENT)
+            this.expandedSections.set(new Set(['defaults']));
         this.loadAll();
     }
 
@@ -376,7 +439,10 @@ export class LlmLibrarySectionComponent implements OnInit {
             )
         );
 
-        forkJoin(tracked)
+        // For the "Default" badges only: the Default Models section shows its own load.
+        const defaults = this.defaultModelsStorageService.loadDefaultModels().pipe(catchError(() => of(null)));
+
+        forkJoin([...tracked, defaults])
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => {
                 this.sectionErrors.set(errors);
@@ -385,13 +451,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     }
 
     onEditConfig(provider: VoiceProvider, config: RealtimeConfig): void {
-        const data: RealtimeConfigDialogData = { config: config, provider: provider.key };
-        this.dialog.open(RealtimeConfigDialogComponent, {
-            height: '90vh',
-            width: '600px',
-            disableClose: true,
-            data,
-        });
+        this.openRealtimeDialog({ config: config, provider: provider.key });
     }
 
     /** Opens the same details the LLM and embedding cards show; the dialog closes back to `trigger`. */
@@ -417,13 +477,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     }
 
     onEditSystemOne(config: SystemOneConfig): void {
-        const data: SystemOneConfigDialogData = { config };
-        this.dialog.open(SystemOneConfigDialogComponent, {
-            height: '90vh',
-            width: '600px',
-            disableClose: true,
-            data,
-        });
+        this.openSystemOneDialog({ config });
     }
 
     onViewSystemOneDetails(config: SystemOneConfig, trigger: HTMLElement): void {
@@ -439,9 +493,9 @@ export class LlmLibrarySectionComponent implements OnInit {
         this.bulkDeleteService.run([group]).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
-    protected toggleSection(key: LibrarySectionKey): void {
-        this.collapsedSections.update((collapsed) => {
-            const next = new Set(collapsed);
+    protected toggleSection(key: PageSectionKey): void {
+        this.expandedSections.update((expanded) => {
+            const next = new Set(expanded);
             if (!next.delete(key)) next.add(key);
             return next;
         });
@@ -483,22 +537,29 @@ export class LlmLibrarySectionComponent implements OnInit {
         this.selectedSectionFilter.set(value);
     }
 
-    protected onAddModel(): void {
-        this.dialog.open(AddConfigurationDialogComponent, { autoFocus: false });
+    /** Opens the create dialog of a section's kind: the catalog dialog for LLM and Embeddings, today's for the rest. */
+    protected onAdd(key: LibrarySectionKey): void {
+        switch (key) {
+            case 'llm':
+            case 'embedding':
+                this.openModelConfig({ kind: key });
+                break;
+            case 'voice':
+                this.openRealtimeDialog({ config: null, provider: 'openai' });
+                break;
+            case 'system_one':
+                this.openSystemOneDialog({ config: null });
+                break;
+        }
     }
 
     public onEdit(model: LlmLibraryModel): void {
-        const dialogComponents: Partial<Record<ModelTypes, ComponentType<unknown>>> = {
-            [ModelTypes.LLM]: LlmModelConfigDialogComponent,
-            [ModelTypes.EMBEDDING]: EmbeddingModelConfigDialogComponent,
+        const kinds: Partial<Record<ModelTypes, ModelConfigKind>> = {
+            [ModelTypes.LLM]: 'llm',
+            [ModelTypes.EMBEDDING]: 'embedding',
         };
-        const component = dialogComponents[model.configType];
-        if (!component) return;
-        this.dialog.open(component, {
-            height: '90vh',
-            width: '600px',
-            data: { configId: model.id },
-        });
+        const kind = kinds[model.configType];
+        if (kind) this.openModelConfig({ kind, configId: model.id });
     }
 
     public onViewDetails({ model, trigger }: LlmLibraryCardViewDetailsEvent): void {
@@ -604,14 +665,26 @@ export class LlmLibrarySectionComponent implements OnInit {
             .subscribe();
     }
 
-    /** The deleted card (or the bulk Delete button, gone with select mode) had the focus: it goes to Add Configuration. */
+    /** The deleted card (or the bulk Delete button, gone with select mode) had the focus: it goes to Add Model. */
     private focusAddAfterDelete(): void {
         afterNextRender(() => this.header().focusAddButton(), { injector: this.injector });
     }
 
+    private openModelConfig(data: ModelConfigDialogData): void {
+        this.dialog.open(ModelConfigDialogComponent, { autoFocus: false, data });
+    }
+
+    private openRealtimeDialog(data: RealtimeConfigDialogData): void {
+        this.dialog.open(RealtimeConfigDialogComponent, { ...VOICE_DIALOG_SIZE, disableClose: true, data });
+    }
+
+    private openSystemOneDialog(data: SystemOneConfigDialogData): void {
+        this.dialog.open(SystemOneConfigDialogComponent, { disableClose: true, data });
+    }
+
     /**
-     * LLM, Embeddings, Realtime and System One, each left out when it has no card and no error to show. `query`
-     * (lower case, empty for all) narrows the cards by name, model or provider.
+     * LLM, Embeddings, Voice and System One. `query` (lower case, empty for all) narrows the cards by name, model or
+     * provider; while it does, a section left with no card and no error is left out.
      */
     private buildSections(query: string): LibrarySection[] {
         const errors = this.sectionErrors();
@@ -638,7 +711,7 @@ export class LlmLibrarySectionComponent implements OnInit {
         sections.push(
             this.buildSection(
                 'voice',
-                'Realtime',
+                AI_MODELS_SECTION_TITLES.voice,
                 voice
                     .filter(({ hasError }) => hasError)
                     .map(({ provider }) => ({
@@ -663,7 +736,7 @@ export class LlmLibrarySectionComponent implements OnInit {
             )
         );
 
-        return sections.filter((section) => section.errors.length > 0 || section.selectionKeys.length > 0);
+        return sections.filter((section) => !query || section.errors.length > 0 || section.selectionKeys.length > 0);
     }
 
     private searchedModelGroups(query: string): LlmLibraryProviderGroup[] {
@@ -674,7 +747,6 @@ export class LlmLibrarySectionComponent implements OnInit {
                     (model) =>
                         !query ||
                         model.customName.toLowerCase().includes(query) ||
-                        model.modelName.toLowerCase().includes(query) ||
                         group.providerName.toLowerCase().includes(query) ||
                         providerDisplayName(group.providerName).toLowerCase().includes(query)
                 ),
@@ -695,7 +767,6 @@ export class LlmLibrarySectionComponent implements OnInit {
                     (config) =>
                         !query ||
                         config.custom_name.toLowerCase().includes(query) ||
-                        config.model_name.toLowerCase().includes(query) ||
                         `${provider.name} realtime`.toLowerCase().includes(query)
                 ),
         }));
@@ -718,7 +789,6 @@ export class LlmLibrarySectionComponent implements OnInit {
                 ({ model }) =>
                     !query ||
                     model.customName.toLowerCase().includes(query) ||
-                    model.modelName.toLowerCase().includes(query) ||
                     SYSTEM_ONE_LABEL.toLowerCase().includes(query)
             );
     }
@@ -739,6 +809,10 @@ export class LlmLibrarySectionComponent implements OnInit {
             rows: packLlmLibraryRows(ordered, (group) => group.cards.length, cardsPerRow),
             providerList: ordered.flatMap((group) => (group.name === null ? [] : [group.name])).join(', '),
             selectionKeys: ordered.flatMap((group) => group.cards.map((card) => card.selectionKey)),
+            needsReviewCount: ordered.reduce(
+                (count, group) => count + group.cards.filter((card) => card.model.needsReview).length,
+                0
+            ),
         };
     }
 

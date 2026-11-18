@@ -30,6 +30,12 @@ export interface ProviderWithModels<T extends { id: number; name: string } = Any
     models: T[];
 }
 
+/** The config's temperature setting; null when it has none, so its card shows none. */
+function temperatureOf(config: { parameters: Record<string, unknown> }): number | null {
+    const temperature = config.parameters['temperature'];
+    return typeof temperature === 'number' ? temperature : null;
+}
+
 @Injectable({
     providedIn: 'root',
 })
@@ -76,9 +82,12 @@ export class LLMLibraryService {
         type: ModelTypes,
         getModelId: (config: TConfig) => number,
         getProviderId: (model: TModel) => number,
-        getTemperature: (config: TConfig) => number,
+        getTemperature: (config: TConfig) => number | null,
         getTags: (config: TConfig) => Tag[],
-        getIsDeprecated: (model: TModel) => boolean = () => false
+        getReview: (config: TConfig) => { needs_review: boolean; review_reasons: string[] } = () => ({
+            needs_review: false,
+            review_reasons: [],
+        })
     ): LlmLibraryProviderGroup[] {
         const modelMap = new Map(models.map((m) => [m.id, m]));
         const providerMap = new Map(providers.map((p) => [p.id, p]));
@@ -108,7 +117,8 @@ export class LLMLibraryService {
                 temperature: getTemperature(config),
                 usedByCount: null,
                 configType: type,
-                isDeprecated: getIsDeprecated(model),
+                needsReview: getReview(config).needs_review,
+                reviewReasons: getReview(config).review_reasons,
             });
         }
 
@@ -126,9 +136,9 @@ export class LLMLibraryService {
                 ModelTypes.LLM,
                 (c) => c.model,
                 (m) => m.llm_provider,
-                (c) => c.temperature ?? 0,
+                temperatureOf,
                 (c) => c.tags,
-                (m) => m.predefined && !m.is_visible
+                (c) => c
             ),
             ...this.buildProviderGroups(
                 this.embeddingConfigStorage.configs(),
@@ -137,8 +147,9 @@ export class LLMLibraryService {
                 ModelTypes.EMBEDDING,
                 (c) => c.model,
                 (m) => m.embedding_provider!,
-                () => 0,
-                () => []
+                temperatureOf,
+                () => [],
+                (c) => c
             ),
             ...this.buildProviderGroups(
                 this.realtimeConfigStorage.configs(),

@@ -11,6 +11,10 @@ export const SETTINGS_URL = '/settings';
  * takes them.
  */
 export const SETTINGS_QUICKSTART_URL = `${SETTINGS_URL}/quickstart`;
+/** The AI Models settings tab: the organization's model configs and its default models. */
+export const SETTINGS_AI_MODELS_URL = `${SETTINGS_URL}/ai-models`;
+/** The URL fragment that opens AI Models with its Default Models section expanded. */
+export const AI_MODELS_DEFAULTS_FRAGMENT = 'default-models';
 
 /**
  * Parent guard for /settings. Permissions are already loaded by bootstrapGuard
@@ -33,7 +37,7 @@ export const settingsIndexGuard: CanActivateFn = () => {
         return router.parseUrl(SETTINGS_QUICKSTART_URL);
     }
     if (permissionsService.can(ResourceCode.LlmConfigs, ActionCode.Read)) {
-        return router.parseUrl('/settings/default-llms');
+        return router.parseUrl(SETTINGS_AI_MODELS_URL);
     }
     if (permissionsService.can(ResourceCode.Webhooks, ActionCode.Read)) {
         return router.parseUrl('/settings/webhook-triggers');

@@ -31,6 +31,10 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     /** Digits kept after rounding; defaults to the precision of `step`. */
     decimals = input<number | undefined>(undefined);
     optional = input<boolean>(false);
+    /** The value is shown and typed multiplied by this, e.g. 100 to show 0.7 as 70; the slider and form keep 0.7. */
+    scale = input<number>(1);
+    /** Shown after the value, e.g. `%`. */
+    suffix = input<string>('');
 
     value = model<number | null>(null);
     changed = output<number | null>();
@@ -45,10 +49,14 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
 
     private precision = computed(() => this.decimals() ?? this.countFractionDigits(this.step()));
 
+    /** Digits shown after scaling: a step of 0.01 shown times 100 needs none. */
+    private displayPrecision = computed(() => Math.max(0, this.precision() - Math.round(Math.log10(this.scale()))));
+
     displayValue = computed(() => {
         const val = this.value();
         if (val === null || val === undefined) return '0';
-        return this.precision() > 0 ? val.toFixed(this.precision()) : val.toString();
+        const shown = val * this.scale();
+        return this.precision() > 0 ? shown.toFixed(this.displayPrecision()) : shown.toString();
     });
 
     sliderPercentage = computed(() => {
@@ -90,7 +98,7 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
             return;
         }
 
-        const clamped = Math.min(this.max(), Math.max(this.min(), parsed));
+        const clamped = Math.min(this.max(), Math.max(this.min(), parsed / this.scale()));
         this.updateValue(this.roundToDecimals(clamped));
         target.value = this.displayValue();
         this.onTouched();

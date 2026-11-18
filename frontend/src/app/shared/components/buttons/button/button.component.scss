@@ -73,6 +73,12 @@
     }
 }
 
+// Ghost with a quiet frame: accent label on a transparent button, outlined in the card-border grey.
+.btn-outline-ghost {
+    @extend .btn-ghost;
+    border-color: var(--graphite-750);
+}
+
 .btn-outline-primary {
     font-weight: 400;
     background: transparent;
