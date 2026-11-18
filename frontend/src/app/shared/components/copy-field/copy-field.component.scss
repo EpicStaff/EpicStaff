@@ -61,9 +61,9 @@
     font-size: 0.875rem;
 
     &.info-warning {
-        border-color: var(--orange);
-        color: var(--orange);
-        background: var(--transparent-orange-8);
+        border-color: var(--color-warning);
+        color: var(--color-warning);
+        background: var(--color-warning-background);
     }
 
     &.info-default {

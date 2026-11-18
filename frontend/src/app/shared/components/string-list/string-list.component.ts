@@ -31,6 +31,8 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
 interface StringListRow {
     id: number;
     value: string;
+    /** Whether the user changed the text since `writeValue` put it there; only then does leaving the row split it. */
+    isEdited: boolean;
 }
 
 /** Where the caret goes in a row the list moves the focus to. */
@@ -160,7 +162,7 @@ export class StringListComponent implements ControlValueAccessor, Validator {
     }
 
     protected updateRow(id: number, value: string): void {
-        this.rows.update((rows) => rows.map((row) => (row.id === id ? { ...row, value } : row)));
+        this.rows.update((rows) => rows.map((row) => (row.id === id ? { ...row, value, isEdited: true } : row)));
         this.emit();
     }
 
@@ -223,7 +225,8 @@ export class StringListComponent implements ControlValueAccessor, Validator {
 
     /**
      * A typed separator ends the row there: the text after it moves to a new row below, where the cursor goes. At the
-     * start of a row (or in an empty one) it is dropped. Typed text that is more than separators is split as pasted.
+     * start of a row (or in an empty one) it is dropped. When the text after it only repeats the text before, no row is
+     * added. Typed text that is more than separators is split as pasted.
      */
     protected onBeforeInput(event: InputEvent, id: number, rowInput: HTMLInputElement): void {
         const typed = event.data ?? '';
@@ -236,12 +239,19 @@ export class StringListComponent implements ControlValueAccessor, Validator {
         }
         if (before.trim() === '') return;
         const index = this.rows().findIndex((row) => row.id === id);
-        const kept = this.cleanPieces([before], id);
-        const moved = this.cleanPieces([after], id, kept);
-        const row = this.newRow(moved[0] ?? '');
+        // `before` is not blank, so it is always the first piece; the second is gone when `after` is blank or repeats it.
+        const pieces = this.cleanPieces([before, after]);
+        const kept = pieces[0] ?? '';
+        const moved: string | undefined = pieces[1];
+        if (moved === undefined && after.trim() !== '') {
+            this.updateRow(id, kept);
+            this.focusRow(id, 'end');
+            return;
+        }
+        const row = this.newRow(moved ?? '');
         this.rows.update((rows) => [
             ...rows.slice(0, index),
-            { ...rows[index], value: kept[0] ?? '' },
+            { ...rows[index], value: kept },
             row,
             ...rows.slice(index + 1),
         ]);
@@ -253,10 +263,13 @@ export class StringListComponent implements ControlValueAccessor, Validator {
         this.focusedRowId.set(id);
     }
 
-    /** Splits what is still separated (autofill), shows the row's error from now on and touches the control. */
+    /**
+     * Splits what the user left separated (autofill), but never a value `writeValue` put there untouched; shows the
+     * row's error from now on and touches the control.
+     */
     protected onBlur(id: number): void {
         const row = this.rows().find((current) => current.id === id);
-        if (row && this.hasSeparator(row.value)) this.splitRow(id, row.value);
+        if (row?.isEdited && this.hasSeparator(row.value)) this.splitRow(id, row.value);
         this.focusedRowId.update((focused) => (focused === id ? null : focused));
         this.blurredRowIds.update((blurred) => new Set(blurred).add(id));
         this.onTouched();
@@ -275,7 +288,7 @@ export class StringListComponent implements ControlValueAccessor, Validator {
     }
 
     private newRow(value: string): StringListRow {
-        return { id: this.nextRowId++, value };
+        return { id: this.nextRowId++, value, isEdited: false };
     }
 
     /** Emits the values only: trimmed, without the empty rows. */
@@ -289,11 +302,11 @@ export class StringListComponent implements ControlValueAccessor, Validator {
 
     /**
      * Puts the pieces of the text in this row (the first) and in new rows right after it (the rest), without empty
-     * pieces or ones another row already holds. Returns the id of the last of these rows.
+     * pieces or repeats within the text. Returns the id of the last of these rows.
      */
     private splitRow(id: number, text: string): number {
         const pattern = this.splitPattern();
-        const pieces = this.cleanPieces(pattern ? text.split(pattern) : [text], id);
+        const pieces = this.cleanPieces(pattern ? text.split(pattern) : [text]);
         const index = this.rows().findIndex((row) => row.id === id);
         const added = pieces.slice(1).map((piece) => this.newRow(piece));
         this.rows.update((rows) => [
@@ -306,14 +319,12 @@ export class StringListComponent implements ControlValueAccessor, Validator {
         return added.at(-1)?.id ?? id;
     }
 
-    /** The trimmed, non-empty pieces, each once, without what the other rows (or `taken`) already hold. */
-    private cleanPieces(pieces: string[], rowId: number, taken: string[] = []): string[] {
-        const seen = new Set([
-            ...taken,
-            ...this.rows()
-                .filter((row) => row.id !== rowId)
-                .map((row) => row.value.trim()),
-        ]);
+    /**
+     * The trimmed, non-empty pieces of one split, each once. Only the pieces are compared with each other: a piece that
+     * another row already holds stays, so the list never drops text the user typed or kept.
+     */
+    private cleanPieces(pieces: string[]): string[] {
+        const seen = new Set<string>();
         const kept: string[] = [];
         for (const piece of pieces.map((text) => text.trim())) {
             if (piece === '' || seen.has(piece)) continue;

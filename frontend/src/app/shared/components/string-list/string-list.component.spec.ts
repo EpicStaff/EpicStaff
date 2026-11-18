@@ -317,12 +317,12 @@ describe('StringListComponent', () => {
                 lastRow: 1,
             },
             {
-                name: 'without the pieces another row or an earlier piece holds',
+                name: 'without the pieces an earlier piece holds, keeping the ones another row holds',
                 value: ['https://a.example', ''],
                 pasted: 'https://a.example https://b.example https://b.example https://c.example',
                 at: [1, 0, 0],
-                shown: ['https://a.example', 'https://b.example', 'https://c.example'],
-                lastRow: 2,
+                shown: ['https://a.example', 'https://a.example', 'https://b.example', 'https://c.example'],
+                lastRow: 3,
             },
         ])('pastes $name, the cursor at the end of the last piece', async ({ value, pasted, at, shown, lastRow }) => {
             setup(value, { split: true });
@@ -362,6 +362,21 @@ describe('StringListComponent', () => {
             expect(document.activeElement).toBe(rows()[1]);
         });
 
+        it('keeps a row that repeats another one at a typed separator, adding the one new row', async () => {
+            setup(['https://a.example', ''], { split: true });
+            type(1, 'https://a.example');
+            await typeCharacter(1, ' ', 17);
+            expect(values()).toEqual(['https://a.example', 'https://a.example', '']);
+            expect(control.value).toEqual(['https://a.example', 'https://a.example']);
+            expect(document.activeElement).toBe(rows()[2]);
+        });
+
+        it('adds no row at a separator typed between a value and its repeat', async () => {
+            setup(['https://a.examplehttps://a.example'], { split: true });
+            await typeCharacter(0, ',', 17);
+            expect(values()).toEqual(['https://a.example']);
+        });
+
         it.each([
             ['an empty row', [''], 0, ['']],
             ['the start of a row', ['https://a.example'], 0, ['https://a.example']],
@@ -372,13 +387,27 @@ describe('StringListComponent', () => {
             expect(values()).toEqual(shown);
         });
 
-        it('splits on leaving a row what is still separated, without blanks or repeats', () => {
+        it('splits on leaving a row what is still separated, without blanks or repeats within it', () => {
             setup(['https://a.example', ''], { split: true });
             // As autofill does: no paste, no typed key.
-            type(1, 'https://b.example, https://a.example  https://c.example');
+            type(1, 'https://b.example, https://a.example  https://b.example');
             blur(1);
-            expect(values()).toEqual(['https://a.example', 'https://b.example', 'https://c.example']);
-            expect(control.value).toEqual(['https://a.example', 'https://b.example', 'https://c.example']);
+            expect(values()).toEqual(['https://a.example', 'https://b.example', 'https://a.example']);
+            expect(control.value).toEqual(['https://a.example', 'https://b.example', 'https://a.example']);
+        });
+
+        it('keeps a written value with a separator in one row when the row is left unedited', () => {
+            setup(['https://a.example, https://b.example'], { split: true });
+            blur(0);
+            expect(values()).toEqual(['https://a.example, https://b.example']);
+            expect(control.value).toEqual(['https://a.example, https://b.example']);
+        });
+
+        it('splits a written value with a separator once the row is edited and left', () => {
+            setup(['https://a.example, https://b.example'], { split: true });
+            type(0, 'https://a.example, https://b.example/');
+            blur(0);
+            expect(values()).toEqual(['https://a.example', 'https://b.example/']);
         });
     });
 
@@ -397,6 +426,32 @@ describe('StringListComponent', () => {
             await pressEnter(1);
             expect(values()).toEqual(['https://a.example', '', 'https://b.example']);
             expect(document.activeElement).toBe(rows()[2]);
+        });
+
+        it('at the cap adds no row and moves to the next one', async () => {
+            setup(['https://a.example', 'https://b.example'], { maxItems: 2 });
+            await pressEnter(0);
+            expect(values()).toEqual(['https://a.example', 'https://b.example']);
+            expect(document.activeElement).toBe(rows()[1]);
+        });
+
+        it('while an input method is composing adds no row and leaves the key to it', async () => {
+            setup(['https://a.example']);
+            const input = rows()[0];
+            input.focus();
+            const event = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                code: 'Enter',
+                bubbles: true,
+                cancelable: true,
+                isComposing: true,
+            });
+            // Only the list sees the key: the dialog's own Enter handling is not what this checks.
+            input.dispatchEvent(event);
+            fixture.detectChanges();
+            await fixture.whenStable();
+            expect(values()).toEqual(['https://a.example']);
+            expect(event.defaultPrevented).toBe(false);
         });
 
         it('in an empty last row does nothing, and still does not submit', async () => {
