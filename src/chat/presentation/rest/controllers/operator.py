@@ -385,6 +385,12 @@ class InboxStreamController(Controller):
     """Same path, no guard: EventSource cannot send headers, so the ticket minted under the guard is the credential.
 
     Litestar merges guards across layers, so the stream cannot opt out on `OperatorController`.
+
+    Membership and chats permission are checked only when the ticket is minted, not here or while
+    the stream is open. A member removed from the organization, or who loses chats `read`, keeps
+    an open stream until `CHAT_STREAM_MAX_LIFETIME`; the reconnect is then refused when it mints a new ticket. Worst case
+    `CHAT_IDENTITY_CACHE_TTL` + `CHAT_TICKET_TTL` + `CHAT_STREAM_MAX_LIFETIME` (plus up to one
+    `CHAT_STREAM_PING_INTERVAL`), about 32 minutes by default; see docs/chat/configuration.md.
     """
 
     path = "/chat/operator/v1"

@@ -1343,7 +1343,11 @@ services:
       SANDBOX_MAX_HELD_EXECUTIONS: ${SANDBOX_MAX_HELD_EXECUTIONS:?}
       SANDBOX_HOLD_TIMEOUT: ${SANDBOX_HOLD_TIMEOUT:?}
     volumes:
-      - sandbox_venvs:${SANDBOX_VENVS_DIR:?}
+      # Long syntax: the short one splits on the colon inside ${...:?}, which an
+      # uninterpolated `docker compose config` (older Compose) then refuses.
+      - type: volume
+        source: sandbox_venvs
+        target: ${SANDBOX_VENVS_DIR:?}
     mem_limit: "1g"
     security_opt:
       - no-new-privileges:true
@@ -1354,7 +1358,7 @@ services:
     image: ghcr.io/epicstaff/sandbox_worker:${IMAGE_TAG:?}
     logging: *bounded-logs
     restart: unless-stopped
-    container_name: sandbox_worker
+    container_name: ${INSTANCE_PREFIX?}sandbox_worker
     build:
       context: .
       dockerfile: ./sandbox_new/Dockerfile.worker
@@ -1392,7 +1396,12 @@ services:
       SANDBOX_MEMORY_ADMIT_THRESHOLD: ${SANDBOX_MEMORY_ADMIT_THRESHOLD:?}
       SANDBOX_MAX_RESULT_SIZE: ${SANDBOX_MAX_RESULT_SIZE:?}
     volumes:
-      - sandbox_venvs:${SANDBOX_VENVS_DIR:?}:ro
+      # Long syntax: the short one splits on the colon inside ${...:?}, which an
+      # uninterpolated `docker compose config` (older Compose) then refuses.
+      - type: volume
+        source: sandbox_venvs
+        target: ${SANDBOX_VENVS_DIR:?}
+        read_only: true
     mem_limit: "2g"
     # Same hardening as the old sandbox: the root parent needs just enough to
     # drop the user-code child to sandboxuser, chown per-exec dirs, and kill its
