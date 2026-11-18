@@ -297,7 +297,7 @@ class KeyValueNode(BaseNode):
             raise KeyValueNodeError(f'{self._display_name()}: "{path}" names the whole flow state.')
         if not _STATE_PATH.fullmatch(state_path):
             raise KeyValueNodeError(f'{self._display_name()}: "{path}" isn\'t a flow state path.')
-        # getattr on a DotDict would return its internals, e.g. `variables._properties`.
+        # getattr on a DotDict would return its internals, e.g. `variables.__class__`.
         if any(segment.startswith("_") for segment in segments):
             raise KeyValueNodeError(
                 f'{self._display_name()}: "{path}" has a segment starting with "_".'

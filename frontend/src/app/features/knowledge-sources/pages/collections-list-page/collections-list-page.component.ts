@@ -7,10 +7,9 @@ import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { SidebarWidthService } from '@shared/services';
 import { takeQueryParams } from '@shared/utils';
-import { finalize, switchMap } from 'rxjs/operators';
+import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { CreateCollectionDialogComponent } from '../../components/create-collection-dialog/create-collection-dialog.component';
 import { NaiveRagConfigurationDialog } from '../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
@@ -170,45 +169,5 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
             data: { ragId, ragType: 'naive', collectionId },
             disableClose: true,
         });
-    }
-
-    createCollection(): void {
-        this.collectionsStorageService
-            .createCollection()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: ({ collection_id }) => {
-                    if (!collection_id) return;
-                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
-                    this.openCreateModal(collection_id);
-                },
-                error: () => this.toastService.error('Failed to create collection'),
-            });
-    }
-
-    private openCreateModal(collection_id: number): void {
-        const dialog = this.dialog.open(CreateCollectionDialogComponent, {
-            width: 'calc(100vw - 2rem)',
-            height: 'calc(100vh - 2rem)',
-            data: { collection_id },
-            disableClose: true,
-        });
-
-        // Update collection info after modal closed
-        dialog.closed
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                switchMap(() => {
-                    return this.collectionsStorageService.getFullCollection(collection_id, true);
-                })
-            )
-            .subscribe({
-                next: () => {
-                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
-                },
-                error: () => {
-                    this.toastService.error('Failed to get collection data');
-                },
-            });
     }
 }

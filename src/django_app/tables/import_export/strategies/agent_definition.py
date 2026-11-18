@@ -14,6 +14,7 @@ from tables.import_export.schemas import ImportSettings
 from tables.import_export.serializers.agent_definition import (
     AgentDefinitionImportSerializer,
 )
+from tables.import_export.serializers.surface_knowledge import KNOWLEDGE_PREFETCH
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.strategies.surface import SurfaceStrategy
 from tables.import_export.utils import (
@@ -187,7 +188,9 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
             not id_mapper.has_mapping(EntityType.SURFACE, entry["id"])
             for entry in owned_surface_entries
         ):
-            pairing = self._match_surfaces(agent_definition, *self._entry_surfaces(data, id_mapper))
+            pairing = self._match_surfaces(
+                agent_definition, *self._entry_surfaces(data, id_mapper, kwargs.get("org_id"))
+            )
             for old_surface_id, surface_id in pairing.items():
                 id_mapper.map(EntityType.SURFACE, old_surface_id, surface_id, was_created=False)
         return agent_definition
@@ -286,12 +289,17 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
 
         # SQL narrows on stored columns; whether the owned and default surfaces
         # match is decided in Python.
-        content_key_by_old_surface_id, entry_default_rows = self._entry_surfaces(data, id_mapper)
+        content_key_by_old_surface_id, entry_default_rows = self._entry_surfaces(
+            data, id_mapper, org_id
+        )
         candidates = filter_by_name_or_renamed_copy(
             AgentDefinition.objects.filter(**filters, **null_filters)
             .filter(self.get_org_scope_q(org_id))
             .prefetch_related(
-                "owned_surfaces__python_tools", "owned_surfaces__mcp_tools", "default_surfaces"
+                "owned_surfaces__python_tools",
+                "owned_surfaces__mcp_tools",
+                *(f"owned_surfaces__{lookup}" for lookup in KNOWLEDGE_PREFETCH),
+                "default_surfaces",
             ),
             import_values(self.serializer_class, data, ("name",)).get("name"),
         )[:MAX_REUSE_CANDIDATES]
@@ -307,13 +315,15 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
             None,
         )
 
-    def _entry_surfaces(self, data: dict, id_mapper: IDMapper) -> tuple[dict, tuple]:
+    def _entry_surfaces(
+        self, data: dict, id_mapper: IDMapper, org_id: int | None = None
+    ) -> tuple[dict, tuple]:
         """Return the entry's owned surface content keys and its default rows.
 
         Computed once per lookup or mapping and shared by every candidate.
         """
         content_key_by_old_surface_id = {
-            entry["id"]: self.surface_strategy.entry_content_key(entry, id_mapper)
+            entry["id"]: self.surface_strategy.entry_content_key(entry, id_mapper, org_id)
             for entry in data.get(OWNED_SURFACE_ENTRIES_KEY, [])
         }
         return content_key_by_old_surface_id, self._entry_default_rows(

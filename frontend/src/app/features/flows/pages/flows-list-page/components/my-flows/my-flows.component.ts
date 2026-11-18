@@ -228,7 +228,7 @@ export class MyFlowsComponent implements AfterViewChecked {
                 break;
 
             case 'export':
-                this.flowCopyImport.exportFlow(flow);
+                this.flowCopyImport.exportFlows([flow.id]);
                 break;
 
             case 'viewDetails':

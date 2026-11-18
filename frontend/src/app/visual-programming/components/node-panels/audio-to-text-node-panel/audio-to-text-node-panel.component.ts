@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
+import { CustomInputComponent, HintMessageComponent, ValidationErrorsComponent } from '@shared/components';
 
 import { AudioToTextNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -14,6 +14,7 @@ import { inputMapFromRows } from '../../input-map/input-map-rows';
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
+        HintMessageComponent,
         InputMapComponent,
         ValidationErrorsComponent,
         DiffFieldMarkComponent,
@@ -25,6 +26,9 @@ import { inputMapFromRows } from '../../input-map/input-map-rows';
                     [formGroup]="form"
                     class="form-container"
                 >
+                    @if (filesReadLock(); as lock) {
+                        <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                    }
                     <!-- Node Name Field -->
                     <div class="node-name-field">
                         <app-diff-field-mark [diffField]="'node_name'">

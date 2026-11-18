@@ -371,7 +371,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 session_credential_service,
             )
 
-            storage_credentials = session_credential_service.issue_for_session(
+            storage_accounts = session_credential_service.issue_session_accounts(
                 session_data=session_data,
                 session_orm=session,
                 org=graph.org,
@@ -383,7 +383,8 @@ class SessionManagerService(metaclass=SingletonMeta):
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
                 org_id=graph.org_id,
-                storage_credentials=storage_credentials,
+                storage_credentials=storage_accounts.default,
+                storage_credentials_by_grant=storage_accounts.by_grant,
             )
         except RunAdmissionRefusedError as refusal:
             self._stop_refused_session(session=session, refusal=refusal)
@@ -706,6 +707,14 @@ class SessionManagerService(metaclass=SingletonMeta):
         # Read once per graph from the Graph row, never from node or tool config:
         # it becomes the X-Organization-Id header of sandbox callback tools.
         org_id = graph.org_id
+        # Read once per graph: every code node below gets the storage of its graph.
+        attached_storage_paths = (
+            cv.attached_storage_paths(graph.pk)
+            if python_node_list
+            or webhook_trigger_node_list
+            or classification_decision_table_node_list
+            else None
+        )
 
         python_node_data_list = [
             cv.convert_python_node_to_pydantic(
@@ -714,6 +723,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 graph_id=graph.pk,
                 session_id=session.pk if session else None,
                 org_id=org_id,
+                attached_storage_paths=attached_storage_paths,
             )
             for item in python_node_list
         ]
@@ -728,6 +738,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 graph_id=graph.pk,
                 session_id=session.pk if session else None,
                 org_id=org_id,
+                attached_storage_paths=attached_storage_paths,
             )
             for item in webhook_trigger_node_list
         ]
@@ -851,6 +862,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                     graph_id=graph.pk,
                     session_id=session.pk if session else None,
                     org_id=org_id,
+                    attached_storage_paths=attached_storage_paths,
                 )
             )
 

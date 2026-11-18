@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from rbac.models.enums import ResourceType
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import TimestampMixin
@@ -10,6 +11,15 @@ class AuditPresetDomain(models.TextChoices):
 
     SESSIONS = "sessions", "Sessions"
     USER_ACTIONS = "user_actions", "User actions"
+
+
+# The resource type whose read right gates every action on a domain's presets (browsing,
+# saving, copying, exporting, importing and downloading their export), as it gates
+# browsing the domain's tab.
+AUDIT_PRESET_DOMAIN_RESOURCE_TYPES: dict[str, ResourceType] = {
+    AuditPresetDomain.SESSIONS: ResourceType.AUDIT,
+    AuditPresetDomain.USER_ACTIONS: ResourceType.USER_AUDIT,
+}
 
 
 class AuditFilterPreset(OrgScopedModel, TimestampMixin):

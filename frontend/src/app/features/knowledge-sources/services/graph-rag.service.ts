@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -9,6 +9,7 @@ import {
     CreateGraphRagIndexConfigRequest,
 } from '../models/graph-rag.model';
 import { GraphRagDocumentListResponse } from '../models/graph-rag-document.model';
+import { GraphTableData, GraphTableSummaryItem, GraphVisualizationData } from '../models/graph-visualization.model';
 
 @Injectable({
     providedIn: 'root',
@@ -68,5 +69,50 @@ export class GraphRagService {
 
     reIncludeFiles(ragId: number): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}${ragId}/documents/initialize/`, {});
+    }
+
+    getTableData(
+        ragId: number,
+        tableName: string,
+        page = 1,
+        pageSize = 10,
+        search?: string,
+        filterColumn?: string,
+        filterValue?: string
+    ): Observable<GraphTableData> {
+        let params = new HttpParams().set('page', page.toString()).set('page_size', pageSize.toString());
+        if (search) {
+            params = params.set('search', search);
+        }
+        // filter_column and filter_value go together — the backend rejects a partial pair with 400.
+        // Both have to be non-empty strings: the backend treats an empty filter_value as a literal
+        // empty-cell match, which is never what the UI wants.
+        if (filterColumn && filterValue) {
+            params = params.set('filter_column', filterColumn).set('filter_value', filterValue);
+        }
+        return this.http.get<GraphTableData>(`${this.apiUrl}${ragId}/tables/${tableName}/`, { params });
+    }
+
+    getTableSummary(ragId: number): Observable<GraphTableSummaryItem[]> {
+        return this.http.get<GraphTableSummaryItem[]>(`${this.apiUrl}${ragId}/table-summary/`);
+    }
+
+    getVisualizationData(ragId: number, maxEntities?: number, search?: string): Observable<GraphVisualizationData> {
+        let params = new HttpParams();
+        if (maxEntities !== undefined) {
+            params = params.set('max_entities', maxEntities.toString());
+        }
+        if (search) {
+            params = params.set('search', search);
+        }
+        return this.http.get<GraphVisualizationData>(`${this.apiUrl}${ragId}/visualization/`, { params });
+    }
+
+    getEntityDetails(ragId: number, entityId: string): Observable<{ description: string }> {
+        return this.http.get<{ description: string }>(`${this.apiUrl}${ragId}/entity/${entityId}/`);
+    }
+
+    getRelationshipDetails(ragId: number, relationshipId: string): Observable<{ description: string }> {
+        return this.http.get<{ description: string }>(`${this.apiUrl}${ragId}/relationship/${relationshipId}/`);
     }
 }

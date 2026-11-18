@@ -50,14 +50,15 @@
                                 appTooltipWhenCollapsed
                                 collapseOnOverflowTarget=".btn-label"
                                 collapseOnOverflowClass="btn--icon-only"
-                                matTooltip="Import"
+                                [matTooltip]="importLabel()"
+                                [attr.aria-disabled]="isImporting() || null"
                                 (click)="onImportClick()"
                             >
                                 <app-svg-icon
                                     icon="download"
                                     size="1.1rem"
                                 />
-                                <span class="btn-label">Import</span>
+                                <span class="btn-label">{{ importLabel() }}</span>
                             </button>
                             <button
                                 type="button"
@@ -84,14 +85,15 @@
                 }
 
                 @if (selectMode()) {
-                    <app-button
-                        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
-                        type="primary"
-                        [disabled]="selectedFlowIds().length === 0"
-                        (click)="confirmExport()"
-                    >
-                        {{ exportSelectedLabel() }}
-                    </app-button>
+                    <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Export]">
+                        <app-button
+                            type="primary"
+                            [disabled]="selectedFlowIds().length === 0"
+                            (click)="exportSelectedFlows()"
+                        >
+                            {{ exportSelectedLabel() }}
+                        </app-button>
+                    </ng-container>
                 } @else {
                     <div
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"

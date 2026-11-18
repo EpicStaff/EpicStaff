@@ -27,6 +27,7 @@ class EntityType(StrEnum):
     AUDIT_FILTER_PRESET = "AuditFilterPreset"
     AGENT_DEFINITION = "AgentDefinition"
     SURFACE = "Surface"
+    SOURCE_COLLECTION = "SourceCollection"
 
     AGENT_TAG = "AgentTag"
     CREW_TAG = "CrewTag"

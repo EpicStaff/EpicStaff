@@ -121,7 +121,10 @@ import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/fl
 import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
 import { CdtExplanationsApiService } from '../../../../visual-programming/services/cdt-explanations-api.service';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
-import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
+import {
+    FILE_NODES_NEED_FILES_READ_MESSAGE,
+    FlowReadOnlyService,
+} from '../../../../visual-programming/services/flow-readonly.service';
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
 import { KeymapService } from '../../../../visual-programming/services/keymap.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
@@ -646,6 +649,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 takeUntilDestroyed(this.destroyRef),
                 map((graphDto) => normalizeFlowPorts(mapGraphDtoToFlowModel(graphDto))),
                 filter((subflowFlowModel) => !this.refuseUnpackOfTriggerNodes(subflowFlowModel)),
+                filter((subflowFlowModel) => !this.refuseUnpackOfFileNodes(subflowFlowModel)),
                 // Step 3: Check how many other flows reference this subflow.
                 switchMap((subflowFlowModel) =>
                     this.flowApiService.getSubflowUsage(subgraphId).pipe(
@@ -741,6 +745,23 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             return false;
         }
         this.usePermissionRefusal.showRefusal('unpack');
+        return true;
+    }
+
+    /**
+     * Unpacking creates the subflow's nodes in this flow, and a File Extractor or Audio to Text node needs
+     * Files:Read to be created, so a subflow holding one is refused as a whole for a user without it. Returns true
+     * when it refused, after telling the user why.
+     */
+    private refuseUnpackOfFileNodes(subflowFlowModel: FlowModel): boolean {
+        if (!subflowFlowModel.nodes.some((node) => this.flowReadOnly.needsFilesRead(node.type))) {
+            return false;
+        }
+        this.toastService.warning(
+            `Cannot unpack this subflow. ${FILE_NODES_NEED_FILES_READ_MESSAGE}`,
+            6000,
+            'bottom-right'
+        );
         return true;
     }
 
@@ -1713,7 +1734,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.isDeactivating = true;
         return this.unsavedChangesDialog
-            .confirmUnsavedChanges(() =>
+            .confirmUnsavedFlowChanges(() =>
                 this.saveFlowState(false).pipe(
                     map(() => true),
                     defaultIfEmpty(false),
@@ -2068,7 +2089,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 this.usePermissionRefusal.catchRefusal('restore'),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe({ error: () => this.toastService.error('Failed to restore version') });
+            .subscribe({
+                error: (err: HttpErrorResponse) => {
+                    // A refusal such as a missing Files permission carries its own explanation.
+                    const serverMessage: unknown = err?.error?.message;
+                    this.toastService.error(
+                        typeof serverMessage === 'string' && serverMessage ? serverMessage : 'Failed to restore version'
+                    );
+                },
+            });
     }
 
     /**
@@ -2199,7 +2228,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
-        this.flowCopyImport.exportFlow({ id: this.graph.id, name: this.graph.name });
+        this.flowCopyImport.exportFlows([this.graph.id]);
     }
 
     /**
@@ -2298,9 +2327,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private onVersionRestored(graphId: number, response: GraphRestoreResponse): Observable<void> {
         if (response.warnings.length > 0) {
-            this.toastService.warning(
-                `Version restored with ${response.warnings.length} warning(s): some dependencies have since been deleted`
-            );
+            const isCapped = (warning: { type: string }) => warning.type === 'storage_grant_capped';
+            const hasCapped = response.warnings.some(isCapped);
+            const hasOther = !response.warnings.every(isCapped);
+            const cappedText =
+                "some storage permissions were unticked because you don't have the matching Files permissions";
+            const otherText = 'some dependencies have since been deleted';
+            const details =
+                hasCapped && hasOther ? `${otherText}, and ${cappedText}` : hasCapped ? cappedText : otherText;
+            this.toastService.warning(`Version restored with ${response.warnings.length} warning(s): ${details}`);
         } else {
             this.toastService.success('Version restored successfully');
         }

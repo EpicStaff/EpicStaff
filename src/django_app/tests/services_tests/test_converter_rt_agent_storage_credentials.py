@@ -71,6 +71,20 @@ def _allow_tools(surface, *uses_storage: bool) -> None:
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("tools", [(True,), (True, False)], ids=["storage-tool", "storage-and-plain-tool"])
+def test_storage_tool_without_attached_files_starts_chat_without_an_account(gateway, surface, chat, tools):
+    _allow_tools(surface, *tools)
+
+    chat_data = ConverterService().convert_rt_agent_definition_chat_to_pydantic(
+        chat
+    )
+
+    assert chat_data.storage_credentials is None
+    assert gateway.created == []
+    assert not TemporaryStorageAccount.objects.filter(realtime_agent_chat=chat).exists()
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("tools", "minted"),
     [((), False), ((False,), False), ((True,), True), ((True, True), True), ((True, False), True)],
@@ -81,7 +95,9 @@ def test_one_account_per_chat_only_when_a_storage_tool_is_granted(gateway, org, 
     grant = StorageFile.objects.create(org=org, name="report.txt", path="reports/report.txt")
     SurfaceStorageItem.objects.create(surface=surface, storage_file=grant, can_view="allow")
 
-    chat_data = ConverterService().convert_rt_agent_definition_chat_to_pydantic(chat)
+    chat_data = ConverterService().convert_rt_agent_definition_chat_to_pydantic(
+        chat
+    )
 
     accounts = TemporaryStorageAccount.objects.filter(realtime_agent_chat=chat)
     if not minted:

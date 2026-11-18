@@ -14,7 +14,7 @@ export interface ConversationActionContext {
     style: ChatConversationStyle | null;
     holder: ConversationHolder;
     isClosed: boolean;
-    // Phones have no room for the main action's button beside the title.
+    // Phones have no room for the main action's button: it leads the ⋯ menu instead.
     isPhone: boolean;
     // Chats use: without it there is no action at all.
     canUse: boolean;
@@ -32,52 +32,43 @@ export function conversationHolder(
 }
 
 /**
- * The holder's main action, a button beside the title: Resolve on a Support desk, Done (back to the bot, still open) on
- * an Ongoing one, Release while the desk is not known. Null for anyone else and on a closed conversation.
+ * The conversation's main action, the filled button in the header (on phones, the first item of the ⋯ menu). On a
+ * Support desk it is Resolve whoever holds the conversation (the user, another operator or nobody, test or not). For
+ * the holder elsewhere: Done (back to the bot, still open) on an Ongoing desk, Release while the desk is not known.
+ * Null for anyone else there, and on a closed conversation.
  */
 export function primaryConversationAction(context: ConversationActionContext): ConversationActionItem | null {
-    if (!context.canUse || context.isClosed || context.holder !== 'me') return null;
-    switch (context.style) {
-        case 'support':
-            return { id: 'resolve', label: 'Resolve' };
-        case 'ongoing':
-            return { id: 'release', label: 'Done' };
-        default:
-            return { id: 'release', label: 'Release' };
-    }
+    if (!context.canUse || context.isClosed) return null;
+    if (context.style === 'support') return { id: 'resolve', label: 'Resolve' };
+    if (context.holder !== 'me') return null;
+    return context.style === 'ongoing' ? { id: 'release', label: 'Done' } : { id: 'release', label: 'Release' };
 }
 
 /**
- * The open conversation's other actions, in its ⋯ menu; none once it is closed. The holder: Release to bot on a Support
- * desk, Close conversation on an Ongoing one; on a phone the main action leads the menu. Another operator's: Take over,
- * Release to bot and the close. Unclaimed or the bot's: the close. The close is Resolve (Support) or Close conversation
- * (Ongoing), and is not offered while the desk is not known.
+ * The open conversation's other actions, in its ⋯ menu; none once it is closed. On a phone the main action (see
+ * `primaryConversationAction`) leads the menu, as it has no button there. Then, the holder: Hand Back to Bot on a
+ * Support desk, Close conversation on an Ongoing one. Another operator's: Take over, Hand Back to Bot and, on an
+ * Ongoing desk, Close conversation. Unclaimed or the bot's: Close conversation on an Ongoing desk. Support's close,
+ * Resolve, is always the main action, so never here; no close is offered while the desk is not known.
  */
 export function conversationMenuItems(context: ConversationActionContext): ConversationActionItem[] {
     if (!context.canUse || context.isClosed) return [];
     const disabled = context.isPending;
-    const releaseToBot: ConversationActionItem = { id: 'release', label: 'Release to bot', disabled };
+    const primary = primaryConversationAction(context);
+    const leading: ConversationActionItem[] = context.isPhone && primary ? [{ ...primary, disabled }] : [];
+    const handBackToBot: ConversationActionItem = { id: 'release', label: 'Hand Back to Bot', disabled };
     const closeItems = closeMenuItems(context.style, disabled);
     switch (context.holder) {
-        case 'me': {
-            const others = context.style === 'support' ? [releaseToBot] : closeItems;
-            const primary = primaryConversationAction(context);
-            return context.isPhone && primary ? [{ ...primary, disabled }, ...others] : others;
-        }
+        case 'me':
+            return [...leading, ...(context.style === 'support' ? [handBackToBot] : closeItems)];
         case 'other':
-            return [{ id: 'take-over', label: 'Take over', disabled }, releaseToBot, ...closeItems];
+            return [...leading, { id: 'take-over', label: 'Take over', disabled }, handBackToBot, ...closeItems];
         case 'none':
-            return closeItems;
+            return [...leading, ...closeItems];
     }
 }
 
+/** The close as a menu item: only Ongoing's Close conversation, as Support's Resolve is the main action. */
 function closeMenuItems(style: ChatConversationStyle | null, disabled: boolean): ConversationActionItem[] {
-    switch (style) {
-        case 'support':
-            return [{ id: 'resolve', label: 'Resolve', disabled }];
-        case 'ongoing':
-            return [{ id: 'close', label: 'Close conversation', disabled }];
-        default:
-            return [];
-    }
+    return style === 'ongoing' ? [{ id: 'close', label: 'Close conversation', disabled }] : [];
 }

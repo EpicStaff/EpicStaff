@@ -13,7 +13,6 @@ from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-import settings
 from foundation.cryptographer import AbstractCryptographer, CryptographerError
 from litestar.datastructures import UploadFile
 from loguru import logger
@@ -21,6 +20,7 @@ from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
 
+from manager import settings
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.ports import (

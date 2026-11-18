@@ -64,7 +64,9 @@ def test_convert_rt_agent_definition_chat_to_pydantic_populates_org_id_from_defi
         openai_config=config,
     )
 
-    data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
+    data = converter.convert_rt_agent_definition_chat_to_pydantic(
+        chat
+    )
 
     assert data.org_id == default_org.pk
     assert data.org_id == agent_definition.org_id

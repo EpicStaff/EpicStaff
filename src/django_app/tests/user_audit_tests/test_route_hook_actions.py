@@ -6,7 +6,9 @@ Presentation tests through the real endpoints. Only the object store (in-memory 
 the knowledge service client and Twilio's HTTP API are replaced.
 """
 
+import io
 import json
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,6 +30,7 @@ from tables.models import (
     Session,
     SourceCollection,
     StorageFile,
+    TransferJob,
 )
 from tables.models.default_models import DefaultModels
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
@@ -49,7 +52,11 @@ from tables.models.webhook_models import (
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.secrets import secret_service
 from tables.services.storage_service.manager import StorageManager
+from tables.services.transfer_jobs.archive_store import TransferArchiveStore
+from tables.services.transfer_jobs.runner import IMPORT_ARCHIVE_NAME, TransferJobRunner
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.storage_backend_fake import FakeStorageBackend
+from tests.transfer_job_helpers import FinishedExport, export_via_job
 from tables.views.knowledge_views.naive_rag_views import NaiveRagViewSet
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 from user_audit.middleware import UserActionMiddleware
@@ -263,10 +270,17 @@ def test_document_bulk_delete_records_each_document_deleted(
 # ---- imports ----
 
 
+def _flow_export(client, flow) -> FinishedExport:
+    exported = export_via_job(
+        client, "/api/graphs/export-jobs/", {"ids": [flow.id], "include_knowledge": False}
+    )
+    assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+    return exported
+
+
 def _exported_flow(client, flow) -> bytes:
-    response = client.get(f"/api/graphs/{flow.id}/export/")
-    assert response.status_code == status.HTTP_200_OK, response.content
-    return response.content
+    """The flow's export as the plain `.json` the synchronous import also takes."""
+    return json.dumps(_flow_export(client, flow).envelope).encode()
 
 
 def _import_flow(client, exported: bytes, capture, **settings):
@@ -325,6 +339,133 @@ def test_flow_import_of_a_file_without_flows_records_nothing(
     )
 
     assert response.status_code == status.HTTP_200_OK, response.content
+    assert sent_events == []
+
+
+def _run_flow_import_job(archive: bytes, org, user, api_key, *, before_run=None) -> uuid.UUID:
+    store = TransferArchiveStore(backend=FakeStorageBackend())
+    job_id = uuid.uuid4()
+    TransferJob.objects.create(
+        id=job_id,
+        org=org,
+        created_by=user,
+        api_key=api_key,
+        kind=TransferJob.Kind.IMPORT,
+        main_entity=TransferJob.MainEntity.FLOW,
+        request={"settings": {}},
+        archive_key=store.upload_file(job_id, IMPORT_ARCHIVE_NAME, io.BytesIO(archive)),
+    )
+    if before_run is not None:
+        before_run()
+    # The runner works outside any request: no request context names the actor.
+    TransferJobRunner(store=store).run(job_id)
+    return job_id
+
+
+def _assert_import_job_recorded_the_flow(job_id, flow, org, user, sent_events, api_key_name):
+    assert TransferJob.objects.get(pk=job_id).status == TransferJob.Status.COMPLETED
+    imported = Graph.objects.exclude(pk=flow.pk).get(org=org)
+    [event] = _hook_events(sent_events)
+    assert _target(event) == ("created", "flow", str(imported.pk), imported.name)
+    assert (event.org_id, event.actor_user_id, event.actor_email, event.actor_api_key_name) == (
+        org.id,
+        user.id,
+        user.email,
+        api_key_name,
+    )
+
+
+def test_flow_import_job_records_the_created_flow_as_its_creators_action(
+    admin_client, admin_acme, acme, flow, sent_events, django_capture_on_commit_callbacks
+):
+    archive = _flow_export(admin_client, flow).archive
+
+    with django_capture_on_commit_callbacks(execute=True):
+        job_id = _run_flow_import_job(archive, acme, admin_acme, api_key=None)
+
+    _assert_import_job_recorded_the_flow(job_id, flow, acme, admin_acme, sent_events, None)
+
+
+def test_flow_import_job_started_with_an_api_key_records_the_action_with_the_key_name(
+    admin_client,
+    admin_acme,
+    acme,
+    flow,
+    issue_api_key,
+    sent_events,
+    django_capture_on_commit_callbacks,
+):
+    archive = _flow_export(admin_client, flow).archive
+    _raw_key, api_key = issue_api_key(user=admin_acme, org=acme, name="CI importer")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        job_id = _run_flow_import_job(archive, acme, admin_acme, api_key=api_key)
+
+    _assert_import_job_recorded_the_flow(
+        job_id, flow, acme, admin_acme, sent_events, "CI importer"
+    )
+
+
+def test_flow_import_job_whose_key_was_deleted_before_it_ran_records_no_key_name(
+    admin_client,
+    admin_acme,
+    acme,
+    flow,
+    issue_api_key,
+    sent_events,
+    django_capture_on_commit_callbacks,
+):
+    archive = _flow_export(admin_client, flow).archive
+    _raw_key, api_key = issue_api_key(user=admin_acme, org=acme, name="CI importer")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        job_id = _run_flow_import_job(
+            archive, acme, admin_acme, api_key=api_key, before_run=api_key.delete
+        )
+
+    _assert_import_job_recorded_the_flow(job_id, flow, acme, admin_acme, sent_events, None)
+
+
+# ---- export and import jobs ----
+
+
+def _finished_job(org, user, display_name) -> TransferJob:
+    return TransferJob.objects.create(
+        org=org,
+        created_by=user,
+        kind=TransferJob.Kind.EXPORT,
+        main_entity=TransferJob.MainEntity.FLOW,
+        status=TransferJob.Status.COMPLETED,
+        request={"ids": [1]},
+        display_name=display_name,
+    )
+
+
+def test_clearing_jobs_records_each_removed_job_deleted(
+    admin_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
+):
+    jobs = [_finished_job(acme, admin_acme, name) for name in ("Billing flow", "3 flows")]
+
+    response = _send(
+        admin_client, "post", "/api/transfer-jobs/clear/", django_capture_on_commit_callbacks
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert not TransferJob.objects.exists()
+    assert sorted(_target(event) for event in _hook_events(sent_events)) == sorted(
+        ("deleted", "export or import job", str(job.pk), job.display_name) for job in jobs
+    )
+
+
+def test_clearing_no_job_records_nothing(
+    admin_client, sent_events, django_capture_on_commit_callbacks
+):
+    response = _send(
+        admin_client, "post", "/api/transfer-jobs/clear/", django_capture_on_commit_callbacks
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.json() == {"deleted": 0}
     assert sent_events == []
 
 

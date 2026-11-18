@@ -6,6 +6,7 @@ import { TestBed } from '@angular/core/testing';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
 import { GetMeResponse, NodeType, ShortcutParams, ShortcutSettings } from '@shared/models';
 
+import { PLATFORM_IS_MAC } from '../../core/services/platform-is-mac.token';
 import { ProfileService } from '../../services/auth/profile.service';
 import { ConfigService } from '../../services/config';
 import { ToastMessage, ToastService } from '../../services/notifications';
@@ -15,7 +16,7 @@ import { CdtDecisionTreeDialogComponent } from '../components/node-panels/classi
 import { chordFromEvent } from '../core/keymap/key-chord.util';
 import { ClassificationDecisionTableNodeModel } from '../core/models/node.model';
 import { FlowService } from './flow.service';
-import { KeymapService, PLATFORM_IS_MAC } from './keymap.service';
+import { KeymapService } from './keymap.service';
 
 const PROFILE_URL = '/api/profile/';
 

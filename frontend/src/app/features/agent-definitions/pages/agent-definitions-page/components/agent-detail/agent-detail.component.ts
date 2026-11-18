@@ -70,6 +70,9 @@ export interface AgentSavePayload {
 
 export type AgentSectionId = 'basics' | 'surfaces';
 
+/** Seeding key of a draft; the draft id follows it. */
+const DRAFT_KEY_PREFIX = 'draft:';
+
 const SECTIONS_BY_FOCUS: Record<AgentFocus, Record<AgentSectionId, boolean>> = {
     all: { basics: true, surfaces: true },
     instructions: { basics: true, surfaces: false },
@@ -121,6 +124,10 @@ export class AgentDetailComponent implements OnInit {
 
     agent = input<AgentDefinition | null>(null);
     isCreating = input<boolean>(false);
+    /** Which draft `isCreating` shows: a new value starts a new, empty one. */
+    draftId = input<number>(0);
+    /** Whether `agent` is the one the latest draft was saved as; only then are the draft's edits carried over. */
+    createdFromDraft = input<boolean>(false);
     saving = input<boolean>(false);
     surfaces = input<Surface[]>([]);
     saveErrorTick = input<number>(0);
@@ -189,17 +196,27 @@ export class AgentDetailComponent implements OnInit {
 
     private readonly agentNameInput = viewChild<ElementRef<HTMLInputElement>>('agentNameInput');
 
-    private nameFocusedForCreate = false;
+    /** Set by `requireName()`; the error shows while the name is still empty. */
+    private readonly nameRequested = signal<boolean>(false);
+    private readonly nameValue = toSignal(this.form.controls.name.valueChanges, {
+        initialValue: this.form.controls.name.value,
+    });
+    protected readonly showNameRequired = computed<boolean>(() => this.nameRequested() && !this.nameValue().trim());
+
+    /** Bumped by `requireName()` to focus the name again; each new draft focuses it once on its own. */
+    private readonly nameFocusRequest = signal<number>(0);
+    private focusedNameRequest: string | null = null;
 
     private readonly focusAgentNameOnCreate = afterRenderEffect(() => {
         const creating = this.isCreating();
+        const request = `${this.draftId()}:${this.nameFocusRequest()}`;
         const input = this.agentNameInput()?.nativeElement;
         if (!creating || !input) {
-            if (!creating) this.nameFocusedForCreate = false;
+            if (!creating) this.focusedNameRequest = null;
             return;
         }
-        if (this.nameFocusedForCreate) return;
-        this.nameFocusedForCreate = true;
+        if (this.focusedNameRequest === request) return;
+        this.focusedNameRequest = request;
         input.focus();
     });
 
@@ -208,10 +225,12 @@ export class AgentDetailComponent implements OnInit {
             const a = this.agent();
             const creating = this.isCreating();
 
-            const key = creating ? 'creating' : a ? `agent:${a.id}` : null;
+            const key = creating ? `${DRAFT_KEY_PREFIX}${this.draftId()}` : a ? `agent:${a.id}` : null;
             if (key === this.seededKey) return;
-            const previousKey = this.seededKey;
+            // Leaving a draft for any other agent (after Discard & Leave) must not carry the draft's edits to it.
+            const wasCreating = (this.seededKey?.startsWith(DRAFT_KEY_PREFIX) ?? false) && this.createdFromDraft();
             this.seededKey = key;
+            this.nameRequested.set(false);
 
             if (creating) {
                 this.form.reset(this.emptyValue());
@@ -221,13 +240,13 @@ export class AgentDetailComponent implements OnInit {
                 const serverValue = this.valueFromAgent(a);
                 // The create request already left on name blur. A model picked while it was in
                 // flight is only in the form — keep it and save it once this agent exists.
-                const next = previousKey === 'creating' ? this.withEditsMadeWhileCreating(serverValue) : serverValue;
+                const next = wasCreating ? this.withEditsMadeWhileCreating(serverValue) : serverValue;
                 this.form.reset(next);
                 this.form.markAsPristine();
-                this.savedSnapshot = previousKey === 'creating' ? serverValue : next;
+                this.savedSnapshot = wasCreating ? serverValue : next;
             }
-            this.dirtyChange.emit(this.form.dirty);
-            if (previousKey === 'creating' && a) {
+            this.dirtyChange.emit(this.hasUnsavedEdits());
+            if (wasCreating && a) {
                 untracked(() => this.persist(false));
             }
         });
@@ -270,7 +289,7 @@ export class AgentDetailComponent implements OnInit {
         // redundant load here.
         this.form.valueChanges
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.dirtyChange.emit(this.form.dirty));
+            .subscribe(() => this.dirtyChange.emit(this.hasUnsavedEdits()));
     }
 
     private isDragging(): boolean {
@@ -283,6 +302,14 @@ export class AgentDetailComponent implements OnInit {
 
     toggleSection(id: AgentSectionId): void {
         this.sections.update((s) => ({ ...s, [id]: !s[id] }));
+    }
+
+    /** A draft can't be created without a name: opens Basics, focuses the name and shows that it is required. */
+    requireName(): void {
+        if (!this.isCreating()) return;
+        this.sections.update((sections) => ({ ...sections, basics: true }));
+        this.nameRequested.set(true);
+        this.nameFocusRequest.update((request) => request + 1);
     }
 
     autosaveName(): void {
@@ -366,6 +393,16 @@ export class AgentDetailComponent implements OnInit {
         };
     }
 
+    /**
+     * Whether the form holds something the last save doesn't, compared the way `persist()` compares it: an
+     * emptied name counts as the saved one. Angular's `dirty` stays set after an edit is undone or a name is
+     * restored, so it can't tell.
+     */
+    private hasUnsavedEdits(): boolean {
+        const value = this.form.getRawValue();
+        return !this.sameAsSnapshot({ ...value, name: value.name.trim() || this.savedSnapshot.name });
+    }
+
     private sameAsSnapshot(v: AgentFormValue): boolean {
         const s = this.savedSnapshot;
         return (
@@ -381,6 +418,7 @@ export class AgentDetailComponent implements OnInit {
         if (!a) {
             // A failed create keeps the draft so the user can fix the name and retry.
             this.savedSnapshot = this.emptyValue();
+            this.dirtyChange.emit(this.hasUnsavedEdits());
             return;
         }
         const target = this.valueFromAgent(a);

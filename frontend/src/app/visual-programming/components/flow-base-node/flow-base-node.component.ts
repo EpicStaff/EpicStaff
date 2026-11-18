@@ -15,7 +15,7 @@ import {
     signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 import { AppSvgIconComponent, GoToButtonComponent } from '@shared/components';
 import { KEY_VALUE_MODE_COLORS, NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
@@ -29,6 +29,11 @@ import { NODE_DIFF_BADGES } from '../../core/constants/node-diff-badges';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { showsNodeNumber } from '../../core/helpers/node-number.util';
+import {
+    buildNodeWarningChip,
+    enableTooltipOnlyWhenTruncated,
+    NodeWarningBadge,
+} from '../../core/helpers/node-warning-badge.util';
 import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,
@@ -372,6 +377,40 @@ export class FlowBaseNodeComponent implements OnInit {
         return this.hasMissingAgent
             ? 'This node has no agent assigned (the agent may have been deleted). Assign an agent to this node.'
             : '';
+    }
+
+    /** The one badge the header shows: the single warning as it is, or a chip when there are several. */
+    protected get headerWarning(): (NodeWarningBadge & { tooltipClass: string }) | null {
+        const badges = this.warningBadges;
+        if (badges.length === 0) return null;
+        if (badges.length === 1) return { ...badges[0], tooltipClass: '' };
+        const chip = buildNodeWarningChip(badges.map((badge) => badge.tooltip || badge.label));
+        return { kind: 'warning', ...chip };
+    }
+
+    private get warningBadges(): NodeWarningBadge[] {
+        const badges: NodeWarningBadge[] = [];
+        if (this.isBlockedSubgraph) {
+            badges.push({ kind: 'blocked', label: 'Missing flow', tooltip: 'Referenced subgraph was deleted' });
+        }
+        if (this.hasMissingAgent) {
+            badges.push({ kind: 'warning', label: 'No agent assigned', tooltip: this.missingAgentTooltip });
+        }
+        if (this.hasMissingAgentLlm) {
+            badges.push({ kind: 'warning', label: 'No LLM', tooltip: this.agentLlmWarningTooltip });
+        }
+        if (this.hasMissingKeyValueTable) {
+            badges.push({
+                kind: 'warning',
+                label: 'No table',
+                tooltip: this.isReadOnly() ? 'No table selected' : 'Select a table in the node panel',
+            });
+        }
+        return badges;
+    }
+
+    protected onTitleHover(tooltip: MatTooltip, nameElement: HTMLElement): void {
+        enableTooltipOnlyWhenTruncated(tooltip, nameElement);
     }
 
     public getNodeTitle(): string {

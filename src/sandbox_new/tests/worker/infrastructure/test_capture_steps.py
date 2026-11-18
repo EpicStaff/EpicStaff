@@ -7,6 +7,7 @@ a reporting problem, not an execution failure.
 
 import json
 
+from worker.domain.models import StorageCredentials
 from worker.infrastructure.execution.steps import CaptureMutationsStep, CaptureResultStep
 from tests.builders import make_context, make_worker_job
 

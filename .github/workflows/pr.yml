@@ -384,6 +384,11 @@ jobs:
       - name: Test the deploy script
         run: python3 .github/scripts/test_deploy.py
 
+      - name: Test the GHCR cleanup rules
+        run: |
+          python -m pip install --quiet --require-hashes -r .github/requirements/requests.txt
+          python3 .github/scripts/test_ghcr_cleanup.py
+
       - name: Environment variable conventions
         run: python3 .github/scripts/check_env_conventions.py
 
@@ -523,6 +528,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.py_services != '[]'
     runs-on: ubuntu-24.04
+    # A hanging test fails here instead of after six hours.
+    timeout-minutes: 30
     strategy:
       # One failing service should not hide the state of the others.
       fail-fast: false

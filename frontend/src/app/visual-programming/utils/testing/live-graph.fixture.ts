@@ -214,7 +214,6 @@ export const liveWebhook: GetWebhookTriggerNodeRequest = {
     webhook_trigger: LIVE_WEBHOOK_TRIGGER_ID, // a bare id, in the graph response and in the export alike
     python_code: { id: 0, code: 'def main(): pass', entrypoint: 'main', secrets: [] },
     test_payload: { id: '104' },
-    use_storage: false,
 };
 export const liveTelegram: GetTelegramTriggerNodeRequest = {
     ...authored,
@@ -295,8 +294,6 @@ export const liveClassificationTable: GetClassificationDecisionTableNodeRequest 
     post_python_code: null,
     post_input_map: {},
     post_output_variable_path: null,
-    pre_use_storage: false,
-    post_use_storage: false,
     prompt_configs: [],
     default_llm_config: null,
     default_next_node_id: ID.end,

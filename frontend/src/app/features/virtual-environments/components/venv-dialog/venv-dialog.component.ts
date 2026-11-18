@@ -30,6 +30,7 @@ import {
     CheckboxComponent,
     CustomInputComponent,
     HelpTooltipComponent,
+    HintMessageComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { EnterSubmitDirective, TooltipOnOverflowDirective } from '@shared/directives';
@@ -83,6 +84,7 @@ interface LibraryRowGroup {
         EnterSubmitDirective,
         TooltipOnOverflowDirective,
         CheckboxComponent,
+        HintMessageComponent,
     ],
     templateUrl: './venv-dialog.component.html',
     styleUrls: ['./venv-dialog.component.scss'],
@@ -96,6 +98,8 @@ export class VenvDialogComponent {
 
     readonly data = inject<VenvDialogData | null>(DIALOG_DATA, { optional: true }) ?? {};
     readonly isEdit = !!this.data.venv;
+    // Why the libraries cannot be changed, or null when they can.
+    readonly libsLock = this.data.venv?.libs_lock ?? null;
     readonly title = computed(() => (this.isEdit ? 'Edit Venv' : 'Create Venv'));
     readonly submitLabel = computed(() => {
         if (this.isSubmitting()) return this.isEdit ? 'Saving...' : 'Creating...';
@@ -138,6 +142,7 @@ export class VenvDialogComponent {
             for (const lib of venv.libs) {
                 this.form.controls.libs.push(this.createLibraryRow(lib));
             }
+            if (this.libsLock !== null) this.form.controls.libs.disable();
         }
         // disableClose keeps a stray backdrop click from throwing the table away; Escape is asked for, so it cancels.
         this.dialogRef.keydownEvents
@@ -156,12 +161,14 @@ export class VenvDialogComponent {
     }
 
     addLibrary(): void {
+        if (this.libsLock !== null) return;
         this.libs.push(this.createLibraryRow());
         // The new row is where the next keystrokes go.
         afterNextRender(() => this.libraryNameInputs().at(-1)?.nativeElement.focus(), { injector: this.injector });
     }
 
     removeLibrary(index: number): void {
+        if (this.libsLock !== null) return;
         this.libs.removeAt(index);
         // The removed row takes its focused button along: the focus moves to the row now in its place.
         afterNextRender(
@@ -174,6 +181,7 @@ export class VenvDialogComponent {
     }
 
     removeAllLibraries(): void {
+        if (this.libsLock !== null) return;
         this.libs.clear();
     }
 
@@ -186,8 +194,9 @@ export class VenvDialogComponent {
 
         this.isSubmitting.set(true);
         const body = this.buildPayload();
+        // Locked libraries are not sent: a rename must not look like a change of them.
         const request$: Observable<Venv> = this.data.venv
-            ? this.venvsApi.updateVenv(this.data.venv.id, body)
+            ? this.venvsApi.updateVenv(this.data.venv.id, this.libsLock === null ? body : { name: body.name })
             : this.venvsApi.createVenv(body);
 
         request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({

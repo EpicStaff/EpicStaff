@@ -2,8 +2,9 @@ import { AuthorshipFields, GetPythonCodeRequest } from '@shared/models';
 
 import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
+import { StorageGrantFields } from './storage-grants.model';
 
-export interface PythonNode extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
+export interface PythonNode extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto, StorageGrantFields {
     id: number;
     node_name: string;
     graph: number;
@@ -12,6 +13,5 @@ export interface PythonNode extends AuthorshipFields, NodeIdentityDto, NumberedN
     test_input: Record<string, string | number | boolean>;
     output_variable_path: string | null;
     metadata: Record<string, unknown>;
-    use_storage?: boolean;
     created_at: string;
 }
