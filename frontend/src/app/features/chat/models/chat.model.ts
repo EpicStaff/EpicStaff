@@ -143,6 +143,9 @@ export const CHAT_BINDING_DEFAULTS: Omit<
 // Both display names and an operator's alias; the server refuses longer ones (counted in characters, after trimming).
 export const CHAT_DISPLAY_NAME_MAX = 64;
 
+// A desk's allowed origins; mirrors the server's cap, which refuses a longer list.
+export const CHAT_ALLOWED_ORIGINS_MAX = 50;
+
 // `GET /bindings/my-aliases`: a name the user goes by on one desk instead of the desk's operator display name.
 export interface ChatMyAlias {
     binding_id: string;

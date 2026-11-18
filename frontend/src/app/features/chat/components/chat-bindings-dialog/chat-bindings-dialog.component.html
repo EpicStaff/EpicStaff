@@ -99,6 +99,7 @@
                         [invalid]="showsError('bot_display_name')"
                         [ariaDescribedby]="botNameErrors.id()"
                         tooltipText="Shown to visitors in the chat widget."
+                        placeholder="e.g. Bot"
                     />
                     <app-validation-errors
                         #botNameErrors
@@ -179,6 +180,10 @@
                     tooltipText="Sites allowed to embed this chat. Test conversations skip this check."
                     addButtonText="+ Add origin"
                     rowLabel="Origin"
+                    [splitPattern]="originSeparators"
+                    [itemError]="originError"
+                    [maxItems]="originsMax"
+                    [maxItemsText]="originsMaxText"
                 />
                 <app-select
                     label="Identity"

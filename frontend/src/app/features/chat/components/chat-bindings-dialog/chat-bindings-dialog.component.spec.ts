@@ -281,6 +281,36 @@ describe('ChatBindingsDialogComponent', () => {
         expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { max_turns: 100 });
     });
 
+    it('refuses an origin with a path on Save, saying why under it on the General tab', () => {
+        const component = open(binding({ allowed_origins: ['https://a.example'] }));
+        typeOrigin(0, 'https://a.example/chat');
+        component.activeTab.set('limits');
+        fixture.detectChanges();
+
+        clickSave();
+
+        expect(chatApi.updateBinding).not.toHaveBeenCalled();
+        expect(component.activeTab()).toBe('general');
+        expect(errorUnder('allowed_origins')).toBe('Use scheme and host only, e.g. https://www.example.com');
+        expect(isMarkedInvalid('allowed_origins')).toBe(true);
+    });
+
+    it('takes an origin in upper case with a trailing slash, which the chat service normalizes', () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({})));
+        open(binding({ allowed_origins: [] }));
+        typeOrigin(0, 'HTTPS://WWW.Example.COM/');
+
+        clickSave();
+
+        expect(errorUnder('allowed_origins')).toBe('');
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { allowed_origins: ['HTTPS://WWW.Example.COM/'] });
+    });
+
+    it('suggests a bot name in its empty field', () => {
+        open(null);
+        expect(inputOf('bot_display_name').placeholder).toBe('e.g. Bot');
+    });
+
     it("sends the General fields edited in the settings, the bot name not following the desk's name", () => {
         chatApi.updateBinding.mockReturnValue(of(binding({ name: 'Sales', graph_id: 6 })));
         const component = open(binding({ bot_display_name: 'Ava' }));

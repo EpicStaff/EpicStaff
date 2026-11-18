@@ -38,6 +38,7 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import { FlowsApiService } from '../../../flows/services/flows-api.service';
 import {
+    CHAT_ALLOWED_ORIGINS_MAX,
     CHAT_BINDING_DEFAULTS,
     CHAT_BOT_DISPLAY_NAME_DEFAULT,
     ChatBinding,
@@ -52,6 +53,7 @@ import {
     ChatResponseTimeoutAction,
 } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
+import { allowedOriginError } from '../../utils/allowed-origin.util';
 import { bindingPatch } from '../../utils/binding-patch.util';
 import { hasContractGaps } from '../../utils/contract-fix.util';
 import { normalizePublicName, publicNameError, validationReason } from '../../utils/public-name.util';
@@ -289,6 +291,11 @@ export class ChatBindingsDialogComponent {
     protected readonly onExhaustedItems = ON_EXHAUSTED_ITEMS;
     protected readonly onResponseTimeoutItems = ON_RESPONSE_TIMEOUT_ITEMS;
     protected readonly styleOptions = STYLE_OPTIONS;
+    // Allowed origins: one per row, a pasted or typed list split at commas and whitespace (an origin has neither).
+    protected readonly originSeparators = /[\s,]+/;
+    protected readonly originError = allowedOriginError;
+    protected readonly originsMax = CHAT_ALLOWED_ORIGINS_MAX;
+    protected readonly originsMaxText = `Up to ${CHAT_ALLOWED_ORIGINS_MAX} origins`;
     // Public because the spec drives it; the template binds it too.
     readonly form = new FormGroup({
         name: new FormControl('', { nonNullable: true, validators: [Validators.required, notWhitespaceValidator()] }),
@@ -301,7 +308,7 @@ export class ChatBindingsDialogComponent {
             validators: this.publicName(),
         }),
         graph_id: new FormControl<number | null>(null, { validators: [Validators.required] }),
-        // One origin per row; the list control trims them and drops the empty rows.
+        // One origin per row; the list control trims them, drops the empty rows and validates them.
         allowed_origins: new FormControl<string[]>([], { nonNullable: true }),
         identity_mode: new FormControl<ChatIdentityMode>('anonymous', { nonNullable: true }),
         history_window: new FormControl<number | null>(20, { validators: [Validators.required, Validators.min(0)] }),
