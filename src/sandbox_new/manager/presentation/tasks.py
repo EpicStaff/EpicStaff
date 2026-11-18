@@ -3,9 +3,9 @@ import shutil
 from pathlib import Path
 from typing import cast
 
-import settings
 from foundation.utils import task_scheduler
 
+from manager import settings
 from manager.application.orchestrators import (
     CustomLibraryReapOrchestrator,
     VenvBuildOrchestrator,

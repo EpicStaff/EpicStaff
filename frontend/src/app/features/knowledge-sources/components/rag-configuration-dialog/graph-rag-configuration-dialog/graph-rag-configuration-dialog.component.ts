@@ -11,19 +11,23 @@ import { CollectionGraphRag } from '../../../models/graph-rag.model';
 import { GraphRagService } from '../../../services/graph-rag.service';
 import { GraphRagDocumentsStorageService } from '../../../services/graph-rag-documents-storage.service';
 import { GraphRagConfigurationComponent } from '../../graph-rag-configuration/graph-rag-configuration.component';
+import { GraphRagTabbedViewComponent } from '../../graph-rag-tabbed-view/graph-rag-tabbed-view.component';
 import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.component';
 
 @Component({
     selector: 'app-graph-rag-configuration-dialog',
     templateUrl: './graph-rag-configuration-dialog.component.html',
     styleUrls: ['../rag-configuration-dialog.component.scss'],
-    imports: [ButtonComponent, GraphRagConfigurationComponent, HasPermissionDirective],
+    imports: [ButtonComponent, GraphRagConfigurationComponent, GraphRagTabbedViewComponent, HasPermissionDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent implements OnInit {
     private graphRagService = inject(GraphRagService);
     private graphRagDocumentsStorage = inject(GraphRagDocumentsStorageService);
     private ragConfiguration = viewChild(GraphRagConfigurationComponent);
+    private tabbedView = viewChild(GraphRagTabbedViewComponent);
+
+    readonly activeTab = computed(() => this.tabbedView()?.activeTab() ?? 'configuration');
 
     graphRag = signal<CollectionGraphRag | null>(null);
 

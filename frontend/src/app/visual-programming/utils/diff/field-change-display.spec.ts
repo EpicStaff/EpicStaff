@@ -242,7 +242,7 @@ describe('codeChangeFor', () => {
 });
 
 describe('changesAnyFieldIn', () => {
-    const PRE_COMPUTATION_TAB: FieldName[] = ['pre_computation', 'pre_use_storage'];
+    const PRE_COMPUTATION_TAB: FieldName[] = ['pre_computation'];
     const changeOf = (field: FieldName, path: string = field): FieldChange => ({
         path,
         field,
@@ -254,10 +254,8 @@ describe('changesAnyFieldIn', () => {
     it.each([
         { changed: changeOf('pre_computation.code'), expected: true },
         { changed: changeOf('pre_computation.execution_timeout'), expected: true },
-        { changed: changeOf('pre_use_storage'), expected: true },
         { changed: changeOf('pre_computation'), expected: true },
         { changed: changeOf('post_computation.code'), expected: false },
-        { changed: changeOf('post_use_storage'), expected: false },
         { changed: changeOf('node_name'), expected: false },
     ])('is $expected when a restore changes $changed.field', ({ changed, expected }) => {
         const diff = { status: 'changed' as const, fields: [changed], missingReferences: [] };
@@ -315,6 +313,39 @@ describe('fieldValueSegments with a display format of its own', () => {
         const asSeconds = (value: unknown): string => `${String(value)} s`;
 
         expect(fieldValueSegments('python_code.execution_timeout', 90, 120, asSeconds)).toEqual([struck('90 s')]);
+    });
+});
+
+describe('fieldValueSegments of storage grants', () => {
+    const EVERYTHING = { read: true, write: true, delete: true };
+
+    it.each<{ case: string; current: unknown; version: unknown; segments: DisplaySegment[] }>([
+        {
+            case: 'the ticked actions in Read, Write, Delete order',
+            current: { read: true, write: false, delete: true },
+            version: EVERYTHING,
+            segments: [struck('Read, Delete')],
+        },
+        {
+            case: 'no access when all three are unticked',
+            current: { read: false, write: false, delete: false },
+            version: EVERYTHING,
+            segments: [struck('No access')],
+        },
+        {
+            case: 'the same grants on both sides',
+            current: { read: true, write: true, delete: true },
+            version: { read: true, write: true, delete: true },
+            segments: [kept('Read, Write, Delete')],
+        },
+    ])('shows $case', ({ current, version, segments }) => {
+        expect(fieldValueSegments('storage_grants', current, version)).toEqual(segments);
+    });
+
+    it.each(['pre_storage_grants', 'post_storage_grants'] as const)('formats %s the same way', (field) => {
+        expect(fieldValueSegments(field, { read: false, write: true, delete: false }, EVERYTHING)).toEqual([
+            struck('Write'),
+        ]);
     });
 });
 

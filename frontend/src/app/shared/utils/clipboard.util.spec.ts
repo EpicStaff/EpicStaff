@@ -60,8 +60,18 @@ describe('copyWithFeedback', () => {
             configurable: true,
         });
         const toast = toasts();
-        await copyWithFeedback('text', toast as unknown as ToastService);
+        await expect(copyWithFeedback('text', toast as unknown as ToastService)).resolves.toBe(true);
         expect(toast.success).toHaveBeenCalledWith('Copied to clipboard!', 3000, 'bottom-right');
+    });
+
+    it("confirms a copy in the caller's words", async () => {
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText: () => Promise.resolve() },
+            configurable: true,
+        });
+        const toast = toasts();
+        await copyWithFeedback('text', toast as unknown as ToastService, 'Conversation ID copied');
+        expect(toast.success).toHaveBeenCalledWith('Conversation ID copied', 3000, 'bottom-right');
     });
 
     it("gives the server's reason when loading the text failed", async () => {
@@ -75,7 +85,7 @@ describe('copyWithFeedback', () => {
     it('reads "Failed to copy" for any other failure', async () => {
         Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
         const toast = toasts();
-        await copyWithFeedback('text', toast as unknown as ToastService);
+        await expect(copyWithFeedback('text', toast as unknown as ToastService)).resolves.toBe(false);
         expect(toast.error).toHaveBeenCalledWith('Failed to copy', 3000, 'top-right');
     });
 });

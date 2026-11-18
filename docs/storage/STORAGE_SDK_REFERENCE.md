@@ -32,14 +32,12 @@ Source: `src/shared/epicstaff_storage/storage.py`
 
 ## Availability
 
-Set `use_storage=True` on a `PythonNode`. The execution stack injects an `EpicStaffStorage` instance as the variable `storage` into the node's execution context.
+Python, Webhook trigger and Classification decision table nodes always get an `EpicStaffStorage` instance as the variable `storage` in their execution context. What it may do to the flow's attached files is set by the node's Read, Write and Delete boxes; with none ticked the code reaches only its own `sessions/<id>/` folder.
 
 ```python
-# Inside a Python node with use_storage=True
+# Inside a Python node
 content = storage.read("reports/summary.txt")
 ```
-
-`storage` is not available when `use_storage=False` (the default).
 
 ---
 

@@ -1,9 +1,10 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { FormControl, FormGroup } from '@angular/forms';
 import { RAG_MAX_TOKENS } from '@shared/constants';
 import { SuggestResponse } from '@shared/models';
 import { RAG_SUGGEST_API } from '@shared/services';
-import { of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 
 import { RagTabComponent } from './rag-tab.component';
 
@@ -20,13 +21,13 @@ const SUGGEST_RESPONSE: SuggestResponse = {
     suggested_params: {},
 };
 
-function render(): RagTabComponent {
+function render(suggestGraph: () => Observable<SuggestResponse> = () => of(SUGGEST_RESPONSE)): RagTabComponent {
     TestBed.configureTestingModule({
         providers: [
             {
                 provide: RAG_SUGGEST_API,
                 useValue: {
-                    suggestGraphSearchParams: () => of(SUGGEST_RESPONSE),
+                    suggestGraphSearchParams: suggestGraph,
                     suggestNaiveSearchParams: () => of(SUGGEST_RESPONSE),
                 },
             },
@@ -97,5 +98,17 @@ describe('RagTabComponent validation', () => {
 
         expect(drift.get('reduce_max_tokens')!.valid).toBe(true);
         expect(component.driftTokenCapWarning.max).toBe(4000);
+    });
+});
+
+describe('RagTabComponent token limits', () => {
+    it('explains a GraphRAG with no LLM config and offers no retry', () => {
+        const component = render(() =>
+            throwError(() => new HttpErrorResponse({ status: 409, error: { code: 'graph_rag_llm_not_configured' } }))
+        );
+
+        expect(component.tokenLimitsError()?.canRetry).toBe(false);
+        expect(component.tokenLimitsError()?.message).toBeTruthy();
+        expect(component.tokenLimitsLoading()).toBe(false);
     });
 });

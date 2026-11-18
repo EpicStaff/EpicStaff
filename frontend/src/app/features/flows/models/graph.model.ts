@@ -1,4 +1,5 @@
 import { AuthorshipFields, UserSummary } from '@shared/models';
+import { StorageGrant } from '@shared/utils';
 
 import { AgentNode } from '../../../visual-programming/core/models/agent-node.model';
 import { GetAudioToTextNodeRequest } from '../../../visual-programming/core/models/audio-to-text.model';
@@ -164,6 +165,9 @@ export interface GraphVersionUpdateRequest {
  * - `system_one_config_ref_cleared`: `prompt_key` (the System One entry of the Classification Decision Table) and
  *   `missing_id` (the config); the config is not available in this organization, so a restore leaves that entry
  *   without one.
+ * - `storage_grant_capped`: `field` (`python_code`, `pre_python_code` or `post_python_code`), `dropped_grants` (the
+ *   storage-grant boxes of that code a restore unticked) and `missing_permissions` (the Files permissions the
+ *   restoring user lacks, e.g. `Files: Delete`). It carries no `reason`; the restored node's id is `node_id`.
  *
  * The version preview adds `key_value_table_unbound` entries itself (`field`, `missing_name`): a Key-Value
  * table the version named that no usable table has now. The backend re-binds tables without a warning.
@@ -177,6 +181,7 @@ export interface RestoreWarning {
         | 'key_value_table_unbound'
         | 'venv_ref_cleared'
         | 'system_one_config_ref_cleared'
+        | 'storage_grant_capped'
         | string;
     node_name?: string;
     node_type?: string;
@@ -199,7 +204,12 @@ export interface RestoreWarning {
     missing_node_id?: number;
     /** Name of the missing secret (`secret_declaration_dropped`) or table (`key_value_table_unbound`). */
     missing_name?: string;
-    reason: string;
+    /** The storage-grant boxes a restore unticked on the node's code (`storage_grant_capped`). */
+    dropped_grants?: StorageGrant[];
+    /** The Files permissions the restoring user lacks, e.g. `Files: Delete` (`storage_grant_capped`). */
+    missing_permissions?: string[];
+    /** Absent on `storage_grant_capped`. */
+    reason?: string;
 }
 
 export interface GraphRestoreResponse {

@@ -41,14 +41,6 @@ export function avatarColor(seed: string): string {
     return `var(${AVATAR_COLORS[hashString(seed) % AVATAR_COLORS.length]})`;
 }
 
-/**
- * The fill of a desk's picture, picked by its id: stable across renames, and two desks with the same name still
- * (most likely) differ.
- */
-export function deskAvatarColor(deskId: string): string {
-    return avatarColor(deskId);
-}
-
 /** The badge text: nothing at zero, the count up to 99, then "99+". */
 export function deskBadgeText(count: number): string | null {
     if (count <= 0) return null;

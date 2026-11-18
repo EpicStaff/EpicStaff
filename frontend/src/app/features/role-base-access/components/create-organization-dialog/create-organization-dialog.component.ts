@@ -69,7 +69,11 @@ let nextDialogId = 0;
 const RETENTION_COLUMNS: RetentionColumnConfig[] = [
     { type: 'sessions', label: 'Sessions' },
     { type: 'audit', label: 'Audit events', hint: 'Changes apply to audit events recorded from now on.' },
-    { type: 'conversations', label: 'Conversations' },
+    {
+        type: 'conversations',
+        label: 'Conversations',
+        hint: 'Deleted after this long with no new messages; an active thread keeps its full history.',
+    },
 ];
 
 @Component({

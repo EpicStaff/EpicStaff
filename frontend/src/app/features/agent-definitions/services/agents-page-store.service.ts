@@ -271,6 +271,10 @@ export class AgentsPageStore {
 
     readonly isDraftingAgent = computed<boolean>(() => this.selectedNode().kind === 'draft-agent');
 
+    /** Counts Add Agent starts: a new number is a new, empty draft, even when one was already open. */
+    private readonly agentDraftSequence = signal<number>(0);
+    readonly agentDraftId = this.agentDraftSequence.asReadonly();
+
     /** The agent the latest Add Agent draft was saved as; null until one is, and again once another draft begins. */
     private readonly agentCreatedFromDraftId = signal<number | null>(null);
 
@@ -842,6 +846,7 @@ export class AgentsPageStore {
     beginCreateAgent(groupId: number | null = null): void {
         if (groupId !== null && this.isGroupCollapsed('agents', groupId)) this.toggleGroupCollapsed('agents', groupId);
         this.agentCreatedFromDraftId.set(null);
+        this.agentDraftSequence.update((sequence) => sequence + 1);
         this.selectedNode.set({ kind: 'draft-agent', id: null, groupId });
     }
 

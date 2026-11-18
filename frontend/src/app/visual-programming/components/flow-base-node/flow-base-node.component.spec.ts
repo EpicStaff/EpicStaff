@@ -147,6 +147,49 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         expect(tooltipOf(noTableBadge()!)).toBe('Select a table in the node panel');
     });
 
+    const headerBadges = (): HTMLElement[] =>
+        Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.header .node-badge'));
+
+    it('shows no badge on a node without warnings', () => {
+        render(KEY_VALUE_NODE);
+
+        expect(headerBadges()).toEqual([]);
+    });
+
+    it('shows a single warning as its own badge in the header, with its own tooltip', () => {
+        render(NO_TABLE_NODE);
+
+        expect(headerBadges().map((badge) => badge.textContent!.trim())).toEqual(['No table']);
+        expect(tooltipOf(headerBadges()[0])).toBe('Select a table in the node panel');
+    });
+
+    it('makes a badge focusable and described by its tooltip text, keeping its visible label', () => {
+        render(NO_TABLE_NODE);
+
+        TestBed.tick();
+        const [chip] = headerBadges();
+        const description = document.getElementById(chip.getAttribute('aria-describedby')!);
+        expect(chip.getAttribute('tabindex')).toBe('0');
+        expect(chip.hasAttribute('aria-label')).toBe(false);
+        expect(chip.textContent!.trim()).toBe('No table');
+        expect(description!.textContent).toBe(tooltipOf(chip));
+    });
+
+    function hoverTitle(clientWidth: number, scrollWidth: number): MatTooltip {
+        const name: HTMLElement = fixture.nativeElement.querySelector('.header .title__text');
+        Object.defineProperty(name, 'clientWidth', { value: clientWidth, configurable: true });
+        Object.defineProperty(name, 'scrollWidth', { value: scrollWidth, configurable: true });
+        name.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        return getDebugNode(name)!.injector.get(MatTooltip);
+    }
+
+    it('shows the full name on hover only when it is cut off', () => {
+        render({ ...NO_TABLE_NODE, node_name: 'A very very long key-value node name that cannot fit' });
+
+        expect(hoverTitle(100, 300).disabled).toBe(false);
+        expect(hoverTitle(300, 300).disabled).toBe(true);
+    });
+
     it('flags a node without a table in a read-only flow without asking to pick one', () => {
         render(NO_TABLE_NODE, true);
 

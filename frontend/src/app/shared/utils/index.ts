@@ -1,6 +1,7 @@
 export * from './bulk-delete-params.util';
 export * from './bulk-delete-preview.util';
 export * from './clipboard.util';
+export * from './code-suggestion-key.util';
 export * from './days-until.util';
 export * from './deep-equal.util';
 export * from './download-blob.util';
@@ -32,5 +33,6 @@ export * from './recycle-bin-notice.util';
 export * from './retry-after.util';
 export * from './role-permissions-to-set.util';
 export * from './secret-code-lock.util';
+export * from './storage-grants.util';
 export * from './token-price.util';
 export * from './unique-name.util';

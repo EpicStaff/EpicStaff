@@ -55,7 +55,10 @@ const AGENT: AgentDefinition = {
     last_edited_at: null,
 };
 
-function render(agent: AgentDefinition): {
+function render(
+    agent: AgentDefinition | null,
+    isCreating = false
+): {
     fixture: ComponentFixture<AgentDetailComponent>;
     saved: AgentSavePayload[];
     overlay: HTMLElement;
@@ -90,6 +93,7 @@ function render(agent: AgentDefinition): {
     });
     const fixture = TestBed.createComponent(AgentDetailComponent);
     fixture.componentRef.setInput('agent', agent);
+    fixture.componentRef.setInput('isCreating', isCreating);
     fixture.detectChanges();
     const saved: AgentSavePayload[] = [];
     fixture.componentInstance.save.subscribe((payload) => saved.push(payload));
@@ -208,6 +212,110 @@ describe('AgentDetailComponent fallback LLM', () => {
 
         expect(selectorTrigger(fixture, FALLBACK).classList).toContain('readonly');
         expect(TestBed.inject(OverlayContainer).getContainerElement().querySelector('.dropdown-menu')).toBeNull();
+    });
+});
+
+describe('AgentDetailComponent unsaved edits', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    /** What the editor last told the page: does it hold edits that aren't saved? */
+    function lastDirty(fixture: ComponentFixture<AgentDetailComponent>): () => boolean | undefined {
+        const emitted: boolean[] = [];
+        fixture.componentInstance.dirtyChange.subscribe((dirty) => emitted.push(dirty));
+        return () => emitted.at(-1);
+    }
+
+    it('counts a model picked on a nameless draft as unsaved, since the draft is not created', () => {
+        const { fixture, saved, overlay } = render(null, true);
+        const dirty = lastDirty(fixture);
+
+        pickOption(fixture, overlay, PRIMARY, 'gpt-primary');
+
+        expect(saved).toEqual([]);
+        expect(dirty()).toBe(true);
+    });
+
+    function typeName(fixture: ComponentFixture<AgentDetailComponent>, name: string): void {
+        const input = fixture.nativeElement.querySelector('input[aria-label="Agent Name"]') as HTMLInputElement;
+        input.value = name;
+        input.dispatchEvent(new Event('input'));
+        input.dispatchEvent(new Event('blur'));
+        fixture.detectChanges();
+    }
+
+    it('keeps a draft unsaved when creating it fails', () => {
+        const { fixture, saved } = render(null, true);
+        typeName(fixture, 'CV Processor');
+        expect(saved).toHaveLength(1);
+        // The page took the save as the end of the edits; the failure has to say otherwise.
+        const dirty = lastDirty(fixture);
+
+        fixture.componentRef.setInput('saveErrorTick', 1);
+        fixture.detectChanges();
+
+        expect(dirty()).toBe(true);
+    });
+
+    it('drops the draft name error when another agent is opened', () => {
+        const { fixture } = render(null, true);
+        fixture.componentInstance.requireName();
+        fixture.detectChanges();
+
+        fixture.componentRef.setInput('isCreating', false);
+        fixture.componentRef.setInput('agent', { ...AGENT, id: 8 });
+        fixture.detectChanges();
+        const input = fixture.nativeElement.querySelector('input[aria-label="Agent Name"]') as HTMLInputElement;
+        input.value = '';
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.field__error')).toBeNull();
+    });
+
+    it('saves a model picked while the draft was being created, and is unsaved until then', () => {
+        const { fixture, saved, overlay } = render(null, true);
+        typeName(fixture, 'CV Processor');
+        pickOption(fixture, overlay, PRIMARY, 'gpt-primary');
+        const events: string[] = [];
+        fixture.componentInstance.dirtyChange.subscribe((dirty) => events.push(`dirty:${dirty}`));
+        fixture.componentInstance.save.subscribe(() => events.push('save'));
+
+        fixture.componentRef.setInput('isCreating', false);
+        fixture.componentRef.setInput('createdFromDraft', true);
+        fixture.componentRef.setInput('agent', {
+            ...AGENT,
+            name: 'CV Processor',
+            llm_config: null,
+            fallback_llm_config: null,
+        });
+        fixture.detectChanges();
+
+        // The page hears "unsaved" right before the save that clears it.
+        expect(events.slice(-2)).toEqual(['dirty:true', 'save']);
+        expect(saved.at(-1)).toMatchObject({ id: AGENT.id, llm_config: 1 });
+    });
+
+    it("does not carry a discarded draft's model to the agent opened next", () => {
+        const { fixture, saved, overlay } = render(null, true);
+        pickOption(fixture, overlay, PRIMARY, 'gpt-primary');
+
+        fixture.componentRef.setInput('isCreating', false);
+        fixture.componentRef.setInput('agent', { ...AGENT, llm_config: null, fallback_llm_config: null });
+        fixture.detectChanges();
+
+        expect(saved).toEqual([]);
+        expect(selectorTrigger(fixture, PRIMARY).textContent).not.toContain('gpt-primary');
+    });
+
+    it('counts the saved model picked again as no change', () => {
+        const { fixture, saved, overlay } = render(AGENT);
+        const dirty = lastDirty(fixture);
+
+        pickOption(fixture, overlay, PRIMARY, 'gpt-primary');
+
+        expect(saved).toEqual([]);
+        expect(dirty()).toBe(false);
     });
 });
 

@@ -27,7 +27,6 @@ const PYTHON: PythonNode = {
     test_input: {},
     output_variable_path: null,
     metadata: {},
-    use_storage: false,
     created_at: '2026-01-01T00:00:00Z',
 };
 
@@ -45,7 +44,6 @@ const WEBHOOK: GetWebhookTriggerNodeRequest = {
     metadata: {},
     webhook_trigger: null,
     test_payload: {},
-    use_storage: false,
     created_at: '2026-01-01T00:00:00Z',
 };
 
@@ -64,11 +62,9 @@ function cdt(preBlock: CDTPythonCodeBlock) {
         pre_python_code: preBlock,
         pre_input_map: {},
         pre_output_variable_path: null,
-        pre_use_storage: false,
         post_python_code: null,
         post_input_map: {},
         post_output_variable_path: null,
-        post_use_storage: false,
         prompt_configs: [],
         default_llm_config: null,
         default_next_node_id: null,
