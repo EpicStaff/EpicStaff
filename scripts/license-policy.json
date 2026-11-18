@@ -1,0 +1,5 @@
+{
+  "allowed": ["0BSD", "Apache-2.0", "BSD-2-Clause", "ISC", "MIT", "OFL-1.1", "Zlib"],
+  "alternativeOnly": ["GPL-3.0-or-later", "MPL-2.0"],
+  "exceptions": []
+}
