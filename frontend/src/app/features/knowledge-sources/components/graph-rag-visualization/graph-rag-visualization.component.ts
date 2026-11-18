@@ -231,6 +231,11 @@ export class GraphRagVisualizationComponent implements OnInit {
         this.sceneService.setSelectedNode(this.selectedNodeIndex());
     });
 
+    /** Keep the scene's color mode in sync with the toggle — otherwise the default-on state never reaches it. */
+    private readonly colorByCommunityEffect = effect(() => {
+        this.sceneService.setColorByCommunity(this.groupByCommunity());
+    });
+
     /** Fetch relationship description lazily when an edge is selected. */
     private readonly edgeDetailEffect = effect(() => {
         this.edgeDetailTrigger$.next(this.selectedEdge());
@@ -277,6 +282,8 @@ export class GraphRagVisualizationComponent implements OnInit {
     private draggedNodeIndex: number | null = null;
     private isDragging = false;
     private clickedEdgeOnDown = -1;
+    /** Index of the sidebar filter row the pointer is currently over, or null. */
+    private hoveredFilterIndex: number | null = null;
 
     constructor() {
         inject(DestroyRef).onDestroy(() => {
@@ -389,17 +396,18 @@ export class GraphRagVisualizationComponent implements OnInit {
 
     onToggleGroupByCommunity(enabled: boolean): void {
         this.groupByCommunity.set(enabled);
-        this.sceneService.setColorByCommunity(enabled);
         void this.startSimulation();
     }
 
     onFilterHoverEnter(filterIndex: number): void {
+        this.hoveredFilterIndex = filterIndex;
         const filter = this.entityTypeFilters()[filterIndex];
         if (!filter || !filter.checked) return;
         this.sceneService.setTypeHoverHighlight(filter.type);
     }
 
     onFilterHoverLeave(): void {
+        this.hoveredFilterIndex = null;
         this.sceneService.setTypeHoverHighlight(null);
     }
 
@@ -415,7 +423,18 @@ export class GraphRagVisualizationComponent implements OnInit {
             updated[filterIndex] = { ...updated[filterIndex], checked };
             return updated;
         });
+        // Apply visibility first — setTypeHoverHighlight only picks up visible nodes, so calling it
+        // before the just-rechecked type is visible again would highlight nothing.
         this.applyTypeFilters();
+        // Toggling the checkbox does not fire mouseleave/enter on the row, so the type-hover highlight
+        // has to be driven from here: re-show it if the toggled row is still hovered and now checked,
+        // otherwise clear whatever was shown before.
+        const filter = this.entityTypeFilters()[filterIndex];
+        if (this.hoveredFilterIndex === filterIndex && checked && filter) {
+            this.sceneService.setTypeHoverHighlight(filter.type);
+        } else {
+            this.sceneService.setTypeHoverHighlight(null);
+        }
     }
 
     onCanvasPointerDown(event: PointerEvent): void {
@@ -519,7 +538,6 @@ export class GraphRagVisualizationComponent implements OnInit {
         if (this.groupByCommunity() && !this.hasCommunities()) {
             // The switch is disabled now, so it must not stay on with every node grayed out.
             this.groupByCommunity.set(false);
-            this.sceneService.setColorByCommunity(false);
         }
 
         this.sceneService.buildGraph(data.entities, data.relationships);
