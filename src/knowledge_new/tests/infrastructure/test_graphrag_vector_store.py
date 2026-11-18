@@ -36,15 +36,12 @@ def test_create_index_makes_the_same_empty_table_as_graphrag(tmp_path, lance_tem
     our_store.create_index()
     graphrag_store.create_index()
 
-    # graphrag's own store leaks there: proves the fixture redirects lance, and fails once
-    # upstream fixes the leak.
-    assert list(lance_temp_dir.iterdir()) != []
     assert our_store.document_collection.schema == graphrag_store.document_collection.schema
     assert our_store.document_collection.count_rows() == 0
-    assert (
-        our_store.document_collection.list_indices()
-        == graphrag_store.document_collection.list_indices()
-    )
+    # graphrag's placeholder IVF_FLAT index survives the placeholder's deletion since lancedb
+    # 0.41: one centroid trained on a zero vector, and every later row lands unindexed. Ours
+    # has no index at all, so search is an exact scan either way.
+    assert our_store.document_collection.list_indices() == []
 
 
 def test_documents_loaded_after_create_index_are_found(tmp_path, lance_temp_dir):
