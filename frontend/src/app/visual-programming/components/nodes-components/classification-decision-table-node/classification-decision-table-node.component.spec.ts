@@ -249,4 +249,66 @@ describe('ClassificationDecisionTableNodeComponent config warnings', () => {
     it('still raises the LLM warning for an LLM prompt with no LLM', () => {
         expect(messagesFor({ check: llmPrompt(null) })).toEqual([LLM_MESSAGE]);
     });
+
+    describe('header badge', () => {
+        function render(prompts: Record<string, PromptConfig>): HTMLElement {
+            const fixture = TestBed.createComponent(ClassificationDecisionTableNodeComponent);
+            fixture.componentRef.setInput('node', {
+                ...nodeWith(prompts),
+                id: 'classification',
+                type: NodeType.CLASSIFICATION_TABLE,
+                node_name: 'A very long classification node name',
+                ports: [],
+                size: { width: 330, height: 120 },
+            });
+            fixture.detectChanges();
+            return fixture.nativeElement;
+        }
+        const badges = (host: HTMLElement): HTMLElement[] =>
+            Array.from<HTMLElement>(host.querySelectorAll('.decision-table__header .node-badge'));
+        const tooltipOf = (element: HTMLElement): string => getDebugNode(element)!.injector.get(MatTooltip).message;
+
+        it('shows no badge without warnings', () => {
+            expect(badges(render({ check: llmPrompt(2) }))).toEqual([]);
+        });
+
+        it('shows the errors alone as one badge in the header', () => {
+            const [badge] = badges(render({ check: llmPrompt(null) }));
+
+            expect(badge.textContent!.trim()).toBe('⚠ 1 issue');
+            expect(tooltipOf(badge)).toBe('1. LLM config is missing or was deleted.');
+        });
+
+        it('lists several errors one bulleted line each in one chip', () => {
+            const found = badges(render({ first: llmPrompt(null), second: systemOnePrompt(null) }));
+
+            expect(found.map((badge) => badge.textContent!.trim())).toEqual(['⚠ 2 issues']);
+            expect(tooltipOf(found[0]).split('\n')).toEqual([`• ${LLM_MESSAGE}.`, `• ${SYSTEM_ONE_MESSAGE}.`]);
+            expect(getDebugNode(found[0])!.injector.get(MatTooltip).tooltipClass).toBe('multiline-tooltip');
+        });
+
+        it('makes the badge focusable and described by its tooltip text, keeping its visible label', () => {
+            const [badge] = badges(render({ check: llmPrompt(null) }));
+
+            TestBed.tick();
+            const description = document.getElementById(badge.getAttribute('aria-describedby')!);
+            expect(badge.getAttribute('tabindex')).toBe('0');
+            expect(badge.hasAttribute('aria-label')).toBe(false);
+            expect(badge.textContent!.trim()).toBe('⚠ 1 issue');
+            expect(description!.textContent).toBe(tooltipOf(badge));
+        });
+
+        it('shows the full name on hover only when it is cut off', () => {
+            const label = render({ check: llmPrompt(null) }).querySelector('.title__label') as HTMLElement;
+            Object.defineProperty(label, 'clientWidth', { value: 100, configurable: true });
+            Object.defineProperty(label, 'scrollWidth', { value: 300, configurable: true });
+            label.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            const tooltip = getDebugNode(label)!.injector.get(MatTooltip);
+            expect(tooltip.disabled).toBe(false);
+
+            Object.defineProperty(label, 'scrollWidth', { value: 100, configurable: true });
+            label.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            expect(tooltip.disabled).toBe(true);
+        });
+    });
 });

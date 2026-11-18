@@ -32,7 +32,7 @@ def test_converter_yields_empty_allowed_paths_without_session_id_or_graph_storag
     org = Organization.objects.create(name="Org Latent")
     graph = Graph.objects.create(name="g-latent", org=org)
     code = PythonCode.objects.create(code="def main(**kw): return kw")
-    node = PythonNode.objects.create(graph=graph, python_code=code, use_storage=True)
+    node = PythonNode.objects.create(graph=graph, python_code=code)
 
     data = converter.convert_python_node_to_pydantic(
         node, graph_id=graph.pk, session_id=None
@@ -48,11 +48,11 @@ def test_credential_scope_validator_rejects_empty_allowed_paths(converter):
     """The guard: `CredentialScopeValidator.validate()` must reject empty
     `storage_allowed_paths` with a clear error message before any credential
     issuance is attempted. This protects against the latent case where a
-    subgraph with `use_storage=True` has no storage paths defined."""
+    subgraph has no storage paths defined."""
     org = Organization.objects.create(name="Org Latent Validate")
     graph = Graph.objects.create(name="g-latent-validate", org=org)
     code = PythonCode.objects.create(code="def main(**kw): return kw")
-    node = PythonNode.objects.create(graph=graph, python_code=code, use_storage=True)
+    node = PythonNode.objects.create(graph=graph, python_code=code)
 
     data = converter.convert_python_node_to_pydantic(
         node, graph_id=graph.pk, session_id=None

@@ -25,6 +25,8 @@ class StorageCredentialsMessage(Schema):
 
     access_key: str
     secret_key: str
+    shared_actions: list[str] | None = None
+    own_paths: list[str] = Field(default_factory=list)
 
 
 class ExecutionJobMessage(Schema):
