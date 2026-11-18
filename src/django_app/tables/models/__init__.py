@@ -35,6 +35,14 @@ from .crew_models import (
     TaskPythonCodeTools,
     TemplateAgent,
 )
+from .dashboard_models import (
+    DashboardActiveTrigger,
+    DashboardKnowledgeUsage,
+    DashboardLiveSession,
+    DashboardRagType,
+    DashboardReport,
+    DashboardTriggerType,
+)
 from .default_models import DefaultModels
 from .embedding_models import (
     DefaultEmbeddingConfig,
@@ -195,6 +203,12 @@ __all__ = [
     "CrewNode",
     "CrewSessionMessage",
     "CrewTag",
+    "DashboardActiveTrigger",
+    "DashboardKnowledgeUsage",
+    "DashboardLiveSession",
+    "DashboardRagType",
+    "DashboardReport",
+    "DashboardTriggerType",
     "DecisionTableNode",
     "DefaultAgentConfig",
     "DefaultBaseModel",
