@@ -23,6 +23,7 @@ import {
     CheckboxComponent,
     FetchErrorStateComponent,
     LoadingSpinnerComponent,
+    RadioButtonComponent,
     SearchComponent,
     SliderWithStepperComponent,
     ToggleSwitchComponent,
@@ -89,6 +90,7 @@ interface SimulationNode extends ForceLayoutNode {
         SliderWithStepperComponent,
         ToggleSwitchComponent,
         AppSvgIconComponent,
+        RadioButtonComponent,
     ],
     providers: [GraphSceneService],
 })
@@ -108,7 +110,7 @@ export class GraphRagVisualizationComponent implements OnInit {
     readonly searchTerm = signal('');
     readonly labelsVisible = signal(false);
     /** Clusters nodes around their top-level community and colors them by it. */
-    readonly groupByCommunity = signal(false);
+    readonly groupByCommunity = signal(true);
     /** Entities of the graph currently drawn. */
     private readonly drawnEntities = signal<VisualizationEntity[]>([]);
     /**
@@ -179,6 +181,9 @@ export class GraphRagVisualizationComponent implements OnInit {
     readonly edgeDescription = signal<string | null>(null);
     readonly detailLoading = signal(false);
 
+    readonly descriptionExpanded = signal(true);
+    readonly relationshipsExpanded = signal(true);
+
     readonly detailPanelOpen = computed(() => this.selectedNode() !== null || this.selectedEdge() !== null);
     /** The sidebar stays mounted across reloads; its filters only apply to a drawn graph. */
     readonly typeFiltersDisabled = computed(() => this.viewState() !== 'ready');
@@ -221,6 +226,11 @@ export class GraphRagVisualizationComponent implements OnInit {
         this.nodeDetailTrigger$.next(this.selectedNode());
     });
 
+    /** Mirror the selected node into the scene so it keeps a border + persistent label while the panel is open. */
+    private readonly selectedNodeSceneEffect = effect(() => {
+        this.sceneService.setSelectedNode(this.selectedNodeIndex());
+    });
+
     /** Fetch relationship description lazily when an edge is selected. */
     private readonly edgeDetailEffect = effect(() => {
         this.edgeDetailTrigger$.next(this.selectedEdge());
@@ -243,6 +253,10 @@ export class GraphRagVisualizationComponent implements OnInit {
 
     protected readonly searchMaxLength = GRAPH_SEARCH_MAX_LENGTH;
     protected readonly minEntities = GRAPH_VISUALIZATION_MIN_ENTITIES;
+    protected readonly dimensionOptions: Array<{ value: boolean; label: string }> = [
+        { value: false, label: '2D' },
+        { value: true, label: '3D' },
+    ];
 
     // 6. Private fields
     private readonly graphRagService = inject(GraphRagService);
@@ -342,11 +356,12 @@ export class GraphRagVisualizationComponent implements OnInit {
     }
 
     // 9. Public methods
-    onToggleDimension(is3D: boolean): void {
-        this.is3D.set(is3D);
+    onToggleDimension(is3D: unknown): void {
+        const flag = is3D === true;
+        this.is3D.set(flag);
         const containerRef = this.canvasContainer();
         if (containerRef) {
-            this.sceneService.switchDimension(containerRef.nativeElement, is3D);
+            this.sceneService.switchDimension(containerRef.nativeElement, flag);
         }
         void this.startSimulation();
     }
@@ -605,8 +620,11 @@ export class GraphRagVisualizationComponent implements OnInit {
         if (nodeIndex >= 0) {
             this.sceneService.setHoveredEdge(null);
             this.sceneService.setHoveredNode(nodeIndex);
-            if (!this.labelsVisible()) {
+            // The selected node already shows its title via a persistent sprite — skip the hover tooltip for it.
+            if (!this.labelsVisible() && nodeIndex !== this.selectedNodeIndex()) {
                 this.setHoverTooltip(nodeIndex, containerRef.nativeElement);
+            } else {
+                this.setHoverTooltip(null);
             }
         } else {
             this.sceneService.setHoveredNode(null);

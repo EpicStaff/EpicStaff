@@ -22,13 +22,17 @@
     <div class="visualization">
         <!-- Toolbar -->
         <div class="visualization__toolbar">
-            <div class="visualization__toolbar-control">
-                <span class="visualization__toolbar-label">3D View</span>
-                <app-toggle-switch
-                    [checked]="is3D()"
-                    (checkedChange)="onToggleDimension($event)"
+            <div class="visualization__radio">
+                <app-radio-button
+                    mod="segmented"
+                    size="small"
+                    [options]="dimensionOptions"
+                    [value]="is3D()"
+                    (valueChange)="onToggleDimension($event)"
                 />
             </div>
+
+            <span class="divider">/</span>
 
             <div class="visualization__toolbar-control">
                 <span class="visualization__toolbar-label">Labels</span>
@@ -37,6 +41,8 @@
                     (checkedChange)="onToggleLabels($event)"
                 />
             </div>
+
+            <span class="divider">/</span>
 
             <!-- The tooltip sits on the wrapper: a disabled switch gets no pointer events -->
             <div
@@ -54,8 +60,10 @@
                 />
             </div>
 
+            <span class="divider">/</span>
+
             <div class="visualization__slider">
-                <span class="visualization__toolbar-label">Displayed Entities</span>
+                <span class="visualization__toolbar-label">Entities</span>
                 <app-slider-with-stepper
                     class="visualization__toolbar-value"
                     mod="sm"
@@ -71,16 +79,11 @@
 
             <div class="visualization__stats">
                 <span class="visualization__toolbar-label"
-                    >Total Entities:
-                    <span class="visualization__toolbar-value">
-                        {{ totalEntityCount() }}
-                    </span>
+                    >of <span class="visualization__toolbar-value">{{ totalEntityCount() }}</span>
                 </span>
+                <span class="divider">/</span>
                 <span class="visualization__toolbar-label"
-                    >Total Relationships:
-                    <span class="visualization__toolbar-value">
-                        {{ relationshipCount() }}
-                    </span>
+                    >Relationships: <span class="visualization__toolbar-value">{{ relationshipCount() }}</span>
                 </span>
             </div>
 
@@ -200,40 +203,79 @@
                                 </div>
                                 <div class="visualization__detail-body">
                                     @if (node.type) {
-                                        <div class="visualization__detail-row">
+                                        <div class="visualization__detail-row visualization__detail-row--inline">
                                             <span class="visualization__detail-label">Type</span>
                                             <span class="visualization__detail-value">{{ node.type }}</span>
                                         </div>
                                     }
-                                    <div class="visualization__detail-row">
+                                    <div class="visualization__detail-row visualization__detail-row--inline">
                                         <span class="visualization__detail-label">Degree</span>
                                         <span class="visualization__detail-value">{{ node.degree }}</span>
                                     </div>
-                                    <div class="visualization__detail-row">
-                                        <span class="visualization__detail-label">Description</span>
-                                        @if (detailLoading() && nodeDescription() === null) {
-                                            <app-loading-spinner size="sm" />
-                                        } @else if (nodeDescription()) {
-                                            <span class="visualization__detail-value">{{ nodeDescription() }}</span>
-                                        } @else {
-                                            <span class="visualization__detail-value">--</span>
+
+                                    <div class="visualization__detail-section">
+                                        <button
+                                            type="button"
+                                            class="visualization__detail-section-header"
+                                            [attr.aria-expanded]="descriptionExpanded()"
+                                            (click)="descriptionExpanded.set(!descriptionExpanded())"
+                                        >
+                                            <app-svg-icon
+                                                class="visualization__detail-section-chevron"
+                                                [class.visualization__detail-section-chevron--collapsed]="
+                                                    !descriptionExpanded()
+                                                "
+                                                icon="chevron-down"
+                                                size="0.75rem"
+                                            />
+                                            <span class="visualization__detail-section-title">Description</span>
+                                        </button>
+                                        @if (descriptionExpanded()) {
+                                            <div class="visualization__detail-section-body">
+                                                @if (detailLoading() && nodeDescription() === null) {
+                                                    <app-loading-spinner size="sm" />
+                                                } @else if (nodeDescription()) {
+                                                    <span class="visualization__detail-value">{{
+                                                        nodeDescription()
+                                                    }}</span>
+                                                } @else {
+                                                    <span class="visualization__detail-value">--</span>
+                                                }
+                                            </div>
                                         }
                                     </div>
 
                                     <!-- Connected relationships -->
                                     @if (connectedEdges().length > 0) {
                                         <div class="visualization__detail-section">
-                                            <span class="visualization__detail-label"
-                                                >Relationships ({{ connectedEdges().length }})</span
+                                            <button
+                                                type="button"
+                                                class="visualization__detail-section-header"
+                                                [attr.aria-expanded]="relationshipsExpanded()"
+                                                (click)="relationshipsExpanded.set(!relationshipsExpanded())"
                                             >
-                                            @for (conn of connectedEdges(); track $index) {
-                                                <button
-                                                    type="button"
-                                                    class="visualization__detail-link"
-                                                    (click)="onSelectNode(conn.otherNode.index)"
-                                                >
-                                                    {{ conn.otherNode.title }}
-                                                </button>
+                                                <app-svg-icon
+                                                    class="visualization__detail-section-chevron"
+                                                    [class.visualization__detail-section-chevron--collapsed]="
+                                                        !relationshipsExpanded()
+                                                    "
+                                                    icon="chevron-down"
+                                                    size="0.75rem"
+                                                />
+                                                <span class="visualization__detail-section-title">Relationships</span>
+                                            </button>
+                                            @if (relationshipsExpanded()) {
+                                                <div class="visualization__detail-section-body">
+                                                    @for (conn of connectedEdges(); track $index) {
+                                                        <button
+                                                            type="button"
+                                                            class="visualization__detail-link"
+                                                            (click)="onSelectNode(conn.otherNode.index)"
+                                                        >
+                                                            {{ conn.otherNode.title }}
+                                                        </button>
+                                                    }
+                                                </div>
                                             }
                                         </div>
                                     }
@@ -257,28 +299,50 @@
                                 </div>
                                 <div class="visualization__detail-body">
                                     @if (selectedEdgeNodes(); as nodes) {
-                                        <div class="visualization__detail-row">
+                                        <div class="visualization__detail-row visualization__detail-row--inline">
                                             <span class="visualization__detail-label">Source</span>
                                             <span class="visualization__detail-value">{{ nodes.source.title }}</span>
                                         </div>
-                                        <div class="visualization__detail-row">
+                                        <div class="visualization__detail-row visualization__detail-row--inline">
                                             <span class="visualization__detail-label">Target</span>
                                             <span class="visualization__detail-value">{{ nodes.target.title }}</span>
                                         </div>
                                     }
-                                    <div class="visualization__detail-row">
-                                        <span class="visualization__detail-label">Description</span>
-                                        @if (detailLoading() && edgeDescription() === null) {
-                                            <app-loading-spinner size="sm" />
-                                        } @else if (edgeDescription()) {
-                                            <span class="visualization__detail-value">{{ edgeDescription() }}</span>
-                                        } @else {
-                                            <span class="visualization__detail-value">--</span>
-                                        }
-                                    </div>
-                                    <div class="visualization__detail-row">
+                                    <div class="visualization__detail-row visualization__detail-row--inline">
                                         <span class="visualization__detail-label">Weight</span>
                                         <span class="visualization__detail-value">{{ edge.weight }}</span>
+                                    </div>
+
+                                    <div class="visualization__detail-section">
+                                        <button
+                                            type="button"
+                                            class="visualization__detail-section-header"
+                                            [attr.aria-expanded]="descriptionExpanded()"
+                                            (click)="descriptionExpanded.set(!descriptionExpanded())"
+                                        >
+                                            <app-svg-icon
+                                                class="visualization__detail-section-chevron"
+                                                [class.visualization__detail-section-chevron--collapsed]="
+                                                    !descriptionExpanded()
+                                                "
+                                                icon="chevron-down"
+                                                size="0.75rem"
+                                            />
+                                            <span class="visualization__detail-section-title">Description</span>
+                                        </button>
+                                        @if (descriptionExpanded()) {
+                                            <div class="visualization__detail-section-body">
+                                                @if (detailLoading() && edgeDescription() === null) {
+                                                    <app-loading-spinner size="sm" />
+                                                } @else if (edgeDescription()) {
+                                                    <span class="visualization__detail-value">{{
+                                                        edgeDescription()
+                                                    }}</span>
+                                                } @else {
+                                                    <span class="visualization__detail-value">--</span>
+                                                }
+                                            </div>
+                                        }
                                     </div>
                                 </div>
                             }

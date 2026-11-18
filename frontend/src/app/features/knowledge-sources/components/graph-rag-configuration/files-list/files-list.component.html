@@ -18,7 +18,8 @@
                 } @else {
                     Selected Files:
                 }
-                <span class="count">({{ checkedDocIds().size }})</span>
+                <span class="count">{{ checkedDocIds().size }}</span>
+                <span class="total"> / {{ selectableDocIds().length }}</span>
             </span>
         </div>
 

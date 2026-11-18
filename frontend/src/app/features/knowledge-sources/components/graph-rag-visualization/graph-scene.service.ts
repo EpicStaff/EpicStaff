@@ -101,6 +101,9 @@ export class GraphSceneService {
     private visibleTypeSet: Set<string | null> | null = null;
     private hoveredNodeIndex: number | null = null;
     private hoveredEdgeIndex: number | null = null;
+    /** Node currently shown in the detail panel — keeps its border + a persistent label. */
+    private selectedNodeIndex: number | null = null;
+    private selectedLabelSprite: Sprite | null = null;
     private connectedEdgeIndices: Set<number> = new Set();
     private connectedNodeIndices: Set<number> = new Set();
     private wheelHandler: ((event: WheelEvent) => void) | null = null;
@@ -231,6 +234,7 @@ export class GraphSceneService {
 
         this.hoveredNodeIndex = null;
         this.hoveredEdgeIndex = null;
+        this.selectedNodeIndex = null;
         this.connectedEdgeIndices.clear();
         this.connectedNodeIndices.clear();
 
@@ -256,12 +260,13 @@ export class GraphSceneService {
         }
         this.updateInstanceMatrices();
         this.updateEdgePositions();
-        if (this.hoveredNodeIndex !== null) {
+        if (this.hoveredNodeIndex !== null || this.selectedNodeIndex !== null) {
             this.updateHoverVisuals();
         }
         if (this.labelsVisible) {
             this.updateLabelPositions();
         }
+        this.updateSelectedLabelPosition();
         this.requestRender();
     }
 
@@ -529,6 +534,7 @@ export class GraphSceneService {
     private disposeGraphMeshes(scene: Scene): void {
         const { nodesMesh, edgesMesh } = this.resources!;
         this.disposeLabelSprites();
+        this.disposeSelectedLabelSprite();
 
         // Depth-only node proxy shares geometry + instanceMatrix with nodesMesh — dispose only its material
         if (this.depthNodesMesh) {
@@ -737,8 +743,56 @@ export class GraphSceneService {
         };
     }
 
+    /** Set which node is selected — persistent border + label while the detail panel is open. Pass null to clear. */
+    setSelectedNode(nodeIndex: number | null): void {
+        if (nodeIndex === this.selectedNodeIndex) return;
+        this.selectedNodeIndex = nodeIndex;
+
+        // The selected node suppresses hover visuals on itself; clear any lingering hover on the same index.
+        if (nodeIndex !== null && this.hoveredNodeIndex === nodeIndex) {
+            this.hoveredNodeIndex = null;
+            this.connectedEdgeIndices.clear();
+            this.connectedNodeIndices.clear();
+            this.clearDots();
+            this.updateEdgeColors();
+        }
+
+        this.disposeSelectedLabelSprite();
+        if (nodeIndex !== null && this.resources && this.three) {
+            const node = this.nodes[nodeIndex];
+            if (node) {
+                const sprite = this.createLabelSprite(node.title);
+                sprite.position.set(node.x, node.y + node.radius + LABEL_OFFSET_ABOVE_NODE, node.z);
+                sprite.visible = this.isNodeVisible(node);
+                this.resources.scene.add(sprite);
+                this.selectedLabelSprite = sprite;
+            }
+        }
+
+        this.updateHoverVisuals();
+        this.requestRender();
+    }
+
+    private disposeSelectedLabelSprite(): void {
+        if (!this.selectedLabelSprite) return;
+        this.resources?.scene.remove(this.selectedLabelSprite);
+        this.selectedLabelSprite.material.map?.dispose();
+        this.selectedLabelSprite.material.dispose();
+        this.selectedLabelSprite = null;
+    }
+
+    private updateSelectedLabelPosition(): void {
+        if (!this.selectedLabelSprite || this.selectedNodeIndex === null) return;
+        const node = this.nodes[this.selectedNodeIndex];
+        if (!node) return;
+        this.selectedLabelSprite.position.set(node.x, node.y + node.radius + LABEL_OFFSET_ABOVE_NODE, node.z);
+        this.selectedLabelSprite.visible = this.isNodeVisible(node);
+    }
+
     /** Set which node is hovered — highlights connected edges/nodes and shows outline. Pass null to clear. */
     setHoveredNode(nodeIndex: number | null): void {
+        // The selected node already carries a persistent border + label — hover must not layer on top of it.
+        if (nodeIndex !== null && nodeIndex === this.selectedNodeIndex) nodeIndex = null;
         if (nodeIndex === this.hoveredNodeIndex) return;
         this.hoveredNodeIndex = nodeIndex;
         this.hoveredEdgeIndex = null;
@@ -807,6 +861,7 @@ export class GraphSceneService {
 
         this.hoveredNodeIndex = null;
         this.hoveredEdgeIndex = null;
+        this.selectedNodeIndex = null;
         this.depthOrderStale = true;
         this.connectedEdgeIndices.clear();
         this.connectedNodeIndices.clear();
@@ -930,6 +985,7 @@ export class GraphSceneService {
         if (this.labelsVisible) {
             this.updateLabelPositions();
         }
+        this.updateSelectedLabelPosition();
         this.requestRender();
     }
 
@@ -1143,7 +1199,7 @@ export class GraphSceneService {
 
                 if (!this.isNodeVisible(node)) {
                     // Skip hidden nodes — no outline
-                } else if (i === this.hoveredNodeIndex) {
+                } else if (i === this.hoveredNodeIndex || i === this.selectedNodeIndex) {
                     borderColor = HOVERED_BORDER_COLOR;
                 }
 
@@ -1442,6 +1498,7 @@ export class GraphSceneService {
         const nodeMat = nodesMesh.material as InstanceType<typeof import('three').MeshPhongMaterial>;
 
         const savedLabelVis = labelSprites.map((s) => s.visible);
+        const savedSelectedLabelVis = this.selectedLabelSprite?.visible ?? false;
         const savedBackground = scene.background;
         const prevAutoClear = renderer.autoClear;
         renderer.autoClear = false;
@@ -1454,6 +1511,7 @@ export class GraphSceneService {
         if (this.highlightLinesObj) this.highlightLinesObj.visible = false;
         if (this.dotsMesh) this.dotsMesh.visible = false;
         for (const s of labelSprites) s.visible = false;
+        if (this.selectedLabelSprite) this.selectedLabelSprite.visible = false;
         depthMesh.visible = true;
         renderer.render(scene, camera);
 
@@ -1475,6 +1533,7 @@ export class GraphSceneService {
         labelSprites.forEach((s, i) => {
             s.visible = savedLabelVis[i];
         });
+        if (this.selectedLabelSprite) this.selectedLabelSprite.visible = savedSelectedLabelVis;
         renderer.render(scene, camera);
         nodeMat.depthTest = true;
 
@@ -1482,6 +1541,7 @@ export class GraphSceneService {
         nodesMesh.visible = false;
         if (this.outlineMesh) this.outlineMesh.visible = false;
         for (const s of labelSprites) s.visible = false;
+        if (this.selectedLabelSprite) this.selectedLabelSprite.visible = false;
         if (edgesMesh) edgesMesh.visible = true;
         if (this.highlightLinesObj) this.highlightLinesObj.visible = true;
         if (this.dotsMesh) this.dotsMesh.visible = true;
@@ -1491,6 +1551,7 @@ export class GraphSceneService {
         labelSprites.forEach((s, i) => {
             s.visible = savedLabelVis[i];
         });
+        if (this.selectedLabelSprite) this.selectedLabelSprite.visible = savedSelectedLabelVis;
 
         scene.background = savedBackground;
         renderer.autoClear = prevAutoClear;
