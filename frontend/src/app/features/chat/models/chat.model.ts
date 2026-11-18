@@ -211,6 +211,8 @@ export interface ChatConversation {
     handoff_reason: string;
     // When the conversation left bot mode; null while the bot runs it. The human section's FIFO key.
     handoff_at: string | null;
+    // When the current holder took it; null while nobody holds it. A close keeps it, as it keeps the holder.
+    claimed_at: string | null;
     // Since when the visitor has waited for a person: set by a hand-off or by a visitor message after the last
     // operator reply; cleared by an operator reply, a return to the bot or a close (a take over keeps it).
     visitor_waiting_since: string | null;

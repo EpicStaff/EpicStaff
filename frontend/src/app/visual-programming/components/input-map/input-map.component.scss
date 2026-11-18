@@ -40,6 +40,11 @@
     gap: 0.75rem;
     width: 100%;
     min-width: 0;
+
+    // With no rows the list would still take a slot in the container's gap, doubling the space above Add Input.
+    &:empty {
+        display: none;
+    }
 }
 
 .input-map-item {

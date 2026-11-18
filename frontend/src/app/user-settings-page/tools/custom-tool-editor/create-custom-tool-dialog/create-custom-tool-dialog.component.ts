@@ -50,6 +50,7 @@ import {
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
 import {
+    codeSuggestionKeyLabel,
     extractHttpErrorMessage,
     isClientError,
     isSecretCodeLocked,
@@ -60,6 +61,7 @@ import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY, Observable, of, timer } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
+import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
 import { BUILDING_STATUSES, Venv } from '../../../../features/virtual-environments/models/venv.model';
@@ -188,6 +190,7 @@ export class CreateCustomToolDialogComponent {
     private readonly permissionsService = inject(PermissionsService);
     private readonly venvsApiService = inject(VenvsApiService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
+    private readonly isMac = inject(PLATFORM_IS_MAC);
     private readonly dialogData = inject<CreateCustomToolDialogData | null>(DIALOG_DATA, { optional: true });
 
     /** Rebound to the forked copy once a built-in tool is saved, so later saves update that copy. */
@@ -249,7 +252,7 @@ export class CreateCustomToolDialogComponent {
     public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Tools));
     public readonly secretsTooltip = computed(() =>
         this.canEditSecrets()
-            ? "Secrets this tool's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            ? `Secrets this tool's code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
             : "Secrets already assigned to this tool's code. You don't have permission to change which secrets are selected."
     );
     /** Decided on the saved tool: the backend checks the secrets its code reads now, not the ones picked here. */

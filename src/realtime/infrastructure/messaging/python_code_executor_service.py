@@ -47,6 +47,23 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
             merged_global_kwargs["org_id"] = python_code_data.org_id
 
         unique_task_id = str(uuid.uuid4())
+        has_no_files = not python_code_data.storage_org_prefix and not (
+            python_code_data.storage_allowed_paths
+        )
+        if python_code_data.use_storage and (storage_credentials is None or has_no_files):
+            # Either the chat was started without files (no storage account), or
+            # this tool's own scope has none. A scope with only one of prefix/paths
+            # is malformed, not empty, and falls through to the validation below.
+            logger.warning(
+                "Storage tool called with no files attached (execution_id={})",
+                unique_task_id,
+            )
+            return CodeResultData(
+                execution_id=unique_task_id,
+                stderr="No files are attached to this agent, so this tool can't use storage.",
+                stdout="",
+                returncode=1,
+            ).model_dump()
         try:
             code_task_data = CodeTaskData(
                 venv_id=python_code_data.venv_id,

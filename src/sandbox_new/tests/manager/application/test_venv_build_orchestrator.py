@@ -55,7 +55,7 @@ async def test_build_passes_the_library_strings_to_the_provider(uow, uv_provider
 async def test_build_installs_the_predefined_packages_into_the_final_venv(
     uow, uv_provider, venvs_dir
 , file_storage):
-    import settings
+    from manager import settings
 
     stored = uow.venv_repo.seed(make_venv())[0]
 

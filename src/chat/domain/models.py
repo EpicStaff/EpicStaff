@@ -145,6 +145,9 @@ class Conversation:
     late_reply_run_id: UUID | None = None
     # When it last left bot mode; None exactly while in bot mode. The human inbox queues by it.
     handoff_at: datetime | None = None
+    # When the current holder took it; None exactly while nobody holds it. Owned by `claim` and
+    # `return_to_bot`, so a close keeps it with the holder.
+    claimed_at: datetime | None = None
     # Untrusted widget context sent to every run; set on create, replaced by each stored message
     # carrying one. {} is stored as None, so the run sends null.
     chat_extra_data: dict | None = None
@@ -217,6 +220,22 @@ class Conversation:
         self.late_reply_run_id = None
         return True
 
+    def claim(self, operator_id: int, now: datetime) -> None:
+        """Make `operator_id` the holder in human mode, taking it from any other operator.
+
+        `claimed_at` marks when this holder joined: a take over by another operator restarts
+        it at `now`, while the holder claiming again keeps it, since they never left.
+
+        Raises:
+            ConversationClosedError: It is closed.
+        """
+        self.change_mode(Mode.HUMAN, now)
+        if self.assigned_operator_id != operator_id:
+            self.assigned_operator_id = operator_id
+            self.claimed_at = now
+        # A reply of a run released before the take over belongs to the old exchange.
+        self.late_reply_run_id = None
+
     def return_to_bot(self, now: datetime) -> None:
         """Hand the conversation back to the bot: nobody holds it and no hand-off is pending.
 
@@ -225,6 +244,7 @@ class Conversation:
         """
         self.change_mode(Mode.BOT, now)
         self.assigned_operator_id = None
+        self.claimed_at = None
         self.handoff_reason = ""
         # A reply of a run released before the hand-off belongs to the old exchange.
         self.late_reply_run_id = None

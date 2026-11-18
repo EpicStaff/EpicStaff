@@ -13,6 +13,7 @@ import {
     Injector,
     OnInit,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -43,6 +44,7 @@ import {
 
 import { ExportFormat } from '../../core/services/import-export.service';
 import { ActiveOrgService } from '../../services/auth/active-org.service';
+import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
 import { AgentDefinitionsApiService } from '../agent-definitions/services/agent-definitions-api.service';
 import { FlowsApiService } from '../flows/services/flows-api.service';
@@ -150,10 +152,14 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private document = inject(DOCUMENT);
     private injector = inject(Injector);
     private toastService = inject(ToastService);
+    private profileService = inject(ProfileService);
     // Read once: an org switch remounts this page, so a later org change must not redirect writes.
     private readonly activeOrgId = inject(ActiveOrgService).activeOrgId();
-    private readonly appliedFilterStorageKey = auditFilterStorageKey(this.activeOrgId, 'applied');
-    private readonly draftFilterStorageKey = auditFilterStorageKey(this.activeOrgId, 'draft');
+    // Read once too, so the saved filter stays the opener's. Normally loaded by the bootstrap guard; when it is not
+    // (a re-bootstrap still running), the id is null and this page neither reads nor saves a filter.
+    private readonly openerUserId = this.profileService.currentUserSignal()?.id ?? null;
+    private readonly appliedFilterStorageKey = auditFilterStorageKey(this.activeOrgId, this.openerUserId, 'applied');
+    private readonly draftFilterStorageKey = auditFilterStorageKey(this.activeOrgId, this.openerUserId, 'draft');
     private searchSubscription: Subscription | null = null;
     private searchInput = new Subject<string>();
     public readonly timeZoneLabel = buildTimeZoneLabel();
@@ -184,10 +190,10 @@ export class AuditSessionsBrowserComponent implements OnInit {
     );
     private collapsedIds = signal<ReadonlySet<string>>(new Set());
     private readonly persistAppliedFilter = effect(() =>
-        writeStoredAuditFilter(this.appliedFilterStorageKey, this.appliedFilter())
+        this.persistFilter(this.appliedFilterStorageKey, this.appliedFilter())
     );
     private readonly persistDraftFilter = effect(() =>
-        writeStoredAuditFilter(this.draftFilterStorageKey, this.draftFilter())
+        this.persistFilter(this.draftFilterStorageKey, this.draftFilter())
     );
     public flowNames = signal<string[]>([]);
     public exportingFormat = signal<ExportFormat | null>(null);
@@ -563,6 +569,16 @@ export class AuditSessionsBrowserComponent implements OnInit {
     protected onPanelEscape(event: Event): void {
         if (event.defaultPrevented || this.viewedValue() || !this.isFiltersPanelOpen()) return;
         this.closeFiltersPanel();
+    }
+
+    // Sign-out clears the stored filters at once but leaves this page only when the server answers; a search that
+    // lands in between must not write the filter back for the next person. Untracked: the signed-in user only decides
+    // whether a filter change is saved; reloading the user (as an org switch does after clearing) must not save again.
+    private persistFilter(key: string | null, state: AuditFilterState): void {
+        if (untracked(() => this.profileService.currentUserSignal()?.id) !== this.openerUserId) {
+            return;
+        }
+        writeStoredAuditFilter(key, state);
     }
 
     private focusAfterRender(focus: () => void): void {

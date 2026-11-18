@@ -4,6 +4,9 @@
             [formGroup]="form"
             class="form-container"
         >
+            @if (filesReadLock(); as lock) {
+                <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+            }
             <!-- Node Name Field -->
             <div class="field-isolated">
                 <app-diff-field-mark [diffField]="'node_name'">

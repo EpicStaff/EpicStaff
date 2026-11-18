@@ -18,7 +18,6 @@ from django.utils import timezone
 from rbac.models import Organization
 from tables.services.run_admission import RunKind, RunSubject
 from tables.services.run_resources import (
-    CODE_SLOT_STORAGE_FLAGS,
     RUN_REFERENCES,
     FollowChildren,
     FollowField,
@@ -663,31 +662,28 @@ def flow_with_attached_storage(world):
     return flow, attached_file, attached_folder
 
 
+FLOW_NODE_CODE_SLOTS = [
+    ("tables.PythonNode", "python_code"),
+    ("tables.WebhookTriggerNode", "python_code"),
+    ("tables.ClassificationDecisionTableNode", "pre_python_code"),
+    ("tables.ClassificationDecisionTableNode", "post_python_code"),
+]
+
+
 @pytest.mark.django_db
-@pytest.mark.parametrize("uses_storage", [True, False], ids=["storage-on", "storage-off"])
-@pytest.mark.parametrize("model_label, code_field", sorted(CODE_SLOT_STORAGE_FLAGS))
-def test_a_code_run_counts_the_flow_s_attached_storage_while_its_slot_uses_storage(
-    world, flow_with_attached_storage, model_label, code_field, uses_storage
+@pytest.mark.parametrize("model_label, code_field", FLOW_NODE_CODE_SLOTS)
+def test_a_code_run_counts_the_flow_s_attached_storage(
+    world, flow_with_attached_storage, model_label, code_field
 ):
     flow, attached_file, attached_folder = flow_with_attached_storage
     code = world.python_code()
-    world.make(
-        model_label,
-        graph=flow,
-        node_name="holder",
-        **{code_field: code, CODE_SLOT_STORAGE_FLAGS[(model_label, code_field)]: uses_storage},
-    )
+    world.make(model_label, graph=flow, node_name="holder", **{code_field: code})
 
     resources = RunResourceCollector().collect(RunSubject(RunKind.CODE, code.pk, world.org.pk))
 
-    attached = {ref(attached_file), ref(attached_folder)}
     assert ref(flow) in resources.refs
-    if uses_storage:
-        assert attached <= resources.refs
-        assert resources.storage_prefixes == {attached_folder.path}
-    else:
-        assert not attached & resources.refs
-        assert resources.storage_prefixes == frozenset()
+    assert {ref(attached_file), ref(attached_folder)} <= resources.refs
+    assert resources.storage_prefixes == {attached_folder.path}
 
 
 @pytest.mark.django_db
@@ -697,33 +693,14 @@ def test_a_code_run_counts_only_the_storage_of_the_flows_holding_its_code(
     flow, attached_file, _ = flow_with_attached_storage
     other_flow = world.make("tables.Graph", name="other-storage", org=world.org)
     code = world.python_code()
-    world.make("tables.PythonNode", graph=other_flow, python_code=code, use_storage=True)
+    world.make("tables.PythonNode", graph=other_flow, python_code=code)
     unrelated = world.python_code()
-    world.make("tables.PythonNode", graph=flow, python_code=unrelated, use_storage=True)
+    world.make("tables.PythonNode", graph=flow, python_code=unrelated)
 
     resources = RunResourceCollector().collect_many(RunKind.CODE, [code.pk, unrelated.pk])
 
     assert ref(attached_file) not in resources[code.pk].refs
     assert ref(attached_file) in resources[unrelated.pk].refs
-
-
-def test_every_storage_flag_belongs_to_a_followed_code_slot_of_a_flow_node():
-    flow_nodes = {
-        row.child for row in RUN_REFERENCES if isinstance(row, FollowChildren) and row.fk == "graph"
-    }
-    wrong = []
-    for (model_label, code_field), flag in CODE_SLOT_STORAGE_FLAGS.items():
-        model = apps.get_model(model_label)
-        code_slot = model._meta.get_field(code_field)
-        if (
-            FollowField(model_label, code_field) not in RUN_REFERENCES
-            or code_slot.related_model._meta.label != "tables.PythonCode"
-            or model_label not in flow_nodes
-            or model._meta.get_field(flag).get_internal_type() != "BooleanField"
-        ):
-            wrong.append((model_label, code_field, flag))
-
-    assert wrong == []
 
 
 @pytest.mark.django_db

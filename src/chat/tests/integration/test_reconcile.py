@@ -374,7 +374,7 @@ async def test_a_visitor_waiting_past_the_response_time_goes_back_to_the_bot_wit
     await _seed(uow_factory, binding, overdue, not_yet)
     await reconciler.run_once(NOW)
     stored, messages = await _stored(uow_factory, overdue.id)
-    assert (stored.mode, stored.assigned_operator_id, stored.handoff_at, stored.visitor_waiting_since, stored.is_open) == (Mode.BOT, None, None, None, True)
+    assert (stored.mode, stored.assigned_operator_id, stored.claimed_at, stored.handoff_at, stored.visitor_waiting_since, stored.is_open) == (Mode.BOT, None, None, None, None, True)
     assert [(m.role, m.content, m.visible_name) for m in messages] == [(Role.ASSISTANT, HANDBACK_NOTICE, None)]
     visitor = await _stream(uow_factory, Stream.CONVERSATION, overdue.id)
     assert [kind for kind, _ in visitor] == ["mode.changed", "message.created"] and visitor[0][1] == {"mode": "bot"}

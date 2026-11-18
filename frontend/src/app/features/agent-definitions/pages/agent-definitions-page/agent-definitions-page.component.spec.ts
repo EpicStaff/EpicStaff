@@ -1,8 +1,11 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer, OverlayModule } from '@angular/cdk/overlay';
-import { CUSTOM_ELEMENTS_SCHEMA, signal, WritableSignal } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, input, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import {
     AppSvgIconComponent,
@@ -10,20 +13,25 @@ import {
     ConfirmationDialogService,
     UnsavedChangesDialogService,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { EnterBlurDirective, HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
 
 import { tourAnchorSelector } from '../../../../core/guided-tour';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ProfileService } from '../../../../services/auth/profile.service';
+import { ToastService } from '../../../../services/notifications';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
 import { AgentDefinition } from '../../models/agent-definition.model';
 import { Surface } from '../../models/surface.model';
+import { AgentDefinitionsApiService } from '../../services/agent-definitions-api.service';
 import { AgentGroupsStorageService } from '../../services/agent-groups-storage.service';
 import { AgentsPageStore } from '../../services/agents-page-store.service';
 import { SurfaceCatalogsStore } from '../../services/surface-catalogs-store.service';
+import { SurfacesApiService } from '../../services/surfaces-api.service';
 import { AgentDefinitionsPageComponent } from './agent-definitions-page.component';
+import { AgentDetailComponent } from './components/agent-detail/agent-detail.component';
 import { DetailHeaderComponent } from './components/detail-header/detail-header.component';
 import { AGENTS_SECTION_MENU_ACTION } from './components/explorer/explorer-menu.util';
 
@@ -76,6 +84,7 @@ function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
         selectedAgentFocus: signal(null),
         selectedAgentInstructionListError: signal(null),
         isDraftingAgent: signal(false),
+        agentDraftId: signal(0),
         isDraftingSurface: signal(false),
         isSelectedAgentFromLatestDraft: signal(false),
         saving: signal(false),
@@ -402,7 +411,7 @@ describe('AgentDefinitionsPageComponent explorer row menu "View Details"', () =>
             trigger: document.createElement('button'),
         });
 
-        // The stubbed UnsavedChangesDialogService has no confirmUnsavedChanges: prompting would throw.
+        // The stubbed UnsavedChangesDialogService has no confirm: prompting would throw.
         expect(open).toHaveBeenCalledOnce();
     });
 
@@ -506,5 +515,281 @@ describe('AgentDefinitionsPageComponent saving the agent', () => {
             expect.objectContaining({ llm_config: 1, fallback_llm_config: 2 }),
             false
         );
+    });
+});
+
+/** Stands in for the LLM model selector, which loads every LLM configuration of the organization. */
+@Component({
+    selector: 'app-llm-model-selector',
+    template: '',
+    providers: [
+        { provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => LlmModelSelectorStubComponent), multi: true },
+    ],
+})
+class LlmModelSelectorStubComponent implements ControlValueAccessor {
+    readonly excludedConfigId = input<number | null>(null);
+    readonly readonly = input(false);
+
+    writeValue(): void {}
+
+    registerOnChange(): void {}
+
+    registerOnTouched(): void {}
+}
+
+describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
+    type PageFixture = ComponentFixture<AgentDefinitionsPageComponent>;
+
+    /**
+     * The page with the real agent editor, on a draft (`drafting`) or on `AGENT`, with an edit not saved yet.
+     * `realStore` runs the draft through the real page store, over a fake API with no agents.
+     */
+    function renderEdited(
+        drafting: boolean,
+        realStore = false
+    ): { fixture: PageFixture; store: AgentsPageStore; overlay: HTMLElement } {
+        const stubStore = {
+            ...agentSelectedStore(),
+            selectedAgent: signal(drafting ? null : AGENT),
+            isDraftingAgent: signal(drafting),
+            beginCreateAgent: vi.fn(),
+        };
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                {
+                    provide: PermissionsService,
+                    useValue: { active: signal(null), can: () => true, canAny: () => true },
+                },
+                { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap({}) } } },
+                {
+                    provide: Router,
+                    useValue: { navigate: () => Promise.resolve(true), lastSuccessfulNavigation: () => null },
+                },
+                { provide: ConfirmationDialogService, useValue: {} },
+                {
+                    provide: AgentGroupsStorageService,
+                    useValue: { labels: signal([]), labelTree: signal([]), loadLabels: () => of([]) },
+                },
+                { provide: ToastService, useValue: { info: vi.fn() } },
+                { provide: AgentDefinitionsApiService, useValue: { getAgentDefinitions: () => of([]) } },
+                { provide: SurfacesApiService, useValue: { getSurfaces: () => of([]) } },
+                { provide: ProfileService, useValue: { currentUserSignal: signal({ id: 7 }) } },
+            ],
+        });
+        TestBed.overrideComponent(AgentDefinitionsPageComponent, {
+            set: {
+                imports: [
+                    AgentDetailComponent,
+                    DetailHeaderComponent,
+                    AppSvgIconComponent,
+                    OverlayModule,
+                    CdkTrapFocus,
+                    HasPermissionDirective,
+                ],
+                providers: [
+                    realStore ? AgentsPageStore : { provide: AgentsPageStore, useValue: stubStore },
+                    {
+                        provide: StorageTreeFacade,
+                        useValue: { init: () => undefined, selectedFile: signal(null), selectedItems: signal([]) },
+                    },
+                    { provide: SurfaceCatalogsStore, useValue: {} },
+                ],
+                schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            },
+        });
+        // The name form is under test; the instructions list and the Surfaces panel stay unrendered custom elements.
+        TestBed.overrideComponent(AgentDetailComponent, {
+            set: {
+                imports: [
+                    ReactiveFormsModule,
+                    EnterBlurDirective,
+                    HasPermissionDirective,
+                    LlmModelSelectorStubComponent,
+                ],
+                schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            },
+        });
+        const fixture = TestBed.createComponent(AgentDefinitionsPageComponent);
+        if (realStore) fixture.debugElement.injector.get(AgentsPageStore).beginCreateAgent();
+        fixture.detectChanges();
+        // Typing in "About this Agent" takes the focus off the name field a draft opens on.
+        const description = descriptionInput(fixture);
+        description.focus();
+        description.value = 'Reads CVs';
+        description.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        return {
+            fixture,
+            store: fixture.debugElement.injector.get(AgentsPageStore),
+            overlay: TestBed.inject(OverlayContainer).getContainerElement(),
+        };
+    }
+
+    function host(fixture: PageFixture): HTMLElement {
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    function nameInput(fixture: PageFixture): HTMLInputElement {
+        return host(fixture).querySelector<HTMLInputElement>('input[aria-label="Agent Name"]')!;
+    }
+
+    function descriptionInput(fixture: PageFixture): HTMLTextAreaElement {
+        return host(fixture).querySelector<HTMLTextAreaElement>('textarea[aria-label="About this Agent"]')!;
+    }
+
+    function type(fixture: PageFixture, field: HTMLInputElement | HTMLTextAreaElement, text: string): void {
+        field.value = text;
+        field.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    function nameError(fixture: PageFixture): string | null {
+        return host(fixture).querySelector('.field__error')?.textContent?.trim() ?? null;
+    }
+
+    function dialogText(overlay: HTMLElement): { title: string; message: string; buttons: string[] } {
+        return {
+            title: overlay.querySelector('.dialog-title')?.textContent?.trim() ?? '',
+            message: overlay.querySelector('.dialog-message')?.textContent?.trim() ?? '',
+            buttons: Array.from(overlay.querySelectorAll('.dialog-actions button')).map(
+                (button) => button.textContent?.trim() ?? ''
+            ),
+        };
+    }
+
+    async function choose(fixture: PageFixture, overlay: HTMLElement, label: string): Promise<void> {
+        const button = Array.from(overlay.querySelectorAll<HTMLButtonElement>('.dialog-actions button')).find(
+            (candidate) => candidate.textContent?.trim() === label
+        );
+        button!.click();
+        await fixture.whenStable();
+        fixture.detectChanges();
+    }
+
+    /** Leaving the route (`canDeactivate`) or starting another agent (`guardUnsaved`); `left()` says whether it went. */
+    const LEAVE_BY = [
+        {
+            way: 'leaving the route',
+            start: (fixture: PageFixture) => {
+                let went: boolean | undefined;
+                const answer = fixture.componentInstance.canDeactivate();
+                if (typeof answer === 'boolean') went = answer;
+                else answer.subscribe((leave) => (went = leave));
+                return { left: (): boolean | undefined => went };
+            },
+        },
+        {
+            way: 'starting another agent',
+            start: (fixture: PageFixture) => {
+                fixture.componentInstance.onAddAgent();
+                const beginCreateAgent = vi.mocked(fixture.debugElement.injector.get(AgentsPageStore).beginCreateAgent);
+                return { left: (): boolean | undefined => beginCreateAgent.mock.calls.length > 0 };
+            },
+        },
+    ];
+
+    it.each(LEAVE_BY)('asks to discard a draft without offering Save, on $way', async ({ start }) => {
+        const { fixture, overlay } = renderEdited(true);
+
+        start(fixture);
+        await fixture.whenStable();
+
+        expect(dialogText(overlay)).toEqual({
+            title: 'Agent not created',
+            message: "This agent hasn't been created yet. Fix the name to save it, or discard it.",
+            buttons: ['Discard & Leave', 'Keep Editing'],
+        });
+    });
+
+    it.each(LEAVE_BY)('stays on Keep Editing and points at the empty name, on $way', async ({ start }) => {
+        const { fixture, overlay } = renderEdited(true);
+        const { left } = start(fixture);
+        await fixture.whenStable();
+
+        await choose(fixture, overlay, 'Keep Editing');
+
+        expect(left()).toBe(false);
+        expect(document.activeElement).toBe(nameInput(fixture));
+        expect(nameError(fixture)).toBe('Agent name is required');
+    });
+
+    it.each(LEAVE_BY)('goes on Discard & Leave, on $way', async ({ start }) => {
+        const { fixture, overlay } = renderEdited(true);
+        const { left } = start(fixture);
+        await fixture.whenStable();
+
+        await choose(fixture, overlay, 'Discard & Leave');
+
+        expect(left()).toBe(true);
+    });
+
+    it('drops the name error once a name is typed', async () => {
+        const { fixture, overlay } = renderEdited(true);
+        fixture.componentInstance.onAddAgent();
+        await fixture.whenStable();
+        await choose(fixture, overlay, 'Keep Editing');
+
+        nameInput(fixture).value = 'CV Processor';
+        nameInput(fixture).dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(nameError(fixture)).toBeNull();
+    });
+
+    it('asks about a saved agent without claiming it was never created, and leaves its name alone', async () => {
+        const { fixture, overlay } = renderEdited(false);
+
+        fixture.componentInstance.onAddAgent();
+        await fixture.whenStable();
+
+        expect(dialogText(overlay)).toEqual({
+            title: 'Unsaved Changes',
+            message: 'You have unsaved changes in this agent.',
+            buttons: ['Discard & Leave', 'Keep Editing'],
+        });
+
+        await choose(fixture, overlay, 'Keep Editing');
+
+        expect(document.activeElement).not.toBe(nameInput(fixture));
+        expect(nameError(fixture)).toBeNull();
+    });
+
+    it('leaves a saved agent without asking once its edit is changed back', () => {
+        const { fixture } = renderEdited(false);
+
+        type(fixture, descriptionInput(fixture), AGENT.description);
+
+        expect(fixture.componentInstance.canDeactivate()).toBe(true);
+    });
+
+    it('leaves a saved agent without asking once an emptied name has been put back', () => {
+        const { fixture } = renderEdited(false);
+        type(fixture, descriptionInput(fixture), AGENT.description);
+
+        nameInput(fixture).focus();
+        type(fixture, nameInput(fixture), '');
+        nameInput(fixture).blur();
+        fixture.detectChanges();
+
+        expect(nameInput(fixture).value).toBe(AGENT.name);
+        expect(fixture.componentInstance.canDeactivate()).toBe(true);
+    });
+
+    it('starts an empty draft on Discard & Leave into another Add Agent, even after Keep Editing', async () => {
+        const { fixture, overlay } = renderEdited(true, true);
+        fixture.componentInstance.onAddAgent();
+        await fixture.whenStable();
+        await choose(fixture, overlay, 'Keep Editing');
+        expect(nameError(fixture)).toBe('Agent name is required');
+
+        fixture.componentInstance.onAddAgent();
+        await fixture.whenStable();
+        await choose(fixture, overlay, 'Discard & Leave');
+
+        expect(descriptionInput(fixture).value).toBe('');
+        expect(nameError(fixture)).toBeNull();
+        expect(fixture.componentInstance.canDeactivate()).toBe(true);
     });
 });

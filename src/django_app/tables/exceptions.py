@@ -663,10 +663,18 @@ class BulkSaveValidationError(CustomAPIExeption):
         super().__init__(str(errors))
 
 
+class RagIndexNotReadyException(RagException):
+    """Base for a RAG that exists but whose index has not finished building."""
+
+    status_code = 409
+    default_code = "rag_index_not_ready"
+
+
 class NoGraphRagForCollectionException(RagException):
     """Raised when a collection has no GraphRag configuration at all."""
 
     status_code = 404
+    default_code = "graph_rag_not_found"
 
     def __init__(self, collection_id):
         self.collection_id = collection_id
@@ -676,10 +684,8 @@ class NoGraphRagForCollectionException(RagException):
         )
 
 
-class GraphRagIndexNotReadyException(RagException):
+class GraphRagIndexNotReadyException(RagIndexNotReadyException):
     """Raised when GraphRag exists but its index has not finished building."""
-
-    status_code = 409
 
     def __init__(self, collection_id):
         self.collection_id = collection_id
@@ -687,6 +693,17 @@ class GraphRagIndexNotReadyException(RagException):
             f"GraphRAG index for collection {collection_id} not ready. "
             f"Run indexing and wait for rag_status='completed'."
         )
+
+
+class GraphRagLlmNotConfiguredException(RagException):
+    """Raised when GraphRag has no LLM config, e.g. after its LLM config was deleted."""
+
+    status_code = 409
+    default_code = "graph_rag_llm_not_configured"
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(f"GraphRag for collection {collection_id} has no LLM config.")
 
 
 class GraphRagMetricsUnavailableException(RagException):
@@ -706,6 +723,7 @@ class NoNaiveRagForCollectionException(RagException):
     """Raised when a collection has no NaiveRag configuration at all."""
 
     status_code = 404
+    default_code = "naive_rag_not_found"
 
     def __init__(self, collection_id):
         self.collection_id = collection_id
@@ -715,10 +733,8 @@ class NoNaiveRagForCollectionException(RagException):
         )
 
 
-class NaiveRagIndexNotReadyException(RagException):
+class NaiveRagIndexNotReadyException(RagIndexNotReadyException):
     """Raised when NaiveRag exists but its index has not finished building."""
-
-    status_code = 409
 
     def __init__(self, collection_id):
         self.collection_id = collection_id

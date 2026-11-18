@@ -29,7 +29,7 @@ import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml, takeQueryParams } from '@shared/utils';
 import { Observable, of } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { map, tap } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -157,6 +157,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     );
 
     private readonly explorer = viewChild(ExplorerComponent);
+    private readonly agentDetail = viewChild(AgentDetailComponent);
     private readonly headerMenuTrigger = viewChild<string, ElementRef<HTMLButtonElement>>('headerMenuTrigger', {
         read: ElementRef,
     });
@@ -705,13 +706,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     canDeactivate(): boolean | Observable<boolean> {
         if (!this.hasUnsavedChanges()) return true;
-        return this.unsavedChangesDialog.confirmUnsavedChanges().pipe(
-            map((result) => {
-                if (result === UNSAVED_CHANGES_RESULT.dontSave) {
-                    this.hasUnsavedChanges.set(false);
-                    return true;
-                }
-                return false;
+        return this.confirmLeaveAgent().pipe(
+            map((leave) => {
+                if (leave) this.hasUnsavedChanges.set(false);
+                return leave;
             })
         );
     }
@@ -758,14 +756,40 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             action();
             return;
         }
-        this.unsavedChangesDialog.confirmUnsavedChanges().subscribe((result) => {
-            if (result === UNSAVED_CHANGES_RESULT.dontSave) {
+        this.confirmLeaveAgent().subscribe((leave) => {
+            if (leave) {
                 this.hasUnsavedChanges.set(false);
                 action();
             } else {
                 onCancel?.();
             }
         });
+    }
+
+    /**
+     * Asks whether to drop the agent's unsaved edits; true to leave. There is no Save: a draft needs a name
+     * to be created, and an existing agent saves itself when its field loses focus. Staying on a draft
+     * points the user at the missing name.
+     */
+    private confirmLeaveAgent(): Observable<boolean> {
+        const drafting = this.store.isDraftingAgent();
+        return this.unsavedChangesDialog
+            .confirm({
+                title: drafting ? 'Agent not created' : 'Unsaved Changes',
+                message: drafting
+                    ? "This agent hasn't been created yet. Fix the name to save it, or discard it."
+                    : 'You have unsaved changes in this agent.',
+                dontSaveText: 'Discard & Leave',
+                cancelText: 'Keep Editing',
+                type: 'warning',
+                showSave: false,
+            })
+            .pipe(
+                map((result) => result === UNSAVED_CHANGES_RESULT.dontSave),
+                tap((leave) => {
+                    if (!leave && drafting) this.agentDetail()?.requireName();
+                })
+            );
     }
 
     private openExplorerAgentDetails({ node, trigger }: ExplorerTreeMenuEvent): void {

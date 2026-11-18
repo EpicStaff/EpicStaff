@@ -1,9 +1,9 @@
 """Flow state paths such as `variables.user[0].name`: how crew splits one, and which it refuses.
 
 Crew walks the state with getattr/setattr, so a segment like `__class__` would reach the
-DotDict class, which every session in a crew process shares, and `_properties` the DotDict's
-internals. No segment may therefore start with `_`. Crew applies the rule at run time;
-Django applies it when a flow is saved or imported, so the author hears of it earlier.
+DotDict class, which every session in a crew process shares. No segment may therefore start
+with `_`. Crew applies the rule at run time; Django applies it when a flow is saved or
+imported, so the author hears of it earlier.
 
 A classification table's input map path may also hold dynamic keys, such as
 `messages[variables.index]`: a bracket holding a variable path whose value is the key. A bracket
