@@ -1,9 +1,14 @@
+import hashlib
+import json
+
 from domain.enums import SlotEnum
 from domain.errors import GraphRagConfigNotFoundError
 from domain.models import EmbeddingConfig, GraphPricingConfig, Rag
 from graphrag.config.models.cluster_graph_config import ClusterGraphConfig
 from graphrag.config.models.extract_graph_config import ExtractGraphConfig
 from graphrag.config.models.graph_rag_config import GraphRagConfig
+from graphrag.config.models.reporting_config import ReportingConfig
+from graphrag_cache import CacheConfig
 from graphrag_chunking.chunking_config import ChunkingConfig as GraphRagChunkingConfig
 from graphrag_input import TextDocument
 from graphrag_llm.config import ModelConfig
@@ -15,6 +20,7 @@ from infrastructure.database.models import (
     GraphRagIndexConfig,
     LLMConfig,
 )
+from infrastructure.graphrag.reporting import PROPAGATE_ONLY_REPORTING
 from infrastructure.graphrag.storages import create_storage_config
 from infrastructure.graphrag.vector_stores import create_vector_store_config
 from loguru import logger
@@ -85,6 +91,20 @@ def _build_embedding_model(embedder_config: ORMEmbeddingConfig) -> ModelConfig:
     )
 
 
+_ANSWER_CHANGING_MODEL_FIELDS = {"model_provider", "model", "api_base", "api_version", "call_args"}
+
+
+def _cache_subdir(*models: ModelConfig) -> str:
+    # graphrag keys a cached answer on the prompt alone, never on the model or its call
+    # arguments, so the models' settings name the cache: changing either starts a new one.
+    # Cached answers are reused until a model setting changes (graphrag never expires them).
+    settings_json = json.dumps(
+        [model.model_dump(mode="json", include=_ANSWER_CHANGING_MODEL_FIELDS) for model in models],
+        sort_keys=True,
+    )
+    return "cache/" + hashlib.sha256(settings_json.encode()).hexdigest()[:16]
+
+
 def _build_chunking_config(index_config: GraphRagIndexConfig) -> GraphRagChunkingConfig:
     return GraphRagChunkingConfig(
         type=index_config.chunk_strategy,
@@ -124,9 +144,11 @@ def graph_rag_orm_to_graphrag_config(orm_rag: GraphRag, *, slot: SlotEnum) -> Gr
     llm_config: LLMConfig = orm_rag.llm
     embedding_config: ORMEmbeddingConfig = orm_rag.embedder
     index_config: GraphRagIndexConfig = orm_rag.index_config
+    completion_model = _build_completion_model(llm_config)
+    embedding_model = _build_embedding_model(embedding_config)
     return GraphRagConfig(
-        completion_models={"default_completion_model": _build_completion_model(llm_config)},
-        embedding_models={"default_embedding_model": _build_embedding_model(embedding_config)},
+        completion_models={"default_completion_model": completion_model},
+        embedding_models={"default_embedding_model": embedding_model},
         chunking=_build_chunking_config(index_config),
         extract_graph=_build_extract_graph_config(index_config),
         cluster_graph=_build_cluster_graph_config(index_config),
@@ -136,6 +158,16 @@ def graph_rag_orm_to_graphrag_config(orm_rag: GraphRag, *, slot: SlotEnum) -> Gr
             rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/update_output"
         ),
         vector_store=create_vector_store_config(rag_id=orm_rag.graph_rag_id, subdir=slot),
+        # Per RAG, not per slot, so a reindex into the other slot reuses the answers. graphrag's
+        # defaults put the cache and the logs under the working directory, which is read-only.
+        cache=CacheConfig(
+            type="json",
+            storage=create_storage_config(
+                rag_id=orm_rag.graph_rag_id,
+                subdir=_cache_subdir(completion_model, embedding_model),
+            ),
+        ),
+        reporting=ReportingConfig(type=PROPAGATE_ONLY_REPORTING),
     )
 
 

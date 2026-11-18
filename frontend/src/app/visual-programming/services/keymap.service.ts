@@ -1,9 +1,10 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { computed, DestroyRef, inject, Injectable, InjectionToken, linkedSignal, NgZone, signal } from '@angular/core';
+import { computed, DestroyRef, inject, Injectable, linkedSignal, NgZone, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CustomShortcutEntry, ShortcutParams, ShortcutSettings } from '@shared/models';
 import { catchError, concatMap, EMPTY, finalize, fromEvent, Subject } from 'rxjs';
 
+import { PLATFORM_IS_MAC } from '../../core/services/platform-is-mac.token';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
@@ -34,11 +35,6 @@ import {
     ShortcutRejected,
     toShortcutSettings,
 } from '../core/keymap/shortcut-resolution';
-
-export const PLATFORM_IS_MAC = new InjectionToken<boolean>('PLATFORM_IS_MAC', {
-    providedIn: 'root',
-    factory: () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent),
-});
 
 export interface ShortcutTarget {
     readonly action: EditorActionId;

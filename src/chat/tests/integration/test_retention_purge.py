@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from application.orchestrators.retention import RetentionOrchestrator
 from common.utils import new_id
-from domain.enums import CloseReason, Role, RunState, Stream
+from domain.enums import BindingStyle, CloseReason, Role, RunState, Stream
 from domain.models import CallbackReceipt, ConversationEvent, Message, VisitorToken
 from infrastructure.database.models import (
     CallbackReceiptRow,
@@ -38,12 +38,12 @@ def _message(conversation, created_at=OLD) -> Message:
     return Message(id=new_id(), conversation_id=conversation.id, role=Role.USER, content="hi", actions=None, session_id=None, created_at=created_at, author_user_id=None)
 
 
-async def _store(uow_factory, *conversations):
-    """Store each conversation under its own desk."""
+async def _store(uow_factory, *conversations, style=BindingStyle.SUPPORT):
+    """Store each conversation under its own desk, of `style`."""
     async with uow_factory() as uow:
         for conversation in conversations:
             if await uow.bindings.get(conversation.binding_id) is None:
-                await uow.bindings.add(make_binding(org_id=conversation.org_id, id=conversation.binding_id))
+                await uow.bindings.add(make_binding(org_id=conversation.org_id, id=conversation.binding_id, style=style))
             await uow.conversations.add(conversation)
         await uow.commit()
 
@@ -86,25 +86,60 @@ async def test_purge_deletes_a_closed_conversation_whatever_closed_it(client, uo
     assert await _remaining_ids(session_factory) == set()
 
 
+@pytest.mark.parametrize("style", list(BindingStyle))
 @pytest.mark.parametrize(
     "mode, state",
     [
-        pytest.param("bot", {}, id="bot-idle"),
-        pytest.param("bot", dict(run_state=RunState.STARTING, active_since=OLD), id="bot-starting"),
-        pytest.param("bot", dict(run_state=RunState.RUNNING, active_run_id=new_id(), active_since=OLD), id="bot-running"),
-        pytest.param("bot", dict(late_reply_run_id=new_id()), id="bot-awaiting-a-late-reply"),
+        pytest.param("bot", {}, id="bot"),
+        # Released as an unconfirmed start long ago: no receipt is left, so no reply can come.
+        pytest.param("bot", dict(late_reply_run_id=new_id()), id="bot-released-late-reply"),
         pytest.param("awaiting_human", {}, id="awaiting-human"),
         pytest.param("human", {}, id="human-with-an-operator"),
     ],
 )
-async def test_purge_never_deletes_an_open_conversation(client, uow_factory, session_factory, key_headers, mode, state):
-    open_conversation = make_conversation(make_binding(org_id=1), mode=mode, last_message_at=OLD, created_at=OLD, **state)
-    await _store(uow_factory, open_conversation)
+async def test_purge_deletes_an_open_conversation_silent_past_retention(client, uow_factory, session_factory, key_headers, style, mode, state):
+    silent = make_conversation(make_binding(org_id=1), mode=mode, last_message_at=OLD, created_at=OLD, **state)
+    await _store(uow_factory, silent, style=style)
+
+    response = await client.post(PURGE, json=_body(), headers=key_headers)
+
+    assert response.json() == {"deleted": 1}
+    assert await _remaining_ids(session_factory) == set()
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        # The slot is claimed, but the message and its receipt are not stored yet: no run id.
+        pytest.param(dict(run_state=RunState.STARTING, active_since=OLD), id="starting-before-the-receipt"),
+        pytest.param(dict(run_state=RunState.STARTING, active_run_id=new_id(), active_since=OLD), id="starting"),
+        pytest.param(dict(run_state=RunState.RUNNING, active_run_id=new_id(), active_since=OLD), id="running"),
+    ],
+)
+async def test_purge_keeps_a_silent_conversation_with_a_run_in_progress(client, uow_factory, session_factory, key_headers, state):
+    in_progress = make_conversation(make_binding(org_id=1), last_message_at=OLD, created_at=OLD, **state)
+    await _store(uow_factory, in_progress, style=BindingStyle.ONGOING)
 
     response = await client.post(PURGE, json=_body(), headers=key_headers)
 
     assert response.json() == {"deleted": 0}
-    assert await _remaining_ids(session_factory) == {open_conversation.id}
+    assert await _remaining_ids(session_factory) == {in_progress.id}
+
+
+async def test_purge_keeps_an_active_ongoing_thread_whole(client, uow_factory, session_factory, key_headers):
+    # Started long before the cutoff and carrying old history, but the visitor wrote recently.
+    active = make_conversation(make_binding(org_id=1), last_message_at=RECENT, created_at=OLD - timedelta(days=400))
+    await _store(uow_factory, active, style=BindingStyle.ONGOING)
+    async with uow_factory() as uow:
+        for created_at in (OLD - timedelta(days=400), OLD, RECENT):
+            await uow.messages.add(_message(active, created_at=created_at))
+        await uow.commit()
+
+    response = await client.post(PURGE, json=_body(), headers=key_headers)
+
+    assert response.json() == {"deleted": 0}
+    assert await _remaining_ids(session_factory) == {active.id}
+    assert await _count(session_factory, MessageRow, active.id) == 3
 
 
 async def test_purge_skips_conversation_whose_run_callback_is_still_owed(client, uow_factory, session_factory, key_headers):

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Generic, Protocol, TypeVar
 
 from app.filtering.ast import FieldSpec, FilterNode
-from app.filtering.constants import FLATTENED_OPS
+from app.filtering.constants import FLATTENED_OPS, SELECT_OPS
 from pydantic import BaseModel
 from src.shared.models import BaseAuditEvent
 
@@ -203,6 +203,9 @@ class AuditDomain(Generic[EventT]):  # noqa: UP046 - matches Generic usage in ap
     expander: MatchExpander
     resource: str
     api: ApiSpec
+    # Fields whose distinct values `GET /api/audit/{name}/values/{field}` lists.
+    # The route is mounted only when this is non-empty.
+    value_fields: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         # The AST splitter keys on `computed`, validation keys on the catalog's
@@ -217,6 +220,28 @@ class AuditDomain(Generic[EventT]):  # noqa: UP046 - matches Generic usage in ap
                 f"{sorted(declared)} do not match its ComputedField implementations "
                 f"{sorted(implemented)}"
             )
+        self._validate_value_fields()
+
+    def _validate_value_fields(self) -> None:
+        # Values are listed with a terms aggregation on the field itself, which
+        # only works on a keyword column: an analyzed text field fails in
+        # OpenSearch, an alias or a computed field names no column, and a
+        # numeric one would not return strings. A select field is the
+        # catalog's mark of a keyword column, so anything else fails here.
+        for field in sorted(self.value_fields):
+            spec = self.fields.field_spec(field)
+            is_keyword_select = (
+                spec is not None
+                and spec.allowed_ops >= SELECT_OPS
+                and not spec.computed
+                and not spec.numeric
+                and self.fields.resolve_alias(field) == field
+            )
+            if not is_keyword_select:
+                raise ValueError(
+                    f"Audit domain {self.name!r}: value field {field!r} is not a "
+                    "keyword select field of its catalog"
+                )
 
 
 DEFAULT_SCOPING = ScopingPolicy()

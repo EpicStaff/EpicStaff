@@ -1,7 +1,7 @@
 import { ValidatorFn } from '@angular/forms';
 
 export interface TableSelectOption {
-    label: string;
+    name: string;
     value: unknown;
 }
 

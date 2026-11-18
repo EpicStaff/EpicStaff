@@ -20,6 +20,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from foundation.cryptographer import FernetRotatedCryptographer
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
@@ -45,6 +46,7 @@ from src.shared.knowledge.client import KnowledgeClient
 from src.shared.models import RealtimeAgentChatData
 from utils.auth import DjangoAuthClient
 from utils.instructions_concatenator import generate_instruction
+from utils.transport_secrets import SecretDecryptionError, decrypt_transport_secret
 from utils.twilio_signature import validate_twilio_signature
 
 # Uvicorn worker and reload subprocesses import this module directly and never run
@@ -73,9 +75,19 @@ tool_manager_service = ToolManagerService(
     python_code_executor_service=python_code_executor_service,
     knowledge_client=knowledge_client,
 )
+transport_cryptographer = FernetRotatedCryptographer(
+    config.SECRETS_TRANSPORT_KEY,
+    config.SECRETS_TRANSPORT_PREVIOUS_KEYS,
+    hkdf_info=config.SECRETS_TRANSPORT_HKDF_INFO.encode(),
+)
 elevenlabs_agent_provisioner = ElevenLabsAgentProvisioner(redis_service=redis_service)
-factory = RealtimeAgentClientFactory(elevenlabs_agent_provisioner=elevenlabs_agent_provisioner)
-transcription_client_factory = TranscriptionClientFactory()
+factory = RealtimeAgentClientFactory(
+    elevenlabs_agent_provisioner=elevenlabs_agent_provisioner,
+    transport_cryptographer=transport_cryptographer,
+)
+transcription_client_factory = TranscriptionClientFactory(
+    transport_cryptographer=transport_cryptographer
+)
 
 
 # Enable CORS
@@ -334,9 +346,17 @@ async def root(
 
     try:
         summ_client = OpenaiSummarizationClient(
-            api_key=realtime_agent_chat_data.rt_api_key,
+            api_key=decrypt_transport_secret(
+                transport_cryptographer,
+                realtime_agent_chat_data.rt_api_key,
+                field_name="rt_api_key",
+            ),
             base_url=realtime_agent_chat_data.rt_base_url,
         )
+    except SecretDecryptionError as exc:
+        logger.error("Refusing connection {}: {}", connection_key, exc)
+        await websocket.close(code=1011)
+        return
     except ValueError as exc:
         logger.error("Invalid rt_base_url for connection {}: {}", connection_key, exc)
         await websocket.close(code=1011)
@@ -680,7 +700,14 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
         )
 
     twilio_cfg = channel.get("twilio") or {}
-    auth_token = twilio_cfg.get("auth_token")
+    try:
+        auth_token = decrypt_transport_secret(
+            transport_cryptographer, twilio_cfg.get("auth_token"), field_name="twilio.auth_token"
+        )
+    except SecretDecryptionError as exc:
+        # Same fail-closed answer as a channel with no auth token: signatures cannot be checked.
+        logger.error("[voice] {}", exc)
+        raise HTTPException(status_code=503, detail="Twilio auth not configured") from exc
     webhook_trigger = twilio_cfg.get("webhook_trigger") or {}
     ngrok_cfg = webhook_trigger.get("ngrok_config") or {}
     live_url = webhook_trigger.get("live_url") or ""

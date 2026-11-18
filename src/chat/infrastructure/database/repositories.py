@@ -305,11 +305,12 @@ class BindingRepository(_Repository, AbstractBindingRepository):
             .values(broken_reason=reason, updated_at=utcnow())
         )
 
-    async def delete(self, binding_id: UUID, org_id: int) -> bool:
-        result = await self._session.execute(
-            delete(BindingRow).where(BindingRow.id == binding_id, BindingRow.org_id == org_id)
+    async def delete(self, binding_id: UUID, org_id: int) -> str | None:
+        return await self._session.scalar(
+            delete(BindingRow)
+            .where(BindingRow.id == binding_id, BindingRow.org_id == org_id)
+            .returning(BindingRow.name)
         )
-        return result.rowcount == 1
 
 
 class ConversationRepository(_Repository, AbstractConversationRepository):
@@ -539,27 +540,37 @@ class ConversationRepository(_Repository, AbstractConversationRepository):
             CallbackReceiptRow.secret != "",
         )
         last_active = func.coalesce(ConversationRow.last_message_at, ConversationRow.created_at)
-        # No run-state test: ck_conversation_closed_is_settled guarantees a closed row is idle and
-        # names no run. A row another transaction holds is skipped, not waited for; on one that
-        # transaction changed and committed meanwhile, FOR UPDATE re-checks the conversation's own
-        # columns on the locked version, while NOT EXISTS keeps the statement's snapshot.
+        # Open or closed alike, but never while a run is in flight. `idle`, not `active_run_id IS
+        # NULL`: a claimed slot is `starting` with no run id until the message and its receipt are
+        # stored, and an idle row names no run (ck_conversation_idle_holds_no_run). Rendered
+        # literally, so even a generic plan matches ix_conversation_org_id_idle_activity.
+        # Every guard against a live row is on the conversation itself: a row another
+        # transaction holds is skipped, not waited for, and on one it changed and committed
+        # meanwhile (a message, a claimed slot) FOR UPDATE re-checks these columns on the locked
+        # version. NOT EXISTS keeps the statement's snapshot, but a receipt is only written under
+        # a slot that is no longer idle, so the run-state re-check covers a receipt it misses.
         batch = (
             select(ConversationRow.id)
             .where(
                 ConversationRow.org_id == org_id,
-                ConversationRow.closed_at.is_not(None),
+                ConversationRow.run_state == literal(RunState.IDLE.value, literal_execute=True),
                 last_active < cutoff,
                 ~owed_callback,
             )
             # Oldest first, and the order is what makes the plan read
-            # ix_conversation_org_id_closed_activity: without it Postgres takes the partial
+            # ix_conversation_org_id_idle_activity: without it Postgres takes the partial
             # expression index for unselective and scans the table.
             .order_by(last_active)
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
+        # `= ANY(ARRAY(...))`, not `IN (...)`: the batch is then read once, up front, and each
+        # of its ids found by primary key. As a semi join the planner hashes the batch against
+        # a sequential scan of the whole table.
         result = await self._session.execute(
-            delete(ConversationRow).where(ConversationRow.id.in_(batch))
+            delete(ConversationRow).where(
+                ConversationRow.id == any_(func.array(batch.scalar_subquery()))
+            )
         )
         return result.rowcount
 

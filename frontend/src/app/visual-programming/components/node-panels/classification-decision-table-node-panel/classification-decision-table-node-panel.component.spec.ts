@@ -1,7 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, Provider, signal } from '@angular/core';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { ApplicationRef, Component, input, NgZone, NO_ERRORS_SCHEMA, output, Provider, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
@@ -16,7 +16,6 @@ import { FullLLMConfigService } from '@shared/services';
 import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { Observable, of } from 'rxjs';
 
-import { ImportExportService } from '../../../../core/services/import-export.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import {
@@ -50,7 +49,6 @@ import { NodeStorageSectionComponent } from '../../node-storage-section/node-sto
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
-import { CdtExportImportService } from './cdt-export-import.service';
 import {
     CdtEnableContinueRequest,
     CdtRuleIdentityEdit,
@@ -471,7 +469,7 @@ describe('ClassificationDecisionTableNodePanelComponent — explanations of a ru
     // -- the decision tree, in the CDK overlay ---------------------------------
 
     function renderOverlay(): void {
-        TestBed.inject(ApplicationRef).tick();
+        TestBed.inject(NgZone).run(() => TestBed.inject(ApplicationRef).tick());
     }
 
     function openTree(): void {
@@ -639,40 +637,48 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         expect(panel.onSaveSilently()?.data.table.post_computation?.execution_timeout).toBe(45);
     });
 
-    it('exports the edited timeouts to CSV', () => {
-        open(90, undefined);
-        const downloadFile = vi
-            .spyOn(TestBed.inject(CdtExportImportService), 'downloadFile')
-            .mockImplementation(() => undefined);
+    /**
+     * Picks `label` in the panel's Export menu. The menu sits in the header template the side-panel shell renders,
+     * so this hands the item to the handler that template binds.
+     */
+    function exportFrom(label: string): void {
+        const item = panel.exportFormatItems.find((menuItem) => menuItem.label === label);
+        panel.onExportItemSelected(item!);
+    }
 
-        fields().postExecutionTimeout.edit(45);
-        panel.exportAsCsv();
-
-        const rows = (downloadFile.mock.calls[0][0] as string).split('\n');
-        expect(rows).toContain('pre_python_code_execution_timeout,90');
-        expect(rows).toContain('post_python_code_execution_timeout,45');
-    });
+    /** The export jobs the panel asked the server to start. */
+    function cdtExportJobRequests(): unknown[] {
+        return TestBed.inject(HttpTestingController)
+            .match((request) => request.url.endsWith('classification-decision-table-node/export-jobs/'))
+            .map((request) => request.request.body);
+    }
 
     it.each([
-        ['CSV', (target: ClassificationDecisionTableNodePanelComponent) => target.exportAsCsv()],
-        ['JSON', (target: ClassificationDecisionTableNodePanelComponent) => target.exportAsJson()],
-    ])('does not export to %s while the flow has unsaved changes, and says to save first', (_format, exportIt) => {
+        ['JSON', 'json'],
+        ['CSV', 'csv'],
+    ])('exports the saved table to %s as a job of its own', (label, exportFormat) => {
         open(90, undefined);
-        const toastWarning = vi.spyOn(TestBed.inject(ToastService), 'warning').mockImplementation(() => undefined);
-        const downloadFile = vi
-            .spyOn(TestBed.inject(CdtExportImportService), 'downloadFile')
-            .mockImplementation(() => undefined);
-        const cdtExport = vi.spyOn(TestBed.inject(ImportExportService), 'cdtExport');
-        const flowService = TestBed.inject(FlowService);
-        flowService.updateNode({ ...flowService.nodes()[0], node_name: 'Renamed after the last save' });
 
-        exportIt(panel);
+        exportFrom(label);
 
-        expect(toastWarning).toHaveBeenCalledTimes(1);
-        expect(toastWarning.mock.calls[0][0]).toBe('Save the flow before exporting');
-        expect(downloadFile).not.toHaveBeenCalled();
-        expect(cdtExport).not.toHaveBeenCalled();
+        expect(cdtExportJobRequests()).toEqual([{ ids: [21], export_format: exportFormat }]);
     });
+
+    it.each(['CSV', 'JSON'])(
+        'does not export to %s while the flow has unsaved changes, and says to save first',
+        (label) => {
+            open(90, undefined);
+            const toastWarning = vi.spyOn(TestBed.inject(ToastService), 'warning').mockImplementation(() => undefined);
+            const flowService = TestBed.inject(FlowService);
+            flowService.updateNode({ ...flowService.nodes()[0], node_name: 'Renamed after the last save' });
+
+            exportFrom(label);
+
+            expect(toastWarning).toHaveBeenCalledTimes(1);
+            expect(toastWarning.mock.calls[0][0]).toBe('Save the flow before exporting');
+            expect(cdtExportJobRequests()).toEqual([]);
+        }
+    );
 
     /** Types into the timeout input of `tab`, as the user does, and stays in it: no blur, no Enter. */
     function typeTimeout(tab: 'precomputation' | 'postcomputation', text: string): void {
@@ -1281,6 +1287,45 @@ describe('ClassificationDecisionTableNodePanelComponent — stored code fields',
 
         expect([pre_computation?.entrypoint, pre_computation?.global_kwargs]).toEqual(['run', { retries: 3 }]);
         expect([post_computation?.entrypoint, post_computation?.global_kwargs]).toEqual(['run', { retries: 3 }]);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — the pre-computation Input List on save', () => {
+    it('saves the filled and the named rows as they are, and leaves out a row added and left empty', () => {
+        configurePanelTestBed();
+        const node = tableNode();
+        const fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...node,
+            data: {
+                ...node.data,
+                table: {
+                    ...node.data.table,
+                    pre_computation: { code: 'def main(): pass', input_map: { text: 'variables.text', topic: '' } },
+                },
+            },
+        } as ClassificationDecisionTableNodeModel);
+        fixture.detectChanges();
+        fixture.componentInstance.activeTab.set('precomputation');
+        fixture.detectChanges();
+        const root = fixture.nativeElement as HTMLElement;
+        const addInput = root.querySelector<HTMLButtonElement>('.cdt-input-map-wrapper .add-pair-btn')!;
+
+        // One row left as added, one only named.
+        addInput.click();
+        fixture.detectChanges();
+        addInput.click();
+        fixture.detectChanges();
+        const named = root.querySelectorAll<HTMLInputElement>('.cdt-input-map-wrapper input[formControlName="key"]')[3];
+        named.value = 'company';
+        named.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.onSaveSilently()?.data.table.pre_computation?.input_map).toEqual({
+            text: 'variables.text',
+            topic: '',
+            company: 'variables.',
+        });
     });
 });
 

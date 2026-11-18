@@ -127,7 +127,8 @@ MAX_RESULT_SIZE = env.byte_size("SANDBOX_MAX_RESULT_SIZE")
 if MAX_RESULT_SIZE is None or MAX_RESULT_SIZE <= 0:
     raise ValueError("SANDBOX_MAX_RESULT_SIZE must be a positive size, not none.")
 
-# Defaults are the confining value: a missing setting must not unconfine the sandbox.
+# Defaults are the confining value: a missing setting must not unconfine the sandbox,
+# and env.bool rejects a malformed one, so only an explicit false value unconfines it.
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET", True)
 BLOCK_NETWORK = env.bool("SANDBOX_BLOCK_NETWORK", True)
 REQUIRE_ISOLATION = env.bool("SANDBOX_REQUIRE_ISOLATION", True)
@@ -150,3 +151,14 @@ STORAGE_PASSWORD = env.str("STORAGE_PASSWORD")
 # Uploaded custom-library sources and the wheels built from them. Kept apart from
 # STORAGE_BUCKET, which holds organizations' files.
 CUSTOM_LIBRARY_BUCKET = env.str("SANDBOX_CUSTOM_LIBRARY_BUCKET")
+
+# Opens the secret values django_app seals for transport. Its length is not checked here:
+# django_app, which seals with the same key, refuses to start on a short one.
+SECRETS_TRANSPORT_KEY = env.secret("SECRETS_TRANSPORT_KEY")
+# Decrypt-only keys kept after SECRETS_TRANSPORT_KEY was replaced; `none` or empty means none.
+SECRETS_TRANSPORT_PREVIOUS_KEYS = [
+    key for key in env.list("SECRETS_TRANSPORT_PREVIOUS_KEYS") or [] if key
+]
+# HKDF info the transport key is derived with: a wire contract with django_app, the producer.
+# Read from the environment, which compose shares with every service.
+SECRETS_TRANSPORT_HKDF_INFO = env.str("SECRETS_TRANSPORT_HKDF_INFO")

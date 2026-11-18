@@ -15,6 +15,11 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 export class SearchComponent {
     width = input<string>('100%');
     mod = input<'default' | 'small'>('default');
+    /**
+     * `toolbar`: the list-page toolbar look: the 10px radius, the dim outline and icon,
+     * the icon 16px in and 16px before the text. For the 12px glyph of the design, pair it with `iconSize="16px"`.
+     */
+    appearance = input<'default' | 'toolbar'>('default');
     placeholder = input<string>('Search...');
     icon = input<string>('search');
     iconSize = input<string>('1.1rem');
@@ -22,6 +27,8 @@ export class SearchComponent {
     ariaLabel = input<string | null>(null);
     /** Longest term the field accepts; null leaves it unlimited. */
     maxLength = input<number | null>(null);
+    /** What can be searched, when a short placeholder does not say: a tooltip on the field, read out as its description. */
+    hint = input<string>('');
     searchTerm = model<string>('');
 
     private readonly inputElement = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');

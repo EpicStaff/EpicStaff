@@ -240,6 +240,36 @@ def test_a_write_is_logged_per_changed_plugin(client_as, admin_acme, weather_gra
     assert (info.call_args.kwargs["after"], info.call_args.kwargs["before"]) == ("read,update", "none")
 
 
+class _RecordingSender:
+    def __init__(self):
+        self.events = []
+
+    def send(self, events):
+        self.events.extend(events)
+
+
+@pytest.mark.parametrize("actions, recorded", [(["read", "update"], True), ([], False)])
+def test_a_write_that_changes_a_role_records_it_updated(
+    actions, recorded, client_as, admin_acme, acme, weather_grant, forecasters, monkeypatch, settings,
+    django_capture_on_commit_callbacks,
+):
+    from user_audit import recorder
+
+    settings.USER_AUDIT_TRAIL_ENABLED = True
+    sender = _RecordingSender()
+    monkeypatch.setattr(recorder, "get_user_audit_sender", lambda: sender)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = _put(client_as(admin_acme), forecasters, ("weather", actions))
+
+    assert response.status_code == 200, response.content
+    expected = [("updated", acme.id, "role", str(forecasters.pk), "Forecasters")] if recorded else []
+    assert [
+        (event.action, event.org_id, event.target_type, event.target_id, event.target_name)
+        for event in sender.events
+    ] == expected
+
+
 def test_an_action_outside_the_caller_s_ceiling_is_refused(client_as, weather_grant, forecasters, role_manager):
     manager, manager_role = role_manager
     _store_actions(weather_grant, manager_role, "read")

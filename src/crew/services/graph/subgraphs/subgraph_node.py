@@ -99,6 +99,7 @@ class SubGraphNode:
             knowledge_search_service=self.session_graph_builder.knowledge_search_service,
             agent_task_service=self.session_graph_builder.agent_task_service,
             key_value_client=self.session_graph_builder.key_value_client,
+            secrets_cryptographer=self.session_graph_builder.secrets_cryptographer,
             stop_event=self.stop_event,
         )
 

@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 from domain.enums import RAGStrategy
@@ -113,3 +114,8 @@ class IndexEstimateResult(Result):
     document_count: int
     chunk_count: int
     embedding: EmbeddingEstimate
+
+
+@dataclass(frozen=True)
+class ArtifactExportResult(Result):
+    stream: AsyncIterator[bytes]

@@ -160,6 +160,12 @@
                                     />
                                     Text Editor
                                     <span class="tooltip"> Query </span>
+                                    <app-help-tooltip
+                                        text="Query text sent to the knowledge base. Supports template variables like {name}. Use variables carefully."
+                                        ariaLabel="Query help"
+                                        position="right"
+                                        size="18px"
+                                    />
                                 </div>
                             </div>
                             <div class="editor-panel-content">
@@ -210,7 +216,7 @@
 
                     <div class="template-textarea-wrapper">
                         <app-tooltip
-                            tooltipText="Query text sent to the knowledge base. Supports template variables like {name}."
+                            tooltipText="Query text sent to the knowledge base. Supports template variables like {name}. Use variables carefully."
                             label="Query"
                             [required]="true"
                         />

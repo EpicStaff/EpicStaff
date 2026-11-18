@@ -4,6 +4,7 @@ from tables.import_export.version_conversions.convertions import (
     version_2_to_3,
     version_3_to_4,
     version_4_to_5,
+    version_5_to_6,
 )
 from tables.import_export.version_conversions.convertions.version_1_to_2 import (
     v1_to_v2,
@@ -16,4 +17,7 @@ from tables.import_export.version_conversions.convertions.version_3_to_4 import 
 )
 from tables.import_export.version_conversions.convertions.version_4_to_5 import (
     v4_to_v5,
+)
+from tables.import_export.version_conversions.convertions.version_5_to_6 import (
+    v5_to_v6,
 )

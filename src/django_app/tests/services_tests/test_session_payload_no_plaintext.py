@@ -17,6 +17,7 @@ from src.shared.models.storage_scope import StorageCredentials
 from tables.services.secrets import secret_service
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
+from tests.sealed_values import open_sealed, open_sealed_values
 
 SENTINEL = "sk-SENTINEL-must-never-be-persisted-9f3a"
 
@@ -57,7 +58,7 @@ def graph_with_secret_backed_llm(org):
 
 @pytest.mark.django_db
 class TestSessionPayloadSecrets:
-    def test_wire_carries_the_plaintext_key_but_no_secret_id(
+    def test_wire_carries_the_sealed_key_but_no_plaintext_and_no_secret_id(
         self, graph_with_secret_backed_llm, monkeypatch
     ):
         graph, secret = graph_with_secret_backed_llm
@@ -73,11 +74,20 @@ class TestSessionPayloadSecrets:
         service.run_session(graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual())
 
         wire = "".join(message for _, message in published)
-        assert SENTINEL in wire, "crew received no plaintext key"
+        assert SENTINEL not in wire, "crew received the plaintext key"
+        api_keys = [
+            value
+            for value in _published_values([message for _, message in published], "api_key")
+            if value
+        ]
+        assert SENTINEL in [open_sealed(value) for value in api_keys], "crew received no sealed key"
         assert (
             "api_key_secret_id" not in wire
         ), "Secret id leaked into the Redis payload; carrier must be exclude=True"
         assert SENTINEL not in _stored_sessions(graph), "plaintext key was persisted"
+        assert not any(value in _stored_sessions(graph) for value in api_keys), (
+            "sealed key was persisted"
+        )
 
     def test_original_payload_object_is_not_mutated_by_publishing(
         self, graph_with_secret_backed_llm, monkeypatch
@@ -263,7 +273,7 @@ def graph_with_secret_declaring_python_node(org):
 
 @pytest.mark.django_db
 class TestDeclaredNodeSecretsNeverPersist:
-    def test_run_session_publishes_the_secret_and_stores_none_of_it(
+    def test_run_session_publishes_the_sealed_secret_and_stores_none_of_it(
         self, graph_with_secret_declaring_python_node, monkeypatch
     ):
         graph, secret = graph_with_secret_declaring_python_node
@@ -277,10 +287,19 @@ class TestDeclaredNodeSecretsNeverPersist:
 
         service.run_session(graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual())
 
-        assert NODE_SENTINEL in "".join(published), "crew received no resolved secret"
+        assert NODE_SENTINEL not in "".join(published), "crew received the plaintext secret"
+        sealed_secrets = [value for value in _published_values(published, "secrets") if value]
+        assert {"node-decl-leak-test": NODE_SENTINEL} in [
+            open_sealed_values(value) for value in sealed_secrets
+        ], "crew received no sealed secret"
         assert NODE_SENTINEL not in _stored_sessions(graph), "declared secret's plaintext persisted"
+        assert not any(
+            sealed in _stored_sessions(graph)
+            for value in sealed_secrets
+            for sealed in value.values()
+        ), "declared secret's sealed value persisted"
 
-    def test_plaintext_reaches_only_the_published_copy(
+    def test_the_sealed_secret_reaches_only_the_published_copy(
         self, graph_with_secret_declaring_python_node, monkeypatch
     ):
         graph, secret = graph_with_secret_declaring_python_node
@@ -302,7 +321,10 @@ class TestDeclaredNodeSecretsNeverPersist:
         )
 
         wire = published[0]
-        assert NODE_SENTINEL in wire, "crew received no resolved secret"
+        assert NODE_SENTINEL not in wire, "crew received the plaintext secret"
+        assert {"node-decl-leak-test": NODE_SENTINEL} in [
+            open_sealed_values(value) for value in _published_values([wire], "secrets") if value
+        ], "crew received no sealed secret"
         assert "secret_names" not in wire, "name carrier must be exclude=True"
 
         # `secrets` is a plain field, so the caller's dump has the key, but resolution
@@ -317,6 +339,12 @@ class TestDeclaredNodeSecretsNeverPersist:
 def _stored_sessions(graph) -> str:
     """Every column of every session row of the graph, as one string."""
     return json.dumps(list(Session.objects.filter(graph=graph).values()), default=str)
+
+
+def _published_values(messages, key):
+    """Every value stored under `key` anywhere in the published JSON messages."""
+    for message in messages:
+        yield from _find_values_by_key(json.loads(message), key)
 
 
 def _find_values_by_key(node, key):

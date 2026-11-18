@@ -11,13 +11,18 @@ from tables.services.recycle_bin.registry import BinResource
 from tables.services.recycle_bin.restore_service import RestoreService
 from tables.services.secrets.secret_code_inspector import secret_code_access
 from tables.services.trigger_nodes import trigger_node_access
+from user_audit.context import mark_request_handled
 from utils.logger import logger
 
 _UNEXPECTED_FAILURE = "Something went wrong with this item. Try it again on its own."
 
 
 class RecycleBinBulkService:
-    """Each item is its own transaction, so one failing item doesn't undo or stop the others."""
+    """Each item is its own transaction, so one failing item doesn't undo or stop the others.
+
+    Each restored or purged item records its own user action; a request that changed no
+    item records nothing, its fallback record included.
+    """
 
     @classmethod
     def restore_many(
@@ -32,6 +37,7 @@ class RecycleBinBulkService:
         Raises:
             NotInRecycleBinError: an id isn't in this org's bin; nothing is restored.
         """
+        mark_request_handled()
         result = BulkRestoreResult()
         for root in cls._roots(resource, org_id, ids):
             try:
@@ -60,6 +66,7 @@ class RecycleBinBulkService:
         Raises:
             NotInRecycleBinError: an id isn't in this org's bin; nothing is purged.
         """
+        mark_request_handled()
         result = BulkPurgeResult()
         for root in cls._roots(resource, org_id, ids):
             pk = root.pk

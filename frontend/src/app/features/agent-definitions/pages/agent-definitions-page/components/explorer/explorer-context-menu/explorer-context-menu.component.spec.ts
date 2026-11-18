@@ -1,3 +1,4 @@
+import { NgZone } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActionCode, ResourceCode } from '@shared/models';
 
@@ -37,8 +38,10 @@ function openMenu(): { fixture: ComponentFixture<ExplorerContextMenuComponent>; 
 
 /** Renders and runs after-render work, where the menu moves focus. */
 function settle(fixture: ComponentFixture<ExplorerContextMenuComponent>): void {
-    fixture.detectChanges();
-    TestBed.tick();
+    TestBed.inject(NgZone).run(() => {
+        fixture.detectChanges();
+        TestBed.tick();
+    });
 }
 
 const focusedLabel = (): string | undefined => document.activeElement?.textContent?.trim();

@@ -1,6 +1,7 @@
 from application.commands import RunSearch
 from application.orchestrators.searching.base import AbstractSearchOrchestrator
 from application.results import SearchResult
+from application.sealed_secrets import open_sealed_secrets
 from domain.errors import EmbeddingConfigNotFoundError
 from domain.models import NaiveSearchConfig, SearchUsage
 from infrastructure.naive.embedders import build_embedder
@@ -23,11 +24,12 @@ class NaiveSearchOrchestrator(AbstractSearchOrchestrator):
         if embedding_config is None:
             raise EmbeddingConfigNotFoundError(rag_id=command.rag_id)
 
+        secrets = open_sealed_secrets(command, self.cryptographer)
         embedding_config = embedding_config.model_copy(
-            update={"extra_headers": command.embedding_extra_headers}
+            update={"extra_headers": secrets.embedding_extra_headers}
         )
         embedder = build_embedder(
-            embedding_config.provider, command.embedding_api_key, embedding_config
+            embedding_config.provider, secrets.embedding_api_key, embedding_config
         )
         embedding = await embedder.embed(command.query)
 

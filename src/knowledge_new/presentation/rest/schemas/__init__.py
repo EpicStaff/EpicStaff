@@ -1,4 +1,5 @@
 from .rag import (
+    DocumentIdRewriteInputSchema,
     EntityDetailOutputSchema,
     GraphTableDataOutputSchema,
     GraphTableSummaryOutputSchema,
@@ -15,6 +16,7 @@ from .rag import (
 )
 
 __all__ = [
+    "DocumentIdRewriteInputSchema",
     "EntityDetailOutputSchema",
     "GraphTableDataOutputSchema",
     "GraphTableSummaryOutputSchema",

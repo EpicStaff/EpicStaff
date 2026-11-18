@@ -5,6 +5,10 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import Token
+from src.shared.models import UserAction
+from user_audit.actor import Actor
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 
 from rbac.access.org_context import OrgContextService
 from rbac.exceptions import (
@@ -23,6 +27,10 @@ MAX_ACTIVE_KEYS = 5
 class IssuedKey:
     api_key: ApiKey
     raw_key: str
+
+
+def _owner_actor(user) -> Actor:
+    return Actor(user_id=user.pk, email=user.email, api_key_name=None)
 
 
 class ApiKeyService:
@@ -94,6 +102,9 @@ class ApiKeyService:
             org_id=org_id,
             expires_at=expires_at,
         )
+        record_user_action(
+            action=UserAction.CREATED, org_id=org_id, target=api_key, actor=_owner_actor(owner)
+        )
         return IssuedKey(api_key=api_key, raw_key=generated.raw_key)
 
     def list_keys(self, user):
@@ -108,10 +119,20 @@ class ApiKeyService:
         if key.revoked_at is None:
             key.revoked_at = timezone.now()
             key.save(update_fields=["revoked_at"])
+            record_user_action(
+                action=UserAction.UPDATED, org_id=key.org_id, target=key, actor=_owner_actor(user)
+            )
+        else:
+            mark_request_handled()
         return key
 
     def delete_key(self, user, key_id) -> None:
-        self._get_own_key(user, key_id).delete()
+        key = self._get_own_key(user, key_id)
+        # Before the delete: the record names the key, and a deleted instance loses its pk.
+        record_user_action(
+            action=UserAction.DELETED, org_id=key.org_id, target=key, actor=_owner_actor(user)
+        )
+        key.delete()
 
     def _get_own_key(self, user, key_id) -> ApiKey:
         key = ApiKey.objects.filter(

@@ -2,7 +2,7 @@ import { InteractivityChecker } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component, getDebugNode, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -12,6 +12,7 @@ import { GetMeResponse, ResourceCode } from '@shared/models';
 import type { Mock } from 'vitest';
 
 import { GuidedTourService, tourAnchorSelector, type TourDefinition } from '../../../core/guided-tour';
+import { TransferJobStatus } from '../../../core/models/transfer-job.model';
 import { AppNavigationDrawerService } from '../../../core/services/app-navigation-drawer.service';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../features/create-agent-tour/create-agent-tour-anchors';
@@ -142,7 +143,13 @@ describe('LeftSidebarComponent', () => {
                 { provide: GuidedTourService, useValue: { replayableTours: tours, start: startTour } },
                 {
                     provide: ConfigService,
-                    useValue: { isAuditTrailEnabled: false, isChatEnabled: true, isPluginsEnabled: true },
+                    useValue: {
+                        apiUrl: '/api/',
+                        isSessionAuditEnabled: false,
+                        isUserAuditEnabled: false,
+                        isChatEnabled: true,
+                        isPluginsEnabled: true,
+                    },
                 },
                 {
                     provide: ChatInboxStreamService,
@@ -391,10 +398,27 @@ describe('LeftSidebarComponent', () => {
         }
 
         it('is set off from the pages above it by a separator', () => {
-            (TestBed.inject(ConfigService) as { isAuditTrailEnabled: boolean }).isAuditTrailEnabled = true;
+            (TestBed.inject(ConfigService) as { isSessionAuditEnabled: boolean }).isSessionAuditEnabled = true;
             render(COLLAPSED_WIDTH);
 
             expect(separatorBeforeAudit()).toBe(true);
+        });
+
+        it('is shown for the user actions tab alone', () => {
+            const config = TestBed.inject(ConfigService) as { isUserAuditEnabled: boolean };
+            config.isUserAuditEnabled = true;
+            render(COLLAPSED_WIDTH);
+
+            expect(navLink('Audit')).toBeDefined();
+        });
+
+        it('hides the Audit nav item when no tab is allowed', () => {
+            const config = TestBed.inject(ConfigService) as { isSessionAuditEnabled: boolean };
+            config.isSessionAuditEnabled = true;
+            vi.spyOn(TestBed.inject(PermissionsService), 'can').mockReturnValue(false);
+            render(COLLAPSED_WIDTH);
+
+            expect(navLink('Audit')).toBeUndefined();
         });
 
         it('leaves no separator behind when the audit trail is off', () => {
@@ -625,6 +649,175 @@ describe('LeftSidebarComponent', () => {
         });
     });
 
+    describe('Exports and imports row', () => {
+        function answerJobs(statuses: TransferJobStatus[]): void {
+            TestBed.tick();
+            const results = statuses.map((status, index) => ({
+                id: `job-${index}`,
+                kind: 'export',
+                main_entity: 'Flow',
+                status,
+                display_name: `Flow ${index}`,
+                file_name: null,
+                result: null,
+                error: null,
+                created_at: '2026-11-06T10:00:00Z',
+                finished_at: null,
+                expires_at: null,
+            }));
+            TestBed.inject(HttpTestingController)
+                .match((request) => request.url === '/api/transfer-jobs/')
+                .filter((request) => !request.cancelled)
+                .forEach((request) => {
+                    const statuses = request.request.params.getAll('status');
+                    const listed = statuses ? results.filter((job) => statuses.includes(job.status)) : results;
+                    request.flush({ count: listed.length, results: listed });
+                });
+            fixture.detectChanges();
+        }
+
+        function dot(): HTMLElement | null {
+            return element.querySelector<HTMLElement>('[data-test="sidenav-jobs-dot"]');
+        }
+
+        function jobsRow(): HTMLButtonElement {
+            return element.querySelector<HTMLButtonElement>('[data-test="sidenav-jobs-row"]')!;
+        }
+
+        it('sits after Settings', () => {
+            render(EXPANDED_WIDTH);
+
+            expect(listRow('Exports and imports')!.closest('li')!.previousElementSibling).toBe(
+                navLink('Settings')!.closest('li')
+            );
+        });
+
+        it('marks the row with a dot, not a count, while exports or imports are queued or running', () => {
+            render(COLLAPSED_WIDTH);
+            answerJobs(['running', 'queued', 'completed', 'failed']);
+
+            expect(dot()).not.toBeNull();
+            expect(jobsRow().textContent?.trim()).toBe('');
+            expect(jobsRow().getAttribute('aria-label')).toBe('Exports and imports, 2 in progress');
+            expect(tooltipOf(jobsRow()).message).toBe('Exports and imports, 2 in progress');
+        });
+
+        it('says how many are in progress in the expanded row, without showing a count', () => {
+            render(EXPANDED_WIDTH);
+            answerJobs(['running', 'completed']);
+
+            expect(dot()).not.toBeNull();
+            expect(jobsRow().querySelector('.sidenav-row-label')?.textContent?.trim()).toBe('Exports and imports');
+            expect(jobsRow().querySelector('.sidenav-link-icon')?.textContent?.trim()).toBe('');
+            expect(jobsRow().querySelector('.visually-hidden')?.textContent?.trim()).toBe(', 1 in progress');
+        });
+
+        it('shows no dot when nothing is in progress', () => {
+            render(COLLAPSED_WIDTH);
+            answerJobs(['completed', 'failed']);
+
+            expect(dot()).toBeNull();
+            expect(jobsRow().getAttribute('aria-label')).toBe('Exports and imports');
+            expect(tooltipOf(jobsRow()).message).toBe('Exports and imports');
+        });
+
+        it('opens the list of jobs in a popover', async () => {
+            render(COLLAPSED_WIDTH);
+            answerJobs(['running']);
+
+            await open(listRow('Exports and imports, 1 in progress')!);
+            answerJobs(['running']);
+
+            expect(popover()?.getAttribute('aria-label')).toBe('Exports and imports');
+            expect(popover()?.querySelector('[data-test="transfer-job"]')?.textContent).toContain('Flow 0');
+            // The dot stays while the list is open.
+            expect(dot()).not.toBeNull();
+        });
+
+        it('is absent in an app', async () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([WEATHER]);
+
+            await navigate('/plugins/weather');
+
+            expect(listRow('Exports and imports')).toBeUndefined();
+        });
+
+        describe('with the Clear all confirmation open over its popover', () => {
+            function confirmationDialog(): HTMLElement | null {
+                return TestBed.inject(OverlayContainer)
+                    .getContainerElement()
+                    .querySelector<HTMLElement>('app-confirmation-dialog');
+            }
+
+            /** A press as the browser sends it: the pointer goes down, then the click. */
+            async function press(target: Element): Promise<void> {
+                target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                fixture.detectChanges();
+                await fixture.whenStable();
+                fixture.detectChanges();
+            }
+
+            async function openClearAllConfirmation(): Promise<void> {
+                render(EXPANDED_WIDTH);
+                answerJobs(['completed']);
+                await open(listRow('Exports and imports')!);
+                answerJobs(['completed']);
+                await press(popover()!.querySelector('[data-test="transfer-jobs-clear-all"] button')!);
+                expect(confirmationDialog()).not.toBeNull();
+            }
+
+            it('stays open while the user clicks in the dialog and answers it', async () => {
+                await openClearAllConfirmation();
+
+                await press(confirmationDialog()!.querySelector('.dialog-message')!);
+                expect(popover()).not.toBeNull();
+
+                await press(confirmationDialog()!.querySelector('.cancel-button')!);
+                expect(confirmationDialog()).toBeNull();
+                expect(popover()).not.toBeNull();
+                expect(listRow('Exports and imports')!.getAttribute('aria-expanded')).toBe('true');
+            });
+
+            it('stays open when the dialog is dismissed from its backdrop', async () => {
+                await openClearAllConfirmation();
+
+                await press(
+                    TestBed.inject(OverlayContainer).getContainerElement().querySelector('.cdk-overlay-backdrop')!
+                );
+
+                expect(confirmationDialog()).toBeNull();
+                expect(popover()).not.toBeNull();
+            });
+
+            it('closes on a click on the page once the dialog is answered', async () => {
+                await openClearAllConfirmation();
+                await press(confirmationDialog()!.querySelector('.cancel-button')!);
+
+                await press(document.body);
+
+                expect(popover()).toBeNull();
+                expect(listRow('Exports and imports')!.getAttribute('aria-expanded')).toBe('false');
+            });
+
+            it('leaves Escape to the dialog: it closes the dialog only', async () => {
+                await openClearAllConfirmation();
+
+                // The CDK overlays read the deprecated `keyCode`, so the press carries it as a browser's would.
+                confirmationDialog()!.dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true })
+                );
+                fixture.detectChanges();
+                await fixture.whenStable();
+                fixture.detectChanges();
+
+                expect(confirmationDialog()).toBeNull();
+                expect(popover()).not.toBeNull();
+            });
+        });
+    });
+
     describe('Help row', () => {
         beforeEach(() => tours.set([QUICK_START_TOUR, CREATE_AGENT_TOUR]));
 
@@ -655,11 +848,11 @@ describe('LeftSidebarComponent', () => {
             expect(listRow('Help')).toBeUndefined();
         });
 
-        it('sits after Settings, above the account', () => {
+        it('sits after Exports and imports, above the account', () => {
             render(EXPANDED_WIDTH);
 
             const helpItem = listRow('Help')!.closest('li')!;
-            expect(helpItem.previousElementSibling).toBe(navLink('Settings')!.closest('li'));
+            expect(helpItem.previousElementSibling).toBe(listRow('Exports and imports')!.closest('li'));
             expect(helpItem.nextElementSibling!.getAttribute('role')).toBe('separator');
             expect(helpItem.nextElementSibling!.nextElementSibling).toBe(accountRow().closest('li'));
         });
@@ -994,7 +1187,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
     let leaveFlowAllowed: boolean;
     let workspaceAllowed: boolean;
     let settingsAllowed: boolean;
-    let config: { isAuditTrailEnabled: boolean };
+    let config: { isSessionAuditEnabled: boolean; isUserAuditEnabled: boolean };
     let availablePlugins: WritableSignal<AvailablePlugin[]>;
     let tours: WritableSignal<readonly TourDefinition[]>;
 
@@ -1004,7 +1197,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
         leaveFlowAllowed = true;
         workspaceAllowed = true;
         settingsAllowed = true;
-        config = { isAuditTrailEnabled: false };
+        config = { isSessionAuditEnabled: false, isUserAuditEnabled: false };
         availablePlugins = signal<AvailablePlugin[]>([]);
         tours = signal<readonly TourDefinition[]>([]);
         TestBed.configureTestingModule({
@@ -1127,7 +1320,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
     });
 
     it('steps from Chats to Audit when the audit trail is shown', async () => {
-        config.isAuditTrailEnabled = true;
+        config.isSessionAuditEnabled = true;
         await startAt('/chats');
 
         await press('ArrowDown');

@@ -1,3 +1,4 @@
+from foundation.cryptographer import AbstractCryptographer
 from src.shared.models import BaseTunnelConfigData, LocalhostConfigData, NgrokConfigData
 
 from app.core.settings import settings
@@ -11,7 +12,9 @@ class ProviderNotFoundError(ValueError):
     """Raised when the requested tunnel provider is not in the registry."""
 
 
-def get_provider(config: BaseTunnelConfigData) -> AbstractTunnelProvider:
+def get_provider(
+    config: BaseTunnelConfigData, cryptographer: AbstractCryptographer
+) -> AbstractTunnelProvider:
     """
     Factory function to get an instance of a tunnel provider.
     """
@@ -23,6 +26,7 @@ def get_provider(config: BaseTunnelConfigData) -> AbstractTunnelProvider:
             domain=config.domain,
             region=config.region,
             reconnect_timeout=settings.WEBHOOK_TUNNEL_RECONNECT_TIMEOUT,
+            cryptographer=cryptographer,
         )
     elif isinstance(config, LocalhostConfigData):
         return LocalhostTunnel(

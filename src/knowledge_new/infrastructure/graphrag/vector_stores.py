@@ -1,4 +1,5 @@
 import lancedb
+import pyarrow as pa
 import settings
 from graphrag_vectors import register_vector_store
 from graphrag_vectors.lancedb import LanceDBVectorStore
@@ -27,6 +28,9 @@ def create_vector_store_config(
         access_key=access_key,
         secret_key=secret_key,
     )
+
+
+_FIELD_TYPES = {"str": pa.string(), "int": pa.int64(), "float": pa.float32(), "bool": pa.bool_()}
 
 
 def _build_storage_options(
@@ -62,6 +66,23 @@ class S3LanceDBVectorStore(LanceDBVectorStore):
         self.db_connection = lancedb.connect(self.db_uri, storage_options=self._storage_options)
         if self.index_name and self.index_name in self.db_connection.table_names():
             self.document_collection = self.db_connection.open_table(self.index_name)
+
+    def create_index(self) -> None:
+        # graphrag's version builds an IVF_FLAT index on a one-row placeholder and then deletes
+        # the row, which drops the index again. The build only leaves lance's shuffle files
+        # behind in TMPDIR, never removed, so the empty table is created from its schema alone.
+        schema = pa.schema(
+            [
+                pa.field(self.id_field, pa.string()),
+                pa.field(self.vector_field, pa.list_(pa.float32(), self.vector_size)),
+                pa.field(self.create_date_field, pa.string()),
+                pa.field(self.update_date_field, pa.string()),
+                *(pa.field(name, _FIELD_TYPES[kind]) for name, kind in self.fields.items()),
+            ]
+        )
+        self.document_collection = self.db_connection.create_table(
+            self.index_name or "", schema=schema, mode="overwrite"
+        )
 
 
 register_vector_store("s3_lancedb", S3LanceDBVectorStore)

@@ -1,0 +1,88 @@
+<header
+    #header
+    class="header"
+    [class.header--icons]="toolbarLayout() === 'icons'"
+    [class.header--stacked]="isStacked()"
+>
+    <div class="header-left">
+        <h3 class="title">LLM Library</h3>
+        <p class="subtitle">Configure large language models for text generation and AI assistants.</p>
+    </div>
+
+    <div
+        class="header-right"
+        [style.min-width.px]="toolbarMinWidth()"
+    >
+        <app-search
+            appearance="toolbar"
+            iconSize="16px"
+            placeholder="Search providers..."
+            [searchTerm]="searchQuery()"
+            (searchTermChange)="searchChange.emit($event)"
+        />
+
+        <div
+            #capabilitiesControl
+            class="filter"
+            [class.filter--labelled]="!toolbarIcons().capabilities"
+        >
+            <app-select
+                appearance="toolbar"
+                triggerIcon="filter"
+                tooltip="Capabilities"
+                placeholder="All capabilities"
+                [iconOnly]="toolbarIcons().capabilities"
+                [items]="capabilities"
+                (changed)="onSectionFilterChange($event)"
+            />
+        </div>
+
+        <!-- One condition for both modes: entering select mode must not recreate it (and close its menu). -->
+        @if (showSelect()) {
+            <!-- At 0 selected a plain "Select" that toggles select mode; the menu comes with a selection. -->
+            <app-bulk-select-dropdown
+                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
+                appearance="toolbar"
+                menu="select-clear"
+                [toggleWhenEmpty]="true"
+                [iconOnly]="toolbarIcons().select"
+                [selectMode]="selectMode()"
+                [selectedCount]="selectedCount()"
+                [allSelected]="allSelected()"
+                [disabled]="isDeleting()"
+                (selectModeEntered)="selectModeEntered.emit()"
+                (selectAllToggled)="selectAllToggled.emit()"
+                (cleared)="selectModeExited.emit()"
+                (selectionCleared)="selectionCleared.emit()"
+            />
+        }
+
+        @if (hasSelection()) {
+            <app-button
+                #actionControl
+                type="danger"
+                appearance="toolbar"
+                leftIcon="trash"
+                iconSize="14px"
+                [iconOnly]="toolbarIcons().action"
+                [disabled]="isDeleting()"
+                (click)="deleteClicked.emit()"
+            >
+                Delete
+            </app-button>
+        } @else {
+            <app-button
+                #addButton
+                #actionControl
+                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
+                appearance="toolbar"
+                leftIcon="plus"
+                iconSize="16px"
+                [iconOnly]="toolbarIcons().action"
+                (click)="addClicked.emit()"
+            >
+                Add Configuration
+            </app-button>
+        }
+    </div>
+</header>

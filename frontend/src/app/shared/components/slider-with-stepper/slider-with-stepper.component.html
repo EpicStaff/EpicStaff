@@ -84,6 +84,7 @@
                 [max]="max()"
                 step="any"
                 [ngModel]="value() ?? min()"
+                [ngModelOptions]="{ standalone: true }"
                 (input)="onSliderInput($event)"
                 (change)="onSliderCommit($event)"
                 (blur)="onTouched()"

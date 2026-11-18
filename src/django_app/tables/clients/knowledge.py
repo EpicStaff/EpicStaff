@@ -1,4 +1,5 @@
-from typing import Literal, Self
+from collections.abc import Iterator, Mapping
+from typing import BinaryIO, Literal, Self
 from urllib.parse import quote
 
 import httpx
@@ -15,6 +16,9 @@ from tables.clients.errors import (
     ClientValidationError,
     KnowledgeGraphNotIndexedError,
 )
+
+ARTIFACT_TIMEOUT = httpx.Timeout(600.0, connect=10.0)
+_UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 def _path_segment(value: str) -> str:
@@ -184,15 +188,65 @@ class KnowledgeClient:
         *,
         json: dict | None = None,
         params: dict | None = None,
+        content: Iterator[bytes] | None = None,
+        timeout: httpx.Timeout | None = httpx.USE_CLIENT_DEFAULT,
     ) -> httpx.Response:
         try:
-            response = self._client.request(method, url, json=json, params=params)
+            response = self._client.request(
+                method, url, json=json, params=params, content=content, timeout=timeout
+            )
+        except httpx.TimeoutException as e:
+            raise ClientTimeoutError("Knowledge service timed out.") from e
+        except httpx.RequestError as e:
+            logger.exception("KNOWLEDGE CLIENT ERROR: {}", e)
+            raise ClientNotAvailableError("Knowledge service is unreachable.") from e
+        self._raise_for_status(response)
+        return response
+
+    def download_graph_artifacts(self, rag_id: int, destination: BinaryIO) -> None:
+        """Write the tar of a completed graph RAG's index into `destination`, chunk by chunk."""
+        try:
+            with self._client.stream(
+                "GET", f"rags/{RAGStrategy.GRAPH}/{rag_id}/artifacts/", timeout=ARTIFACT_TIMEOUT
+            ) as response:
+                if response.is_error:
+                    response.read()
+                    self._raise_for_status(response)
+                destination.writelines(response.iter_bytes())
         except httpx.TimeoutException as e:
             raise ClientTimeoutError("Knowledge service timed out.") from e
         except httpx.RequestError as e:
             logger.exception("KNOWLEDGE CLIENT ERROR: {}", e)
             raise ClientNotAvailableError("Knowledge service is unreachable.") from e
 
+    def upload_graph_artifacts(
+        self, rag_id: int, source: BinaryIO, document_id_map: Mapping[int, int]
+    ) -> None:
+        """Restore an exported index into the graph RAG, then give it this side's document ids.
+
+        Args:
+            document_id_map: New `GraphRagDocument` id for each id the index was exported with.
+        """
+        base_url = f"rags/{RAGStrategy.GRAPH}/{rag_id}/artifacts/"
+        self._request(
+            "put",
+            base_url,
+            content=iter(lambda: source.read(_UPLOAD_CHUNK_SIZE), b""),
+            timeout=ARTIFACT_TIMEOUT,
+        )
+        self._request(
+            "post",
+            f"{base_url}document-ids/",
+            json={
+                "document_id_map": {
+                    str(old_id): new_id for old_id, new_id in document_id_map.items()
+                }
+            },
+            timeout=ARTIFACT_TIMEOUT,
+        )
+
+    @staticmethod
+    def _raise_for_status(response: httpx.Response) -> None:
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
@@ -203,8 +257,6 @@ class KnowledgeClient:
             if response.status_code == 409:
                 raise _conflict_error(response) from e
             raise ClientValidationError(response.text) from e
-
-        return response
 
 
 def _conflict_error(response: httpx.Response) -> ClientConflictError:

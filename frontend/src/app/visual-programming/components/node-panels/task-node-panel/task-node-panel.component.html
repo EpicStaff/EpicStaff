@@ -223,7 +223,7 @@
                                         class="editor-block__title"
                                         label="Instructions"
                                         [required]="true"
-                                        tooltipText="Instructions given to the agent describing what this task should accomplish."
+                                        tooltipText="Instructions given to the agent describing what this task should accomplish. Use variables carefully."
                                     ></app-tooltip>
                                     <div class="editor-block__actions">
                                         <button
@@ -294,6 +294,12 @@
                                         size="1.2rem"
                                     />
                                     Instructions
+                                    <app-help-tooltip
+                                        text="Instructions given to the agent describing what this task should accomplish. Use variables carefully."
+                                        ariaLabel="Instructions help"
+                                        position="right"
+                                        size="18px"
+                                    />
                                 </span>
                                 <div class="main-editor-pane__actions">
                                     <app-instructions-view-toggle
@@ -553,7 +559,7 @@
                             #instructionsTextareaCollapsed
                             label="Instructions"
                             [required]="true"
-                            tooltipText="Instructions given to the agent describing what this task should accomplish."
+                            tooltipText="Instructions given to the agent describing what this task should accomplish. Use variables carefully."
                             formControlName="instructions"
                             placeholder="Enter task instructions..."
                             [rows]="5"

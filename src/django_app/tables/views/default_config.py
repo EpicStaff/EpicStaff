@@ -1,3 +1,4 @@
+from django.forms.models import model_to_dict
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rbac.access.asserts import assert_org_permission
@@ -9,6 +10,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from src.shared.models import UserAction
 from tables.models.default_models import DefaultModels
 from tables.serializers.default_config_serializers import (
     DefaultModelsSerializer,
@@ -17,6 +19,8 @@ from tables.swagger_schemas.default_config_schemas import (
     DEFAULT_MODELS_GET,
     DEFAULT_MODELS_PUT,
 )
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 
 
 class BaseDefaultConfigAPIView(APIView):
@@ -40,10 +44,15 @@ class BaseDefaultConfigAPIView(APIView):
 
     def put(self, request, *args, **kwargs):
         obj = self.get_object()
+        values_before = model_to_dict(obj)
         serializer = self.serializer(obj, data=request.data, context={"request": request})
 
         if serializer.is_valid():
             serializer.save()
+            if model_to_dict(obj) != values_before:
+                record_user_action(action=UserAction.UPDATED, org_id=obj.org_id, target=obj)
+            else:
+                mark_request_handled()
             return Response(serializer.data)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

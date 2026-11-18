@@ -73,6 +73,7 @@ export class FlowHeaderComponent {
     @Output() flowEdited = new EventEmitter<GraphDto>();
     @Output() saveVersion = new EventEmitter<void>();
     @Output() viewVersionHistory = new EventEmitter<void>();
+    @Output() exportFlow = new EventEmitter<void>();
 
     public isSaveDropdownOpen = signal(false);
     /** Shows Run and Get cURL; their shortcuts check the same requirement. */

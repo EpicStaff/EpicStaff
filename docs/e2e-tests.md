@@ -242,6 +242,6 @@ A new run on the same branch cancels the one still running.
   - **Run e2e tests**: a test failed. Its output is in the step log; the service logs are in
     `e2e-logs`.
 
-`e2e-*` images are deleted after 30 days, like branch-slug images (`cleanup-images.yml`).
+`e2e-*` images are deleted after 14 days, like the images of deleted branches (`ghcr-cleanup.yml`).
 
 Running on pull requests or making it a required check is a later step.

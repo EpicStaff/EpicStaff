@@ -1,6 +1,7 @@
 import { Params } from '@angular/router';
 
 import { createAuditConditionGroup } from '../../audit/models/audit-filter.models';
+import { DEEP_TEXT_OPERATORS } from '../../audit/models/audit-filter-options';
 import {
     CustomFilterCondition,
     CustomFilterScope,
@@ -72,7 +73,7 @@ export function parseFilterFromParams(params: Params): FlowsFilterState {
         sortOrder,
         includedFlowIds: parseIdList(params['flows'] as string | undefined),
         includedLabelIds: parseIdList(params['labels'] as string | undefined),
-        customConditions: [createAuditConditionGroup()],
+        customConditions: [createAuditConditionGroup(DEEP_TEXT_OPERATORS)],
         customFilter: parseCustomFilter(params['cf'] as string | undefined),
     };
 }

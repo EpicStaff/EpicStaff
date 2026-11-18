@@ -112,6 +112,22 @@ export class SelectComponent implements ControlValueAccessor {
     hideTrigger = input<boolean>(false);
     panelClass = input<string | string[]>('');
     variant = input<SelectVariant>('default');
+    /**
+     * The list-page toolbar look, for both the trigger and the panel. `toolbar` makes the closed trigger hug-width and
+     * transparent, with the 10px radius and dim outline and the chevron in line 16px after the text; and it gives the
+     * open panel the bulk-select menu's frame (no height cap, the page background, the 8px radius, the elevated
+     * shadow), its hover, and the picked option in the plain text colour. Its 40px row size applies only to the rows
+     * of `variant="default"` at `mod="default"`: with `variant="boxed"` the panel takes the toolbar frame while its
+     * rows keep the boxed size.
+     */
+    appearance = input<'default' | 'toolbar'>('default');
+    /** Sprite id of the icon that stands for the trigger's text while `iconOnly`; e.g. `filter`. */
+    triggerIcon = input<string | null>(null);
+    /**
+     * Shows `triggerIcon` and the chevron in place of the text, which stays the name and becomes the tooltip.
+     * Needs `triggerIcon`: without one it does nothing.
+     */
+    iconOnly = input<boolean>(false);
     showSearch = input<boolean>(false);
     showCreate = input<boolean>(false);
     /**
@@ -222,6 +238,9 @@ export class SelectComponent implements ControlValueAccessor {
         return this.placeholder();
     });
 
+    protected readonly showsOnlyIcon = computed(() => this.iconOnly() && !!this.triggerIcon());
+    protected readonly triggerTooltip = computed(() => (this.showsOnlyIcon() ? this.displayText() : this.tooltip()));
+
     /**
      * Value to render in readonly mode: the selected item's name, or a custom-value string
      * (when allowed), or the readonly empty placeholder. Never falls back to the interactive
@@ -279,7 +298,7 @@ export class SelectComponent implements ControlValueAccessor {
             this.overlayRef = undefined!;
         }
 
-        const panelWidth = Math.max(originElement.offsetWidth || 0, minWidth);
+        const triggerWidth = originElement.offsetWidth || 0;
 
         this.overlayRef = this.overlay.create({
             positionStrategy,
@@ -287,8 +306,8 @@ export class SelectComponent implements ControlValueAccessor {
             hasBackdrop: true,
             backdropClass: 'transparent-backdrop',
             panelClass: this.panelClass() || undefined,
-            minWidth: panelWidth,
-            width: panelWidth,
+            minWidth: triggerWidth,
+            maxWidth: Math.max(triggerWidth, minWidth),
         });
 
         this.overlayRef
