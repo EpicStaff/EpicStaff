@@ -1,0 +1,51 @@
+@if (label()) {
+    <app-tooltip
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+    />
+}
+
+<div class="string-list">
+    <div
+        class="string-list__rows"
+        role="group"
+        [attr.aria-label]="label() || null"
+    >
+        @for (row of rows(); track row.id; let index = $index) {
+            <div class="string-list__row">
+                <input
+                    #rowInput
+                    class="string-list__input"
+                    type="text"
+                    autocomplete="off"
+                    [placeholder]="placeholder()"
+                    [attr.aria-label]="rowAriaLabel(index)"
+                    [value]="row.value"
+                    [disabled]="isDisabled()"
+                    (input)="updateRow(row.id, rowInput.value)"
+                    (blur)="markTouched()"
+                />
+                <button
+                    type="button"
+                    class="string-list__remove-btn"
+                    matTooltip="Remove"
+                    matTooltipPosition="above"
+                    [attr.aria-label]="removeAriaLabel(index)"
+                    [disabled]="isDisabled()"
+                    (click)="removeRow(row.id)"
+                >
+                    <i class="ti ti-x"></i>
+                </button>
+            </div>
+        }
+    </div>
+    <button
+        #addButton
+        type="button"
+        class="string-list__add-btn"
+        [disabled]="isDisabled()"
+        (click)="addRow()"
+    >
+        {{ addButtonText() }}
+    </button>
+</div>

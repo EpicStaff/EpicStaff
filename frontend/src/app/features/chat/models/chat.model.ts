@@ -109,6 +109,9 @@ export interface ChatBindingLimits {
     caps: ChatBindingCapped;
 }
 
+// The bot's displayed name a new desk starts with; the user may rename it.
+export const CHAT_BOT_DISPLAY_NAME_DEFAULT = 'Bot';
+
 // Every other create default comes from the server (`GET /bindings/limits`).
 export const CHAT_BINDING_DEFAULTS: Omit<
     ChatBindingInput,

@@ -172,12 +172,13 @@
                         [ngTemplateOutletContext]="{ id: null }"
                     />
                 }
-                <app-custom-input
+                <app-string-list
                     label="Allowed origins"
                     formControlName="allowed_origins"
                     placeholder="https://www.example.com"
-                    tooltipText="Sites allowed to embed this chat, separated by commas. Test conversations skip this check."
-                    autocomplete="off"
+                    tooltipText="Sites allowed to embed this chat. Test conversations skip this check."
+                    addButtonText="+ Add origin"
+                    rowLabel="Origin"
                 />
                 <app-select
                     label="Identity"
