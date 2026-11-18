@@ -1,9 +1,8 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { CatalogModel, CatalogProvider, ModelKind, ModelSchemas } from '@shared/models';
-import { map, Observable, shareReplay } from 'rxjs';
+import { Observable, shareReplay } from 'rxjs';
 
-import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config';
 
 /**
@@ -28,14 +27,12 @@ export class ModelCatalogService {
     }
 
     /**
-     * The first page of `provider`'s models of `kind` whose name contains `search`, recommended first; models past
-     * their deprecation date are left out.
+     * Every model of `provider` and `kind` whose name contains `search`, recommended first; models past their
+     * deprecation date are left out.
      */
     models(kind: ModelKind, provider: string, search: string): Observable<CatalogModel[]> {
         const params = new HttpParams({ fromObject: { kind, provider, search } });
-        return this.http
-            .get<ApiGetRequest<CatalogModel>>(`${this.apiUrl}models/`, { params })
-            .pipe(map((page) => page.results));
+        return this.http.get<CatalogModel[]>(`${this.apiUrl}models/`, { params });
     }
 
     /** The settings and connection schemas of `model`, and the settings a new config starts with. */

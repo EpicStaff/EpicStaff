@@ -55,16 +55,11 @@ describe('ModelCatalogService', () => {
         expect(providers).toEqual([OPENAI]);
     });
 
-    it('searches the models of a provider and kind, unwrapping the page', () => {
+    it('searches the models of a provider and kind', () => {
         let models: CatalogModel[] | undefined;
         service.models('llm', 'openai', 'gpt-4').subscribe((result) => (models = result));
 
-        http.expectOne('/api/ai-models/models/?kind=llm&provider=openai&search=gpt-4').flush({
-            count: 1,
-            next: null,
-            previous: null,
-            results: [GPT_4O],
-        });
+        http.expectOne('/api/ai-models/models/?kind=llm&provider=openai&search=gpt-4').flush([GPT_4O]);
 
         expect(models).toEqual([GPT_4O]);
     });
@@ -72,12 +67,7 @@ describe('ModelCatalogService', () => {
     it('sends an empty search to list every model', () => {
         service.models('llm', 'openai', '').subscribe();
 
-        http.expectOne('/api/ai-models/models/?kind=llm&provider=openai&search=').flush({
-            count: 0,
-            next: null,
-            previous: null,
-            results: [],
-        });
+        http.expectOne('/api/ai-models/models/?kind=llm&provider=openai&search=').flush([]);
     });
 
     it('fetches the schemas of one model once, however often they are asked for', () => {

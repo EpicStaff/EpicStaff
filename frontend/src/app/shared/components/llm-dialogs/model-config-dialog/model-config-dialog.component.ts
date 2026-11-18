@@ -194,7 +194,7 @@ export class ModelConfigDialogComponent implements OnInit {
             tip: model.recommended ? 'Recommended' : undefined,
         }));
         const current = this.modelName();
-        // Only the first page of a search comes back; the chosen model stays listed either way.
+        // A search can hide the chosen model, and a custom or deprecated one is not in the catalog: keep it listed.
         return current && !items.some((item) => item.value === current)
             ? [{ name: current, value: current }, ...items]
             : items;

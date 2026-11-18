@@ -197,7 +197,7 @@ function renderEdit(config: GetLlmConfigRequest = STORED_CONFIG, schemas: ModelS
     answer(rendered, '/api/llm-configs/3/', config);
     answer(rendered, '/api/llm-models/11/', STORED_MODEL);
     answer(rendered, '/api/providers/', { results: [{ id: 1, name: 'openai' }] });
-    answer(rendered, '/api/ai-models/models/', { results: [LARGE_MODEL, SMALL_MODEL] }, { provider: 'openai' });
+    answer(rendered, '/api/ai-models/models/', [LARGE_MODEL, SMALL_MODEL], { provider: 'openai' });
     answer(rendered, '/api/ai-models/schemas/', schemas, { model: 'gpt-large' });
     return rendered;
 }
@@ -208,7 +208,7 @@ function renderCreate(secrets: Secret[] = []): Rendered {
     answer(rendered, '/api/ai-models/providers/', [OPENAI, OTHER]);
     typeName(rendered.fixture, 'support assistant');
     choose(rendered.fixture, '.dialog__provider', 'OpenAI');
-    answer(rendered, '/api/ai-models/models/', { results: [LARGE_MODEL] }, { provider: 'openai', search: '' });
+    answer(rendered, '/api/ai-models/models/', [LARGE_MODEL], { provider: 'openai', search: '' });
     return rendered;
 }
 
@@ -333,7 +333,7 @@ describe('ModelConfigDialogComponent', () => {
         name.dispatchEvent(new Event('input'));
 
         choose(rendered.fixture, '.dialog__provider', 'OpenAI');
-        answer(rendered, '/api/ai-models/models/', { results: [LARGE_MODEL] }, { provider: 'openai', search: '' });
+        answer(rendered, '/api/ai-models/models/', [LARGE_MODEL], { provider: 'openai', search: '' });
         choose(rendered.fixture, '.dialog__model', 'gpt-large');
         answer(rendered, '/api/ai-models/schemas/', LARGE_SCHEMAS, { model: 'gpt-large' });
 
@@ -630,7 +630,7 @@ describe('ModelConfigDialogComponent', () => {
             answer(rendered, '/api/ai-models/providers/', [OPENAI], { kind: 'embedding' });
             typeName(rendered.fixture, 'search index');
             choose(rendered.fixture, '.dialog__provider', 'OpenAI');
-            answer(rendered, '/api/ai-models/models/', { results: [{ ...LARGE_MODEL, name: 'embed-large' }] });
+            answer(rendered, '/api/ai-models/models/', [{ ...LARGE_MODEL, name: 'embed-large' }]);
             choose(rendered.fixture, '.dialog__model', 'embed-large');
             answer(rendered, '/api/ai-models/schemas/', EMBEDDING_SCHEMAS, { kind: 'embedding' });
             choose(rendered.fixture, '[formcontrolname="api_key_secret_id"]', 'prod-key');
@@ -659,7 +659,7 @@ describe('ModelConfigDialogComponent', () => {
                 results: [{ id: 21, name: 'embed-large', embedding_provider: 2 }],
             });
             answer(rendered, '/api/providers/', { results: [{ id: 2, name: 'openai' }] });
-            answer(rendered, '/api/ai-models/models/', { results: [] }, { provider: 'openai' });
+            answer(rendered, '/api/ai-models/models/', [], { provider: 'openai' });
             answer(rendered, '/api/ai-models/schemas/', EMBEDDING_SCHEMAS, { model: 'embed-large' });
 
             const body = save(rendered, '/api/embedding-configs/5/', 'PUT');

@@ -56,18 +56,18 @@ class ModelCatalogViewSet(GenericViewSet):
         parameters=[CatalogModelsQuerySerializer],
         responses=CatalogModelSerializer(many=True),
         description=(
-            "Models of `provider` and `kind`, recommended first; models past their "
+            "Every model of `provider` and `kind`, recommended first; models past their "
             "deprecation date are left out. `search` matches part of the name."
         ),
     )
-    @action(detail=False, methods=["get"])
+    # Not paginated: the picker lists a provider's whole catalog, at most a few hundred models.
+    @action(detail=False, methods=["get"], pagination_class=None)
     def models(self, request):
         query = _query(CatalogModelsQuerySerializer, request)
         models = CatalogRepository.default().models(
             ModelKind(query["kind"]), query["provider"], search=query["search"]
         )
-        page = self.paginate_queryset(models)
-        return self.get_paginated_response(CatalogModelSerializer(page, many=True).data)
+        return Response(CatalogModelSerializer(models, many=True).data)
 
     @extend_schema(
         parameters=[CatalogSchemasQuerySerializer],

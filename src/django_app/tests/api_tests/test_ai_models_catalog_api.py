@@ -84,18 +84,26 @@ def test_embedding_lists_exactly_the_runtime_providers(viewer_client):
     }
 
 
-def test_models_are_paginated_and_searchable(viewer_client):
-    response = viewer_client.get(MODELS, {"kind": "llm", "provider": "openai", "search": "GPT-4O-MINI", "limit": 2})
+def test_models_are_searchable(viewer_client):
+    response = viewer_client.get(MODELS, {"kind": "llm", "provider": "openai", "search": "GPT-4O-MINI"})
 
     body = response.json()
-    assert set(body) == {"count", "next", "previous", "results"}
-    assert body["count"] >= 1 and len(body["results"]) <= 2
-    assert all("gpt-4o-mini" in model["name"] for model in body["results"])
-    assert set(body["results"][0]) == {"name", "recommended", "deprecation_date", "limits"}
+    assert len(body) >= 1
+    assert all("gpt-4o-mini" in model["name"] for model in body)
+    assert set(body[0]) == {"name", "recommended", "deprecation_date", "limits"}
+
+
+def test_models_list_every_model_of_a_large_provider(viewer_client):
+    expected = [model.name for model in CatalogRepository.default().models(ModelKind.LLM, "fireworks_ai")]
+
+    body = viewer_client.get(MODELS, {"kind": "llm", "provider": "fireworks_ai"}).json()
+
+    assert len(expected) > 50
+    assert [model["name"] for model in body] == expected
 
 
 def test_models_of_an_unknown_provider_are_empty(viewer_client):
-    assert viewer_client.get(MODELS, {"kind": "llm", "provider": "nobody"}).json()["count"] == 0
+    assert viewer_client.get(MODELS, {"kind": "llm", "provider": "nobody"}).json() == []
 
 
 def test_schemas_return_parameters_connection_and_defaults(viewer_client):
