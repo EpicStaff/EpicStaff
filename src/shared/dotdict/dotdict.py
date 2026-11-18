@@ -1,14 +1,16 @@
-import ast
 import copy
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Any
+
+# Every sandbox execution imports this module, so it stays off `ast`, `dataclasses`
+# and `typing`: they were most of its import time.
 
 
-@dataclass
 class Expression:
-    code: str
-    func: Any
+    __slots__ = ("code", "func")
+
+    def __init__(self, code: str, func):
+        self.code = code
+        self.func = func
 
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
@@ -75,6 +77,8 @@ class DotDict(dict):
             super().__setitem__(key, expr_func())
 
     def add_property(self, name, code: str):
+        import ast
+
         try:
             compiled_expr = compile(ast.parse(code, mode="eval"), "<string>", "eval")
 
@@ -88,6 +92,8 @@ class DotDict(dict):
             raise ValueError(f"Invalid expression for property '{name}': {e}") from e
 
     def add_setter(self, name, code: str):
+        import ast
+
         try:
             compiled_expr = compile(ast.parse(code, mode="eval"), "<string>", "eval")
 
@@ -110,7 +116,7 @@ class DotDict(dict):
         return result
 
     @classmethod
-    def _validate(cls, value: Any) -> "DotDict":
+    def _validate(cls, value: object) -> "DotDict":
         if isinstance(value, cls):
             return value
         if isinstance(value, Mapping):
@@ -173,7 +179,7 @@ class DotList(list):
         ]
 
     @classmethod
-    def _validate(cls, value: Any) -> "DotList":
+    def _validate(cls, value: object) -> "DotList":
         if isinstance(value, cls):
             return value
         if isinstance(value, (list, tuple)):
