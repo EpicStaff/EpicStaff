@@ -110,6 +110,13 @@ class CollectionManagementService:
             ClientTimeoutError,
             ClientBadGatewayError,
         ) as e:
+            # WARNING, not ERROR: the knowledge service logs its own failure, and the
+            # caller gets a retryable 409.
+            logger.warning(
+                "GraphRAG metrics unavailable for collection {collection_id}: {error}",
+                collection_id=collection_id,
+                error=e,
+            )
             raise GraphRagMetricsUnavailableException(collection_id) from e
         return SuggestedCollectionMetrics(
             total_documents=graph_rag.graph_rag_documents.count(),
