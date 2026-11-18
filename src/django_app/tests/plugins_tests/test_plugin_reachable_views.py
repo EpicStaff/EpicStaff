@@ -10,7 +10,8 @@ A view is safe for a service account when one of these holds:
   body, `global_read_only` when it serves no organization's data and writes nothing.
 
 Gates are read per action from `get_permissions()`, so a gate a view adds in code counts, and a
-view is gated only when every action of the route is. A new view that fits none of them fails
+view is gated only when every action of the route is, by (a) or (b): one route may mix them, such
+as a list for the organization and a create for the system key alone. A new view that fits none of them fails
 this test until it is gated or listed.
 """
 
@@ -84,18 +85,16 @@ PLUGIN_REACHABLE_VIEWS: dict[str, tuple[str, str]] = {
 }
 
 
-def _has_org_permission_gate(view) -> bool:
-    return getattr(view.view_class, "rbac_resource_type", None) is not None and all(
-        any(issubclass(permission, HasOrgPermission) for permission in permissions)
-        for permissions in view.permission_classes_by_action.values()
+def _is_action_gated(view, permissions) -> bool:
+    has_org_permission_gate = getattr(view.view_class, "rbac_resource_type", None) is not None and any(
+        issubclass(permission, HasOrgPermission) for permission in permissions
     )
+    refuses_plugin_credentials = any(issubclass(permission, REFUSING_GATES) for permission in permissions)
+    return has_org_permission_gate or refuses_plugin_credentials
 
 
-def _refuses_plugin_credentials(view) -> bool:
-    return all(
-        any(issubclass(permission, REFUSING_GATES) for permission in permissions)
-        for permissions in view.permission_classes_by_action.values()
-    )
+def _is_gated(view) -> bool:
+    return all(_is_action_gated(view, permissions) for permissions in view.permission_classes_by_action.values())
 
 
 def test_every_reachable_view_is_gated_or_listed():
@@ -103,9 +102,7 @@ def test_every_reachable_view_is_gated_or_listed():
         {
             f"{view.dotted_path} ({view.route})"
             for view in plugin_reachable_views()
-            if not _has_org_permission_gate(view)
-            and not _refuses_plugin_credentials(view)
-            and view.dotted_path not in PLUGIN_REACHABLE_VIEWS
+            if not _is_gated(view) and view.dotted_path not in PLUGIN_REACHABLE_VIEWS
         }
     )
 
@@ -122,7 +119,7 @@ def test_every_listed_view_is_reachable_and_needs_its_entry():
         path
         for path in PLUGIN_REACHABLE_VIEWS
         if path in routes_by_view
-        and all(_has_org_permission_gate(view) or _refuses_plugin_credentials(view) for view in routes_by_view[path])
+        and all(_is_gated(view) for view in routes_by_view[path])
     )
 
     assert stale == [], f"listed views a service account can no longer reach: {stale}"

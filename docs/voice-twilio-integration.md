@@ -201,7 +201,7 @@ Created once per call/conversation; captures the agent's config at session start
 | `file_size` | nullable |
 | `created_at` | auto_now_add |
 
-Every caller of `POST /conversation-recordings/` (the realtime service with the SYSTEM API key, or an org member / USER API key under the usual org check) must send a WAV of at most `REALTIME_MAX_CALL_DURATION` × 8000 bytes/s × 1.5, or the API answers 400.
+Only the realtime service creates recordings: `POST /conversation-recordings/` requires the SYSTEM API key, and any other caller (a JWT session or a USER API key) gets 403. The file must be a WAV of at most `DJANGO_MAX_VOICE_RECORDING_SIZE` (default `22mb`), or the API answers 400. realtime caps each direction of a 30-minute call below that: 30 min × 8000 bytes/s × 1.5 = 21,600,000 bytes, WAV header included (`MAX_RECORDING_AUDIO_BYTES` in `src/realtime/core/config.py`).
 
 ---
 
@@ -415,7 +415,6 @@ Auth via query params `token` (introspected against Django `/api/auth/introspect
 | `DJANGO_API_KEY` | sent as `X-API-Key` on all Django calls |
 | `VOICE_STREAM_URL` | fallback MediaStream URL when no ngrok live URL / domain |
 | `REALTIME_PERSIST_RAW_AUDIO` | default `false`: audio frames are not stored and audio fields are redacted in `realtime_session_item`; `true` stores events verbatim, one row per audio frame |
-| `REALTIME_MAX_CALL_DURATION` | default `30m`: the call is hung up past it (`end_reason=max_duration_exceeded`). django_app reads it too: both derive the recording size limit from it in `src/shared/voice_recording.py` |
 
 ---
 
@@ -463,7 +462,7 @@ When the AI provider emits `input_audio_buffer.speech_started` (OpenAI) or `inte
 
 On WebSocket close `VoiceCallService`:
 1. Records `end_reason` (`completed` / `cancelled` / `error`).
-2. Builds inbound and outbound µ-law WAV files from the accumulated audio buffers (`_build_ulaw_wav`). Each direction stops buffering once its WAV would exceed the recording size limit, with one warning; the rest of that direction is not recorded.
+2. Builds inbound and outbound µ-law WAV files from the accumulated audio buffers (`_build_ulaw_wav`). Each direction stops buffering at `MAX_RECORDING_AUDIO_BYTES`, so its WAV stays below `DJANGO_MAX_VOICE_RECORDING_SIZE`, with one warning; the rest of that direction is not recorded.
 3. **POST `/conversation-recordings/`** for each file (with `connection_key`).
 4. **POST `/realtime-agent-chats/end/`** with `duration_seconds` and `end_reason`.
 

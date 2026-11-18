@@ -27,20 +27,12 @@ def _make_chat(rt_agent, connection_key="conn-under-test"):
 
 @pytest.mark.django_db
 class TestConversationRecordingCreateSystemKey:
-    """Bug fix: `create` (POST /conversation-recordings/) is the only caller
-    for the realtime service' `voice_call_service._post_recording`,
-    which authenticates with the env-seeded SYSTEM API key and never sends
-    `X-Organization-Id` (it has no logged-in user/org context — it only knows
-    the opaque `connection_key`). Before the fix, `perform_create`
-    unconditionally called `_assert_parent_in_active_org`, which requires
-    `OrgContextService.resolve` to find an org context; with none available
-    the call always raised `OrgContextRequiredError` (400), silently swallowed
-    by the caller's fire-and-forget POST (only a `logger.warning`) — so the
-    `ConversationRecording` table stayed permanently empty in production.
-
-    Fixed by skipping the org assertion only for verified `key_type=SYSTEM`
-    API-key callers, mirroring `RealtimeAgentChatViewSet.end`'s trust model;
-    a self-issued USER key still goes through the normal parent-org check."""
+    """`create` (POST /conversation-recordings/) serves only the realtime
+    service's `voice_call_service._post_recording`, which authenticates with
+    the env-seeded SYSTEM API key and never sends `X-Organization-Id`: it
+    knows its chat only by the opaque `connection_key`. The SYSTEM key is the
+    authorization check, mirroring `RealtimeAgentChatViewSet.end`; any other
+    key gets 403, so a USER key cannot attach a recording to any chat."""
 
     @pytest.fixture(autouse=True)
     def media_root(self, settings, tmp_path_factory):
@@ -97,17 +89,23 @@ class TestConversationRecordingCreateSystemKey:
         assert response.status_code == status.HTTP_201_CREATED, response.json()
         assert ConversationRecording.objects.filter(rt_agent_chat=chat).exists()
 
-    def test_user_scoped_api_key_from_another_org_still_rejected(
-        self, wikipedia_agent, default_org, api_client, user_api_key
+    @pytest.mark.parametrize("chat_in_own_org", [True, False], ids=["own-org", "other-org"])
+    def test_user_scoped_api_key_is_refused(
+        self, wikipedia_agent, default_org, api_client, user_api_key, chat_in_own_org
     ):
-        """A self-issued key_type=USER API key must not get the SYSTEM-key
-        bypass — it still needs a valid org context to create a recording
-        under another org's chat."""
-        other_org = Organization.objects.create(name="Some Other Org")
-        rt_agent = _make_realtime_agent(wikipedia_agent, other_org)
-        chat = _make_chat(rt_agent, connection_key="conn-user-key-other-org")
+        """A self-issued key_type=USER API key, which any org member can
+        create, cannot create a recording even for its own org's chat."""
+        chat_org = (
+            default_org
+            if chat_in_own_org
+            else Organization.objects.create(name="Some Other Org")
+        )
+        rt_agent = _make_realtime_agent(wikipedia_agent, chat_org)
+        chat = _make_chat(rt_agent, connection_key="conn-user-key")
         raw_key, _key = user_api_key
-        api_client.credentials(HTTP_X_API_KEY=raw_key)
+        api_client.credentials(
+            HTTP_X_API_KEY=raw_key, HTTP_X_ORGANIZATION_ID=str(default_org.id)
+        )
 
         response = api_client.post(
             self._url(),
@@ -119,9 +117,5 @@ class TestConversationRecordingCreateSystemKey:
             format="multipart",
         )
 
-        assert response.status_code in (
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_403_FORBIDDEN,
-            status.HTTP_404_NOT_FOUND,
-        ), response.json()
+        assert response.status_code == status.HTTP_403_FORBIDDEN, response.json()
         assert not ConversationRecording.objects.filter(rt_agent_chat=chat).exists()

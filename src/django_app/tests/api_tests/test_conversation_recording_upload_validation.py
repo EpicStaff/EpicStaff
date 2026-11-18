@@ -1,8 +1,7 @@
-"""Every caller that uploads a voice-call recording gets the same file checks.
+"""The checks on a voice-call recording realtime uploads with the SYSTEM key.
 
-realtime uploads with the SYSTEM key and an organization admin can upload through the
-API; both may store only a WAV file of at most MAX_RECORDING_BYTES, header included, and
-only for a chat. Anything else is refused with a 400, and neither a row nor a file is stored.
+Only a WAV file of at most MAX_VOICE_RECORDING_SIZE bytes, header included, for a known chat
+is stored. Anything else is refused with a 400, and neither a row nor a file is stored.
 """
 
 import pytest
@@ -11,8 +10,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from agents.models import AgentDefinition
-from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole
+from rbac.models import Organization
 from tables.models.realtime_models import (
     ConversationRecording,
     RealtimeAgentChat,
@@ -26,7 +24,7 @@ LIMIT = 100
 
 @pytest.fixture(autouse=True)
 def small_limit(settings):
-    settings.MAX_RECORDING_BYTES = LIMIT
+    settings.MAX_VOICE_RECORDING_SIZE = LIMIT
 
 
 @pytest.fixture(autouse=True)
@@ -52,42 +50,30 @@ def chat(organization):
 
 
 @pytest.fixture
-def system_key_upload(env_api_key, chat):
-    """realtime's upload: the SYSTEM key, no org header, the chat named by connection_key."""
+def system_key_client(env_api_key):
+    """realtime's client: the SYSTEM key, no org header."""
     raw_key, _key = env_api_key
     client = APIClient()
     client.credentials(HTTP_X_API_KEY=raw_key)
-    return client, {"connection_key": chat.connection_key}
+    return client
+
+
+def _post_recording(client, chat_reference, file):
+    return client.post(
+        URL,
+        data={
+            **chat_reference,
+            "recording_type": ConversationRecording.RecordingType.INBOUND,
+            "file": file,
+        },
+        format="multipart",
+    )
 
 
 @pytest.fixture
-def org_admin_upload(django_user_model, organization, chat):
-    """An organization admin's upload through the API, the chat named by id."""
-    role = Role.objects.get(name=BuiltInRole.ORG_ADMIN, is_built_in=True, org__isnull=True)
-    user = django_user_model.objects.create_user(
-        email="recording-admin@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=user, org=organization, role=role)
-    client = APIClient()
-    client.force_authenticate(user=user)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(organization.id))
-    return client, {"rt_agent_chat": chat.id}
-
-
-@pytest.fixture(params=["system_key_upload", "org_admin_upload"], ids=["system-key", "org-admin"])
-def upload(request):
-    client, chat_reference = request.getfixturevalue(request.param)
-
+def upload(system_key_client, chat):
     def _upload(file):
-        return client.post(
-            URL,
-            data={
-                **chat_reference,
-                "recording_type": ConversationRecording.RecordingType.INBOUND,
-                "file": file,
-            },
-            format="multipart",
-        )
+        return _post_recording(system_key_client, {"connection_key": chat.connection_key}, file)
 
     return _upload
 
@@ -144,26 +130,45 @@ def test_a_file_that_is_not_wav_is_refused(upload, media_root, content):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("chat_reference", [{}, {"rt_agent_chat": ""}], ids=["no-chat", "empty-chat"])
-def test_a_recording_without_a_chat_is_refused_before_its_file_is_stored(
-    org_admin_upload, media_root, chat_reference
+@pytest.mark.parametrize(
+    "chat_reference",
+    [lambda chat: {}, lambda chat: {"connection_key": ""}, lambda chat: {"rt_agent_chat": chat.id}],
+    ids=["no-key", "empty-key", "chat-id-only"],
+)
+def test_a_recording_without_a_connection_key_is_refused_before_its_file_is_stored(
+    system_key_client, chat, media_root, chat_reference
 ):
-    """A file stored without a row is never deleted: no post_delete, no retention."""
-    client, _chat_reference = org_admin_upload
+    """A file stored without a row is never deleted. A chat id is not accepted in its place."""
+    response = _post_recording(system_key_client, chat_reference(chat), wav_upload())
 
-    response = client.post(
-        URL,
-        data={
-            **chat_reference,
-            "recording_type": ConversationRecording.RecordingType.INBOUND,
-            "file": wav_upload(),
-        },
-        format="multipart",
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["message"].startswith("connection_key: ")
+    assert not ConversationRecording.objects.exists()
+    assert _stored_files(media_root) == []
+
+
+@pytest.mark.django_db
+def test_a_recording_for_an_unknown_connection_key_is_refused_before_its_file_is_stored(
+    system_key_client, chat, media_root
+):
+    response = _post_recording(
+        system_key_client, {"connection_key": "no-such-connection"}, wav_upload()
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["message"] == (
-        "rt_agent_chat: A recording needs its chat: rt_agent_chat or connection_key."
-    )
+    assert response.json()["message"] == "connection_key: No matching RealtimeAgentChat found"
     assert not ConversationRecording.objects.exists()
     assert _stored_files(media_root) == []
+
+
+@pytest.mark.django_db
+def test_a_recording_by_connection_key_is_stored_for_that_chat(upload, chat, media_root):
+    file = wav_upload()
+
+    response = upload(file)
+
+    assert response.status_code == status.HTTP_201_CREATED, response.data
+    recording = ConversationRecording.objects.get()
+    assert recording.rt_agent_chat_id == chat.id
+    assert recording.file_size == file.size
+    assert recording.audio_format == "wav"

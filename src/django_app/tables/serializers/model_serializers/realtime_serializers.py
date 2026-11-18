@@ -407,43 +407,37 @@ def _has_wav_header(file) -> bool:
 
 
 class ConversationRecordingSerializer(serializers.ModelSerializer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        from tables.models.realtime_models import (
-            RealtimeAgentChat as _RealtimeAgentChat,
-        )
-
-        self.fields["rt_agent_chat"] = serializers.PrimaryKeyRelatedField(
-            queryset=_RealtimeAgentChat.objects.all(),
-            required=False,
-            allow_null=True,
-        )
+    # The realtime service, the only creator, knows its chat only by connection_key.
+    connection_key = serializers.CharField(write_only=True)
 
     class Meta:
         model = ConversationRecording
         fields = "__all__"
-        read_only_fields = ["file_size", "audio_format", "created_at"]
+        read_only_fields = ["rt_agent_chat", "file_size", "audio_format", "created_at"]
 
     def validate_file(self, file):
-        """Accept only a WAV file no larger than a recording of the longest allowed call."""
-        if file.size > settings.MAX_RECORDING_BYTES:
+        """Accept only a WAV file of at most MAX_VOICE_RECORDING_SIZE bytes."""
+        if file.size > settings.MAX_VOICE_RECORDING_SIZE:
             raise serializers.ValidationError(
-                f"A recording may be at most {settings.MAX_RECORDING_BYTES} bytes."
+                f"A recording may be at most {settings.MAX_VOICE_RECORDING_SIZE} bytes."
             )
         if not _has_wav_header(file):
             raise serializers.ValidationError("A recording must be a WAV file.")
         return file
 
     def validate(self, attrs):
-        """Require the recording's chat, by id or, for realtime, by connection_key.
+        """Resolve connection_key to the recording's chat.
 
-        The view resolves connection_key. Without either, saving would write the file
-        and then fail on the NOT NULL chat, leaving a file no row deletes.
+        Here, before saving: an unknown key found only at save time would leave the file
+        written and no row to delete it.
         """
-        if attrs.get("rt_agent_chat") is None and not self.initial_data.get("connection_key"):
+        connection_key = attrs.pop("connection_key")
+        try:
+            attrs["rt_agent_chat"] = RealtimeAgentChat.objects.get(connection_key=connection_key)
+        except RealtimeAgentChat.DoesNotExist as error:
             raise serializers.ValidationError(
-                {"rt_agent_chat": "A recording needs its chat: rt_agent_chat or connection_key."}
-            )
+                {"connection_key": "No matching RealtimeAgentChat found"}
+            ) from error
         return attrs
 
 

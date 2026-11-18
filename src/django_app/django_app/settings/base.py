@@ -3,7 +3,6 @@ from rbac.identity.first_setup_mode import FirstSetupMode
 from src.shared import humanize
 from src.shared.envtools import Env
 from src.shared.retention import load_retention_policy
-from src.shared.voice_recording import load_max_call_duration_seconds, max_recording_bytes
 
 from django_app.settings import BASE_DIR, env
 
@@ -122,15 +121,10 @@ MAX_UPLOAD_TOTAL_SIZE = env.byte_size("DJANGO_MAX_UPLOAD_TOTAL_SIZE")
 MAX_ARCHIVE_ENTRIES = env.int("DJANGO_MAX_ARCHIVE_ENTRIES")
 MAX_ARCHIVE_UNCOMPRESSED_SIZE = env.byte_size("DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE")
 
-try:
-    # Largest voice recording accepted from any caller: see src/shared/voice_recording.py.
-    MAX_RECORDING_BYTES = max_recording_bytes(load_max_call_duration_seconds(env))
-except ValueError as error:
-    raise ImproperlyConfigured(str(error)) from error
-
 ORG_STORAGE_QUOTA = env.byte_size("DJANGO_ORG_STORAGE_QUOTA")
 MAX_STREAM_UPLOAD_FILE_SIZE = env.byte_size("DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE")
 MAX_ARCHIVE_FILE_SIZE = env.byte_size("DJANGO_MAX_ARCHIVE_FILE_SIZE")
+MAX_VOICE_RECORDING_SIZE = env.byte_size("DJANGO_MAX_VOICE_RECORDING_SIZE")
 MAX_KNOWLEDGE_ARCHIVE_SIZE = env.byte_size("DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE")
 MAX_KNOWLEDGE_ARCHIVE_ENTRIES = env.int("DJANGO_MAX_KNOWLEDGE_ARCHIVE_ENTRIES")
 MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE = env.byte_size(

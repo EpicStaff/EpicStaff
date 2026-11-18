@@ -17,12 +17,15 @@ except ImportError:
 from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
 from infrastructure.providers.factory import RealtimeAgentClientFactory
 from src.shared.models import RealtimeAgentChatData
-from src.shared.voice_recording import WAV_HEADER_FORMAT
 
 from application.agent_chat_end_client import AgentChatEndClient
 from application.tool_manager_service import ToolManagerService
 
 MIN_CHUNK_SIZE = 2000
+
+# The canonical 44-byte WAV header: RIFF chunk, 16-byte fmt chunk, data chunk header.
+# core.config counts these 44 bytes in MAX_RECORDING_AUDIO_BYTES.
+WAV_HEADER_FORMAT = "<4sI4s4sIHHIIHH4sI"
 
 
 def _build_ulaw_wav(raw_ulaw: bytes, sample_rate: int = 8000) -> bytes:
