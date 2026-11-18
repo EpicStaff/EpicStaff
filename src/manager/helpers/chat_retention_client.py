@@ -32,7 +32,8 @@ class ChatRetentionClient:
         self.transport = transport
 
     async def purge(self, org_id: int, older_than: datetime) -> int:
-        """Delete the organization's closed conversations with no activity since ``older_than``.
+        """Delete the organization's conversations, open or closed, with no activity since
+        ``older_than``; the chat keeps any with a run in progress.
 
         Args:
             older_than: Aware datetime, not in the future; sent in UTC.

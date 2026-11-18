@@ -237,15 +237,15 @@ class ConversationRow(Base):
                 " AND run_state = 'idle'"
             ),
         ),
-        # The retention purge: one org's closed conversations by last activity, a range read
-        # stopped at the batch; the purge orders by the expression, or the planner (no statistics
-        # on a partial index's expression) keeps the sequential scan. Closed rows only, and a
-        # closed conversation never reopens, so a message on an open one writes nothing here.
+        # The retention purge: one org's conversations with no run in flight, open or closed, by
+        # last activity; a range read stopped at the batch. The purge orders by the expression,
+        # or the planner (no statistics on a partial index's expression) keeps the sequential
+        # scan. It renders 'idle' literally, so even a generic plan matches the predicate.
         Index(
-            "ix_conversation_org_id_closed_activity",
+            "ix_conversation_org_id_idle_activity",
             "org_id",
             text("coalesce(last_message_at, created_at)"),
-            postgresql_where=text("closed_at IS NOT NULL"),
+            postgresql_where=text("run_state = 'idle'"),
         ),
         Index("ix_conversation_run_state", "run_state", "active_since"),
         # Not expressible here, so only migration 0001 creates it (alembic does not compare
