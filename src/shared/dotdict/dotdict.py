@@ -4,16 +4,8 @@ from collections.abc import Mapping
 # Every sandbox execution imports this module, so it stays off `ast`, `dataclasses`
 # and `typing`: they were most of its import time.
 
-
-class Expression:
-    __slots__ = ("code", "func")
-
-    def __init__(self, code: str, func):
-        self.code = code
-        self.func = func
-
-    def __call__(self, *args, **kwargs):
-        return self.func(*args, **kwargs)
+# Refused on construction and never evaluated: run state carries user input.
+_RESERVED_KEYS = ("__properties__", "__setters__")
 
 
 class DotDict(dict):
@@ -28,33 +20,18 @@ class DotDict(dict):
         To get a detached copy, use deep_dump().
         """
         super().__init__()
-        object.__setattr__(self, "_properties", {})
-        object.__setattr__(self, "_setters", {})
-
         if dictionary is None:
             dictionary = {}
         dictionary = dict(dictionary)
 
-        properties = dictionary.pop("__properties__", None)
-        setters = dictionary.pop("__setters__", None)
+        for reserved_key in _RESERVED_KEYS:
+            if dictionary.pop(reserved_key, None):
+                raise ValueError(f"DotDict does not support '{reserved_key}'.")
 
-        # Properties and setters are only registered below, so the values go in as one bulk
-        # update without the per-key setter/property bookkeeping that __setitem__ does.
         super().update({key: _wrap(value) for key, value in dictionary.items()})
 
-        if properties:
-            for k, v in properties.items():
-                self.add_property(k, v)
-        if setters:
-            for k, v in setters.items():
-                self.add_setter(k, v)
-
     def __setitem__(self, key, value):
-        value = _copy_wrap(value)
-        if key in self._setters:
-            value = self._setters[key](value)
-        super().__setitem__(key, _wrap(value))
-        self._update_properties()
+        super().__setitem__(key, _copy_wrap(value))
 
     def __getattr__(self, key):
         try:
@@ -63,44 +40,11 @@ class DotDict(dict):
             raise AttributeError(f"'DotDict' object has no attribute '{key}'") from e
 
     def __setattr__(self, key, value):
-        if key in {"_properties", "_setters"}:
-            object.__setattr__(self, key, value)
-        else:
-            self[key] = value
+        self[key] = value
 
     def update(self, *args, **kwargs):
         for key, value in dict(*args, **kwargs).items():
             self[key] = value
-
-    def _update_properties(self):
-        for key, expr_func in self._properties.items():
-            super().__setitem__(key, expr_func())
-
-    def add_property(self, name, code: str):
-        import ast
-
-        try:
-            compiled_expr = compile(ast.parse(code, mode="eval"), "<string>", "eval")
-
-            def func():
-                # TODO CRITICAL looks like we need to swith to literal eval
-                return ast.literal_eval(compiled_expr, {}, self)
-
-            self._properties[name] = Expression(code=code, func=func)
-            self._update_properties()
-        except Exception as e:
-            raise ValueError(f"Invalid expression for property '{name}': {e}") from e
-
-    def add_setter(self, name, code: str):
-        import ast
-
-        try:
-            compiled_expr = compile(ast.parse(code, mode="eval"), "<string>", "eval")
-
-            func = lambda value: ast.literal_eval(compiled_expr, {}, {**self, "value": value})
-            self._setters[name] = Expression(code=code, func=func)
-        except Exception as e:
-            raise ValueError(f"Invalid expression for setter '{name}': {e}") from e
 
     def model_dump(self):
         return dict(self)
@@ -242,8 +186,6 @@ def _copy_wrap(data):
     either side would be visible on the other and `variables.snapshot = variables` would
     build a reference cycle that `deep_dump()` and `json.dumps()` cannot walk. Leaf values
     that are neither mappings nor sequences keep their identity, as on construction.
-
-    Computed properties and setters of a copied DotDict are not carried over.
     """
     data_type = type(data)
     if data_type in _SCALAR_TYPES:
