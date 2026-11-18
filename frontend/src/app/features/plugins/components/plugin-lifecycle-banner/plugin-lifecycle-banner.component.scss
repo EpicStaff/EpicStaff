@@ -29,7 +29,7 @@
 
     &--uninstalled {
         display: block;
-        background: var(--transparent-orange-8);
+        background: var(--color-warning-background);
         color: var(--color-warning);
 
         strong {
@@ -50,7 +50,7 @@
 
     &--offline,
     &--stale {
-        background: var(--transparent-orange-8);
+        background: var(--color-warning-background);
         color: var(--color-warning);
     }
 

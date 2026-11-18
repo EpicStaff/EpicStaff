@@ -305,7 +305,6 @@
     --green-alpha-18: rgba(42, 186, 107, 0.18);
     --yellow-500: #ffcf00;
     --yellow-alpha-6: rgba(255, 207, 0, 0.06);
-    --yellow-alpha-8: rgba(255, 207, 0, 0.08);
     --yellow-alpha-30: rgba(255, 207, 0, 0.3);
     --amber-400: #e0a83a;
     --amber-450: #ffb400; // unsaved-changes-dialog warning icon
@@ -339,10 +338,8 @@
     --crimson-500-alpha-10: rgba(239, 68, 68, 0.1);
     --crimson-500-alpha-20: rgba(239, 68, 68, 0.2);
     --crimson-600-alpha-30: rgba(220, 53, 69, 0.3);
-    --amber-620: #f59e0b; // graph-messages "reconnecting" status
-    --amber-620-alpha-10: rgba(245, 158, 11, 0.1);
+    --amber-620: #f59e0b; // classification-dt-message prompt accent
     --amber-620-alpha-15: rgba(245, 158, 11, 0.15);
-    --amber-620-alpha-20: rgba(245, 158, 11, 0.2);
     --red-390: #f87171; // flow-visual-programming restore-warning-btn text (Tailwind red-400)
     --red-400: #ff6b6b;
     --red-400-alpha-5: rgba(255, 107, 107, 0.05);
@@ -500,8 +497,6 @@
     --orange-600-alpha-40: rgba(255, 165, 0, 0.4);
     --orange-600-alpha-60: rgba(255, 165, 0, 0.6);
     --orange-600-alpha-70: rgba(255, 165, 0, 0.7);
-    --amber-600: #ffb300; // graph-rag-configuration warning accent
-    --amber-600-alpha-8: rgba(255, 179, 0, 0.08);
     --amber-600-alpha-30: rgba(255, 179, 0, 0.3);
 
     // ------------------------------------------------------------------
@@ -610,6 +605,7 @@
     // ------------------------------------------------------------------
     --success-color: var(--green-500);
     --color-warning: var(--amber-500);
+    --color-warning-background: var(--amber-alpha-8);
     --color-status-error: var(--red-500);
     --color-status-error-subtle: var(--red-alpha-15);
     --color-status-error-hover: var(--red-alpha-25);

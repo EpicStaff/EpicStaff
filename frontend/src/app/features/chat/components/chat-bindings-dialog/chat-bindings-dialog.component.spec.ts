@@ -295,6 +295,27 @@ describe('ChatBindingsDialogComponent', () => {
         expect(isMarkedInvalid('allowed_origins')).toBe(true);
     });
 
+    it('saves other changes to a desk whose stored origin would fail the check', () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({ max_turns: 100 })));
+        open(binding({ allowed_origins: ['https://a.example/chat'] }));
+        typeNumber('max_turns', 100);
+
+        clickSave();
+
+        expect(errorUnder('allowed_origins')).toBe('');
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { max_turns: 100 });
+    });
+
+    it('checks a stored origin once it is edited', () => {
+        open(binding({ allowed_origins: ['https://a.example/chat'] }));
+        typeOrigin(0, 'https://a.example/help');
+
+        clickSave();
+
+        expect(chatApi.updateBinding).not.toHaveBeenCalled();
+        expect(errorUnder('allowed_origins')).toBe('Use scheme and host only, e.g. https://www.example.com');
+    });
+
     it('takes an origin in upper case with a trailing slash, which the chat service normalizes', () => {
         chatApi.updateBinding.mockReturnValue(of(binding({})));
         open(binding({ allowed_origins: [] }));

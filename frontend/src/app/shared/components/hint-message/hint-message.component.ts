@@ -42,12 +42,11 @@ export type HintMessageSize = 'md' | 'sm';
                 }
             }
 
-            // As the other warning callouts (restore warnings, webhook registration). No semantic subtle-warning
-            // background token exists yet, so the same primitive they use.
+            // As the other warning callouts: a warning on a yellow background is written in yellow too.
             .hint-message--warning {
                 border-left-color: var(--color-warning);
-                background: var(--amber-alpha-8);
-                color: var(--color-text-primary);
+                background: var(--color-warning-background);
+                color: var(--color-warning);
             }
 
             // At least 28px: one line of small text, centred; a longer message still wraps.
