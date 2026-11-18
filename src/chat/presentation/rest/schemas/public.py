@@ -10,7 +10,7 @@ from pydantic import AfterValidator, Field, model_validator
 from presentation.rest.schemas.base import BaseSchema, NulFreeStr, refuse_nul
 
 MAX_NESTING_DEPTH = 10
-# Crew's DotDict compiles these keys from any dict in the run state, so a visitor must never send them.
+# Crew's DotDict refuses these keys in any dict of the run state, so a visitor must never send them.
 RESERVED_KEYS = frozenset({"__properties__", "__setters__"})
 # What this service offers a widget beyond the v1 conversation: each name appears with its endpoint.
 CAPABILITIES = ("stop",)
