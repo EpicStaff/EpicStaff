@@ -21,16 +21,18 @@ describe('AuditFilterStorageService', () => {
     });
     afterEach(() => localStorage.clear());
 
-    it('forgets the saved audit filters of every organization when the session ends', () => {
+    it('forgets the saved audit filters of every organization and user when the session ends', () => {
         const ownFilter = { ...EMPTY_AUDIT_FILTER, mode: 'query' as const, query: 'user = "alice@example.com"' };
-        writeStoredAuditFilter(auditFilterStorageKey(1, 'applied'), ownFilter);
-        writeStoredAuditFilter(auditFilterStorageKey(1, 'draft'), ownFilter);
-        writeStoredAuditFilter(auditFilterStorageKey(2, 'applied'), ownFilter);
+        const keys = [
+            auditFilterStorageKey(1, 7, 'applied'),
+            auditFilterStorageKey(1, 7, 'draft'),
+            auditFilterStorageKey(1, 8, 'applied'),
+            auditFilterStorageKey(2, 7, 'applied'),
+        ];
+        keys.forEach((key) => writeStoredAuditFilter(key, ownFilter));
 
         TestBed.inject(AppStorageService).clearAll();
 
-        expect(readStoredAuditFilter(auditFilterStorageKey(1, 'applied'))).toEqual(EMPTY_AUDIT_FILTER);
-        expect(readStoredAuditFilter(auditFilterStorageKey(1, 'draft'))).toEqual(EMPTY_AUDIT_FILTER);
-        expect(readStoredAuditFilter(auditFilterStorageKey(2, 'applied'))).toEqual(EMPTY_AUDIT_FILTER);
+        expect(keys.map((key) => readStoredAuditFilter(key))).toEqual(keys.map(() => EMPTY_AUDIT_FILTER));
     });
 });

@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { FirstSetupRequest } from '@shared/models';
 import { APP_STORAGE } from '@shared/services';
+import { Observable } from 'rxjs';
 
 import { authInterceptor } from '../../core/interceptors/auth.interceptor';
 import { AppReturnUrlService } from '../../features/plugins/services/app-return-url.service';
@@ -16,7 +17,7 @@ import { AuthService } from './auth.service';
 import { PermissionsService } from './permissions.service';
 import { ProfileService } from './profile.service';
 
-describe('AuthService ending and starting a session', () => {
+describe('AuthService signing in and out', () => {
     let authService: AuthService;
     let httpMock: HttpTestingController;
     let returnUrl: AppReturnUrlService;
@@ -78,30 +79,27 @@ describe('AuthService ending and starting a session', () => {
         expect(navigate).toHaveBeenCalledWith(['/login']);
     });
 
-    // A session that ended without a sign-out (browser closed, session expired) left its storage behind.
-    it('forgets what the previous session left behind when the next person signs in', () => {
-        authService.login('next@example.com', 'password', false).subscribe();
-        httpMock.expectOne('/api/auth/login/').flush({ access: 'next-access-token' });
+    // A sign-in must not wipe what the browser kept: the active organization is one of those storages, and losing it
+    // sends a bookmarked link into another organization.
+    it.each([
+        {
+            route: 'sign-in',
+            start: (auth: AuthService): Observable<unknown> => auth.login('next@example.com', 'password', false),
+            url: '/api/auth/login/',
+            response: { access: 'next-access-token' },
+        },
+        {
+            route: 'first-time setup',
+            start: (auth: AuthService): Observable<unknown> => auth.runSetup({} as FirstSetupRequest),
+            url: '/api/auth/first-setup/',
+            response: { access: 'next-access-token', organization: { id: 1 } },
+        },
+    ])('keeps what is stored on $route', ({ start, url, response }) => {
+        start(authService).subscribe();
+        httpMock.expectOne(url).flush(response);
 
-        expect(clearCurrentUser).toHaveBeenCalled();
-        expect(returnUrl.url()).toBe('/agents');
-        expect(sessionStorage.getItem('epicstaff.appReturnUrl')).toBeNull();
-        expect(authService.getAccessToken()).toBe('next-access-token');
-    });
-
-    it('keeps the stored state when a sign-in is refused', () => {
-        authService.login('next@example.com', 'wrong', false).subscribe({ error: () => undefined });
-        httpMock.expectOne('/api/auth/login/').flush(null, { status: 401, statusText: 'Unauthorized' });
-
-        expect(clearCurrentUser).not.toHaveBeenCalled();
         expect(returnUrl.url()).toBe('/flows/my');
-    });
-
-    it('forgets what the previous session left behind when the first admin finishes setup', () => {
-        authService.runSetup({} as FirstSetupRequest).subscribe();
-        httpMock.expectOne('/api/auth/first-setup/').flush({ access: 'setup-access-token', organization: { id: 1 } });
-
-        expect(returnUrl.url()).toBe('/agents');
-        expect(authService.getAccessToken()).toBe('setup-access-token');
+        expect(sessionStorage.getItem('epicstaff.appReturnUrl')).not.toBeNull();
+        expect(authService.getAccessToken()).toBe('next-access-token');
     });
 });
