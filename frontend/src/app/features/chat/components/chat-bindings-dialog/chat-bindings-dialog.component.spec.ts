@@ -173,6 +173,36 @@ describe('ChatBindingsDialogComponent', () => {
         typeText(controlName, String(value));
     }
 
+    function originRows(): HTMLInputElement[] {
+        const host: HTMLElement = fixture.nativeElement;
+        return Array.from(host.querySelectorAll<HTMLInputElement>('[formControlName="allowed_origins"] input'));
+    }
+
+    function typeOrigin(row: number, text: string): void {
+        const input = originRows()[row];
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    function clickRemoveOrigin(row: number): void {
+        const host: HTMLElement = fixture.nativeElement;
+        const remove = host.querySelector<HTMLButtonElement>(`[aria-label="Remove origin, row ${row + 1}"]`);
+        if (!remove) throw new Error(`No remove button on origin row ${row + 1}`);
+        remove.click();
+        fixture.detectChanges();
+    }
+
+    function clickAddOrigin(): void {
+        const host: HTMLElement = fixture.nativeElement;
+        const add = Array.from(
+            host.querySelectorAll<HTMLButtonElement>('[formControlName="allowed_origins"] button')
+        ).find((button) => button.textContent?.trim() === '+ Add origin');
+        if (!add) throw new Error('No add origin button');
+        add.click();
+        fixture.detectChanges();
+    }
+
     function clickSave(): void {
         const host: HTMLElement = fixture.nativeElement;
         const save = Array.from(host.querySelectorAll<HTMLButtonElement>('.bindings-dialog__actions button')).find(
@@ -212,28 +242,94 @@ describe('ChatBindingsDialogComponent', () => {
         expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { operator_display_name: 'Helpers' });
     });
 
-    it('shows the allowed origins as one comma-separated text and sends what is typed as a list', async () => {
+    it('shows one row per saved origin and sends the rows as a list, trimmed and without the empty ones', () => {
         chatApi.updateBinding.mockReturnValue(of(binding({})));
         const component = open(binding({ allowed_origins: ['https://a.example', 'https://b.example'] }));
-        // The field's ngModel writes the input a microtask later.
-        await fixture.whenStable();
-        expect(inputOf('allowed_origins').value).toBe('https://a.example, https://b.example');
+        expect(originRows().map((row) => row.value)).toEqual(['https://a.example', 'https://b.example']);
 
-        // Commas, spaces and both together separate; the empty pieces they leave are dropped.
-        typeText('allowed_origins', ' https://a.example,https://c.example  https://d.example, ');
+        clickRemoveOrigin(0);
+        clickAddOrigin();
+        clickAddOrigin();
+        typeOrigin(1, '  https://c.example ');
         component.submit();
         expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', {
-            allowed_origins: ['https://a.example', 'https://c.example', 'https://d.example'],
+            allowed_origins: ['https://b.example', 'https://c.example'],
         });
+    });
+
+    it('shows one empty origin row for a desk without origins', () => {
+        open(binding({ allowed_origins: [] }));
+        expect(originRows().map((row) => row.value)).toEqual(['']);
+    });
+
+    it('sends no origins once the only row is removed', () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({})));
+        const component = open(binding({ allowed_origins: ['https://a.example'] }));
+        clickRemoveOrigin(0);
+        expect(originRows()).toEqual([]);
+        component.submit();
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { allowed_origins: [] });
     });
 
     it('leaves unchanged allowed origins out of the PATCH, however they are retyped', () => {
         chatApi.updateBinding.mockReturnValue(of(binding({ max_turns: 100 })));
         const component = open(binding({ allowed_origins: ['https://a.example', 'https://b.example'] }));
-        typeText('allowed_origins', 'https://a.example https://b.example');
+        typeOrigin(0, ' https://a.example ');
+        clickAddOrigin();
         typeNumber('max_turns', 100);
         component.submit();
         expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { max_turns: 100 });
+    });
+
+    it('refuses an origin with a path on Save, saying why under it on the General tab', () => {
+        const component = open(binding({ allowed_origins: ['https://a.example'] }));
+        typeOrigin(0, 'https://a.example/chat');
+        component.activeTab.set('limits');
+        fixture.detectChanges();
+
+        clickSave();
+
+        expect(chatApi.updateBinding).not.toHaveBeenCalled();
+        expect(component.activeTab()).toBe('general');
+        expect(errorUnder('allowed_origins')).toBe('Use scheme and host only, e.g. https://www.example.com');
+        expect(isMarkedInvalid('allowed_origins')).toBe(true);
+    });
+
+    it('saves other changes to a desk whose stored origin would fail the check', () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({ max_turns: 100 })));
+        open(binding({ allowed_origins: ['https://a.example/chat'] }));
+        typeNumber('max_turns', 100);
+
+        clickSave();
+
+        expect(errorUnder('allowed_origins')).toBe('');
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { max_turns: 100 });
+    });
+
+    it('checks a stored origin once it is edited', () => {
+        open(binding({ allowed_origins: ['https://a.example/chat'] }));
+        typeOrigin(0, 'https://a.example/help');
+
+        clickSave();
+
+        expect(chatApi.updateBinding).not.toHaveBeenCalled();
+        expect(errorUnder('allowed_origins')).toBe('Use scheme and host only, e.g. https://www.example.com');
+    });
+
+    it('takes an origin in upper case with a trailing slash, which the chat service normalizes', () => {
+        chatApi.updateBinding.mockReturnValue(of(binding({})));
+        open(binding({ allowed_origins: [] }));
+        typeOrigin(0, 'HTTPS://WWW.Example.COM/');
+
+        clickSave();
+
+        expect(errorUnder('allowed_origins')).toBe('');
+        expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { allowed_origins: ['HTTPS://WWW.Example.COM/'] });
+    });
+
+    it('suggests a bot name in its empty field', () => {
+        open(null);
+        expect(inputOf('bot_display_name').placeholder).toBe('e.g. Bot');
     });
 
     it("sends the General fields edited in the settings, the bot name not following the desk's name", () => {
@@ -374,32 +470,45 @@ describe('ChatBindingsDialogComponent', () => {
         expect(component.contractErrors()).toEqual([]);
     });
 
-    it('has no Active toggle and posts both display names, the bot one following the name until edited', () => {
+    it('has no Active toggle and posts both display names, the bot one starting as "Bot", apart from the name', async () => {
         chatApi.createBinding.mockReturnValue(of({ ...binding({ id: 'b-2' }), identity_secret: null }));
         const component = open(null);
-        fixture.detectChanges();
+        // The field's ngModel writes the input a microtask later.
+        await fixture.whenStable();
         expect(text('app-toggle-switch')).not.toContain('Active');
         expect(component.form.contains('is_active')).toBe(false);
+        expect(inputOf('bot_display_name').value).toBe('Bot');
 
-        component.form.controls.name.setValue('Portal');
-        expect(component.form.controls.bot_display_name.value).toBe('Portal');
-        component.form.controls.name.setValue('x'.repeat(70));
-        expect(component.form.controls.bot_display_name.value).toBe('x'.repeat(64));
-        // Cut by characters: 64 emoji, not 32 and a half.
-        const rocket = String.fromCodePoint(0x1f680);
-        component.form.controls.name.setValue(rocket.repeat(70));
-        expect(component.form.controls.bot_display_name.value).toBe(rocket.repeat(64));
-        expect(component.form.controls.bot_display_name.valid).toBe(true);
-        component.form.controls.bot_display_name.setValue('Ava');
-        component.form.controls.bot_display_name.markAsDirty();
-        component.form.controls.name.setValue('Portal');
-        expect(component.form.controls.bot_display_name.value).toBe('Ava');
-
+        typeText('name', 'Portal');
+        expect(inputOf('bot_display_name').value).toBe('Bot');
         component.form.controls.graph_id.setValue(5);
         component.submit();
         const body = chatApi.createBinding.mock.calls[0][0];
         expect(body).not.toHaveProperty('is_active');
-        expect(body).toEqual(expect.objectContaining({ bot_display_name: 'Ava', operator_display_name: 'Support' }));
+        expect(body).toEqual(
+            expect.objectContaining({ name: 'Portal', bot_display_name: 'Bot', operator_display_name: 'Support' })
+        );
+    });
+
+    it('posts the bot name as typed on create', () => {
+        chatApi.createBinding.mockReturnValue(of({ ...binding({ id: 'b-2' }), identity_secret: null }));
+        const component = open(null);
+        typeText('bot_display_name', 'Ava');
+        typeText('name', 'Portal');
+        component.form.controls.graph_id.setValue(5);
+        component.submit();
+        expect(chatApi.createBinding.mock.calls[0][0]).toEqual(expect.objectContaining({ bot_display_name: 'Ava' }));
+    });
+
+    it('starts a new desk with one empty origin row and posts no origins when none is typed', () => {
+        chatApi.createBinding.mockReturnValue(of({ ...binding({ id: 'b-2' }), identity_secret: null }));
+        const component = open(null);
+        expect(originRows().map((row) => row.value)).toEqual(['']);
+
+        typeText('name', 'Portal');
+        component.form.controls.graph_id.setValue(5);
+        component.submit();
+        expect(chatApi.createBinding.mock.calls[0][0]).toEqual(expect.objectContaining({ allowed_origins: [] }));
     });
 
     it('requires both names within 64 characters: the bot name on create, the operator name in the settings', () => {
@@ -482,9 +591,10 @@ describe('ChatBindingsDialogComponent', () => {
             }
         });
 
-        it("checks a new desk's names from the start, the bot name taken from the desk name included", () => {
+        it("checks a new desk's bot name from the start, before it is typed in", () => {
             const component = open(null);
-            component.form.controls.name.setValue(around(0x202e));
+            expect(component.form.controls.bot_display_name.valid).toBe(true);
+            component.form.controls.bot_display_name.setValue(around(0x202e));
             expect(component.form.controls.bot_display_name.hasError('publicName')).toBe(true);
         });
     });

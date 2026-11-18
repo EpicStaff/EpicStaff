@@ -257,12 +257,12 @@
 .webhook-auth-pending {
     margin: 0;
     padding: 6px 8px;
-    border-left: 2px solid var(--yellow-500);
+    border-left: 2px solid var(--color-warning);
     border-radius: 4px;
     font-size: 0.75rem;
     line-height: 1.5;
-    color: var(--yellow-500);
-    background: var(--yellow-alpha-6);
+    color: var(--color-warning);
+    background: var(--color-warning-background);
 }
 
 .copy-button {
