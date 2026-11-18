@@ -2,11 +2,14 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { RouteTab, RouteTabsComponent } from '@shared/components';
 
+import { DashboardToolbarComponent } from './components/dashboard-toolbar/dashboard-toolbar.component';
 import { DashboardTab } from './constants/dashboard-tabs';
+import { DashboardFiltersService } from './services/dashboard-filters.service';
 
 @Component({
     selector: 'app-dashboard-page',
-    imports: [RouterOutlet, RouteTabsComponent],
+    imports: [RouterOutlet, RouteTabsComponent, DashboardToolbarComponent],
+    providers: [DashboardFiltersService],
     templateUrl: './dashboard-page.component.html',
     styleUrls: ['./dashboard-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
