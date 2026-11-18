@@ -40,6 +40,15 @@
    Run any manage.py command locally.
    Example: make django-manage CMD=shell
 
+ make django-model-catalog
+   Rebuild src/django_app/ai_models/data/catalog.json from the
+   pinned LiteLLM and parameter_registry.yaml; prints what changed.
+   Run after a LiteLLM upgrade or a registry edit.
+
+ make django-model-catalog-check
+   Write nothing; list what keeps catalog.json from being complete
+   and current, and exit 1 on any error (what CI runs).
+
  SERVICE TESTS
 ----------------------------------------------------------------
  make <service>-tests ARGS=<pytest-args>

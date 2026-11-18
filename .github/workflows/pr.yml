@@ -175,7 +175,7 @@ jobs:
           # The committed model catalog against the pinned LiteLLM release: the registry,
           # the catalog and the code that builds or checks it, and django_app's
           # dependencies (a LiteLLM upgrade brings new models and settings).
-          filter model_catalog '^(src/django_app/ai_models/(data|domain|management)/|src/django_app/(pyproject\.toml|uv\.lock)$|\.github/workflows/pr\.yml$)'
+          filter model_catalog '^(src/django_app/ai_models/(data|domain|management)/|src/django_app/(pyproject\.toml|uv\.lock)$|\.github/workflows/pr\.yml$|Makefile$)'
 
           filter retention "^(src/manager/|src/django_app/tables/service_db_grants\.py$|src/django_app/[^/]+/(models/|models\.py$)|src/django_app/tables/services/session_callbacks/|src/django_app/django_app/settings/|src/django_app/(pyproject\.toml|uv\.lock)$|src/django_app/tests/[^/]+\.py$|src/django_app/tests/model_tests/test_session_retention_contract\.py$|src/env\.yaml$|scripts/envtool\.py$|$backend_wide)"
 
@@ -860,7 +860,7 @@ jobs:
         run: make django-tests ARGS="tests/model_tests/test_session_retention_contract.py"
 
   # Fails when ai_models/data/catalog.json no longer matches the pinned LiteLLM release
-  # (run build_model_catalog and commit the result), or when parameter_registry.yaml leaves
+  # (run `make django-model-catalog` and commit the result), or when parameter_registry.yaml leaves
   # a setting as a draft or incomplete. Builds the catalog in memory; needs no database.
   model-catalog-check:
     needs: changes
@@ -869,9 +869,6 @@ jobs:
     timeout-minutes: 15
     env:
       UV_PYTHON_DOWNLOADS: never
-      # The catalog is built from the model map bundled with the pinned LiteLLM, never
-      # from the one LiteLLM would otherwise fetch from GitHub.
-      LITELLM_LOCAL_MODEL_COST_MAP: "True"
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -901,7 +898,7 @@ jobs:
         run: make uv-sync svc=django_app
 
       - name: Check the model catalog
-        run: make django-manage CMD="build_model_catalog --check"
+        run: make django-model-catalog-check
 
   # The tests marked `postgres` of es_plugins and plugin_sdk, which skip in
   # backend-tests, against a throwaway plugins_db that src/plugins_db/lab/run.sh

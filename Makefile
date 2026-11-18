@@ -31,6 +31,7 @@ shared_test_targets := $(addprefix shared-tests-,$(shared_suites))
         uv-lock \
         uv-sync \
         django-makemigrations django-migrate django-manage django-tests \
+        django-model-catalog django-model-catalog-check \
         env-update \
         $(test_targets) shared-tests $(shared_test_targets)
 
@@ -103,6 +104,19 @@ django-manage:
 
 django-tests:
 	@cd src/django_app && $(VENV_PY) -m pytest $(ARGS)
+
+# The catalog must come from the model list bundled with the pinned LiteLLM, never
+# from GitHub: the first variable stops LiteLLM fetching it on import, the second
+# turns off EpicStaff's daily refresh. build_model_catalog refuses to run without both.
+django-model-catalog django-model-catalog-check: export PYTHONPATH = $(CURDIR)
+django-model-catalog django-model-catalog-check: export LITELLM_LOCAL_MODEL_COST_MAP = True
+django-model-catalog django-model-catalog-check: export LITELLM_MODEL_COST_REFRESH_ENABLED = False
+
+django-model-catalog:
+	@cd src/django_app && $(VENV_PY) manage.py build_model_catalog
+
+django-model-catalog-check:
+	@cd src/django_app && $(VENV_PY) manage.py build_model_catalog --check
 
 # ==========================================
 # SERVICE TESTS
