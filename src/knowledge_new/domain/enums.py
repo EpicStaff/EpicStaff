@@ -13,6 +13,7 @@ __all__ = [
     "DocumentStatusEnum",
     "EmbedderProviderEnum",
     "FileExtensionEnum",
+    "GraphOutputTableEnum",
     "GraphSearchMethodEnum",
     "IndexStatusEnum",
     "RAGStrategy",
@@ -61,3 +62,15 @@ class FileExtensionEnum(StrEnum):
 class SlotEnum(StrEnum):
     A = "a"
     B = "b"
+
+
+class GraphOutputTableEnum(StrEnum):
+    """Tables a graph index run writes to its output storage, named by parquet file stem."""
+
+    ENTITIES = "entities"
+    RELATIONSHIPS = "relationships"
+    COMMUNITIES = "communities"
+    COMMUNITY_REPORTS = "community_reports"
+    TEXT_UNITS = "text_units"
+    DOCUMENTS = "documents"
+    COVARIATES = "covariates"

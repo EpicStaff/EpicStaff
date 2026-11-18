@@ -1,12 +1,39 @@
 import asyncio
 import os
 import tempfile
-from typing import Literal
+from typing import Annotated, Literal
 
 import anyio
 from application import commands
-from application.commands import GetMetrics, RemoveRag
+from application.commands import (
+    GetEntityDetail,
+    GetGraphTableData,
+    GetGraphTableSummary,
+    GetGraphVisualization,
+    GetMetrics,
+    GetRelationshipDetail,
+    RemoveRag,
+)
+from application.graph_index_read_limits import (
+    GRAPH_SEARCH_MAX_LENGTH,
+    GRAPH_TABLE_DEFAULT_PAGE,
+    GRAPH_TABLE_DEFAULT_PAGE_SIZE,
+    GRAPH_TABLE_MAX_PAGE_SIZE,
+    GRAPH_TABLE_MIN_PAGE,
+    GRAPH_TABLE_MIN_PAGE_SIZE,
+    GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
+    GRAPH_VISUALIZATION_MIN_MAX_ENTITIES,
+)
 from application.orchestrators.estimating import build_estimator
+from application.orchestrators.graph_table_data import (
+    build_graph_table_data,
+    build_graph_table_summary,
+)
+from application.orchestrators.graph_visualization import (
+    build_entity_detail,
+    build_graph_visualization,
+    build_relationship_detail,
+)
 from application.orchestrators.indexing import build_indexer
 from application.orchestrators.metrics import build_metrics
 from application.orchestrators.prechunking import build_prechunker
@@ -29,6 +56,7 @@ from litestar import Controller, Request, delete, get, post, put, status_codes
 from litestar.connection import ASGIConnection
 from litestar.exceptions import HTTPException
 from litestar.handlers.base import BaseRouteHandler
+from litestar.params import Parameter
 from litestar.response import Stream
 from presentation.rest import schemas
 
@@ -160,6 +188,128 @@ class RagController(Controller):
         orchestrator = build_metrics(strategy, uow)
         result = await orchestrator.execute(GetMetrics(rag_id=rag_id))
         return schemas.MetricsOutputSchema.model_validate(result)
+
+    @get(
+        path="{rag_id:int}/table-summary/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="List available tables with row counts",
+    )
+    async def table_summary(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        uow: AbstractUnitOfWork,
+    ) -> list[schemas.GraphTableSummaryOutputSchema]:
+        command = GetGraphTableSummary(rag_id=rag_id)
+        orchestrator = build_graph_table_summary(strategy, uow)
+        result = await orchestrator.execute(command)
+        return [
+            schemas.GraphTableSummaryOutputSchema.model_validate(item) for item in result.tables
+        ]
+
+    @get(
+        path="{rag_id:int}/tables/{table_name:str}/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Paginated parquet table data",
+    )
+    async def table_data(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        uow: AbstractUnitOfWork,
+        table_name: str,
+        page: Annotated[int, Parameter(ge=GRAPH_TABLE_MIN_PAGE)] = GRAPH_TABLE_DEFAULT_PAGE,
+        page_size: Annotated[
+            int, Parameter(ge=GRAPH_TABLE_MIN_PAGE_SIZE, le=GRAPH_TABLE_MAX_PAGE_SIZE)
+        ] = GRAPH_TABLE_DEFAULT_PAGE_SIZE,
+        search: Annotated[str | None, Parameter(max_length=GRAPH_SEARCH_MAX_LENGTH)] = None,
+        filter_column: Annotated[
+            str | None,
+            Parameter(
+                query="filter_column",
+                description=(
+                    "Exact-match filter: column name. Must be one of the table's user-facing "
+                    "columns and set together with filter_value."
+                ),
+            ),
+        ] = None,
+        filter_value: Annotated[
+            str | None,
+            Parameter(
+                query="filter_value",
+                description=(
+                    "Exact-match filter: the cell value to match as a string. Set together "
+                    "with filter_column; applied before `search`."
+                ),
+            ),
+        ] = None,
+    ) -> schemas.GraphTableDataOutputSchema:
+        command = GetGraphTableData(
+            rag_id=rag_id,
+            table_name=table_name,
+            page=page,
+            page_size=page_size,
+            search=search,
+            filter_column=filter_column,
+            filter_value=filter_value,
+        )
+        orchestrator = build_graph_table_data(strategy, uow)
+        result = await orchestrator.execute(command)
+        return schemas.GraphTableDataOutputSchema.model_validate(result)
+
+    @get(
+        path="{rag_id:int}/visualization/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Graph visualization data",
+    )
+    async def visualization(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        uow: AbstractUnitOfWork,
+        max_entities: Annotated[
+            int, Parameter(ge=GRAPH_VISUALIZATION_MIN_MAX_ENTITIES)
+        ] = GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
+        search: Annotated[str | None, Parameter(max_length=GRAPH_SEARCH_MAX_LENGTH)] = None,
+    ) -> schemas.GraphVisualizationOutputSchema:
+        command = GetGraphVisualization(rag_id=rag_id, max_entities=max_entities, search=search)
+        orchestrator = build_graph_visualization(strategy, uow)
+        result = await orchestrator.execute(command)
+        return schemas.GraphVisualizationOutputSchema.model_validate(result)
+
+    @get(
+        path="{rag_id:int}/entity/{entity_id:str}/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Entity description detail",
+    )
+    async def entity_detail(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        entity_id: str,
+        uow: AbstractUnitOfWork,
+    ) -> schemas.EntityDetailOutputSchema:
+        command = GetEntityDetail(rag_id=rag_id, entity_id=entity_id)
+        orchestrator = build_entity_detail(strategy, uow)
+        result = await orchestrator.execute(command)
+        return schemas.EntityDetailOutputSchema.model_validate(result)
+
+    @get(
+        path="{rag_id:int}/relationship/{relationship_id:str}/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Relationship description detail",
+    )
+    async def relationship_detail(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        relationship_id: str,
+        uow: AbstractUnitOfWork,
+    ) -> schemas.RelationshipDetailOutputSchema:
+        command = GetRelationshipDetail(rag_id=rag_id, relationship_id=relationship_id)
+        orchestrator = build_relationship_detail(strategy, uow)
+        result = await orchestrator.execute(command)
+        return schemas.RelationshipDetailOutputSchema.model_validate(result)
 
     @delete(
         path="{rag_id:int}/cancel/{operation:str}/",

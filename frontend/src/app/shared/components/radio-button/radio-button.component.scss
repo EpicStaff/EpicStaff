@@ -83,6 +83,14 @@
         pointer-events: none;
     }
 
+    &--small {
+        height: 28px;
+
+        .segmented__option {
+            font-size: 0.75rem;
+        }
+    }
+
     &__slider {
         position: absolute;
         top: 0;
