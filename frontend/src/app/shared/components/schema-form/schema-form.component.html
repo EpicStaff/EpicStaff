@@ -7,9 +7,9 @@
             <div
                 class="schema-form__field"
                 [attr.data-field]="field.name"
+                [attr.data-widget]="field.property['x-widget']"
             >
                 <app-schema-field
-                    class="schema-form__control"
                     [property]="field.property"
                     [control]="control(field.name)"
                     [required]="field.required"
