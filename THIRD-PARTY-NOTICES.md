@@ -33659,7 +33659,7 @@ npm install
 node scripts/generate-third-party-notices.mjs
 ```
 
-The generator reads the production tree from `package-lock.json` and each installed package's own `package.json`; it downloads and runs no third-party tool. It stops, naming the package, when a licence is missing, not an SPDX expression, or uses an identifier outside its reviewed list. It rewrites ONLY the `frontend` region of this file.
+The generator reads the production tree from `package-lock.json` and each installed package's own `package.json`; it downloads and runs no third-party tool. It stops, naming the package, when a licence is missing, not an SPDX expression, or uses an identifier outside `scripts/license-policy.json`. It rewrites ONLY the `frontend` region of this file.
 
 ### What the frontend refresh covers
 
@@ -33677,7 +33677,11 @@ python scripts/generate-python-notices.py
 
 **Run it on Linux**, the platform CI and the shipped images use. The output depends on the platform it runs on: the script records what is actually installed in each service's venv, so on Windows Linux-only packages (such as `uvloop`) drop out, Windows-only ones appear, and a wheel whose metadata lists its files with Windows-style paths can lose its licence text. `--check` compares only the lockfile hashes, so it does not catch a file generated on Windows. On Windows, run it in WSL or a Linux container against a separate copy of the repository, not your working tree: the script syncs every `src/*/.venv` and would replace your Windows venvs.
 
-Stdlib only. For each service it syncs `src/<service>/.venv` from the lockfile (dev and test groups excluded), installs `pip-licenses` into it for the scan and removes it afterwards. `uv` must be on `PATH`. It rewrites ONLY the `backend` region of this file.
+Stdlib only. For each service it syncs `src/<service>/.venv` from the lockfile (dev and test groups excluded), installs `pip-licenses` into it for the scan and removes it afterwards. `uv` must be on `PATH`. It stops without writing when a service cannot be scanned. It rewrites ONLY the `backend` region of this file.
+
+### Licence policy
+
+After regenerating either half, run `node scripts/check-licenses.mjs`. It checks every package listed in this file against `scripts/license-policy.json` and names each one whose licence we may not ship; a pull request that fails it cannot merge, and a daily run on `main` (`.github/workflows/license-scan.yml`) emails the team when it finds one. A Python package whose metadata names no clear SPDX licence is pinned in `SPDX_OVERRIDES` in `scripts/generate-python-notices.py` after reading the licence text it ships.
 
 ## Manual overrides applied
 
