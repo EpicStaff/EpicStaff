@@ -156,14 +156,12 @@ def _new_rag(**overrides) -> Rag:
     )
 
 
-async def _index(
-    repo: FakeNaiveRagRepo, *document_ids: int, embedding_extra_headers: dict[str, str] | None = None
-):
+async def _index(repo: FakeNaiveRagRepo, *document_ids: int, **request_fields):
     request = RunIndex(
         rag_id=1,
         document_ids=frozenset(document_ids),
         embedding_api_key="sk-test",
-        embedding_extra_headers=embedding_extra_headers or {},
+        **request_fields,
     )
     await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
 
@@ -407,6 +405,24 @@ async def test_embedding_extra_headers_reach_the_embedding_provider(embedding_ap
     await _index(repo, 7, embedding_extra_headers={"X-Gateway-Key": "resolved-value"})
 
     assert embedding_api.await_args.kwargs["extra_headers"] == {"X-Gateway-Key": "resolved-value"}
+
+
+async def test_request_settings_and_connection_reach_the_embedding_provider(
+    embedding_api, monkeypatch
+):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
+
+    await _index(
+        repo,
+        7,
+        embedding_connection={"api_base": "http://gateway/v1"},
+        embedding_parameters={"dimensions": 256},
+    )
+
+    request = embedding_api.await_args.kwargs
+    assert request["api_base"] == "http://gateway/v1"
+    assert request["dimensions"] == 256
 
 
 async def test_run_records_embedding_tokens_and_priced_cost(embedding_api, monkeypatch):

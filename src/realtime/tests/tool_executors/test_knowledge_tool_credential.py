@@ -48,7 +48,7 @@ async def test_no_credential_sends_none():
 
 
 @pytest.mark.asyncio
-async def test_extra_headers_reach_the_search_target():
+async def test_extra_headers_and_connections_reach_the_search_target():
     knowledge_client = AsyncMock()
     knowledge_client.search = AsyncMock(return_value=[])
     executor = KnowledgeSearchToolExecutor(
@@ -58,6 +58,10 @@ async def test_extra_headers_reach_the_search_target():
         knowledge_client=knowledge_client,
         rag_embedder_extra_headers={"X-Emb": "emb-resolved"},
         rag_llm_extra_headers={"X-Llm": "llm-resolved"},
+        rag_embedder_connection={"api_base": "http://emb-gateway/v1"},
+        rag_embedder_parameters={"dimensions": 256},
+        rag_llm_connection={"aws_region_name": "eu-west-1"},
+        rag_llm_parameters={"temperature": 0.1},
     )
 
     await executor.execute(query="q")
@@ -65,3 +69,7 @@ async def test_extra_headers_reach_the_search_target():
     target = knowledge_client.search.call_args.args[0]
     assert target.embedder_extra_headers == {"X-Emb": "emb-resolved"}
     assert target.llm_extra_headers == {"X-Llm": "llm-resolved"}
+    assert target.embedder_connection == {"api_base": "http://emb-gateway/v1"}
+    assert target.embedder_parameters == {"dimensions": 256}
+    assert target.llm_connection == {"aws_region_name": "eu-west-1"}
+    assert target.llm_parameters == {"temperature": 0.1}

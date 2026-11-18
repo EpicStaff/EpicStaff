@@ -30,9 +30,13 @@ def _make_config(
     update_output_storage=None,
     vector_store=None,
 ) -> types.SimpleNamespace:
-    """Build a fake GraphRagConfig-like object accepted by _get_config_under_uow."""
-    embedding_model = types.SimpleNamespace(api_key=None)
-    completion_model = types.SimpleNamespace(api_key=None, type="litellm")
+    """Build a fake GraphRagConfig-like object with real models, as the repository loads it."""
+    from graphrag_llm.config import ModelConfig
+
+    embedding_model = ModelConfig(
+        model_provider="openai", model="text-embedding-3-small", api_key="set-by-request"
+    )
+    completion_model = ModelConfig(model_provider="openai", model="gpt-4o", api_key="set-by-request")
     return types.SimpleNamespace(
         input_storage=input_storage,
         output_storage=output_storage,
@@ -548,10 +552,10 @@ async def test_first_index_touches_no_slot_storage(monkeypatch):
     assert cleared_prefixes == []
 
 
-async def test_extra_headers_injected_into_both_graphrag_models(monkeypatch):
+async def test_request_headers_connection_and_settings_reach_both_graphrag_models(monkeypatch):
     config = _make_config()
     config.embedding_models["default_embedding_model"].call_args = {}
-    config.completion_models["default_completion_model"].call_args = {"temperature": 0.1}
+    config.completion_models["default_completion_model"].call_args = {}
     repo = FakeGraphRagRepo(rag=_new_rag(), config=config, documents=[_text_document(7)])
     captured: dict = {}
 
@@ -568,15 +572,24 @@ async def test_extra_headers_injected_into_both_graphrag_models(monkeypatch):
         llm_api_key="sk-llm",
         embedding_extra_headers={"X-Emb": "emb-resolved"},
         llm_extra_headers={"X-Llm": "llm-resolved"},
+        embedding_connection={"api_base": "http://emb-gateway/v1"},
+        llm_connection={"aws_region_name": "eu-west-1"},
+        embedding_parameters={"task_type": "retrieval_document"},
+        llm_parameters={"temperature": 0.1, "stop": ["Observation:"]},
     )
     await GraphIndexOrchestrator(FakeUoW(repo)).execute(request)
 
     sent = captured["config"]
-    assert sent.embedding_models["default_embedding_model"].call_args == {
-        "extra_headers": {"X-Emb": "emb-resolved"}
+    embedding_model = sent.embedding_models["default_embedding_model"]
+    completion_model = sent.completion_models["default_completion_model"]
+    assert embedding_model.api_base == "http://emb-gateway/v1"
+    assert embedding_model.call_args == {
+        "task_type": "RETRIEVAL_DOCUMENT",
+        "extra_headers": {"X-Emb": "emb-resolved"},
     }
-    assert sent.completion_models["default_completion_model"].call_args == {
+    assert completion_model.call_args == {
         "temperature": 0.1,
+        "aws_region_name": "eu-west-1",
         "extra_headers": {"X-Llm": "llm-resolved"},
     }
 

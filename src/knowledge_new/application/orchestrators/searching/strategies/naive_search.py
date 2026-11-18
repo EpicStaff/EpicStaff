@@ -24,7 +24,11 @@ class NaiveSearchOrchestrator(AbstractSearchOrchestrator):
             raise EmbeddingConfigNotFoundError(rag_id=command.rag_id)
 
         embedding_config = embedding_config.model_copy(
-            update={"extra_headers": command.embedding_extra_headers}
+            update={
+                "extra_headers": command.embedding_extra_headers,
+                "connection": command.embedding_connection,
+                "parameters": command.embedding_parameters,
+            }
         )
         embedder = build_embedder(
             embedding_config.provider, command.embedding_api_key, embedding_config

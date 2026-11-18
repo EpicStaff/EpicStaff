@@ -55,15 +55,23 @@ def test_the_resolved_embedder_credential_is_sent_with_the_search(instance_key, 
     assert _search_call_kwargs(service, **overrides)["embedding_api_key"] == sent_key
 
 
-def test_extra_headers_reach_the_client():
+def test_extra_headers_and_connections_reach_the_client():
     service = KnowledgeSearchService(redis_service=MagicMock())
     kwargs = _search_call_kwargs(
         service,
         rag_embedder_extra_headers={"X-Emb": "emb-resolved"},
         rag_llm_extra_headers={"X-Llm": "llm-resolved"},
+        rag_embedder_connection={"api_base": "http://emb-gateway/v1"},
+        rag_embedder_parameters={"dimensions": 256},
+        rag_llm_connection={"aws_region_name": "eu-west-1"},
+        rag_llm_parameters={"temperature": 0.1},
     )
     assert kwargs["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
     assert kwargs["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+    assert kwargs["embedding_connection"] == {"api_base": "http://emb-gateway/v1"}
+    assert kwargs["embedding_parameters"] == {"dimensions": 256}
+    assert kwargs["llm_connection"] == {"aws_region_name": "eu-west-1"}
+    assert kwargs["llm_parameters"] == {"temperature": 0.1}
 
 
 def test_no_extra_headers_sends_none():

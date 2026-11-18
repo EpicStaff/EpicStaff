@@ -17,7 +17,11 @@ from graphrag.api import build_index
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
 from graphrag_storage import create_storage
-from infrastructure.graphrag.model_headers import set_extra_headers
+from infrastructure.database.mappers.embedding_arguments import embedding_call_arguments
+from infrastructure.graphrag.model_access import (
+    apply_request_access,
+    completion_call_arguments,
+)
 from infrastructure.graphrag.storages import create_storage_config
 from infrastructure.graphrag.usage_metrics import track_usage
 from infrastructure.graphrag.vector_stores import create_vector_store_config
@@ -45,14 +49,22 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             else:
                 is_update_run = True
 
-        config = await self._get_config_under_uow(
-            rag.id, target_slot, command.embedding_api_key, command.llm_api_key
+        config = await self._get_config_under_uow(rag.id, target_slot)
+        apply_request_access(
+            config.embedding_models["default_embedding_model"],
+            api_key=command.embedding_api_key,
+            extra_headers=command.embedding_extra_headers,
+            connection=command.embedding_connection,
+            call_arguments=embedding_call_arguments(command.embedding_parameters),
         )
-        set_extra_headers(
-            config.embedding_models["default_embedding_model"], command.embedding_extra_headers
-        )
-        set_extra_headers(
-            config.completion_models["default_completion_model"], command.llm_extra_headers
+        apply_request_access(
+            config.completion_models["default_completion_model"],
+            api_key=command.llm_api_key,
+            extra_headers=command.llm_extra_headers,
+            connection=command.llm_connection,
+            call_arguments=completion_call_arguments(
+                config.completion_models["default_completion_model"], command.llm_parameters
+            ),
         )
 
         rag.mark_as_processing(command.document_ids)
@@ -118,15 +130,11 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         self.state["rag"] = rag
         return rag
 
-    async def _get_config_under_uow(
-        self, rag_id: int, slot: SlotEnum, embedding_api_key: str, llm_api_key: str
-    ):
+    async def _get_config_under_uow(self, rag_id: int, slot: SlotEnum) -> GraphRagConfig:
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id, slot=slot)
         if not config:
             raise GraphRagConfigNotFoundError(rag_id=rag_id)
-        config.embedding_models["default_embedding_model"].api_key = embedding_api_key
-        config.completion_models["default_completion_model"].api_key = llm_api_key
         return config
 
     async def _record_usage(self, rag_id: int):

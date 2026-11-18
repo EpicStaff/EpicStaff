@@ -689,7 +689,7 @@ def test_compile_refuses_a_node_whose_service_was_not_provided(
         _builder(mock_services).compile_from_schema(mock_session_data)
 
 
-def test_compile_passes_knowledge_node_extra_headers(
+def test_compile_passes_knowledge_node_extra_headers_and_connections(
     mock_services, mock_session_data, monkeypatch
 ):
     from services.graph import graph_builder
@@ -712,6 +712,10 @@ def test_compile_passes_knowledge_node_extra_headers(
             input_map={},
             embedder_extra_headers={"X-Emb": "emb-resolved"},
             llm_extra_headers={"X-Llm": "llm-resolved"},
+            embedder_connection={"api_base": "http://emb-gateway/v1"},
+            embedder_parameters={"dimensions": 256},
+            llm_connection={"aws_region_name": "eu-west-1"},
+            llm_parameters={"temperature": 0.1},
         )
     ]
 
@@ -720,3 +724,7 @@ def test_compile_passes_knowledge_node_extra_headers(
     assert len(created_nodes) == 1
     assert created_nodes[0].embedder_extra_headers == {"X-Emb": "emb-resolved"}
     assert created_nodes[0].llm_extra_headers == {"X-Llm": "llm-resolved"}
+    assert created_nodes[0].embedder_connection == {"api_base": "http://emb-gateway/v1"}
+    assert created_nodes[0].embedder_parameters == {"dimensions": 256}
+    assert created_nodes[0].llm_connection == {"aws_region_name": "eu-west-1"}
+    assert created_nodes[0].llm_parameters == {"temperature": 0.1}

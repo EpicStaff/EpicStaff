@@ -137,7 +137,7 @@ def test_execute_emits_graph_extracted_chunks_message_shape(monkeypatch, answer)
     }
 
 
-def test_execute_forwards_extra_headers_to_the_search(monkeypatch):
+def test_execute_forwards_extra_headers_and_connections_to_the_search(monkeypatch):
     received = {}
 
     class CapturingKnowledgeClient(FakeKnowledgeClient):
@@ -161,12 +161,20 @@ def test_execute_forwards_extra_headers_to_the_search(monkeypatch):
         knowledge_search_service=KnowledgeSearchService(redis_service=MagicMock()),
         embedder_extra_headers={"X-Emb": "emb-resolved"},
         llm_extra_headers={"X-Llm": "llm-resolved"},
+        embedder_connection={"api_base": "http://emb-gateway/v1"},
+        embedder_parameters={"dimensions": 256},
+        llm_connection={"aws_region_name": "eu-west-1"},
+        llm_parameters={"temperature": 0.1},
     )
 
     asyncio.run(node.execute(state={}, writer=MagicMock(), execution_order=1, input_={}))
 
     assert received["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
     assert received["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+    assert received["embedding_connection"] == {"api_base": "http://emb-gateway/v1"}
+    assert received["embedding_parameters"] == {"dimensions": 256}
+    assert received["llm_connection"] == {"aws_region_name": "eu-west-1"}
+    assert received["llm_parameters"] == {"temperature": 0.1}
 
 
 def test_execute_adds_search_embedding_usage_to_the_message_token_usage(monkeypatch):

@@ -19,7 +19,11 @@ from graphrag.config.models.local_search_config import LocalSearchConfig
 from graphrag.data_model import DataReader
 from graphrag_storage import create_storage
 from graphrag_storage.tables.table_provider_factory import create_table_provider
-from infrastructure.graphrag.model_headers import set_extra_headers
+from infrastructure.database.mappers.embedding_arguments import embedding_call_arguments
+from infrastructure.graphrag.model_access import (
+    apply_request_access,
+    completion_call_arguments,
+)
 from infrastructure.graphrag.usage_metrics import track_usage
 from infrastructure.grounding_guard import apply_grounding_guard
 from infrastructure.prompt_patching import patch_graphrag_prompts
@@ -118,13 +122,21 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
             config = await self.uow.graph_rag_repo.get_config(command.rag_id)
             pricing = await self._get_pricing(command.rag_id)
 
-        config.embedding_models["default_embedding_model"].api_key = command.embedding_api_key
-        config.completion_models["default_completion_model"].api_key = command.llm_api_key
-        set_extra_headers(
-            config.embedding_models["default_embedding_model"], command.embedding_extra_headers
+        apply_request_access(
+            config.embedding_models["default_embedding_model"],
+            api_key=command.embedding_api_key,
+            extra_headers=command.embedding_extra_headers,
+            connection=command.embedding_connection,
+            call_arguments=embedding_call_arguments(command.embedding_parameters),
         )
-        set_extra_headers(
-            config.completion_models["default_completion_model"], command.llm_extra_headers
+        apply_request_access(
+            config.completion_models["default_completion_model"],
+            api_key=command.llm_api_key,
+            extra_headers=command.llm_extra_headers,
+            connection=command.llm_connection,
+            call_arguments=completion_call_arguments(
+                config.completion_models["default_completion_model"], command.llm_parameters
+            ),
         )
 
         if command.search_config.method not in self._SEARCH_MAP:

@@ -288,6 +288,10 @@ class SessionGraphBuilder:
                 llm_api_key=knowledge_node_data.llm_api_key,
                 embedder_extra_headers=knowledge_node_data.embedder_extra_headers,
                 llm_extra_headers=knowledge_node_data.llm_extra_headers,
+                embedder_connection=knowledge_node_data.embedder_connection,
+                embedder_parameters=knowledge_node_data.embedder_parameters,
+                llm_connection=knowledge_node_data.llm_connection,
+                llm_parameters=knowledge_node_data.llm_parameters,
             )
             self.add_node(knowledge_node)
 

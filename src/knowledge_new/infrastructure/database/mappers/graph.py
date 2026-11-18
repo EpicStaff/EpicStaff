@@ -16,71 +16,32 @@ from infrastructure.database.models import (
 )
 from infrastructure.graphrag.storages import create_storage_config
 from infrastructure.graphrag.vector_stores import create_vector_store_config
-from loguru import logger
-from src.shared.models.ai_providers import LLMConfigData
 
-# GraphRAG never sends an LLM config's stop sequences or timeout. Stop sequences written
-# for agents would cut extraction output short, and the config's timeout (120 s by
-# default) would abort long extraction and community-report calls.
-_GRAPHRAG_EXCLUDED_GENERATION_FIELDS = {"stop", "timeout"}
-
-
-def _parse_logit_bias(llm_config: LLMConfig) -> dict[int, float] | None:
-    """Return the config's logit_bias with integer token ids, or None if it is malformed.
-
-    The column is JSON, so token ids arrive as string keys. A key or value that is not
-    numeric is dropped with a warning instead of failing the whole GraphRAG config.
-    """
-    raw_logit_bias = llm_config.logit_bias
-    if not raw_logit_bias:
-        return None
-    try:
-        return {int(token_id): float(bias) for token_id, bias in raw_logit_bias.items()}
-    except (AttributeError, TypeError, ValueError):
-        logger.warning(
-            "Ignoring malformed logit_bias on LLM config {}: {!r}",
-            llm_config.id,
-            raw_logit_bias,
-        )
-        return None
+_SET_BY_REQUEST = "set-by-request"
 
 
 def _build_completion_model(llm_config: LLMConfig) -> ModelConfig:
     llm_model = llm_config.model
-    provider = llm_model.llm_provider.name
-    # stop and timeout are left out here as well as excluded below: stop is unvalidated
-    # JSON, and a value GraphRAG discards must not be able to fail the config build.
-    llm_config_data = LLMConfigData(
-        model=llm_model.name,
-        temperature=llm_config.temperature,
-        top_p=llm_config.top_p,
-        max_tokens=llm_config.max_tokens,
-        presence_penalty=llm_config.presence_penalty,
-        frequency_penalty=llm_config.frequency_penalty,
-        logit_bias=_parse_logit_bias(llm_config),
-        seed=llm_config.seed,
-        reasoning_effort=llm_config.reasoning_effort,
-    )
-
-    return ModelConfig(
-        model_provider=provider,
-        model=llm_model.name,
-        api_key="dummy",
-        api_base=llm_model.base_url,
-        api_version=llm_model.api_version,
-        call_args=llm_config_data.to_litellm_kwargs(
-            provider=provider, exclude=_GRAPHRAG_EXCLUDED_GENERATION_FIELDS
-        ),
-    )
+    return _model_config_awaiting_request(llm_model.llm_provider.name, llm_model.name)
 
 
 def _build_embedding_model(embedder_config: ORMEmbeddingConfig) -> ModelConfig:
     embedding_model = embedder_config.model
+    return _model_config_awaiting_request(
+        embedding_model.embedding_provider.name, embedding_model.name
+    )
+
+
+def _model_config_awaiting_request(provider: str, model: str) -> ModelConfig:
+    # GraphRagConfig validates its models when built, and ModelConfig wants a key and, for
+    # Azure, an endpoint. Both arrive with each request, like the settings of the call:
+    # apply_request_access replaces these placeholders. Metrics loads this config too, and
+    # reads only its storage.
     return ModelConfig(
-        model_provider=embedding_model.embedding_provider.name,
-        model=embedding_model.name,
-        api_key="dummy",
-        api_base=embedding_model.base_url,
+        model_provider=provider,
+        model=model,
+        api_key=_SET_BY_REQUEST,
+        api_base=_SET_BY_REQUEST,
     )
 
 
@@ -174,7 +135,6 @@ def graph_rag_orm_to_pricing_config(orm_rag: GraphRag) -> GraphPricingConfig:
         embedding=EmbeddingConfig(
             provider=embedding_model.embedding_provider.name.lower(),
             model=embedding_model.name,
-            base_url=embedding_model.base_url or None,
         ),
         llm_provider=llm_model.llm_provider.name.lower(),
         llm_model=llm_model.name,

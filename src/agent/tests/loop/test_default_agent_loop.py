@@ -260,23 +260,27 @@ async def test_tool_choice_reaches_the_llm_only_when_set(tool_choice):
 
 async def test_llm_call_receives_every_set_config_field():
     llm_config = LLMConfigData(
-        model="my-deployment",
+        model="gpt-4o",
         timeout=30,
-        temperature=0.3,
-        top_p=0.9,
-        stop=["END"],
-        max_tokens=512,
-        presence_penalty=0.1,
-        frequency_penalty=0.2,
-        logit_bias={50256: -100.0},
-        seed=7,
-        base_url="https://example.openai.azure.com",
-        api_version="2025-01-01-preview",
+        parameters={
+            "temperature": 0.3,
+            "top_p": 0.9,
+            "stop": ["END"],
+            "max_tokens": 512,
+            "presence_penalty": 0.1,
+            "frequency_penalty": 0.2,
+            "logit_bias": {50256: -100.0},
+            "seed": 7,
+            "reasoning_effort": "medium",
+        },
+        connection={
+            "api_base": "https://example.openai.azure.com",
+            "api_version": "2025-01-01-preview",
+            "deployment_id": "my-deployment",
+        },
         api_key="sk-test",
         api_key_secret_id=99,
-        deployment_id="my-deployment",
         extra_headers={"X-Team": "core"},
-        reasoning_effort="medium",
     )
 
     config = await _model_config(LLMData(provider="azure", config=llm_config))
@@ -292,12 +296,15 @@ async def test_llm_call_receives_every_set_config_field():
         "frequency_penalty": 0.2,
         "logit_bias": {50256: -100.0},
         "seed": 7,
-        "base_url": "https://example.openai.azure.com",
-        "api_version": "2025-01-01-preview",
-        "api_key": "sk-test",
-        "deployment_id": "my-deployment",
-        "extra_headers": {"X-Team": "core"},
         "reasoning_effort": "medium",
+        # The deployment is only the Azure model above: litellm sends any call carrying
+        # a deployment_id to Azure.
+        "connection": {
+            "api_base": "https://example.openai.azure.com",
+            "api_version": "2025-01-01-preview",
+            "api_key": "sk-test",
+        },
+        "extra_headers": {"X-Team": "core"},
         "store": False,
     }
 
@@ -305,7 +312,7 @@ async def test_llm_call_receives_every_set_config_field():
 async def test_llm_call_receives_no_unset_config_field():
     config = await _model_config(LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet-4-5")))
 
-    assert config == {"model": "anthropic/claude-sonnet-4-5"}
+    assert config == {"model": "anthropic/claude-sonnet-4-5", "connection": {}}
 
 
 @pytest.mark.parametrize(
@@ -321,7 +328,9 @@ async def test_llm_call_receives_no_unset_config_field():
     ],
 )
 async def test_sampling_params_follow_the_routed_provider(provider, model, expected_sampling):
-    llm_config = LLMConfigData(model=model, temperature=0.5, top_p=0.9, reasoning_effort="high")
+    llm_config = LLMConfigData(
+        model=model, parameters={"temperature": 0.5, "top_p": 0.9, "reasoning_effort": "high"}
+    )
 
     config = await _model_config(LLMData(provider=provider, config=llm_config))
 
@@ -1356,7 +1365,7 @@ async def test_trigger_error_switches_to_fallback(error_type):
     assert result.stop_reason == "completed"
     assert result.final_text == "fallback answer"
     assert _called_models(llm) == [_PRIMARY_MODEL, _FALLBACK_MODEL]
-    assert llm.received_configs[1]["api_key"] == "key-b"
+    assert llm.received_configs[1]["connection"]["api_key"] == "key-b"
     assert emitter.llm_fallbacks == [(_PRIMARY_LLM, _FALLBACK_LLM, error_type.__name__)]
 
 

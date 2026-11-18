@@ -108,9 +108,8 @@ async def test_reasoning_model_with_tools_completes_through_the_responses_api(
         LLMConfigData(
             model="gpt-6-luna",
             api_key="sk-test",
-            base_url=base_url,
-            api_version=api_version,
-            reasoning_effort="high",
+            connection={"api_base": base_url, **({"api_version": api_version} if api_version else {})},
+            parameters={"reasoning_effort": "high"},
         ),
     )
     client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=RouterPool())

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 from domain.models import ChunkingConfig, SearchConfig
 
@@ -25,9 +26,14 @@ class RunIndex(Command):
     # Provider keys stay out of repr, so logging a command never writes them in cleartext.
     embedding_api_key: str = field(repr=False)
     llm_api_key: str | None = field(default=None, repr=False)
-    # Resolved header values can carry credentials; repr=False keeps them out of logs.
+    # Resolved header and connection values can carry credentials; repr=False keeps them
+    # out of logs. Connection arguments arrive under their LiteLLM names.
     embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
     llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_parameters: dict[str, Any] = field(default_factory=dict)
+    llm_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    llm_parameters: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -38,9 +44,14 @@ class RunSearch(Command):
     # Provider keys stay out of repr, so logging a command never writes them in cleartext.
     embedding_api_key: str = field(repr=False)
     llm_api_key: str | None = field(default=None, repr=False)
-    # Resolved header values can carry credentials; repr=False keeps them out of logs.
+    # Resolved header and connection values can carry credentials; repr=False keeps them
+    # out of logs. Connection arguments arrive under their LiteLLM names.
     embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
     llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_parameters: dict[str, Any] = field(default_factory=dict)
+    llm_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    llm_parameters: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
