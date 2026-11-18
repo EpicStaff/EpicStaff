@@ -258,7 +258,10 @@ describe('FlowVisualProgrammingComponent', () => {
     let component: FlowVisualProgrammingComponent;
     let flowService: FlowService;
     let flowsApi: Record<string, ReturnType<typeof vi.fn>>;
-    let unsavedChangesDialog: { confirm: ReturnType<typeof vi.fn>; confirmUnsavedChanges: ReturnType<typeof vi.fn> };
+    let unsavedChangesDialog: {
+        confirm: ReturnType<typeof vi.fn>;
+        confirmUnsavedFlowChanges: ReturnType<typeof vi.fn>;
+    };
     let toast: Record<string, ReturnType<typeof vi.fn>>;
     let paramMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
     let queryParamMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
@@ -302,7 +305,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 })
             ),
         };
-        unsavedChangesDialog = { confirm: vi.fn(), confirmUnsavedChanges: vi.fn() };
+        unsavedChangesDialog = { confirm: vi.fn(), confirmUnsavedFlowChanges: vi.fn() };
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() };
         runGraph = { runGraph: vi.fn(), runTestSession: vi.fn() };
         runSessionSse = { stopStream: vi.fn(), startStream: vi.fn() };
@@ -918,7 +921,7 @@ describe('FlowVisualProgrammingComponent', () => {
         it('saves only the live flow when leaving the page while previewing', () => {
             makeLiveFlowDirty();
             enterPreview();
-            unsavedChangesDialog.confirmUnsavedChanges.mockImplementation((onSave: () => Observable<boolean>) => {
+            unsavedChangesDialog.confirmUnsavedFlowChanges.mockImplementation((onSave: () => Observable<boolean>) => {
                 onSave().subscribe();
                 return of('save');
             });

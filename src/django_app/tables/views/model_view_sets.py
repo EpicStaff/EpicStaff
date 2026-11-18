@@ -1,4 +1,3 @@
-import json
 import math
 import uuid
 from dataclasses import asdict
@@ -9,7 +8,6 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import NOT_PROVIDED, Count, Exists, F, OuterRef, Prefetch, Q, Value
 from django.db.models.functions import Lower
-from django.http import HttpResponse
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import (
@@ -103,15 +101,8 @@ from tables.graph_versioning.serializers import (
 )
 from tables.graph_versioning.services import GraphVersioningService
 from tables.import_export.enums import EntityType
-from tables.import_export.export_format_strategies import apply_excluded_header
-from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportSettings
-from tables.import_export.services.partial_export_service import (
-    LIST_KEY_TO_ENTITY_TYPE,
-    GraphPartialExportService,
-    NodeRef,
-)
 from tables.import_export.services.partial_import_service import PartialImportService
 from tables.models import (
     AgentNode,
@@ -139,8 +130,13 @@ from tables.models import (
     StartNode,
     SubGraphNode,
     TaskNode,
+    TransferJob,
 )
-from tables.models.audit_filter_preset_models import AuditFilterPreset, AuditPresetDomain
+from tables.models.audit_filter_preset_models import (
+    AUDIT_PRESET_DOMAIN_RESOURCE_TYPES,
+    AuditFilterPreset,
+    AuditPresetDomain,
+)
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.flow_filter_preset_models import FlowFilterPreset
 from tables.models.graph_models import (
@@ -265,10 +261,15 @@ from tables.serializers.model_serializers.realtime_serializers import (
     TwilioAuthTokenSecretSerializer,
 )
 from tables.serializers.serializers import (
-    BulkExportSerializer,
     BulkIdsSerializer,
     GraphNodesPartialExportSerializer,
     ImportRequestSerializer,
+)
+from tables.serializers.transfer_job_serializers import (
+    ClassificationDecisionTableExportJobCreateSerializer,
+    ExportJobCreatedSerializer,
+    ExportJobCreateSerializer,
+    KnowledgeExportJobCreateSerializer,
 )
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.services.cdt_explain.service import CdtExplainService
@@ -293,7 +294,10 @@ from tables.services.delete_services import (
 )
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.graph_bulk_save_service.registry import TRIGGER_NODE_LIST_KEYS
-from tables.services.import_export_service import ViewSetImportExportService
+from tables.services.import_export_service import (
+    ViewSetImportExportService,
+    read_sync_import_envelope,
+)
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.services.recycle_bin.sources import RecycleBinSource
@@ -333,14 +337,14 @@ from tables.services.tools_usage_service import (
     get_mcp_tool_usage_detail,
     get_python_code_tool_usage_detail,
 )
+from tables.services.transfer_jobs.export_definitions import export_definition
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 from tables.services.twilio_service import TwilioService, TwilioServiceError
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.swagger_schemas.audit_filter_preset_schemas import (
     AUDIT_FILTER_PRESET_COPY,
     AUDIT_FILTER_PRESET_DOMAIN,
-    AUDIT_FILTER_PRESET_EXPORT_ALL,
-    AUDIT_FILTER_PRESET_EXPORT_ONE,
+    AUDIT_FILTER_PRESET_EXPORT_JOBS,
     AUDIT_FILTER_PRESET_IMPORT,
 )
 from tables.swagger_schemas.bulk_delete_schemas import (
@@ -369,16 +373,12 @@ from tables.swagger_schemas.partial_import_schemas import PARTIAL_IMPORT_SWAGGER
 from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
 from tables.swagger_schemas.tools_schemas import (
     MCP_TOOL_BULK_DELETE_POST,
-    MCP_TOOL_BULK_EXPORT_POST,
     MCP_TOOL_COPY_POST,
-    MCP_TOOL_EXPORT_GET,
     MCP_TOOL_FAVORITE_DELETE,
     MCP_TOOL_FAVORITE_POST,
     MCP_TOOL_IMPORT_POST,
     PYTHON_CODE_TOOL_BULK_DELETE_POST,
-    PYTHON_CODE_TOOL_BULK_EXPORT_POST,
     PYTHON_CODE_TOOL_COPY_POST,
-    PYTHON_CODE_TOOL_EXPORT_GET,
     PYTHON_CODE_TOOL_FAVORITE_DELETE,
     PYTHON_CODE_TOOL_FAVORITE_POST,
     PYTHON_CODE_TOOL_IMPORT_POST,
@@ -408,11 +408,13 @@ from tables.swagger_schemas.webhook_schemas import (
     WEBHOOK_TRIGGER_PARTIAL_UPDATE,
     WEBHOOK_TRIGGER_UPDATE,
 )
-from tables.utils.helpers import generate_file_name, natural_sort_key
+from tables.utils.helpers import natural_sort_key
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.views.mixins import (
+    EXPORT_JOB_THROTTLE_CLASSES,
     BulkDeleteActionMixin,
     CopyActionMixin,
+    ExportJobActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
     TriggerNodeUsePermissionMixin,
@@ -665,11 +667,13 @@ class ContentHashPreconditionMixin:
 @extend_schema_view(
     copy=extend_schema(**PYTHON_CODE_TOOL_COPY_POST),
     list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
+    export_jobs=extend_schema(request=ExportJobCreateSerializer),
 )
 class PythonCodeToolViewSet(
     SecretUseCheckedViewSetMixin,
     OrgScopedHybridViewSetMixin,
     CopyActionMixin,
+    ExportJobActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
     RecycleBinActionsMixin,
@@ -691,14 +695,14 @@ class PythonCodeToolViewSet(
         "usage": Permission.READ,
         "usage_detail": Permission.READ,
         "favorite": Permission.READ,
-        "export": Permission.EXPORT,
-        "bulk_export": Permission.EXPORT,
+        "export_jobs": Permission.EXPORT,
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
     }
     recycle_bin_resource_key = RecycleBinSource.PYTHON_TOOL
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
+    export_job_definition = export_definition(TransferJob.MainEntity.PYTHON_CODE_TOOL)
 
     copy_service_class = PythonCodeToolCopyService
     copy_serializer_class = PythonCodeToolSerializer
@@ -715,11 +719,7 @@ class PythonCodeToolViewSet(
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.PYTHON_CODE_TOOL,
-            export_prefix="python_code_tool",
-            filename_attr="name",
-        )
+        self.import_export_service = ViewSetImportExportService(EntityType.PYTHON_CODE_TOOL)
 
     def get_queryset(self):
         # Only a user has favorites; any other caller (a plugin service account,
@@ -805,39 +805,6 @@ class PythonCodeToolViewSet(
     def usage_detail(self, request, pk=None):
         return self._usage_detail_response(pk, get_python_code_tool_usage_detail, "PythonCodeTool")
 
-    @extend_schema(**PYTHON_CODE_TOOL_EXPORT_GET)
-    @action(detail=True, methods=["get"])
-    def export(self, request, pk: int):
-        return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id(), user=request.user
-        )
-
-    @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
-    @action(detail=False, methods=["post"], url_path="bulk-export")
-    @reads_only
-    def bulk_export(self, request):
-        serializer = BulkExportSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        entity_ids = serializer.validated_data["ids"]
-
-        # Built-in tools (org_id=None) are globally visible and must be
-        # exportable like any org's own tool, mirroring get_org_scope_q()
-        # used by the import/export strategy and the get_queryset() scoping
-        # that export/get_object() already relies on.
-        existing_ids = PythonCodeTool.objects.filter(
-            Q(built_in=True) | Q(org_id=self.get_active_org_id()),
-            id__in=entity_ids,
-        ).values_list("id", flat=True)
-        if len(existing_ids) != len(entity_ids):
-            return Response(
-                {"message": "Some entity IDs do not exist"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return self.import_export_service.bulk_export(
-            entity_ids, org_id=self.get_active_org_id(), user=request.user
-        )
-
     @extend_schema(**PYTHON_CODE_TOOL_IMPORT_POST)
     @action(detail=False, methods=["post"], url_path="import")
     def import_entity(self, request):
@@ -880,11 +847,13 @@ class PythonCodeResultReadViewSet(
 @extend_schema_view(
     bulk_delete=extend_schema(**GRAPH_BULK_DELETE_POST),
     copy=extend_schema(**GRAPH_COPY_POST),
+    export_jobs=extend_schema(request=KnowledgeExportJobCreateSerializer),
 )
 class GraphViewSet(
     OrgScopedViewSetMixin,
     BulkDeleteActionMixin,
     CopyActionMixin,
+    ExportJobActionMixin,
     InspectActionMixin,
     RecycleBinActionsMixin,
     viewsets.ModelViewSet,
@@ -895,9 +864,8 @@ class GraphViewSet(
         **DEFAULT_ACTION_MAP,
         **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
-        "export": Permission.EXPORT,
-        "bulk_export": Permission.EXPORT,
-        "partial_export": Permission.EXPORT,
+        "export_jobs": Permission.EXPORT,
+        "partial_export_jobs": Permission.EXPORT,
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
         "partial_import": Permission.UPDATE,
@@ -910,16 +878,15 @@ class GraphViewSet(
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
     delete_service_class = GraphDeleteService
+    export_job_definition = export_definition(TransferJob.MainEntity.FLOW)
+    export_job_request_serializer_class = KnowledgeExportJobCreateSerializer
 
     serializer_class = GraphSerializer
     filter_backends = [DjangoFilterBackend, LabelFilterBackend]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.GRAPH, export_prefix="graph", filename_attr="name"
-        )
-        self._partial_export_service = GraphPartialExportService(entity_registry)
+        self.import_export_service = ViewSetImportExportService(EntityType.GRAPH)
 
     def get_queryset(self):
         qs = (
@@ -1032,61 +999,33 @@ class GraphViewSet(
         if declared:
             secret_code_access.assert_user_may_recreate(request.user, instance.org_id, declared)
 
-    @action(detail=True, methods=["get"])
-    def export(self, request, pk: int):
-        return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id(), user=request.user
-        )
-
-    @action(detail=False, methods=["post"], url_path="bulk-export")
+    @extend_schema(
+        request=GraphNodesPartialExportSerializer,
+        responses={202: ExportJobCreatedSerializer},
+        description=(
+            "Queue an export of nodes of this flow (and of the edges between them) with "
+            "their dependencies. The job's archive holds `export.json`, which "
+            "`partial-import` takes. A node or edge id outside this flow's organization "
+            "fails the job as `not_found`."
+        ),
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="partial-export-jobs",
+        throttle_classes=EXPORT_JOB_THROTTLE_CLASSES,
+    )
     @reads_only
-    def bulk_export(self, request):
-        serializer = BulkExportSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        entity_ids = serializer.validated_data["ids"]
-
-        existing_ids = Graph.objects.filter(
-            id__in=entity_ids, org_id=self.get_active_org_id()
-        ).values_list("id", flat=True)
-        if len(existing_ids) != len(entity_ids):
-            return Response(
-                {"message": "Some entity IDs do not exist"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return self.import_export_service.bulk_export(
-            entity_ids, org_id=self.get_active_org_id(), user=request.user
-        )
-
-    @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
-    @action(detail=True, methods=["post"], url_path="partial-export")
-    @reads_only
-    def partial_export(self, request, pk=None):
+    def partial_export_jobs(self, request, pk=None):
+        author = self.export_job_author()
         serializer = GraphNodesPartialExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         graph = self.get_object()
-        node_refs = [
-            NodeRef(entity_type=entity_type, node_id=node_id)
-            for list_key, entity_type in LIST_KEY_TO_ENTITY_TYPE.items()
-            for node_id in serializer.validated_data.get(list_key, [])
-        ]
-
-        result = self._partial_export_service.export(
-            node_refs,
-            org_id=graph.org_id,
-            edge_ids=serializer.validated_data.get("edge_list", []),
-            policy=ExportAccessPolicy.for_user(request.user, self.get_active_org_id()),
+        return self.start_export_job(
+            author,
+            export_definition(TransferJob.MainEntity.FLOW_NODES),
+            {**serializer.validated_data, "ids": [graph.pk]},
         )
-
-        if result.has_errors:
-            return Response({"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST)
-
-        filename = generate_file_name(f"nodes_{graph.name}", prefix="graph_nodes")
-        response = HttpResponse(json.dumps(result.data, indent=4), content_type="application/json")
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        apply_excluded_header(response, result.excluded)
-        return response
 
     @extend_schema(
         request={"multipart/form-data": ImportRequestSerializer},
@@ -1125,14 +1064,10 @@ class GraphViewSet(
         file_serializer = ImportRequestSerializer(data=request.data)
         file_serializer.is_valid(raise_exception=True)
 
-        try:
-            data = json.load(file_serializer.validated_data["file"])
-        except (json.JSONDecodeError, UnicodeDecodeError, Exception) as e:
-            raise DRFValidationError(
-                {"detail": "File format is incorrect. Please upload a valid JSON file."}
-            ) from e
-
         graph = self.get_object()
+        data = read_sync_import_envelope(file_serializer.validated_data["file"])
+        if not isinstance(data, dict):
+            raise DRFValidationError("Invalid import file: expected a JSON object")
         org_id = self.get_active_org_id()
         effective_permissions = PermissionResolver().resolve(user=request.user, org_id=org_id)
         partial_import_service = PartialImportService(entity_registry)
@@ -2410,14 +2345,20 @@ class DecisionTableNodeModelViewSet(
         node.save()
 
 
+@extend_schema_view(
+    export_jobs=extend_schema(request=ClassificationDecisionTableExportJobCreateSerializer),
+)
 class ClassificationDecisionTableNodeModelViewSet(
-    OrgScopedChildViewSetMixin, LastEditDestroyViewSetMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
+    ExportJobActionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
-        "export": Permission.EXPORT,
+        "export_jobs": Permission.EXPORT,
         "explain": Permission.READ,
         "explanations": Permission.UPDATE,
     }
@@ -2432,6 +2373,10 @@ class ClassificationDecisionTableNodeModelViewSet(
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph"]
+    export_job_definition = export_definition(
+        TransferJob.MainEntity.CLASSIFICATION_DECISION_TABLE_NODE
+    )
+    export_job_request_serializer_class = ClassificationDecisionTableExportJobCreateSerializer
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2454,36 +2399,6 @@ class ClassificationDecisionTableNodeModelViewSet(
             request=request,
         )
         return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
-
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="export_format",
-                type=OpenApiTypes.STR,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                enum=["json", "csv"],
-                description="Export format. Defaults to 'json'.",
-            )
-        ],
-        responses={200: OpenApiTypes.BINARY},
-    )
-    @action(detail=True, methods=["get"], url_path="export")
-    def export(self, request, pk=None):
-        export_format = request.query_params.get("export_format", "json")
-        result = self._node_service.export(
-            pk=pk,
-            export_format=export_format,
-            org_id=self.get_active_org_id(),
-            user=request.user,
-        )
-        if result.errors is not None:
-            return Response({"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST)
-
-        response = HttpResponse(result.content, content_type=result.content_type)
-        response["Content-Disposition"] = f'attachment; filename="{result.filename}"'
-        apply_excluded_header(response, result.excluded)
-        return response
 
     @extend_schema(
         request=CdtExplainRequestSerializer,
@@ -2545,11 +2460,13 @@ class ClassificationDecisionTableNodeModelViewSet(
 @extend_schema_view(
     copy=extend_schema(**MCP_TOOL_COPY_POST),
     list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
+    export_jobs=extend_schema(request=ExportJobCreateSerializer),
 )
 class McpToolViewSet(
     SecretUseCheckedViewSetMixin,
     OrgScopedViewSetMixin,
     CopyActionMixin,
+    ExportJobActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
     RecycleBinActionsMixin,
@@ -2566,11 +2483,11 @@ class McpToolViewSet(
         "usage": Permission.READ,
         "usage_detail": Permission.READ,
         "favorite": Permission.READ,
-        "export": Permission.EXPORT,
-        "bulk_export": Permission.EXPORT,
+        "export_jobs": Permission.EXPORT,
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
     }
+    export_job_definition = export_definition(TransferJob.MainEntity.MCP_TOOL)
     # Copy stays ungated on purpose: the copy keeps the source's auth secret and
     # transport, and any later edit of the copy goes through the secret Use check.
     copy_service_class = McpToolCopyService
@@ -2586,11 +2503,7 @@ class McpToolViewSet(
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.MCP_TOOL,
-            export_prefix="mcp_tool",
-            filename_attr="name",
-        )
+        self.import_export_service = ViewSetImportExportService(EntityType.MCP_TOOL)
 
     def get_queryset(self):
         # Only a user has favorites; any other caller (a plugin service account,
@@ -2680,34 +2593,6 @@ class McpToolViewSet(
     @action(detail=True, methods=["get"], url_path="usage-detail")
     def usage_detail(self, request, pk=None):
         return self._usage_detail_response(pk, get_mcp_tool_usage_detail, "McpTool")
-
-    @extend_schema(**MCP_TOOL_EXPORT_GET)
-    @action(detail=True, methods=["get"])
-    def export(self, request, pk: int):
-        return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id(), user=request.user
-        )
-
-    @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
-    @action(detail=False, methods=["post"], url_path="bulk-export")
-    @reads_only
-    def bulk_export(self, request):
-        serializer = BulkExportSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        entity_ids = serializer.validated_data["ids"]
-
-        existing_ids = McpTool.objects.filter(
-            id__in=entity_ids, org_id=self.get_active_org_id()
-        ).values_list("id", flat=True)
-        if len(existing_ids) != len(entity_ids):
-            return Response(
-                {"message": "Some entity IDs do not exist"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return self.import_export_service.bulk_export(
-            entity_ids, org_id=self.get_active_org_id(), user=request.user
-        )
 
     @extend_schema(**MCP_TOOL_IMPORT_POST)
     @action(detail=False, methods=["post"], url_path="import")
@@ -3078,12 +2963,13 @@ class SecretViewSet(
 
 
 @extend_schema(**AUDIT_FILTER_PRESET_DOMAIN)
-class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+@extend_schema_view(export_jobs=extend_schema(**AUDIT_FILTER_PRESET_EXPORT_JOBS))
+class AuditFilterPresetViewSet(OrgScopedViewSetMixin, ExportJobActionMixin, viewsets.ModelViewSet):
     """
     Saved audit-search filters of the active org, each private to its author
-    or shared with the org. list, retrieve, export, bulk_export and copy see
-    the caller's own presets plus every shared one; a colleague's private
-    preset 404s there exactly like a preset of another org (bulk_export 400s).
+    or shared with the org. list, retrieve, export_jobs and copy see the
+    caller's own presets plus every shared one; a colleague's private preset
+    404s there exactly like a preset of another org.
     Only the author can update or delete - for those actions get_queryset
     narrows to `created_by=request.user`. A copy belongs to whoever made it.
     The author may share a preset (`is_shared: true`); un-sharing is rejected
@@ -3104,10 +2990,6 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
     # Presets belong to a person, so a plugin service account never reaches them.
     permission_classes = [IsAuthenticated, DenyPluginCredential, HasOrgPermission]
-    _domain_resource_types = {
-        AuditPresetDomain.SESSIONS: ResourceType.AUDIT,
-        AuditPresetDomain.USER_ACTIONS: ResourceType.USER_AUDIT,
-    }
     rbac_action_map = {
         "list": Permission.READ,
         "retrieve": Permission.READ,
@@ -3116,25 +2998,16 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         "partial_update": Permission.READ,
         "destroy": Permission.READ,
         "copy": Permission.READ,
-        "export": Permission.READ,
-        # NOTE: the DRF action name is the Python method name ("bulk_export"),
-        # not the url_path ("export") - HasOrgPermission looks this map up by
-        # view.action, so a key of "export_all" here never matched and every
-        # non-superadmin bulk-export request 403'd (masked in manual testing
-        # by the superadmin bypass in HasOrgPermission.has_permission).
-        "bulk_export": Permission.READ,
+        "export_jobs": Permission.READ,
         "import_presets": Permission.READ,
     }
     queryset = AuditFilterPreset.objects.select_related("created_by")
     serializer_class = AuditFilterPresetSerializer
+    export_job_definition = export_definition(TransferJob.MainEntity.AUDIT_FILTER_PRESET)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.AUDIT_FILTER_PRESET,
-            export_prefix="audit_filter_preset",
-            filename_attr="name",
-        )
+        self.import_export_service = ViewSetImportExportService(EntityType.AUDIT_FILTER_PRESET)
 
     _author_only_actions = frozenset({"update", "partial_update", "destroy"})
 
@@ -3151,10 +3024,13 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     def rbac_resource_type(self) -> ResourceType:
         # Read by HasOrgPermission before anything else, so an invalid domain 400s
         # before any permission or data lookup.
-        return self._domain_resource_types[self.domain]
+        return AUDIT_PRESET_DOMAIN_RESOURCE_TYPES[self.domain]
 
     def get_serializer_context(self):
         return {**super().get_serializer_context(), "domain": self.domain}
+
+    def export_job_data(self, validated_data: dict) -> dict:
+        return {**validated_data, "domain": self.domain}
 
     def get_queryset(self):
         queryset = super().get_queryset().filter(domain=self.domain)
@@ -3177,32 +3053,6 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         )
         record_copy(preset, clone)
         return Response(self.get_serializer(clone).data, status=201)
-
-    @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ONE)
-    @action(detail=True, methods=["get"])
-    def export(self, request, pk=None):
-        return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id(), user=request.user
-        )
-
-    @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ALL)
-    @action(detail=False, methods=["post"], url_path="export")
-    @reads_only
-    def bulk_export(self, request):
-        serializer = BulkExportSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ids = serializer.validated_data["ids"]
-
-        presets = list(self.get_queryset().filter(id__in=ids))
-        if len(presets) != len(ids):
-            return Response(
-                {"message": "Some entity IDs do not exist"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return self.import_export_service.bulk_export(
-            ids, org_id=self.get_active_org_id(), user=request.user
-        )
 
     @extend_schema(**AUDIT_FILTER_PRESET_IMPORT)
     @action(detail=False, methods=["post"], url_path="import")

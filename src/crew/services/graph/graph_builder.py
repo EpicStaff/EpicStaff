@@ -1,4 +1,5 @@
 from clients.key_value import KeyValueClient
+from foundation.cryptographer import AbstractCryptographer
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -48,6 +49,7 @@ class SessionGraphBuilder:
         python_code_executor_service: RunPythonCodeService,
         knowledge_search_service: KnowledgeSearchService,
         stop_event: StopEvent,
+        secrets_cryptographer: AbstractCryptographer,
         agent_task_service: AgentTaskService | None = None,
         key_value_client: KeyValueClient | None = None,
     ):
@@ -58,6 +60,8 @@ class SessionGraphBuilder:
             session_id (int): The unique identifier for the session.
             redis_service (RedisService): The service responsible for Redis operations.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
+            secrets_cryptographer (AbstractCryptographer): Decrypts the transport-sealed secrets of
+                the nodes that call an LLM from crew itself (Classification Decision Table prompts).
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice. Required if the graph schema contains task nodes.
             key_value_client (KeyValueClient | None): The client used by KeyValueNode to read/write/delete
@@ -70,6 +74,7 @@ class SessionGraphBuilder:
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
         self.key_value_client = key_value_client
+        self.secrets_cryptographer = secrets_cryptographer
         self.remembered_outputs_store = RememberedOutputsStore(redis_service=redis_service)
 
         self._graph_builder = StateGraph(State)
@@ -133,6 +138,7 @@ class SessionGraphBuilder:
             node_data=node_data,
             graph_builder=subgraph_builder,
             stop_event=self.stop_event,
+            secrets_cryptographer=self.secrets_cryptographer,
             redis_service=self.redis_service,
             storage_credentials=storage_credentials,
             storage_credentials_by_grant=storage_credentials_by_grant or {},

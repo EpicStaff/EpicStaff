@@ -3,11 +3,12 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActionCode, GetMeResponse, NodeType, ResourceCode } from '@shared/models';
 
+import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { CreateNodeRequest } from '../../../core/models/node-creation.types';
 import { FlowService } from '../../../services/flow.service';
-import { KeymapService, PLATFORM_IS_MAC } from '../../../services/keymap.service';
+import { KeymapService } from '../../../services/keymap.service';
 import { mapGraphDtoToFlowModel } from '../../../utils/load/map-graph-dto-to-flow-model';
 import { liveGraph } from '../../../utils/testing/live-graph.fixture';
 import {

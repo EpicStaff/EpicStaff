@@ -2,8 +2,10 @@
 lists, creates, copies, exports and imports the session-audit presets under
 AUDIT:read, `?domain=user_actions` the user-action presets under USER_AUDIT:read.
 A preset of one domain is invisible from the other, names are unique per domain,
-and an invalid domain is a 400 before any data is read."""
+and an invalid domain is a 400 before any data is read. An export job keeps its
+domain: the job runner and the archive's download check that domain's read right."""
 
+import io
 import json
 
 import pytest
@@ -11,10 +13,16 @@ from django.urls import reverse
 
 from rbac.models import OrganizationUser
 from rbac.models.enums import Permission, ResourceType
+from rbac.models.role import RolePermission
 from tables.import_export.enums import EntityType
+from tables.models import TransferJob
 from tables.models.audit_filter_preset_models import AuditFilterPreset
+from tables.services.transfer_jobs.archive_store import TransferArchiveStore
+from tables.views import transfer_job_views
 from tests.helpers import data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.storage_backend_fake import FakeStorageBackend
+from tests.transfer_job_helpers import FinishedExport, export_via_job, run_job
 
 SESSIONS = "sessions"
 USER_ACTIONS = "user_actions"
@@ -75,6 +83,17 @@ def _detail_url(preset, domain):
 def _items(response):
     body = response.json()
     return body["results"] if isinstance(body, dict) else body
+
+
+def _export_jobs_url(domain):
+    return _with_domain(reverse("auditfilterpreset-export-jobs"), domain)
+
+
+def _export(client, preset, domain) -> FinishedExport:
+    """Export `preset` through a job of `domain`, run it, and expect it to complete."""
+    exported = export_via_job(client, _export_jobs_url(domain), {"ids": [preset.id]})
+    assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+    return exported
 
 
 def _import(client, entries, domain=None):
@@ -285,26 +304,22 @@ class TestImportExportPerDomain:
     def test_export_carries_the_domain(self, author_client, acme, admin_acme):
         preset = _preset(acme, admin_acme, "deletes", USER_ACTIONS)
 
-        response = author_client.get(
-            _with_domain(reverse("auditfilterpreset-export", kwargs={"pk": preset.id}), USER_ACTIONS)
-        )
+        exported = _export(author_client, preset, USER_ACTIONS)
 
-        assert response.status_code == 200
-        [entry] = json.loads(response.content)[EntityType.AUDIT_FILTER_PRESET]
+        assert exported.job.request == {"ids": [preset.id], "domain": USER_ACTIONS}
+        [entry] = exported.envelope[EntityType.AUDIT_FILTER_PRESET]
         assert entry["domain"] == USER_ACTIONS
 
     def test_exported_user_actions_file_imports_into_another_org_in_user_actions(
         self, author_client, client_as, admin_beta, beta, acme, admin_acme
     ):
         preset = _preset(acme, admin_acme, "deletes", USER_ACTIONS, filter_body={"query": "x"})
-        exported = author_client.get(
-            _with_domain(reverse("auditfilterpreset-export", kwargs={"pk": preset.id}), USER_ACTIONS)
-        )
+        exported = _export(author_client, preset, USER_ACTIONS)
         beta_client = _client_in_org(client_as, admin_beta, beta)
 
         response = beta_client.post(
             _with_domain(reverse("auditfilterpreset-import-presets"), USER_ACTIONS),
-            {"file": data_to_json_file(json.loads(exported.content), "export.json")},
+            {"file": exported.upload()},
             format="multipart",
         )
 
@@ -381,3 +396,115 @@ class TestImportExportPerDomain:
 
         assert response.status_code == 400
         assert not AuditFilterPreset.objects.exists()
+
+
+@pytest.mark.django_db
+class TestExportJobPerDomain:
+    """The domain an export job starts in decides which presets it may hold and which read
+    right starting it, running it and downloading its archive need."""
+
+    @pytest.mark.parametrize(
+        ("preset_domain", "request_domain"),
+        [(SESSIONS, USER_ACTIONS), (USER_ACTIONS, SESSIONS)],
+    )
+    def test_a_preset_of_another_domain_is_not_found_and_queues_nothing(
+        self, author_client, acme, admin_acme, preset_domain, request_domain
+    ):
+        own = _preset(acme, admin_acme, "own", request_domain)
+        other = _preset(acme, admin_acme, "other domain", preset_domain)
+
+        alone = author_client.post(
+            _export_jobs_url(request_domain), {"ids": [other.id]}, format="json"
+        )
+        mixed = author_client.post(
+            _export_jobs_url(request_domain), {"ids": [own.id, other.id]}, format="json"
+        )
+
+        # The same 404 as for another org's preset: nothing tells the domains apart.
+        for response in (alone, mixed):
+            assert response.status_code == 404, response.content
+            assert response.json()["code"] == "export_entities_not_found"
+        assert not TransferJob.objects.exists()
+
+    def test_a_user_audit_reader_exports_and_downloads_user_actions_presets(
+        self, client_as, custom_role_user, acme, monkeypatch
+    ):
+        user = custom_role_user(
+            acme, "user-audit-reader@example.com", {ResourceType.USER_AUDIT: Permission.READ}
+        )
+        preset = _preset(acme, user, "deletes", USER_ACTIONS)
+        client = _client_in_org(client_as, user, acme)
+        refused = client.post(_export_jobs_url(SESSIONS), {"ids": [preset.id]}, format="json")
+
+        exported = _export(client, preset, USER_ACTIONS)
+        backend = FakeStorageBackend()
+        backend.objects[exported.job.archive_key] = exported.archive
+        monkeypatch.setattr(
+            transfer_job_views, "TransferArchiveStore", lambda: TransferArchiveStore(backend=backend)
+        )
+        download = client.get(f"/api/transfer-jobs/{exported.job.id}/download/")
+
+        assert refused.status_code == 403
+        assert download.status_code == 200, download.content
+        assert b"".join(download.streaming_content) == exported.archive
+
+    def test_the_runner_checks_the_jobs_domain_right_not_audit(
+        self, client_as, custom_role_user, acme
+    ):
+        user = custom_role_user(
+            acme, "user-audit-revoked@example.com", {ResourceType.USER_AUDIT: Permission.READ}
+        )
+        preset = _preset(acme, user, "deletes", USER_ACTIONS)
+        response = _client_in_org(client_as, user, acme).post(
+            _export_jobs_url(USER_ACTIONS), {"ids": [preset.id]}, format="json"
+        )
+        assert response.status_code == 202, response.content
+        # The creator keeps reading sessions audit but no longer user actions.
+        RolePermission.objects.filter(role__organization_users__user=user).update(
+            resource_type=ResourceType.AUDIT
+        )
+
+        exported = run_job(response.json()["job_id"])
+
+        assert (exported.job.status, exported.job.error["code"]) == (
+            TransferJob.Status.FAILED,
+            "permission_denied",
+        )
+        assert exported.members == {}
+
+    def test_the_download_checks_the_jobs_domain_right_not_audit(
+        self, client_as, custom_role_user, acme, monkeypatch
+    ):
+        user = custom_role_user(
+            acme, "user-audit-download@example.com", {ResourceType.USER_AUDIT: Permission.READ}
+        )
+        job = TransferJob.objects.create(
+            org=acme,
+            created_by=user,
+            kind=TransferJob.Kind.EXPORT,
+            main_entity=TransferJob.MainEntity.AUDIT_FILTER_PRESET,
+            status=TransferJob.Status.COMPLETED,
+            request={"ids": [1], "domain": USER_ACTIONS},
+            file_name="presets.zip",
+        )
+        backend = FakeStorageBackend()
+        job.archive_key = TransferArchiveStore(backend=backend).upload_file(
+            job.id, "export.zip", io.BytesIO(b"zip")
+        )
+        job.save(update_fields=["archive_key"])
+        monkeypatch.setattr(
+            transfer_job_views, "TransferArchiveStore", lambda: TransferArchiveStore(backend=backend)
+        )
+        client = _client_in_org(client_as, user, acme)
+        allowed = client.get(f"/api/transfer-jobs/{job.id}/download/")
+        RolePermission.objects.filter(role__organization_users__user=user).update(
+            resource_type=ResourceType.AUDIT
+        )
+
+        refused = client.get(f"/api/transfer-jobs/{job.id}/download/")
+        refused_ticket = client.post(f"/api/transfer-jobs/{job.id}/download-ticket/")
+
+        assert allowed.status_code == 200
+        assert b"".join(allowed.streaming_content) == b"zip"
+        assert refused.status_code == 403
+        assert refused_ticket.status_code == 403

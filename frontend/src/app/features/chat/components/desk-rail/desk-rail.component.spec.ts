@@ -67,7 +67,6 @@ function createDesksStorage() {
 
 describe('DeskRailComponent', () => {
     let fixture: ComponentFixture<DeskRailComponent>;
-    let navigate: ReturnType<typeof vi.spyOn>;
     let canCreate: boolean;
     let desksStorage: ReturnType<typeof createDesksStorage>;
     const bindingActions = { create: vi.fn<() => Observable<ChatBinding | null>>() };
@@ -126,7 +125,6 @@ describe('DeskRailComponent', () => {
                 },
             ],
         });
-        navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     });
 
     afterEach(() => {
@@ -154,7 +152,7 @@ describe('DeskRailComponent', () => {
     it('names each entry in words through its avatar, with the status and the people waiting', () => {
         render({ 'b-1': 2, 'b-2': 1 });
         expect(linkNames()).toEqual([
-            'All desks, 3 waiting for a person',
+            'All desks',
             'Billing desk, Broken',
             'Sales desk, Paused, 1 waiting for a person',
             'Support desk, Live, 2 waiting for a person',
@@ -165,10 +163,10 @@ describe('DeskRailComponent', () => {
             .forEach((node) => expect(node.getAttribute('aria-hidden')).toBe('true'));
     });
 
-    it('shows each count beside the name in the list, All desks the total, capped at 99+', () => {
+    it('shows the count of each desk beside its name, capped at 99+, and none on All desks', () => {
         render({ 'b-1': 120, 'b-2': 4 });
         const badges = links().map((link) => link.querySelector('.desk-rail__badge')?.textContent ?? null);
-        expect(badges).toEqual(['99+', null, '4', '99+']);
+        expect(badges).toEqual([null, null, '4', '99+']);
         // Not twice: the avatars draw no badge of their own in the list.
         expect(host().querySelector('.desk-avatar__badge')).toBeNull();
     });
@@ -288,21 +286,11 @@ describe('DeskRailComponent', () => {
         expect(newDesk()).toBeNull();
     });
 
-    it('reloads the desks and opens a created desk', () => {
-        render();
-        bindingActions.create.mockReturnValueOnce(of(desk({ id: 'b-9', name: 'New' })));
-        newDesk()!.click();
-        expect(bindingActions.create).toHaveBeenCalled();
-        expect(desksStorage.reload).toHaveBeenCalledTimes(1);
-        expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'b-9']);
-    });
-
-    it('still reloads but stays put when the create dialog closes without a desk', () => {
+    it('opens the create dialog through the shared desk actions', () => {
         render();
         bindingActions.create.mockReturnValueOnce(of(null));
         newDesk()!.click();
-        expect(desksStorage.reload).toHaveBeenCalledTimes(1);
-        expect(navigate).not.toHaveBeenCalled();
+        expect(bindingActions.create).toHaveBeenCalledTimes(1);
     });
 
     it('is listed with names, and names its toggle after hiding them', () => {
@@ -332,10 +320,9 @@ describe('DeskRailComponent', () => {
         expect(toggles).toEqual([1, 1]);
     });
 
-    it('draws the badges on the avatars when compact', () => {
+    it('draws the badges on the desk avatars when compact, none on All desks', () => {
         render({ 'b-1': 2 }, 'rail', true);
         expect(Array.from(host().querySelectorAll('.desk-avatar__badge')).map((badge) => badge.textContent)).toEqual([
-            '2',
             '2',
         ]);
         expect(host().querySelector('.desk-rail__badge')).toBeNull();

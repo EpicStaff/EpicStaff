@@ -1,14 +1,16 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { signal } from '@angular/core';
+import { Provider, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { LabelColor, LabelDto } from '@shared/models';
-import { of } from 'rxjs';
+import { ExportOptions, LabelColor, LabelDto } from '@shared/models';
+import { ExportOptionsDialogService } from '@shared/services';
+import { EMPTY, Observable, of } from 'rxjs';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { ToastService } from '../../../services/notifications';
+import { storedZip } from '../../../shared/utils/read-export-envelope.testing';
 import { AgentDefinition, CreateAgentDefinitionRequest } from '../models/agent-definition.model';
 import { Surface } from '../models/surface.model';
 import { BranchTreeNode, ExplorerGroupBlock } from '../models/tree-node.model';
@@ -302,106 +304,6 @@ describe('AgentsPageStore deleteGroup', () => {
     );
 });
 
-describe('AgentsPageStore agent export', () => {
-    let downloads: string[];
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
-
-    beforeEach(() => {
-        downloads = [];
-        URL.createObjectURL = () => 'blob:agents';
-        URL.revokeObjectURL = () => undefined;
-        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-            downloads.push(this.download);
-        });
-    });
-
-    afterEach(() => {
-        URL.createObjectURL = originalCreateObjectURL;
-        URL.revokeObjectURL = originalRevokeObjectURL;
-        vi.restoreAllMocks();
-    });
-
-    /** The store over three agents, with the export endpoints and the toast spied on. */
-    function exportStore() {
-        const store = loadStore({ agents: [agent(1, 'Alpha', null), agent(2, 'Beta', null), agent(3, 'Gamma', null)] });
-        const exported = of({ blob: new Blob(['{}']), excluded: [] });
-        const api = Object.assign(TestBed.inject(AgentDefinitionsApiService), {
-            exportAgent: vi.fn(() => exported),
-            bulkExportAgents: vi.fn(() => exported),
-        });
-        const toast = Object.assign(TestBed.inject(ToastService), { info: vi.fn() });
-        return { store, api, toast };
-    }
-
-    it('starts every export with nothing ticked', () => {
-        const { store } = exportStore();
-        store.toggleAgentSelection(1);
-
-        store.startAgentExport();
-
-        expect(store.agentExportMode()).toBe(true);
-        expect(store.selectedAgentIds().size).toBe(0);
-    });
-
-    it('sends only the ticked agents that still exist, downloads one file and leaves export mode', () => {
-        const { store, api } = exportStore();
-        store.startAgentExport();
-        store.toggleAgentSelection(1);
-        store.toggleAgentSelection(3);
-        store.toggleAgentSelection(99);
-
-        store.confirmAgentExport();
-
-        expect(api.bulkExportAgents).toHaveBeenCalledExactlyOnceWith([1, 3]);
-        expect(downloads).toHaveLength(1);
-        expect(downloads[0]).toMatch(/^agents_export_\d+\.json$/);
-        expect(store.agentExportMode()).toBe(false);
-        expect(store.selectedAgentIds().size).toBe(0);
-    });
-
-    it('asks for a ticked agent instead of exporting nothing, and stays in export mode', () => {
-        const { store, api, toast } = exportStore();
-        store.startAgentExport();
-
-        store.confirmAgentExport();
-
-        expect(api.bulkExportAgents).not.toHaveBeenCalled();
-        expect(toast.info).toHaveBeenCalledExactlyOnceWith('Select at least one agent to export.');
-        expect(store.agentExportMode()).toBe(true);
-    });
-
-    it('ticks every agent on Select all, and clears them on the next one', () => {
-        const { store } = exportStore();
-        store.startAgentExport();
-
-        store.toggleSelectAllAgents();
-        expect(store.allAgentsSelected()).toBe(true);
-        expect([...store.selectedAgentIds()]).toEqual([1, 2, 3]);
-
-        store.toggleSelectAllAgents();
-        expect(store.selectedAgentIds().size).toBe(0);
-    });
-
-    it('exports one agent into a file named after it', () => {
-        const { store, api } = exportStore();
-
-        store.exportAgent(2);
-
-        expect(api.exportAgent).toHaveBeenCalledExactlyOnceWith(2);
-        expect(downloads).toEqual(['agent_Beta.json']);
-    });
-
-    it('exports nothing for an agent that is no longer in the list', () => {
-        const { store, api } = exportStore();
-
-        store.exportAgent(99);
-
-        expect(api.exportAgent).not.toHaveBeenCalled();
-        expect(downloads).toEqual([]);
-    });
-});
-
 const AGENTS_URL = '/api/agent-definitions/';
 const SURFACES_URL = '/api/surfaces/';
 const GROUPS_URL = '/api/agent-labels/';
@@ -440,7 +342,7 @@ function agentOf(id: number, name: string): AgentDefinition {
 }
 
 /** The real store and its real API services, over a fake HTTP backend. */
-function storeOverFakeBackend(): { store: AgentsPageStore; backend: HttpTestingController } {
+function storeOverFakeBackend(providers: Provider[] = []): { store: AgentsPageStore; backend: HttpTestingController } {
     TestBed.configureTestingModule({
         providers: [
             provideHttpClient(),
@@ -449,6 +351,7 @@ function storeOverFakeBackend(): { store: AgentsPageStore; backend: HttpTestingC
             AgentsPageStore,
             // Only reloaded after a failed surface save, which these tests never make.
             { provide: SurfaceCatalogsStore, useValue: {} },
+            ...providers,
         ],
     });
     return { store: TestBed.inject(AgentsPageStore), backend: TestBed.inject(HttpTestingController) };
@@ -618,5 +521,318 @@ describe('AgentsPageStore duplicateAgent', () => {
         expect(toast.error).not.toHaveBeenCalled();
         expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
         expect(store.saving()).toBe(false);
+    });
+});
+
+describe('AgentsPageStore agent export', () => {
+    const EXPORT_JOBS_URL = `${AGENTS_URL}export-jobs/`;
+    const JOB_URL = '/api/transfer-jobs/job-1/';
+    const DOWNLOAD_URL = '/api/transfer-jobs/job-1/download/?ticket=t-1';
+    let store: AgentsPageStore;
+    let backend: HttpTestingController;
+    let toast: ToastService;
+    let downloads: string[];
+    /** What the export options dialog answers; the user exports with knowledge unless a test says otherwise. */
+    let exportOptionsAnswer: Observable<ExportOptions>;
+    let exportOptionsAsked: { count: number; plural: string }[];
+
+    beforeEach(() => {
+        downloads = [];
+        exportOptionsAnswer = of({ includeKnowledge: true });
+        exportOptionsAsked = [];
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            downloads.push(this.href);
+        });
+        ({ store, backend } = storeOverFakeBackend([
+            {
+                provide: ExportOptionsDialogService,
+                useValue: {
+                    ask: (count: number, labels: { plural: string }) => {
+                        exportOptionsAsked.push({ count, plural: labels.plural });
+                        return exportOptionsAnswer;
+                    },
+                },
+            },
+        ]));
+        toast = TestBed.inject(ToastService);
+        vi.spyOn(toast, 'info');
+        vi.spyOn(toast, 'error');
+        vi.spyOn(toast, 'warning');
+        loadPage(store, backend, [agentOf(1, 'Alpha'), agentOf(2, 'Beta'), agentOf(3, 'Gamma')]);
+    });
+
+    afterEach(() => {
+        backend.verify();
+        vi.restoreAllMocks();
+    });
+
+    /** The server accepts the export job; returns the ids it was asked to export. */
+    function acceptExportJob(): unknown {
+        const start = backend.expectOne({ method: 'POST', url: EXPORT_JOBS_URL });
+        start.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+        return start.request.body;
+    }
+
+    /** The job completes with `excluded` left out, and the server hands out a download ticket for its archive. */
+    async function finishExportJob(excluded: { entity_type: string; entity_id: number; name: string | null }[] = []) {
+        (await vi.waitFor(() => backend.expectOne(JOB_URL))).flush({
+            id: 'job-1',
+            kind: 'export',
+            main_entity: 'AgentDefinition',
+            status: 'completed',
+            display_name: 'Beta',
+            file_name: 'agent_Beta_2026-11-16.zip',
+            result: { excluded },
+            error: null,
+            created_at: '2026-11-16T10:00:00Z',
+            finished_at: '2026-11-16T10:01:00Z',
+            expires_at: null,
+        });
+        backend
+            .expectOne({ method: 'POST', url: '/api/transfer-jobs/job-1/download-ticket/' })
+            .flush({ download_url: DOWNLOAD_URL });
+    }
+
+    it('starts every export with nothing ticked', () => {
+        store.toggleAgentSelection(1);
+
+        store.startAgentExport();
+
+        expect(store.agentExportMode()).toBe(true);
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('ticks every agent on Select all, and clears them on the next one', () => {
+        store.startAgentExport();
+
+        store.toggleSelectAllAgents();
+        expect(store.allAgentsSelected()).toBe(true);
+        expect([...store.selectedAgentIds()]).toEqual([1, 2, 3]);
+
+        store.toggleSelectAllAgents();
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('exports only the ticked agents that still exist in one job, leaves export mode and downloads the archive', async () => {
+        store.startAgentExport();
+        store.toggleAgentSelection(1);
+        store.toggleAgentSelection(3);
+        store.toggleAgentSelection(99);
+
+        store.confirmAgentExport();
+
+        expect(exportOptionsAsked).toEqual([{ count: 2, plural: 'agents' }]);
+        expect(acceptExportJob()).toEqual({ ids: [1, 3], include_knowledge: true });
+        expect(store.agentExportMode()).toBe(false);
+        expect(store.selectedAgentIds().size).toBe(0);
+        await finishExportJob();
+        expect(downloads).toEqual([expect.stringContaining(DOWNLOAD_URL)]);
+    });
+
+    it('exports the agents without their knowledge when the user clears it', () => {
+        exportOptionsAnswer = of({ includeKnowledge: false });
+
+        store.exportAgent(2);
+
+        const start = backend.expectOne({ method: 'POST', url: EXPORT_JOBS_URL });
+        expect(start.request.body).toEqual({ ids: [2], include_knowledge: false });
+        // Refused, so no job is polled after the test.
+        start.flush(
+            { status_code: 429, code: 'too_many_jobs', message: 'Busy.' },
+            { status: 429, statusText: 'Too Many Requests' }
+        );
+    });
+
+    it('exports nothing and keeps export mode and the ticks when the user cancels the export options', () => {
+        exportOptionsAnswer = EMPTY;
+        store.startAgentExport();
+        store.toggleAgentSelection(2);
+
+        store.confirmAgentExport();
+
+        backend.expectNone(EXPORT_JOBS_URL);
+        expect(store.agentExportMode()).toBe(true);
+        expect([...store.selectedAgentIds()]).toEqual([2]);
+    });
+
+    it('asks for a ticked agent instead of exporting nothing, and stays in export mode', () => {
+        store.startAgentExport();
+
+        store.confirmAgentExport();
+
+        expect(toast.info).toHaveBeenCalledExactlyOnceWith('Select at least one agent to export.');
+        expect(store.agentExportMode()).toBe(true);
+    });
+
+    it('exports one agent as a job and warns about the tools left out of its archive', async () => {
+        store.exportAgent(2);
+
+        expect(acceptExportJob()).toEqual({ ids: [2], include_knowledge: true });
+        await finishExportJob([{ entity_type: 'PythonCodeTool', entity_id: 5, name: 'Scraper' }]);
+
+        expect(downloads).toEqual([expect.stringContaining(DOWNLOAD_URL)]);
+        expect(vi.mocked(toast.warning).mock.calls[0][0]).toContain('1 Python tool (Scraper)');
+    });
+
+    it('exports nothing for an agent that is no longer in the list', () => {
+        store.exportAgent(99);
+
+        expect(exportOptionsAsked).toEqual([]);
+        backend.expectNone(EXPORT_JOBS_URL);
+    });
+
+    it.each([
+        {
+            status: 404,
+            statusText: 'Not Found',
+            code: 'export_entities_not_found',
+            message: 'Some agents were not found.',
+        },
+        { status: 403, statusText: 'Forbidden', code: 'permission_denied', message: 'You may not export agents.' },
+    ])(
+        "shows the server's reason when it refuses the export with $status, and keeps the ticks to try again",
+        ({ status, statusText, code, message }) => {
+            store.startAgentExport();
+            store.toggleAgentSelection(2);
+
+            store.confirmAgentExport();
+            backend
+                .expectOne({ method: 'POST', url: EXPORT_JOBS_URL })
+                .flush({ status_code: status, code, message }, { status, statusText });
+            backend.match((request) => request.method === 'GET');
+
+            expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+            expect(store.agentExportMode()).toBe(true);
+            expect([...store.selectedAgentIds()]).toEqual([2]);
+            expect(downloads).toEqual([]);
+        }
+    );
+
+    it('loads the agents again when an agent to export is gone', () => {
+        store.exportAgent(2);
+        backend
+            .expectOne({ method: 'POST', url: EXPORT_JOBS_URL })
+            .flush(
+                { status_code: 404, code: 'export_entities_not_found', message: 'Not found.' },
+                { status: 404, statusText: 'Not Found' }
+            );
+
+        backend.expectOne(isGet(AGENTS_URL)).flush(page([agentOf(1, 'Alpha'), agentOf(3, 'Gamma')]));
+        backend.expectOne(isGet(SURFACES_URL)).flush(page([]));
+        backend.expectOne(isGet(GROUPS_URL)).flush(page([]));
+
+        expect(store.agents().map((row) => row.name)).toEqual(['Alpha', 'Gamma']);
+    });
+});
+
+describe('AgentsPageStore agent import', () => {
+    const INSPECT_URL = `${AGENTS_URL}import/inspect/`;
+    const IMPORT_URL = `${AGENTS_URL}import/`;
+    const IMPORT_JOBS_URL = `${AGENTS_URL}import-jobs/`;
+    const JOB_URL = '/api/transfer-jobs/job-1/';
+    const ENVELOPE = JSON.stringify({ main_entity: 'AgentDefinition', version: 1 });
+    let store: AgentsPageStore;
+    let backend: HttpTestingController;
+    let toast: ToastService;
+
+    beforeEach(() => {
+        ({ store, backend } = storeOverFakeBackend([
+            { provide: SurfaceCatalogsStore, useValue: { reloadLoadedCatalogs: () => undefined } },
+        ]));
+        toast = TestBed.inject(ToastService);
+        vi.spyOn(toast, 'success');
+        vi.spyOn(toast, 'error');
+    });
+
+    afterEach(() => {
+        backend.verify();
+        vi.restoreAllMocks();
+    });
+
+    /** Clicks Import and returns the file picker, which the test fills in. */
+    function openPicker(): HTMLInputElement {
+        const picker = document.createElement('input');
+        vi.spyOn(picker, 'click').mockImplementation(() => undefined);
+        const createElement = vi.spyOn(document, 'createElement').mockReturnValueOnce(picker);
+        store.importAgents();
+        createElement.mockRestore();
+        return picker;
+    }
+
+    /** The user picks `file`; the server finds no code to review in it. */
+    async function pickWithNothingToReview(file: File): Promise<void> {
+        const picker = openPicker();
+        Object.defineProperty(picker, 'files', { value: [file] });
+        picker.dispatchEvent(new Event('change'));
+        (await vi.waitFor(() => backend.expectOne({ method: 'POST', url: INSPECT_URL }))).flush({ review_items: [] });
+    }
+
+    function importJob(status: 'completed' | 'failed', error: { code: string; message: string } | null = null) {
+        return {
+            id: 'job-1',
+            kind: 'import',
+            main_entity: 'AgentDefinition',
+            status,
+            display_name: 'agents.zip',
+            file_name: 'agents.zip',
+            result: status === 'completed' ? { AgentDefinition: { total: 1 } } : null,
+            error,
+            created_at: '2026-11-17T10:00:00Z',
+            finished_at: '2026-11-17T10:01:00Z',
+            expires_at: null,
+        };
+    }
+
+    /** The store reloads the agents, surfaces and groups. */
+    function expectReload(): void {
+        backend.expectOne(isGet(AGENTS_URL)).flush(page([]));
+        backend.expectOne(isGet(SURFACES_URL)).flush(page([]));
+        backend.expectOne(isGet(GROUPS_URL)).flush(page([]));
+    }
+
+    it('lets the user pick an agent export archive as well as a plain JSON export', () => {
+        expect(openPicker().accept).toBe('.json,.zip');
+    });
+
+    it('imports an archive as a job, and reports success and reloads only once the job has finished', async () => {
+        const archive = storedZip('agents.zip', { 'export.json': ENVELOPE });
+
+        await pickWithNothingToReview(archive);
+
+        const start = backend.expectOne((request) => request.method === 'POST' && request.url === IMPORT_JOBS_URL);
+        expect(start.request.body).toBe(archive);
+        expect(start.request.params.get('file_name')).toBe('agents.zip');
+        start.flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+        backend.expectNone(IMPORT_URL);
+        expect(toast.success).not.toHaveBeenCalled();
+
+        (await vi.waitFor(() => backend.expectOne(JOB_URL))).flush(importJob('completed'));
+
+        expect(toast.success).toHaveBeenCalledExactlyOnceWith('Agents imported successfully.');
+        expectReload();
+    });
+
+    it("shows the server's reason when the import job fails, and reloads nothing", async () => {
+        await pickWithNothingToReview(storedZip('agents.zip', { 'export.json': ENVELOPE }));
+        backend
+            .expectOne((request) => request.url === IMPORT_JOBS_URL)
+            .flush({ job_id: 'job-1' }, { status: 202, statusText: 'Accepted' });
+
+        (await vi.waitFor(() => backend.expectOne(JOB_URL))).flush(
+            importJob('failed', { code: 'invalid_archive', message: 'The archive has no agents.' })
+        );
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith('The archive has no agents.');
+        expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it('imports a plain JSON export straight away, with no job', async () => {
+        await pickWithNothingToReview(new File([ENVELOPE], 'agents.json', { type: 'application/json' }));
+
+        backend.expectOne({ method: 'POST', url: IMPORT_URL }).flush({});
+        backend.expectNone((request) => request.url === IMPORT_JOBS_URL);
+
+        expect(toast.success).toHaveBeenCalledExactlyOnceWith('Agents imported successfully.');
+        expectReload();
     });
 });

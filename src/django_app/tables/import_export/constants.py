@@ -2,7 +2,9 @@ import re
 
 from tables.import_export.enums import EntityType
 
-IMPORT_VERSION = 5
+IMPORT_VERSION = 6
+# The first version an export can be a zip archive; an import job takes nothing older.
+ARCHIVE_IMPORT_VERSION = 6
 
 # The sandbox's rule for a venv name, mirrored: `Venv.name` in
 # src/sandbox_new/manager/domain/models.py and its varchar column. Change both together.
@@ -39,6 +41,7 @@ DEPENDENCY_ORDER = (
     EntityType.SYSTEM_ONE_CONFIG,
     EntityType.EMBEDDING_MODEL,
     EntityType.EMBEDDING_CONFIG,
+    EntityType.SOURCE_COLLECTION,
     EntityType.REALTIME_MODEL,
     EntityType.REALTIME_CONFIG,
     EntityType.REALTIME_TRANSCRIPTION_MODEL,

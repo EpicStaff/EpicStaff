@@ -1,0 +1,95 @@
+@use '../../menu-panel' as menu;
+
+:host {
+    display: block;
+    flex-shrink: 0;
+}
+
+// One outline-primary button split into segments, as app-button's outline-primary; level with the RAG-type select.
+.export-control {
+    display: flex;
+    align-items: stretch;
+    height: 40px;
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1px solid var(--accent-color);
+    border-radius: var(--radius-lg);
+
+    &__segment {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 36px;
+        padding: 0 8px;
+        border: none;
+        background: transparent;
+        color: var(--accent-color);
+        cursor: pointer;
+        transition:
+            background 0.2s ease,
+            color 0.2s ease;
+
+        &:is(:hover, :focus-visible) {
+            background: var(--color-ghost-btn-hover);
+            color: var(--accent-color-hover);
+        }
+
+        &--open {
+            background: var(--color-ghost-btn-active);
+        }
+
+        // Inset, so the control's rounded clipping cannot cut the ring off.
+        &:focus-visible {
+            outline-offset: -2px;
+        }
+
+        & + & {
+            border-left: 1px solid var(--accent-color);
+        }
+    }
+
+    // The chevron belongs to the Export segment: no divider between them (design).
+    &__segment#{&}__chevron {
+        border-left: none;
+        padding-left: 0;
+    }
+
+    &__count {
+        min-width: 48px;
+        padding: 0 12px;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+    }
+
+    &__confirm {
+        background: var(--accent-color);
+        color: var(--color-text-primary);
+
+        &:is(:hover, :focus-visible) {
+            background: var(--accent-color-hover);
+            color: var(--color-text-primary);
+        }
+
+        &[aria-disabled='true'] {
+            background: var(--inactive-purple);
+            cursor: not-allowed;
+        }
+    }
+
+    &__chevron-icon {
+        transition: transform 0.2s ease;
+
+        &--open {
+            transform: rotate(180deg);
+        }
+    }
+}
+
+.export-control-menu {
+    @include menu.menu-panel;
+
+    &__item {
+        @include menu.menu-item;
+    }
+}

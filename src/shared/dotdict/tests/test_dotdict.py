@@ -246,8 +246,8 @@ def test_other_mapping_types_are_wrapped_like_dicts(store, mapping):
 @pytest.mark.parametrize("reserved_key", ["__properties__", "__setters__"])
 @STORE_PATHS
 def test_reserved_keys_of_a_nested_plain_dict_are_consumed_not_stored(store, reserved_key):
-    """Crew compiles these keys (the chat API rejects them for that reason), so a nested
-    dict carrying one must keep being treated as a definition, not as data."""
+    """Run state carries user input, so a definition under one of these keys is refused, never
+    evaluated or stored as data (the chat API rejects the keys as well)."""
     assert dict(store({reserved_key: {}, "kept": 1})) == {"kept": 1}
-    with pytest.raises(ValueError, match="Invalid expression"):
-        store({"deeper": {reserved_key: {"name": "1 +"}}})
+    with pytest.raises(ValueError, match=f"does not support '{reserved_key}'"):
+        store({"deeper": {reserved_key: {"name": "1"}}})

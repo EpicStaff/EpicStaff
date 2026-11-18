@@ -72,5 +72,11 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
 
 WORKDIR /app/src/realtime
 
+# Code and venv stay root-owned (read-only for the runtime user).
+RUN groupadd --system --gid 1000 app \
+ && useradd --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+USER app
+
 # Run module from workdir
 CMD ["python", "run_server.py"]

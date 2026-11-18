@@ -30,9 +30,10 @@ import {
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
-import { downloadBlob, isFocusLost, movedToRecycleBinMessage, takeQueryParams } from '@shared/utils';
+import { isFocusLost, movedToRecycleBinMessage, takeQueryParams } from '@shared/utils';
 import { map, tap } from 'rxjs/operators';
 
+import { TransferExportService } from '../../../../../../core/services/transfer-export.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import { ImportWithReviewService } from '../../../../../flows/components/import-review-dialog/import-with-review.service';
@@ -93,6 +94,7 @@ export class ToolsListComponent implements OnInit {
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
     private readonly port = inject<ToolsListPort<Tool>>(TOOLS_LIST_PORT);
+    private readonly transferExport = inject(TransferExportService);
     private readonly importWithReview = inject(ImportWithReviewService);
     private readonly route = inject(ActivatedRoute);
     private readonly router = inject(Router);
@@ -267,15 +269,7 @@ export class ToolsListComponent implements OnInit {
                     });
                 return;
             case 'export':
-                this.port
-                    .exportOne(payload.tool.id)
-                    .pipe(takeUntilDestroyed(this.destroyRef))
-                    .subscribe({
-                        next: (blob) => downloadBlob(blob, this.port.exportFileName(payload.tool.name)),
-                        error: (err: HttpErrorResponse) => {
-                            this.handleStaleResource(err, `Failed to export "${payload.tool.name}".`);
-                        },
-                    });
+                this.exportTools([payload.tool.id]);
                 return;
             case 'view_details': {
                 const tool = this.findToolById(payload.tool.id);
@@ -377,6 +371,7 @@ export class ToolsListComponent implements OnInit {
                 entityLabelPlural: this.port.entityLabelPlural,
                 inspect: (file) => this.port.inspectFile(file),
                 importFile: (file) => this.port.importFile(file),
+                accept: '.json,.zip',
             })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this._finishToolImport());
@@ -393,17 +388,7 @@ export class ToolsListComponent implements OnInit {
             this.toastService.info('Select at least one tool to export.');
             return;
         }
-        this.port
-            .bulkExport(ids)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (blob) => downloadBlob(blob, this.port.bulkExportFileName()),
-                error: (err: HttpErrorResponse) => {
-                    this.toastService.error(
-                        err.error?.message || `Failed to export selected ${this.port.entityLabelPlural}.`
-                    );
-                },
-            });
+        this.exportTools(ids);
     }
 
     private openIncludeExcludeDialog(initialTab: IncludeExcludeTab): void {
@@ -689,6 +674,23 @@ export class ToolsListComponent implements OnInit {
 
     public reload(): void {
         this.loadTools();
+    }
+
+    /**
+     * Exports the tools as a background job, which outlives this page. TransferExportService reports a failure; a
+     * tool that is gone (404, 410) also refreshes the list.
+     */
+    private exportTools(ids: number[]): void {
+        const start = this.port.startExport(ids).pipe(
+            tap({
+                error: (error: unknown) => {
+                    if (error instanceof HttpErrorResponse && (error.status === 404 || error.status === 410)) {
+                        this.loadTools();
+                    }
+                },
+            })
+        );
+        this.transferExport.export(start).subscribe();
     }
 
     /** `?toolId=` opens that tool as a card click does, once, after the first load. An unknown id is ignored. */

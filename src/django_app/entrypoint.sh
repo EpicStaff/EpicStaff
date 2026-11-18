@@ -2,6 +2,9 @@
 
 set -e  # Exit immediately if a command exits with a non-zero status\
 
+# /tmp is a volume, so a killed worker's spill files outlive it; find logs what it can't delete.
+find /tmp -mindepth 1 -delete || true
+
 # >>> env_bool
 # Strict boolean environment flag, accepting exactly the values Env.bool accepts
 # (src/shared/envtools.py). Copied verbatim into every script that needs it;
@@ -66,10 +69,6 @@ python manage.py seed_system_api_key
 echo "Seeding plugin node..."
 python manage.py seed_plugin_node
 
-# Collect static files for production server
-echo "Collects static"
-python manage.py collectstatic --noinput
-
 # The Redis workers share this container with the web server, so their own
 # connection pool is set per process here. Each queries from a single thread:
 # one connection, plus one spare.
@@ -85,6 +84,13 @@ DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py cache_redis
 # Start the recycle-bin purge consumer in the background; manager requests the purge daily
 echo "Starting recycle bin purge consumer..."
 DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_recycle_bin_purge &
+
+# Start the transfer job consumers in the background, one per lane: the heavy lane runs
+# flow, knowledge and session exports, every import and the job sweep; the light lane the
+# small exports, so they never wait behind a large one.
+echo "Starting transfer job consumers..."
+DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_transfer_jobs --lane heavy &
+DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_transfer_jobs --lane light &
 
 # Start session callback sender in the background
 echo "Starting session callback sender..."

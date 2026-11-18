@@ -4,11 +4,12 @@ import { NgZone } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActionCode, GetMeResponse, ResourceCode, ShortcutSettings } from '@shared/models';
 
+import { PLATFORM_IS_MAC } from '../../../../../../core/services/platform-is-mac.token';
 import { GetGraphLightRequest } from '../../../../../../features/flows/models/graph.model';
 import { ProfileService } from '../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../services/config';
 import { ToastMessage, ToastService } from '../../../../../../services/notifications';
-import { KeymapService, PLATFORM_IS_MAC } from '../../../../../../visual-programming/services/keymap.service';
+import { KeymapService } from '../../../../../../visual-programming/services/keymap.service';
 import { grantPermissions } from '../../../../../../visual-programming/utils/testing/permissions.fixture';
 import { ShortcutsModalComponent } from './shortcuts-modal.component';
 

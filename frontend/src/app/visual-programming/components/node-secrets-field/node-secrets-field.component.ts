@@ -20,7 +20,9 @@ import {
     SelectItem,
 } from '@shared/components';
 import { SecretsStorageService } from '@shared/services';
+import { codeSuggestionKeyLabel } from '@shared/utils';
 
+import { PLATFORM_IS_MAC } from '../../../core/services/platform-is-mac.token';
 import { ToastService } from '../../../services/notifications';
 import { FieldName } from '../../utils/diff';
 import { MissingReferenceNoteComponent } from '../missing-reference-note/missing-reference-note.component';
@@ -48,11 +50,12 @@ export class NodeSecretsFieldComponent {
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly toastService = inject(ToastService);
+    private readonly isMac = inject(PLATFORM_IS_MAC);
 
     public readonly activeColor = input<string>('var(--accent-color)');
     public readonly value = model<number[]>([]);
     public readonly tooltipText = input<string>(
-        "Secrets this node can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+        `Secrets this node can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
     );
     public readonly readonly = input<boolean>(false);
     public readonly names = input<string[]>([]);

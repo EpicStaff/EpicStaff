@@ -8,7 +8,10 @@ default. SANDBOX_MAX_EXECUTION_TIMEOUT may be none (no upper limit).
 The admission settings refuse startup too when out of range: a queue or hold timeout that
 is none or not positive, caps below 1, a negative minimum, a threshold outside (0, 100].
 
-Both are import-time behavior, so each case reloads settings.py under a patched
+A security flag (masking, network blocking, isolation) refuses startup when its value is
+neither true nor false, because reading a typo as False would switch the protection off.
+
+All are import-time behavior, so each case reloads settings.py under a patched
 environment.
 """
 
@@ -30,9 +33,12 @@ def reload_settings_with_env():
     """
     environment = pytest.MonkeyPatch()
 
-    def reload(**variables: str):
+    def reload(**variables: str | None):
         for name, value in variables.items():
-            environment.setenv(name, value)
+            if value is None:
+                environment.delenv(name, raising=False)
+            else:
+                environment.setenv(name, value)
         return importlib.reload(settings)
 
     yield reload
@@ -184,6 +190,41 @@ def test_previous_transport_keys_are_split_stripped_and_empty_items_dropped(
 def test_a_blank_transport_key_refuses_startup(reload_settings_with_env, configured):
     with pytest.raises(EnvironmentBlankError, match="SECRETS_TRANSPORT_KEY"):
         reload_settings_with_env(SECRETS_TRANSPORT_KEY=configured)
+
+
+SECURITY_FLAGS = [
+    ("SANDBOX_MASK_SECRET", "MASK_SECRET"),
+    ("SANDBOX_BLOCK_NETWORK", "BLOCK_NETWORK"),
+    ("SANDBOX_REQUIRE_ISOLATION", "REQUIRE_ISOLATION"),
+    ("SANDBOX_REQUIRE_SIGNAL_ISOLATION", "REQUIRE_SIGNAL_ISOLATION"),
+]
+
+
+@pytest.mark.parametrize("name", [name for name, _ in SECURITY_FLAGS])
+@pytest.mark.parametrize("configured", ["flase", "ture", "enabled", "none", ""])
+def test_a_malformed_security_flag_refuses_startup(reload_settings_with_env, name, configured):
+    with pytest.raises(ValueError, match=name):
+        reload_settings_with_env(**{name: configured})
+
+
+@pytest.mark.parametrize(("name", "attribute"), SECURITY_FLAGS)
+def test_an_unset_security_flag_confines_the_sandbox(reload_settings_with_env, name, attribute):
+    reloaded = reload_settings_with_env(**{name: None})
+
+    assert getattr(reloaded, attribute) is True
+
+
+@pytest.mark.parametrize(("name", "attribute"), SECURITY_FLAGS)
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [("false", False), (" OFF ", False), ("0", False), ("True", True), ("t", True)],
+)
+def test_a_security_flag_reads_an_explicit_value(
+    reload_settings_with_env, name, attribute, configured, expected
+):
+    reloaded = reload_settings_with_env(**{name: configured})
+
+    assert getattr(reloaded, attribute) is expected
 
 
 def test_a_short_transport_key_is_accepted(reload_settings_with_env):

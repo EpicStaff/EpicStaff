@@ -3,6 +3,7 @@ from collections.abc import Callable
 import settings
 from foundation.cryptographer import AbstractCryptographer, FernetRotatedCryptographer
 from infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
+from infrastructure.graphrag.artifact_store import S3ArtifactStore
 from litestar.di import Provide
 
 __all__ = ["get_dependencies"]
@@ -44,6 +45,16 @@ def uow() -> SQLAlchemyUnitOfWork:
 @register(use_cache=True, sync_to_thread=False)
 def task_register() -> TaskRegister:
     return TaskRegister()
+
+
+@register(use_cache=True, sync_to_thread=False)
+def artifact_store() -> S3ArtifactStore:
+    return S3ArtifactStore(
+        endpoint=settings.STORAGE_ENDPOINT,
+        bucket=settings.KNOWLEDGE_BUCKET,
+        access_key=settings.STORAGE_ACCESS_KEY,
+        secret_key=settings.STORAGE_SECRET_KEY,
+    )
 
 
 @register(use_cache=True, sync_to_thread=False)

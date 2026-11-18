@@ -121,6 +121,7 @@ PLUGIN_SECRETS = (
 )
 GENERATED_SECRETS = (
     "DB_PASSWORD",
+    "DJANGO_DB_PASSWORD",
     "REDIS_PASSWORD",
     "STORAGE_PASSWORD",
     "DJANGO_SECRET_KEY",
@@ -141,6 +142,7 @@ GENERATED_SECRETS = (
 )
 PRODUCTION_USERNAMES = {
     "DB_USER": "epicstaff",
+    "DJANGO_DB_USER": "epicstaff_django",
     "REDIS_USER": "epicstaff",
     "STORAGE_USER": "epicstaff",
     "REALTIME_DB_USER": "epicstaff_realtime",
