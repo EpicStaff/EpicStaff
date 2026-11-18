@@ -14,6 +14,13 @@ from tables.constants.knowledge_constants import (
     DYNAMIC_SEARCH_NUM_REPEATS_MIN,
     DYNAMIC_SEARCH_THRESHOLD_MAX,
     DYNAMIC_SEARCH_THRESHOLD_MIN,
+    GRAPH_SEARCH_MAX_LENGTH,
+    GRAPH_TABLE_DEFAULT_PAGE,
+    GRAPH_TABLE_DEFAULT_PAGE_SIZE,
+    GRAPH_TABLE_MAX_PAGE_SIZE,
+    GRAPH_TABLE_MIN_PAGE,
+    GRAPH_TABLE_MIN_PAGE_SIZE,
+    GRAPH_VISUALIZATION_MIN_MAX_ENTITIES,
     GRAPHRAG_MAX_CHUNK_OVERLAP,
     GRAPHRAG_MAX_CHUNK_SIZE,
     GRAPHRAG_MAX_MAX_CLUSTER_SIZE,
@@ -545,3 +552,66 @@ class GraphRagDocumentListSerializer(serializers.Serializer):
     file_size = serializers.IntegerField(source="document.file_size")
     status = serializers.CharField()
     created_at = serializers.DateTimeField()
+
+
+def _graph_search_field() -> serializers.CharField:
+    # The search is matched as plain text, so surrounding whitespace is part of it.
+    return serializers.CharField(
+        max_length=GRAPH_SEARCH_MAX_LENGTH,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=False,
+        help_text="Plain-text, case-insensitive filter. Empty means no filter.",
+    )
+
+
+class GraphRagTableDataQuerySerializer(serializers.Serializer):
+    """Query parameters of the graph index table data endpoint."""
+
+    page = serializers.IntegerField(
+        min_value=GRAPH_TABLE_MIN_PAGE, default=GRAPH_TABLE_DEFAULT_PAGE
+    )
+    page_size = serializers.IntegerField(
+        min_value=GRAPH_TABLE_MIN_PAGE_SIZE,
+        max_value=GRAPH_TABLE_MAX_PAGE_SIZE,
+        default=GRAPH_TABLE_DEFAULT_PAGE_SIZE,
+    )
+    search = _graph_search_field()
+    # Exact-match filter: both parts must be sent together. knowledge_new validates the column name
+    # against the table's user-facing columns and 400s on an unknown column or a half-set pair.
+    filter_column = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        max_length=GRAPH_SEARCH_MAX_LENGTH,
+        help_text="Exact-match filter column. Must be sent together with filter_value.",
+    )
+    filter_value = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=False,
+        max_length=GRAPH_SEARCH_MAX_LENGTH,
+        help_text="Exact-match filter value. Must be sent together with filter_column.",
+    )
+
+    def validate(self, attrs: dict) -> dict:
+        has_column = "filter_column" in attrs
+        has_value = "filter_value" in attrs
+        if has_column != has_value:
+            raise serializers.ValidationError(
+                "filter_column and filter_value must be sent together."
+            )
+        return attrs
+
+
+class GraphRagVisualizationQuerySerializer(serializers.Serializer):
+    """Query parameters of the graph visualization endpoint."""
+
+    max_entities = serializers.IntegerField(
+        min_value=GRAPH_VISUALIZATION_MIN_MAX_ENTITIES,
+        required=False,
+        help_text=(
+            "Most entities to return: search matches first, then the highest degree. "
+            "Omitted means knowledge_new's default limit applies. No upper cap."
+        ),
+    )
+    search = _graph_search_field()

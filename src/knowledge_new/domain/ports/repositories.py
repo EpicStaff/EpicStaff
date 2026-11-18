@@ -20,6 +20,7 @@ from domain.usage import IndexingRunUsage
 if TYPE_CHECKING:
     from graphrag.config.models.graph_rag_config import GraphRagConfig
     from graphrag_input import TextDocument
+    from graphrag_storage import StorageConfig
 
 
 class AbstractNaiveRagRepository(abc.ABC):
@@ -210,6 +211,17 @@ class AbstractGraphRagRepository(abc.ABC):
         Args:
             rag_id: Primary key of the GraphRAG collection.
             slot: Optional slot override; when None the active slot from the DB row is used.
+        """
+
+    @abc.abstractmethod
+    async def get_output_storage_config(self, rag_id: int) -> "StorageConfig | None":
+        """Return the storage config of the active slot's index output, or `None` if no such RAG.
+
+        Unlike `get_config`, this needs neither the LLM nor the embedder, so an index
+        stays readable after either config has been deleted.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
         """
 
     @abc.abstractmethod

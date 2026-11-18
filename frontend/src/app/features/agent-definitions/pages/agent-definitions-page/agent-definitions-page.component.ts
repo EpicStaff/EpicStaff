@@ -29,7 +29,7 @@ import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml, takeQueryParams } from '@shared/utils';
 import { Observable, of } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { map, tap } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -38,7 +38,7 @@ import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-age
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
-import { AgentDefinition } from '../../models/agent-definition.model';
+import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../models/agent-definition.model';
 import { ExplorerSectionId, GroupAssignTarget } from '../../models/explorer.model';
 import { CreateSurfaceRequest } from '../../models/surface.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryConfig, SurfaceCategoryId } from '../../models/surface-category.model';
@@ -157,6 +157,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     );
 
     private readonly explorer = viewChild(ExplorerComponent);
+    private readonly agentDetail = viewChild(AgentDetailComponent);
     private readonly headerMenuTrigger = viewChild<string, ElementRef<HTMLButtonElement>>('headerMenuTrigger', {
         read: ElementRef,
     });
@@ -403,6 +404,48 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             });
         }
         this.hasUnsavedChanges.set(false);
+    }
+
+    onSelectedInstructionList(instructionList: AgentInstruction[]): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.updateInstructionList(agentId, instructionList);
+    }
+
+    onCreateSurfaceForSelected(event: { body: CreateSurfaceRequest; place: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.createSurfaceForAgent(agentId, event.body, event.place);
+    }
+
+    onSetSharedForSelected(event: { surfaceIds: number[]; category: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.setSharedSurfacesInCategory(event.surfaceIds, agentId, event.category);
+    }
+
+    onDropSharedForSelected(event: { surfaceId: number; category: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.dropSharedSurfaceOnAgent(event.surfaceId, agentId, event.category);
+    }
+
+    onSetSurfacePlacesForSelected(event: { surfaceId: number; places: AgentSurfacePlace[] }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.setSurfacePlaces(event.surfaceId, agentId, event.places);
+    }
+
+    onDetachSurfaceForSelected(surfaceId: number): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.detachSurfaceFromAgent(surfaceId, agentId);
+    }
+
+    onMakeAgentSpecificCopyForSelected(surfaceId: number): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.makeAgentSpecificCopy(surfaceId, agentId);
     }
 
     onCreateSurface(body: CreateSurfaceRequest): void {
@@ -663,13 +706,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     canDeactivate(): boolean | Observable<boolean> {
         if (!this.hasUnsavedChanges()) return true;
-        return this.unsavedChangesDialog.confirmUnsavedChanges().pipe(
-            map((result) => {
-                if (result === UNSAVED_CHANGES_RESULT.dontSave) {
-                    this.hasUnsavedChanges.set(false);
-                    return true;
-                }
-                return false;
+        return this.confirmLeaveAgent().pipe(
+            map((leave) => {
+                if (leave) this.hasUnsavedChanges.set(false);
+                return leave;
             })
         );
     }
@@ -716,14 +756,40 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             action();
             return;
         }
-        this.unsavedChangesDialog.confirmUnsavedChanges().subscribe((result) => {
-            if (result === UNSAVED_CHANGES_RESULT.dontSave) {
+        this.confirmLeaveAgent().subscribe((leave) => {
+            if (leave) {
                 this.hasUnsavedChanges.set(false);
                 action();
             } else {
                 onCancel?.();
             }
         });
+    }
+
+    /**
+     * Asks whether to drop the agent's unsaved edits; true to leave. There is no Save: a draft needs a name
+     * to be created, and an existing agent saves itself when its field loses focus. Staying on a draft
+     * points the user at the missing name.
+     */
+    private confirmLeaveAgent(): Observable<boolean> {
+        const drafting = this.store.isDraftingAgent();
+        return this.unsavedChangesDialog
+            .confirm({
+                title: drafting ? 'Agent not created' : 'Unsaved Changes',
+                message: drafting
+                    ? "This agent hasn't been created yet. Fix the name to save it, or discard it."
+                    : 'You have unsaved changes in this agent.',
+                dontSaveText: 'Discard & Leave',
+                cancelText: 'Keep Editing',
+                type: 'warning',
+                showSave: false,
+            })
+            .pipe(
+                map((result) => result === UNSAVED_CHANGES_RESULT.dontSave),
+                tap((leave) => {
+                    if (!leave && drafting) this.agentDetail()?.requireName();
+                })
+            );
     }
 
     private openExplorerAgentDetails({ node, trigger }: ExplorerTreeMenuEvent): void {

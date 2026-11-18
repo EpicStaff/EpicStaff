@@ -8,10 +8,11 @@ const RETENTION_DATA_TYPES: RetentionDataType[] = ['sessions', 'conversations', 
 // Lowering these removes stored data in the nightly purge; audit retention only applies to new events.
 const PURGED_RETENTION_TYPES: RetentionDataType[] = ['sessions', 'conversations'];
 
-const RETENTION_DATA_NAMES: Record<RetentionDataType, string> = {
-    sessions: 'sessions',
-    conversations: 'conversations',
-    audit: 'audit events',
+// A conversation is purged by its last message, not its age: an active thread keeps its old messages.
+const RETENTION_LOWERING_SUBJECTS: Record<RetentionDataType, (period: string) => string> = {
+    sessions: (period) => `sessions older than ${period}`,
+    conversations: (period) => `conversations with no new messages for over ${period}`,
+    audit: (period) => `audit events older than ${period}`,
 };
 
 /** The select value for "use the instance default"; app-select shows a null value as an empty placeholder. */
@@ -129,13 +130,10 @@ export function findRetentionLowerings(
     return lowerings;
 }
 
-/** "Sessions older than 30 days and conversations older than 1 year will be removed in the next nightly cleanup. …" */
+/** "Sessions older than 30 days and conversations with no new messages for over 1 year will be removed in the next nightly cleanup. …" */
 export function describeRetentionLowerings(lowerings: RetentionLowering[]): string {
     const sentence = lowerings
-        .map(
-            (lowering) =>
-                `${RETENTION_DATA_NAMES[lowering.type]} older than ${formatRetentionDays(lowering.newEffectiveDays)}`
-        )
+        .map((lowering) => RETENTION_LOWERING_SUBJECTS[lowering.type](formatRetentionDays(lowering.newEffectiveDays)))
         .join(' and ');
     return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)} will be removed in the next nightly cleanup. This cannot be undone.`;
 }

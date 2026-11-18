@@ -26,6 +26,7 @@ from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
+from tests.secrets_cryptographer import TEST_SECRETS_CRYPTOGRAPHER
 
 
 OUTPUT_SCHEMA = {
@@ -54,6 +55,7 @@ async def run_prompt(llm: LLMData, output_schema) -> dict:
         node_data=node_data,
         graph_builder=StateGraph(State),
         stop_event=StopEvent(),
+        secrets_cryptographer=TEST_SECRETS_CRYPTOGRAPHER,
         redis_service=MagicMock(aadd_graph_message=AsyncMock()),
     ).build()
     state = {

@@ -68,8 +68,8 @@ MANAGER_GRANTS = ServiceRoleGrants(
         # The retention job deletes expired sessions. Its FOR UPDATE SKIP LOCKED needs UPDATE
         # on at least one column.
         TableGrant("tables_session", (SELECT, DELETE), update_columns=("finished_at",)),
-        # ScheduleService reads the schedule triggers and records their runs.
-        TableGrant("tables_scheduletriggernode", (SELECT, UPDATE)),
+        # ScheduleService only reads the schedule triggers; django_app writes them.
+        TableGrant("tables_scheduletriggernode", (SELECT,)),
         # Deleted by the temporary storage credentials cleanup and with their session.
         TableGrant("storage_credentials_temp_account", (SELECT, DELETE)),
         # The temporary storage credentials cleanup reads when a run finished
@@ -158,7 +158,8 @@ KNOWLEDGE_GRANTS = ServiceRoleGrants(
 REALTIME_GRANTS = ServiceRoleGrants(
     service="realtime",
     role_variable="REALTIME_DB_USER",
-    tables=(TableGrant("realtime_session_items", READ_WRITE),),
+    # Realtime only appends events. SELECT is for INSERT ... RETURNING and the refresh after it.
+    tables=(TableGrant("realtime_session_items", (SELECT, INSERT)),),
     sequences=(SequenceGrant("realtime_session_items_id_seq", (USAGE,)),),
 )
 

@@ -1,0 +1,125 @@
+:host {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+// 28px tall: the dot 8px in from the left, 8px to the word, then a divider and the 28x28 arrow box.
+.desk-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 28px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border: 1px solid var(--color-control-outline);
+    border-radius: 4px;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+
+    &--button {
+        padding-right: 0;
+        background: transparent;
+        font: inherit;
+        cursor: pointer;
+
+        &:hover {
+            border-color: var(--accent-color);
+        }
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+// The status mark, 8px, in the colour set on it: a dot, or for a paused desk the pause-mark icon.
+.desk-status__mark {
+    display: flex;
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+
+    &--dot {
+        border-radius: 50%;
+        background-color: currentColor;
+    }
+}
+
+// Inside the trigger's 1px border, so the divider stops at it.
+.desk-status__chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    width: 28px;
+    box-sizing: border-box;
+    border-left: 1px solid var(--color-control-outline);
+    color: var(--color-text-secondary);
+
+    app-svg-icon {
+        transition: transform 0.2s ease;
+    }
+
+    &--open app-svg-icon {
+        transform: rotate(180deg);
+    }
+}
+
+// The menu, in an overlay: one 40px row per state, the dot 16px in, a divider between the rows.
+.desk-status-menu {
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    overflow: hidden;
+    background: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-panel-elevated);
+}
+
+.desk-status-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 40px;
+    padding: 0 16px;
+    box-sizing: border-box;
+    border: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    & + & {
+        border-top: 1px solid var(--color-divider-regular);
+    }
+
+    &:is(:hover, :focus-visible),
+    &[aria-checked='true'] {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+}
+
+// 5.5px above and below: the two lines fill the 40px row.
+.desk-status-menu__text {
+    display: flex;
+    flex-direction: column;
+    padding: 5.5px 0;
+    min-width: 0;
+}
+
+.desk-status-menu__description {
+    font-size: var(--text-caption-size);
+    font-weight: var(--text-caption-weight);
+    line-height: var(--text-caption-line-height);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}

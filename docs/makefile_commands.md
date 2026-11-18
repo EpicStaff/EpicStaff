@@ -140,9 +140,6 @@ make django-manage CMD=shell
 
 # Create a superuser
 make django-manage CMD=createsuperuser
-
-# Collect static files
-make django-manage CMD="collectstatic --noinput"
 ```
 
 ### `make django-tests ARGS=<pytest-args>`

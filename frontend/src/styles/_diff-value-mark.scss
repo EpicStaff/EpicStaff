@@ -187,8 +187,8 @@ $row-frame-offset: var(--diff-row-frame-offset, 0px);
 /// The row marks of an ag-grid table (the decision table grids), included under `::ng-deep` in the grid's styles; the
 /// rows get their classes from `condition-group-row-marks.ts`. No frame: a badge in the row's first cell, at its left
 /// (the grid's viewport clips whatever sticks out of a row), with the canvas node badges' icons (a pen for changed, a
-/// plus for added, a bin for removed), and the row's text in the status colour. A row a restore removes is also struck
-/// and faded, as the removed rows of the other tables.
+/// plus for added, a bin for removed). A row a restore removes is also struck and faded, as the removed rows of the
+/// other tables.
 /// @param $first-cell the selector of the cell that holds the badge.
 @mixin grid-row-marks($first-cell) {
     $statuses: (
@@ -216,14 +216,6 @@ $row-frame-offset: var(--diff-row-frame-offset, 0px);
             top: 50%;
             left: 4px;
             transform: translateY(-50%);
-        }
-
-        // `!important`: the grids colour cell text inline (`cellStyle`) and inside their cell renderers.
-        .ag-row.condition-group-row--#{$status} .ag-cell {
-            &,
-            * {
-                color: $color !important;
-            }
         }
     }
 

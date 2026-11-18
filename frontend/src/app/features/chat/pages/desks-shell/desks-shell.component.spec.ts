@@ -117,7 +117,7 @@ describe('DesksShellComponent', () => {
                 { provide: ChatApiService, useValue: chatApi },
                 { provide: ChatInboxStreamService, useValue: { readyEpoch, waitingByBinding } },
                 { provide: PermissionsService, useValue: { can: () => true } },
-                { provide: ChatBindingActionsService, useValue: { create: vi.fn() } },
+                { provide: ChatBindingActionsService, useValue: { create: vi.fn(() => of(null)) } },
                 { provide: ToastService, useValue: { error: vi.fn() } },
                 {
                     provide: BreakpointObserver,
@@ -161,10 +161,11 @@ describe('DesksShellComponent', () => {
         expect(host().querySelectorAll('main, [role="main"]').length).toBe(0);
     });
 
-    it('has no button in the page header: New desk stays in the rail', () => {
-        const header = host().querySelector('header.header')!;
-        expect(header.querySelectorAll('button, app-button, a').length).toBe(0);
-        expect(host().querySelector('app-desk-rail .desk-rail__new')?.getAttribute('aria-label')).toBe('New desk');
+    it('offers Add Desk in the page header, through the shared desk actions', () => {
+        const buttons = Array.from(host().querySelectorAll<HTMLButtonElement>('header.header button'));
+        expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Add Desk']);
+        buttons[0].click();
+        expect(TestBed.inject(ChatBindingActionsService).create).toHaveBeenCalledTimes(1);
     });
 
     it('keeps the same rail, and the focus on the link followed, when moving between All desks and a desk', async () => {
@@ -227,7 +228,8 @@ describe('DesksShellComponent', () => {
         waitingByBinding.set({ 'b-1': 3 });
         harness.detectChanges();
         expect(link('/chat-bindings/b-1').querySelector('.desk-rail__badge')?.textContent).toBe('3');
-        expect(link('/chat-bindings/all').querySelector('.desk-rail__badge')?.textContent).toBe('3');
+        // All desks shows no count: it would repeat the desks' own.
+        expect(link('/chat-bindings/all').querySelector('.desk-rail__badge')).toBeNull();
     });
 
     describe('the rail width', () => {
@@ -268,13 +270,13 @@ describe('DesksShellComponent', () => {
             expect(isCompact()).toBe(false);
 
             press('ArrowLeft');
-            expect(column().style.width).toBe('64px');
+            expect(column().style.width).toBe('61px');
             expect(isCompact()).toBe(true);
         });
 
         it('switches between compact and listed with the Desks toggle', () => {
             pressToggle();
-            expect(column().style.width).toBe('64px');
+            expect(column().style.width).toBe('61px');
             expect(isCompact()).toBe(true);
 
             pressToggle();
@@ -285,7 +287,7 @@ describe('DesksShellComponent', () => {
         it('starts compact on a narrow screen, and each screen width keeps its own width', () => {
             press('ArrowRight');
             narrowScreen(true);
-            expect(column().style.width).toBe('64px');
+            expect(column().style.width).toBe('61px');
             expect(isCompact()).toBe(true);
 
             pressToggle();

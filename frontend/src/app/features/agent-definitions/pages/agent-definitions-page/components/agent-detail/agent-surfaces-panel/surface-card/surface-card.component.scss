@@ -425,6 +425,26 @@
     color: var(--color-text-secondary);
     font-size: var(--text-body-small-large-size);
     font-weight: var(--text-body-small-large-weight);
+
+    &--access {
+        justify-content: flex-start;
+
+        .res-table__col-resource {
+            flex: 1;
+            min-width: 0;
+        }
+    }
+}
+
+.res-table__col-access,
+.res-row__access {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 4.5rem;
+    height: 100%;
+    box-shadow: inset 1px 0 0 var(--graphite-750);
 }
 
 .res-table__col-resource,

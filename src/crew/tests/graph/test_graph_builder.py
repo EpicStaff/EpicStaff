@@ -194,6 +194,7 @@ def _builder(services, session_id=123, **overrides) -> SessionGraphBuilder:
         python_code_executor_service=services["python_code_executor_service"],
         knowledge_search_service=services["knowledge_search_service"],
         stop_event=StopEvent(),
+        secrets_cryptographer=Mock(),
         **overrides,
     )
 
@@ -556,6 +557,7 @@ def test_storage_node_inside_subgraph_receives_session_credentials(mock_services
         python_code_executor_service=executor,
         knowledge_search_service=mock_services["knowledge_search_service"],
         stop_event=StopEvent(),
+        secrets_cryptographer=Mock(),
     )
 
     compiled_graph = builder.compile_from_schema(
@@ -583,6 +585,7 @@ def test_storage_node_inside_subgraph_without_session_credentials_gets_none(
         python_code_executor_service=executor,
         knowledge_search_service=mock_services["knowledge_search_service"],
         stop_event=StopEvent(),
+        secrets_cryptographer=Mock(),
     )
 
     compiled_graph = builder.compile_from_schema(_storage_subgraph_session_data(None))
@@ -607,6 +610,7 @@ def test_storage_node_two_levels_deep_receives_session_credentials(mock_services
         python_code_executor_service=executor,
         knowledge_search_service=mock_services["knowledge_search_service"],
         stop_event=StopEvent(),
+        secrets_cryptographer=Mock(),
     )
 
     compiled_graph = builder.compile_from_schema(

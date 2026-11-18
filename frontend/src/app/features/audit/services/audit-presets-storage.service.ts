@@ -1,8 +1,10 @@
+import { HttpParams } from '@angular/common/http';
 import { DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable, ReplaySubject, tap } from 'rxjs';
 
 import { ImportResult } from '../../../core/models/import-result.model';
+import { StartedTransferJob, TransferJobsService } from '../../../core/services/transfer-jobs.service';
 import { AUDIT_FIELD_CATALOG, AuditDomainName } from '../models/audit-domain.models';
 import { AuditPreset, AuditPresetBody, AuditPresetChanges, AuditPresetScope } from '../models/audit-preset.models';
 import { AuditPresetsApiService } from './audit-presets-api.service';
@@ -22,6 +24,7 @@ export class AuditPresetsStorageService {
     public readonly domain: AuditDomainName = inject(AUDIT_FIELD_CATALOG).domain;
 
     private readonly presetsApi = inject(AuditPresetsApiService);
+    private readonly transferJobs = inject(TransferJobsService);
     private readonly destroyRef = inject(DestroyRef);
 
     public load(): void {
@@ -78,6 +81,16 @@ export class AuditPresetsStorageService {
     // Imported presets get server-made names and ids, so the list is reloaded rather than patched.
     public importPresets(file: File): Observable<ImportResult> {
         return this.run(this.presetsApi.importPresets(this.domain, file), () => this.load());
+    }
+
+    // Not tied to the panel: the export runs on in the jobs panel after the user leaves. The domain scopes it as
+    // every preset request.
+    public startExport(ids: number[]): Observable<StartedTransferJob> {
+        return this.transferJobs.startExport(
+            'auditFilterPresets',
+            { ids },
+            new HttpParams().set('domain', this.domain)
+        );
     }
 
     // Subscribes here, tied to the panel, and replays the outcome so a caller may listen with a shorter lifetime.

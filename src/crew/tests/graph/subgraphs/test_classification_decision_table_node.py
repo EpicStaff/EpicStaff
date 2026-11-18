@@ -47,6 +47,7 @@ from src.shared.system_one.llm_adapter import LlmSystemOneAdapter
 from src.shared.system_one.openai_adapter import OpenAIDecisionsAdapter
 from src.shared.system_one.typesafe_adapter import TypeSafeAdapter
 from utils.map_variables import map_variables_to_input
+from tests.secrets_cryptographer import TEST_SECRETS_CRYPTOGRAPHER
 from utils.singleton_meta import SingletonMeta
 
 
@@ -113,6 +114,7 @@ def make_subgraph(node_data: ClassificationDecisionTableNodeData) -> object:
         node_data=node_data,
         graph_builder=graph_builder,
         stop_event=StopEvent(),
+        secrets_cryptographer=TEST_SECRETS_CRYPTOGRAPHER,
         redis_service=recording_redis_service(),
     )
     return builder.build()
@@ -486,6 +488,7 @@ async def test_error_route_emits_finish_after_error(
         node_data=node_data,
         graph_builder=StateGraph(State),
         stop_event=StopEvent(),
+        secrets_cryptographer=TEST_SECRETS_CRYPTOGRAPHER,
         redis_service=redis_service,
     ).build()
 
@@ -534,6 +537,7 @@ def build_subgraph_with_redis(node_data: ClassificationDecisionTableNodeData):
         node_data=node_data,
         graph_builder=StateGraph(State),
         stop_event=StopEvent(),
+        secrets_cryptographer=TEST_SECRETS_CRYPTOGRAPHER,
         redis_service=redis_service,
     ).build()
     return subgraph, redis_service
@@ -1305,12 +1309,39 @@ OPENAI_RECORDED = (
 LLM_MODEL = "gpt-4o-mini"
 
 
+# The api keys arrive sealed with the transport key, the way django_app sends them.
 def real_typesafe_config() -> SystemOneConfigData:
-    return SystemOneConfigData(id=1, provider="typesafe", model_name="jev-1.14.0", api_key="ts-key")
+    return SystemOneConfigData(
+        id=1,
+        provider="typesafe",
+        model_name="jev-1.14.0",
+        api_key=TEST_SECRETS_CRYPTOGRAPHER.encrypt("ts-key"),
+    )
 
 
 def real_openai_config() -> SystemOneConfigData:
-    return SystemOneConfigData(id=3, provider="openai", model_name="gpt-6-luna", api_key="sk-key")
+    return SystemOneConfigData(
+        id=3,
+        provider="openai",
+        model_name="gpt-6-luna",
+        api_key=TEST_SECRETS_CRYPTOGRAPHER.encrypt("sk-key"),
+    )
+
+
+def llm_system_one_reply() -> ModelResponse:
+    """An LLM reply that answers the System One question `is_engineering` with 0.92."""
+    return ModelResponse(
+        model=LLM_MODEL,
+        choices=[
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps({"answers": {"is_engineering": {"noul": 0.92}}}),
+                }
+            }
+        ],
+        usage=Usage(prompt_tokens=50, completion_tokens=20, total_tokens=70),
+    )
 
 
 def real_llm_config() -> SystemOneConfigData:
@@ -1344,21 +1375,9 @@ async def test_switching_the_provider_needs_no_table_change(
         transport=httpx.MockTransport(lambda request: httpx.Response(200, content=OPENAI_RECORDED))
     )
     monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "openai", openai)
-    llm_reply = ModelResponse(
-        model=LLM_MODEL,
-        choices=[
-            {
-                "message": {
-                    "role": "assistant",
-                    "content": json.dumps({"answers": {"is_engineering": {"noul": 0.92}}}),
-                }
-            }
-        ],
-        usage=Usage(prompt_tokens=50, completion_tokens=20, total_tokens=70),
-    )
     subgraph, redis_service = build_subgraph_with_redis(system_one_node(config))
 
-    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=llm_reply):
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=llm_system_one_reply()):
         result = await subgraph.ainvoke(make_state({"company": "Acme"}))
 
     assert result_node(result) == "eng_branch"
@@ -1712,3 +1731,140 @@ async def test_prompt_sent_unrendered_leaves_a_warning(monkeypatch, prompt_text,
         logger.remove(sink_id)
 
     assert [line.strip() for line in lines if "prompt sent as written" in line] == expected_warnings
+
+
+# ---------------------------------------------------------------------------
+# Transport-sealed secrets: django_app seals every key it sends to crew, and the
+# CDT decrypts the ones it sends to an LLM provider itself.
+# ---------------------------------------------------------------------------
+
+BROKEN_TOKEN = "gAAAAABroken-token"
+
+
+def sealed(value: str) -> str:
+    return TEST_SECRETS_CRYPTOGRAPHER.encrypt(value)
+
+
+def recording_transport(reply_body: str, requests: list[httpx.Request]) -> httpx.MockTransport:
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, content=reply_body)
+
+    return httpx.MockTransport(handle)
+
+
+@pytest.mark.asyncio
+async def test_prompt_llm_call_gets_the_decrypted_api_key_and_header_markers(monkeypatch):
+    kwargs = await run_prompt_row_and_capture_acompletion_kwargs(
+        monkeypatch,
+        LLMConfigData(
+            model="gpt-4o-mini",
+            api_key=sealed("sk-plain"),
+            extra_headers={
+                "Authorization": f"Bearer epicstaff_secret({sealed('token')})",
+                "X-Team": "core",
+            },
+        ),
+    )
+
+    assert kwargs["api_key"] == "sk-plain"
+    assert kwargs["extra_headers"] == {"Authorization": "Bearer token", "X-Team": "core"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "adapter_class", "model_name", "reply_body"),
+    [
+        pytest.param("typesafe", TypeSafeAdapter, "jev-1.14.0", TYPESAFE_RECORDED, id="typesafe"),
+        pytest.param("openai", OpenAIDecisionsAdapter, "gpt-6-luna", OPENAI_RECORDED, id="openai"),
+    ],
+)
+async def test_system_one_provider_request_carries_the_decrypted_api_key(
+    monkeypatch, sandbox, provider, adapter_class, model_name, reply_body
+):
+    requests: list[httpx.Request] = []
+    adapter = adapter_class(transport=recording_transport(reply_body, requests))
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, provider, adapter)
+    config = SystemOneConfigData(
+        id=1, provider=provider, model_name=model_name, api_key=sealed("provider-key")
+    )
+    subgraph, _ = build_subgraph_with_redis(system_one_node(config))
+
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "eng_branch"
+    assert [request.headers["Authorization"] for request in requests] == ["Bearer provider-key"]
+
+
+@pytest.mark.asyncio
+async def test_system_one_llm_call_gets_the_decrypted_api_key(monkeypatch, sandbox):
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "llm", LlmSystemOneAdapter())
+    config = SystemOneConfigData(
+        id=2,
+        provider="llm",
+        llm_data=LLMData(
+            provider="openai", config=LLMConfigData(model=LLM_MODEL, api_key=sealed("llm-key"))
+        ),
+    )
+    subgraph, _ = build_subgraph_with_redis(system_one_node(config))
+
+    with patch(
+        "litellm.acompletion", new_callable=AsyncMock, return_value=llm_system_one_reply()
+    ) as mock_completion:
+        result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "eng_branch"
+    assert mock_completion.call_args.kwargs["api_key"] == "llm-key"
+
+
+@pytest.mark.asyncio
+async def test_undecryptable_prompt_key_routes_to_the_error_node_without_an_llm_call(
+    monkeypatch,
+):
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+    prompt_config = PromptConfigData(
+        prompt_text="Classify {text}",
+        llm_data=LLMData(
+            provider="openai", config=LLMConfigData(model="gpt-4o-mini", api_key=BROKEN_TOKEN)
+        ),
+        result_variable="classification_result",
+    )
+    groups = [row(0, "True", "after_prompt", prompt_id="classify")]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(
+            condition_groups=groups,
+            prompts={"classify": prompt_config},
+            next_error_node="error_node",
+        )
+    )
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+        result = await subgraph.ainvoke(make_state({"text": "hello"}))
+
+    assert result_node(result) == "error_node"
+    assert mock_completion.await_count == 0
+    assert first_error_message(redis_service)["details"] == (
+        "Error in condition 'row0': LLM config of prompt 'classify': "
+        "api_key could not be decrypted."
+    )
+    assert BROKEN_TOKEN not in json.dumps(published_messages(redis_service))
+
+
+@pytest.mark.asyncio
+async def test_undecryptable_system_one_key_routes_to_the_error_node_without_a_provider_call(
+    monkeypatch, sandbox
+):
+    adapter = FakeSystemOneAdapter()
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", adapter)
+    config = SystemOneConfigData(id=1, provider="fake", api_key=BROKEN_TOKEN)
+    subgraph, redis_service = build_subgraph_with_redis(system_one_node(config))
+
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "error_node"
+    assert adapter.states == []
+    assert first_error_message(redis_service)["details"] == (
+        "Error in condition 'row0': System One entry 'company_check': "
+        "api_key could not be decrypted."
+    )
+    assert BROKEN_TOKEN not in json.dumps(published_messages(redis_service))

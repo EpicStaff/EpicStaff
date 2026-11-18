@@ -241,7 +241,7 @@ timezone=node_tz)`. Returns `None` on missing/invalid config (logged).
 ### 4.5 Manager — `ScheduleTriggerNodeRepository`
 
 Raw SQL access to `tables_scheduletriggernode` via SQLAlchemy async. Manager
-runs under a restricted DB user (`manager_user`, SELECT/UPDATE only) — no
+runs under a restricted DB user (`manager_user`, SELECT only) — no
 Django ORM is available on this side. The SELECT includes `timezone` so the
 trigger builder always has it.
 

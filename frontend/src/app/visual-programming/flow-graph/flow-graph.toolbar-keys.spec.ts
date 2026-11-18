@@ -10,6 +10,7 @@ import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
 
+import { PLATFORM_IS_MAC } from '../../core/services/platform-is-mac.token';
 import { SelectStorageFilesDialogComponent } from '../../features/files/components/select-storage-files-dialog/select-storage-files-dialog.component';
 import { ToastService } from '../../services/notifications';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
@@ -21,7 +22,6 @@ import { generatePortsForNode } from '../core/helpers/helpers';
 import { NodeModel } from '../core/models/node.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { FlowService } from '../services/flow.service';
-import { PLATFORM_IS_MAC } from '../services/keymap.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
 import { createStartNode } from '../utils/load';

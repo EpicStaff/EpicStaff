@@ -37,6 +37,7 @@
         type="number"
         class="input"
         [ngClass]="'input--mod-' + mod()"
+        [class.input--grouped]="groups()"
         [placeholder]="placeholder()"
         [attr.aria-label]="ariaLabel() || null"
         [matTooltip]="fieldName()"
@@ -49,6 +50,15 @@
         [attr.aria-invalid]="isInvalid()"
         [attr.aria-describedby]="describedBy()"
     />
+
+    @if (groups(); as grouped) {
+        <span
+            class="input__grouped"
+            [ngClass]="'input__grouped--mod-' + mod()"
+            aria-hidden="true"
+            >{{ grouped }}</span
+        >
+    }
 
     @if (stepsShown()) {
         <button

@@ -6,8 +6,9 @@ from django.db import models
 TARGET_NAME_FIELDS = ("name", "node_name", "custom_name", "collection_name", "file_name", "path")
 # Models named by another field than the first of TARGET_NAME_FIELDS, keyed by
 # `app_label.model_name`. A storage entry is known by its full path: one file name repeats
-# across folders, and a move or copy records the path too.
-TARGET_NAME_FIELD_OVERRIDES = {"tables.storagefile": "path"}
+# across folders, and a move or copy records the path too. An export or import job is known
+# by the name its list shows; an import has no file name of its own.
+TARGET_NAME_FIELD_OVERRIDES = {"tables.storagefile": "path", "tables.transferjob": "display_name"}
 STORAGE_FOLDER_TYPE = "storage folder"
 # Labels a reader knows a model by, where its verbose_name is an internal word.
 TARGET_TYPE_LABELS = {
@@ -45,6 +46,7 @@ TARGET_TYPE_LABELS = {
     "audiotranscriptionnode": "audio to text node",
     "subgraphnode": "subflow node",
     "graphnote": "note",
+    "transferjob": "export or import job",
     # A venv or custom library lives in the sandbox; this side keeps only the binding that
     # stands for it.
     "sandboxvenvbinding": "venv",

@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -15,11 +14,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
 import { FLOW_NODE_TYPE_LABELS } from '@shared/models';
-import { extractHttpErrorMessage } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { EntityTypeResult, ImportResult } from '../../../../core/models/import-result.model';
 import { ImportReviewDialogCloseResult, ImportReviewDialogData } from '../../../../core/models/review-item.model';
+import { describeTransferError } from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
 import { EntityGroupComponent } from './components/entity-group/entity-group.component';
 import { ImportSummaryTabsComponent } from './components/import-summary-tabs/import-summary-tabs.component';
@@ -144,9 +143,10 @@ export class ImportReviewDialogComponent {
             )
             .subscribe({
                 next: (result) => this.dialogRef.close({ action: 'imported', result }),
-                error: (error: HttpErrorResponse) => {
+                // An archive imported as a job fails with the job's reason, not an HTTP error.
+                error: (error: unknown) => {
                     this.toastService.error(
-                        extractHttpErrorMessage(error, 'Failed to import. Please check the file and try again.')
+                        describeTransferError(error, 'Failed to import. Please check the file and try again.')
                     );
                 },
             });
