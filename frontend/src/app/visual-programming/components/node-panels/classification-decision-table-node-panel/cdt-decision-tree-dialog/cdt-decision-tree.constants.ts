@@ -285,6 +285,7 @@ export const CDT_TREE_COPY = {
     explainNoApiKey: 'The selected model has no API key. Choose another model or add a key.',
     explainModelGone: 'The selected model no longer exists. Choose another model.',
     explainUpstreamFailed: 'The model did not return an explanation. Try again.',
+    explainTimedOut: 'The model did not answer in time. Explain fewer steps or choose a faster model.',
     explainFailed: 'The explanation could not be generated.',
 } as const;
 

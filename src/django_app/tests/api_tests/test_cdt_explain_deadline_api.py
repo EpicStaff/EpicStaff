@@ -1,11 +1,12 @@
 """POST /api/classification-decision-table-node/{pk}/explain/ answers by one deadline.
 
 Invariant: a whole explain request, however many batches it is split into, returns within
-the deployment maximum (DJANGO_LLM_CONFIG_MAX_TIMEOUT), because the sync view holds a
-worker thread until it does. A batch the deadline cuts off, while it waits for the model
+EXPLAIN_REQUEST_DEADLINE_SECONDS, below nginx's read timeout for /api, because the sync
+view holds a worker thread until it does. A batch the deadline cuts off, while it waits for the model
 or still queued behind the concurrency limit, counts as failed: its steps come back as
 failures while the batches that finished keep their explanations. When every batch is cut
-off the request fails as upstream_failed.
+off the request fails as timed_out (504), with or without an API key on the config: a slow
+keyless model is not told it lacks a key.
 
 Only the LLM provider call (`litellm.acompletion`) is replaced; the view, service, secret
 resolution and LiteLLMClient run for real.
@@ -87,7 +88,7 @@ def _model_stalling_on(stalled_step_ids: set[str]):
 
 @pytest.fixture(autouse=True)
 def short_deadline(monkeypatch):
-    monkeypatch.setattr(cdt_explain_service, "LLM_CONFIG_TIMEOUT_MAX_SECONDS", DEADLINE_SECONDS)
+    monkeypatch.setattr(cdt_explain_service, "EXPLAIN_REQUEST_DEADLINE_SECONDS", DEADLINE_SECONDS)
     # One batch at a time, so the step after the stalled one waits in the queue.
     monkeypatch.setattr(cdt_explain_service, "MAX_CONCURRENCY", 1)
 
@@ -99,13 +100,23 @@ def cdt_node(acme):
 
 
 @pytest.fixture
-def llm_config(acme):
+def llm_model(db):
     provider, _ = Provider.objects.get_or_create(name="openai")
-    model = LLMModel.objects.create(name="cdt-explain-deadline-model", llm_provider=provider)
+    return LLMModel.objects.create(name="cdt-explain-deadline-model", llm_provider=provider)
+
+
+@pytest.fixture
+def llm_config(acme, llm_model):
     secret = secret_service.create(text="sk-cdt-deadline", org=acme, name="cdt-deadline-key")
     return LLMConfig.objects.create(
-        custom_name="with-key", model=model, org=acme, api_key_secret=secret
+        custom_name="with-key", model=llm_model, org=acme, api_key_secret=secret
     )
+
+
+@pytest.fixture
+def keyless_llm_config(acme, llm_model):
+    # A local model (Ollama, vLLM) needs no key.
+    return LLMConfig.objects.create(custom_name="keyless", model=llm_model, org=acme)
 
 
 @pytest.fixture
@@ -136,13 +147,15 @@ def test_batches_cut_off_by_the_deadline_are_failures_and_the_rest_are_explained
 
 
 @pytest.mark.django_db
-def test_every_batch_cut_off_fails_the_request_as_upstream_failed(
-    acme_client, cdt_node, llm_config
+@pytest.mark.parametrize("config_fixture", ["llm_config", "keyless_llm_config"])
+def test_every_batch_cut_off_fails_the_request_as_timed_out(
+    request, acme_client, cdt_node, config_fixture
 ):
+    config = request.getfixturevalue(config_fixture)
     all_steps = {block["id"] for block in BLOCKS}
 
-    response, elapsed = _post_timed(acme_client, cdt_node, llm_config, all_steps)
+    response, elapsed = _post_timed(acme_client, cdt_node, config, all_steps)
 
     assert elapsed < ANSWERED_WITHIN_SECONDS
-    assert response.status_code == status.HTTP_502_BAD_GATEWAY, response.content
-    assert response.json()["code"] == "cdt_explain_upstream_failed"
+    assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT, response.content
+    assert response.json()["code"] == "cdt_explain_timed_out"

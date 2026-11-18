@@ -107,6 +107,21 @@ async def test_unset_reasoning_effort_is_not_sent_to_litellm_acompletion():
     assert "reasoning_effort" not in received_kwargs
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("config_timeout", "sent_timeout"),
+    [(None, 600), (30, 30), (600, 600)],
+    ids=["unset-gets-the-maximum", "set-is-kept", "maximum-is-kept"],
+)
+async def test_every_call_reaches_litellm_with_a_timeout(config_timeout, sent_timeout):
+    received_kwargs: dict = {}
+    client = make_client(timeout=config_timeout)
+
+    await collect_events([make_chunk(content="ok", finish_reason="stop")], client, received_kwargs)
+
+    assert received_kwargs["timeout"] == sent_timeout
+
+
 GROQ_MESSAGE = (
     "Tool call validation failed: attempted to call tool 'json' which was not in request.tools"
 )

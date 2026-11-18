@@ -14,11 +14,12 @@ from tables.exceptions import (
     CdtExplainLLMConfigInvalidError,
     CdtExplainLLMConfigMissingKeyError,
     CdtExplainLLMConfigNotFoundError,
+    CdtExplainTimedOutError,
     CdtExplainUpstreamError,
     ClassificationDecisionTableNodeNotFoundError,
 )
 from tables.models.graph_models import ClassificationDecisionTableNode
-from tables.models.llm_models import LLM_CONFIG_TIMEOUT_MAX_SECONDS, LLMConfig
+from tables.models.llm_models import LLMConfig
 from tables.services.llm_clients import get_llm_client
 from tables.services.llm_clients.base import (
     DoneEvent,
@@ -36,6 +37,10 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 6
 MAX_CONCURRENCY = 5
+# Under nginx's default 60s proxy_read_timeout for /api (nginx/templates/default.conf.template):
+# past it the client already has a 504 and the result is thrown away, while the sync view
+# would still hold its admission slot.
+EXPLAIN_REQUEST_DEADLINE_SECONDS = 55
 
 
 @dataclass
@@ -74,9 +79,13 @@ class CdtExplainService:
             raise CdtExplainLLMConfigInvalidError(str(exc)) from exc
 
         batches = list(self._batches(blocks))
-        texts, failed_batches = async_to_sync(self._run_batches)(client, table, batches)
+        texts, batch_errors = async_to_sync(self._run_batches)(client, table, batches)
 
-        if failed_batches == len(batches):
+        if len(batch_errors) == len(batches):
+            # Before the key check: a slow keyless model (Ollama, vLLM) would otherwise be
+            # told it lacks a key.
+            if all(isinstance(error, TimeoutError) for error in batch_errors):
+                raise CdtExplainTimedOutError()
             if not api_key:
                 raise CdtExplainLLMConfigMissingKeyError(llm_config_id)
             raise CdtExplainUpstreamError()
@@ -139,10 +148,9 @@ class CdtExplainService:
 
     async def _run_batches(
         self, client, table: dict, batches: list[list[dict]]
-    ) -> tuple[dict[str, str], int]:
+    ) -> tuple[dict[str, str], list[BaseException]]:
         semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
-        # One deadline for the whole request: the sync view holds a worker thread until it ends.
-        deadline = asyncio.get_running_loop().time() + LLM_CONFIG_TIMEOUT_MAX_SECONDS
+        deadline = asyncio.get_running_loop().time() + EXPLAIN_REQUEST_DEADLINE_SECONDS
 
         async def guarded(batch):
             async with asyncio.timeout_at(deadline), semaphore:
@@ -153,19 +161,20 @@ class CdtExplainService:
         )
 
         texts: dict[str, str] = {}
-        failed = 0
+        errors: list[BaseException] = []
         for batch, result in zip(batches, results, strict=False):
             if isinstance(result, BaseException):
-                failed += 1
+                errors.append(result)
+                # %r: a TimeoutError from the deadline has an empty message.
                 logger.warning(
-                    "CDT explain batch failed (%d step(s)): %s",
+                    "CDT explain batch failed (%d step(s)): %r",
                     len(batch),
                     result,
                     exc_info=result,
                 )
                 continue
             texts.update(result)
-        return texts, failed
+        return texts, errors
 
     async def _explain_batch(self, client, table: dict, batch: list[dict]) -> dict[str, str]:
         messages = [

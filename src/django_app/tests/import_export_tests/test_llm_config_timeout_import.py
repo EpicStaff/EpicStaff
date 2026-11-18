@@ -2,7 +2,7 @@
 
 Invariant: an import moves a timeout outside the bounds onto the nearest bound instead of
 failing, because a file from before the bound existed can carry any number: below 1 is
-stored as 1, above the deployment maximum (and Infinity) as the maximum, NaN as the field
+stored as 1, above 600 (and Infinity) as 600, NaN as the field
 default (120). Null stays null and a numeric string is read as its number. A value that is
 not a number rejects the whole import, full or partial, with 400 and nothing created.
 
@@ -14,7 +14,6 @@ import copy
 import math
 
 import pytest
-from django.conf import settings
 from django.urls import reverse
 from rest_framework import status
 
@@ -29,8 +28,6 @@ from tables.import_export.services.partial_export_service import (
 from tables.models import Graph, LLMConfig
 from tables.models.graph_models import ClassificationDecisionTableNode
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
-
-MAX_SECONDS = settings.LLM_CONFIG_TIMEOUT_MAX_SECONDS
 
 
 @pytest.fixture
@@ -59,9 +56,9 @@ def _import_as_dependency(config_data: dict, org) -> LLMConfig:
     ("in_file", "stored"),
     [
         (0.5, 1.0),
-        (MAX_SECONDS + 1, MAX_SECONDS),
+        (601, 600.0),
         (math.nan, 120.0),
-        (math.inf, MAX_SECONDS),
+        (math.inf, 600.0),
         (-math.inf, 1.0),
         (None, None),
         ("120", 120.0),
@@ -82,7 +79,7 @@ def test_imported_timeout_is_stored_within_the_bounds(exported_config, in_file, 
 def test_reimporting_a_config_with_an_out_of_range_timeout_reuses_it(
     exported_config, default_org
 ):
-    exported_config["timeout"] = MAX_SECONDS * 10
+    exported_config["timeout"] = 6000
     # Back into the org it was exported from, after the original is gone: the first
     # import keeps its name, so only the timeout decides whether the second one matches.
     LLMConfig.objects.filter(pk=exported_config["id"]).delete()
@@ -92,7 +89,7 @@ def test_reimporting_a_config_with_an_out_of_range_timeout_reuses_it(
     }
 
     assert len(imported_ids) == 1
-    assert LLMConfig.objects.get(pk=imported_ids.pop()).timeout == MAX_SECONDS
+    assert LLMConfig.objects.get(pk=imported_ids.pop()).timeout == 600.0
     assert LLMConfig.objects.filter(org=default_org).count() == 1
 
 

@@ -6,12 +6,14 @@ import { CDT_TREE_COPY } from './cdt-decision-tree.constants';
  * The explain endpoint's error codes, each with what Explain Step and Explain All
  * say for it: 404 for a model that is gone (deleted, another organization's, or
  * unusable), 422 for one with no key whose every batch failed, 502 for a keyed
- * one that failed upstream.
+ * one that failed upstream, 504 for one that did not answer before the request
+ * deadline.
  */
 const EXPLAIN_ERROR_MESSAGES: ReadonlyMap<string, string> = new Map([
     ['cdt_explain_llm_config_not_found', CDT_TREE_COPY.explainModelGone],
     ['cdt_explain_llm_config_missing_key', CDT_TREE_COPY.explainNoApiKey],
     ['cdt_explain_upstream_failed', CDT_TREE_COPY.explainUpstreamFailed],
+    ['cdt_explain_timed_out', CDT_TREE_COPY.explainTimedOut],
 ]);
 
 /**
