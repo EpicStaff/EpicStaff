@@ -1,9 +1,14 @@
+import { AuditFieldCatalog } from '../models/audit-domain.models';
 import {
     AuditCondition,
     AuditConditionGroup,
     AuditFilterNode,
     AuditFilterState,
+    AuditIdFilter,
     AuditMatchScopeState,
+    catalogIdFilter,
+    catalogSelection,
+    catalogTextConditions,
     isUsableCondition,
     MAX_ROWS_BEFORE,
     VALUE_FREE_OPS,
@@ -16,7 +21,8 @@ export const TOKENS_FIELD = 'details.data.token_usage.total_tokens';
 export interface AuditFilterQuery {
     filters?: AuditFilterNode;
     query?: string;
-    matchScope: AuditMatchScope;
+    // sessions only: no other domain nests its results
+    matchScope?: AuditMatchScope;
 }
 
 // format and prepare condition payload for request (for error, input, output, details filters)
@@ -74,19 +80,38 @@ function compileQuery(query: string, searchText: string): string {
     return query === '' ? textClause : `(${query}) and ${textClause}`;
 }
 
-export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
-    const matchScope = compileMatchScope(state.matchScope);
-    const searchText = state.searchText.trim();
-
-    if (state.mode === 'query') {
-        const query = compileQuery(state.query.trim(), searchText);
-        return query === '' ? { matchScope } : { query, matchScope };
-    }
-
+function compileDateRange(state: AuditFilterState): AuditFilterNode[] {
     const leaves: AuditFilterNode[] = [];
-    if (searchText !== '') {
-        leaves.push({ field: '__text__', op: 'contains', value: searchText });
+    if (state.dateFrom) {
+        leaves.push({ field: 'event_time', op: 'gte', value: state.dateFrom });
     }
+    if (state.dateTo) {
+        leaves.push({ field: 'event_time', op: 'lte', value: state.dateTo });
+    }
+    return leaves;
+}
+
+function compileIdFilter(field: string, id: AuditIdFilter): AuditFilterNode[] {
+    const leaves: AuditFilterNode[] = [];
+    if (id.mode === 'range') {
+        if (id.from !== '') {
+            leaves.push({ field, op: 'gte', value: Number(id.from) });
+        }
+        if (id.to !== '') {
+            leaves.push({ field, op: 'lte', value: Number(id.to) });
+        }
+    } else if (id.mode === 'in') {
+        if (id.values.length > 0) {
+            leaves.push({ field, op: 'in', value: id.values.map(Number) });
+        }
+    } else if (id.value !== '') {
+        leaves.push({ field, op: id.mode, value: Number(id.value) });
+    }
+    return leaves;
+}
+
+function compileSessionFilters(state: AuditFilterState): AuditFilterNode[] {
+    const leaves: AuditFilterNode[] = [];
 
     if (state.kinds.length > 0) {
         leaves.push({ field: 'kind', op: 'in', value: state.kinds });
@@ -110,33 +135,13 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
         leaves.push(state.tool.op === 'not_in' ? { op: 'not', child: toolNode } : toolNode);
     }
 
-    const id = state.id;
-    if (id.mode === 'range') {
-        if (id.from !== '') {
-            leaves.push({ field: 'session_id', op: 'gte', value: Number(id.from) });
-        }
-        if (id.to !== '') {
-            leaves.push({ field: 'session_id', op: 'lte', value: Number(id.to) });
-        }
-    } else if (id.mode === 'in') {
-        if (id.values.length > 0) {
-            leaves.push({ field: 'session_id', op: 'in', value: id.values.map(Number) });
-        }
-    } else if (id.value !== '') {
-        leaves.push({ field: 'session_id', op: id.mode, value: Number(id.value) });
-    }
+    leaves.push(...compileIdFilter('session_id', state.id));
 
     if (state.statuses.length > 0) {
         leaves.push({ field: 'status', op: 'in', value: state.statuses });
     }
 
-    if (state.dateFrom) {
-        leaves.push({ field: 'event_time', op: 'gte', value: state.dateFrom });
-    }
-
-    if (state.dateTo) {
-        leaves.push({ field: 'event_time', op: 'lte', value: state.dateTo });
-    }
+    leaves.push(...compileDateRange(state));
 
     if (state.nodeTypes.length > 0) {
         leaves.push({ field: 'node_type', op: 'in', value: state.nodeTypes });
@@ -184,12 +189,63 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
         leaves.push(messageTextNode);
     }
 
+    return leaves;
+}
+
+function compileCatalogFilters(state: AuditFilterState, catalog: AuditFieldCatalog): AuditFilterNode[] {
+    const leaves: AuditFilterNode[] = [];
+    for (const builderField of catalog.builderFields) {
+        if (builderField.kind === 'select') {
+            const selection = catalogSelection(state, builderField.field);
+            if (selection.values.length > 0) {
+                leaves.push({ field: builderField.field, op: selection.op, value: selection.values });
+            }
+            continue;
+        }
+        if (builderField.kind === 'lookup') {
+            const selection = catalogSelection(state, builderField.field);
+            if (selection.values.length > 0) {
+                leaves.push(builderField.compile(selection));
+            }
+            continue;
+        }
+        if (builderField.kind === 'id') {
+            leaves.push(...compileIdFilter(builderField.field, catalogIdFilter(state, builderField.field)));
+            continue;
+        }
+        const node = compileConditionGroups(builderField.field, catalogTextConditions(state, builderField));
+        if (node !== null) {
+            leaves.push(node);
+        }
+    }
+    return [...leaves, ...compileDateRange(state)];
+}
+
+// `catalog` is the domain whose fields the state is read and compiled for; only sessions carry a match scope.
+export function compileAuditFilter(state: AuditFilterState, catalog: AuditFieldCatalog): AuditFilterQuery {
+    const isSessions = catalog.domain === 'sessions';
+    const scope: Pick<AuditFilterQuery, 'matchScope'> = isSessions
+        ? { matchScope: compileMatchScope(state.matchScope) }
+        : {};
+    const searchText = state.searchText.trim();
+
+    if (state.mode === 'query') {
+        const query = compileQuery(state.query.trim(), searchText);
+        return query === '' ? scope : { query, ...scope };
+    }
+
+    const leaves: AuditFilterNode[] = [];
+    if (searchText !== '') {
+        leaves.push({ field: '__text__', op: 'contains', value: searchText });
+    }
+    leaves.push(...(isSessions ? compileSessionFilters(state) : compileCatalogFilters(state, catalog)));
+
     if (leaves.length === 0) {
-        return { matchScope };
+        return scope;
     }
 
     return {
         filters: leaves.length === 1 ? leaves[0] : { op: 'and', children: leaves },
-        matchScope,
+        ...scope,
     };
 }

@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   generate-matrix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
 
@@ -61,7 +61,7 @@ jobs:
 
   build:
     needs: generate-matrix
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: ${{ contains(needs.generate-matrix.outputs.matrix, '"service"') }}
 
     strategy:

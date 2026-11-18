@@ -24,8 +24,9 @@ class ExecutionRequest(BaseModel):
     """The body a producer posts to the sandbox's `POST /executions`.
 
     The sandbox's submit schema subclasses this one, so the field set and types are the
-    wire contract on both sides. `secrets` and `storage_credentials` carry plaintext
-    and are excluded from `repr()`.
+    wire contract on both sides. `secrets` carries transport-sealed values (the
+    sandbox opens them), `storage_credentials` carries plaintext; both are
+    excluded from `repr()`.
     """
 
     model_config = ConfigDict(frozen=True, from_attributes=True)

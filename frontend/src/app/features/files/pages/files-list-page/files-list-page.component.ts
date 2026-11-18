@@ -22,6 +22,7 @@ import { switchMap } from 'rxjs/operators';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { KeyValueTablesPageComponent } from '../../../key-value-tables/pages/key-value-tables-page/key-value-tables-page.component';
+import { CollectionsImportComponent } from '../../../knowledge-sources/components/collections-import/collections-import.component';
 import { CreateCollectionDialogComponent } from '../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
 import { canImportStorageToKnowledge } from '../../../knowledge-sources/helpers/storage-import.util';
 import { CollectionsListPageComponent } from '../../../knowledge-sources/pages/collections-list-page/collections-list-page.component';
@@ -64,6 +65,7 @@ interface FilesTabConfig {
         DragHoverDirective,
         SpinnerComponent,
         CollectionsListPageComponent,
+        CollectionsImportComponent,
         StoragePageComponent,
         KeyValueTablesPageComponent,
         MatTooltip,
@@ -167,7 +169,7 @@ export class FilesListPageComponent {
             const canCreateCollection = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Create);
             const canUpdateCollection = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update);
             return {
-                label: 'Add collection',
+                label: 'Create collection',
                 permitted: canCreateCollection && canUpdateCollection,
                 action: () => this.onCreateCollectionClick(),
             };

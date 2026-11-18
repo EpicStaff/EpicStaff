@@ -18,6 +18,7 @@ from app.domains.base import DEFAULT_SCOPING, BaseScopeArgs, ScopedQueryBuilder
 from app.domains.sessions.computed import SESSIONS_COMPUTED
 from app.domains.sessions.fields import SESSIONS_FIELDS
 from app.domains.sessions.index import SESSIONS_INDEX
+from app.domains.user_actions.index import USER_ACTIONS_INDEX
 from app.index_setup.retention import ensure_index_template, ensure_ism_policies, ism_policy
 from app.repositories.index_routing import index_name_for
 from app.repositories.opensearch_repository import OpenSearchAuditRepository
@@ -25,7 +26,7 @@ from app.repositories.compiler import QueryCompiler
 from app.filtering.computed import split_computed_leaves
 from app.filtering.query_language import parse_query
 from app.services.duration_filter import apply_duration_filter
-from src.shared.models import SessionAuditEvent
+from src.shared.models import SessionAuditEvent, UserActionEvent
 from src.shared.retention import RETENTION_CHOICES
 
 _compiler = QueryCompiler(SESSIONS_FIELDS, DEFAULT_SCOPING)
@@ -439,3 +440,46 @@ async def test_written_events_index_is_managed_by_its_tiers_policy(repository, o
         index_state.get("index.plugins.index_state_management.policy_id"),
         index_state.get("policy_id"),
     } - {None} == {"audit-retention-180d"}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_distinct_values_are_scoped_sorted_non_empty_and_capped(opensearch_client):
+    await ensure_ism_policies(opensearch_client, USER_ACTIONS_INDEX)
+    await ensure_index_template(opensearch_client, USER_ACTIONS_INDEX)
+    repository = OpenSearchAuditRepository(opensearch_client, USER_ACTIONS_INDEX, UserActionEvent)
+    # Orgs unique to this run, so documents left by earlier runs never match.
+    org_id, other_org_id = (uuid.uuid4().int % 10**12 for _ in range(2))
+    now = datetime.now(timezone.utc)
+
+    def user_action(target_type, *, org=org_id, age_days=0):
+        return UserActionEvent(
+            id=str(uuid.uuid4()), org_id=org, event_time=now - timedelta(days=age_days),
+            actor_user_id=1, actor_email="user@example.com", action="created",
+            target_type=target_type,
+        )
+
+    await repository.write_batch(
+        [
+            user_action("python node"),
+            user_action("agent"),
+            user_action("agent"),
+            user_action("flow", age_days=10),
+            user_action(""),
+            user_action(None),
+            user_action("storage", age_days=40),
+            user_action("member", org=other_org_id),
+        ]
+    )
+    await opensearch_client.indices.refresh(index=USER_ACTIONS_INDEX.read_pattern)
+
+    def scope(retention_days):
+        return DEFAULT_SCOPING([], BaseScopeArgs(org_id=org_id, retention_days=retention_days))
+
+    assert await repository.distinct_values(scope(30), "target_type", 200) == [
+        "agent", "flow", "python node",
+    ]
+    assert await repository.distinct_values(scope(0), "target_type", 200) == [
+        "agent", "flow", "python node", "storage",
+    ]
+    assert await repository.distinct_values(scope(0), "target_type", 2) == ["agent", "flow"]

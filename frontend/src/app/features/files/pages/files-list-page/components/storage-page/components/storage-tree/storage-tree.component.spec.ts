@@ -1,3 +1,4 @@
+import { NgZone } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActionCode, ResourceCode } from '@shared/models';
 
@@ -223,7 +224,7 @@ describe('StorageTreeComponent drag and drop', () => {
 
         document.dispatchEvent(new Event('dragover'));
         document.dispatchEvent(Object.assign(new Event('pointermove'), { isPrimary: true, buttons: 0 }));
-        TestBed.tick();
+        TestBed.inject(NgZone).run(() => TestBed.tick());
 
         expect(storageDrag.isDragging()).toBe(false);
         expect(component.draggedItems()).toEqual([]);
@@ -285,7 +286,7 @@ describe('StorageTreeComponent drag and drop', () => {
             node.path === 'reports' ? { ...node, isExpanded: false, children: undefined } : node
         );
         fixture.componentRef.setInput('items', refreshed);
-        TestBed.tick();
+        TestBed.inject(NgZone).run(() => TestBed.tick());
 
         expect([...component.selectedPaths()]).toEqual(['notes.txt']);
         expect(selectionChanges.at(-1)?.map((selected) => selected.path)).toEqual(['notes.txt']);
@@ -299,11 +300,11 @@ describe('StorageTreeComponent drag and drop', () => {
 
         // Search hides q1: the tree shows a filtered view, but the loaded data is unchanged.
         fixture.componentRef.setInput('items', filterStorageItems(fullTree, 'notes'));
-        TestBed.tick();
+        TestBed.inject(NgZone).run(() => TestBed.tick());
         expect(new Set(component.selectedPaths())).toEqual(new Set(['notes.txt', 'reports/q1.csv']));
 
         fixture.componentRef.setInput('items', fullTree);
-        TestBed.tick();
+        TestBed.inject(NgZone).run(() => TestBed.tick());
         expect(new Set(component.selectedPaths())).toEqual(new Set(['notes.txt', 'reports/q1.csv']));
 
         // The drag set still covers the item the search hid.

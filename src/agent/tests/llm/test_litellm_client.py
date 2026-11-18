@@ -24,6 +24,7 @@ from app.tools.registry import ToolSpec
 from shared.models.agent_service import AgentSpec
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
+from tests.secret_sealing import agent_cryptographer, seal
 
 # ---------------------------------------------------------------------------
 # Chunk builders
@@ -654,7 +655,10 @@ def _model_config_from_llm_config(provider: str, llm_config: LLMConfigData) -> d
         instructions="i",
         llm=LLMData(provider=provider, config=llm_config),
     )
-    return _build_model_config(AgentContext(agent=agent, attachments=[], correlation_id="c", is_cancelled=never_cancelled))
+    return _build_model_config(
+        AgentContext(agent=agent, attachments=[], correlation_id="c", is_cancelled=never_cancelled),
+        agent_cryptographer(),
+    )
 
 
 async def _acompletion_kwargs_for(model_config: dict) -> dict:
@@ -667,7 +671,7 @@ async def _acompletion_kwargs_for(model_config: dict) -> dict:
 
 async def test_reasoning_effort_reaches_router_acompletion():
     model_config = _model_config_from_llm_config(
-        "openai", LLMConfigData(model="gpt-5-mini", api_key="sk-test", reasoning_effort="low")
+        "openai", LLMConfigData(model="gpt-5-mini", api_key=seal("sk-test"), reasoning_effort="low")
     )
 
     acompletion_kwargs = await _acompletion_kwargs_for(model_config)
@@ -678,7 +682,7 @@ async def test_reasoning_effort_reaches_router_acompletion():
 
 async def test_unset_reasoning_effort_is_not_sent_to_router_acompletion():
     model_config = _model_config_from_llm_config(
-        "openai", LLMConfigData(model="gpt-4o", api_key="sk-test")
+        "openai", LLMConfigData(model="gpt-4o", api_key=seal("sk-test"))
     )
 
     acompletion_kwargs = await _acompletion_kwargs_for(model_config)
@@ -691,7 +695,7 @@ async def test_azure_deployment_id_and_extra_headers_reach_router_acompletion():
         "azure",
         LLMConfigData(
             model="my-deployment",
-            api_key="sk-test",
+            api_key=seal("sk-test"),
             base_url="https://example.openai.azure.com",
             api_version="2025-01-01-preview",
             deployment_id="my-deployment",
@@ -707,15 +711,46 @@ async def test_azure_deployment_id_and_extra_headers_reach_router_acompletion():
         assert router_owned_key not in acompletion_kwargs
 
 
+async def test_router_receives_the_decrypted_api_key_and_one_router_serves_every_sealing_of_it():
+    """Full path: sealed LLM config -> _build_model_config -> LiteLLMClient -> RouterPool.
+
+    django_app seals each run's key afresh, so two runs carry different ciphertexts of
+    one key; both must reach the same Router, built with the plaintext key.
+    """
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="ok", tool_calls=None), finish_reason="stop")],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+    )
+    built_model_lists = []
+
+    def build_router(model_list, **kwargs):
+        built_model_lists.append(model_list)
+        router = MagicMock()
+        router.model_list = model_list
+        router.acompletion = AsyncMock(return_value=response)
+        return router
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=RouterPool())
+    with patch("app.llm.router_pool.Router", side_effect=build_router):
+        for _ in range(2):
+            model_config = _model_config_from_llm_config(
+                "openai", LLMConfigData(model="gpt-4o", api_key=seal("sk-live-key"))
+            )
+            [chunk async for chunk in client.chat(MESSAGES, [], model_config, stream=False)]
+
+    (model_list,) = built_model_lists
+    assert model_list[0]["litellm_params"]["api_key"] == "sk-live-key"
+
+
 async def test_config_prices_are_in_model_config_only_when_set():
     priced = _model_config_from_llm_config(
         "openai",
         LLMConfigData(
-            model="gpt-4o", api_key="sk-test", input_cost_per_token=0.001, output_cost_per_token=0.002
+            model="gpt-4o", api_key=seal("sk-test"), input_cost_per_token=0.001, output_cost_per_token=0.002
         ),
     )
     unpriced = _model_config_from_llm_config(
-        "openai", LLMConfigData(model="gpt-4o", api_key="sk-test")
+        "openai", LLMConfigData(model="gpt-4o", api_key=seal("sk-test"))
     )
 
     assert priced["input_cost_per_token"] == 0.001
@@ -730,7 +765,7 @@ async def test_llm_config_prices_cost_the_usage_and_never_reach_the_provider():
         "openai",
         LLMConfigData(
             model="epicstaff-test-gateway-model-without-price",
-            api_key="sk-test",
+            api_key=seal("sk-test"),
             input_cost_per_token=0.001,
             output_cost_per_token=0.002,
         ),

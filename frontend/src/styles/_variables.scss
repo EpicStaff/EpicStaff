@@ -18,13 +18,13 @@
     --purple-300: #8c7fff;
     --purple-400: #7a70ff;
     --purple-420: #817bff; // import-result-dialog navigate-button hover
-    --purple-410: #8b83ff; // cdt-import-preview-dialog meta-value count text
+    --purple-410: #8b83ff; // classification-decision-table-node-panel accent text
     --purple-412: #8b85ff; // flow-assistant _ep-tokens link-hover color
     --purple-415: #716bff; // default-llms-card/llm-library-card add-button hover
     --purple-620: #5a52e0; // llm-library-section add-button hover
     --purple-495: #6b6eff; // configure-models provider-btn "active" state (distinct from --accent-color)
     --purple-440: #a89fff; // expression-builder editor caret color
-    --purple-430: #7a6fff; // cdt-import-preview-dialog primary-button hover
+    --purple-430: #7a6fff; // classification-decision-table-node-panel button hover
     --purple-450: #7d7aff; // flow-messages-panel drag-handle active state
     --purple-460: #8372ff; // grid-controls slider-thumb hover
     --purple-500: #685fff;
@@ -69,6 +69,7 @@
     --graphite-900: #212325;
     --graphite-875: #1e1e1e;
     --graphite-878: #1e1e20; // value-preview-tooltip background
+    --graphite-872: #1e1f21; // conversation-row holder badge border
     --graphite-875-alpha-40: rgba(30, 30, 30, 0.4);
     --graphite-875-alpha-92: rgba(30, 30, 30, 0.92);
     --graphite-850: #222225;
@@ -78,7 +79,6 @@
     --graphite-870: #272836; // session/date-range filter dropdown background (used across flows too)
     --graphite-825: #232323;
     --graphite-822: #222222; // flow-export-import-button hover background
-    --graphite-830: #2a2a30; // cdt-import-preview-dialog table header background
     --graphite-838: #1f1f23; // expression-builder container background
     --graphite-638: #33333a; // expression-builder template-btn hover
     --graphite-810: #25262a; // onboarding choice-card hover
@@ -397,6 +397,7 @@
     --terracotta-500: #ce9178; // expression-editor family "string" syntax-highlight color (VS Code Dark+)
     --umber-950: #0a0808; // flow-session-status-badge "stopped" background base
     --umber-950-alpha-18: rgba(10, 8, 8, 0.18);
+    --umber-800: #332c27; // conversation-row holder badge background
     --red-550: #e63838; // danger hover
     --red-600: #dc5b60;
     --red-700: #b32b36;
@@ -540,9 +541,20 @@
     --color-tour-backdrop: var(--black-alpha-70); // guided-tour spotlight dim
     --color-flow-card-bg: var(--graphite-750);
     --color-table-border: var(--graphite-750);
+    --color-control-outline: var(--graphite-750); // outlined chat controls: column toggles, desk status select
+    --color-status-paused: var(--orange-500);
+    --color-status-waiting: var(--orange-500); // a visitor waiting for a person: section icon, row badge, wait chip
+    --color-status-waiting-background: var(--orange-alpha-8);
+    --color-status-in-progress: var(--green-500); // a conversation an operator is on: section icon
+    --color-status-unread: var(--green-500); // a conversation with news the operator has not opened: the row's dot
+    --color-error-background: var(--red-alpha-8); // an error colour's chip behind its text (an overdue wait)
     --color-table-row-stripe: var(--color-ks-transparent-black-28); // darker odd rows of the shared table
     --color-surface-card: var(--graphite-825);
+    --color-chat-test-visitor-bubble: var(--fog-alpha-16); // the visitor's message in a test conversation
     --color-drag-drop-active: var(--black-alpha-28);
+    // The badge of whoever holds a conversation, on the corner of the visitor's avatar; its border cuts it out of it.
+    --color-holder-badge-background: var(--umber-800);
+    --color-holder-badge-border: var(--graphite-872);
 
     // ------------------------------------------------------------------
     // SEMANTIC — interactive (accent, buttons)
@@ -645,9 +657,9 @@
     --tooltip-shadow: drop-shadow(0 6px 5px var(--black-alpha-15)) drop-shadow(0 2px 1.5px var(--black-alpha-30));
 
     // ------------------------------------------------------------------
-    // SEMANTIC — avatar fills (chat desk pictures, picked by id). Bright fills under dark letters; the light theme
+    // SEMANTIC — avatar fills (chat conversation pictures, picked by id). Bright fills under dark letters; the light theme
     // overrides none of these primitives, so the letters keep at least 6:1 contrast in both themes. Red, green and
-    // yellow are left out: they are the status and badge colours drawn on top.
+    // yellow are left out: they are status colours.
     // ------------------------------------------------------------------
     --color-avatar-1: var(--sky-500);
     --color-avatar-2: var(--teal-500);
@@ -655,7 +667,7 @@
     --color-avatar-4: var(--pink-500);
     --color-avatar-5: var(--lavender-500);
     --color-avatar-6: var(--blue-400);
-    // Dark text on a bright fill (avatar letters, count badges); the light theme does not flip it.
+    // Dark text on a bright fill (avatar letters); the light theme does not flip it.
     --color-text-on-bright: var(--gray-810);
 
     // ------------------------------------------------------------------
@@ -789,6 +801,7 @@
     --white-alpha-10: rgba(15, 23, 42, 0.1);
 
     // Explicit semantic exceptions
+    --color-holder-badge-border: var(--color-background-body);
     --color-text-secondary: #64748b;
     --color-text-subtle: rgba(15, 23, 42, 0.7);
     --color-input-text-placeholder: #94a3b8;

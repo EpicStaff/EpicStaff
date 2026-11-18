@@ -31,6 +31,7 @@
         label="Result Variable"
         placeholder="e.g. classification"
         [ngModel]="prompt().result_variable"
+        [ngModelOptions]="{ standalone: true }"
         [readonly]="readOnly()"
         (ngModelChange)="onResultVariableChange($event)"
     />
@@ -80,6 +81,7 @@
                     ariaLabel="Question name"
                     placeholder="e.g. correctness"
                     [ngModel]="item.row.name"
+                    [ngModelOptions]="{ standalone: true }"
                     [errorMessage]="item.view.nameError ?? ''"
                     [readonly]="readOnly()"
                     (ngModelChange)="onNameChange(item.row, $event)"
@@ -102,6 +104,7 @@
             <app-textarea
                 placeholder="Instructions for the model"
                 [ngModel]="item.row.question.instructions"
+                [ngModelOptions]="{ standalone: true }"
                 [readonly]="readOnly()"
                 (ngModelChange)="onInstructionsChange(item.row, $event)"
             />
@@ -113,6 +116,7 @@
                             ariaLabel="True means"
                             placeholder="True means…"
                             [ngModel]="noulMeaning(item.row.question, 'true')"
+                            [ngModelOptions]="{ standalone: true }"
                             [readonly]="readOnly()"
                             (ngModelChange)="onNoulMeaningChange(item.row, 'true', $event)"
                         />
@@ -120,6 +124,7 @@
                             ariaLabel="False means"
                             placeholder="False means…"
                             [ngModel]="noulMeaning(item.row.question, 'false')"
+                            [ngModelOptions]="{ standalone: true }"
                             [readonly]="readOnly()"
                             (ngModelChange)="onNoulMeaningChange(item.row, 'false', $event)"
                         />
@@ -135,6 +140,7 @@
                         [headerRules]="false"
                         [compact]="true"
                         [ngModel]="choiceOptions(item.row.question)"
+                        [ngModelOptions]="{ standalone: true }"
                         [disabled]="readOnly()"
                         (ngModelChange)="onChoiceOptionsChange(item.row, $event)"
                     />
@@ -145,6 +151,7 @@
                         inputPlaceholder="Add a level…"
                         readOnlyEmptyText="No levels"
                         [ngModel]="scoreLevels(item.row.question)"
+                        [ngModelOptions]="{ standalone: true }"
                         [readOnly]="readOnly()"
                         (ngModelChange)="onScoreLevelsChange(item.row, $event)"
                     />

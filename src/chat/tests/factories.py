@@ -32,7 +32,10 @@ def make_binding(org_id=1, graph_id=1, name="Binding", **overrides) -> Binding:
 
 
 def make_conversation(binding: Binding, subject: str | None = None, mode="bot", **overrides) -> Conversation:
-    """A row the database accepts for `mode`: handed off unless bot, waiting while awaiting_human, held while human."""
+    """A row the database accepts for `mode`: handed off unless bot, waiting while awaiting_human, held while human.
+
+    A held row was claimed at its hand-off, as a take over straight from the bot is, unless the test names `claimed_at`.
+    """
     mode = Mode(mode)
     handoff_at = None if mode == Mode.BOT else utcnow()
     values = dict(
@@ -45,7 +48,10 @@ def make_conversation(binding: Binding, subject: str | None = None, mode="bot", 
         handoff_at=handoff_at,
         visitor_waiting_since=handoff_at if mode == Mode.AWAITING_HUMAN else None,
     )
-    return Conversation(**{**values, **overrides})
+    values.update(overrides)
+    if "claimed_at" not in overrides:
+        values["claimed_at"] = values["handoff_at"] if values["assigned_operator_id"] is not None else None
+    return Conversation(**values)
 
 
 def make_closed(binding: Binding, reason=CloseReason.INACTIVE, mode="bot", **overrides) -> Conversation:

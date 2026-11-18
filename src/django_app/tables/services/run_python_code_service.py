@@ -80,7 +80,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             declared=declared,
             binned=binned_secret_names(python_code),
         )
-        secrets = secret_resolver.resolve_named(
+        secrets = secret_resolver.resolve_named_sealed(
             names=sorted(declared),
             org_id=organization_id,
             context=f"PythonCode(id={python_code_id}).secrets",
@@ -385,7 +385,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             )
         except ClientError as error:
             # The class name, never the error: it holds the sandbox response and,
-            # through it, the submitted body with resolved secret plaintext.
+            # through it, the submitted body with the sealed secret values.
             return self._fail_execution(
                 execution_id=execution_id,
                 use_storage=use_storage,

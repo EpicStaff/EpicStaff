@@ -30,7 +30,7 @@ class RecordingAuditWriter:
 @pytest.fixture
 def recording_writer(monkeypatch):
     writer = RecordingAuditWriter()
-    monkeypatch.setattr(session_audit_provider, "AUDIT_TRAIL_ENABLED", True)
+    monkeypatch.setattr(session_audit_provider, "SESSION_AUDIT_TRAIL_ENABLED", True)
     monkeypatch.setattr(session_audit_provider, "get_session_audit_writer", lambda: writer)
     session_id = 501
     register_session_audit_context(
@@ -96,7 +96,7 @@ MESSAGE_TYPES = [
 def audit_client(monkeypatch):
     client = RecordingAuditClient()
     writer = SessionAuditWriter(client)
-    monkeypatch.setattr(session_audit_provider, "AUDIT_TRAIL_ENABLED", True)
+    monkeypatch.setattr(session_audit_provider, "SESSION_AUDIT_TRAIL_ENABLED", True)
     monkeypatch.setattr(session_audit_provider, "get_session_audit_writer", lambda: writer)
     yield client
     clear_session_audit_context(RETENTION_SESSION_ID)

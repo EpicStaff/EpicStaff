@@ -1,0 +1,47 @@
+<div
+    class="conversation-list-tabs"
+    role="group"
+    aria-label="Conversations to show"
+>
+    <button
+        type="button"
+        class="conversation-list-tabs__tab conversation-list-tabs__tab--first"
+        [class.conversation-list-tabs__tab--selected]="tab() === 'inbox'"
+        [attr.aria-pressed]="tab() === 'inbox'"
+        (click)="select('inbox')"
+    >
+        <app-svg-icon
+            class="conversation-list-tabs__icon"
+            icon="inbox"
+            size="12px"
+        />
+        <span class="conversation-list-tabs__label">
+            Inbox
+            @if (inboxCount() !== null) {
+                ({{ inboxCount() }})
+            }
+        </span>
+    </button>
+    <!--
+        Disabled through aria-disabled, not the attribute: a disabled button can be neither focused nor hovered, and
+        its tooltip is the only place that says why.
+    -->
+    <button
+        type="button"
+        class="conversation-list-tabs__tab conversation-list-tabs__tab--last"
+        [class.conversation-list-tabs__tab--selected]="tab() === 'testing'"
+        [attr.aria-disabled]="canTest() ? null : 'true'"
+        [attr.aria-pressed]="tab() === 'testing'"
+        matTooltip="For people who build desks"
+        matTooltipPosition="below"
+        [matTooltipDisabled]="canTest()"
+        (click)="select('testing')"
+    >
+        <app-svg-icon
+            class="conversation-list-tabs__icon"
+            icon="flask"
+            size="12px"
+        />
+        <span class="conversation-list-tabs__label">Bot Testing</span>
+    </button>
+</div>

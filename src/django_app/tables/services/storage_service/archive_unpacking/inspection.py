@@ -7,6 +7,7 @@ from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.exceptions import StorageQuotaExceeded
 from tables.services.storage_service.archive_unpacking.extraction_guard import ArchiveLimitExceeded
 from tables.services.storage_service.archive_unpacking.safe_readers import (
+    UnsafeTarHeader,
     is_tar,
     open_tar,
     zip_entry_count,
@@ -14,7 +15,10 @@ from tables.services.storage_service.archive_unpacking.safe_readers import (
 from tables.services.storage_service.path_utils import check_new_name
 
 # Bytes with one of these signatures that fail to parse are a broken archive, not a plain file.
-_ARCHIVE_SIGNATURES = (b"PK\x03\x04", b"\x1f\x8b", b"BZh", b"\xfd7zXZ\x00")
+_ARCHIVE_SIGNATURES = (b"PK\x03\x04", b"\x1f\x8b", b"\xfd7zXZ\x00")
+# bzip2 is "BZh", a block-size digit, then the magic of the first block or of the end of an
+# empty stream: "BZh" alone also starts plain text.
+_BZIP2_BLOCK_MAGICS = (b"1AY&SY", b"\x17rE8P\x90")
 _TAR_MAGIC_OFFSET = 257
 
 # Other methods (Deflate64, implode) pass the directory check and fail only on extraction.
@@ -58,7 +62,7 @@ def inspect_archive(
             if total > free_bytes:
                 raise StorageQuotaExceeded()
             files.add(safe_name)
-            if is_blocked(name):
+            if is_blocked(safe_name):
                 blocked.append(name)
         if blocked:
             raise ValueError(
@@ -84,7 +88,15 @@ def _parents(path: str) -> list[str]:
 
 def _has_archive_signature(file_object) -> bool:
     head = file_object.read(_TAR_MAGIC_OFFSET + 5)
-    return head.startswith(_ARCHIVE_SIGNATURES) or head[_TAR_MAGIC_OFFSET:] == b"ustar"
+    return (
+        head.startswith(_ARCHIVE_SIGNATURES)
+        or _is_bzip2(head)
+        or head[_TAR_MAGIC_OFFSET:] == b"ustar"
+    )
+
+
+def _is_bzip2(head: bytes) -> bool:
+    return head[:3] == b"BZh" and b"1" <= head[3:4] <= b"9" and head[4:10] in _BZIP2_BLOCK_MAGICS
 
 
 def _zip_members(file_object, filename: str, max_entries: int):
@@ -107,28 +119,37 @@ def _zip_members(file_object, filename: str, max_entries: int):
                         f"method ({method}); re-create it with standard Deflate compression"
                     )
                 yield entry.filename, entry.file_size, False
-    except (zipfile.BadZipFile, NotImplementedError) as exc:
-        # A wrecked central directory can raise NotImplementedError instead of BadZipFile.
+    except (zipfile.BadZipFile, NotImplementedError, UnicodeDecodeError) as exc:
+        # A wrecked central directory can raise NotImplementedError instead of BadZipFile,
+        # and a name flagged UTF-8 that is not raises UnicodeDecodeError.
         raise ValueError(f"Archive '{filename}' is damaged or unreadable") from exc
 
 
 def _tar_members(file_object, filename: str):
     """Yield (name, size, is_dir) per tar member, reading headers lazily."""
+    for member in _tar_headers(file_object, filename):
+        if member.issym() or member.islnk():
+            raise ValueError(
+                f"Archive '{filename}' contains a symlink or hardlink: {member.name!r}"
+            )
+        if member.isdir():
+            yield member.name, 0, True
+        elif member.isfile() and not member.issparse():
+            yield member.name, member.size, False
+        else:
+            raise ValueError(
+                f"Archive '{filename}' contains {member.name!r}, which is not a "
+                "plain file or folder"
+            )
+
+
+def _tar_headers(file_object, filename: str):
+    """Yield each tar member; any failure to read the headers is a damaged archive."""
     try:
         with open_tar(file_object) as tf:
-            for member in tf:
-                if member.issym() or member.islnk():
-                    raise ValueError(
-                        f"Archive '{filename}' contains a symlink or hardlink: {member.name!r}"
-                    )
-                if member.isdir():
-                    yield member.name, 0, True
-                elif member.isfile() and not member.issparse():
-                    yield member.name, member.size, False
-                else:
-                    raise ValueError(
-                        f"Archive '{filename}' contains {member.name!r}, which is not a "
-                        "plain file or folder"
-                    )
-    except (tarfile.TarError, OSError, EOFError, zlib.error, lzma.LZMAError) as exc:
+            yield from tf
+    except UnsafeTarHeader:
+        raise
+    # tarfile raises a bare ValueError on a malformed pax value, such as a GNU sparse map.
+    except (tarfile.TarError, OSError, EOFError, zlib.error, lzma.LZMAError, ValueError) as exc:
         raise ValueError(f"Archive '{filename}' is damaged or unreadable") from exc

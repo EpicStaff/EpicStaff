@@ -6,14 +6,15 @@ from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 AUDIT_TOKEN_CREATE = {
     "summary": "Mint a short-lived audit token for the active organization",
     "description": (
-        "Mints a 5-minute JWT scoped to the caller's "
+        "Mints a short-lived JWT scoped to the caller's "
         "active organization (`X-Organization-Id`), consumed directly by "
         "the `auditor` service — the frontend never calls Django again for "
-        "audit reads/exports after this. Claims: `org_id`, `actions` "
-        "(only the AUDIT actions the caller actually has — `read`/`export`), "
-        "`retention_days` (from the org's `audit_retention_days` setting), "
-        "`exp`. Returns 403 before minting anything if the caller has no "
-        "AUDIT permission at all in the active org."
+        "audit reads/exports after this. Claims: `org_id`, `AUDIT` and "
+        "`USER_AUDIT` (each lists only the actions the caller actually has — "
+        "`read`/`export` — and may be empty), `retention_days` (from the org's "
+        "`audit_retention_days` setting), `exp` (`AUDIT_TOKEN_TTL_SECONDS` after "
+        "issue). Returns 403 before minting anything if the caller has neither "
+        "AUDIT nor USER_AUDIT permission in the active org."
     ),
     "request": None,  # no request body - org comes from X-Organization-Id header
     "responses": {
@@ -31,7 +32,7 @@ AUDIT_TOKEN_CREATE = {
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
-            description="Caller has no AUDIT:READ or AUDIT:EXPORT in the active organization.",
+            description="Caller has no AUDIT or USER_AUDIT read/export permission in the active organization.",
         ),
     },
 }

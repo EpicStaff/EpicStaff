@@ -12,6 +12,7 @@ from tables.services.secrets import (
     UndeclaredSecretError,
     secret_service,
 )
+from tests.sealed_values import open_sealed_values
 
 PLAINTEXT = "sk-runmode-abc123"
 
@@ -59,7 +60,8 @@ class TestRunPythonCodeResolvesDeclaredSecrets:
 
         bodies = _submitted_bodies(sandbox_intake)
         assert len(bodies) == 1
-        assert bodies[0]["secrets"] == {"RUNMODE_KEY": PLAINTEXT}
+        assert bodies[0]["secrets"]["RUNMODE_KEY"] != PLAINTEXT
+        assert open_sealed_values(bodies[0]["secrets"]) == {"RUNMODE_KEY": PLAINTEXT}
 
     def test_no_declarations_sends_an_empty_dict(self, org, user, sandbox_intake):
         python_code = PythonCode.objects.create(code="def main(): return 1")

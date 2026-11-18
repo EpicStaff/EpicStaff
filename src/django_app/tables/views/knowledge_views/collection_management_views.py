@@ -1,6 +1,7 @@
 from django.db.models import Count
 from drf_spectacular.utils import (
     extend_schema,
+    extend_schema_view,
 )
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
@@ -12,6 +13,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.exceptions import CollectionNotFoundException
+from tables.import_export.enums import EntityType
+from tables.models import TransferJob
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.serializers.knowledge_serializers import (
     CopySourceCollectionSerializer,
@@ -21,11 +24,15 @@ from tables.serializers.knowledge_serializers import (
     SourceCollectionListSerializer,
     SourceCollectionUpdateSerializer,
 )
+from tables.serializers.serializers import InspectImportRequestSerializer
+from tables.serializers.transfer_job_serializers import ExportJobCreateSerializer
+from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
 from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
+from tables.services.transfer_jobs.export_definitions import export_definition
 from tables.swagger_schemas.knowledge_schemas.collection_management_schemas import (
     SOURCE_COLLECTION_AVAILABLE_RAGS_GET,
     SOURCE_COLLECTION_BULK_DELETE_POST,
@@ -37,13 +44,23 @@ from tables.swagger_schemas.knowledge_schemas.collection_management_schemas impo
     SOURCE_COLLECTION_PUT,
     SOURCE_COLLECTIONS_GET,
 )
+from tables.views.mixins import ExportJobActionMixin, InspectActionMixin
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
+from user_audit.recorder import record_copy
 
 redis_service = RedisService()
 
 
+@extend_schema_view(
+    export_jobs=extend_schema(request=ExportJobCreateSerializer),
+    inspect_import=extend_schema(request={"multipart/form-data": InspectImportRequestSerializer}),
+)
 class SourceCollectionViewSet(
-    OrgScopedResolverMixin, RecycleBinActionsMixin, viewsets.ModelViewSet
+    OrgScopedResolverMixin,
+    ExportJobActionMixin,
+    InspectActionMixin,
+    RecycleBinActionsMixin,
+    viewsets.ModelViewSet,
 ):
     """
     ViewSet for SourceCollection CRUD operations.
@@ -58,11 +75,17 @@ class SourceCollectionViewSet(
     - DELETE /source-collections/{id}/ - Delete collection (cleans unreferenced content)
     - POST /source-collections/bulk-delete/ - Bulk delete source collections
     - GET /source-collections/{id}/available-rags/ - Get available RAG configurations for a collection
+    - POST /source-collections/export-jobs/ - Queue an export of collections, with their files
+    - POST /source-collections/import/inspect/ - Review an export file before importing it
     - GET /source-collections/recycle-bin/ - List the org's binned collections
     - POST /source-collections/{id}/restore/ - Restore a binned collection
     - DELETE /source-collections/{id}/purge/ - Delete a binned collection for good (superadmin only)
 
     """
+
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = SourceCollection.objects.none()
 
     http_method_names = ["get", "post", "patch", "put", "delete"]
 
@@ -74,8 +97,15 @@ class SourceCollectionViewSet(
         "bulk_delete": Permission.DELETE,
         "copy": Permission.CREATE,
         "available_rags": Permission.READ,
+        "export_jobs": Permission.EXPORT,
+        "inspect_import": Permission.CREATE,
     }
     recycle_bin_resource_key = RecycleBinSource.COLLECTION
+    export_job_definition = export_definition(TransferJob.MainEntity.SOURCE_COLLECTION)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(EntityType.SOURCE_COLLECTION)
 
     def get_queryset(self):
         """Active-org collections only, optimized per action."""
@@ -218,6 +248,7 @@ class SourceCollectionViewSet(
                 org_id=self.get_active_org_id(),
                 user=request.user,
             )
+            record_copy(collection, new_collection)
 
             output_serializer = SourceCollectionDetailSerializer(
                 new_collection, context=self.get_serializer_context()

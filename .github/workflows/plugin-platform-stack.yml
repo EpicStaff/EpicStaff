@@ -44,7 +44,7 @@ concurrency:
 jobs:
   stack:
     name: Plugin platform stack, browsers and smokes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
       # Matches the service Dockerfiles: without this uv may fetch its own interpreter instead

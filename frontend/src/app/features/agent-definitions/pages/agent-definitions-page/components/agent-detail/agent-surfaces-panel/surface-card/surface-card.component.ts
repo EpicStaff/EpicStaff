@@ -395,7 +395,9 @@ export class SurfaceCardComponent {
         ...this.catalogs.mcpTools(),
     ]);
     readonly selectedToolKeys = signal<Set<string>>(new Set());
-    private lastSentToolKeys: string | null = null;
+    /** Allow/deny for each selected tool. A missing key means allow. */
+    readonly toolModes = signal<ReadonlyMap<string, ToolMode>>(new Map());
+    private lastSentTools: string | null = null;
 
     readonly toolItems = computed<SelectDropdownListItem<string>[]>(() =>
         this.toolOptions().map((t) => ({ name: t.name, value: this.toolKey(t) }))
@@ -404,6 +406,16 @@ export class SurfaceCardComponent {
     readonly selectedTools = computed<SurfaceToolOption[]>(() =>
         this.toolOptions().filter((t) => this.selectedToolKeys().has(this.toolKey(t)))
     );
+    readonly toolPickerLabel = computed<string>(() => {
+        const tools = this.selectedTools();
+        if (tools.length === 0) return 'Select tools';
+        const modes = this.toolModes();
+        const denied = tools.filter((tool) => (modes.get(this.toolKey(tool)) ?? 'allow') === 'deny').length;
+        const allowed = tools.length - denied;
+        if (denied === 0) return `${allowed} allowed`;
+        if (allowed === 0) return `${denied} denied`;
+        return `${allowed} allowed, ${denied} denied`;
+    });
 
     toolKey(t: SurfaceToolOption): string {
         return `${t.kind}:${t.id}`;
@@ -489,7 +501,7 @@ export class SurfaceCardComponent {
         if (this.readOnly()) return;
         const merged = this.withKindMerged(this.effectiveToolKeys(), values);
         this.pendingToolKeys.set(null);
-        this.selectedToolKeys.set(merged);
+        this.applyToolKeys(merged);
         this.emitToolsChange();
     }
 
@@ -628,12 +640,10 @@ export class SurfaceCardComponent {
                 }
             }
 
-            const toolKeys = new Set<string>([
-                ...(s?.python_tools ?? []).map((t) => `python:${t.python_tool}`),
-                ...(s?.mcp_tools ?? []).map((t) => `mcp:${t.mcp_tool}`),
-            ]);
-            if (this.lastSentToolKeys == null || this.lastSentToolKeys === serializeToolKeys(toolKeys)) {
-                this.selectedToolKeys.set(toolKeys);
+            const toolEntries = toolEntriesFromSurface(s);
+            if (this.lastSentTools == null || this.lastSentTools === serializeToolEntries(toolEntries)) {
+                this.selectedToolKeys.set(new Set(toolEntries.map(([key]) => key)));
+                this.toolModes.set(new Map(toolEntries));
             }
 
             const knowledge = s?.knowledge ?? [];
@@ -792,19 +802,33 @@ export class SurfaceCardComponent {
 
     onToolsChange(values: unknown[]): void {
         if (this.readOnly()) return;
-        this.selectedToolKeys.set(new Set(values as string[]));
+        this.applyToolKeys(new Set(values as string[]));
         this.emitToolsChange();
     }
 
     removeTool(key: string, event: MouseEvent): void {
         if (this.readOnly()) return;
         event.stopPropagation();
-        this.selectedToolKeys.update((set) => {
-            const next = new Set(set);
-            next.delete(key);
+        const next = new Set(this.selectedToolKeys());
+        next.delete(key);
+        this.applyToolKeys(next);
+        this.emitToolsChange();
+    }
+
+    /** Allow and deny are the only states; removing the row is how a tool leaves the surface. */
+    toggleToolMode(key: string, event?: Event): void {
+        event?.stopPropagation();
+        if (this.readOnly()) return;
+        this.toolModes.update((modes) => {
+            const next = new Map(modes);
+            next.set(key, (next.get(key) ?? 'allow') === 'allow' ? 'deny' : 'allow');
             return next;
         });
         this.emitToolsChange();
+    }
+
+    toolMode(key: string): ToolMode {
+        return this.toolModes().get(key) ?? 'allow';
     }
 
     private confirmClearBundle(kind: SurfaceBundleClearKind, size: number, apply: () => void): void {
@@ -820,23 +844,28 @@ export class SurfaceCardComponent {
     clearTools(event: MouseEvent): void {
         event.stopPropagation();
         this.confirmClearBundle('tools', this.selectedToolKeys().size, () => {
-            this.selectedToolKeys.set(new Set());
+            this.applyToolKeys(new Set());
             this.emitToolsChange();
         });
     }
 
+    private applyToolKeys(keys: Set<string>): void {
+        this.selectedToolKeys.set(keys);
+        this.toolModes.update((modes) => {
+            const next = new Map<string, ToolMode>();
+            for (const key of keys) next.set(key, modes.get(key) ?? 'allow');
+            return next;
+        });
+    }
+
     private buildToolsPayload(): { python_tools: SurfacePythonTool[]; mcp_tools: SurfaceMcpTool[] } {
-        const surface = this.surface();
-        const storedModes = new Map<string, ToolMode>([
-            ...(surface?.python_tools ?? []).map((t): [string, ToolMode] => [`python:${t.python_tool}`, t.mode]),
-            ...(surface?.mcp_tools ?? []).map((t): [string, ToolMode] => [`mcp:${t.mcp_tool}`, t.mode]),
-        ]);
+        const modes = this.toolModes();
         const python_tools: SurfacePythonTool[] = [];
         const mcp_tools: SurfaceMcpTool[] = [];
         for (const key of this.selectedToolKeys()) {
             const [kind, idStr] = key.split(':');
             const id = Number(idStr);
-            const mode = storedModes.get(key) ?? 'allow';
+            const mode = modes.get(key) ?? 'allow';
             if (kind === 'python') python_tools.push({ python_tool: id, mode });
             else if (kind === 'mcp') mcp_tools.push({ mcp_tool: id, mode });
         }
@@ -844,7 +873,7 @@ export class SurfaceCardComponent {
     }
 
     private emitToolsChange(): void {
-        this.lastSentToolKeys = serializeToolKeys(this.selectedToolKeys());
+        this.lastSentTools = serializeToolEntries(toolEntriesFromSelection(this.selectedToolKeys(), this.toolModes()));
         if (this.isCreating()) {
             this.notifyDraftContent();
             return;
@@ -882,7 +911,7 @@ export class SurfaceCardComponent {
 
     private addCreatedTool(tool: SurfaceToolOption): void {
         this.catalogs.addTool(tool);
-        this.selectedToolKeys.update((set) => new Set([...set, this.toolKey(tool)]));
+        this.applyToolKeys(new Set([...this.selectedToolKeys(), this.toolKey(tool)]));
         this.emitToolsChange();
     }
 
@@ -1146,7 +1175,7 @@ export class SurfaceCardComponent {
     private clearSentSnapshots(): void {
         this.lastSentName = null;
         this.lastSentInstructions = null;
-        this.lastSentToolKeys = null;
+        this.lastSentTools = null;
         this.lastSentKnowledge = null;
         this.lastSentStorageItems = null;
     }
@@ -1228,8 +1257,19 @@ function defaultFilePerms(): SurfaceFilePerms {
     return { list: 'allow', view: 'allow', edit: 'unset', delete: 'unset' };
 }
 
-function serializeToolKeys(keys: Set<string>): string {
-    return JSON.stringify([...keys].sort());
+function toolEntriesFromSurface(surface: Surface | null): [string, ToolMode][] {
+    return [
+        ...(surface?.python_tools ?? []).map((tool): [string, ToolMode] => [`python:${tool.python_tool}`, tool.mode]),
+        ...(surface?.mcp_tools ?? []).map((tool): [string, ToolMode] => [`mcp:${tool.mcp_tool}`, tool.mode]),
+    ];
+}
+
+function toolEntriesFromSelection(keys: Set<string>, modes: ReadonlyMap<string, ToolMode>): [string, ToolMode][] {
+    return [...keys].map((key) => [key, modes.get(key) ?? 'allow']);
+}
+
+function serializeToolEntries(entries: [string, ToolMode][]): string {
+    return JSON.stringify([...entries].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)));
 }
 
 function serializeStorageItems(items: SurfaceStorageItem[]): string {
