@@ -290,7 +290,7 @@ class ScheduleService:
         subscribed to schedule_channel.
         """
         while True:
-            await asyncio.sleep(settings.SCHEDULE_LISTENER_RECONNECT_DELAY_SECONDS)
+            await asyncio.sleep(settings.SCHEDULE_SIGNAL_REPUBLISH_INTERVAL_SECONDS)
             if not self._pending_signals:
                 continue
             try:

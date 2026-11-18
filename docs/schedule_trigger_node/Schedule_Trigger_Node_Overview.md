@@ -442,7 +442,7 @@ APScheduler reports the skip as `EVENT_JOB_MISSED`, handled by
    starting when Manager reports misses right after its own start (on a host
    reboot `restart: unless-stopped` ignores `depends_on`). Manager therefore
    keeps the miss in `_pending_signals` (`node_id → PendingScheduleSignal`)
-   and, every `SCHEDULE_LISTENER_RECONNECT_DELAY_SECONDS`, rereads the active
+   and, every `SCHEDULE_SIGNAL_REPUBLISH_INTERVAL_SECONDS` (5 s), rereads the active
    nodes and republishes until the DB shows the node is no longer an active
    once-mode node starting at `scheduled_at`. Only the first republish of a
    signal is logged at INFO, later ones at DEBUG. The receiver count returned

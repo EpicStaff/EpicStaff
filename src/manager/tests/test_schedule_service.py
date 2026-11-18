@@ -149,8 +149,9 @@ async def running_schedule_service(redis_service):
 
 
 @pytest.fixture
-def no_reconnect_delay(monkeypatch):
+def no_retry_delays(monkeypatch):
     monkeypatch.setattr(settings, "SCHEDULE_LISTENER_RECONNECT_DELAY_SECONDS", 0)
+    monkeypatch.setattr(settings, "SCHEDULE_SIGNAL_REPUBLISH_INTERVAL_SECONDS", 0)
     monkeypatch.setattr(settings, "SYNC_RETRY_DELAY", 0)
 
 
@@ -290,7 +291,7 @@ async def test_reconcile_leaves_jobs_untouched_when_db_unreadable(schedule_servi
 
 
 @pytest.mark.asyncio
-async def test_listener_resubscribes_after_pubsub_error_and_reconciles(no_reconnect_delay):
+async def test_listener_resubscribes_after_pubsub_error_and_reconciles(no_retry_delays):
     flaky_client = FlakyPubSubRedis(failing_subscriptions=1)
     service = ScheduleService(redis_service=_redis_service_with(flaky_client))
     # Node 1 was deleted and node 2 created while the subscription was down.
@@ -335,7 +336,7 @@ async def test_start_buffers_update_published_during_initial_load(redis_service)
 
 @pytest.mark.asyncio
 async def test_start_reconciles_once_listener_subscribes_after_initial_subscribe_failed(
-    no_reconnect_delay,
+    no_retry_delays,
 ):
     client = UnreachableAtFirstRedis()
     service = ScheduleService(redis_service=_redis_service_with(client))
@@ -354,7 +355,7 @@ async def test_start_reconciles_once_listener_subscribes_after_initial_subscribe
 
 
 @pytest.mark.asyncio
-async def test_listener_retries_reconcile_while_db_is_down(no_reconnect_delay):
+async def test_listener_retries_reconcile_while_db_is_down(no_retry_delays):
     flaky_client = FlakyPubSubRedis(failing_subscriptions=1)
     service = ScheduleService(redis_service=_redis_service_with(flaky_client))
     service.repository = FakeScheduleRepository([_repeat_node(1)], None, [_repeat_node(2)])
@@ -368,7 +369,7 @@ async def test_listener_retries_reconcile_while_db_is_down(no_reconnect_delay):
 
 
 @pytest.mark.asyncio
-async def test_initial_load_retries_until_db_is_readable(redis_service, no_reconnect_delay):
+async def test_initial_load_retries_until_db_is_readable(redis_service, no_retry_delays):
     service = ScheduleService(redis_service=redis_service)
     service.repository = FakeScheduleRepository(None, None, [_repeat_node(1)])
 
@@ -702,7 +703,7 @@ async def test_reconcile_after_a_missed_once_run_does_not_schedule_it_again(
 
 @pytest.mark.asyncio
 async def test_missed_signal_is_repeated_while_the_db_still_shows_the_node_active(
-    redis_service, schedule_channel_subscription, no_reconnect_delay
+    redis_service, schedule_channel_subscription, no_retry_delays
 ):
     once_node = _once_node(25, _start_beyond_misfire_grace())
     service = ScheduleService(redis_service=redis_service)
@@ -731,7 +732,7 @@ async def test_missed_signal_is_repeated_while_the_db_still_shows_the_node_activ
     ids=["switched-off-or-deleted", "start-changed", "switched-to-repeat"],
 )
 async def test_missed_signal_stops_once_the_db_no_longer_shows_that_run(
-    redis_service, schedule_channel_subscription, no_reconnect_delay, db_state_after_miss
+    redis_service, schedule_channel_subscription, no_retry_delays, db_state_after_miss
 ):
     once_node = _once_node(26, _start_beyond_misfire_grace())
     # Stays unacknowledged, so the retry loop keeps reading the DB and publishing.
@@ -761,7 +762,7 @@ async def test_missed_signal_stops_once_the_db_no_longer_shows_that_run(
 
 @pytest.mark.asyncio
 async def test_missed_signal_survives_an_unreadable_db_and_is_repeated_once_readable(
-    redis_service, schedule_channel_subscription, no_reconnect_delay
+    redis_service, schedule_channel_subscription, no_retry_delays
 ):
     once_node = _once_node(27, _start_beyond_misfire_grace())
     service = ScheduleService(redis_service=redis_service)
@@ -814,7 +815,7 @@ async def test_missed_signal_survives_an_unreadable_db_and_is_repeated_once_read
     ids=["rescheduled", "switched-off", "deleted"],
 )
 async def test_node_update_from_django_stops_the_missed_signal_even_before_the_db_shows_it(
-    redis_service, schedule_channel_subscription, no_reconnect_delay, django_update, update_applied
+    redis_service, schedule_channel_subscription, no_retry_delays, django_update, update_applied
 ):
     once_node = _once_node(28, _start_beyond_misfire_grace())
     # Stays unacknowledged, so the retry loop keeps reading the DB and publishing.
@@ -853,7 +854,7 @@ async def test_node_update_from_django_stops_the_missed_signal_even_before_the_d
 async def test_first_republish_of_a_pending_signal_logs_at_info_and_later_ones_at_debug(
     redis_service,
     schedule_channel_subscription,
-    no_reconnect_delay,
+    no_retry_delays,
     republish_logs,
     pending_node,
     start_with_pending_signal,
@@ -961,7 +962,7 @@ async def test_update_leaving_a_live_schedule_without_a_fire_time_removes_its_jo
 
 @pytest.mark.asyncio
 async def test_deactivate_for_an_end_reached_while_running_is_repeated_until_acknowledged(
-    redis_service, schedule_channel_subscription, no_reconnect_delay
+    redis_service, schedule_channel_subscription, no_retry_delays
 ):
     now = datetime.now(UTC)
     ending_node = _ended_repeat_node(
@@ -997,7 +998,7 @@ async def test_deactivate_for_an_end_reached_while_running_is_repeated_until_ack
     ids=["switched-off-or-deleted", "end-extended"],
 )
 async def test_deactivate_signal_stops_once_the_db_no_longer_needs_it(
-    redis_service, schedule_channel_subscription, no_reconnect_delay, db_state_after_signal
+    redis_service, schedule_channel_subscription, no_retry_delays, db_state_after_signal
 ):
     ended_node = _ended_repeat_node(44)
     # Stays unacknowledged, so the retry loop keeps reading the DB and publishing.
@@ -1052,7 +1053,7 @@ async def test_deactivate_signal_stops_once_the_db_no_longer_needs_it(
     ids=["end-extended", "switched-off", "deleted"],
 )
 async def test_node_update_from_django_stops_the_deactivate_signal_even_before_the_db_shows_it(
-    redis_service, schedule_channel_subscription, no_reconnect_delay, django_update, update_applied
+    redis_service, schedule_channel_subscription, no_retry_delays, django_update, update_applied
 ):
     ended_node = _ended_repeat_node(45)
     # Stays unacknowledged, so the retry loop keeps reading the DB and publishing.
@@ -1111,7 +1112,7 @@ async def test_reconcile_while_a_deactivate_is_pending_publishes_and_warns_nothi
 
 @pytest.mark.asyncio
 async def test_deactivate_after_a_once_mode_run_is_published_once_not_repeated(
-    redis_service, schedule_channel_subscription, no_reconnect_delay
+    redis_service, schedule_channel_subscription, no_retry_delays
 ):
     fired_node = _once_node(47, (datetime.now(UTC) - timedelta(seconds=5)).replace(microsecond=0))
     # Stays unacknowledged, so the retry loop keeps reading the DB and publishing.
