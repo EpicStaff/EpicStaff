@@ -1,6 +1,8 @@
-// It may wrap, so it has no fixed height.
+// It may wrap, so it has no fixed height; in a flex column it keeps its full height instead of being squeezed to
+// `min-height`, which would let its text spill out of it.
 :host {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     min-height: 28px;
     padding: 0.25rem 0.5rem;

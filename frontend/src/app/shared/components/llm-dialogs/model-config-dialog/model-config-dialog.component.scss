@@ -75,6 +75,13 @@
         margin-bottom: 20px;
     }
 
+    // A sentence with the list of reasons or changes under it.
+    &__review,
+    &__changes {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
     &__change-list {
         margin: 4px 0 0;
         padding-left: 16px;
