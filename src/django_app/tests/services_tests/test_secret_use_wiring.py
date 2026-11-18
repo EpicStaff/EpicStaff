@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 from django.urls import URLResolver, get_resolver
 from rbac.scoping.mixins import (
+    BuiltInWriteProtectedMixin,
     OrgScopedChildViewSetMixin,
     OrgScopedHybridViewSetMixin,
     OrgScopedViewSetMixin,
@@ -37,6 +38,10 @@ SECRET_USE_CHECK_BY_VIEWSET: dict[str, str] = {
     "PythonNodeViewSet": "check_python_node_write",
     "WebhookTriggerNodeViewSet": "check_webhook_trigger_node_write",
     "PythonCodeToolViewSet": "check_python_code_tool_write",
+    # No Secret field: the check gates a rename that moves where the model's configs,
+    # and the secrets they carry, send requests.
+    "LLMModelReadWriteViewSet": "check_llm_model_write",
+    "EmbeddingModelReadWriteViewSet": "check_embedding_model_write",
 }
 
 #: Viewsets that write a guarded serializer without `secret_use_check`, because their
@@ -58,7 +63,12 @@ CUSTOM_WRITE_PATHS: dict[str, str] = {
 #: Classes allowed between a viewset and SecretUseCheckedViewSetMixin in its MRO, each
 #: with why it cannot stop the secret check from running. Any other class there that
 #: overrides perform_create or perform_update could save before the check.
-DELEGATING_MIXINS_BEFORE_SECRET_CHECK: dict[type, str] = {}
+DELEGATING_MIXINS_BEFORE_SECRET_CHECK: dict[type, str] = {
+    # On LLMModelReadWriteViewSet and EmbeddingModelReadWriteViewSet, so a built-in model
+    # is a 403 before the secret check counts its configs. It defines no perform_create
+    # and its perform_update calls super(), so the secret check still runs.
+    BuiltInWriteProtectedMixin: "perform_update calls super(); no perform_create",
+}
 
 #: The bulk-save check of every node type whose bulk serializer, or a serializer nested
 #: in it, has a writable Secret-targeting field.

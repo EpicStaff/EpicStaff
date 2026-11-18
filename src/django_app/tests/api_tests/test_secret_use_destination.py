@@ -1,9 +1,11 @@
 """A model config that carries a secret (an API-key secret, or an `epicstaff_secret(<name>)`
 marker in its `extra_headers` or `connection`) sends it to its destination: the fields of
 its `connection` the catalog marks as endpoints (a base URL, an Azure deployment, a cloud
-region or project). Pointing such a config elsewhere needs secrets:USE. Writes that leave
-the destination where it is stay free, and so does switching the model: a model row holds
-no endpoint, it only picks between vendors' own hosts.
+region or project), and where LiteLLM routes its model's name: a vendor prefix picks another
+provider, and a URL in the name (`huggingface/https://host/v1`) becomes the request URL.
+Pointing such a config elsewhere, by its connection, by switching its model or by renaming
+the model it uses, needs secrets:USE. Writes that leave the destination where it is stay
+free, and so does switching between models of one vendor.
 
 An MCP tool sends its auth secret to its `transport`, so the same rule holds for it.
 
@@ -26,6 +28,9 @@ from tests.rbac_cross_org_fixtures import beta  # noqa: F401
 
 GATEWAY_URL = "https://gateway.example.com/v1"
 ATTACKER_URL = "https://attacker.example.com/v1"
+# An OpenAI-row name LiteLLM hands to its HuggingFace handler, which uses the URL as the
+# request URL and sends the API key there.
+ROUTING_NAME = f"huggingface/{ATTACKER_URL}"
 MARKER_HEADERS = {"Authorization": "Bearer epicstaff_secret(GATEWAY_TOKEN)"}
 DENIED = 'Changing where this sends its secrets requires the "Use" permission'
 
@@ -197,7 +202,7 @@ def test_azure_deployment_is_an_endpoint_and_the_api_version_is_not(no_use_clien
 
 @pytest.mark.django_db
 def test_switching_the_model_of_a_secret_config_is_free(no_use_client, secret_llm_config):
-    # A model row holds no endpoint, so the key keeps going to the connection's base URL.
+    # Both names route to OpenAI, so the key keeps going to the connection's base URL.
     other_model = _builtin("openai", "gpt-4o-mini")
 
     response = no_use_client.patch(
@@ -207,6 +212,234 @@ def test_switching_the_model_of_a_secret_config_is_free(no_use_client, secret_ll
     assert response.status_code == 200, response.json()
     secret_llm_config.refresh_from_db()
     assert secret_llm_config.model_id == other_model.pk
+
+
+def _custom_model(org, name, model_class=LLMModel, provider_field="llm_provider", provider_name="openai"):
+    provider = Provider.objects.get_or_create(name=provider_name)[0]
+    return model_class.objects.create(name=name, is_custom=True, org=org, **{provider_field: provider})
+
+
+def _model_denied(response, field_name):
+    assert response.status_code == 400, response.json()
+    assert response.json()["message"].startswith(f"{field_name}: {DENIED}")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "name", [ROUTING_NAME, "anthropic/claude-sonnet-4-6"], ids=["url-in-name", "other-vendor"]
+)
+def test_switching_a_secret_config_to_a_model_routed_elsewhere_is_denied(
+    no_use_client, default_org, secret_llm_config, gpt_4o_llm, name
+):
+    routed_model = _custom_model(default_org, name)
+
+    response = no_use_client.patch(
+        f"/api/llm-configs/{secret_llm_config.pk}/", {"model": routed_model.pk}, format="json"
+    )
+
+    _model_denied(response, "model")
+    secret_llm_config.refresh_from_db()
+    assert secret_llm_config.model_id == gpt_4o_llm.pk
+
+
+@pytest.mark.django_db
+def test_naming_a_routed_model_by_provider_and_name_is_denied_and_adds_no_model(
+    no_use_client, default_org, secret_llm_config, gpt_4o_llm
+):
+    # The resolver returns a new custom row, not saved yet; the check reads it as sent.
+    response = no_use_client.patch(
+        f"/api/llm-configs/{secret_llm_config.pk}/",
+        {"provider": "openai", "model_name": ROUTING_NAME},
+        format="json",
+    )
+
+    _model_denied(response, "model")
+    secret_llm_config.refresh_from_db()
+    assert secret_llm_config.model_id == gpt_4o_llm.pk
+    assert not LLMModel.objects.filter(name=ROUTING_NAME).exists()
+
+
+@pytest.mark.django_db
+def test_marker_only_config_switching_to_a_routed_model_is_denied(no_use_client, default_org, gpt_4o_llm):
+    config = LLMConfig.objects.create(
+        custom_name="destination-marker-switch", model=gpt_4o_llm, extra_headers=MARKER_HEADERS, org=default_org
+    )
+
+    response = no_use_client.patch(
+        f"/api/llm-configs/{config.pk}/", {"model": _custom_model(default_org, ROUTING_NAME).pk}, format="json"
+    )
+
+    _model_denied(response, "model")
+
+
+@pytest.mark.django_db
+def test_switching_between_two_urls_of_one_provider_is_denied(no_use_client, default_org, secret_a):
+    # Both names route to HuggingFace: only the URL in the name moves the key.
+    gateway_model = _custom_model(default_org, "huggingface/https://gateway.corp/v1")
+    config = LLMConfig.objects.create(
+        custom_name="destination-url-switch", model=gateway_model, api_key_secret=secret_a, org=default_org
+    )
+
+    response = no_use_client.patch(
+        f"/api/llm-configs/{config.pk}/", {"model": _custom_model(default_org, ROUTING_NAME).pk}, format="json"
+    )
+
+    _model_denied(response, "model")
+    config.refresh_from_db()
+    assert config.model_id == gateway_model.pk
+
+
+@pytest.mark.django_db
+def test_switching_a_config_without_secret_to_a_routed_model_is_free(no_use_client, default_org, gpt_4o_llm):
+    config = LLMConfig.objects.create(custom_name="destination-plain-switch", model=gpt_4o_llm, org=default_org)
+    routed_model = _custom_model(default_org, ROUTING_NAME)
+
+    response = no_use_client.patch(f"/api/llm-configs/{config.pk}/", {"model": routed_model.pk}, format="json")
+
+    assert response.status_code == 200, response.json()
+    config.refresh_from_db()
+    assert config.model_id == routed_model.pk
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "secret_fields",
+    [
+        pytest.param(lambda secret: {"api_key_secret": secret}, id="api-key"),
+        pytest.param(lambda secret: {"extra_headers": MARKER_HEADERS}, id="header-marker"),
+    ],
+)
+def test_renaming_the_model_of_a_secret_config_to_a_routed_name_is_denied(
+    no_use_client, default_org, secret_a, secret_fields
+):
+    model = _custom_model(default_org, "my-gateway-model")
+    LLMConfig.objects.create(
+        custom_name="destination-model-user", model=model, org=default_org, **secret_fields(secret_a)
+    )
+
+    response = no_use_client.patch(f"/api/llm-models/{model.pk}/", {"name": ROUTING_NAME}, format="json")
+
+    _model_denied(response, "name")
+    model.refresh_from_db()
+    assert model.name == "my-gateway-model"
+
+
+@pytest.mark.django_db
+def test_renaming_a_url_model_of_a_secret_config_to_another_url_is_denied(no_use_client, default_org, secret_a):
+    # A HuggingFace row takes its name as the request URL; the provider stays the same.
+    model = _custom_model(default_org, "https://gateway.corp/v1", provider_name="huggingface")
+    LLMConfig.objects.create(
+        custom_name="destination-url-rename", model=model, api_key_secret=secret_a, org=default_org
+    )
+
+    response = no_use_client.patch(f"/api/llm-models/{model.pk}/", {"name": ATTACKER_URL}, format="json")
+
+    _model_denied(response, "name")
+    model.refresh_from_db()
+    assert model.name == "https://gateway.corp/v1"
+
+
+@pytest.mark.django_db
+def test_renaming_a_model_within_its_vendor_or_without_secret_configs_is_free(no_use_client, default_org, secret_a):
+    keyed_model = _custom_model(default_org, "my-gateway-model")
+    LLMConfig.objects.create(
+        custom_name="destination-keyed-user", model=keyed_model, api_key_secret=secret_a, org=default_org
+    )
+    plain_model = _custom_model(default_org, "my-plain-model")
+    LLMConfig.objects.create(custom_name="destination-plain-user", model=plain_model, org=default_org)
+
+    within_vendor = no_use_client.patch(
+        f"/api/llm-models/{keyed_model.pk}/", {"name": "my-gateway-model-v2"}, format="json"
+    )
+    unkeyed = no_use_client.patch(f"/api/llm-models/{plain_model.pk}/", {"name": ROUTING_NAME}, format="json")
+
+    assert (within_vendor.status_code, unkeyed.status_code) == (200, 200), (within_vendor.json(), unkeyed.json())
+    keyed_model.refresh_from_db()
+    plain_model.refresh_from_db()
+    assert (keyed_model.name, plain_model.name) == ("my-gateway-model-v2", ROUTING_NAME)
+
+
+@pytest.mark.django_db
+def test_moving_the_model_of_a_secret_config_to_another_provider_is_denied(no_use_client, default_org, secret_a):
+    model = _custom_model(default_org, "shared-name")
+    LLMConfig.objects.create(custom_name="destination-provider-user", model=model, api_key_secret=secret_a, org=default_org)
+    huggingface = Provider.objects.get_or_create(name="huggingface")[0]
+
+    response = no_use_client.patch(f"/api/llm-models/{model.pk}/", {"llm_provider": huggingface.pk}, format="json")
+
+    _model_denied(response, "llm_provider")
+    model.refresh_from_db()
+    assert model.llm_provider.name == "openai"
+
+
+@pytest.mark.django_db
+def test_a_use_holder_may_switch_to_and_rename_into_a_routed_model(
+    use_client, default_org, secret_llm_config, secret_a
+):
+    routed_model = _custom_model(default_org, ROUTING_NAME)
+    renamed_model = _custom_model(default_org, "to-rename")
+    LLMConfig.objects.create(
+        custom_name="destination-use-user", model=renamed_model, api_key_secret=secret_a, org=default_org
+    )
+
+    switched = use_client.patch(
+        f"/api/llm-configs/{secret_llm_config.pk}/", {"model": routed_model.pk}, format="json"
+    )
+    renamed = use_client.patch(
+        f"/api/llm-models/{renamed_model.pk}/", {"name": f"{ROUTING_NAME}/other"}, format="json"
+    )
+
+    assert (switched.status_code, renamed.status_code) == (200, 200), (switched.json(), renamed.json())
+    secret_llm_config.refresh_from_db()
+    renamed_model.refresh_from_db()
+    assert (secret_llm_config.model_id, renamed_model.name) == (routed_model.pk, f"{ROUTING_NAME}/other")
+
+
+@pytest.mark.django_db
+def test_embedding_config_switch_to_a_routed_model_is_denied(no_use_client, default_org, secret_embedding_config):
+    routed_model = _custom_model(default_org, ROUTING_NAME, EmbeddingModel, "embedding_provider")
+
+    response = no_use_client.patch(
+        f"/api/embedding-configs/{secret_embedding_config.pk}/", {"model": routed_model.pk}, format="json"
+    )
+
+    _model_denied(response, "model")
+    secret_embedding_config.refresh_from_db()
+    assert secret_embedding_config.model_id != routed_model.pk
+
+
+@pytest.mark.django_db
+def test_renaming_the_model_of_a_secret_embedding_config_to_a_routed_name_is_denied(
+    no_use_client, default_org, secret_a
+):
+    model = _custom_model(default_org, "my-embedder", EmbeddingModel, "embedding_provider")
+    EmbeddingConfig.objects.create(
+        custom_name="destination-embedder-user", model=model, api_key_secret=secret_a, org=default_org
+    )
+
+    response = no_use_client.patch(f"/api/embedding-models/{model.pk}/", {"name": ROUTING_NAME}, format="json")
+
+    _model_denied(response, "name")
+    model.refresh_from_db()
+    assert model.name == "my-embedder"
+
+
+@pytest.mark.django_db
+def test_another_orgs_model_is_not_found_before_any_secret_check(no_use_client, beta):
+    # Its config carries a secret, so a secret check run first would answer 400.
+    theirs = _custom_model(beta, "beta-model")
+    LLMConfig.objects.create(
+        custom_name="beta-keyed",
+        model=theirs,
+        api_key_secret=secret_service.create(text="sk-beta", org=beta, name="BETA_KEY"),
+        org=beta,
+    )
+
+    response = no_use_client.patch(f"/api/llm-models/{theirs.pk}/", {"name": ROUTING_NAME}, format="json")
+
+    assert response.status_code == 404
+    theirs.refresh_from_db()
+    assert theirs.name == "beta-model"
 
 
 @pytest.mark.django_db

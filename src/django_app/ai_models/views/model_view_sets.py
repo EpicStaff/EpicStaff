@@ -20,7 +20,9 @@ from rest_framework.viewsets import ModelViewSet
 from tables.exceptions import InUseRestrictedError
 from tables.services.secrets.secret_use_checks import (
     check_embedding_config_write,
+    check_embedding_model_write,
     check_llm_config_write,
+    check_llm_model_write,
 )
 from tables.swagger_schemas.bulk_delete_schemas import (
     EMBEDDING_CONFIG_BULK_DELETE_POST,
@@ -132,6 +134,8 @@ class LLMConfigReadWriteViewSet(
     rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     delete_service_class = LLMConfigDeleteService
     secret_use_check = check_llm_config_write
+    # The check locks the model rows it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
 
     class LLMConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -168,18 +172,25 @@ class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
 
 
 class LLMModelReadWriteViewSet(
-    # A model row holds only a name, no endpoint and no secret, so its writes need no
-    # secret check: a config's endpoint lives in the config's `connection`.
-    # BuiltInWriteProtectedMixin hands every perform_* it overrides on to super(), so
-    # the hybrid org mixin after it still runs: it scopes get_queryset and stamps the
+    # A model row holds no secret, but LiteLLM routes a config's requests by the model's
+    # name (a vendor prefix, or a URL), so renaming a model can move the secrets of its
+    # configs: the secret check gates that.
+    # Built-in protection runs before the secret check: a built-in model is immutable
+    # (403) whatever the caller holds, and the secret check counts the configs of every
+    # org that uses it. Both mixins hand every perform_* they override on to super(), so
+    # the hybrid org mixin after them still runs: it scopes get_queryset and stamps the
     # org on create.
     BuiltInWriteProtectedMixin,
+    SecretUseCheckedViewSetMixin,
     OrgScopedHybridViewSetMixin,
     BasePredefinedRestrictedViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_llm_model_write
+    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -193,14 +204,18 @@ class LLMModelReadWriteViewSet(
 
 
 class EmbeddingModelReadWriteViewSet(
-    # As LLMModelReadWriteViewSet: a model row holds no endpoint and no secret.
+    # As LLMModelReadWriteViewSet: renaming a model can move the secrets of its configs.
     BuiltInWriteProtectedMixin,
+    SecretUseCheckedViewSetMixin,
     OrgScopedHybridViewSetMixin,
     BasePredefinedRestrictedViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_embedding_model_write
+    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -222,6 +237,8 @@ class EmbeddingConfigReadWriteViewSet(
     rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     delete_service_class = EmbeddingConfigDeleteService
     secret_use_check = check_embedding_config_write
+    # The check locks the model rows it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
 
     class EmbeddingConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(

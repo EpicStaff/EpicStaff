@@ -2,8 +2,10 @@
 
 A config's endpoint is its `connection` fields the catalog marks as endpoints (a base URL, an
 Azure deployment, a cloud region or project). People in the organization may add their own
-keys to a config a plugin wrote, so a plugin never sets, changes or clears one of those. The
-name, the model and the settings stay editable. Model rows hold no endpoint at all.
+keys to a config a plugin wrote, so a plugin never sets, changes or clears one of those. A
+model's name can act as one too, when LiteLLM takes a URL in it as the request URL
+(`huggingface/https://host/v1`), so a plugin never points a config at such a model, nor
+names a model that way. The name, the model and the settings otherwise stay editable.
 """
 
 import pytest
@@ -33,6 +35,7 @@ ACCESS = [{"resource_type": "llm_configs", "actions": ["read", "create", "update
 ACME_URL = "https://llm.acme.example"
 ELSEWHERE = "https://elsewhere.example"
 LLM_CONFIGS = "/api/llm-configs/"
+ROUTING_NAME = f"huggingface/{ELSEWHERE}/v1"
 
 
 @pytest.fixture
@@ -178,6 +181,66 @@ def test_an_embedding_config_s_endpoint_is_not_the_plugin_s_to_set(client, acme)
     _refused(repointed, "base_url")
 
 
+# ---- a model whose name routes to a URL ----
+
+
+def _custom_model(acme, name):
+    provider = Provider.objects.get_or_create(name="openai")[0]
+    return LLMModel.objects.create(name=name, llm_provider=provider, is_custom=True, org=acme)
+
+
+def _refused_on(response, field_name):
+    assert response.status_code == 400, response.content
+    assert response.json()["message"].startswith(f"{field_name}: {REFUSED}")
+
+
+def test_switching_a_config_to_a_model_that_routes_to_a_url_is_refused(client, org_config, gpt_4o, acme):
+    # Refused though the config carries no secret: a person may add a key to it later.
+    response = client.patch(
+        f"{LLM_CONFIGS}{org_config.pk}/", {"model": _custom_model(acme, ROUTING_NAME).pk}, format="json"
+    )
+
+    _refused_on(response, "model")
+    org_config.refresh_from_db()
+    assert org_config.model_id == gpt_4o.pk
+
+
+def test_creating_a_config_naming_a_url_model_by_provider_and_name_is_refused(client):
+    Provider.objects.get_or_create(name="openai")
+    response = client.post(
+        LLM_CONFIGS,
+        {"custom_name": "weather-config", "provider": "openai", "model_name": ROUTING_NAME},
+        format="json",
+    )
+
+    _refused_on(response, "model")
+    assert not LLMConfig.objects.filter(custom_name="weather-config").exists()
+    assert not LLMModel.objects.filter(name=ROUTING_NAME).exists()
+
+
+def test_switching_to_another_vendor_s_model_stays_allowed(client, org_config):
+    # Picking a vendor is picking a provider, which a plugin may do; only a URL is refused.
+    other_vendor = _builtin("anthropic", "claude-sonnet-4-6")
+
+    response = client.patch(f"{LLM_CONFIGS}{org_config.pk}/", {"model": other_vendor.pk}, format="json")
+
+    assert response.status_code == 200, response.content
+
+
+def test_a_plugin_cannot_name_a_model_after_a_url(client, acme):
+    openai = Provider.objects.get_or_create(name="openai")[0]
+    own_model = _custom_model(acme, "acme-gateway-model")
+
+    created = client.post("/api/llm-models/", {"name": ROUTING_NAME, "llm_provider": openai.pk}, format="json")
+    renamed = client.patch(f"/api/llm-models/{own_model.pk}/", {"name": ROUTING_NAME}, format="json")
+
+    _refused_on(created, "name")
+    _refused_on(renamed, "name")
+    own_model.refresh_from_db()
+    assert own_model.name == "acme-gateway-model"
+    assert not LLMModel.objects.filter(name=ROUTING_NAME).exists()
+
+
 def _authenticated_principal(raw_key):
     request = Request(
         APIRequestFactory().post("/", HTTP_AUTHORIZATION=f"PluginKey {raw_key}", HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET),
@@ -287,7 +350,7 @@ def test_a_plugin_in_another_organization_gets_not_found(plugin, service_account
     assert org_config.custom_name == "acme-config"
 
 
-# ---- no model a secret-holding config points at decides where it sends requests ----
+# ---- no model a secret-holding config points at holds an endpoint column ----
 
 ENDPOINT_FIELD_NAMES = {"base_url", "deployment_id", "deployment", "api_version"}
 

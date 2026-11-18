@@ -314,18 +314,30 @@ class QuickstartService(metaclass=SingletonMeta):
     ) -> LLMModel | EmbeddingModel:
         """Return the model row of the provider's quickstart model, resolved like the API does.
 
-        Quickstart's configs have an empty `connection`, so the bundle secret always goes
-        to the provider's own endpoint, whichever row is used.
+        Quickstart's configs have an empty `connection`, so the bundle secret goes to
+        wherever the model's name routes, which for the fixed name is the provider's own
+        endpoint. An organization's own row is locked until the quickstart commits: a
+        concurrent rename locks it too (`check_llm_model_write`), so it either waits and
+        then counts the configs made here, or lands first, and the renamed row no longer
+        matches and is resolved again. Must run inside the quickstart's transaction.
 
         Raises:
             UnknownCatalogModelError: The provider or model has no row and takes no custom models.
         """
         model_key = "llm_model" if kind == ModelKind.LLM else "embedding_model"
+        provider_field = "llm_provider" if kind == ModelKind.LLM else "embedding_provider"
         resolver = CatalogModelResolver()
         model = resolver.resolve(
             kind, provider, self.PROVIDER_CONFIGS[provider][model_key], org_id=org_id, author=author
         )
-        return resolver.save_if_new(model)
+        # Built-in rows are immutable and a new row is this transaction's own: neither moves.
+        if model.pk is None or model.org_id is None:
+            return resolver.save_if_new(model)
+        locked = type(model).objects.select_for_update(of=("self",)).filter(pk=model.pk).first()
+        resolved_key = (model.name, getattr(model, f"{provider_field}_id"))
+        if locked is None or (locked.name, getattr(locked, f"{provider_field}_id")) != resolved_key:
+            return self._model(kind, provider=provider, org_id=org_id, author=author)
+        return locked
 
     def _parameters(
         self, kind: ModelKind, *, provider: str, model_name: str, org_id: int, overrides: dict
