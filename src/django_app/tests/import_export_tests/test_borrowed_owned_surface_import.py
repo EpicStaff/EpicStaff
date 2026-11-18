@@ -8,6 +8,8 @@ state; importing them gives the copy agent its own copies instead of failing.
 import json
 
 import pytest
+from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from tests.fixtures import *  # noqa: F401,F403
 
@@ -177,8 +179,19 @@ class TestBulkImport:
         ) == first_id_mapper.get(EntityType.AGENT_DEFINITION, borrower_id)
 
 
+def _request_in_org(user, org) -> Request:
+    """A request by `user` in `org`, as the paste endpoint hands to the import.
+
+    Node responses hide surfaces from callers without surfaces READ, and from a
+    render with no request at all.
+    """
+    request = APIRequestFactory().post("/", HTTP_X_ORGANIZATION_ID=str(org.id))
+    force_authenticate(request, user=user)
+    return Request(request)
+
+
 @pytest.mark.django_db
-def test_partial_import_gives_the_borrower_its_own_copy(borrowing_flows, default_org):
+def test_partial_import_gives_the_borrower_its_own_copy(borrowing_flows, default_org, regular_user):
     nodes = borrowing_flows["nodes"]
     export_result = GraphPartialExportService(entity_registry).export(
         [
@@ -195,7 +208,10 @@ def test_partial_import_gives_the_borrower_its_own_copy(borrowing_flows, default
     )
 
     result = PartialImportService(entity_registry).import_data(
-        json.loads(json.dumps(export_result.data)), target_graph, org_id=default_org.id
+        json.loads(json.dumps(export_result.data)),
+        target_graph,
+        org_id=default_org.id,
+        serializer_context={"request": _request_in_org(regular_user, default_org)},
     )
 
     owner_id = result.id_mapper.get(EntityType.AGENT_DEFINITION, borrowing_flows["owner"].id)

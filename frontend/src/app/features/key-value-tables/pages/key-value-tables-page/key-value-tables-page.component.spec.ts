@@ -3,7 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { ConfirmationDialogService } from '@shared/components';
 import { ActionCode } from '@shared/models';
 import { NEVER, Observable, of, Subject, throwError } from 'rxjs';
@@ -85,6 +85,42 @@ describe('KeyValueTablesPageComponent key search', () => {
         fixture.detectChanges();
         expect(grid().table().id).toBe(2);
         expect(grid().searchTerm()).toBe('profile_42');
+    });
+});
+
+describe('KeyValueTablesPageComponent ?tableId= deep link', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    async function selectedTableAt(url: string): Promise<{ selectedTableId: number | null; url: string }> {
+        TestBed.configureTestingModule({
+            providers: [
+                provideRouter([]),
+                { provide: PermissionsService, useValue: { can: () => false } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
+                {
+                    provide: KeyValueTablesApiService,
+                    useValue: {
+                        getTables: () => of(TABLES),
+                        getEntries: () => of({ count: 0, next: null, previous: null, results: [] }),
+                    },
+                },
+            ],
+        });
+        const router = TestBed.inject(Router);
+        await router.navigateByUrl(url);
+        const fixture = TestBed.createComponent(KeyValueTablesPageComponent);
+        fixture.detectChanges();
+        await fixture.whenStable();
+        return { selectedTableId: fixture.componentInstance.selectedTableId(), url: router.url };
+    }
+
+    it('selects the table instead of the first one, and drops the param from the URL', async () => {
+        expect(await selectedTableAt('/?tableId=2')).toEqual({ selectedTableId: 2, url: '/' });
+    });
+
+    it('falls back to the first table for an unknown table id', async () => {
+        expect((await selectedTableAt('/?tableId=999')).selectedTableId).toBe(1);
     });
 });
 

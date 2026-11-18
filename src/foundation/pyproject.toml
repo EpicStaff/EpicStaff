@@ -22,6 +22,10 @@ s3-storage = [
     "boto3-stubs==1.43.111",
 ]
 
+cryptographer = [
+    "cryptography==50.0.1",
+]
+
 transitive-pins = [
     "certifi==2026.10.23",
     "idna==3.18",

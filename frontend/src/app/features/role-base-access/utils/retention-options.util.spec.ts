@@ -94,7 +94,12 @@ describe('describeRetentionLowerings', () => {
                 { type: 'sessions', newEffectiveDays: 30 },
                 { type: 'conversations', newEffectiveDays: 365 },
             ],
-            'Sessions older than 30 days and conversations older than 1 year will be removed in the next nightly cleanup. This cannot be undone.',
+            'Sessions older than 30 days and conversations with no new messages for over 1 year will be removed in the next nightly cleanup. This cannot be undone.',
+        ],
+        [
+            'describes conversations by their last message, not their age',
+            [{ type: 'conversations', newEffectiveDays: 90 }],
+            'Conversations with no new messages for over 90 days will be removed in the next nightly cleanup. This cannot be undone.',
         ],
     ])('%s', (_case, lowerings, expected) => {
         expect(describeRetentionLowerings(lowerings)).toBe(expected);

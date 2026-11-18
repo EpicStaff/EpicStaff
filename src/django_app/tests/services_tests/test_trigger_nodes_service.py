@@ -36,7 +36,7 @@ def _schedule_node(graph):
 
 
 def _soft_delete(model, node):
-    model.all_objects.filter(pk=node.pk).update(is_soft_deleted=True, soft_deleted_at=timezone.now())
+    model.all_objects.filter(pk=node.pk).update(active=False, soft_deleted_at=timezone.now())
 
 
 # ── a stored flow ────────────────────────────────────────────────────────────

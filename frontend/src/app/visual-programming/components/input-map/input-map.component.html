@@ -168,6 +168,7 @@
                                 [value]="getValueDisplayText(pair)"
                                 placeholder="all fields"
                                 [attr.aria-label]="valuePlaceholder()"
+                                [attr.aria-describedby]="showsMissingPath(pair) ? missingPathMessageId(i) : null"
                                 autocomplete="off"
                                 role="combobox"
                                 aria-autocomplete="list"
@@ -197,6 +198,14 @@
                             </button>
                         }
                     </div>
+                    @if (showsMissingPath(pair)) {
+                        <div
+                            class="missing-path-message"
+                            [id]="missingPathMessageId(i)"
+                        >
+                            {{ missingPathMessage }}
+                        </div>
+                    }
                 </div>
             }
         </div>

@@ -1,8 +1,9 @@
-import { Dialog } from '@angular/cdk/dialog';
+import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { ESCAPE } from '@angular/cdk/keycodes';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
 import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
 import { RealtimeChannel } from '@shared/models';
 import { RealtimeChannelService } from '@shared/services';
@@ -11,6 +12,7 @@ import { of, Subject } from 'rxjs';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { AgentDefinitionsApiService } from '../../../agent-definitions/services/agent-definitions-api.service';
+import { AddEditChannelDialogComponent } from './add-edit-channel-dialog/add-edit-channel-dialog.component';
 import { VoiceSettingsSectionComponent } from './voice-settings-section.component';
 
 function channel(id: number, overrides: Partial<RealtimeChannel> = {}): RealtimeChannel {
@@ -35,6 +37,7 @@ const CHANNEL = channel(8);
 function configure(canWrite: boolean, channels: RealtimeChannel[], open?: ReturnType<typeof vi.fn>): void {
     TestBed.configureTestingModule({
         providers: [
+            provideRouter([]),
             {
                 provide: RealtimeChannelService,
                 useValue: { getChannels: () => of(channels), channelsChanged$: new Subject<void>() },
@@ -137,6 +140,43 @@ describe('VoiceSettingsSectionComponent "View Details"', () => {
         expect(open).toHaveBeenCalledExactlyOnceWith('Channel Details', second, trigger);
         expect(viewDetailsItem(overlay)).toBeNull();
         expect(trigger.classList).not.toContain('channel-card__action--active');
+    });
+});
+
+describe('VoiceSettingsSectionComponent ?channelId= deep link', () => {
+    async function openAt(
+        url: string,
+        canWrite: boolean
+    ): Promise<{ open: ReturnType<typeof vi.spyOn>; router: Router }> {
+        configure(canWrite, [channel(7), CHANNEL]);
+        const open = vi
+            .spyOn(TestBed.inject(Dialog), 'open')
+            .mockReturnValue({ closed: of(false) } as unknown as DialogRef<unknown, unknown>);
+        const router = TestBed.inject(Router);
+        await router.navigateByUrl(url);
+        const fixture = TestBed.createComponent(VoiceSettingsSectionComponent);
+        fixture.detectChanges();
+        await fixture.whenStable();
+        return { open, router };
+    }
+
+    it('opens the channel as its Edit button does, and drops the param from the URL', async () => {
+        const { open, router } = await openAt(`/?channelId=${CHANNEL.id}`, true);
+
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+            AddEditChannelDialogComponent,
+            expect.objectContaining({ data: { channel: CHANNEL, action: 'update' } })
+        );
+        expect(router.url).toBe('/');
+    });
+
+    it.each([
+        ['for a viewer who cannot edit voice channels', `/?channelId=${CHANNEL.id}`, false],
+        ['for an unknown channel id', '/?channelId=999', true],
+    ])('opens nothing %s', async (_case, url, canWrite) => {
+        const { open } = await openAt(url, canWrite);
+
+        expect(open).not.toHaveBeenCalled();
     });
 });
 

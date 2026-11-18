@@ -105,6 +105,31 @@ def _stored_state(graph: Graph) -> tuple:
             id="classification-prompt-text",
         ),
         pytest.param(
+            "classification_decision_table_node_list",
+            {"node_name": "Classifier", "pre_input_map": {"x": "variables._x|null"}},
+            {"pre_input_map": [_refused_path("variables._x")]},
+            id="classification-table-input-map",
+        ),
+        pytest.param(
+            "classification_decision_table_node_list",
+            {
+                "node_name": "Classifier",
+                "prompt_configs": [
+                    {
+                        "prompt_key": "fast",
+                        "kind": "system_one",
+                        "input_map": {"company": "variables.companies[variables._id]"},
+                    }
+                ],
+            },
+            {
+                "prompt_configs": [
+                    {"input_map": [_refused_path("variables.companies[variables._id]")]}
+                ]
+            },
+            id="system-one-prompt-input-map",
+        ),
+        pytest.param(
             "agent_node_list",
             {
                 "node_name": "Helper",

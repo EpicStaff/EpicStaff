@@ -59,7 +59,9 @@ $compact-theme: mat.define-theme(
     overflow-y: auto;
 }
 
-.builtin-copy-tooltip .mdc-tooltip__surface {
+// A hint of a sentence or more: narrower, and aligned left so its wrapped lines read as a paragraph.
+.builtin-copy-tooltip .mdc-tooltip__surface,
+.paragraph-tooltip .mdc-tooltip__surface {
     max-width: 320px;
     text-align: left;
 }

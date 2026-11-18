@@ -1,17 +1,16 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
-import { ExportResult } from '@shared/models';
-import { toExportResult } from '@shared/utils';
-import { map, Observable } from 'rxjs';
+import { inject, Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
 
 import { PartialImportResponse } from '../../features/flows/models/graph.model';
 import { ConfigService } from '../../services/config';
 import { ImportFlowRequestOptions, ImportResult } from '../models/import-result.model';
 import { InspectResult } from '../models/review-item.model';
+import { ExportFormat } from '../models/transfer-job.model';
 
 export type { ImportFlowRequestOptions };
 
-export type ExportFormat = 'json' | 'csv';
+export type { ExportFormat };
 
 export interface PartialExportRequest {
     agent_node_list: number[];
@@ -31,53 +30,21 @@ export interface PartialExportRequest {
     key_value_node_list: number[];
 }
 
-interface ExportAllBody {
-    graph_id?: number;
-    status?: string[];
-    is_error_cause?: boolean;
-    id_search?: string;
-}
-
 @Injectable({
     providedIn: 'root',
 })
 export class ImportExportService {
-    constructor(
-        private http: HttpClient,
-        private configService: ConfigService
-    ) {}
+    private readonly http = inject(HttpClient);
+    private readonly configService = inject(ConfigService);
 
     private get apiUrl(): string {
         return this.configService.apiUrl + 'graphs/';
-    }
-
-    private get sessionsApiUrl(): string {
-        return this.configService.apiUrl + 'sessions/';
-    }
-
-    private get cdtApiUrl(): string {
-        return this.configService.apiUrl + 'classification-decision-table-node/';
-    }
-
-    partialExport(graphId: number, body: PartialExportRequest): Observable<ExportResult> {
-        return this.http
-            .post(`${this.apiUrl}${graphId}/partial-export/`, body, {
-                observe: 'response',
-                responseType: 'blob',
-            })
-            .pipe(map(toExportResult));
     }
 
     partialImport(graphId: number, file: File): Observable<PartialImportResponse> {
         const formData = new FormData();
         formData.append('file', file);
         return this.http.post<PartialImportResponse>(`${this.apiUrl}${graphId}/partial-import/`, formData);
-    }
-
-    cdtExport(nodeId: number, format: ExportFormat): Observable<Blob> {
-        return this.http.get(`${this.cdtApiUrl}${nodeId}/export/?export_format=${format}`, {
-            responseType: 'blob',
-        });
     }
 
     importFlow(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult> {
@@ -95,62 +62,5 @@ export class ImportExportService {
         formData.append('file', file);
 
         return this.http.post<InspectResult>(`${this.apiUrl}import/inspect/`, formData);
-    }
-
-    exportFlow(graphId: string): Observable<ExportResult> {
-        return this.http
-            .get(`${this.apiUrl}${graphId}/export/`, {
-                observe: 'response',
-                responseType: 'blob',
-            })
-            .pipe(map(toExportResult));
-    }
-
-    bulkExportFlow(ids: number[]): Observable<ExportResult> {
-        return this.http
-            .post(
-                `${this.apiUrl}bulk-export/`,
-                { ids },
-                {
-                    observe: 'response',
-                    responseType: 'blob',
-                }
-            )
-            .pipe(map(toExportResult));
-    }
-
-    // exportSession(id: number, format: ExportFormat): Observable<Blob> {
-    //     return this.http.get(`${this.sessionsApiUrl}${id}/export/?export_format=${format}`, {
-    //         responseType: 'blob',
-    //     });
-    // }
-
-    bulkExportSessions(ids: number[], format: ExportFormat): Observable<Blob> {
-        return this.http.post(
-            `${this.sessionsApiUrl}bulk-export/?export_format=${format}`,
-            { ids },
-            {
-                responseType: 'blob',
-            }
-        );
-    }
-
-    exportAll(
-        filters: {
-            graph?: number | null;
-            status?: string[] | null;
-            is_error_cause?: boolean;
-            id_search?: string | null;
-        },
-        format: ExportFormat = 'json'
-    ): Observable<Blob> {
-        const body: ExportAllBody = {};
-        if (filters.graph != null) body.graph_id = filters.graph;
-        if (filters.status != null && filters.status.length > 0) body.status = filters.status;
-        if (filters.is_error_cause === true) body.is_error_cause = true;
-        if (filters.id_search) body.id_search = filters.id_search;
-        return this.http.post<Blob>(`${this.sessionsApiUrl}export_all/?export_format=${format}`, body, {
-            responseType: 'blob' as 'json',
-        });
     }
 }

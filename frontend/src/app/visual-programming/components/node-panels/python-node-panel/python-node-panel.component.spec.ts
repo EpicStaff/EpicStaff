@@ -12,11 +12,12 @@ import {
     ExecutionTimeoutFormField,
     SelectComponent,
 } from '@shared/components';
-import { NodeType, ResourceCode } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { of, Subject } from 'rxjs';
 
+import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
 import { Venv, VenvStatus } from '../../../../features/virtual-environments/models/venv.model';
@@ -33,9 +34,11 @@ import {
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { PythonNode } from '../../../core/models/python-node.model';
+import { StorageGrants } from '../../../core/models/storage-grants.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { FlowService } from '../../../services/flow.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
+import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { FieldChange, FieldName, NodeDiffStatus } from '../../../utils/diff';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
@@ -49,7 +52,6 @@ import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.co
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { provideChangesTabDiff } from '../../missing-reference-note/missing-reference-note.testing';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
-import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import {
     NODE_SAVING_MESSAGE,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
@@ -57,6 +59,7 @@ import {
     SAVE_TO_RUN_LATEST_CODE_MESSAGE,
     STORED_GRAPH_OUTDATED_MESSAGE,
 } from '../shared/python-code-test-run/stored-python-code';
+import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 import { PythonNodePanelComponent } from './python-node-panel.component';
 
 const pythonNode = {
@@ -79,11 +82,12 @@ const pythonNode = {
 } as unknown as PythonNodeModel;
 
 // A user with Secrets:Use who may edit flows: any read-only here comes from the preview.
-function create(isPreview: boolean): PythonNodePanelComponent {
+function create(isPreview: boolean, isMac = false): PythonNodePanelComponent {
     TestBed.configureTestingModule({
         providers: [
             provideLoadedExecutionTimeoutLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
+            { provide: PLATFORM_IS_MAC, useValue: isMac },
             { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
         ],
     });
@@ -106,6 +110,16 @@ describe('PythonNodePanelComponent secrets', () => {
     it('stays editable in the live editor for a user with Secrets:Use', () => {
         expect(create(false).canEditSecrets()).toBe(true);
     });
+
+    // macOS takes Monaco's Ctrl+Space (⌃Space) for switching the input source, so a Mac user is pointed to ⌘I.
+    it.each([
+        ['Windows and Linux', false, 'Ctrl+Space'],
+        ['a Mac', true, '⌘I'],
+    ])('names the key that inserts get_secret on %s', (_, isMac, key) => {
+        expect(create(false, isMac).secretsTooltip()).toBe(
+            `Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press ${key} in the code editor to insert get_secret('name').`
+        );
+    });
 });
 
 /** The Python node as the backend stores it. */
@@ -120,7 +134,6 @@ const STORED_NODE: PythonNode = {
     test_input: { count: '3' },
     output_variable_path: null,
     metadata: {},
-    use_storage: false,
     created_at: '2026-01-01T00:00:00Z',
     created_by: null,
     last_edited_by: null,
@@ -202,49 +215,36 @@ describe('PythonNodePanelComponent test run', () => {
         expect(blocker()).toBeNull();
     });
 
-    describe('after toggling storage', () => {
-        it('blocks the run until the node is saved, instead of running with the stored flag', () => {
-            open();
-
-            panel.onStorageToggle(true);
-            panel.onRunTest({ count: '3' });
-
-            expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
-            expect(runService.runPythonCode).not.toHaveBeenCalled();
-        });
+    describe('after editing the code', () => {
+        const EDITED_CODE = 'def main(count): return count + 1';
+        const storedWithEditedCode: PythonNode = {
+            ...STORED_NODE,
+            python_code: { ...STORED_NODE.python_code, code: EDITED_CODE },
+        };
 
         it('says the node is being saved while its save is in flight', () => {
             open();
-            panel.onStorageToggle(true);
+            panel.onPythonCodeChange(EDITED_CODE);
 
             TestBed.inject(SidePanelService).markNodeSaving(panel.node().id);
 
             expect(blocker()).toBe(NODE_SAVING_MESSAGE);
         });
 
-        it('runs once the stored node has the new flag', () => {
+        it('runs once the stored node has the new code', () => {
             open();
-            panel.onStorageToggle(true);
+            panel.onPythonCodeChange(EDITED_CODE);
 
-            bindStoredGraph({ ...STORED_NODE, use_storage: true });
+            bindStoredGraph(storedWithEditedCode);
             panel.onRunTest({ count: '3' });
 
             expect(blocker()).toBeNull();
             expect(runService.runPythonCode).toHaveBeenCalledTimes(1);
         });
 
-        it('clears when the toggle is undone', () => {
-            open();
-
-            panel.onStorageToggle(true);
-            panel.onStorageToggle(false);
-
-            expect(blocker()).toBeNull();
-        });
-
-        it('offers Save when the panel is reopened with a toggle that only reached the flow', () => {
+        it('offers Save when the panel is reopened with code that only reached the flow', () => {
             const autosaved = mapPythonNodeToModel(STORED_NODE);
-            open({ ...autosaved, data: { ...autosaved.data, use_storage: true } });
+            open({ ...autosaved, data: { ...autosaved.data, code: EDITED_CODE } });
 
             expect(panel.isDirty()).toBe(false);
             expect(panel.needsSave()).toBe(true);
@@ -283,17 +283,20 @@ describe('PythonNodePanelComponent test run', () => {
         expect(panel.needsSave()).toBe(false);
     });
 
-    it('runs again after the Save round trip of a storage toggle', () => {
+    it('runs again after the Save round trip of a code edit', () => {
         open();
         const sidePanelService = TestBed.inject(SidePanelService);
-        panel.onStorageToggle(true);
+        panel.onPythonCodeChange('def main(count): return count + 1');
         expect(panel.isDirty()).toBe(true);
 
         // What the flows page does for the shell's Save: mark it saving, take the saved graph, clear the mark.
         sidePanelService.markNodeSaving(panel.node().id);
         TestBed.tick();
         expect(blocker()).toBe(NODE_SAVING_MESSAGE);
-        bindStoredGraph({ ...STORED_NODE, use_storage: true });
+        bindStoredGraph({
+            ...STORED_NODE,
+            python_code: { ...STORED_NODE.python_code, code: 'def main(count): return count + 1' },
+        });
         sidePanelService.clearNodeSaving();
         TestBed.tick();
 
@@ -715,6 +718,60 @@ describe('PythonNodePanelComponent Input List and main() signature', () => {
             expect(panel.pythonCode).toBe('def main(count: int, extra, *args):\n    return count\n');
         });
     });
+
+    describe('dirty state of the Input List', () => {
+        // No main(): the rows never rewrite the code, so only the Input List can make the panel dirty.
+        const CODE_WITHOUT_MAIN = '# no entrypoint yet\n';
+
+        it('stays clean when the only row of a node without inputs is removed', () => {
+            open(CODE_WITHOUT_MAIN, {});
+
+            click('.delete-icon', 0);
+
+            expect(rows()).toEqual([]);
+            expect(panel.isDirty()).toBe(false);
+        });
+
+        it('stays clean when Add Input adds a row that is left empty', () => {
+            open(CODE_WITHOUT_MAIN, {});
+
+            click('.add-pair-btn');
+
+            expect(rows().length).toBe(2);
+            expect(panel.isDirty()).toBe(false);
+        });
+
+        it('turns dirty when a row of a node without inputs is named', () => {
+            open(CODE_WITHOUT_MAIN, {});
+
+            typeKey(0, 'topic');
+
+            expect(panel.pythonCode).toBe(CODE_WITHOUT_MAIN);
+            expect(panel.isDirty()).toBe(true);
+        });
+
+        it('turns dirty when the variable path of a named row changes', () => {
+            open(CODE_WITHOUT_MAIN, { topic: 'variables.topic' });
+            const valueInput = fixture.nativeElement.querySelector(
+                'input[aria-autocomplete="list"]'
+            ) as HTMLInputElement;
+
+            valueInput.value = 'subject';
+            valueInput.dispatchEvent(new Event('input'));
+            fixture.detectChanges();
+
+            expect(panel.createUpdatedNode().input_map).toEqual({ topic: 'variables.subject' });
+            expect(panel.isDirty()).toBe(true);
+        });
+
+        it('turns dirty when a named row is removed', () => {
+            open(CODE_WITHOUT_MAIN, { topic: 'variables.topic' });
+
+            click('.delete-icon', 0);
+
+            expect(panel.isDirty()).toBe(true);
+        });
+    });
 });
 
 type DrawnBoxStyle = 'display' | 'paddingTop';
@@ -777,7 +834,7 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
                     InputMapComponent,
                     NodeSecretsFieldComponent,
                     ExecutionTimeoutFieldComponent,
-                    NodeStorageSectionComponent,
+                    StorageGrantsFieldComponent,
                     DiffFieldMarkComponent,
                     CodeDiffViewComponent,
                     SelectComponent,
@@ -863,15 +920,6 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
             label: 'app-tooltip',
             drawnBox: null,
         },
-        // A toggle has no value box: its row, label included, is boxed.
-        {
-            change: change('use_storage', false, true),
-            marked: 'app-node-storage-section',
-            badgeOn: '.storage-header',
-            label: null,
-            // The row stays a flex row; only the box is drawn around it.
-            drawnBox: { marked: { paddingTop: '8px' }, plain: { paddingTop: '0' } },
-        },
     ];
 
     const positionOf = (element: Element): string => getComputedStyle(element).position;
@@ -939,6 +987,33 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
             expect(hoverTooltip(root)).toBe(shown);
         }
     );
+
+    describe('changed storage grants', () => {
+        const EVERYTHING: StorageGrants = { read: true, write: true, delete: true };
+
+        it.each([
+            {
+                kind: 'ticked actions',
+                current: { read: true, write: true, delete: false },
+                version: EVERYTHING,
+                shown: '[Read, Write]',
+            },
+            {
+                kind: 'no access',
+                current: { read: false, write: false, delete: false },
+                version: EVERYTHING,
+                shown: '[No access]',
+            },
+        ])('boxes the whole group and shows the current $kind in the tooltip', ({ current, version, shown }) => {
+            const root = open('changed', [change('storage_grants', current, version)]);
+
+            expect(markedFields(root)).toEqual(['storage_grants']);
+            expect(
+                root.querySelector('app-diff-field-mark.diff-field-mark--group app-storage-grants-field')
+            ).not.toBeNull();
+            expect(hoverTooltip(root)).toBe(shown);
+        });
+    });
 
     describe('a changed venv', () => {
         it.each([
@@ -1129,19 +1204,19 @@ describe('PythonNodePanelComponent venv selection', () => {
     });
 });
 
+/** Stands in for the venv picker, a form control the panel renders without its forms module here. */
+@Component({ selector: 'app-select', template: '' })
+class VenvSelectStubComponent {
+    readonly readonly = input(false);
+}
+
+/** Stands in for the Input List: `nodeName` would otherwise land on the read-only DOM property. */
+@Component({ selector: 'app-input-map', template: '' })
+class InputMapStubComponent {
+    readonly nodeName = input<string>();
+}
+
 describe('PythonNodePanelComponent code that reads secrets', () => {
-    /** Stands in for the venv picker, a form control the panel renders without its forms module here. */
-    @Component({ selector: 'app-select', template: '' })
-    class VenvSelectStubComponent {
-        readonly readonly = input(false);
-    }
-
-    /** Stands in for the Input List: `nodeName` would otherwise land on the read-only DOM property. */
-    @Component({ selector: 'app-input-map', template: '' })
-    class InputMapStubComponent {
-        readonly nodeName = input<string>();
-    }
-
     let fixture: ComponentFixture<PythonNodePanelComponent>;
 
     /** The real panel template, for a node whose code reads secret 7; the controls not checked are unknown elements. */
@@ -1167,12 +1242,7 @@ describe('PythonNodePanelComponent code that reads secrets', () => {
         });
         TestBed.overrideComponent(PythonNodePanelComponent, {
             set: {
-                imports: [
-                    CodeEditorComponent,
-                    NodeStorageSectionComponent,
-                    VenvSelectStubComponent,
-                    InputMapStubComponent,
-                ],
+                imports: [CodeEditorComponent, VenvSelectStubComponent, InputMapStubComponent],
                 schemas: [NO_ERRORS_SCHEMA],
             },
         });
@@ -1182,13 +1252,12 @@ describe('PythonNodePanelComponent code that reads secrets', () => {
         fixture.detectChanges();
     }
 
-    function locks(): { codeEditor: boolean; venv: boolean; storage: boolean; hint: boolean } {
+    function locks(): { codeEditor: boolean; venv: boolean; hint: boolean } {
         const query = <T>(type: new (...args: never[]) => T): T =>
             fixture.debugElement.query(By.directive(type)).componentInstance as T;
         return {
             codeEditor: query(CodeEditorComponent).readOnly,
             venv: query(VenvSelectStubComponent).readonly(),
-            storage: query(NodeStorageSectionComponent).readonly(),
             hint: (fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE) ?? false,
         };
     }
@@ -1196,12 +1265,129 @@ describe('PythonNodePanelComponent code that reads secrets', () => {
     it('locks the code, venv and storage toggle, saying why, for a user without Secrets:Use', () => {
         open(false);
 
-        expect(locks()).toEqual({ codeEditor: true, venv: true, storage: true, hint: true });
+        expect(locks()).toEqual({ codeEditor: true, venv: true, hint: true });
     });
 
     it('leaves them editable, with no hint, for a user with Secrets:Use', () => {
         open(true);
 
-        expect(locks()).toEqual({ codeEditor: false, venv: false, storage: false, hint: false });
+        expect(locks()).toEqual({ codeEditor: false, venv: false, hint: false });
+    });
+});
+
+describe('PythonNodePanelComponent storage grant lock', () => {
+    const ALL_FILES = [ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete];
+    const EVERYTHING: StorageGrants = { read: true, write: true, delete: true };
+    const NOTHING: StorageGrants = { read: false, write: false, delete: false };
+
+    /** `savedGrants` are what the backend holds (`null`: the node was never saved); `storageGrants` are the canvas node's. */
+    function open(
+        files: ActionCode[],
+        storageGrants: StorageGrants,
+        savedGrants: StorageGrants | null = storageGrants
+    ): PythonNodePanelComponent {
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            resource === ResourceCode.Files ? files.includes(action) : true,
+                        canEditSecrets: () => true,
+                        isActivePermissionsLoaded: () => true,
+                    },
+                },
+            ],
+        });
+        TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
+        const fixture = TestBed.createComponent(PythonNodePanelComponent);
+        const canvasNode = {
+            ...pythonNode,
+            data: { ...pythonNode.data, secret_ids: [] },
+            storageGrants,
+        };
+        TestBed.inject(SavedFlowStateService).setSavedFlow({
+            nodes: savedGrants ? [{ ...canvasNode, storageGrants: savedGrants }] : [],
+            connections: [],
+        });
+        fixture.componentRef.setInput('node', canvasNode);
+        fixture.detectChanges();
+        return fixture.componentInstance;
+    }
+
+    it('locks the panel when a ticked box needs a Files permission the user lacks', () => {
+        const panel = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], EVERYTHING);
+
+        expect(panel.storageGrantLock()).toContain('Files: Delete');
+        expect(panel.isReadOnly()).toBe(true);
+        expect(panel.form.disabled).toBe(true);
+    });
+
+    it('still saves a lock-lowering change: unticking Delete, and nothing else', () => {
+        const panel = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], EVERYTHING);
+
+        panel.form.get('storage_grants')!.setValue({ read: true, write: true, delete: false });
+        const saved = panel.onSave();
+
+        expect(saved?.storageGrants).toEqual({ read: true, write: true, delete: false });
+        expect(saved?.node_name).toBe(pythonNode.node_name);
+        expect(saved?.data.code).toBe(pythonNode.data.code);
+    });
+
+    it('does not lock a node whose boxes are all unticked, whatever the role holds', () => {
+        const panel = open([], NOTHING);
+
+        expect(panel.storageGrantLock()).toBeNull();
+        expect(panel.isReadOnly()).toBe(false);
+        expect(panel.form.enabled).toBe(true);
+    });
+
+    it('does not lock a user holding every permission behind the ticked boxes', () => {
+        const panel = open(ALL_FILES, EVERYTHING);
+
+        expect(panel.storageGrantLock()).toBeNull();
+        expect(panel.isReadOnly()).toBe(false);
+    });
+
+    it('stays locked, asking to save first, when the canvas boxes are unticked but the backend still holds them', () => {
+        const panel = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], NOTHING, EVERYTHING);
+
+        expect(panel.storageGrantLock()).toBe('Save your file access changes first, then you can edit the code.');
+        expect(panel.isReadOnly()).toBe(true);
+        expect(panel.form.disabled).toBe(true);
+    });
+
+    it('does not lock a node that was never saved, even with ticked boxes the role lacks', () => {
+        const panel = open([], EVERYTHING, null);
+
+        expect(panel.storageGrantLock()).toBeNull();
+        expect(panel.isReadOnly()).toBe(false);
+    });
+
+    it('does not lock once the saved grants no longer hold the box the role lacks', () => {
+        const panel = open(
+            [ActionCode.Read, ActionCode.Create, ActionCode.Update],
+            { read: true, write: true, delete: false },
+            { read: true, write: true, delete: false }
+        );
+
+        expect(panel.storageGrantLock()).toBeNull();
+        expect(panel.form.enabled).toBe(true);
+    });
+
+    it('unlocks without reopening once the unticked boxes are saved', () => {
+        const unticked = { read: true, write: true, delete: false };
+        const panel = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], unticked, EVERYTHING);
+
+        TestBed.inject(SavedFlowStateService).setSavedFlow({
+            nodes: [{ ...panel.node(), storageGrants: unticked }],
+            connections: [],
+        });
+        TestBed.tick();
+
+        expect(panel.storageGrantLock()).toBeNull();
+        expect(panel.form.enabled).toBe(true);
     });
 });

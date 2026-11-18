@@ -1,0 +1,387 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.visualization {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+
+    &__toolbar {
+        display: flex;
+        align-items: center;
+        height: 40px;
+        padding: 0.375rem 2.5rem;
+        border-bottom: 1px solid var(--color-divider-subtle);
+        gap: 0.5rem;
+        flex-shrink: 0;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__radio {
+        width: 100px;
+    }
+
+    &__toolbar-control {
+        display: flex;
+        height: 24px;
+        gap: 0.75rem;
+
+        &--disabled {
+            cursor: not-allowed;
+        }
+    }
+
+    &__toolbar-label {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        white-space: nowrap;
+    }
+
+    &__toolbar-value {
+        color: var(--text);
+    }
+    &__toolbar-right {
+        display: flex;
+        align-items: center;
+        margin-left: auto;
+    }
+
+    &__slider {
+        display: flex;
+        gap: 0.75rem;
+        width: 300px;
+        flex-shrink: 0;
+    }
+
+    &__stats {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    &__body {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+    }
+
+    // --- Left sidebar (overlay) ---
+    &__sidebar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        background-color: var(--color-sidenav-background);
+        border-right: 1px solid var(--color-divider-subtle);
+        overflow: hidden;
+        z-index: 10;
+    }
+
+    &__sidebar-body {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    &__sidebar-section-title {
+        display: block;
+        height: 40px;
+        padding: 8px 8px 8px 40px;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--color-ks-transparent-text-60);
+        border-bottom: 1px solid var(--color-divider-subtle);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__sidebar-section-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        padding: 8px 14px;
+    }
+
+    // --- Filter items ---
+    &__filter-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 4px;
+        border-radius: 4px;
+
+        &:hover {
+            background-color: var(--color-ghost-btn-active);
+        }
+    }
+
+    &__filter-trigger {
+        appearance: none;
+        background: none;
+        border: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+        text-align: left;
+        font-family: inherit;
+        color: inherit;
+        cursor: pointer;
+
+        &:disabled {
+            cursor: default;
+        }
+    }
+
+    &__filter-color {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    &__filter-label {
+        color: var(--color-ks-transparent-text-80);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+    }
+
+    // --- Canvas ---
+    &__canvas-container {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        overflow: hidden;
+    }
+
+    // Covers the mounted canvas while loading or when there is nothing to draw. The hover tooltip
+    // is cleared whenever a load starts, so nothing inside the canvas container sits above it.
+    &__overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        background-color: var(--color-background-body);
+
+        &--loading {
+            background-color: color-mix(in srgb, var(--color-background-body) 70%, transparent);
+        }
+    }
+
+    &__canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    &__hover-tooltip {
+        position: absolute;
+        transform: translate(-50%, -100%);
+        padding: 4px 10px;
+        border-radius: 6px;
+        background-color: color-mix(in srgb, var(--accent-color) 80%, transparent);
+        color: var(--color-text-primary);
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 20;
+    }
+
+    // --- Detail panel (right overlay sidebar) ---
+    &__detail-panel {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        background-color: var(--color-sidenav-background);
+        border-left: 1px solid var(--color-divider-subtle);
+        overflow: hidden;
+        z-index: 10;
+    }
+
+    &__detail-content {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    &__detail-handle {
+        right: auto;
+        left: 0;
+    }
+
+    &__detail-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px;
+        height: 40px;
+        border-bottom: 1px solid var(--color-divider-subtle);
+        position: sticky;
+        top: 0;
+        background-color: var(--color-sidenav-background);
+        z-index: 1;
+
+        app-button {
+            flex-shrink: 0;
+        }
+    }
+
+    &__detail-title {
+        color: var(--color-text-primary);
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__detail-body {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+    }
+
+    &__detail-row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+
+        &--inline {
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+        }
+    }
+
+    &__detail-section {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding-top: 16px;
+        border-top: 1px solid var(--color-divider-subtle);
+    }
+
+    &__detail-section-header {
+        appearance: none;
+        background: none;
+        border: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        color: var(--color-ks-transparent-text-60);
+        font-family: inherit;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        text-align: left;
+
+        &:hover {
+            color: var(--color-text-primary);
+        }
+    }
+
+    &__detail-section-title {
+        flex: 1;
+    }
+
+    &__detail-section-chevron {
+        display: inline-flex;
+        transition: transform 0.15s ease;
+
+        &--collapsed {
+            transform: rotate(-90deg);
+        }
+    }
+
+    &__detail-section-body {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding-top: 4px;
+    }
+
+    &__detail-link {
+        // Button reset — keeps the link look of the former <span>
+        appearance: none;
+        background: none;
+        border: none;
+        margin: 0;
+        text-align: left;
+        font-family: inherit;
+        color: var(--accent-color);
+        cursor: pointer;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        padding: 2px 0;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+
+    &__detail-label {
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__detail-value {
+        color: var(--color-text-primary);
+        word-break: break-word;
+    }
+}
+
+.divider {
+    color: var(--white-alpha-16);
+}
+
+.visualization__state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    height: 100%;
+    padding: 40px;
+}
+
+.visualization__state-message {
+    color: var(--color-ks-transparent-text-60);
+    text-align: center;
+
+    &--error {
+        color: var(--color-ks-status-failed);
+    }
+}

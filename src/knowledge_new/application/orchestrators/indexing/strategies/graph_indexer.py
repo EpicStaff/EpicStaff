@@ -3,6 +3,7 @@ from dataclasses import asdict
 import pandas
 from application.commands import RunIndex
 from application.orchestrators.indexing.base import AbstractIndexOrchestrator
+from application.sealed_secrets import open_sealed_secrets
 from common.utils import utcnow
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
 from domain.errors import (
@@ -45,14 +46,16 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             else:
                 is_update_run = True
 
+        secrets = open_sealed_secrets(command, self.cryptographer)
         config = await self._get_config_under_uow(
-            rag.id, target_slot, command.embedding_api_key, command.llm_api_key
+            rag.id, target_slot, secrets.embedding_api_key, secrets.llm_api_key
         )
         set_extra_headers(
-            config.embedding_models["default_embedding_model"], command.embedding_extra_headers
+            config.embedding_models["default_embedding_model"],
+            secrets.embedding_extra_headers,
         )
         set_extra_headers(
-            config.completion_models["default_completion_model"], command.llm_extra_headers
+            config.completion_models["default_completion_model"], secrets.llm_extra_headers
         )
 
         rag.mark_as_processing(command.document_ids)

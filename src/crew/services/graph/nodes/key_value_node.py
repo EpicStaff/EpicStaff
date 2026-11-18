@@ -290,7 +290,7 @@ class KeyValueNode(BaseNode):
                 f"Key-Value node '{self.node_name}': '{path}' is not a flow state path. "
                 "Use one like 'variables.user.id' (in a key: 'profile_{variables.user.id}')."
             )
-        # getattr on a DotDict would return its internals, e.g. `variables._properties`.
+        # getattr on a DotDict would return its internals, e.g. `variables.__class__`.
         if any(segment.startswith("_") for segment in segments):
             raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': '{path}' has a segment starting with '_'. "

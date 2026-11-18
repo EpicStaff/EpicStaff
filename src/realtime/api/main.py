@@ -5,7 +5,9 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from xml.sax.saxutils import quoteattr
 
 import httpx
+from application.agent_chat_end_client import AgentChatEndClient
 from application.conversation_service import ConversationService
+from application.pending_connection_sweeper import PendingConnectionSweeper
 from application.tool_manager_service import ToolManagerService
 from application.voice_call_service import VoiceCallService
 from core import config
@@ -20,6 +22,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from foundation.cryptographer import FernetRotatedCryptographer
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
@@ -45,6 +48,7 @@ from src.shared.knowledge.client import KnowledgeClient
 from src.shared.models import RealtimeAgentChatData
 from utils.auth import DjangoAuthClient
 from utils.instructions_concatenator import generate_instruction
+from utils.transport_secrets import SecretDecryptionError, decrypt_transport_secret
 from utils.twilio_signature import validate_twilio_signature
 
 # Uvicorn worker and reload subprocesses import this module directly and never run
@@ -73,9 +77,19 @@ tool_manager_service = ToolManagerService(
     python_code_executor_service=python_code_executor_service,
     knowledge_client=knowledge_client,
 )
+transport_cryptographer = FernetRotatedCryptographer(
+    config.SECRETS_TRANSPORT_KEY,
+    config.SECRETS_TRANSPORT_PREVIOUS_KEYS,
+    hkdf_info=config.SECRETS_TRANSPORT_HKDF_INFO.encode(),
+)
 elevenlabs_agent_provisioner = ElevenLabsAgentProvisioner(redis_service=redis_service)
-factory = RealtimeAgentClientFactory(elevenlabs_agent_provisioner=elevenlabs_agent_provisioner)
-transcription_client_factory = TranscriptionClientFactory()
+factory = RealtimeAgentClientFactory(
+    elevenlabs_agent_provisioner=elevenlabs_agent_provisioner,
+    transport_cryptographer=transport_cryptographer,
+)
+transcription_client_factory = TranscriptionClientFactory(
+    transport_cryptographer=transport_cryptographer
+)
 
 
 # Enable CORS
@@ -89,6 +103,14 @@ app.add_middleware(
 
 
 connection_repository = ConnectionRepository(ttl_seconds=config.CONNECTION_KEY_TTL_SECONDS)
+pending_connection_sweeper = PendingConnectionSweeper(
+    connection_repository=connection_repository,
+    chat_end_client=AgentChatEndClient(
+        django_api_base_url=config.DJANGO_API_BASE_URL,
+        django_api_key=config.DJANGO_API_KEY,
+    ),
+    interval_seconds=config.PENDING_CONNECTION_SWEEP_INTERVAL_SECONDS,
+)
 stream_token_repository = StreamTokenRepository(ttl_seconds=config.STREAM_TOKEN_TTL_SECONDS)
 
 # ---------------------------------------------------------------------------
@@ -242,14 +264,21 @@ async def startup_event():
     app.state.redis_listener_task = asyncio.create_task(
         _run_forever(redis_listener, "redis_listener")
     )
+    app.state.pending_connection_sweeper_task = asyncio.create_task(
+        _run_forever(pending_connection_sweeper.run, "pending_connection_sweeper")
+    )
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Stop the Redis listener supervisor and close the outbound HTTP clients."""
-    redis_listener_task = app.state.redis_listener_task
-    redis_listener_task.cancel()
-    await asyncio.gather(redis_listener_task, return_exceptions=True)
+    """Stop the background supervisors and close the outbound HTTP clients."""
+    background_tasks = (
+        app.state.redis_listener_task,
+        app.state.pending_connection_sweeper_task,
+    )
+    for background_task in background_tasks:
+        background_task.cancel()
+    await asyncio.gather(*background_tasks, return_exceptions=True)
     await knowledge_client.stop()
     await django_auth_client.stop()
     await sandbox_client.aclose()
@@ -334,9 +363,17 @@ async def root(
 
     try:
         summ_client = OpenaiSummarizationClient(
-            api_key=realtime_agent_chat_data.rt_api_key,
+            api_key=decrypt_transport_secret(
+                transport_cryptographer,
+                realtime_agent_chat_data.rt_api_key,
+                field_name="rt_api_key",
+            ),
             base_url=realtime_agent_chat_data.rt_base_url,
         )
+    except SecretDecryptionError as exc:
+        logger.error("Refusing connection {}: {}", connection_key, exc)
+        await websocket.close(code=1011)
+        return
     except ValueError as exc:
         logger.error("Invalid rt_base_url for connection {}: {}", connection_key, exc)
         await websocket.close(code=1011)
@@ -350,6 +387,10 @@ async def root(
         factory=factory,
         summ_client=summ_client,
         transcription_client_factory=transcription_client_factory,
+        chat_end_client=AgentChatEndClient(
+            django_api_base_url=config.DJANGO_API_BASE_URL,
+            django_api_key=config.DJANGO_API_KEY,
+        ),
     )
 
     websocket.state.user = user_info
@@ -681,7 +722,14 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
         )
 
     twilio_cfg = channel.get("twilio") or {}
-    auth_token = twilio_cfg.get("auth_token")
+    try:
+        auth_token = decrypt_transport_secret(
+            transport_cryptographer, twilio_cfg.get("auth_token"), field_name="twilio.auth_token"
+        )
+    except SecretDecryptionError as exc:
+        # Same fail-closed answer as a channel with no auth token: signatures cannot be checked.
+        logger.error("[voice] {}", exc)
+        raise HTTPException(status_code=503, detail="Twilio auth not configured") from exc
     webhook_trigger = twilio_cfg.get("webhook_trigger") or {}
     ngrok_cfg = webhook_trigger.get("ngrok_config") or {}
     live_url = webhook_trigger.get("live_url") or ""

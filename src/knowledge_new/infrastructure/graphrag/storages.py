@@ -1,14 +1,14 @@
 import io
 import re
 from collections.abc import Iterator
-from contextlib import asynccontextmanager
 from typing import Any
 
 import settings
 from common.utils import run_async_to_sync
 from graphrag_storage import Storage, StorageConfig, register_storage
 from graphrag_storage.storage import get_timestamp_formatted_with_local_tz
-from miniopy_async import Minio, S3Error
+from infrastructure.graphrag.s3_client import open_s3_client
+from miniopy_async import S3Error
 from miniopy_async.deleteobjects import DeleteObject
 
 
@@ -50,28 +50,6 @@ class S3Storage(Storage):
         self._access_key = access_key
         self._secret_key = secret_key
 
-    @asynccontextmanager
-    async def _client_manager(self):
-        """Yield a client owned by one operation and close its session afterwards.
-
-        A client per operation keeps the session's lifetime equal to the operation's,
-        so closing in `finally` never pulls the session out from under another call
-        and a failed operation cannot leak it.
-        """
-        secure, endpoint = self._parse_endpoint(self._endpoint)
-        client = Minio(
-            endpoint=endpoint,
-            secure=secure,
-            access_key=self._access_key,
-            secret_key=self._secret_key,
-        )
-        try:
-            if not await client.bucket_exists(self._bucket):
-                await client.make_bucket(self._bucket)
-            yield client
-        finally:
-            await client.close_session()
-
     def _full_key(self, key: str) -> str:
         return f"{self._prefix}/{key}"
 
@@ -84,15 +62,15 @@ class S3Storage(Storage):
             return object_name[len(listing) :]
         return object_name
 
-    @staticmethod
-    def _parse_endpoint(endpoint: str):
-        protocol, host_and_port = endpoint.split("//")
-        return protocol == "https", host_and_port
-
     def find(self, file_pattern: re.Pattern[str]) -> Iterator[str]:
         async def _collect() -> list[str]:
             matches: list[str] = []
-            async with self._client_manager() as client:
+            async with open_s3_client(
+                endpoint=self._endpoint,
+                bucket=self._bucket,
+                access_key=self._access_key,
+                secret_key=self._secret_key,
+            ) as client:
                 async for obj in client.list_objects(
                     bucket_name=self._bucket,
                     prefix=self._list_prefix(),
@@ -106,7 +84,12 @@ class S3Storage(Storage):
         return iter(run_async_to_sync(_collect()))
 
     async def get(self, key: str, as_bytes: bool | None = None, encoding: str | None = None) -> Any:
-        async with self._client_manager() as client:
+        async with open_s3_client(
+            endpoint=self._endpoint,
+            bucket=self._bucket,
+            access_key=self._access_key,
+            secret_key=self._secret_key,
+        ) as client:
             try:
                 response = await client.get_object(
                     bucket_name=self._bucket,
@@ -125,7 +108,12 @@ class S3Storage(Storage):
     async def set(self, key: str, value: Any, encoding: str | None = None) -> None:
         data = value if isinstance(value, bytes) else value.encode(encoding or self._encoding)
 
-        async with self._client_manager() as client:
+        async with open_s3_client(
+            endpoint=self._endpoint,
+            bucket=self._bucket,
+            access_key=self._access_key,
+            secret_key=self._secret_key,
+        ) as client:
             await client.put_object(
                 bucket_name=self._bucket,
                 object_name=self._full_key(key),
@@ -135,7 +123,12 @@ class S3Storage(Storage):
             )
 
     async def has(self, key: str) -> bool:
-        async with self._client_manager() as client:
+        async with open_s3_client(
+            endpoint=self._endpoint,
+            bucket=self._bucket,
+            access_key=self._access_key,
+            secret_key=self._secret_key,
+        ) as client:
             try:
                 await client.stat_object(
                     bucket_name=self._bucket,
@@ -148,14 +141,24 @@ class S3Storage(Storage):
             return True
 
     async def delete(self, key: str) -> None:
-        async with self._client_manager() as client:
+        async with open_s3_client(
+            endpoint=self._endpoint,
+            bucket=self._bucket,
+            access_key=self._access_key,
+            secret_key=self._secret_key,
+        ) as client:
             await client.remove_object(
                 bucket_name=self._bucket,
                 object_name=self._full_key(key),
             )
 
     async def clear(self) -> None:
-        async with self._client_manager() as client:
+        async with open_s3_client(
+            endpoint=self._endpoint,
+            bucket=self._bucket,
+            access_key=self._access_key,
+            secret_key=self._secret_key,
+        ) as client:
             objects = await client.list_objects(
                 bucket_name=self._bucket,
                 prefix=self._list_prefix(),
@@ -184,7 +187,12 @@ class S3Storage(Storage):
 
     def keys(self) -> list[str]:
         async def _collect() -> list[str]:
-            async with self._client_manager() as client:
+            async with open_s3_client(
+                endpoint=self._endpoint,
+                bucket=self._bucket,
+                access_key=self._access_key,
+                secret_key=self._secret_key,
+            ) as client:
                 objects = await client.list_objects(
                     bucket_name=self._bucket,
                     prefix=self._list_prefix(),
@@ -199,7 +207,12 @@ class S3Storage(Storage):
         return run_async_to_sync(_collect())
 
     async def get_creation_date(self, key: str) -> str:
-        async with self._client_manager() as client:
+        async with open_s3_client(
+            endpoint=self._endpoint,
+            bucket=self._bucket,
+            access_key=self._access_key,
+            secret_key=self._secret_key,
+        ) as client:
             try:
                 stat = await client.stat_object(
                     bucket_name=self._bucket,

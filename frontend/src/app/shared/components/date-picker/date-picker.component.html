@@ -26,6 +26,7 @@
             [disabled]="isDisabled()"
             [readonly]="readonly()"
             [ngModel]="inputValue()"
+            [ngModelOptions]="{ standalone: true }"
             (ngModelChange)="onDateInput($event)"
             (click)="$event.stopPropagation()"
             (keydown.enter)="onEnterKey()"

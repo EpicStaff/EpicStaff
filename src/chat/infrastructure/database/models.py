@@ -237,15 +237,15 @@ class ConversationRow(Base):
                 " AND run_state = 'idle'"
             ),
         ),
-        # The retention purge: one org's closed conversations by last activity, a range read
-        # stopped at the batch; the purge orders by the expression, or the planner (no statistics
-        # on a partial index's expression) keeps the sequential scan. Closed rows only, and a
-        # closed conversation never reopens, so a message on an open one writes nothing here.
+        # The retention purge: one org's conversations with no run in flight, open or closed, by
+        # last activity; a range read stopped at the batch. The purge orders by the expression,
+        # or the planner (no statistics on a partial index's expression) keeps the sequential
+        # scan. It renders 'idle' literally, so even a generic plan matches the predicate.
         Index(
-            "ix_conversation_org_id_closed_activity",
+            "ix_conversation_org_id_idle_activity",
             "org_id",
             text("coalesce(last_message_at, created_at)"),
-            postgresql_where=text("closed_at IS NOT NULL"),
+            postgresql_where=text("run_state = 'idle'"),
         ),
         Index("ix_conversation_run_state", "run_state", "active_since"),
         # Not expressible here, so only migration 0001 creates it (alembic does not compare
@@ -279,6 +279,9 @@ class ConversationRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     late_reply_run_id: Mapped[UUID | None] = mapped_column(Uuid)
     handoff_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set exactly while assigned_operator_id is, except on rows the previous release wrote during
+    # an upgrade: a holder without it, or a stale one without a holder. Not a CHECK yet: see 0003.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # SQL NULL for None, not JSON null, so "IS NULL" means "never set".
     chat_extra_data: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     is_signed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

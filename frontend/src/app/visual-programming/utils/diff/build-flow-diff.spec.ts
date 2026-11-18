@@ -207,8 +207,11 @@ const FIELD_CASES: FieldCase[] = [
     fieldCase(
         NodeType.WEBHOOK_TRIGGER,
         UUID.webhook,
-        (node) => ({ ...node, data: { ...node.data, use_storage: true } }),
-        { path: 'use_storage', current: true, version: false }
+        (node) => ({
+            ...node,
+            data: { ...node.data, python_code: { ...node.data.python_code, code: 'def main(): return 1' } },
+        }),
+        { path: 'python_code.code', current: 'def main(): return 1', version: 'def main(): pass' }
     ),
     fieldCase(
         NodeType.TELEGRAM_TRIGGER,
@@ -323,6 +326,61 @@ describe('buildFlowDiff', () => {
         expect(entryOf(diff, testCase.nodeUuid).fields).toEqual([
             expect.objectContaining({ path: testCase.path, current: testCase.current, version: testCase.version }),
         ]);
+    });
+
+    describe('storage grants', () => {
+        const READ_WRITE = { read: true, write: true, delete: false };
+        const EVERYTHING = { read: true, write: true, delete: true };
+
+        // The fixture's version holds no grants, which restores as every box ticked.
+        it.each([
+            fieldCase(NodeType.PYTHON, UUID.python, (node) => ({ ...node, storageGrants: READ_WRITE }), {
+                path: 'storage_grants',
+                current: READ_WRITE,
+                version: EVERYTHING,
+            }),
+            fieldCase(NodeType.WEBHOOK_TRIGGER, UUID.webhook, (node) => ({ ...node, storageGrants: READ_WRITE }), {
+                path: 'storage_grants',
+                current: READ_WRITE,
+                version: EVERYTHING,
+            }),
+            fieldCase(
+                NodeType.CLASSIFICATION_TABLE,
+                UUID.classificationTable,
+                (node) => ({ ...node, preStorageGrants: READ_WRITE }),
+                { path: 'pre_storage_grants', current: READ_WRITE, version: EVERYTHING }
+            ),
+            fieldCase(
+                NodeType.CLASSIFICATION_TABLE,
+                UUID.classificationTable,
+                (node) => ({ ...node, postStorageGrants: READ_WRITE }),
+                { path: 'post_storage_grants', current: READ_WRITE, version: EVERYTHING }
+            ),
+        ])('$type: lowering access on the canvas is a change ($path)', (testCase) => {
+            const diff = diffVersion(snapshot, { liveFlow: testCase.edit(loadLive()) });
+
+            expect(entryOf(diff, testCase.nodeUuid).fields).toEqual([
+                expect.objectContaining({ path: testCase.path, current: testCase.current, version: testCase.version }),
+            ]);
+        });
+
+        it('treats a node with no grants and one with every box ticked as the same', () => {
+            const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({
+                ...node,
+                storageGrants: EVERYTHING,
+            }));
+
+            expect(entryOf(diffVersion(snapshot, { liveFlow }), UUID.python).fields).toEqual([]);
+        });
+
+        it('shows no access as a change from a version that restores every box ticked', () => {
+            const none = { read: false, write: false, delete: false };
+            const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({ ...node, storageGrants: none }));
+
+            expect(entryOf(diffVersion(snapshot, { liveFlow }), UUID.python).fields).toEqual([
+                expect.objectContaining({ path: 'storage_grants', current: none, version: EVERYTHING }),
+            ]);
+        });
     });
 
     // The canvas keeps a node it saved as it sent it: the text as typed and no timeout of its own. The backend stores
@@ -1013,12 +1071,6 @@ describe('buildFlowDiff', () => {
             expect(entry.fields).toEqual([]);
             expect(entry.status).toBe('unchanged');
         });
-    });
-
-    it('reads a webhook of a version saved before the storage flag as storage off', () => {
-        const oldVersion = withSnapshotNode(snapshot, ID.webhook, { use_storage: undefined });
-
-        expect(entryOf(diffVersion(oldVersion), UUID.webhook).status).toBe('unchanged');
     });
 
     it.each([

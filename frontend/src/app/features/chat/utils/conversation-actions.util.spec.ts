@@ -31,58 +31,77 @@ describe('conversationHolder', () => {
 });
 
 describe('the conversation actions', () => {
-    describe.each([
-        // Desk style, then for the holder on a wide screen and on a phone, another operator's and nobody's.
+    // For each desk style and holder: the main action, the desktop ⋯ menu, and the phone's menu (no button there).
+    it.each([
+        // Support: Resolve is the main action whoever holds the conversation, so the desktop menu never has it.
         {
             style: 'support',
-            holderWide: { primary: 'Resolve', menu: ['Release to bot'] },
-            holderPhone: ['Resolve', 'Release to bot'],
-            other: ['Take over', 'Release to bot', 'Resolve'],
-            none: ['Resolve'],
+            holder: 'me',
+            primary: 'Resolve',
+            wide: ['Hand Back to Bot'],
+            phone: ['Resolve', 'Hand Back to Bot'],
+        },
+        {
+            style: 'support',
+            holder: 'other',
+            primary: 'Resolve',
+            wide: ['Take over', 'Hand Back to Bot'],
+            phone: ['Resolve', 'Take over', 'Hand Back to Bot'],
+        },
+        { style: 'support', holder: 'none', primary: 'Resolve', wide: [], phone: ['Resolve'] },
+        // Ongoing: only the holder has a main action (Done); Close conversation stays in the menu.
+        {
+            style: 'ongoing',
+            holder: 'me',
+            primary: 'Done',
+            wide: ['Close conversation'],
+            phone: ['Done', 'Close conversation'],
         },
         {
             style: 'ongoing',
-            holderWide: { primary: 'Done', menu: ['Close conversation'] },
-            holderPhone: ['Done', 'Close conversation'],
-            other: ['Take over', 'Release to bot', 'Close conversation'],
-            none: ['Close conversation'],
+            holder: 'other',
+            primary: null,
+            wide: ['Take over', 'Hand Back to Bot', 'Close conversation'],
+            phone: ['Take over', 'Hand Back to Bot', 'Close conversation'],
         },
         {
-            style: null,
-            holderWide: { primary: 'Release', menu: [] },
-            holderPhone: ['Release'],
-            other: ['Take over', 'Release to bot'],
-            none: [],
+            style: 'ongoing',
+            holder: 'none',
+            primary: null,
+            wide: ['Close conversation'],
+            phone: ['Close conversation'],
         },
-    ] as const)('on a desk of style $style', ({ style, holderWide, holderPhone, other, none }) => {
-        it('gives the holder the main action beside the title and the rest in the menu', () => {
-            expect(labels({ style, holder: 'me' })).toEqual(holderWide);
-        });
+        // A desk not known yet: no close at all; the holder may still release it.
+        { style: null, holder: 'me', primary: 'Release', wide: [], phone: ['Release'] },
+        {
+            style: null,
+            holder: 'other',
+            primary: null,
+            wide: ['Take over', 'Hand Back to Bot'],
+            phone: ['Take over', 'Hand Back to Bot'],
+        },
+        { style: null, holder: 'none', primary: null, wide: [], phone: [] },
+    ] as const)(
+        'on a $style desk, held by $holder: $primary, then the menu',
+        ({ style, holder, primary, wide, phone }) => {
+            expect(labels({ style, holder })).toEqual({ primary, menu: wide });
+            expect(labels({ style, holder, isPhone: true })).toEqual({ primary, menu: phone });
+        }
+    );
 
-        it('leads the menu with the main action on a phone, which has no room for its button', () => {
-            expect(labels({ style, holder: 'me', isPhone: true })).toEqual({
-                primary: holderWide.primary,
-                menu: holderPhone,
-            });
-        });
-
-        it("offers Take over, Release to bot and the close on another operator's conversation", () => {
-            expect(labels({ style, holder: 'other' })).toEqual({ primary: null, menu: other });
-        });
-
-        it("offers the close only on an unclaimed or the bot's conversation", () => {
-            expect(labels({ style, holder: 'none' })).toEqual({ primary: null, menu: none });
-        });
-
-        it('offers nothing on a closed conversation, nor without chats use', () => {
+    it.each(['support', 'ongoing', null] as const)(
+        'offers nothing on a %s desk once closed, nor without chats use',
+        (style) => {
             for (const holder of ['me', 'other', 'none'] as const) {
-                expect(labels({ style, holder, isClosed: true })).toEqual({ primary: null, menu: [] });
-                expect(labels({ style, holder, canUse: false })).toEqual({ primary: null, menu: [] });
+                for (const isPhone of [false, true]) {
+                    expect(labels({ style, holder, isPhone, isClosed: true })).toEqual({ primary: null, menu: [] });
+                    expect(labels({ style, holder, isPhone, canUse: false })).toEqual({ primary: null, menu: [] });
+                }
             }
-        });
-    });
+        }
+    );
 
-    it('maps each item to its action: Done and Release to bot release, Resolve and Close conversation close', () => {
+    it('maps each item to its action: Done and Hand Back to Bot release, Resolve and Close conversation close', () => {
         expect(primaryConversationAction(context({ holder: 'me' }))?.id).toBe('resolve');
         expect(primaryConversationAction(context({ style: 'ongoing', holder: 'me' }))?.id).toBe('release');
         expect(conversationMenuItems(context({ style: 'ongoing', holder: 'other' })).map(({ id }) => id)).toEqual([

@@ -56,8 +56,9 @@ def _csv_rows(session):
     data = ExportService(entity_registry).export_entities(
         EntityType.SESSION, [session.pk], policy=UNRESTRICTED_EXPORT_POLICY
     ).data
-    response = CsvExportFormatStrategy(SessionTabularProjection()).render(data, EntityType.SESSION, "session", str(session.pk))
-    return list(csv.DictReader(io.StringIO(response.content.decode())))
+    stream = io.StringIO(newline="")
+    CsvExportFormatStrategy(SessionTabularProjection()).write(data, EntityType.SESSION, stream)
+    return list(csv.DictReader(io.StringIO(stream.getvalue())))
 
 
 def test_a_run_on_behalf_of_a_person_records_the_plugin_and_the_person(

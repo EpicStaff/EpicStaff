@@ -6,8 +6,13 @@ from proxies.sandbox.services import VenvService
 from rbac.authorship import record_last_edits
 from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied
+from src.shared.models import UserAction
+from user_audit.actor import Actor
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 
+from tables.import_export.archive import ImportArchive, InvalidArchiveError
 from tables.import_export.constants import DEPENDENCY_ORDER
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
@@ -15,8 +20,10 @@ from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.schemas import ImportSettings
+from tables.import_export.strategies.source_collection import remove_restored_graph_indexes
+from tables.services.storage_service.archive_unpacking.extraction_guard import ArchiveLimitExceeded
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
-from tables.validators.run_refusal_validator import find_run_refusals_in_export
+from tables.validators.run_refusal_validator import assert_no_run_refusals_in_export
 
 
 class ImportService:
@@ -31,14 +38,28 @@ class ImportService:
         org_id: int | None = None,
         user=None,
         effective_permissions=None,
+        archive: ImportArchive | None = None,
+        actor: Actor | None = None,
+        **strategy_kwargs,
     ):
         """Import `export_data` into `org_id`, `main_entity` being the file's main type.
 
         `effective_permissions=None` means a trusted internal caller: both permission
         checks (CREATE on each new resource, and USE for trigger nodes) are skipped.
+        `strategy_kwargs` reach every strategy's `import_entity` as keyword arguments.
+
+        Each main entity the file creates is recorded as a `created` user action by name
+        (`updated` for one written over an existing row); dependencies it pulls in and
+        entities it reuses are not. An import that creates nothing records nothing.
+
+        Args:
+            actor: Who the records name. None names the caller of the request being
+                served; an import run outside a request (an import job) records
+                nothing unless it names one.
         """
         if settings is None:
             settings = ImportSettings()
+        mark_request_handled()
 
         id_mapper = IDMapper()
         denied_resources = set()
@@ -50,13 +71,13 @@ class ImportService:
         ):
             trigger_node_access.assert_may_recreate(effective_permissions)
         # A flow crew would refuse to run is refused here, before anything is written.
-        run_refusals = find_run_refusals_in_export(export_data)
-        if run_refusals:
-            raise ValidationError({"detail": run_refusals})
+        assert_no_run_refusals_in_export(export_data)
         created_resources: list[LastEditTrackedModel] = []
         # Venvs are created in the sandbox service, which the transaction does not
         # cover; a rollback has to undo them by hand.
         created_venv_ids: list[int] = []
+        # Graph indexes are restored in the knowledge service, outside the transaction.
+        created_graph_rag_ids: list[int] = []
 
         try:
             with transaction.atomic():
@@ -89,6 +110,10 @@ class ImportService:
                             effective_permissions=effective_permissions,
                             created_resources=created_resources,
                             created_venv_ids=created_venv_ids,
+                            created_graph_rag_ids=created_graph_rag_ids,
+                            archive=archive,
+                            actor=actor,
+                            **strategy_kwargs,
                         )
 
                 if denied_resources:
@@ -97,8 +122,13 @@ class ImportService:
                         f"Missing CREATE permission on: {names}. No changes were made."
                     )
                 record_last_edits(created_resources, user)
-        except Exception:
+        except Exception as error:
             VenvService().remove_upstream(created_venv_ids)
+            remove_restored_graph_indexes(created_graph_rag_ids)
+            if isinstance(error, ArchiveLimitExceeded):
+                raise InvalidArchiveError(
+                    {"code": "invalid_archive", "detail": str(error)}
+                ) from error
             raise
 
         return id_mapper, self.registry
@@ -127,12 +157,13 @@ class ImportService:
         effective_permissions=None,
         *,
         created_resources: list[LastEditTrackedModel],
+        actor: Actor | None,
         **kwargs,
     ):
         old_id = entity_data["id"]
 
         existing = None
-        if not is_main:
+        if not is_main or strategy.reuse_when_main:
             existing = strategy.find_existing(entity_data, id_mapper, org_id=org_id)
 
         was_created = existing is None
@@ -160,7 +191,18 @@ class ImportService:
         # at creation time so downstream logic within the same
         # create_entity call can resolve it. Don't overwrite that mapping.
         if not id_mapper.has_mapping(entity_type, old_id):
-            id_mapper.map(entity_type, old_id, instance.id, was_created)
+            id_mapper.map(entity_type, old_id, instance.pk, was_created)
+        if is_main and id_mapper.was_created(entity_type, old_id):
+            record_user_action(
+                action=(
+                    UserAction.UPDATED
+                    if id_mapper.was_replaced(entity_type, old_id)
+                    else UserAction.CREATED
+                ),
+                org_id=org_id,
+                target=instance,
+                actor=actor,
+            )
         return denied
 
     def _resolve_graph_order(self, graphs: list[dict]) -> list[dict]:

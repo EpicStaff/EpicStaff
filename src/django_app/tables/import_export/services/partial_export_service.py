@@ -157,6 +157,9 @@ class GraphPartialExportService:
         for dep_type, dep_ids in dependencies.items():
             if exclude_graphs and dep_type == EntityType.GRAPH:
                 continue
+            # Copy-paste stays in one org: a pasted link relinks to the same collection.
+            if dep_type == EntityType.SOURCE_COLLECTION:
+                continue
             for dep_id in dep_ids:
                 if not exclusions.admits(dep_type, dep_id):
                     continue

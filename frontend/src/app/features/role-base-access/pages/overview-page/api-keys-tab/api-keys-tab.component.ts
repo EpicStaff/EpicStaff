@@ -8,6 +8,8 @@ import {
     DestroyRef,
     ElementRef,
     inject,
+    input,
+    linkedSignal,
     signal,
     viewChild,
 } from '@angular/core';
@@ -83,6 +85,9 @@ const STATUS_ITEMS: SelectItem[] = [
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ApiKeysTabComponent {
+    /** `?search=`, bound from the URL: seeds the search box, as a link to one item does. */
+    readonly search = input<string>();
+
     // Takes the focus back when a menu action or a row action removes the control that had it.
     private readonly bulkButton = viewChild.required<ElementRef<HTMLButtonElement>>('bulkButton');
 
@@ -102,7 +107,7 @@ export class ApiKeysTabComponent {
     private readonly selectedIds = signal<ReadonlySet<number>>(new Set());
     protected readonly keys = signal<GetApiKeyWithOwnerResponse[]>([]);
 
-    protected readonly searchTerm = signal('');
+    protected readonly searchTerm = linkedSignal(() => this.search() ?? '');
     protected readonly ownerFilterId = signal<number | null>(null);
     protected readonly statusFilter = signal<ApiKeyStatus | null>(null);
     protected readonly orgFilterIds = signal<number[]>([]);

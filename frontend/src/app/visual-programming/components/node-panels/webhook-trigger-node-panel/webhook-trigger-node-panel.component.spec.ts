@@ -27,6 +27,7 @@ import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview
 import { FlowService } from '../../../services/flow.service';
 import { TRIGGER_NODES_NEED_USE_MESSAGE } from '../../../services/flow-readonly.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
+import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { FieldChange, NodeDiffStatus } from '../../../utils/diff';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
@@ -44,7 +45,6 @@ import {
 } from '../../code-diff-view/code-diff-view.testing';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { provideChangesTabDiff } from '../../missing-reference-note/missing-reference-note.testing';
-import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     PYTHON_CODE_RUNNING_MESSAGE,
@@ -75,7 +75,6 @@ const DTO: GetWebhookTriggerNodeRequest = {
     metadata: {},
     webhook_trigger: null,
     test_payload: SAVED_PAYLOAD,
-    use_storage: false,
     created_at: '2026-01-01T00:00:00Z',
     created_by: null,
     last_edited_by: null,
@@ -305,9 +304,7 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
 });
 
 describe('WebhookTriggerNodePanelComponent storage', () => {
-    const STORAGE_HEADER = 'from epicstaff_storage import storage';
     let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
-    let panel: WebhookTriggerNodePanelComponent;
 
     beforeEach(() => {
         TestBed.configureTestingModule({
@@ -326,86 +323,20 @@ describe('WebhookTriggerNodePanelComponent storage', () => {
                 },
             ],
         });
-        // Real panel template with the real storage section; the other controls render as unknown elements.
+        // Real panel template; the other controls render as unknown elements.
         TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
-            set: { imports: [NgTemplateOutlet, NodeStorageSectionComponent], schemas: [NO_ERRORS_SCHEMA] },
+            set: { imports: [NgTemplateOutlet], schemas: [NO_ERRORS_SCHEMA] },
         });
         fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
-        panel = fixture.componentInstance;
         fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(DTO));
         fixture.detectChanges();
     });
 
-    function storageSection(): NodeStorageSectionComponent {
-        return fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
-            .componentInstance as NodeStorageSectionComponent;
-    }
+    it('always shows the file access boxes, with no switch to turn storage on', () => {
+        const host: HTMLElement = fixture.nativeElement;
 
-    it('shows the node storage flag in the storage section', () => {
-        expect(panel.useStorage()).toBe(false);
-        expect(storageSection().enabled()).toBe(false);
-    });
-
-    it('saves a toggled storage flag, and saves it again once it is toggled back', () => {
-        storageSection().onToggle(true);
-
-        expect(panel.useStorage()).toBe(true);
-        expect(panel.isDirty()).toBe(true);
-        expect(panel.onSaveSilently()!.data.use_storage).toBe(true);
-        expect(panel.isDirty()).toBe(false);
-
-        storageSection().onToggle(false);
-
-        expect(panel.onSaveSilently()!.data.use_storage).toBe(false);
-    });
-
-    it('puts the storage header on top of the code once, and takes it out again when storage is turned off', () => {
-        storageSection().onToggle(true);
-
-        expect(panel.pythonCode.startsWith(STORAGE_HEADER)).toBe(true);
-        expect(panel.pythonCode.endsWith(DTO.python_code.code)).toBe(true);
-        const codeWithHeader = panel.pythonCode;
-        panel.insertStorageCode(STORAGE_HEADER);
-        expect(panel.pythonCode).toBe(codeWithHeader);
-
-        storageSection().onToggle(false);
-
-        expect(panel.pythonCode).toBe(DTO.python_code.code);
-        expect(panel.isDirty()).toBe(false);
-    });
-
-    it('leaves the header in code that no longer starts with it when storage is turned off', () => {
-        storageSection().onToggle(true);
-        panel.onPythonCodeChange('# edited\n' + panel.pythonCode);
-
-        storageSection().onToggle(false);
-
-        expect(panel.pythonCode.includes(STORAGE_HEADER)).toBe(true);
-        expect(panel.useStorage()).toBe(false);
-    });
-
-    it('does not add the header to code that already uses storage', () => {
-        const code = 'from epicstaff_storage import storage\n\ndef main(trigger_payload): pass';
-        fixture.componentRef.setInput(
-            'node',
-            mapWebhookTriggerNodeToModel({ ...DTO, id: 22, python_code: { ...DTO.python_code, code } })
-        );
-        fixture.detectChanges();
-
-        storageSection().onToggle(true);
-
-        expect(panel.pythonCode).toBe(code);
-    });
-
-    it('shows the flag of another webhook node selected in the same panel', () => {
-        const otherNode = { ...mapWebhookTriggerNodeToModel({ ...DTO, use_storage: true }), id: 'other-node' };
-
-        fixture.componentRef.setInput('node', otherNode);
-        fixture.detectChanges();
-
-        expect(panel.useStorage()).toBe(true);
-        expect(storageSection().enabled()).toBe(true);
-        expect(panel.isDirty()).toBe(false);
+        expect(host.querySelector('app-storage-grants-field')).not.toBeNull();
+        expect(host.querySelector('app-toggle-switch')).toBeNull();
     });
 });
 
@@ -620,7 +551,7 @@ describe('WebhookTriggerNodePanelComponent code that reads secrets', () => {
         });
         TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
             set: {
-                imports: [NgTemplateOutlet, CodeEditorComponent, NodeStorageSectionComponent],
+                imports: [NgTemplateOutlet, CodeEditorComponent],
                 schemas: [NO_ERRORS_SCHEMA],
             },
         });
@@ -640,26 +571,17 @@ describe('WebhookTriggerNodePanelComponent code that reads secrets', () => {
         return fixture.debugElement.query(By.directive(CodeEditorComponent)).componentInstance as CodeEditorComponent;
     }
 
-    function storageSection(): NodeStorageSectionComponent {
-        return fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
-            .componentInstance as NodeStorageSectionComponent;
-    }
-
     it.each([
         { canUseSecrets: false, locked: true },
         { canUseSecrets: true, locked: false },
-    ])(
-        'locks the code and storage toggle, saying why, without Secrets:Use ($canUseSecrets)',
-        ({ canUseSecrets, locked }) => {
-            open(canUseSecrets);
+    ])('locks the code, saying why, without Secrets:Use ($canUseSecrets)', ({ canUseSecrets, locked }) => {
+        open(canUseSecrets);
 
-            expect(codeEditor().readOnly).toBe(locked);
-            expect(storageSection().readonly()).toBe(locked);
-            expect((fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE)).toBe(
-                locked
-            );
-        }
-    );
+        expect(codeEditor().readOnly).toBe(locked);
+        expect((fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE)).toBe(
+            locked
+        );
+    });
 });
 
 describe('WebhookTriggerNodePanelComponent run python code', () => {
@@ -831,16 +753,6 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
 
             panel().onSecretsChange([7]);
             expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
-        });
-
-        it('asks to save after a storage toggle, and clears once the saved graph has the flag', () => {
-            const runPanel = open();
-
-            panel().onStorageToggle(true);
-            expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
-
-            bindStoredGraph(asStored({ ...DTO, use_storage: true }));
-            expect(runPanel.runCodeBlocker()).toBeNull();
         });
 
         it('keeps asking after the panel is closed and reopened before the graph is saved', () => {
@@ -1354,4 +1266,121 @@ describe('WebhookTriggerNodePanelComponent and the Use permission on flows', () 
             expect(codeEditor().actionIcon()).toBe(offered ? 'play-outline' : null);
         }
     );
+});
+
+describe('WebhookTriggerNodePanelComponent storage grant lock', () => {
+    const ALL_FILES = [ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete];
+    const EVERYTHING: Partial<GetWebhookTriggerNodeRequest> = {
+        storage_grant_read: true,
+        storage_grant_write: true,
+        storage_grant_delete: true,
+    };
+    const NOTHING: Partial<GetWebhookTriggerNodeRequest> = {
+        storage_grant_read: false,
+        storage_grant_write: false,
+        storage_grant_delete: false,
+    };
+
+    /** `savedGrants` are what the backend holds; `grants` are the canvas node's. */
+    function open(
+        files: ActionCode[],
+        grants: Partial<GetWebhookTriggerNodeRequest>,
+        savedGrants: Partial<GetWebhookTriggerNodeRequest> = grants
+    ): ComponentFixture<WebhookTriggerNodePanelComponent> {
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ToastService, useValue: { warning: vi.fn() } },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            resource === ResourceCode.Files ? files.includes(action) : true,
+                        canAny: () => true,
+                        canEditSecrets: () => true,
+                        isActivePermissionsLoaded: () => true,
+                    },
+                },
+                {
+                    provide: SecretsStorageService,
+                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                },
+            ],
+        });
+        TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
+            set: { imports: [NgTemplateOutlet], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        const fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+        const canvasNode = mapWebhookTriggerNodeToModel({ ...DTO, ...grants });
+        TestBed.inject(SavedFlowStateService).setSavedFlow({
+            nodes: [{ ...mapWebhookTriggerNodeToModel({ ...DTO, ...savedGrants }), id: canvasNode.id }],
+            connections: [],
+        });
+        fixture.componentRef.setInput('node', canvasNode);
+        fixture.detectChanges();
+        return fixture;
+    }
+
+    function hints(fixture: ComponentFixture<WebhookTriggerNodePanelComponent>): string[] {
+        return fixture.debugElement
+            .queryAll(By.css('app-hint-message'))
+            .map((element) => (element.nativeElement.textContent ?? '').trim());
+    }
+
+    it('locks the whole panel when a ticked box needs a Files permission the user lacks', () => {
+        const fixture = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], EVERYTHING);
+
+        expect(fixture.componentInstance.isReadOnly()).toBe(true);
+        expect(fixture.componentInstance.form.disabled).toBe(true);
+        expect(hints(fixture).join(' ')).toContain("Files: Delete, which you don't have");
+    });
+
+    it('stays locked, asking to save first, while the canvas boxes are unticked but the backend still holds them', () => {
+        const fixture = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], NOTHING, EVERYTHING);
+
+        expect(fixture.componentInstance.isReadOnly()).toBe(true);
+        expect(hints(fixture).join(' ')).toContain('Save your file access changes first');
+    });
+
+    it('still saves unticking Delete from a locked panel, and nothing else', () => {
+        const fixture = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], EVERYTHING);
+        const before = fixture.componentInstance.node();
+
+        fixture.componentInstance.form.get('storage_grants')!.setValue({ read: true, write: true, delete: false });
+        const saved = fixture.componentInstance.onSave();
+
+        expect(saved?.storageGrants).toEqual({ read: true, write: true, delete: false });
+        expect(saved?.node_name).toBe(before.node_name);
+        expect(saved?.data.python_code.code).toBe(before.data.python_code.code);
+    });
+
+    it("saves unticking Delete from a locked panel through the shell's Save", () => {
+        const fixture = open([ActionCode.Read, ActionCode.Create, ActionCode.Update], EVERYTHING);
+        const requestSaveNode = vi
+            .spyOn(TestBed.inject(SidePanelService), 'requestSaveNode')
+            .mockImplementation(() => undefined);
+
+        fixture.componentInstance.form.get('storage_grants')!.setValue({ read: true, write: true, delete: false });
+        fixture.componentInstance.onSaveClick();
+
+        expect(requestSaveNode).toHaveBeenCalledTimes(1);
+        const savedNode = requestSaveNode.mock.calls[0][0] as WebhookTriggerNodeModel;
+        expect(savedNode.storageGrants).toEqual({ read: true, write: true, delete: false });
+    });
+
+    it('does not lock a node whose boxes are all unticked, whatever the role holds', () => {
+        const fixture = open([], NOTHING);
+
+        expect(fixture.componentInstance.isReadOnly()).toBe(false);
+        expect(hints(fixture)).toEqual([]);
+    });
+
+    it('does not lock a user holding every permission behind the ticked boxes', () => {
+        const fixture = open(ALL_FILES, EVERYTHING);
+
+        expect(fixture.componentInstance.isReadOnly()).toBe(false);
+        expect(hints(fixture)).toEqual([]);
+    });
 });

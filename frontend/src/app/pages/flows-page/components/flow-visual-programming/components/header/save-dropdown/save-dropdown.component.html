@@ -34,4 +34,13 @@
             size="1rem"
         />
     </button>
+    <button
+        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+        type="button"
+        role="menuitem"
+        class="save-dropdown__item"
+        (click)="exportFlow.emit()"
+    >
+        Export Flow
+    </button>
 </div>

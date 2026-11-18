@@ -1,7 +1,7 @@
 """Regression guard for secret resolution on the AgentDefinition realtime path.
 
-The `agent_id` path resolves `rt_api_key_secret_id` -> plaintext through
-`SecretResolver` before publishing to `realtime_agents:schema`. The
+The `agent_id` path resolves `rt_api_key_secret_id` -> a transport-sealed value
+through `SecretResolver` before publishing to `realtime_agents:schema`. The
 `agent_definition_id` path must behave identically: same carrier fields, same
 org-scoped resolution. Merging `main` (which still read the removed plaintext
 `RealtimeConfig.api_key` column) into the secrets branch broke exactly this
@@ -25,6 +25,7 @@ from rbac.models.enums import BuiltInRole
 from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentDefinition
 from tables.services.secrets import secret_service
 from tests.fixtures import *  # noqa: F401,F403
+from tests.sealed_values import open_sealed
 
 FOREIGN_PLAINTEXT = "sk-FOREIGN-must-never-be-decrypted-9c02"
 REALTIME_PLAINTEXT = "sk-rt-definition-realtime-key"
@@ -80,7 +81,7 @@ def _published_payload(redis_client_mock) -> dict:
 
 
 @pytest.mark.django_db
-def test_agent_definition_realtime_keys_are_resolved_to_plaintext(
+def test_agent_definition_realtime_keys_are_resolved_and_sealed(
     default_org_client, rt_agent_definition, redis_client_mock
 ):
     resp = default_org_client.post(
@@ -92,9 +93,9 @@ def test_agent_definition_realtime_keys_are_resolved_to_plaintext(
     assert resp.status_code == 201, resp.data
 
     payload = _published_payload(redis_client_mock)
-    # Plaintext values come from the `openai_config` fixture secrets.
-    assert payload["rt_api_key"] == REALTIME_PLAINTEXT
-    assert payload["transcript_api_key"] == TRANSCRIPTION_PLAINTEXT
+    # Sealed values open to the `openai_config` fixture secrets.
+    assert open_sealed(payload["rt_api_key"]) == REALTIME_PLAINTEXT
+    assert open_sealed(payload["transcript_api_key"]) == TRANSCRIPTION_PLAINTEXT
     # Carriers are `exclude=True` — the id must never ride along to the consumer.
     assert "rt_api_key_secret_id" not in payload
     assert "transcript_api_key_secret_id" not in payload
@@ -120,7 +121,7 @@ def test_agent_definition_config_cannot_name_another_orgs_secret(
 
     assert resp.status_code == 201, resp.data
     payload = _published_payload(redis_client_mock)
-    assert payload["rt_api_key"] == REALTIME_PLAINTEXT
+    assert open_sealed(payload["rt_api_key"]) == REALTIME_PLAINTEXT
     published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
     assert FOREIGN_PLAINTEXT not in published
 
@@ -144,7 +145,7 @@ def test_agent_definition_config_cannot_swap_in_another_secret_of_the_org(
 
     assert resp.status_code == 201, resp.data
     payload = _published_payload(redis_client_mock)
-    assert payload["rt_api_key"] == REALTIME_PLAINTEXT
+    assert open_sealed(payload["rt_api_key"]) == REALTIME_PLAINTEXT
     published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
     assert "sk-own-rt-definition-key" not in published
 
@@ -184,6 +185,6 @@ def test_a_member_without_secrets_use_cannot_send_an_org_secret_through_the_conf
     )
 
     assert resp.status_code == 201, resp.data
-    assert _published_payload(redis_client_mock)["rt_api_key"] == REALTIME_PLAINTEXT
+    assert open_sealed(_published_payload(redis_client_mock)["rt_api_key"]) == REALTIME_PLAINTEXT
     published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
     assert "sk-org-secret-the-member-may-not-use" not in published

@@ -35,7 +35,7 @@ export interface ConversationListParams {
     cursor?: string | null;
     // Only the conversations the caller holds; the server lists none in Bot.
     mine?: boolean;
-    // In progress, Tests and Bot; Waiting is always longest wait first, Closed most recently closed first.
+    // In progress, Bot and Bot Testing; Waiting is always longest wait first, Closed most recently closed first.
     order?: ChatInboxOrder;
     // Visitor number, a signed visitor's id prefix or the holder's name; a blank one is not sent.
     q?: string | null;

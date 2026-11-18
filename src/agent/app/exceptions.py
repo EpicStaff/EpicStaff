@@ -59,6 +59,13 @@ class FallbackLLMFailedError(AgentServiceError):
     """
 
 
+class SecretDecryptionError(AgentServiceError):
+    """Raised when a transport-sealed secret the agent uses cannot be decrypted.
+
+    The message names the config and field only, never the value or its ciphertext.
+    """
+
+
 class RunCancelled(BaseException):
     """Raised when crew withdrew the run (the user stopped the session).
 

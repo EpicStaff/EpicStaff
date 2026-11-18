@@ -13,6 +13,8 @@ import pytest
 from loguru import logger
 from opensearchpy.exceptions import ConflictError, NotFoundError
 
+import app.index_setup.runner as runner
+from app.domains.registry import enabled_domains
 from app.index_setup.runner import setup_indices
 
 POLICY_IDS = {
@@ -175,6 +177,13 @@ class FakeClient:
         self.count = cluster.count
 
 
+@pytest.fixture(autouse=True)
+def only_sessions_domain(monkeypatch):
+    monkeypatch.setattr(
+        runner, "DOMAINS", enabled_domains(sessions_enabled=True, user_actions_enabled=False)
+    )
+
+
 @pytest.fixture
 def warnings():
     messages: list[str] = []
@@ -322,3 +331,19 @@ async def test_legacy_index_deleted_by_another_replica_midway_does_not_fail_setu
 
     assert "audit_events" not in cluster.indices
     assert "audit_events" in cluster.templates
+
+
+@pytest.mark.asyncio
+async def test_runner_creates_only_enabled_domain_indices(monkeypatch):
+    monkeypatch.setattr(
+        runner, "DOMAINS", enabled_domains(sessions_enabled=False, user_actions_enabled=True)
+    )
+    cluster = FakeCluster()
+
+    await setup_indices(FakeClient(cluster))
+
+    assert set(cluster.templates) == {"audit_user_actions"}
+    assert set(cluster.policies) == {
+        f"audit-user-actions-retention-{tier}"
+        for tier in ("unlimited", "30d", "90d", "180d", "365d")
+    }

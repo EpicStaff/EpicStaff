@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-# Wraps the pgvector entrypoint to create the services' restricted database roles
-# (manager, knowledge, realtime, sandbox) as soon as the database accepts connections.
-# The roles start with no table privileges: django_app grants them, from
-# src/django_app/tables/service_db_grants.py, right after its migrations have run
-# (`manage.py apply_service_grants`), when no migration can race the grants.
+# Wraps the pgvector entrypoint to create the services' database roles (django, manager,
+# knowledge, realtime, sandbox) as soon as the database accepts connections. The django role
+# owns the public schema's objects. The other roles start with no table privileges: django_app
+# grants them, from src/django_app/tables/service_db_grants.py, right after its migrations
+# have run (`manage.py apply_service_grants`), when no migration can race the grants.
 
 # Flag file: the roles have been created, so crewdb reports healthy.
 USERS_CREATED_FLAG="/tmp/users_created"
@@ -24,8 +24,12 @@ fi
 
 # Without ON_ERROR_STOP psql exits 0 after a failed statement, so a role that was
 # never created would still let setup finish and report healthy.
+# Setup runs as the superuser, and the django and knowledge roles may create objects in public:
+# with public on the search_path, a function they plant there (a format() overload, say) would
+# run with superuser rights. So only pg_catalog is searched, and public objects are named in full.
 setup_psql() {
-    psql -X -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" "$@"
+    PGOPTIONS="-c search_path=pg_catalog,pg_temp" \
+        psql -X -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" "$@"
 }
 
 # Role, schema and database names are spliced into the SQL below as both literals
@@ -46,6 +50,111 @@ require_plain_name() {
 # Passwords are read by psql (\getenv) and quoted by format(); the shell never splices
 # them into SQL. A failing statement may carry one, so its text is kept out of the
 # server log and psql prints only the error message.
+
+# django_app runs the migrations, so its role creates, and owns, the public schema's tables.
+# CREATE on the database lets its migrations add trusted extensions such as pg_trgm.
+create_django_user() {
+    local django_user="${DJANGO_DB_USER}"
+
+    if [[ -z "$django_user" || -z "${DJANGO_DB_PASSWORD}" ]]; then
+        echo "[django] ERROR: DJANGO_DB_USER and DJANGO_DB_PASSWORD must be set" >&2
+        return 1
+    fi
+    # The ALTER ROLE below would take the superuser's own rights away.
+    if [[ "$django_user" = "${POSTGRES_USER}" ]]; then
+        echo "[django] ERROR: DJANGO_DB_USER must differ from DB_USER, the crewdb superuser" >&2
+        return 1
+    fi
+
+    echo "[django] Creating role if not exists..."
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password DJANGO_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${django_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${django_user}')
+\gexec
+
+ALTER ROLE "${django_user}" NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+GRANT USAGE, CREATE ON SCHEMA public TO "${django_user}";
+GRANT CREATE ON DATABASE "${TARGET_DB}" TO "${django_user}";
+
+-- pgvector 0.5.1 is not a trusted extension: only a superuser can create it.
+CREATE EXTENSION IF NOT EXISTS vector SCHEMA public;
+EOF
+    echo "[django] Role ready: ${django_user}"
+}
+
+# Earlier releases ran django_app as the superuser, so it owns the existing tables. Hand them,
+# and every other object of the public schema a superuser owns, to the django role: any
+# superuser, since an old volume may have been created under a different POSTGRES_USER.
+# REASSIGN OWNED cannot do it: the superuser also owns the system catalogs. Extension members
+# stay with their extension. One transaction; on a database already moved it changes nothing.
+transfer_public_objects_to_django_user() {
+    local django_user="${DJANGO_DB_USER}"
+
+    echo "[django] Moving objects in public owned by a superuser to ${django_user}..."
+    setup_psql <<EOF
+\set VERBOSITY terse
+DO \$\$
+DECLARE
+    statement text;
+    moved integer := 0;
+BEGIN
+    FOR statement IN
+        SELECT format('ALTER %s %s OWNER TO %I', owned.kind, owned.name, '${django_user}')
+        FROM (
+            SELECT CASE c.relkind
+                       WHEN 'S' THEN 'SEQUENCE'
+                       WHEN 'v' THEN 'VIEW'
+                       WHEN 'm' THEN 'MATERIALIZED VIEW'
+                       WHEN 'f' THEN 'FOREIGN TABLE'
+                       WHEN 'c' THEN 'TYPE'
+                       ELSE 'TABLE'
+                   END AS kind,
+                   c.oid::regclass::text AS name,
+                   'pg_class'::regclass AS catalog,
+                   c.oid
+            FROM pg_class c
+            WHERE c.relnamespace = 'public'::regnamespace
+              AND c.relowner IN (SELECT oid FROM pg_roles WHERE rolsuper)
+              -- Indexes, TOAST tables and row types follow their table.
+              AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S', 'c')
+              -- So does a sequence owned by a column (serial, identity). Partitions also
+              -- depend on their parent, but ALTER TABLE does not recurse to them.
+              AND (c.relkind <> 'S' OR NOT EXISTS (
+                  SELECT FROM pg_depend d
+                  WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid
+                    AND d.refclassid = 'pg_class'::regclass AND d.deptype IN ('a', 'i')
+              ))
+            UNION ALL
+            SELECT 'ROUTINE', p.oid::regprocedure::text, 'pg_proc'::regclass, p.oid
+            FROM pg_proc p
+            WHERE p.pronamespace = 'public'::regnamespace
+              AND p.proowner IN (SELECT oid FROM pg_roles WHERE rolsuper)
+            UNION ALL
+            -- Array types follow their element type; composite types are listed above.
+            SELECT CASE t.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END,
+                   t.oid::regtype::text, 'pg_type'::regclass, t.oid
+            FROM pg_type t
+            WHERE t.typnamespace = 'public'::regnamespace
+              AND t.typowner IN (SELECT oid FROM pg_roles WHERE rolsuper)
+              AND t.typtype IN ('d', 'e', 'r')
+        ) AS owned
+        WHERE NOT EXISTS (
+            SELECT FROM pg_depend d
+            WHERE d.classid = owned.catalog AND d.objid = owned.oid AND d.deptype = 'e'
+        )
+    LOOP
+        EXECUTE statement;
+        moved := moved + 1;
+    END LOOP;
+    RAISE NOTICE 'moved % objects to %', moved, '${django_user}';
+END
+\$\$;
+EOF
+}
 
 create_manager_user() {
     local manager_user="${MANAGER_DB_USER}"
@@ -176,8 +285,8 @@ drop_legacy_auto_grant_triggers() {
     setup_psql <<EOF
 DROP EVENT TRIGGER IF EXISTS auto_grant_on_create_table;
 DROP EVENT TRIGGER IF EXISTS auto_grant_on_create_sequence;
-DROP FUNCTION IF EXISTS auto_grant_table_permissions();
-DROP FUNCTION IF EXISTS auto_grant_sequence_permissions();
+DROP FUNCTION IF EXISTS public.auto_grant_table_permissions();
+DROP FUNCTION IF EXISTS public.auto_grant_sequence_permissions();
 EOF
 }
 
@@ -194,7 +303,7 @@ background_setup() {
         set -E
         trap 'echo "=== [setup] ERROR: setup stopped on the error above; crewdb will not report healthy ===" >&2' ERR
 
-        for name_variable in POSTGRES_DB MANAGER_DB_USER KNOWLEDGE_DB_USER REALTIME_DB_USER SANDBOX_DB_USER SANDBOX_DB_SCHEMA; do
+        for name_variable in POSTGRES_DB DJANGO_DB_USER MANAGER_DB_USER KNOWLEDGE_DB_USER REALTIME_DB_USER SANDBOX_DB_USER SANDBOX_DB_SCHEMA; do
             require_plain_name "$name_variable"
         done
 
@@ -208,6 +317,8 @@ background_setup() {
         done
         echo "=== [setup] PostgreSQL is up and database '${TARGET_DB}' exists ==="
 
+        create_django_user
+        transfer_public_objects_to_django_user
         create_manager_user
         create_knowledge_user
         create_realtime_user

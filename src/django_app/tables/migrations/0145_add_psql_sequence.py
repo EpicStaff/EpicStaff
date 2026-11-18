@@ -18,8 +18,6 @@ class Migration(migrations.Migration):
               fk record;
               mapping_table text;
               max_id bigint;
-              child_tables text[];
-              ct_name text;
             BEGIN
               -- 1) List of tables
               FOREACH t IN ARRAY ARRAY[
@@ -36,7 +34,10 @@ class Migration(migrations.Migration):
                 'tables_telegramtriggernode'::regclass
               ]
               LOOP
-                child_tables := ARRAY[]::text[];
+                -- Children are repointed before their parent row has the new id. Their foreign
+                -- keys are DEFERRABLE, so defer the check to step 7. Step 7 of the previous
+                -- table left them IMMEDIATE. (Disabling the triggers instead needs a superuser.)
+                SET CONSTRAINTS ALL DEFERRED;
 
                 -- 2) Lock the table
                 EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', t);
@@ -86,8 +87,6 @@ class Migration(migrations.Migration):
                     ]
                 LOOP
                   EXECUTE format('LOCK TABLE %I.%I IN ACCESS EXCLUSIVE MODE', fk.src_schema, fk.src_table);
-                  EXECUTE format('ALTER TABLE %I.%I DISABLE TRIGGER ALL', fk.src_schema, fk.src_table);
-                  child_tables := array_append(child_tables, format('%I.%I', fk.src_schema, fk.src_table));
 
                   EXECUTE format(
                     'UPDATE %I.%I s
@@ -109,12 +108,6 @@ class Migration(migrations.Migration):
                    WHERE tgt.id = m.old_id',
                   t, mapping_table
                 );
-
-                -- 6b) Re-enable triggers on child tables now that PKs hold the new IDs
-                FOREACH ct_name IN ARRAY child_tables
-                LOOP
-                  EXECUTE format('ALTER TABLE %s ENABLE TRIGGER ALL', ct_name);
-                END LOOP;
 
                 -- [ADDED] 7) Force execution of pending trigger checks (Foreign Keys)
                 -- This clears the queue so we can perform the final ALTER TABLE without error.

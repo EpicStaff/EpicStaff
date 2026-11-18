@@ -302,6 +302,9 @@ async def test_claim_stops_run_release_and_reply(client, people, django, uow_fac
     assert claimed.status_code == 200 and claimed.json()["mode"] == "human" and claimed.json()["assigned_operator_id"] == 2
     taken_over_at = await _stored_handoff_at(uow_factory, conversation_id)
     assert taken_over_at is not None and datetime.fromisoformat(claimed.json()["handoff_at"]) == taken_over_at
+    # Taken straight from the bot: joined at the hand-off.
+    assert await _stored_claim(uow_factory, conversation_id) == (2, taken_over_at)
+    assert datetime.fromisoformat(claimed.json()["claimed_at"]) == taken_over_at
     assert django.stopped == [100]
     state = (await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=visitor)).json()
     # The conversation part of the state; the desk's features and limits are covered by the public API tests.
@@ -314,6 +317,10 @@ async def test_claim_stops_run_release_and_reply(client, people, django, uow_fac
     forced = await client.post(f"{BASE}/conversations/{conversation_id}/claim", json={"force": True}, headers=h("admin"))
     assert forced.status_code == 200 and forced.json()["assigned_operator_id"] == 1
     assert await _stored_handoff_at(uow_factory, conversation_id) == taken_over_at
+    # The new holder joined now; the hand-off stays.
+    holder, taken_from_agent_at = await _stored_claim(uow_factory, conversation_id)
+    assert holder == 1 and taken_from_agent_at > taken_over_at
+    assert datetime.fromisoformat(forced.json()["claimed_at"]) == taken_from_agent_at
 
     reply = await client.post(f"{BASE}/conversations/{conversation_id}/messages", json={"content": "Hi, admin here"}, headers=h("admin"))
     assert reply.status_code == 201 and reply.json()["role"] == "operator"
@@ -325,6 +332,7 @@ async def test_claim_stops_run_release_and_reply(client, people, django, uow_fac
     released = await client.post(f"{BASE}/conversations/{conversation_id}/release", headers=h("admin"))
     assert released.status_code == 200 and released.json()["mode"] == "bot" and released.json()["assigned_operator_id"] is None
     assert released.json()["handoff_at"] is None and await _stored_handoff_at(uow_factory, conversation_id) is None
+    assert released.json()["claimed_at"] is None and await _stored_claim(uow_factory, conversation_id) == (None, None)
     again = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "bot?"}, headers=visitor)
     assert again.json()["state"] == "processing"
     async with uow_factory() as uow:
@@ -336,10 +344,13 @@ async def test_claim_stops_run_release_and_reply(client, people, django, uow_fac
     updates = [e.payload for e in inbox if e.type == "conversation.updated" and e.conversation_id == UUID(conversation_id)]
     assert 2 in [u["assigned_operator_id"] for u in updates]  # the first claim, by the caller
     # The inbox row is a full conversation row: the frontend upserts it without a refetch.
-    assert {"tokens_used", "turns", "tokens_today", "turns_today", "handoff_reason", "is_test", "handoff_at"} <= updates[-1].keys()
-    assert updates[-1]["handoff_at"] is None  # released back to the bot
+    assert {"tokens_used", "turns", "tokens_today", "turns_today", "handoff_reason", "is_test", "handoff_at", "claimed_at"} <= updates[-1].keys()
+    assert updates[-1]["handoff_at"] is None and updates[-1]["claimed_at"] is None  # released back to the bot
     first_claim = next(u for u in updates if u["assigned_operator_id"] == 2)
     assert datetime.fromisoformat(first_claim["handoff_at"]) == taken_over_at
+    assert datetime.fromisoformat(first_claim["claimed_at"]) == taken_over_at
+    forced_claim = next(u for u in updates if u["assigned_operator_id"] == 1)
+    assert datetime.fromisoformat(forced_claim["claimed_at"]) == taken_from_agent_at
     run_body = [r for r in django.requests if r.url.path == "/api/run-session/"][-1]
     import json as json_module
 
@@ -599,12 +610,23 @@ async def test_claiming_an_awaiting_conversation_keeps_its_place(client, people,
     claimed = await client.post(f"{BASE}/conversations/{waiting.id}/claim", json={}, headers=h("agent"))
     assert claimed.status_code == 200 and claimed.json()["mode"] == "human"
     async with uow_factory() as uow:
-        assert (await uow.conversations.get(waiting.id)).handoff_at == waiting.handoff_at
+        stored = await uow.conversations.get(waiting.id)
+    assert stored.handoff_at == waiting.handoff_at
+    # Joined at the claim, not at the hand-off it queued by.
+    assert stored.claimed_at > waiting.handoff_at
+    assert datetime.fromisoformat(claimed.json()["claimed_at"]) == stored.claimed_at
 
 
 async def _stored_handoff_at(uow_factory, conversation_id):
     async with uow_factory() as uow:
         return (await uow.conversations.get(UUID(conversation_id))).handoff_at
+
+
+async def _stored_claim(uow_factory, conversation_id):
+    """The stored (holder, claimed_at)."""
+    async with uow_factory() as uow:
+        stored = await uow.conversations.get(UUID(conversation_id))
+    return stored.assigned_operator_id, stored.claimed_at
 
 
 # ---- binding limits ----------------------------------------------------------------------------
@@ -1588,7 +1610,7 @@ async def test_an_alias_claim_holding_the_desk_makes_a_bot_rename_onto_it_wait_a
     desks = _desk_orchestrator(client)
     claim = asyncio.ensure_future(desks.set_my_alias(UUID(binding["id"]), 1, 2, "Mike"))
     await asyncio.wait_for(claimed.wait(), timeout=5)
-    rename = asyncio.ensure_future(desks.update(UUID(binding["id"]), CallerCredentials(org_id=1, bearer_token="admin"), {"bot_display_name": "MIKE"}))
+    rename = asyncio.ensure_future(desks.update(UUID(binding["id"]), CallerCredentials(org_id=1, user_id=1, bearer_token="admin"), {"bot_display_name": "MIKE"}))
     done, _ = await asyncio.wait({rename}, timeout=0.3)
     assert not done, "the bot rename did not wait for the alias claim"
     proceed.set()
@@ -1611,7 +1633,7 @@ async def test_a_bot_rename_holding_the_desk_makes_an_alias_claim_on_the_new_nam
 
     monkeypatch.setattr(OperatorAliasRepository, "is_taken", check_then_hold)
     desks = _desk_orchestrator(client)
-    rename = asyncio.ensure_future(desks.update(UUID(binding["id"]), CallerCredentials(org_id=1, bearer_token="admin"), {"bot_display_name": "Mike"}))
+    rename = asyncio.ensure_future(desks.update(UUID(binding["id"]), CallerCredentials(org_id=1, user_id=1, bearer_token="admin"), {"bot_display_name": "Mike"}))
     await asyncio.wait_for(checked.wait(), timeout=5)
     claim = asyncio.ensure_future(desks.set_my_alias(UUID(binding["id"]), 1, 2, "mike"))
     done, _ = await asyncio.wait({claim}, timeout=0.3)
@@ -1701,6 +1723,7 @@ async def test_closing_one_another_operator_holds_takes_force_and_keeps_the_hold
     assert (await client.get(f"{BASE}/conversations/{theirs.id}", headers=h("admin"))).json()["status"] == "open"
     forced = (await client.post(_close(theirs.id), json={"force": True}, headers=h("admin"))).json()
     assert (forced["status"], forced["closed_by_user_id"], forced["assigned_operator_id"], forced["mode"]) == ("closed", 1, 2, "human")
+    assert datetime.fromisoformat(forced["claimed_at"]) == theirs.claimed_at  # a close keeps when the holder joined
     own = await client.post(_close(mine.id), json={}, headers=h("admin"))  # one's own needs no force
     assert (own.status_code, own.json()["closed_by_user_id"]) == (200, 1)
 
@@ -1830,3 +1853,109 @@ async def test_patch_refuses_a_null_rule(client, people, name):
     binding = (await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("admin"))).json()
     refused = await client.patch(f"{BASE}/bindings/{binding['id']}", json={name: None}, headers=h("admin"))
     assert (refused.status_code, refused.json()["code"]) == (400, "validation_error") and name in refused.json()["message"]
+
+
+# ---- user-action audit trail ---------------------------------------------------------------------
+
+def _desk_record(action, desk, name, previous_name=None, user_id=1):
+    return {"actor_user_id": user_id, "org_id": 1, "action": action, "target_type": "desk", "target_id": desk["id"], "target_name": name, "previous_name": previous_name}
+
+
+async def test_each_desk_write_records_who_made_which_change(client, people, django):
+    desk = (await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("admin"))).json()
+    url = f"{BASE}/bindings/{desk['id']}"
+    for method, path, body, user in [
+        ("PATCH", "", {"name": "Billing"}, "admin"),
+        ("PATCH", "", {"max_turns": 3}, "admin"),
+        ("PATCH", "", {"identity_mode": "signed"}, "admin"),
+        ("PATCH", "", {"name": "Refunds", "max_turns": 4}, "admin"),
+        ("POST", "/pause", None, "admin"),
+        ("POST", "/resume", None, "admin"),
+        ("POST", "/rotate-key", None, "admin"),
+        ("PUT", "/my-alias", {"alias": "Mike"}, "agent"),
+        ("DELETE", "", None, "admin"),
+    ]:
+        response = await client.request(method, url + path, json=body, headers=h(user))
+        assert response.status_code < 300, response.text
+    assert django.user_actions == [
+        _desk_record("created", desk, "Support"),
+        _desk_record("renamed", desk, "Billing", previous_name="Support"),
+        _desk_record("updated", desk, "Billing"),
+        _desk_record("updated", desk, "Billing"),
+        _desk_record("renamed", desk, "Refunds", previous_name="Billing"),
+        _desk_record("paused", desk, "Refunds"),
+        _desk_record("resumed", desk, "Refunds"),
+        _desk_record("key_rotated", desk, "Refunds"),
+        _desk_record("updated", desk, "Refunds", user_id=2),
+        _desk_record("deleted", desk, "Refunds"),
+    ]
+    request = next(r for r in django.requests if r.url.path == "/api/internal/user-actions/")
+    assert "Authorization" not in request.headers and request.headers["X-Api-Key"]
+
+
+async def test_reads_tests_and_conversation_work_record_nothing(client, people, django):
+    desk = await _active_binding(client)
+    django.user_actions.clear()
+    test = (await client.post(f"{BASE}/bindings/{desk['id']}/test-conversation", headers=h("admin"))).json()
+    conversation_id = test["conversation"]["id"]
+    await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "hello"}, headers={"Authorization": f"Bearer {test['visitor_token']}"})
+    for response in [
+        await client.get(f"{BASE}/bindings", headers=h("admin")),
+        await client.get(f"{BASE}/bindings/{desk['id']}", headers=h("admin")),
+        await client.get(f"{BASE}/bindings/{desk['id']}/snippet", headers=h("admin")),
+        await client.get(f"{BASE}/bindings/contract?graph_id=5", headers=h("admin")),
+        await client.post(f"{BASE}/conversations/{conversation_id}/visitor-token", headers=h("admin")),
+        await client.post(f"{BASE}/inbox/stream-ticket", headers=h("admin")),
+        await client.post(f"{BASE}/conversations/{conversation_id}/claim", json={}, headers=h("agent")),
+        await client.post(f"{BASE}/conversations/{conversation_id}/messages", json={"content": "hi"}, headers=h("agent")),
+        await client.post(f"{BASE}/conversations/{conversation_id}/release", headers=h("agent")),
+        await client.post(f"{BASE}/conversations/{conversation_id}/close", json={}, headers=h("admin")),
+    ]:
+        assert response.status_code < 300, response.text
+    assert django.user_actions == []
+
+
+async def test_a_refused_desk_write_records_nothing(client, people, django):
+    desk = (await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("admin"))).json()
+    django.user_actions.clear()
+    django.graphs[5] = {**CHAT_FLOW, "output_map": {}}
+    assert (await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "graph_id": 6}, headers=h("admin"))).status_code == 400
+    assert (await client.patch(f"{BASE}/bindings/{desk['id']}", json={"name": "x"}, headers=h("admin", org=2))).status_code == 404
+    assert (await client.post(f"{BASE}/bindings/{desk['id']}/pause", headers=h("agent"))).status_code == 403
+    assert (await client.delete(f"{BASE}/bindings/{desk['id']}", headers=h("admin", org=2))).status_code == 404
+    paused = (await client.patch(f"{BASE}/bindings/{desk['id']}", json={"max_turns": 2}, headers=h("admin"))).json()
+    assert paused["is_active"] is False
+    django.user_actions.clear()
+    assert (await client.post(f"{BASE}/bindings/{desk['id']}/resume", headers=h("admin"))).status_code == 400
+    assert django.user_actions == []
+
+
+@pytest.mark.parametrize(("setup", "no_op"), [
+    ([], ("PATCH", "", {"name": "Support", "identity_mode": "anonymous", "style": "support", "allowed_origins": [ORIGIN]}, "admin")),
+    ([("POST", "/pause", None, "admin")], ("POST", "/pause", None, "admin")),
+    ([], ("POST", "/resume", None, "admin")),
+    ([("PUT", "/my-alias", {"alias": "Mike"}, "agent")], ("PUT", "/my-alias", {"alias": "Mike"}, "agent")),
+], ids=["patch with the same values", "pause a paused desk", "resume an active desk", "the same alias again"])
+async def test_a_desk_write_that_changes_nothing_records_nothing(client, people, django, setup, no_op):
+    desk = await _active_binding(client)
+    url = f"{BASE}/bindings/{desk['id']}"
+    for method, path, body, user in setup:
+        assert (await client.request(method, url + path, json=body, headers=h(user))).status_code < 300
+    django.user_actions.clear()
+    method, path, body, user = no_op
+    response = await client.request(method, url + path, json=body, headers=h(user))
+    assert response.status_code == 200, response.text
+    assert django.user_actions == []
+
+
+@pytest.mark.parametrize("epicstaff", [503, None], ids=["refuses", "unreachable"])
+async def test_a_record_epicstaff_does_not_take_never_fails_the_desk_write(client, people, django, epicstaff):
+    django.user_action_status = epicstaff
+    created = await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("admin"))
+    assert created.status_code == 201, created.text
+    desk_id = created.json()["id"]
+    assert (await client.patch(f"{BASE}/bindings/{desk_id}", json={"name": "Billing"}, headers=h("admin"))).status_code == 200
+    assert (await client.post(f"{BASE}/bindings/{desk_id}/pause", headers=h("admin"))).status_code == 200
+    assert (await client.delete(f"{BASE}/bindings/{desk_id}", headers=h("admin"))).status_code == 204
+    assert (await client.get(f"{BASE}/bindings", headers=h("admin"))).json() == []
+    assert django.user_actions == []

@@ -12,9 +12,9 @@ Sent on every run, whether the start node declares them or not. A flow must decl
 
 | Variable | Value |
 |---|---|
-| `chat_history` | The desk's last `history_window` visitor, bot and operator messages before this one, oldest first: `[{role, content}]`. A visitor message that answered an action adds `action`, cut to its `type`, `action` and `text` (see below). |
+| `chat_history` | The desk's last `history_window` visitor, bot and operator messages before this one, oldest first: `[{role, content}]`. A visitor message that answered an action adds `action`, cut to its `type`, `action` and `text` (see below), just as untrusted. |
 | `user_message` | The visitor's text; `""` for a message that is only an action. |
-| `action` | The visitor's answer to an offered action, whole (up to `CHAT_ACTION_MAX_BYTES`, e.g. an edited table); `null` for a plain message. |
+| `action` | The visitor's answer to an offered action, whole (up to `CHAT_ACTION_MAX_BYTES`, e.g. an edited table); `null` for a plain message. Untrusted: the service doesn't check it against the offered actions, so the flow must validate it before acting on it. |
 | `chat_extra_data` | The widget's context object, untrusted; `null` when none was sent. |
 | `chat_user_id` | The verified customer id on a signed desk; `null` otherwise. |
 | `chat_conversation_id` | The conversation's id, as a string: the same on every run of the conversation. |

@@ -22,7 +22,6 @@ from src.shared.models import (
     NaiveRagSearchConfig,
     RagSearchConfig,
 )
-from storage_credentials.exceptions import CredentialScopeValidationError
 from storage_credentials.resource_names import org_storage_prefix
 from tables.models.graph_models import StorageFile
 from tables.models.knowledge_models.graphrag_models import GraphRag
@@ -133,18 +132,9 @@ class RealtimeSurfaceService:
         for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids).select_related(
             "python_code__venv"
         ):
-            if python_tool.use_storage and storage_org_prefix is None:
-                # Fail closed, like converter_service: silently dropping the tool
-                # would start the realtime agent without a capability its surface
-                # grants, which reads as a broken tool rather than a scope problem.
-                # This is a resolvable configuration issue, not an infra/mint
-                # failure (nothing has attempted to mint yet) -- same exception
-                # CredentialScopeValidator raises, same 400.
-                raise CredentialScopeValidationError(
-                    f"Tool '{python_tool.name}' needs file storage access, but no files are "
-                    "attached to this agent's surface. Attach the required files or folders."
-                )
-
+            # A storage tool with no attached files is kept (not dropped, not an
+            # error): no storage account is minted for the chat, and the realtime
+            # service tells the model the tool has no files when it is called.
             tools.append(
                 self.converter_service.convert_tool_to_base_tool_pydantic(
                     python_tool,

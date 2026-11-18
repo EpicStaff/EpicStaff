@@ -7,8 +7,8 @@ created on import without any permission check. Unlisted on purpose: SESSION
 gated as FLOWS), and AUDIT_FILTER_PRESET (a personal saved search over audit data;
 an entry with the same search as the importer's own preset or any shared preset in
 their org is reused, otherwise a private preset is created for the importer with copy
-numbering; no role holds CREATE on AUDIT, and its own import endpoint is gated on
-AUDIT read). Tags map to their parent resource; models and provider realtime
+numbering; no role holds CREATE on AUDIT or USER_AUDIT, and its own import endpoint is
+gated on the read right of the preset's audit domain). Tags map to their parent resource; models and provider realtime
 configs map to LLM_CONFIGS.
 """
 
@@ -47,6 +47,7 @@ ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.VENV: ResourceType.VENVS,
     EntityType.PYTHON_CODE_TOOL: ResourceType.TOOLS,
     EntityType.MCP_TOOL: ResourceType.TOOLS,
+    EntityType.SOURCE_COLLECTION: ResourceType.KNOWLEDGE_SOURCES,
 }
 
 # Dependencies a flow or tool export bundles only when the caller may export
@@ -58,6 +59,7 @@ EXPORT_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     # A subgraph reference is gated like any other dependency (uniform rule); the
     # flow endpoints already require flows EXPORT, so the endpoints never deny it.
     EntityType.GRAPH: ResourceType.FLOWS,
+    EntityType.SOURCE_COLLECTION: ResourceType.KNOWLEDGE_SOURCES,
 }
 
 # Every other ENTITY_RESOURCE_MAP type is always bundled: its resource has no

@@ -1,17 +1,15 @@
-﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
+﻿import { HttpErrorResponse } from '@angular/common/http';
+import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
-import {
-    computeUniqueCopyName,
-    computeUniqueName,
-    downloadBlob,
-    movedToRecycleBinMessage,
-    showExportExclusionWarning,
-} from '@shared/utils';
+import { ExportOptionsDialogService } from '@shared/services';
+import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
-import { catchError, debounceTime, groupBy, mergeMap, tap } from 'rxjs/operators';
+import { catchError, debounceTime, groupBy, mergeMap, switchMap, tap } from 'rxjs/operators';
 
 import { wasHandledByForbiddenInterceptor } from '../../../core/interceptors/forbidden-interceptor-handled.util';
+import { TransferExportService } from '../../../core/services/transfer-export.service';
+import { StartedTransferJob, TransferJobsService } from '../../../core/services/transfer-jobs.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ToastService } from '../../../services/notifications';
@@ -128,6 +126,9 @@ export class AgentsPageStore {
     private readonly destroyRef = inject(DestroyRef);
     private readonly permissionService = inject(PermissionsService);
     private readonly importWithReview = inject(ImportWithReviewService);
+    private readonly transferJobs = inject(TransferJobsService);
+    private readonly transferExport = inject(TransferExportService);
+    private readonly exportOptionsDialog = inject(ExportOptionsDialogService);
     private readonly groupsStore = inject(AgentGroupsStorageService);
     private readonly collapsedGroupsKey = collapsedGroupsStorageKey(inject(ProfileService).currentUserSignal()?.id);
 
@@ -269,6 +270,10 @@ export class AgentsPageStore {
     });
 
     readonly isDraftingAgent = computed<boolean>(() => this.selectedNode().kind === 'draft-agent');
+
+    /** Counts Add Agent starts: a new number is a new, empty draft, even when one was already open. */
+    private readonly agentDraftSequence = signal<number>(0);
+    readonly agentDraftId = this.agentDraftSequence.asReadonly();
 
     /** The agent the latest Add Agent draft was saved as; null until one is, and again once another draft begins. */
     private readonly agentCreatedFromDraftId = signal<number | null>(null);
@@ -841,6 +846,7 @@ export class AgentsPageStore {
     beginCreateAgent(groupId: number | null = null): void {
         if (groupId !== null && this.isGroupCollapsed('agents', groupId)) this.toggleGroupCollapsed('agents', groupId);
         this.agentCreatedFromDraftId.set(null);
+        this.agentDraftSequence.update((sequence) => sequence + 1);
         this.selectedNode.set({ kind: 'draft-agent', id: null, groupId });
     }
 
@@ -1289,6 +1295,7 @@ export class AgentsPageStore {
         this.selectedAgentIds.set(this.allAgentsSelected() ? new Set() : new Set(this.agents().map((a) => a.id)));
     }
 
+    /** Leaves export mode once the server has accepted the job; a refused start keeps the ticks to try again. */
     confirmAgentExport(): void {
         const existing = new Set(this.agents().map((a) => a.id));
         const ids = [...this.selectedAgentIds()].filter((id) => existing.has(id));
@@ -1296,26 +1303,12 @@ export class AgentsPageStore {
             this.toast.info('Select at least one agent to export.');
             return;
         }
-        this.agentsApi.bulkExportAgents(ids).subscribe({
-            next: ({ blob, excluded }) => {
-                downloadBlob(blob, `agents_export_${Date.now()}.json`);
-                this.cancelAgentExport();
-                showExportExclusionWarning(this.toast, excluded);
-            },
-            error: (err) => this.toast.error(this.extractError(err, 'Failed to export agents')),
-        });
+        this.exportAgents(ids, () => this.cancelAgentExport());
     }
 
     exportAgent(id: number): void {
-        const agent = this.agents().find((a) => a.id === id);
-        if (!agent) return;
-        this.agentsApi.exportAgent(id).subscribe({
-            next: ({ blob, excluded }) => {
-                downloadBlob(blob, `agent_${agent.name}.json`);
-                showExportExclusionWarning(this.toast, excluded);
-            },
-            error: (err) => this.toast.error(this.extractError(err, `Failed to export agent "${agent.name}"`)),
-        });
+        if (!this.agents().some((a) => a.id === id)) return;
+        this.exportAgents([id]);
     }
 
     importAgents(): void {
@@ -1325,6 +1318,11 @@ export class AgentsPageStore {
                 entityLabelPlural: 'agents',
                 inspect: (file) => this.agentsApi.inspectImport(file),
                 importFile: (file) => this.agentsApi.importAgents(file),
+                importArchive: (file) =>
+                    this.transferJobs
+                        .startImport('agentDefinitions', file)
+                        .pipe(switchMap((started) => this.transferJobs.waitForImport(started))),
+                accept: '.json,.zip',
             })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => {
@@ -1366,6 +1364,39 @@ export class AgentsPageStore {
         const message = (err as { error?: { message?: unknown } })?.error?.message;
         const prefix = 'instruction_list: ';
         return typeof message === 'string' && message.startsWith(prefix) ? message.slice(prefix.length) : null;
+    }
+
+    /**
+     * Asks for the export options, then exports the agents as a background job, which outlives this page; nothing
+     * runs when the user cancels. TransferExportService downloads the archive, warns about the dependencies left out
+     * and reports a failure; an agent that is gone (404) also reloads the list.
+     */
+    private exportAgents(ids: number[], onStarted?: () => void): void {
+        this.exportOptionsDialog
+            .ask(ids.length, { singular: 'agent', plural: 'agents' })
+            .pipe(
+                switchMap(({ includeKnowledge }) =>
+                    this.transferExport.export(this.startAgentExportJob(ids, includeKnowledge, onStarted))
+                )
+            )
+            .subscribe();
+    }
+
+    private startAgentExportJob(
+        ids: number[],
+        includeKnowledge: boolean,
+        onStarted?: () => void
+    ): Observable<StartedTransferJob> {
+        return this.transferJobs.startExport('agentDefinitions', { ids, include_knowledge: includeKnowledge }).pipe(
+            tap({
+                next: () => onStarted?.(),
+                error: (error: unknown) => {
+                    if (error instanceof HttpErrorResponse && error.status === 404) {
+                        this.load();
+                    }
+                },
+            })
+        );
     }
 
     private extractError(err: unknown, fallback: string): string {

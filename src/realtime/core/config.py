@@ -35,6 +35,7 @@ CODE_EXEC_CHANNEL = env.str("CODE_EXEC_CHANNEL")
 CODE_RESULT_CHANNEL = env.str("CODE_RESULT_CHANNEL")
 
 CONNECTION_KEY_TTL_SECONDS = humanize.to_time("5m")
+PENDING_CONNECTION_SWEEP_INTERVAL_SECONDS = humanize.to_time("1m")
 STREAM_TOKEN_TTL_SECONDS = humanize.to_time("2m")
 MAX_CALL_DURATION_SECONDS = load_max_call_duration_seconds(env)
 # Raw audio one call direction may buffer, so its WAV file fits the size django_app accepts.
@@ -43,6 +44,15 @@ MAX_RECORDING_AUDIO_BYTES = max_recording_bytes(MAX_CALL_DURATION_SECONDS) - WAV
 # Off by default: `realtime_session_item` has no retention and is readable with the org's
 # voice permission, and turning this on writes one row per audio frame.
 PERSIST_RAW_AUDIO = env.bool("REALTIME_PERSIST_RAW_AUDIO", False)
+
+SECRETS_TRANSPORT_KEY = env.secret("SECRETS_TRANSPORT_KEY")
+# `none` reads as None; an empty value or a stray comma yields empty items.
+SECRETS_TRANSPORT_PREVIOUS_KEYS = [
+    key for key in env.list("SECRETS_TRANSPORT_PREVIOUS_KEYS") or [] if key
+]
+# HKDF info the transport key is derived with: a wire contract with django_app, the producer.
+# Read from the environment, which compose shares with every service.
+SECRETS_TRANSPORT_HKDF_INFO = env.str("SECRETS_TRANSPORT_HKDF_INFO")
 
 DJANGO_HOST = env.str("DJANGO_HOST")
 DJANGO_PORT = env.int("DJANGO_PORT")
