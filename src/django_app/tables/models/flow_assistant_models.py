@@ -13,7 +13,7 @@ class FlowAssistant(SoftDeleteFields, models.Model):
         related_name="flow_assistant",
     )
     llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

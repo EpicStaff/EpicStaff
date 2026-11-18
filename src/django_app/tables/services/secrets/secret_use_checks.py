@@ -5,18 +5,14 @@ validated data, keyed by model attribute names; a key absent from it is unchange
 so the persisted value stands in for it. Each check raises SecretUseDeniedError
 when the write needs secrets:USE and `actor` lacks it, or when `actor` is a
 pinned-org principal and the row would reference a secret it may not reference.
-
-The LLM and embedding config and model checks lock the model row they read
-(`select_for_update`), so they must run inside the transaction that saves the write.
 """
 
 from collections.abc import Callable
 
-from django.db import models
+from ai_models.repository import CatalogRepository
 from tables.models.base_models import without_internal_rows
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
-from tables.models.llm_models import LLMConfig, LLMModel
 from tables.models.secret_models import Secret
+from tables.services.secrets.exceptions import ModelEndpointNotSettableError
 from tables.services.secrets.linked_ids import linked_ids
 from tables.services.secrets.secret_resolver import extract_secret_marker_names
 from tables.services.secrets.secret_use_service import (
@@ -29,49 +25,19 @@ SecretUseCheck = Callable[[SecretActor | None, object, dict], None]
 
 
 def check_llm_config_write(actor: SecretActor | None, instance, data: dict) -> None:
-    """Gate an LLMConfig write: its API-key secret, its header markers, and its destination.
+    """Gate an LLMConfig write: its secrets and the connection fields that decide where they go.
 
-    The destination is the config's own `base_url` together with its model's
-    `base_url`. The config's own `base_url` is not read at run time today; it is
-    gated anyway so wiring it up later does not open a way around this check.
+    See `_check_model_config_write`.
     """
-    _check_api_key_and_header_markers(actor, instance, data)
-    carries_secret = _config_carries_secret_after_write(instance, data)
-    # Checked one part at a time so the denial names the field the caller changed;
-    # a change to either part changes the destination.
-    current_base_url = _persisted_value(instance, "base_url")
-    secret_use_service.check_destination(
-        actor,
-        field_path=("base_url",),
-        carries_secret=carries_secret,
-        current=current_base_url,
-        incoming=data.get("base_url", current_base_url),
-    )
-    _check_model_switch(actor, instance, data, carries_secret=carries_secret, model_class=LLMModel)
+    _check_model_config_write(actor, instance, data, provider_field="llm_provider")
 
 
 def check_embedding_config_write(actor: SecretActor | None, instance, data: dict) -> None:
-    """Gate an EmbeddingConfig write: its API-key secret, its header markers, and its model's `base_url`."""
-    _check_api_key_and_header_markers(actor, instance, data)
-    _check_model_switch(
-        actor,
-        instance,
-        data,
-        carries_secret=_config_carries_secret_after_write(instance, data),
-        model_class=EmbeddingModel,
-    )
+    """Gate an EmbeddingConfig write: its secrets and the connection fields that decide where they go.
 
-
-def check_llm_model_write(actor: SecretActor | None, instance, data: dict) -> None:
-    """Gate a change of an LLMModel's `base_url` while a config of it carries a secret."""
-    _check_model_base_url(actor, instance, data, model_class=LLMModel, config_class=LLMConfig)
-
-
-def check_embedding_model_write(actor: SecretActor | None, instance, data: dict) -> None:
-    """Gate a change of an EmbeddingModel's `base_url` while a config of it carries a secret."""
-    _check_model_base_url(
-        actor, instance, data, model_class=EmbeddingModel, config_class=EmbeddingConfig
-    )
+    See `_check_model_config_write`.
+    """
+    _check_model_config_write(actor, instance, data, provider_field="embedding_provider")
 
 
 def check_realtime_config_write(actor: SecretActor | None, instance, data: dict) -> None:
@@ -364,8 +330,8 @@ def check_quickstart(actor: SecretActor | None, data: dict) -> None:
     A quickstart only creates rows, so any `api_key_secret_id` is a new reference.
     A raw `api_key` needs no secrets:USE: it becomes a new secret the caller owns.
     The request names no destination: quickstart picks each config's model itself,
-    by the provider's fixed model name, and refuses an org model with its own
-    `base_url` (`QuickstartService._get_or_create_model`), so there is nothing to gate here.
+    by the provider's fixed model name, and leaves each config's `connection` empty, so
+    the key goes to the provider's own endpoint and there is nothing to gate here.
     """
     secret_use_service.check_references(
         actor,
@@ -375,144 +341,98 @@ def check_quickstart(actor: SecretActor | None, data: dict) -> None:
     )
 
 
-def check_config_import(
-    actor: SecretActor | None, data: dict, *, marker_fields: tuple[str, ...]
+#: The config fields whose string values may hold `epicstaff_secret(<name>)` markers.
+_MODEL_CONFIG_MARKER_FIELDS = ("extra_headers", "connection")
+
+
+def _check_model_config_write(
+    actor: SecretActor | None, instance, data: dict, *, provider_field: str
 ) -> None:
-    """Gate an imported config whose header fields carry secret markers.
+    """Gate a write of an LLM or embedding config.
 
-    Import always creates the config, so every marker in it is new; a config the
-    import reuses (`find_existing`) is never written and never reaches this check.
-
-    Args:
-        marker_fields: The header dict fields of this config type whose
-            `epicstaff_secret(<name>)` markers reference secrets by name.
+    A config carries a secret when it references its API-key secret or holds a marker
+    in `extra_headers` or `connection`. Choosing the API-key secret, or adding a marker
+    to either field, needs secrets:USE; removing one is free. The connection fields
+    that decide where the requests go (`_endpoint_field_names`) are the destination of
+    those secrets: changing one on a config that carries a secret after the write
+    needs secrets:USE too, reported under `connection` and the field. Model rows hold
+    no endpoint, so switching the model only picks between the vendors' own hosts and
+    is free. A pinned-org principal never sets an endpoint field at all.
     """
-    for field_name in marker_fields:
+    current_connection = _persisted_value(instance, "connection") or {}
+    incoming_connection = data.get("connection", current_connection)
+    endpoint_names = _endpoint_field_names(
+        instance, data, current_connection, incoming_connection, provider_field=provider_field
+    )
+    _refuse_endpoint_change_by_principal(
+        actor, endpoint_names, current_connection, incoming_connection
+    )
+
+    _check_secret_reference(actor, instance, data, attribute="api_key_secret")
+    carries_secret = _references_secret_after_write(instance, data, "api_key_secret")
+    for field_name in _MODEL_CONFIG_MARKER_FIELDS:
+        current_value = _persisted_value(instance, field_name)
+        incoming_value = data.get(field_name, current_value)
         secret_use_service.check_markers(
             actor,
             field_path=(field_name,),
-            current_headers=None,
-            incoming_headers=data.get(field_name),
+            current_headers=current_value,
+            incoming_headers=incoming_value,
+        )
+        carries_secret = carries_secret or bool(extract_secret_marker_names(incoming_value))
+
+    # Checked one field at a time so the denial names the field the caller changed.
+    for name in endpoint_names:
+        secret_use_service.check_destination(
+            actor,
+            field_path=("connection", name),
+            carries_secret=carries_secret,
+            current=current_connection.get(name),
+            incoming=incoming_connection.get(name),
         )
 
 
-def _check_api_key_and_header_markers(actor: SecretActor | None, instance, data: dict) -> None:
-    _check_secret_reference(actor, instance, data, attribute="api_key_secret")
-    current_headers = _persisted_value(instance, "extra_headers")
-    secret_use_service.check_markers(
-        actor,
-        field_path=("extra_headers",),
-        current_headers=current_headers,
-        incoming_headers=data.get("extra_headers", current_headers),
-    )
+def _endpoint_field_names(
+    instance, data: dict, *connections: dict, provider_field: str
+) -> list[str]:
+    """The keys of `connections` that decide where the config's requests go.
 
-
-def _check_model_switch(
-    actor: SecretActor | None,
-    instance,
-    data: dict,
-    *,
-    carries_secret: bool,
-    model_class: type[models.Model],
-) -> None:
-    """A config sends its requests to its model's `base_url`, so switching models can move them.
-
-    Both models' `base_url` are read from their rows locked FOR UPDATE, not from the
-    validated objects: a concurrent edit of either model's `base_url` locks the same
-    row (`_check_model_base_url`), so whichever write runs second sees what the first
-    committed instead of both passing on stale reads.
+    A key counts when the catalog marks it an endpoint for the config's provider
+    before or after the write, or when neither provider declares it at all (a provider
+    the catalog no longer knows, or a key a stale config kept): an unknown field is
+    treated as an endpoint, since a false positive only asks for a permission.
     """
-    # Before either model is read: a config without a secret may switch freely, and
-    # locking a model costs a query.
-    if not carries_secret or "model" not in data:
-        return
-    current_model_id = _persisted_value(instance, "model_id")
-    incoming_model = data["model"]
-    incoming_model_id = incoming_model.pk if incoming_model is not None else None
-    if incoming_model_id == current_model_id:
-        return
-    base_url_by_model_id = _lock_models_and_read_base_urls(
-        model_class, (current_model_id, incoming_model_id)
-    )
-    secret_use_service.check_destination(
-        actor,
-        field_path=("model",),
-        carries_secret=carries_secret,
-        current=base_url_by_model_id.get(current_model_id),
-        incoming=base_url_by_model_id.get(incoming_model_id),
-    )
+    repository = CatalogRepository.default()
+    declared, endpoints = set(), set()
+    for model in (_persisted_value(instance, "model"), data.get("model")):
+        provider = getattr(model, provider_field, None) if model is not None else None
+        provider_spec = repository.provider(provider.name) if provider is not None else None
+        for field in provider_spec.connection_fields if provider_spec else ():
+            declared.add(field.name)
+            if field.endpoint:
+                endpoints.add(field.name)
+    keys = set().union(*connections)
+    return sorted(name for name in keys if name in endpoints or name not in declared)
 
 
-def _check_model_base_url(
-    actor: SecretActor | None,
-    instance,
-    data: dict,
-    *,
-    model_class: type[models.Model],
-    config_class: type[models.Model],
+def _refuse_endpoint_change_by_principal(
+    actor: SecretActor | None, endpoint_names: list[str], current: dict, incoming: dict
 ) -> None:
-    # No config can use a model that is only being created.
-    if instance is None:
-        return
-    incoming_base_url = data.get("base_url", instance.base_url)
-    # Skips the lock and the config query on the usual edit; the service still treats
-    # None and "" as the same destination when they differ here.
-    if incoming_base_url == instance.base_url:
-        return
-    # Locked before the configs are counted: a config switching to this model in a
-    # concurrent request locks this row too, so it has either committed (and is
-    # counted) or waits and then reads the new `base_url`. Not covered: a config that
-    # already uses this model gaining a secret concurrently, as that write locks no model.
-    current_base_url = (
-        model_class.objects.select_for_update()
-        .values_list("base_url", flat=True)
-        .get(pk=instance.pk)
-    )
-    if incoming_base_url == current_base_url:
-        return
-    secret_use_service.check_destination(
-        actor,
-        field_path=("base_url",),
-        carries_secret=_any_config_of_model_carries_secret(config_class, instance),
-        current=current_base_url,
-        incoming=incoming_base_url,
-    )
+    """Keep a pinned-org principal (a plugin's service account) from setting where a config sends requests.
 
-
-def _lock_models_and_read_base_urls(
-    model_class: type[models.Model], model_ids: tuple[int | None, ...]
-) -> dict[int, str | None]:
-    # Locked in ascending pk order, so two configs switching between the same two
-    # models in opposite directions take the locks in the same order and cannot
-    # deadlock. A model deleted meanwhile is missing here and reads as no `base_url`:
-    # a save that still points the config at it fails on the foreign key.
-    return dict(
-        model_class.objects.select_for_update()
-        .filter(pk__in=[model_id for model_id in model_ids if model_id is not None])
-        .order_by("pk")
-        .values_list("pk", "base_url")
-    )
-
-
-def _any_config_of_model_carries_secret(config_class: type[models.Model], model_row) -> bool:
-    """Whether any config of `model_row`, in any organization, carries an API-key secret or a header marker.
-
-    Not narrowed to the active org: a custom model belongs to one org only, and
-    counting more configs can only deny more.
+    People in the organization may add their own keys to a config a plugin wrote, so a
+    plugin never sets, changes or clears an endpoint field, on create or on update.
+    Only a value that differs from the stored one counts; empty and missing are the same.
     """
-    rows = config_class.objects.filter(model=model_row).values_list(
-        "api_key_secret_id", "extra_headers"
+    if principal_of(actor) is None:
+        return
+    changed = tuple(
+        f"connection.{name}"
+        for name in endpoint_names
+        if (incoming.get(name) or None) != (current.get(name) or None)
     )
-    return any(
-        secret_id is not None or extract_secret_marker_names(headers) for secret_id, headers in rows
-    )
-
-
-def _config_carries_secret_after_write(instance, data: dict) -> bool:
-    headers = data.get("extra_headers", _persisted_value(instance, "extra_headers"))
-    return _references_secret_after_write(instance, data, "api_key_secret") or bool(
-        extract_secret_marker_names(headers)
-    )
+    if changed:
+        raise ModelEndpointNotSettableError(fields=changed)
 
 
 def _check_secret_reference(

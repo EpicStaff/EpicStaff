@@ -2,8 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import Secret
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
-from tables.models.llm_models import LLMConfig, LLMModel
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel
 from tables.models.mcp_models import McpTool
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole

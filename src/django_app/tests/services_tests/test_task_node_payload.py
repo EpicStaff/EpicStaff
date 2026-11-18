@@ -47,7 +47,7 @@ from tables.models.knowledge_models.collection_models import (
 )
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
-from tables.models.llm_models import LLMConfig
+from ai_models.models import LLMConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization

@@ -1,8 +1,7 @@
 from collections.abc import Iterable
 
+from ai_models.models import LLMConfig
 from utils.graph_utils import resolve_node_names
-
-from tables.models.llm_models import LLMConfig
 
 # Leading characters a spreadsheet reads as a formula (OWASP CSV injection list).
 _FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")

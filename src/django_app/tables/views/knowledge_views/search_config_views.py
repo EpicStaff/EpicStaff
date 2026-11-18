@@ -1,3 +1,4 @@
+from ai_models.utils.litellm_model_info import resolve_context_window
 from drf_spectacular.utils import extend_schema
 from loguru import logger
 from pydantic import ValidationError
@@ -39,7 +40,6 @@ from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
     GRAPH_RAG_SUGGEST_PARAMS_POST,
     NAIVE_RAG_SUGGEST_PARAMS_POST,
 )
-from tables.utils.litellm_model_info import resolve_context_window
 
 
 def _validation_error_response(exc: ValidationError) -> Response:

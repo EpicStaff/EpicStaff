@@ -17,7 +17,6 @@ from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import Organization, OrganizationUser, ResourceLastEdit
 from tables.models import (
     ElevenLabsRealtimeConfig,
-    EmbeddingConfig,
     GeminiRealtimeConfig,
     Graph,
     GraphNote,
@@ -28,9 +27,9 @@ from tables.models import (
     StorageFile,
     WebhookTrigger,
 )
+from ai_models.models import EmbeddingConfig, LLMConfig
 from tables.models.graph_models import ConditionGroup, DecisionTableNode, Edge, PythonNode
 from tables.models.knowledge_models import SourceCollection
-from tables.models.llm_models import LLMConfig
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tests.fixtures import *  # noqa: F401,F403
 from tests.user_summary_helpers import expected_user_summary

@@ -1,13 +1,10 @@
 import pytest
 
-from tables.management.commands import upload_models
-from tables.models import Provider
-from tables.models.embedding_models import EmbeddingModel
-from tables.models.llm_models import (
-    LLMModel,
-    RealtimeModel,
-    RealtimeTranscriptionModel,
-)
+from ai_models.domain.catalog import Catalog
+from ai_models.management.commands import upload_models
+from ai_models.models import EmbeddingModel, LLMModel, Provider
+from ai_models.repository import CatalogRepository
+from tables.models.llm_models import RealtimeModel, RealtimeTranscriptionModel
 from rbac.models import Organization
 
 
@@ -100,7 +97,7 @@ def test_seeding_never_adopts_an_org_llm_model(org):
 
 @pytest.mark.django_db
 def test_prune_never_deletes_an_org_row(org):
-    """The prune removes catalog rows that left the JSON. It must not reach rows
+    """Seeding hides catalog rows that left the catalog. It must not reach rows
     an organization owns, whatever their flags."""
     upload_models.Command().handle()
     provider = Provider.objects.get(name="openai")
@@ -153,8 +150,6 @@ def test_realtime_prune_matches_provider_name_pairs(org):
 @pytest.mark.parametrize(
     "uploader_name,model_cls",
     [
-        ("upload_llm_models", LLMModel),
-        ("upload_embedding_models", EmbeddingModel),
         ("upload_realtime_agent_models", RealtimeModel),
         ("upload_realtime_transcription_models", RealtimeTranscriptionModel),
     ],
@@ -171,3 +166,24 @@ def test_an_empty_catalog_file_prunes_nothing(monkeypatch, uploader_name, model_
     getattr(upload_models, uploader_name)()
 
     assert model_cls.objects.filter(org__isnull=True).count() == before
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "uploader_name,model_cls",
+    [("upload_llm_models", LLMModel), ("upload_embedding_models", EmbeddingModel)],
+)
+def test_an_empty_model_catalog_hides_nothing(monkeypatch, uploader_name, model_cls):
+    """Hiding every built-in the catalog does not list must not hide them all when the
+    catalog is empty."""
+    upload_models.Command().handle()
+    before = model_cls.objects.filter(org__isnull=True, is_visible=True).count()
+    assert before > 0, "seeding produced no catalog rows to protect"
+
+    empty = CatalogRepository(
+        Catalog(litellm_version="0", parameters={}, providers={}, models={})
+    )
+    monkeypatch.setattr(CatalogRepository, "default", classmethod(lambda cls: empty))
+    getattr(upload_models, uploader_name)()
+
+    assert model_cls.objects.filter(org__isnull=True, is_visible=True).count() == before

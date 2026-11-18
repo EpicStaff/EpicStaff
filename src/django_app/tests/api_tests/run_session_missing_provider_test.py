@@ -6,8 +6,7 @@ from agents.models import AgentDefinition
 from tables.models import Session
 from tables.models.graph_models import AgentNode, Edge
 from tables.models.graph_models import StartNode
-from tables.models.llm_models import LLMConfig, LLMModel
-from tables.models.provider import Provider
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tests.fixtures import *
 
 

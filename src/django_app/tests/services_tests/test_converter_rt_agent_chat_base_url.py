@@ -14,6 +14,10 @@ instead) -- `convert_rt_agent_definition_chat_to_pydantic`
 import pytest
 
 from agents.models import AgentDefinition, DefaultAgentDefinitionConfig
+from ai_models.domain.catalog import Catalog
+from ai_models.domain.specs import ModelKind
+from ai_models.repository import CatalogRepository
+from tests.ai_models_tests.factories import make_model, make_parameter, make_provider
 from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
     RealtimeAgentChat,
@@ -164,7 +168,9 @@ def test_convert_rt_agent_definition_chat_to_pydantic_takes_temperature_from_llm
         pk=1, defaults={"default_temperature": 0.4}
     )
     if has_llm_config:
-        llm_config.temperature = llm_config_temperature
+        llm_config.parameters = (
+            {} if llm_config_temperature is None else {"temperature": llm_config_temperature}
+        )
         llm_config.save()
     agent_definition = AgentDefinition.objects.create(
         org=default_org,
@@ -190,3 +196,49 @@ def test_convert_rt_agent_definition_chat_to_pydantic_takes_temperature_from_llm
     data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
 
     assert data.temperature == expected_temperature
+
+
+@pytest.mark.django_db
+def test_convert_rt_agent_definition_chat_to_pydantic_skips_a_temperature_the_model_does_not_take(
+    converter, default_org, llm_config, monkeypatch
+):
+    # A catalog update took temperature away from the model after the config stored it.
+    repository = CatalogRepository(
+        Catalog(
+            litellm_version="1.108.1",
+            parameters={"max_tokens": make_parameter("max_tokens", value_type="integer")},
+            providers={"openai": make_provider()},
+            models={
+                ModelKind.LLM: {
+                    "openai": {"gpt-4o": make_model(name="gpt-4o", parameter_names=("max_tokens",))}
+                }
+            },
+        )
+    )
+    monkeypatch.setattr(CatalogRepository, "default", classmethod(lambda cls: repository))
+    llm_config.parameters = {"temperature": 0.3}
+    llm_config.save()
+    agent_definition = AgentDefinition.objects.create(
+        org=default_org,
+        name="voice-agent-stale-temperature",
+        instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
+        llm_config=llm_config,
+        default_temperature=1.2,
+    )
+    config = OpenAIRealtimeConfig.objects.create(
+        custom_name="openai-cfg-def-stale-temperature",
+        org=default_org,
+        model_name="gpt-4o-realtime-preview",
+        api_key_secret=_api_key_secret(default_org, "openai-cfg-def-stale-temperature-key"),
+    )
+    chat = RealtimeAgentChat.objects.create(
+        rt_agent_definition=RealtimeAgentDefinition.objects.create(
+            agent_definition=agent_definition, openai_config=config
+        ),
+        connection_key="conn-def-stale-temperature",
+        openai_config=config,
+    )
+
+    data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
+
+    assert data.temperature == 1.2

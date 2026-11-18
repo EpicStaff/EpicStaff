@@ -767,21 +767,24 @@ class ConfigProviderMissingError(CustomAPIExeption):
         )
 
 
-class UnsupportedReasoningEffortError(CustomAPIExeption):
-    """Raised when an LLM config's reasoning effort is one its model cannot take.
+class ConfigValidationError(CustomAPIExeption):
+    """Raised when a model config's `parameters` or `connection` break the model catalog.
 
-    The response carries `errors=[{"field", "value", "reason"}]` for the client to mark
-    the field. Deliberately not a ValidationError: DRF's Serializer.run_validation
-    re-raises a ValidationError from validate() as a new one, which drops `errors`.
+    `detail` holds the field errors a ValidationError would, so the response `message`
+    reads the same; `errors=[{"field", "value", "reason"}]` names each field by its dotted
+    path (`parameters.temperature`) for the client to mark it, without the value of a
+    secret connection field. Deliberately not a ValidationError: DRF's
+    Serializer.run_validation re-raises a ValidationError from validate() as a new one,
+    which drops `errors`.
     """
 
     status_code = 400
-    default_detail = "The reasoning effort is not supported."
-    default_code = "unsupported_reasoning_effort"
+    default_detail = "The config's settings are not valid for its model."
+    default_code = "invalid"
 
-    def __init__(self, reasoning_effort: str, reason: str):
-        self.errors = [{"field": "reasoning_effort", "value": reasoning_effort, "reason": reason}]
-        super().__init__(detail=reason)
+    def __init__(self, detail: dict, errors: list[dict]):
+        self.errors = errors
+        super().__init__(detail=detail)
 
 
 class ToolExecutionError(CustomAPIExeption):

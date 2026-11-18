@@ -31,11 +31,11 @@ TABLES_RESOURCE_NAMES: dict[str, str] = {
     "tables.Secret": "secrets",
     "tables.Label": "labels",
     "tables.WebhookTrigger": "webhook_triggers",
-    "tables.LLMModel": "llm_models",
-    "tables.LLMConfig": "llm_configs",
+    "ai_models.LLMModel": "llm_models",
+    "ai_models.LLMConfig": "llm_configs",
     "tables.SystemOneConfig": "llm_configs",
-    "tables.EmbeddingModel": "embedding_models",
-    "tables.EmbeddingConfig": "embedding_configs",
+    "ai_models.EmbeddingModel": "embedding_models",
+    "ai_models.EmbeddingConfig": "embedding_configs",
     "tables.PythonCodeTool": "tools",
     "tables.McpTool": "tools",
     "tables.RealtimeModel": "realtime_configs",
@@ -117,7 +117,7 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         # The organization's default-model settings row, not a resource of its
         # own -- the configs it points at are counted as llm_configs,
         # embedding_configs and realtime_configs:
-        "tables.DefaultModels",
+        "ai_models.DefaultModels",
         # RAG family -- NaiveRag/GraphRag/BaseRagType and their own descendants,
         # implied by the already-mapped "knowledge_collections" (they all chain
         # back to a SourceCollection via BaseRagType.source_collection, CASCADE):

@@ -9,7 +9,7 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from tables.models import EmbeddingConfig, EmbeddingModel
+from ai_models.models import EmbeddingConfig, EmbeddingModel
 from tables.models.knowledge_models import (
     BaseRagType,
     DocumentContent,
@@ -75,7 +75,7 @@ def test_posting_an_embedder_creates_then_switches_the_collections_rag(
         model=EmbeddingModel.objects.create(
             name="text-embedding-ada-002", embedding_provider=test_embedding_config.model.embedding_provider
         ),
-        task_type="retrieval_document",
+        parameters={"task_type": "retrieval_document"},
         org=default_org,
     )
 

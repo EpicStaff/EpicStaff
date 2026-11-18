@@ -256,15 +256,15 @@ class TestResolvePayload:
         resolved = secret_resolver.resolve_payload(
             payload=LLMConfigData(
                 model="gpt-4o",
-                temperature=0.25,
-                base_url="https://example.test",
+                parameters={"temperature": 0.25},
+                connection={"api_base": "https://example.test"},
                 api_key_secret_id=secret.pk,
             ),
             org_id=org.id,
         )
         assert resolved.model == "gpt-4o"
-        assert resolved.temperature == 0.25
-        assert resolved.base_url == "https://example.test"
+        assert resolved.parameters == {"temperature": 0.25}
+        assert resolved.connection == {"api_base": "https://example.test"}
 
     def test_unresolvable_carrier_raises_with_locating_context(self, org):
         secret = secret_service.create(text="sk-x", org=org, name="payload-doomed")

@@ -1,4 +1,4 @@
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 import httpx
 from loguru import logger
@@ -38,6 +38,10 @@ class KnowledgeClient:
         llm_api_key: str | None = None,
         embedding_extra_headers: dict[str, str] | None = None,
         llm_extra_headers: dict[str, str] | None = None,
+        embedding_connection: dict[str, str] | None = None,
+        embedding_parameters: dict[str, Any] | None = None,
+        llm_connection: dict[str, str] | None = None,
+        llm_parameters: dict[str, Any] | None = None,
     ) -> None:
         self._request(
             method="post",
@@ -48,6 +52,10 @@ class KnowledgeClient:
                 "llm_api_key": llm_api_key,
                 "embedding_extra_headers": embedding_extra_headers or {},
                 "llm_extra_headers": llm_extra_headers or {},
+                "embedding_connection": embedding_connection or {},
+                "embedding_parameters": embedding_parameters or {},
+                "llm_connection": llm_connection or {},
+                "llm_parameters": llm_parameters or {},
             },
         )
 

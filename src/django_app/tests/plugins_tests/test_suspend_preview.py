@@ -13,7 +13,6 @@ from plugins.models import GrantState
 from plugins.runs.run_guard import PluginRunGuard
 from rest_framework.test import APIClient
 from tables.models import (
-    DefaultModels,
     Graph,
     OpenAIRealtimeConfig,
     RealtimeAgentDefinition,
@@ -21,6 +20,7 @@ from tables.models import (
     Session,
     StorageFile,
 )
+from ai_models.models import DefaultModels
 from tables.models.graph_models import PythonNode, ScheduleTriggerNode, TelegramTriggerNode, WebhookTriggerNode
 from tables.services.run_admission import RunKind, RunSubject
 
@@ -79,7 +79,7 @@ def test_the_preview_lists_what_suspending_stops(digest_setup, superadmin_client
         "owned_resources": [
             {"model": "tables.StorageFile", "label": "Files", "count": 1},
             {"model": "tables.Graph", "label": "Flows", "count": 1},
-            {"model": "tables.LLMConfig", "label": "LLM configs", "count": 1},
+            {"model": "ai_models.LLMConfig", "label": "LLM configs", "count": 1},
             {"model": "tables.Secret", "label": "Secrets", "count": 1},
         ],
         "flows": {

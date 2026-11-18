@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agents.models.agent_models import (
     AgentDefaultSurface,
@@ -10,6 +10,14 @@ from agents.models.agent_models import (
 )
 from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.surface_combine_service import SurfaceCombineService
+from ai_models.services.config_parameters import (
+    embedding_config_parameters,
+    llm_config_parameters,
+)
+from ai_models.services.connection_arguments import (
+    embedding_config_connection,
+    llm_config_connection,
+)
 from loguru import logger
 from rbac.authorship import OMIT_AUTHORSHIP_CONTEXT_KEY
 from src.shared.models import (
@@ -44,6 +52,10 @@ class RealtimeAgentSurfaceResolution:
     rag_llm_api_key_secret_id: int | None = None
     rag_embedder_extra_headers: dict[str, str] | None = None
     rag_llm_extra_headers: dict[str, str] | None = None
+    rag_embedder_connection: dict[str, str] | None = None
+    rag_llm_connection: dict[str, str] | None = None
+    rag_embedder_parameters: dict[str, Any] | None = None
+    rag_llm_parameters: dict[str, Any] | None = None
 
 
 @dataclass
@@ -55,6 +67,10 @@ class RealtimeKnowledgeResolution:
     rag_llm_api_key_secret_id: int | None = None
     rag_embedder_extra_headers: dict[str, str] | None = None
     rag_llm_extra_headers: dict[str, str] | None = None
+    rag_embedder_connection: dict[str, str] | None = None
+    rag_llm_connection: dict[str, str] | None = None
+    rag_embedder_parameters: dict[str, Any] | None = None
+    rag_llm_parameters: dict[str, Any] | None = None
 
 
 GRAPH_SEARCH_CONFIG_FIELDS: tuple[tuple[str, type], ...] = (
@@ -257,6 +273,12 @@ class RealtimeSurfaceService:
             rag_embedder_extra_headers=(
                 naive_rag.embedder.extra_headers if naive_rag.embedder else None
             ),
+            rag_embedder_connection=(
+                embedding_config_connection(naive_rag.embedder) if naive_rag.embedder else None
+            ),
+            rag_embedder_parameters=(
+                embedding_config_parameters(naive_rag.embedder) if naive_rag.embedder else None
+            ),
         )
 
     def _resolve_graph_rag(
@@ -291,4 +313,12 @@ class RealtimeSurfaceService:
                 graph_rag.embedder.extra_headers if graph_rag.embedder else None
             ),
             rag_llm_extra_headers=graph_rag.llm.extra_headers if graph_rag.llm else None,
+            rag_embedder_connection=(
+                embedding_config_connection(graph_rag.embedder) if graph_rag.embedder else None
+            ),
+            rag_llm_connection=llm_config_connection(graph_rag.llm) if graph_rag.llm else None,
+            rag_embedder_parameters=(
+                embedding_config_parameters(graph_rag.embedder) if graph_rag.embedder else None
+            ),
+            rag_llm_parameters=llm_config_parameters(graph_rag.llm) if graph_rag.llm else None,
         )

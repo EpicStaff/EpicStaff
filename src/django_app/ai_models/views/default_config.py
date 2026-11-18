@@ -1,0 +1,89 @@
+from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
+from rbac.access.asserts import assert_org_permission
+from rbac.access.gates import IsSuperadminOrReadOnly
+from rbac.access.principals import is_plugin_credential
+from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.fields import resolve_active_org_id
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from tables.swagger_schemas.default_config_schemas import (
+    DEFAULT_MODELS_GET,
+    DEFAULT_MODELS_PUT,
+)
+
+from ai_models.models import DefaultModels
+from ai_models.serializers.default_config_serializers import DefaultModelsSerializer
+
+
+class BaseDefaultConfigAPIView(APIView):
+    """A Base model for all default config api views.
+
+    Any authenticated user may read the default config; only a superadmin may
+    modify it (write-lockdown).
+    """
+
+    permission_classes = [IsSuperadminOrReadOnly]
+    model = None
+    serializer = None
+
+    def get_object(self):
+        return get_object_or_404(self.model, pk=1)
+
+    def get(self, request, *args, **kwargs):
+        obj = self.get_object()
+        serializer = self.serializer(obj, many=False, context={"request": request})
+        return Response(serializer.data)
+
+    def put(self, request, *args, **kwargs):
+        obj = self.get_object()
+        serializer = self.serializer(obj, data=request.data, context={"request": request})
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DefaultModelsAPIView(BaseDefaultConfigAPIView):
+    """The active organization's default models.
+
+    Any member of the active organization may read them, and a plugin's service account
+    with LLM config read; writing requires LLM config update permission in that
+    organization.
+    """
+
+    permission_classes = [IsAuthenticated]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_required_action = Permission.UPDATE
+    model = DefaultModels
+    serializer = DefaultModelsSerializer
+
+    def get_object(self):
+        return DefaultModels.load_for_org(resolve_active_org_id(self.request))
+
+    @extend_schema(**DEFAULT_MODELS_GET)
+    def get(self, request, *args, **kwargs):
+        # A plugin holds only the access it declared; membership alone admits people.
+        if is_plugin_credential(request):
+            assert_org_permission(
+                user=request.user,
+                org_id=resolve_active_org_id(request),
+                resource_type=self.rbac_resource_type,
+                action=Permission.READ,
+            )
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(**DEFAULT_MODELS_PUT)
+    def put(self, request, *args, **kwargs):
+        # Gate before get_object: loading the row creates it on first access.
+        assert_org_permission(
+            user=request.user,
+            org_id=resolve_active_org_id(request),
+            resource_type=self.rbac_resource_type,
+            action=self.rbac_required_action,
+        )
+        return super().put(request, *args, **kwargs)

@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from pydantic import ValidationError
 from tables.services.converter_service import ConverterService
+from tables.services.secrets.pinned_principal_rules import assert_may_resolve_markers
+from tables.services.secrets.secret_resolver import (
+    extract_secret_marker_names,
+    secret_resolver,
+)
 
 from .base import (
     TOOL_USE_FAILED_CODE,
@@ -43,28 +48,34 @@ def get_llm_client(
     llm_config,
     output_schema: dict | None = None,
     *,
-    api_key: str | None,
+    principal,
 ) -> BaseLLMClient:
-    """Return a LiteLLMClient for the given LLMConfig.
+    """Return a LiteLLMClient for the given LLMConfig, its secrets resolved.
 
     ``output_schema`` is forwarded to the client constructor so callers can
     request structured JSON output (e.g. ``response_format: json_schema``)
     without mutating the persisted ``LLMConfig`` row.
 
-    ``api_key`` must be resolved by the caller (via
-    ``tables.services.secrets.secret_resolver``) before calling this function;
-    it has no default so omitting it fails loudly instead of silently sending
-    an unauthenticated request. ``None`` is a legitimate explicit value for
-    providers that need no credential. Async callers must wrap the resolution
-    in ``sync_to_async``.
-
     The config is converted to ``LLMConfigData`` here, so LiteLLMClient never
-    sees the ORM row. Callers must ``select_related("model__llm_provider")``:
-    this function then issues no query and is safe to call from async code.
+    sees the ORM row, and its secrets are resolved for the config's organization
+    as a run's are: the API key, and the ``epicstaff_secret(<name>)`` markers in
+    its extra headers and connection (a connection marker outside a secret field
+    never gets this far, see ``connection_arguments``). Callers must
+    ``select_related("model__llm_provider")``. Resolving queries the database:
+    async callers wrap this function in ``sync_to_async``.
+
+    Args:
+        principal: The pinned-org principal the call is made for
+            (``pinned_principal_of_user``), None for a person. Required, so no
+            caller skips the marker rule by omission: a principal's markers must
+            name secrets it may reference, as when a run it starts resolves them.
 
     Raises ``UnsupportedLLMProviderError`` when the config has no model or the
-    model name is empty, and ``InvalidLLMConfigError`` when a stored value (e.g.
-    ``extra_headers``) has a shape LLMConfigData rejects.
+    model name is empty, ``InvalidLLMConfigError`` when a stored value (e.g.
+    ``extra_headers``) has a shape LLMConfigData rejects,
+    ``SecretMarkerNotReferenceableError`` when a marker names a secret
+    ``principal`` may not reference, and ``SecretResolutionError`` when a secret
+    cannot be resolved.
     """
     model = llm_config.model
     if model is None:
@@ -74,10 +85,17 @@ def get_llm_client(
     except ValidationError as exc:
         field_names = sorted({str(error["loc"][0]) for error in exc.errors() if error["loc"]})
         raise InvalidLLMConfigError(llm_config.pk, field_names) from exc
+    if principal is not None:
+        assert_may_resolve_markers(
+            principal=principal,
+            names=extract_secret_marker_names(config_data.connection)
+            | extract_secret_marker_names(config_data.extra_headers),
+        )
+    resolved = secret_resolver.resolve_payload(payload=config_data, org_id=llm_config.org_id)
     provider = model.llm_provider
     return LiteLLMClient(
-        config_data,
+        resolved,
         provider_name=provider.name if provider else None,
-        api_key=api_key,
+        api_key=resolved.api_key,
         output_schema=output_schema,
     )

@@ -922,7 +922,7 @@ def _resolve_llm_config_summary(llm_config) -> dict | None:
     return {
         "provider": provider_name,
         "model": model_name,
-        "temperature": llm_config.temperature,
+        "temperature": llm_config.parameters.get("temperature"),
     }
 
 

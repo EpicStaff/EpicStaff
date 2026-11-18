@@ -33,11 +33,7 @@ from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
 from tables.models import (
-    EmbeddingConfig,
-    EmbeddingModel,
     Graph,
-    LLMConfig,
-    LLMModel,
     RealtimeConfig,
     RealtimeModel,
     RealtimeTranscriptionConfig,
@@ -45,6 +41,12 @@ from tables.models import (
     StartNode,
     SystemOneConfig,
     WebhookTrigger,
+)
+from ai_models.models import (
+    EmbeddingConfig,
+    EmbeddingModel,
+    LLMConfig,
+    LLMModel,
 )
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.label_models import Label

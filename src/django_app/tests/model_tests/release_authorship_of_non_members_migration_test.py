@@ -13,7 +13,8 @@ from agents.models import AgentDefinition
 from rbac.authorship import record_last_edit
 from rbac.authorship.registry import author_tracked_models, last_edit_tracked_models
 from rbac.models import OrganizationUser, ResourceLastEdit
-from tables.models import Graph, GraphVersion, LLMModel
+from tables.models import Graph, GraphVersion
+from ai_models.models import LLMModel
 from tables.models.graph_models import AgentNode, GraphNote
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -76,16 +77,17 @@ def acme_flow(acme):
 @pytest.mark.django_db
 def test_covers_the_models_of_the_live_authorship_registries_with_the_same_org_lookups():
     """Compared on the models that exist both live and at the migration's state, so a model
-    added after this migration (which has no data predating it) does not count."""
+    added after this migration (which has no data predating it) does not count. Models are
+    matched by table: a model that moved to another app since keeps its table."""
     migrated = {
-        model._meta.label_lower: org_lookup
+        model._meta.db_table: org_lookup
         for model, org_lookup in migration_module.author_tracked_models(
             _state_before_migration().apps
         )
     }
-    live_authored = {model._meta.label_lower: lookup for model, lookup in author_tracked_models()}
+    live_authored = {model._meta.db_table: lookup for model, lookup in author_tracked_models()}
     live_last_edited = {
-        model._meta.label_lower: lookup for model, lookup in last_edit_tracked_models()
+        model._meta.db_table: lookup for model, lookup in last_edit_tracked_models()
     }
     in_both = migrated.keys() & live_authored.keys()
 
@@ -96,7 +98,7 @@ def test_covers_the_models_of_the_live_authorship_registries_with_the_same_org_l
     for label, lookup in live_last_edited.items():
         if label in migrated:
             assert migrated[label] == lookup, label
-    assert {"tables.graph", "tables.agentnode", "agents.agentdefinition"} <= migrated.keys()
+    assert {"tables_graph", "tables_agentnode", "agents_agentdefinition"} <= migrated.keys()
 
 
 # ---- created_by ----

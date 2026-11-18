@@ -12,7 +12,7 @@ from agents.models import (
     ToolMode,
 )
 from rbac.models.enums import Permission, ResourceType
-from tables.models import LLMConfig, LLMModel, Provider
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tests.api_tests.role_grant_clients import FULL_CRUD, client_with_grants

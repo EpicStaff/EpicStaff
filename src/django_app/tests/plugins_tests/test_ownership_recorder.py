@@ -21,8 +21,8 @@ from rest_framework.test import APIRequestFactory
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
-from tables.models import Graph, KeyValueTable, LLMConfig, Secret, StorageFile
-from tables.models.llm_models import LLMModel
+from tables.models import Graph, KeyValueTable, Secret, StorageFile
+from ai_models.models import LLMConfig, LLMModel
 from tables.models.graph_models import StartNode
 from tables.services.storage_service.db_sync import StorageFileSync
 
@@ -46,7 +46,7 @@ NOT_OWNABLE_MODELS = {
     "tables.Agent": "legacy crew model: no endpoint creates one any more",
     "tables.Crew": "legacy crew model: no endpoint creates one any more",
     "tables.AuditFilterPreset": "a person's own saved filter; refused to plugin credentials",
-    "tables.DefaultModels": "the organization's one settings row, created with the organization",
+    "ai_models.DefaultModels": "the organization's one settings row, created with the organization",
     "tables.Label": "a node of a shared label tree: the organization's own labels and flows hang under it, as under a storage folder",
     "tables.PythonCodeResult": "a run's result, written by the sandbox callback; its key is text",
     "tables.PythonCodeToolConfig": "a configuration of one Python tool, deleted with the tool: not a root",
@@ -227,7 +227,7 @@ def test_a_row_outside_the_service_account_s_organization_is_never_owned(
     assert _owned(Graph, own.pk) is not None
     assert [line for line in log_messages if line.startswith("plugins.ownership.foreign_row")] == [
         f"plugins.ownership.foreign_row plugin=weather model=tables.Graph pk={foreign.pk}",
-        f"plugins.ownership.foreign_row plugin=weather model=tables.LLMModel pk={built_in.pk}",
+        f"plugins.ownership.foreign_row plugin=weather model=ai_models.LLMModel pk={built_in.pk}",
     ]
 
 
@@ -364,7 +364,7 @@ class _BulkCreateFinder(ast.NodeVisitor):
 def _bulk_create_sites_of_ownable_roots() -> set[str]:
     model_names = {model.__name__ for model in ownable_models()}
     sites = set()
-    for app in ("tables", "agents"):
+    for app in ("tables", "ai_models", "agents"):
         for path in sorted((DJANGO_APP / app).rglob("*.py")):
             relative = path.relative_to(DJANGO_APP).as_posix()
             if "/migrations/" in relative or "/tests/" in relative:

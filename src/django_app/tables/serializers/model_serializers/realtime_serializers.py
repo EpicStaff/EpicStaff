@@ -1,4 +1,6 @@
 from agents.models.agent_models import AgentDefinition
+from ai_models.domain.specs import ModelKind
+from ai_models.repository import CatalogRepository
 from django.core.validators import RegexValidator
 from rbac.authorship import (
     OMIT_AUTHORSHIP_CONTEXT_KEY,
@@ -158,6 +160,15 @@ class OpenAIRealtimeConfigSerializer(
             "created_at",
         ]
         read_only_fields = ["org", "created_by", "created_at"]
+
+    def validate_transcription_model_name(self, value):
+        # An unchanged stored name is kept, so a model that left the catalog never
+        # blocks editing the rest of the config.
+        if value is None or (self.instance and value == self.instance.transcription_model_name):
+            return value
+        if CatalogRepository.default().model(ModelKind.TRANSCRIPTION, "openai", value) is None:
+            raise serializers.ValidationError(f"'{value}' is not an OpenAI transcription model.")
+        return value
 
 
 class ElevenLabsRealtimeConfigSerializer(

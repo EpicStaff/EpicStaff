@@ -6,7 +6,8 @@ from agents.models import AgentDefinition
 from agents.models.surface_models import Surface
 from rbac.governance.authorship import AuthorshipReleaseService
 from rbac.models import OrganizationUser
-from tables.models import Graph, GraphNote, Label, LLMModel, StorageFile
+from tables.models import Graph, GraphNote, Label, StorageFile
+from ai_models.models import LLMModel
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

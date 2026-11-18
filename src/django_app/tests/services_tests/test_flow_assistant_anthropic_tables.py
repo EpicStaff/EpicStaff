@@ -17,7 +17,8 @@ from asgiref.sync import sync_to_async
 from litellm.llms.anthropic.chat.transformation import AnthropicConfig
 
 from rbac.models import Organization
-from tables.models import Graph, LLMConfig, LLMModel, Provider
+from tables.models import Graph
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.models.flow_assistant_models import (
     FlowAssistant,
     FlowAssistantConversation,

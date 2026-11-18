@@ -884,7 +884,7 @@ class ClassificationDecisionTableNode(
     post_use_storage = models.BooleanField(default=False)
     prompts = models.JSONField(default=dict, blank=True)
     default_llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -937,7 +937,7 @@ class ClassificationDecisionTablePrompt(TimestampMixin, SoftDeleteFields):
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.LLM)
     prompt_text = models.TextField(blank=True, default="")
     llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

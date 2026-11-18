@@ -1,3 +1,4 @@
+from ai_models.models import EmbeddingConfig
 from django.db.models import Count
 from django.http import Http404
 from django_filters.rest_framework import DjangoFilterBackend
@@ -36,7 +37,6 @@ from tables.exceptions import (
     RagException,
 )
 from tables.models import SourceCollection
-from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import (
     NaiveRag,
     NaiveRagChunk,

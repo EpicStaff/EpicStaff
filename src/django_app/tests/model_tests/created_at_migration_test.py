@@ -48,13 +48,13 @@ CASES = [
 ]
 
 
-def _drop_columns_added_by(migration) -> None:
+def _drop_columns_added_by(migration, state_after) -> None:
     # The migration adds every listed column at once, so all of them must be gone
     # before it can be applied again.
     with connection.schema_editor() as editor:
         for operation in migration.operations:
             if isinstance(operation, AddField):
-                model = apps.get_model(migration.app_label, operation.model_name)
+                model = state_after.apps.get_model(migration.app_label, operation.model_name)
                 editor.remove_field(model, model._meta.get_field(operation.name))
 
 
@@ -67,7 +67,9 @@ def test_existing_rows_keep_an_unknown_creation_time(case, default_org):
     loader = MigrationLoader(connection)
     migration = loader.get_migration(*case.migration)
     state_before = loader.project_state(case.previous)
-    _drop_columns_added_by(migration)
+    # The migration's own models: the live registry may no longer have them under this label.
+    state_after = loader.project_state(case.migration)
+    _drop_columns_added_by(migration, state_after)
     app_label, model_name = case.model_label.split(".")
     HistoricalModel = state_before.apps.get_model(app_label, model_name)
     existing = HistoricalModel.objects.create(
@@ -77,7 +79,8 @@ def test_existing_rows_keep_an_unknown_creation_time(case, default_org):
     with connection.schema_editor() as editor:
         migration.apply(state_before, editor)
 
-    Model = apps.get_model(case.model_label)
+    # The live model, found by its table: some of these models have moved to another app since.
+    Model = next(model for model in apps.get_models() if model._meta.db_table == HistoricalModel._meta.db_table)
     assert Model._base_manager.get(pk=existing.pk).created_at is None
     created = Model.objects.create(org=default_org, **{case.name_field: "created-after"})
     assert created.created_at is not None

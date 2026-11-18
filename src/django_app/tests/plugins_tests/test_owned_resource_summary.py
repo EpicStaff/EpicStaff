@@ -33,7 +33,7 @@ def test_the_summary_counts_by_model_sorted_by_label(grant, acme, beta, grant_to
     assert owned_resource_summary(grant) == [
         {"model": "tables.StorageFile", "label": "Files", "count": 1},
         {"model": "tables.Graph", "label": "Flows", "count": 2},
-        {"model": "tables.LLMConfig", "label": "LLM configs", "count": 1},
+        {"model": "ai_models.LLMConfig", "label": "LLM configs", "count": 1},
         {"model": "tables.Secret", "label": "Secrets", "count": 1},
     ]
 

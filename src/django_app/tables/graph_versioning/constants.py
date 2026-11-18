@@ -1,11 +1,11 @@
 from agents.models import AgentDefinition, Surface
+from ai_models.models import LLMConfig
 from proxies.sandbox.models import SandboxVenvBinding
 
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.strategies.nodes.node_maps import NODE_RELATIONS
 from tables.models import (
     Graph,
-    LLMConfig,
     McpTool,
     PythonCodeTool,
     SystemOneConfig,

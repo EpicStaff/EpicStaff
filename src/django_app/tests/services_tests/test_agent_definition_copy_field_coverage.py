@@ -18,7 +18,8 @@ from django.db import models
 from agents.models import AgentDefinition, Surface
 from agents.services.agent_definition_copy_service import AgentDefinitionCopyService
 from rbac.models import Organization
-from tables.models import Label, LLMConfig
+from tables.models import Label
+from ai_models.models import LLMConfig
 from tests.fixtures import *  # noqa: F401,F403
 
 AGENT_FIELDS_COPIED_FROM_SOURCE = {

@@ -3,12 +3,22 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
-from tables.models.default_models import DefaultModels
-from tables.models.embedding_models import EmbeddingConfig
-from tables.models.llm_models import LLMConfig
-from tables.models.provider import Provider
+from ai_models.models import (
+    DefaultModels,
+    EmbeddingConfig,
+    EmbeddingModel,
+    LLMConfig,
+    LLMModel,
+    Provider,
+)
 from tables.models.realtime_models import OpenAIRealtimeConfig
-from tables.utils.litellm_model_info import validate_reasoning_effort
+from ai_models.domain.specs import ModelKind
+from ai_models.repository import CatalogRepository
+from ai_models.services.config_validation import ConfigValidationService
+from tables.services.quickstart_service import QuickstartService
+from tests.ai_models_tests.builtin_models import seed_builtin_models
+from tests.ai_models_tests.factories import make_runtime_catalog
+from tests.rbac_cross_org_fixtures import acme  # noqa: F401
 
 from tests.fixtures import *
 
@@ -32,13 +42,7 @@ def quickstart_apply_url():
 
 @pytest.fixture
 def openai_provider_seeded(openai_provider):
-    """
-    QuickstartService calls Provider.objects.get(name=provider) and also
-    uses get_or_create for models, so the provider must already exist.
-    """
-    from tables.models.embedding_models import EmbeddingModel
-    from tables.models.llm_models import LLMModel
-
+    """Quickstart resolves its models among the provider's built-in rows."""
     LLMModel.objects.get_or_create(name="gpt-6-luna", llm_provider=openai_provider)
     EmbeddingModel.objects.get_or_create(
         name="text-embedding-3-small", embedding_provider=openai_provider
@@ -162,6 +166,12 @@ def test_post_quickstart_creates_configs_in_db(
     assert realtime.transcription_api_key_secret_id is not None
 
 
+def _assert_stored_as_catalog_defaults(config, kind, provider_name, **overrides):
+    service = ConfigValidationService()
+    assert config.parameters == {**service.defaults(kind, provider_name, config.model.name), **overrides}
+    service.validate(kind, provider_name, config.model.name, config.parameters, config.connection, config.org_id)
+
+
 @pytest.mark.django_db
 def test_post_quickstart_openai_llm_config_uses_low_reasoning_and_large_token_budget(
     auth_client, quickstart_url, openai_provider_seeded
@@ -172,18 +182,28 @@ def test_post_quickstart_openai_llm_config_uses_low_reasoning_and_large_token_bu
 
     assert response.status_code == status.HTTP_200_OK, response.content
     llm_config = LLMConfig.objects.get(custom_name="quickstart_openai")
-    assert llm_config.reasoning_effort == "low"
-    assert llm_config.max_tokens == 100000
-    # Quickstart skips the serializer, so check the stored effort is one the model takes.
-    validate_reasoning_effort(llm_config.model, llm_config.reasoning_effort)
+    _assert_stored_as_catalog_defaults(
+        llm_config, ModelKind.LLM, "openai", reasoning_effort="low", max_tokens=100000
+    )
+    embedding_config = EmbeddingConfig.objects.get(custom_name="quickstart_openai")
+    _assert_stored_as_catalog_defaults(embedding_config, ModelKind.EMBEDDING, "openai")
+    assert (llm_config.connection, embedding_config.connection) == ({}, {})
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("provider_name", ["gemini", "cohere", "mistral"])
+@pytest.mark.parametrize(
+    "provider_name, embedding_overrides",
+    [
+        # GraphRAG's vector store holds 1536 dimensions; the model returns 3072 by default.
+        ("gemini", {"dimensions": 1536}),
+        ("cohere", {}),
+        ("mistral", {}),
+    ],
+)
 def test_post_quickstart_non_openai_llm_config_keeps_model_defaults(
-    auth_client, quickstart_url, provider_name
+    auth_client, quickstart_url, provider_name, embedding_overrides
 ):
-    Provider.objects.create(name=provider_name)
+    seed_builtin_models()
 
     response = auth_client.post(
         quickstart_url, {"provider": provider_name, "api_key": "sk-test"}, format="json"
@@ -191,8 +211,77 @@ def test_post_quickstart_non_openai_llm_config_keeps_model_defaults(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     llm_config = LLMConfig.objects.get(custom_name=f"quickstart_{provider_name}")
-    assert llm_config.reasoning_effort is None
-    assert llm_config.max_tokens == 4096
+    _assert_stored_as_catalog_defaults(llm_config, ModelKind.LLM, provider_name)
+    embedding_config = EmbeddingConfig.objects.get(custom_name=f"quickstart_{provider_name}")
+    _assert_stored_as_catalog_defaults(
+        embedding_config, ModelKind.EMBEDDING, provider_name, **embedding_overrides
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("provider_name", list(QuickstartService.PROVIDER_CONFIGS))
+def test_quickstart_uses_the_built_in_catalog_models_and_stores_valid_configs(
+    acme, provider_name  # noqa: F811
+):
+    seed_builtin_models()
+
+    # A service-level caller has no user.
+    result = QuickstartService().quickstart(
+        provider=provider_name, org_id=acme.id, user=None, api_key="sk-test"
+    )
+
+    assert result["success"], result
+    assert not LLMModel.objects.filter(is_custom=True).exists()
+    assert not EmbeddingModel.objects.filter(is_custom=True).exists()
+    service = ConfigValidationService()
+    for kind, config in (
+        (ModelKind.LLM, result["llm_config"]),
+        (ModelKind.EMBEDDING, result["embedding_config"]),
+    ):
+        assert config.model.org_id is None
+        service.validate(
+            kind, provider_name, config.model.name, config.parameters, config.connection, acme.id
+        )
+
+
+@pytest.mark.django_db
+def test_quickstart_finds_built_in_models_under_a_provider_alias(acme):  # noqa: F811
+    # An older database stores the Gemini provider row as google_ai.
+    provider = Provider.objects.create(name="google_ai")
+    llm = LLMModel.objects.create(name="gemini-3.8-flash", llm_provider=provider)
+    embedding = EmbeddingModel.objects.create(
+        name="gemini-embedding-001", embedding_provider=provider
+    )
+
+    result = QuickstartService().quickstart(
+        provider="gemini", org_id=acme.id, user=None, api_key="sk-test"
+    )
+
+    assert result["success"], result
+    assert (result["llm_config"].model, result["embedding_config"].model) == (llm, embedding)
+    # The catalog allows task_type on gemini-embedding-001, so its default is stored.
+    assert result["embedding_config"].parameters == {
+        "task_type": "retrieval_document",
+        "dimensions": 1536,
+    }
+
+
+@pytest.mark.django_db
+def test_post_quickstart_leaves_out_a_choice_the_catalog_does_not_allow_for_the_model(
+    auth_client, quickstart_url, openai_provider_seeded, monkeypatch
+):
+    # This catalog does not know gpt-6-luna, so it gets OpenAI's common settings, which
+    # hold max_tokens but not reasoning_effort.
+    repository = CatalogRepository(make_runtime_catalog())
+    monkeypatch.setattr(CatalogRepository, "default", classmethod(lambda cls: repository))
+
+    response = auth_client.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-test"}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    llm_config = LLMConfig.objects.get(custom_name="quickstart_openai")
+    assert llm_config.parameters == {"temperature": 0.7, "max_tokens": 100000}
 
 
 @pytest.mark.django_db

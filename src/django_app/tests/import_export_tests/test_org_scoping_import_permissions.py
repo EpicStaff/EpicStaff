@@ -5,7 +5,8 @@ from django.urls import reverse
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIClient
 
-from tables.models import Graph, LLMConfig
+from tables.models import Graph
+from ai_models.models import LLMConfig
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService

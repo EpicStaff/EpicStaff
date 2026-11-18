@@ -2,7 +2,7 @@
 
 import pytest
 
-from tables.models import EmbeddingConfig
+from ai_models.models import EmbeddingConfig
 from tables.models.knowledge_models.collection_models import (
     BaseRagType,
     SourceCollection,
@@ -11,7 +11,9 @@ from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
-from tables.services.delete_services import EmbeddingConfigDeleteService
+from ai_models.services.delete_services.embedding_config_delete_service import (
+    EmbeddingConfigDeleteService,
+)
 from rbac.access.effective import EffectivePermissions
 
 
