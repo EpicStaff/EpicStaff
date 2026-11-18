@@ -1,6 +1,7 @@
 """Abandoned pending connections are reported to Django as ended, best-effort."""
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
@@ -26,7 +27,10 @@ class RecordingEndClient:
 @pytest.fixture
 def clock(monkeypatch):
     now = {"now": 1000.0}
-    monkeypatch.setattr(repo_module.time, "monotonic", lambda: now["now"])
+    # Replaces the repository's `time` rather than `time.monotonic` itself: asyncio
+    # schedules sleeps and timeouts on `time.monotonic`, so freezing it everywhere
+    # would stop `run()` and its `wait_for` from ever waking up.
+    monkeypatch.setattr(repo_module, "time", SimpleNamespace(monotonic=lambda: now["now"]))
     return now
 
 
