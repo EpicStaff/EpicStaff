@@ -11,7 +11,8 @@ Who may **change** which secret a resource references is a separate, RBAC-side c
 `secrets:USE`, enforced by `SecretUseService` at each write point and documented in
 [../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6. The same
 section covers the destination rule: a secret-bearing row may not be pointed at a new
-`base_url` / MCP `transport` without `USE`. Everything in
+endpoint (a config's `connection` endpoint fields, a `base_url`, an MCP `transport`) without
+`USE`. Everything in
 *this* guide is about storing, resolving and delivering the value once a reference exists.
 
 ---
@@ -203,6 +204,12 @@ same name without that suffix is the plaintext slot. A carrier with no matching 
 **`secret_names` → `secrets`.** The reserved pair for declaration sites: a list of names in,
 a `{name: plaintext}` dict out. (No collision with the suffix rule —
 `"secret_names".endswith("_secret_id")` is `False`.)
+
+**`epicstaff_secret(<name>)` markers.** In a dict field whose name ends in one of
+`_MARKER_FIELD_SUFFIXES` (`extra_headers`, `connection`), each marker in a string value is
+replaced by the plaintext of the live secret of that name in `org_id` only. A name the
+organization has no live secret for raises `SecretResolutionError`, so another
+organization's secret never resolves.
 
 The carrier fields are declared `Field(exclude=True)` on the pydantic models, so
 `model_dump()` omits them. That is what keeps secret ids out of the published Redis payload,
@@ -419,8 +426,8 @@ All paths are relative to `src/django_app/` unless stated otherwise.
 | Usage visibility per role (readable/hidden) | `tests/services_tests/test_secret_usage_permission_filtering.py`, `tests/api_tests/test_secret_usage_permission_visibility.py` |
 | `secrets:USE` service: delta, marker and destination rules, fail-safe | `tests/services_tests/test_secret_use_service.py`, `test_secret_use_view_glue.py`, `test_secret_use_exception_handler.py` |
 | `secrets:USE` coverage — every Secret field mapped to a write-point check | `tests/services_tests/test_secret_reference_coverage.py` |
-| `secrets:USE` per endpoint family | `tests/api_tests/test_secret_use_fk_fields.py`, `test_secret_use_bulk_save.py`, `test_secret_use_ngrok_inline.py`, `test_secret_use_webhook_trigger_auth.py`, `test_secret_use_permission_plumbing.py`, `test_config_extra_headers_secret_use.py`, `tests/import_export_tests/test_config_marker_import_secret_use.py` |
-| `secrets:USE` destination (`base_url`, model switch, MCP `transport`) | `tests/api_tests/test_secret_use_destination.py` |
+| `secrets:USE` per endpoint family | `tests/api_tests/test_secret_use_fk_fields.py`, `test_secret_use_bulk_save.py`, `test_secret_use_ngrok_inline.py`, `test_secret_use_webhook_trigger_auth.py`, `test_secret_use_permission_plumbing.py`, `test_config_extra_headers_secret_use.py`, `test_config_connection_secret_use.py`, `tests/import_export_tests/test_config_marker_import_secret_use.py` |
+| `secrets:USE` destination (`connection` endpoints, `base_url`, MCP `transport`) | `tests/api_tests/test_secret_use_destination.py` |
 | Version round trip | `tests/graph_versioning_tests/test_secret_declarations.py`, `tests/api_tests/test_graph_version_secret_declarations.py` |
 | Sandbox delivery and scrubbing | `src/sandbox/tests/chain_tests/test_execute_code_handler_env.py`, `test_secret_scrubber.py` |
 
