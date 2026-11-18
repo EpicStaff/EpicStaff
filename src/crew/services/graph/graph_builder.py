@@ -317,9 +317,7 @@ class SessionGraphBuilder:
                 storage_allowed_paths=file_extractor_node_data.storage_allowed_paths,
                 storage_org_prefix=file_extractor_node_data.storage_org_prefix,
                 org_id=file_extractor_node_data.org_id,
-                storage_credentials=storage_credentials_for(
-                    session_data, FILE_NODE_STORAGE_GRANT
-                ),
+                storage_credentials=storage_credentials_for(session_data, FILE_NODE_STORAGE_GRANT),
             )
             self.add_node(file_extractor_node)
 
@@ -347,9 +345,7 @@ class SessionGraphBuilder:
                 storage_allowed_paths=audio_transcription_node_data.storage_allowed_paths,
                 storage_org_prefix=audio_transcription_node_data.storage_org_prefix,
                 org_id=audio_transcription_node_data.org_id,
-                storage_credentials=storage_credentials_for(
-                    session_data, FILE_NODE_STORAGE_GRANT
-                ),
+                storage_credentials=storage_credentials_for(session_data, FILE_NODE_STORAGE_GRANT),
             )
             self.add_node(audio_transcription_node)
 

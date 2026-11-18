@@ -932,6 +932,7 @@ def test_classification_table_slots_run_with_the_account_of_their_own_grant(
         graph_id=33,
         storage_credentials=DEFAULT_CREDENTIALS,
         storage_credentials_by_grant={storage_account_key(READ_ONLY, 33): CREDENTIALS_FOR_READ_ONLY},
+        secrets_cryptographer=Mock(),
     )
     state = {"variables": DotDict({}), "system_variables": {}}
 

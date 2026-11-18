@@ -23,9 +23,7 @@ def storage_grant_check_for(model: type) -> StorageGrantCheck:
     return check
 
 
-def check_storage_grant_write(
-    actor: GrantActor | None, model: type, instance, data: dict
-) -> None:
+def check_storage_grant_write(actor: GrantActor | None, model: type, instance, data: dict) -> None:
     """Refuse a write of a node that the actor's Files permissions do not cover.
 
     The rule, per grant slot of the node:

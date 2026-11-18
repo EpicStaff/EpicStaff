@@ -87,6 +87,7 @@ __cache: dict[str, list[str] | None] = {}
 
 _mutations: list[dict] = []
 
+
 def __get_allowed_paths() -> list[str] | None:
     if "allowed" not in __cache:
         raw = os.environ.get("STORAGE_ALLOWED_PATHS")
