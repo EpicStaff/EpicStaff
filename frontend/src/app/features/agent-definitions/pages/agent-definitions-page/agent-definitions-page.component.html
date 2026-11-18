@@ -75,10 +75,10 @@
                     <button
                         type="button"
                         class="detail-header__used-by"
-                        [matTooltip]="'Used by ' + selectedSurfaceUsageCount()"
+                        [matTooltip]="selectedSurfaceUsageFailed() ? 'Could not load usage' : ''"
                         (click)="onOpenUsage()"
                     >
-                        Used by {{ selectedSurfaceUsageCount() }}
+                        Used by {{ selectedSurfaceUsageCount() ?? (selectedSurfaceUsageFailed() ? '?' : '…') }}
                         <app-svg-icon
                             icon="arrow-up-right"
                             size="12px"

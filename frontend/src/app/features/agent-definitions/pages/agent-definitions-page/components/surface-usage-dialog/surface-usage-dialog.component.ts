@@ -1,31 +1,13 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, ResourceRef } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
+import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 
-export type SurfaceUsagePlace = 'every-place' | 'flow' | 'chat' | 'realtime';
-
-export interface SurfaceAgentUsage {
-    agentId: number;
-    agentName: string;
-    place: SurfaceUsagePlace;
-    placeLabel: string;
-}
-
-export interface SurfaceDirectUsage {
-    id: number;
-    name: string;
-    active?: boolean;
-}
-
-export interface SurfaceUsage {
-    agents: SurfaceAgentUsage[];
-    flows: SurfaceDirectUsage[];
-    chats: SurfaceDirectUsage[];
-}
+import { SurfaceUsage, surfaceUsageAgentCount, surfaceUsageFlowCount } from '../../../../models/surface-usage.model';
 
 export interface SurfaceUsageDialogData {
-    usage: SurfaceUsage;
+    usage: ResourceRef<SurfaceUsage | undefined>;
 }
 
 @Component({
@@ -37,20 +19,39 @@ export interface SurfaceUsageDialogData {
 })
 export class SurfaceUsageDialogComponent {
     private readonly dialogRef = inject<DialogRef<number | undefined>>(DialogRef);
+    private readonly router = inject(Router);
     private readonly data = inject<SurfaceUsageDialogData>(DIALOG_DATA);
 
-    readonly usage = this.data.usage;
+    protected readonly usage = computed<SurfaceUsage | null>(() =>
+        this.data.usage.hasValue() ? this.data.usage.value() : null
+    );
+    protected readonly failed = computed<boolean>(() => this.data.usage.error() !== undefined);
 
-    readonly agentCount = computed(() => this.usage.agents.length);
-    readonly flowCount = computed(() => this.usage.flows.length);
-    readonly chatCount = computed(() => this.usage.chats.length);
-    readonly total = computed(() => this.agentCount() + this.flowCount() + this.chatCount());
+    protected readonly agentCount = computed(() => {
+        const usage = this.usage();
+        return usage ? surfaceUsageAgentCount(usage) : 0;
+    });
+    protected readonly flowCount = computed(() => {
+        const usage = this.usage();
+        return usage ? surfaceUsageFlowCount(usage) : 0;
+    });
+    protected readonly total = computed(() => this.agentCount() + this.flowCount());
 
     close(): void {
         this.dialogRef.close();
     }
 
+    retry(): void {
+        this.data.usage.reload();
+    }
+
     openAgent(agentId: number): void {
         this.dialogRef.close(agentId);
+    }
+
+    openFlow(flowId: number, nodeId?: number): void {
+        const queryParams = nodeId === undefined ? undefined : { nodeId };
+        const url = this.router.serializeUrl(this.router.createUrlTree(['/flows', flowId], { queryParams }));
+        window.open(url, '_blank', 'noopener');
     }
 }

@@ -1,6 +1,6 @@
 ﻿import { HttpErrorResponse } from '@angular/common/http';
 import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 import { ExportOptionsDialogService } from '@shared/services';
 import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
@@ -38,12 +38,8 @@ import {
     Surface,
     SurfaceSaveError,
 } from '../models/surface.model';
-import {
-    categoryToPlace,
-    placeToCategory,
-    SURFACE_CATEGORIES,
-    SurfaceCategoryId,
-} from '../models/surface-category.model';
+import { categoryToPlace, placeToCategory, SurfaceCategoryId } from '../models/surface-category.model';
+import { SurfaceUsage } from '../models/surface-usage.model';
 import { BranchTreeNode, ExplorerGroupBlock, groupBlockKey, GroupedSectionId } from '../models/tree-node.model';
 import { AgentDefinitionsApiService } from './agent-definitions-api.service';
 import { AgentGroupsStorageService } from './agent-groups-storage.service';
@@ -462,25 +458,38 @@ export class AgentsPageStore {
         this.showSidebar.update((v) => !v);
     }
 
-    surfaceUsage(surfaceId: number): {
-        agents: { agentId: number; agentName: string; place: SurfaceCategoryId; placeLabel: string }[];
-        flows: never[];
-        chats: never[];
-    } {
-        const agents = this.agents().flatMap((a) =>
-            a.default_surfaces
-                .filter((ds) => ds.surface === surfaceId)
-                .map((ds) => {
-                    const category = placeToCategory(ds.place);
-                    return {
-                        agentId: a.id,
-                        agentName: a.name,
-                        place: category,
-                        placeLabel: SURFACE_CATEGORIES.find((c) => c.id === category)?.label ?? category,
-                    };
-                })
+    private readonly selectedSurfaceId = computed<number | null>(() => this.selectedSurfaceView()?.surface.id ?? null);
+
+    /** Which agents hold the selected surface, and where: when that changes, the usage the server reports changes. */
+    private readonly selectedSurfaceHolders = computed<string>(() => {
+        const surfaceId = this.selectedSurfaceId();
+        return this.agents()
+            .flatMap((agent) =>
+                agent.default_surfaces
+                    .filter((defaultSurface) => defaultSurface.surface === surfaceId)
+                    .map((defaultSurface) => `${agent.id}:${defaultSurface.place}`)
+            )
+            .sort()
+            .join(',');
+    });
+
+    /** What uses the selected surface, from the server. A new selection cancels the request still in flight. */
+    readonly selectedSurfaceUsage = rxResource({
+        params: () => {
+            const surfaceId = this.selectedSurfaceId();
+            return surfaceId === null ? undefined : { surfaceId, holders: this.selectedSurfaceHolders() };
+        },
+        stream: ({ params }) => this.surfacesApi.getUsage(params.surfaceId),
+    });
+
+    /** Null after a failed load, which is reported to the user. */
+    loadSurfaceUsage(surfaceId: number): Observable<SurfaceUsage | null> {
+        return this.surfacesApi.getUsage(surfaceId).pipe(
+            catchError((err) => {
+                this.toast.error(this.extractError(err, 'Failed to load where this surface is used'));
+                return of(null);
+            })
         );
-        return { agents, flows: [], chats: [] };
     }
 
     readonly sharedSurfaces = computed<Surface[]>(() => this.surfaces().filter((s) => s.owner_agent == null));

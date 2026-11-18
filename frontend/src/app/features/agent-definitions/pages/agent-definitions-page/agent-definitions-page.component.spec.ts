@@ -15,7 +15,7 @@ import {
 } from '@shared/components';
 import { EnterBlurDirective, HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 
 import { tourAnchorSelector } from '../../../../core/guided-tour';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -480,6 +480,73 @@ describe('AgentDefinitionsPageComponent agent row menu "Export"', () => {
         });
 
         expect(exportAgent).toHaveBeenCalledExactlyOnceWith(3);
+    });
+});
+
+describe('AgentDefinitionsPageComponent deleting a surface', () => {
+    const SHARED_SURFACE = {
+        id: 30,
+        name: 'CRM access',
+        group: null,
+        owner_agent: null,
+        python_tools: [],
+        mcp_tools: [],
+        storage_items: [],
+        knowledge: [],
+    } as Partial<Surface> as Surface;
+
+    function renderDeleting(loadSurfaceUsage: () => unknown): {
+        fixture: ComponentFixture<AgentDefinitionsPageComponent>;
+        confirm: ReturnType<typeof vi.fn>;
+        deleteSurface: ReturnType<typeof vi.fn>;
+    } {
+        const { fixture } = render(true);
+        const confirm = vi.fn(() => of(true));
+        const deleteSurface = vi.fn();
+        TestBed.inject(ConfirmationDialogService).confirm = confirm as unknown as ConfirmationDialogService['confirm'];
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+        (store.surfaces as WritableSignal<Surface[]>).set([SHARED_SURFACE]);
+        Object.assign(store, { loadSurfaceUsage, deleteSurface });
+        return { fixture, confirm, deleteSurface };
+    }
+
+    it('warns with the counts fetched for that surface, hidden ones included', () => {
+        const { fixture, confirm, deleteSurface } = renderDeleting(() =>
+            of({
+                agents: [
+                    { agentId: 1, agentName: 'Researcher', placeLabel: 'Chat' },
+                    { agentId: 1, agentName: 'Researcher', placeLabel: 'Flow' },
+                ],
+                flows: [{ flowId: 7, flowName: 'My flow', nodes: [] }],
+                hiddenAgentCount: 2,
+                hiddenFlowCount: 1,
+            })
+        );
+
+        fixture.componentInstance.onDeleteSurface(SHARED_SURFACE.id);
+
+        expect(confirm.mock.calls[0][0].caution).toContain('3 agents and 2 flows');
+        expect(deleteSurface).toHaveBeenCalledExactlyOnceWith(SHARED_SURFACE.id);
+    });
+
+    it('asks nothing and deletes nothing when the usage could not be loaded', () => {
+        const { fixture, confirm, deleteSurface } = renderDeleting(() => of(null));
+
+        fixture.componentInstance.onDeleteSurface(SHARED_SURFACE.id);
+
+        expect(confirm).not.toHaveBeenCalled();
+        expect(deleteSurface).not.toHaveBeenCalled();
+    });
+
+    it('ignores a repeat click while the usage is still being fetched', () => {
+        const pending = new Subject<null>();
+        const loadSurfaceUsage = vi.fn(() => pending);
+        const { fixture } = renderDeleting(loadSurfaceUsage);
+
+        fixture.componentInstance.onDeleteSurface(SHARED_SURFACE.id);
+        fixture.componentInstance.onDeleteSurface(SHARED_SURFACE.id);
+
+        expect(loadSurfaceUsage).toHaveBeenCalledTimes(1);
     });
 });
 

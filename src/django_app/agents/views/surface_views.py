@@ -4,6 +4,7 @@ from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
+from rbac.access.resolver import resolve_request_permissions
 from rbac.authorship import authorship_prefetches
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedViewSetMixin
@@ -20,15 +21,22 @@ from agents.serializers.surface_serializers import (
     SurfaceCombineRequestSerializer,
     SurfacePatchWriteSerializer,
     SurfaceReadSerializer,
+    SurfaceUsageSerializer,
     SurfaceWriteSerializer,
 )
 from agents.services.surface_combine_service import SurfaceCombineService
+from agents.services.surface_usage_service import SurfaceUsageService
 
 
 class SurfaceViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.SURFACES
-    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "combine": Permission.READ}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
+        "combine": Permission.READ,
+        "usage": Permission.READ,
+    }
     recycle_bin_resource_key = RecycleBinSource.SURFACE
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     queryset = Surface.objects.select_related(
@@ -118,3 +126,18 @@ class SurfaceViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.Mod
 
         combined = SurfaceCombineService.combine(surface_dicts)
         return Response(combined, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                response=SurfaceUsageSerializer,
+                description="Agents defaulting to this surface and flow nodes attaching it.",
+            ),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="usage")
+    @reads_only
+    def usage(self, request, pk=None):
+        surface = self.get_object()
+        effective = resolve_request_permissions(request)
+        return Response(SurfaceUsageService.usage(surface=surface, effective=effective))
