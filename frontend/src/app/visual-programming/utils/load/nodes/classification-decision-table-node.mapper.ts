@@ -1,6 +1,7 @@
 import { NodeType, SystemOneQuestion, toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
+import { storageGrantsFromDto } from '../../../core/helpers/storage-grants.util';
 import { normalizeCdtSectionColor, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../core/models/classification-decision-table-node.model';
@@ -85,11 +86,9 @@ export function mapClassificationDecisionTableNodeToModel(
                 pre_computation_code: n.pre_python_code?.code ?? null,
                 pre_input_map: n.pre_input_map ?? {},
                 pre_output_variable_path: n.pre_output_variable_path,
-                pre_use_storage: n.pre_use_storage ?? false,
                 post_computation_code: n.post_python_code?.code ?? null,
                 post_input_map: n.post_input_map ?? {},
                 post_output_variable_path: n.post_output_variable_path,
-                post_use_storage: n.post_use_storage ?? false,
                 prompts,
                 default_llm_config: n.default_llm_config ?? null,
                 default_next_node: null, // resolved in ref-resolvers/classification-decision-table-refs.ts
@@ -131,5 +130,7 @@ export function mapClassificationDecisionTableNodeToModel(
         output_variable_path: null,
         size: ui.size,
         explanations: readCdtExplanations(n.metadata as Record<string, unknown> | undefined),
+        preStorageGrants: storageGrantsFromDto(n, 'pre'),
+        postStorageGrants: storageGrantsFromDto(n, 'post'),
     };
 }

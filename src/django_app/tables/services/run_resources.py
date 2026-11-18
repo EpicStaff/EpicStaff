@@ -301,19 +301,6 @@ RUN_START_MODELS: Mapping[RunKind, str] = MappingProxyType(
     }
 )
 
-# The flag that gives a code slot of a flow node the flow's attached files and folders, as
-# the converter scopes its storage. A test run of the slot can read them, so a code run
-# counts them as used while the flag is on. A code slot of a flow node not listed here
-# always counts them.
-CODE_SLOT_STORAGE_FLAGS: Mapping[tuple[str, str], str] = MappingProxyType(
-    {
-        ("tables.PythonNode", "python_code"): "use_storage",
-        ("tables.WebhookTriggerNode", "python_code"): "use_storage",
-        ("tables.ClassificationDecisionTableNode", "pre_python_code"): "pre_use_storage",
-        ("tables.ClassificationDecisionTableNode", "post_python_code"): "post_use_storage",
-    }
-)
-
 _GRAPH = "tables.Graph"
 _PYTHON_CODE = "tables.PythonCode"
 _SECRET = "tables.Secret"
@@ -334,9 +321,8 @@ class RunResourceCollector:
     A code run (`RunKind.CODE`) walks the code itself (its secrets) and adds, without
     walking them, the rows that hold it: a tool with that code, or the flow of a node with
     that code. A test run of one node of a flow is therefore never refused because another
-    node of the same flow uses something. When the node's slot uses storage
-    (`CODE_SLOT_STORAGE_FLAGS`), the flow's attached files and folders count too, since the
-    test run can read them.
+    node of the same flow uses something. The flow's attached files and folders count too,
+    since the test run can read them.
     """
 
     def collect(self, subject: RunSubject) -> RunResources:
@@ -407,8 +393,6 @@ class _ChildLink:
 @dataclass(frozen=True)
 class _CodeSlot:
     code_attname: str
-    # None on a flow node: the slot always counts the flow's attached storage.
-    storage_flag: str | None
 
 
 @dataclass(frozen=True)
@@ -585,12 +569,7 @@ def _code_holder_plan() -> tuple[_CodeHolder, ...]:
             continue
         field = apps.get_model(reference.model)._meta.get_field(reference.field)
         if not field.many_to_many and field.related_model._meta.label == _PYTHON_CODE:
-            slots[reference.model].append(
-                _CodeSlot(
-                    code_attname=field.attname,
-                    storage_flag=CODE_SLOT_STORAGE_FLAGS.get((reference.model, reference.field)),
-                )
-            )
+            slots[reference.model].append(_CodeSlot(code_attname=field.attname))
     flow_links = {
         reference.child: apps.get_model(reference.child)._meta.get_field(reference.fk).attname
         for reference in RUN_REFERENCES
@@ -621,9 +600,7 @@ def _add_code_holders(
         matches = reduce(
             or_, (Q(**{f"{slot.code_attname}__in": code_ids}) for slot in holder.slots)
         )
-        columns = [slot.code_attname for slot in holder.slots] + [
-            slot.storage_flag for slot in holder.slots if slot.storage_flag is not None
-        ]
+        columns = [slot.code_attname for slot in holder.slots]
         rows = (
             apps.get_model(holder.model)
             ._base_manager.filter(matches)
@@ -638,7 +615,7 @@ def _add_code_holders(
                 if code_id not in starts:
                     continue
                 used[code_id].add(root)
-                if holder.root == _GRAPH and (slot.storage_flag is None or row[slot.storage_flag]):
+                if holder.root == _GRAPH:
                     flows_with_storage[code_id].add(root)
 
     storage_walk = _Walk(_attached_storage_plan())

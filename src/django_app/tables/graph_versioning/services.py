@@ -11,6 +11,11 @@ from tables.models import (
     GraphVersion,
     Label,
 )
+from tables.services.storage_grants.actor import GrantActor
+from tables.services.storage_grants.flow_checks import (
+    actions_granted_in_flows,
+    assert_actor_holds,
+)
 
 # Graph-level ``metadata`` in snapshots saved before the secret FKs landed can carry node data
 # with plaintext credentials (e.g. a Telegram trigger's bot key). The importer nulls them on the
@@ -107,6 +112,12 @@ class GraphVersioningService:
         source_graph = version.graph
         prepared = self._prepare(version)
         warnings = list(prepared.filter_warnings)
+        warnings.extend(
+            self._manager.storage_grant_capped_warnings(
+                prepared.filtered_snapshot["nodes"],
+                GrantActor.for_user(user, source_graph.org_id),
+            )
+        )
 
         graph_name = prepared.converted_snapshot.get("name", "Flow")
         new_graph, node_mapper = self._manager.create_graph_from_snapshot(
@@ -254,7 +265,24 @@ class GraphVersioningService:
         Graph.increment_version_if_current(pk=graph.pk, expected=expected_save_version)
 
         prepared = self._prepare(version)
+        # Restoring replaces every node, and the grants of the version are capped to what the
+        # user may hand out (`apply_snapshot_to_graph`), so a version from before grants, whose
+        # missing boxes read as ticked, restores for a user who lacks one of them, with that
+        # box off. What the restore still needs is stricter than the steering rule: every box
+        # ticked anywhere in the current flow. A restore replaces every node's code, so the
+        # restorer must hold every grant the flow's code currently runs with.
+        required = actions_granted_in_flows([graph.id])
+        # A call with no acting user is internal (the restore endpoint always has one) and
+        # has no one whose permissions could be short.
+        if user is not None:
+            assert_actor_holds(GrantActor.for_user(user, graph.org_id), required)
         warnings = list(prepared.filter_warnings)
+        # Before applying: recreating the nodes consumes the snapshot's node dicts.
+        warnings.extend(
+            self._manager.storage_grant_capped_warnings(
+                prepared.filtered_snapshot["nodes"], GrantActor.for_user(user, graph.org_id)
+            )
+        )
 
         auto_backup_id = None
         if backup:

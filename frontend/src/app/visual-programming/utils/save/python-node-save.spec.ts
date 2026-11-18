@@ -21,7 +21,6 @@ const dto: PythonNode = {
     test_input: {},
     output_variable_path: 'variables.result',
     metadata: {},
-    use_storage: false,
     created_at: '2026-01-01T00:00:00Z',
     created_by: null,
     last_edited_by: null,

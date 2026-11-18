@@ -164,3 +164,31 @@ def test_a_storage_failure_keeps_the_row_for_a_retry(org, gateway):
     session_credential_service.revoke_for_session(session.id)
 
     assert TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
+
+
+@pytest.mark.django_db
+@OWNERS
+def test_revoking_an_owner_first_indexes_what_its_granted_folders_hold(
+    org, gateway, request, make_owner, monkeypatch
+):
+    from storage_credentials.services import session_credential_service as service_module
+    from tables.models import StorageFile
+    from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+
+    backend = InMemoryStorageBackend(organization_prefix="")
+    monkeypatch.setattr(
+        service_module, "get_storage_backend", lambda organization_prefix="": backend
+    )
+    backend.put_bytes(f"org_{org.id}/granted/unreported.bin", b"x" * 12)
+    backend.put_bytes(f"org_{org.id}/not-granted/other.bin", b"x" * 99)
+    owner, revoke = make_owner(org, request)
+    TemporaryStorageAccount.objects.create(
+        access_key="owner-key", granted_folders=["granted/"], **owner
+    )
+
+    revoke()
+
+    assert {row.path: row.size for row in StorageFile.objects.filter(org=org, item_type="file")} == {
+        "granted/unreported.bin": 12
+    }
+    gateway.delete_service_account.assert_awaited_once_with("owner-key")

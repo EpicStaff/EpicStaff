@@ -54,6 +54,14 @@
         <section class="venv-dialog__section venv-dialog__libs">
             <h3 class="venv-dialog__libs-title text-body">Libraries</h3>
 
+            @if (libsLock !== null) {
+                <app-hint-message
+                    id="venv-libs-lock-hint"
+                    tone="warning"
+                    >{{ libsLock }}</app-hint-message
+                >
+            }
+
             <div class="venv-dialog__libs-table">
                 <table>
                     <colgroup>
@@ -107,7 +115,8 @@
                                     class="venv-dialog__icon-btn venv-dialog__icon-btn--accent"
                                     aria-label="Remove all libraries"
                                     matTooltip="Remove all libraries"
-                                    [disabled]="libs.length === 0"
+                                    [disabled]="libs.length === 0 || libsLock !== null"
+                                    [attr.aria-describedby]="libsLock !== null ? 'venv-libs-lock-hint' : null"
                                     (click)="removeAllLibraries(); addLibraryButton.focus()"
                                 >
                                     <app-svg-icon
@@ -195,6 +204,8 @@
                                         class="venv-dialog__icon-btn venv-dialog__icon-btn--remove"
                                         aria-label="Remove library"
                                         matTooltip="Remove library"
+                                        [disabled]="libsLock !== null"
+                                        [attr.aria-describedby]="libsLock !== null ? 'venv-libs-lock-hint' : null"
                                         (click)="removeLibrary(index)"
                                     >
                                         <app-svg-icon
@@ -213,6 +224,7 @@
                 #addLibraryButton
                 type="button"
                 class="venv-dialog__add-lib text-body-small"
+                [hidden]="libsLock !== null"
                 (click)="addLibrary()"
             >
                 + Add library

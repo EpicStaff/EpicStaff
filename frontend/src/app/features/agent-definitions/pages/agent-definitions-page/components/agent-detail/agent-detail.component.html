@@ -58,6 +58,9 @@
                             appEnterBlur
                             (blur)="autosaveName()"
                         />
+                        @if (showNameRequired()) {
+                            <span class="field__error">Agent name is required</span>
+                        }
                         @if (form.controls.name.hasError('maxlength')) {
                             <span class="field__error">Agent name must be at most 255 characters.</span>
                         }
