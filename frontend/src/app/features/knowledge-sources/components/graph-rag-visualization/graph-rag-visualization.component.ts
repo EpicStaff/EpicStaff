@@ -393,6 +393,22 @@ export class GraphRagVisualizationComponent implements OnInit {
         void this.startSimulation();
     }
 
+    onFilterHoverEnter(filterIndex: number): void {
+        const filter = this.entityTypeFilters()[filterIndex];
+        if (!filter || !filter.checked) return;
+        this.sceneService.setTypeHoverHighlight(filter.type);
+    }
+
+    onFilterHoverLeave(): void {
+        this.sceneService.setTypeHoverHighlight(null);
+    }
+
+    onFilterZoom(filterIndex: number): void {
+        const filter = this.entityTypeFilters()[filterIndex];
+        if (!filter || !filter.checked) return;
+        this.sceneService.zoomToType(filter.type);
+    }
+
     onTypeFilterChange(filterIndex: number, checked: boolean): void {
         this.entityTypeFilters.update((filters) => {
             const updated = [...filters];

@@ -127,6 +127,27 @@
         }
     }
 
+    &__filter-trigger {
+        appearance: none;
+        background: none;
+        border: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+        text-align: left;
+        font-family: inherit;
+        color: inherit;
+        cursor: pointer;
+
+        &:disabled {
+            cursor: default;
+        }
+    }
+
     &__filter-color {
         width: 10px;
         height: 10px;

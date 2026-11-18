@@ -3,13 +3,6 @@
         <span class="dialog__header-title"> Graph RAG Configuration </span>
 
         <div class="dialog__actions">
-            <app-button
-                type="outline-primary"
-                (click)="onClose()"
-            >
-                Close
-            </app-button>
-
             @if (activeTab() === 'configuration') {
                 @if (isIndexing()) {
                     <app-button
@@ -30,6 +23,13 @@
                     </app-button>
                 }
             }
+
+            <app-button
+                type="outline-primary"
+                (click)="onClose()"
+            >
+                Close
+            </app-button>
         </div>
     </div>
 

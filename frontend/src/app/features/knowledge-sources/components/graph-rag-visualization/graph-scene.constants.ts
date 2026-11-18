@@ -84,7 +84,7 @@ export const EDGE_COLOR: ColorTuple = [0.5, 0.5, 0.55];
 
 /** Hover colors — the hovered node's outline and its connected edges. */
 export const HOVERED_BORDER_COLOR: ColorTuple = [0.42, 0.45, 0.98]; // accent / indigo
-export const HIGHLIGHT_EDGE_COLOR: ColorTuple = [1.0, 0.95, 0.4]; // bright yellow
+export const HIGHLIGHT_EDGE_COLOR: ColorTuple = [0.75, 0.6, 0.15]; // deeper amber
 export const OUTLINE_SCALE = 1.35; // how much larger the outline ring is vs the node
 export const DOTS_PER_EDGE = 3;
 export const DOT_RADIUS = 1.5;
@@ -125,6 +125,9 @@ export const NODE_3D_SHININESS = 40;
  * stay at full strength because the opaque highlight lines are drawn over them.
  */
 export const EDGE_OPACITY = 0.25;
+
+/** Edge opacity in 3D, lower than 2D so dense hubs do not obscure the depth cues behind them. */
+export const EDGE_OPACITY_3D = 0.1;
 
 /** Edge width as a fraction of the smallest node's radius. */
 export const EDGE_WIDTH_RATIO = 0.1;

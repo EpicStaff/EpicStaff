@@ -11,7 +11,7 @@ const viewActionColumn = (actionName: string, tooltip: string): GraphGridColumnD
     key: 'actions',
     width: ACTION_COLUMN_WIDTH,
     pinned: 'end',
-    action: { name: actionName, icon: 'eye', tooltip },
+    action: { name: actionName, icon: 'arrow-up-right', tooltip },
 });
 
 export const GRAPH_TABLE_COLUMNS: Record<string, GraphGridColumnDef[]> = {

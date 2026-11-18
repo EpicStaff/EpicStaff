@@ -32,6 +32,7 @@ import {
     EDGE_COLOR,
     EDGE_CYLINDER_RADIAL_SEGMENTS,
     EDGE_OPACITY,
+    EDGE_OPACITY_3D,
     EDGE_PICK_THRESHOLD_PX,
     EDGE_WIDTH_RATIO,
     FOREGROUND_RENDER_ORDER,
@@ -104,9 +105,12 @@ export class GraphSceneService {
     /** Node currently shown in the detail panel — keeps its border + a persistent label. */
     private selectedNodeIndex: number | null = null;
     private selectedLabelSprite: Sprite | null = null;
+    /** Nodes outlined while the user hovers a sidebar type-filter item. Null when no filter is hovered. */
+    private typeHoverNodeIndices: Set<number> | null = null;
     private connectedEdgeIndices: Set<number> = new Set();
     private connectedNodeIndices: Set<number> = new Set();
     private wheelHandler: ((event: WheelEvent) => void) | null = null;
+    private cameraAnimationFrameId: number | null = null;
     private outlineMesh: InstancedMesh | null = null;
     private depthNodesMesh: InstancedMesh | null = null;
     private edgeRadius = 1;
@@ -260,7 +264,12 @@ export class GraphSceneService {
         }
         this.updateInstanceMatrices();
         this.updateEdgePositions();
-        if (this.hoveredNodeIndex !== null || this.selectedNodeIndex !== null) {
+        if (
+            this.hoveredNodeIndex !== null ||
+            this.selectedNodeIndex !== null ||
+            this.typeHoverNodeIndices !== null ||
+            this.connectedEdgeIndices.size > 0
+        ) {
             this.updateHoverVisuals();
         }
         if (this.labelsVisible) {
@@ -359,6 +368,10 @@ export class GraphSceneService {
         const oldNodeMaterial = resources.nodesMesh.material as Material;
         resources.nodesMesh.material = this.createNodeMaterial(is3D);
         oldNodeMaterial.dispose();
+
+        // Dense hubs occlude depth in 3D — fade edges further there, keep 2D at its usual opacity.
+        const edgeMaterial = resources.edgesMesh.material as Material & { opacity: number };
+        edgeMaterial.opacity = is3D ? EDGE_OPACITY_3D : EDGE_OPACITY;
 
         resources.nodesMesh.renderOrder = is3D ? BASE_RENDER_ORDER : FOREGROUND_RENDER_ORDER;
         if (this.outlineMesh) {
@@ -472,7 +485,7 @@ export class GraphSceneService {
         const hlMaterial = new THREE.LineBasicMaterial({
             color: new THREE.Color(...HIGHLIGHT_EDGE_COLOR),
             transparent: true,
-            opacity: 1.0,
+            opacity: 0.5,
             depthTest: false,
         });
         const highlightLines = new THREE.LineSegments(hlGeometry, hlMaterial);
@@ -844,6 +857,10 @@ export class GraphSceneService {
             cancelAnimationFrame(this.frameRequestId);
             this.frameRequestId = null;
         }
+        if (this.cameraAnimationFrameId !== null) {
+            cancelAnimationFrame(this.cameraAnimationFrameId);
+            this.cameraAnimationFrameId = null;
+        }
         this.lastFrameTimestamp = null;
 
         this.resizeObserver?.disconnect();
@@ -871,6 +888,158 @@ export class GraphSceneService {
     getTypeColor(type: string | null): string {
         if (!type) return TYPE_COLORS[0];
         return TYPE_COLORS[stableHash(type) % TYPE_COLORS.length];
+    }
+
+    /**
+     * Highlight all visible nodes of an entity type and every edge touching them. Pass null to clear.
+     * Driven by a filter-item hover in the sidebar — skips the connected-dots animation on purpose.
+     */
+    setTypeHoverHighlight(type: string | null): void {
+        if (!this.resources) return;
+
+        if (type === null) {
+            if (this.typeHoverNodeIndices === null && this.connectedEdgeIndices.size === 0) return;
+            this.typeHoverNodeIndices = null;
+            this.connectedEdgeIndices.clear();
+            this.connectedNodeIndices.clear();
+            this.updateEdgeColors();
+            this.updateHoverVisuals();
+            this.requestRender();
+            return;
+        }
+
+        const nodeIndices = new Set<number>();
+        for (const node of this.nodes) {
+            if (node.type === type && this.isNodeVisible(node)) {
+                nodeIndices.add(node.index);
+            }
+        }
+        const edgeIndices = new Set<number>();
+        for (let i = 0; i < this.edges.length; i++) {
+            const edge = this.edges[i];
+            if (!nodeIndices.has(edge.sourceIndex) && !nodeIndices.has(edge.targetIndex)) continue;
+            if (
+                !this.isNodeVisible(this.nodes[edge.sourceIndex]) ||
+                !this.isNodeVisible(this.nodes[edge.targetIndex])
+            ) {
+                continue;
+            }
+            edgeIndices.add(i);
+        }
+
+        this.typeHoverNodeIndices = nodeIndices;
+        this.connectedEdgeIndices = edgeIndices;
+        this.updateEdgeColors();
+        this.updateHoverVisuals();
+        this.requestRender();
+    }
+
+    /**
+     * Smoothly animate the camera to frame all visible nodes of a type. Does nothing if no node matches.
+     * Perspective: moves camera along the current view direction to a distance that fits the bounding box.
+     * Orthographic: pans to the centre and adjusts `zoom` to fit.
+     */
+    zoomToType(type: string | null, durationMs = 400): void {
+        if (!this.resources || type === null) return;
+        const visibleNodes = this.nodes.filter((n) => n.type === type && this.isNodeVisible(n));
+        if (visibleNodes.length === 0) return;
+
+        let minX = Infinity;
+        let minY = Infinity;
+        let minZ = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        let maxZ = -Infinity;
+        for (const n of visibleNodes) {
+            if (n.x - n.radius < minX) minX = n.x - n.radius;
+            if (n.y - n.radius < minY) minY = n.y - n.radius;
+            if (n.z - n.radius < minZ) minZ = n.z - n.radius;
+            if (n.x + n.radius > maxX) maxX = n.x + n.radius;
+            if (n.y + n.radius > maxY) maxY = n.y + n.radius;
+            if (n.z + n.radius > maxZ) maxZ = n.z + n.radius;
+        }
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const centerZ = (minZ + maxZ) / 2;
+        const spreadX = Math.max(1, maxX - minX);
+        const spreadY = Math.max(1, maxY - minY);
+        const spreadZ = Math.max(1, maxZ - minZ);
+
+        const { camera, controls } = this.resources;
+        const startTargetX = controls.target.x;
+        const startTargetY = controls.target.y;
+        const startTargetZ = controls.target.z;
+        const startCamX = camera.position.x;
+        const startCamY = camera.position.y;
+        const startCamZ = camera.position.z;
+
+        const perspective = (camera as PerspectiveCamera).isPerspectiveCamera === true;
+        let endCamX: number;
+        let endCamY: number;
+        let endCamZ: number;
+        let startZoom = 1;
+        let endZoom = 1;
+
+        if (perspective) {
+            const dx = startCamX - startTargetX;
+            const dy = startCamY - startTargetY;
+            const dz = startCamZ - startTargetZ;
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+            const maxSpread = Math.max(spreadX, spreadY, spreadZ);
+            const fov = ((camera as PerspectiveCamera).fov * Math.PI) / 180;
+            // 1.4 leaves a bit of padding around the bounding box.
+            const desiredDist = (maxSpread * 1.4) / (2 * Math.tan(fov / 2));
+            endCamX = centerX + (dx / dist) * desiredDist;
+            endCamY = centerY + (dy / dist) * desiredDist;
+            endCamZ = centerZ + (dz / dist) * desiredDist;
+        } else {
+            const ortho = camera as OrthographicCamera;
+            endCamX = centerX;
+            endCamY = centerY;
+            endCamZ = startCamZ;
+            startZoom = ortho.zoom;
+            const viewWidth = (ortho.right - ortho.left) / ortho.zoom;
+            const viewHeight = (ortho.top - ortho.bottom) / ortho.zoom;
+            const padding = 1.4;
+            endZoom = Math.min(viewWidth / (spreadX * padding), viewHeight / (spreadY * padding)) * ortho.zoom;
+            endZoom = Math.max(0.05, Math.min(20, endZoom));
+        }
+
+        if (this.cameraAnimationFrameId !== null) {
+            cancelAnimationFrame(this.cameraAnimationFrameId);
+            this.cameraAnimationFrameId = null;
+        }
+
+        const startTime = performance.now();
+        const ease = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+
+        const step = (): void => {
+            this.cameraAnimationFrameId = null;
+            if (!this.resources) return;
+            const now = performance.now();
+            const t = Math.min(1, (now - startTime) / durationMs);
+            const e = ease(t);
+
+            controls.target.x = startTargetX + (centerX - startTargetX) * e;
+            controls.target.y = startTargetY + (centerY - startTargetY) * e;
+            controls.target.z = startTargetZ + (centerZ - startTargetZ) * e;
+            camera.position.x = startCamX + (endCamX - startCamX) * e;
+            camera.position.y = startCamY + (endCamY - startCamY) * e;
+            camera.position.z = startCamZ + (endCamZ - startCamZ) * e;
+            if (!perspective) {
+                const ortho = camera as OrthographicCamera;
+                ortho.zoom = startZoom + (endZoom - startZoom) * e;
+                ortho.updateProjectionMatrix();
+            }
+            this.depthOrderStale = true;
+            this.requestRender();
+
+            if (t < 1) {
+                this.cameraAnimationFrameId = this.ngZone.runOutsideAngular(() => requestAnimationFrame(step));
+            }
+        };
+
+        this.cameraAnimationFrameId = this.ngZone.runOutsideAngular(() => requestAnimationFrame(step));
     }
 
     // ---- private ----
@@ -1028,7 +1197,7 @@ export class GraphSceneService {
         const cylGeometry = new THREE.CylinderGeometry(1, 1, 1, EDGE_CYLINDER_RADIAL_SEGMENTS);
         const cylMaterial = new THREE.MeshBasicMaterial({
             transparent: true,
-            opacity: EDGE_OPACITY,
+            opacity: this.is3D ? EDGE_OPACITY_3D : EDGE_OPACITY,
         });
         const edgesMesh = new THREE.InstancedMesh(cylGeometry, cylMaterial, Math.max(this.edges.length, 1));
         edgesMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -1199,7 +1368,11 @@ export class GraphSceneService {
 
                 if (!this.isNodeVisible(node)) {
                     // Skip hidden nodes — no outline
-                } else if (i === this.hoveredNodeIndex || i === this.selectedNodeIndex) {
+                } else if (
+                    i === this.hoveredNodeIndex ||
+                    i === this.selectedNodeIndex ||
+                    this.typeHoverNodeIndices?.has(i)
+                ) {
                     borderColor = HOVERED_BORDER_COLOR;
                 }
 

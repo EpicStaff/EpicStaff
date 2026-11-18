@@ -112,21 +112,33 @@
                         <span class="visualization__sidebar-section-title">ENTITY TYPES</span>
                         <div class="visualization__sidebar-section-list">
                             @for (filter of entityTypeFilters(); track filter.type) {
-                                <div class="visualization__filter-item">
+                                <div
+                                    class="visualization__filter-item"
+                                    (mouseenter)="onFilterHoverEnter($index)"
+                                    (mouseleave)="onFilterHoverLeave()"
+                                >
                                     <app-checkbox
                                         [checked]="filter.checked"
                                         [disabled]="typeFiltersDisabled()"
                                         (changed)="onTypeFilterChange($index, $event)"
                                         [ariaLabel]="filter.label"
                                     />
-                                    <!-- Nodes are colored by community while grouped, so type swatches would mislead -->
-                                    @if (!groupByCommunity()) {
-                                        <span
-                                            class="visualization__filter-color"
-                                            [style.background-color]="filter.color"
-                                        ></span>
-                                    }
-                                    <span class="visualization__filter-label">{{ filter.label }}</span>
+                                    <!-- Clicking the label (not the checkbox) zooms to this type. -->
+                                    <button
+                                        type="button"
+                                        class="visualization__filter-trigger"
+                                        [disabled]="typeFiltersDisabled() || !filter.checked"
+                                        (click)="onFilterZoom($index)"
+                                    >
+                                        <!-- Nodes are colored by community while grouped, so type swatches would mislead -->
+                                        @if (!groupByCommunity()) {
+                                            <span
+                                                class="visualization__filter-color"
+                                                [style.background-color]="filter.color"
+                                            ></span>
+                                        }
+                                        <span class="visualization__filter-label">{{ filter.label }}</span>
+                                    </button>
                                 </div>
                             }
                         </div>
