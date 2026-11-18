@@ -1354,7 +1354,7 @@ services:
     image: ghcr.io/epicstaff/sandbox_worker:${IMAGE_TAG:?}
     logging: *bounded-logs
     restart: unless-stopped
-    container_name: sandbox_worker
+    container_name: ${INSTANCE_PREFIX?}sandbox_worker
     build:
       context: .
       dockerfile: ./sandbox_new/Dockerfile.worker
