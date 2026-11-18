@@ -1,11 +1,15 @@
 """The read-only model catalog endpoints the config form reads.
 
-The catalog is the same for every organization and holds no tenant data, so the only
-gate is `llm_configs` read in the active organization.
+The catalog is the same for every organization and holds no tenant data; the gate is
+`llm_configs` read in the active organization. The model list also offers the active
+organization's own custom models, never another organization's.
 """
+
+from datetime import UTC, datetime
 
 import pytest
 from ai_models.domain.specs import ModelKind
+from ai_models.models import EmbeddingModel, LLMModel, Provider
 from ai_models.repository import CatalogRepository
 from django.urls import reverse
 from rbac.models.enums import Permission, ResourceType
@@ -90,7 +94,7 @@ def test_models_are_searchable(viewer_client):
     body = response.json()
     assert len(body) >= 1
     assert all("gpt-4o-mini" in model["name"] for model in body)
-    assert set(body[0]) == {"name", "recommended", "deprecation_date", "limits"}
+    assert set(body[0]) == {"name", "recommended", "deprecation_date", "limits", "custom"}
 
 
 def test_models_list_every_model_of_a_large_provider(viewer_client):
@@ -141,8 +145,6 @@ def test_missing_or_invalid_query_is_400_naming_the_field(viewer_client, url, qu
 
 
 def test_provider_rows_filter_by_kind_through_the_catalog(viewer_client):
-    from ai_models.models import Provider
-
     for name in ("openai", "google_ai", "voyage", "anthropic", "elevenlabs"):
         Provider.objects.create(name=name)
 
@@ -155,3 +157,107 @@ def test_provider_rows_filter_by_kind_through_the_catalog(viewer_client):
     # voyage has embedding models but does not run embedding.
     assert names("embedding") == {"openai", "google_ai"}
     assert names("llm") == {"openai", "google_ai", "anthropic"}
+
+
+def _custom_model(model_class, org, provider_name, name, **fields):
+    provider_field = "llm_provider" if model_class is LLMModel else "embedding_provider"
+    provider, _ = Provider.objects.get_or_create(name=provider_name)
+    return model_class.objects.create(org=org, name=name, is_custom=True, **{provider_field: provider}, **fields)
+
+
+def _names(client, kind, provider, **query):
+    return [model["name"] for model in client.get(MODELS, {"kind": kind, "provider": provider, **query}).json()]
+
+
+@pytest.mark.parametrize(("model_class", "kind"), [(LLMModel, "llm"), (EmbeddingModel, "embedding")])
+def test_models_list_the_orgs_custom_models_first(viewer_client, acme, model_class, kind):
+    _custom_model(model_class, acme, "openai", "zeta-fine-tune")
+    _custom_model(model_class, acme, "openai", "alpha-fine-tune")
+    # The catalog follows, unchanged.
+    catalog = [model.name for model in CatalogRepository.default().models(ModelKind(kind), "openai")]
+
+    body = viewer_client.get(MODELS, {"kind": kind, "provider": "openai"}).json()
+
+    assert body[:2] == [
+        {"name": name, "recommended": False, "deprecation_date": None, "limits": {}, "custom": True}
+        for name in ("alpha-fine-tune", "zeta-fine-tune")
+    ]
+    assert [model["name"] for model in body[2:]] == catalog
+    assert all(model["custom"] is False for model in body[2:])
+
+
+def test_models_never_list_another_orgs_custom_models(viewer_client, acme, beta):
+    _custom_model(LLMModel, acme, "openai", "acme-fine-tune")
+    _custom_model(LLMModel, beta, "openai", "beta-fine-tune")
+
+    names = _names(viewer_client, "llm", "openai")
+
+    assert "acme-fine-tune" in names
+    assert "beta-fine-tune" not in names
+
+
+def test_models_leave_out_hidden_custom_models(viewer_client, acme):
+    _custom_model(LLMModel, acme, "openai", "hidden-fine-tune", is_visible=False)
+
+    assert "hidden-fine-tune" not in _names(viewer_client, "llm", "openai")
+
+
+def test_search_matches_part_of_a_custom_name_ignoring_case(viewer_client, acme):
+    _custom_model(LLMModel, acme, "openai", "Weather-Fine-Tune")
+    _custom_model(LLMModel, acme, "openai", "billing-fine-tune")
+
+    body = viewer_client.get(MODELS, {"kind": "llm", "provider": "openai", "search": "WEATHER"}).json()
+
+    assert [model["name"] for model in body if model["custom"]] == ["Weather-Fine-Tune"]
+
+
+def _custom_names(client, kind, provider):
+    body = client.get(MODELS, {"kind": kind, "provider": provider}).json()
+    return [model["name"] for model in body if model["custom"]]
+
+
+# aleph_alpha takes custom models and its rows may be stored under its alias `aleph-alpha`.
+@pytest.mark.parametrize("stored_provider", ["aleph_alpha", "aleph-alpha"])
+def test_custom_models_are_listed_under_the_provider_name_and_its_alias(viewer_client, acme, stored_provider):
+    _custom_model(LLMModel, acme, stored_provider, "luminous-tune")
+
+    assert _custom_names(viewer_client, "llm", "aleph_alpha") == ["luminous-tune"]
+
+
+def test_custom_models_stored_under_a_provider_alias_are_listed_once(viewer_client, acme):
+    _custom_model(LLMModel, acme, "aleph-alpha", "luminous-tune")
+    _custom_model(LLMModel, acme, "aleph_alpha", "luminous-tune")
+
+    assert _custom_names(viewer_client, "llm", "aleph_alpha") == ["luminous-tune"]
+
+
+def test_a_custom_row_naming_a_catalog_model_is_listed_once_as_the_catalog_model(viewer_client, acme):
+    # Stored provider-prefixed, it is the catalog's gpt-4o under LiteLLM's lookup name.
+    _custom_model(LLMModel, acme, "openai", "openai/gpt-4o")
+
+    body = viewer_client.get(MODELS, {"kind": "llm", "provider": "openai", "search": "gpt-4o"}).json()
+
+    assert [model for model in body if model["custom"]] == []
+    assert [model["name"] for model in body].count("gpt-4o") == 1
+
+
+def test_a_custom_row_naming_a_deprecated_catalog_model_is_not_listed(viewer_client, acme):
+    today = datetime.now(UTC).date()
+    deprecated = next(
+        model.name
+        for model in CatalogRepository.default().models(ModelKind.LLM, "openai", include_deprecated=True)
+        if model.deprecation_date is not None and model.deprecation_date < today
+    )
+    _custom_model(LLMModel, acme, "openai", deprecated)
+
+    assert deprecated not in _names(viewer_client, "llm", "openai", search=deprecated)
+
+
+def test_a_provider_without_custom_models_lists_only_its_catalog(viewer_client, acme):
+    _custom_model(LLMModel, acme, "google_ai", "my-gemini-tune")
+
+    body = viewer_client.get(MODELS, {"kind": "llm", "provider": "gemini"}).json()
+
+    assert body
+    assert all(model["custom"] is False for model in body)
+

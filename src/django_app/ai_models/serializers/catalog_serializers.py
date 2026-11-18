@@ -29,3 +29,5 @@ class CatalogModelSerializer(serializers.Serializer):
     recommended = serializers.BooleanField()
     deprecation_date = serializers.DateField(allow_null=True)
     limits = serializers.DictField()
+    # Catalog models carry no `custom` attribute; DRF falls back to the default for them.
+    custom = serializers.BooleanField(read_only=True, default=False)

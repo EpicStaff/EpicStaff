@@ -186,10 +186,10 @@ export class ModelConfigDialogComponent implements OnInit {
         const items: SelectItem[] = this.catalogModels().map((model) => ({
             name: model.name,
             value: model.name,
-            tip: model.recommended ? 'Recommended' : undefined,
+            tip: model.custom ? 'Custom' : model.recommended ? 'Recommended' : undefined,
         }));
         const current = this.modelName();
-        // A search can hide the chosen model, and a custom or deprecated one is not in the catalog: keep it listed.
+        // A search can hide the chosen model, and a hidden custom or a deprecated one is not listed: keep it listed.
         return current && !items.some((item) => item.value === current)
             ? [{ name: current, value: current }, ...items]
             : items;

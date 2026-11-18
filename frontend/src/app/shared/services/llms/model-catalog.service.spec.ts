@@ -14,6 +14,7 @@ const GPT_4O: CatalogModel = {
     recommended: true,
     deprecation_date: null,
     limits: { max_output_tokens: 16384 },
+    custom: false,
 };
 
 const GPT_4O_SCHEMAS: ModelSchemas = {

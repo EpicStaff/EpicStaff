@@ -2,6 +2,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rbac.access.gates import HasOrgPermission
 from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.fields import resolve_active_org_id
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -16,6 +17,7 @@ from ai_models.serializers.catalog_serializers import (
     CatalogProviderSerializer,
     CatalogSchemasQuerySerializer,
 )
+from ai_models.services.catalog_model_resolver import CatalogModelResolver
 from ai_models.services.config_validation import ConfigValidationService, schema_factory
 
 
@@ -28,8 +30,9 @@ def _query(serializer_class, request) -> dict:
 class ModelCatalogViewSet(GenericViewSet):
     """Read-only model catalog for the config form: providers, models, per-model schemas.
 
-    The catalog is one file for every organization and holds no tenant data, so nothing
-    here is org-scoped. Reading it needs `llm_configs` read in the active organization,
+    The catalog is one file for every organization and holds no tenant data. Only the
+    model list is org-scoped: it adds the active organization's own custom models, never
+    another organization's. Reading needs `llm_configs` read in the active organization,
     the gate of the config form, its only reader.
     """
 
@@ -56,18 +59,31 @@ class ModelCatalogViewSet(GenericViewSet):
         parameters=[CatalogModelsQuerySerializer],
         responses=CatalogModelSerializer(many=True),
         description=(
-            "Every model of `provider` and `kind`, recommended first; models past their "
-            "deprecation date are left out. `search` matches part of the name."
+            "The active organization's custom models of `provider` and `kind` "
+            "(`custom: true`, by name), then every catalog model, recommended first; "
+            "models past their deprecation date are left out. `search` matches part of "
+            "the name."
         ),
     )
     # Not paginated: the picker lists a provider's whole catalog, at most a few hundred models.
     @action(detail=False, methods=["get"], pagination_class=None)
     def models(self, request):
         query = _query(CatalogModelsQuerySerializer, request)
-        models = CatalogRepository.default().models(
-            ModelKind(query["kind"]), query["provider"], search=query["search"]
-        )
-        return Response(CatalogModelSerializer(models, many=True).data)
+        kind, provider, search = ModelKind(query["kind"]), query["provider"], query["search"]
+        custom_models = [
+            {
+                "name": name,
+                "recommended": False,
+                "deprecation_date": None,
+                "limits": {},
+                "custom": True,
+            }
+            for name in CatalogModelResolver().custom_model_names(
+                kind, provider, org_id=resolve_active_org_id(request), search=search
+            )
+        ]
+        catalog_models = CatalogRepository.default().models(kind, provider, search=search)
+        return Response(CatalogModelSerializer([*custom_models, *catalog_models], many=True).data)
 
     @extend_schema(
         parameters=[CatalogSchemasQuerySerializer],

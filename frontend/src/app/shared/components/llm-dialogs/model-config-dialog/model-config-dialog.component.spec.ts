@@ -24,12 +24,22 @@ const LARGE_MODEL: CatalogModel = {
     recommended: true,
     deprecation_date: null,
     limits: { max_output_tokens: 16384 },
+    custom: false,
 };
 const SMALL_MODEL: CatalogModel = {
     name: 'gpt-small',
     recommended: false,
     deprecation_date: null,
     limits: { max_output_tokens: 8192 },
+    custom: false,
+};
+/** The organization's own model, saved earlier under a typed name. */
+const TEAM_MODEL: CatalogModel = {
+    name: 'team-finetune',
+    recommended: false,
+    deprecation_date: null,
+    limits: {},
+    custom: true,
 };
 
 const OTHER: CatalogProvider = { name: 'other', label: 'Other', recommended: false, custom_models: false };
@@ -500,6 +510,25 @@ describe('ModelConfigDialogComponent', () => {
             const body = save(rendered, '/api/llm-configs/3/', 'PUT');
             expect(body['parameters']).toEqual({ temperature: 0.2, max_tokens: 8192 });
             expect(body['model']).toBe(11);
+        });
+
+        it("offers the organization's own models first, tagged Custom", () => {
+            const rendered = render({ kind: 'llm' });
+            answer(rendered, '/api/ai-models/providers/', [OPENAI, OTHER]);
+            choose(rendered.fixture, '.dialog__provider', 'OpenAI');
+            answer(rendered, '/api/ai-models/models/', [TEAM_MODEL, LARGE_MODEL], { provider: 'openai', search: '' });
+
+            element(rendered.fixture).querySelector<HTMLButtonElement>('.dialog__model .selector__btn')!.click();
+            rendered.fixture.detectChanges();
+            const options = Array.from(document.querySelectorAll('.selector__option'), (option) => ({
+                name: option.querySelector('.selector__text')?.textContent?.trim(),
+                tip: option.querySelector('.selector__tip')?.textContent?.trim(),
+            }));
+
+            expect(options).toEqual([
+                { name: 'team-finetune', tip: 'Custom' },
+                { name: 'gpt-large', tip: 'Recommended' },
+            ]);
         });
 
         it('saves a model name typed into the search of a provider that takes custom models', () => {

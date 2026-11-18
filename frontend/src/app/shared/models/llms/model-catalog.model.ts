@@ -20,6 +20,8 @@ export interface CatalogModel {
     deprecation_date: string | null;
     /** Model limits such as `max_output_tokens`. */
     limits: Record<string, number>;
+    /** The organization's own model, saved earlier under a typed name; listed before the catalog's. */
+    custom: boolean;
 }
 
 /** `GET ai-models/schemas/?kind=&provider=&model=`: what a config of one model may hold. */

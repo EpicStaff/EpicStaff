@@ -27,7 +27,8 @@ class CatalogModelResolver:
     """Resolve a provider and model name to the model row an organization's config uses.
 
     The API's config serializers and quickstart both name a model this way, so both
-    pick the same row for the same names.
+    pick the same row for the same names; the config form's model picker offers the
+    organization's custom rows from here too.
     """
 
     def __init__(self, repository: CatalogRepository | None = None) -> None:
@@ -96,6 +97,40 @@ class CatalogModelResolver:
             created_by=author,
             **{provider_field: provider_row},
         )
+
+    def custom_model_names(
+        self, kind: ModelKind, provider: str, *, org_id: int, search: str = ""
+    ) -> list[str]:
+        """Return the names of `org_id`'s visible custom models of `provider`, sorted.
+
+        `provider` may be any of the provider's catalog names, aliases included; a
+        provider that takes no custom models has none. `search` matches part of the
+        name, ignoring case. A name the catalog knows (as `resolve` matches it) is left
+        out, so the picker lists that model once, as its catalog entry, or not at all
+        once the catalog model is past its deprecation date.
+        """
+        provider_spec = self._repository.provider(provider)
+        if provider_spec is None or not provider_spec.custom_models:
+            return []
+        model_class = _MODEL_CLASSES[kind]
+        names = (
+            model_class.objects.filter(
+                org_id=org_id,
+                is_custom=True,
+                is_visible=True,
+                name__icontains=search,
+                **{
+                    f"{_PROVIDER_FIELDS[model_class]}__name__in": (
+                        provider_spec.name,
+                        *provider_spec.aliases,
+                    )
+                },
+            )
+            .order_by("name")
+            .values_list("name", flat=True)
+            .distinct()
+        )
+        return [name for name in names if self._repository.model(kind, provider, name) is None]
 
     def save_if_new(self, model: LLMModel | EmbeddingModel) -> LLMModel | EmbeddingModel:
         """Return `model` once saved: an unsaved custom row from `resolve` is stored first."""

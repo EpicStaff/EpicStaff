@@ -7,8 +7,9 @@ import { ConfigService } from '../../../services/config';
 
 /**
  * The read-only model catalog behind the config form: providers per kind, models per provider, and the settings and
- * connection schemas of one model. The catalog is the same for every organization and changes only with a deploy, so
- * each model's schemas are fetched once per session.
+ * connection schemas of one model. Schemas are the same for every organization and change only with a deploy, so each
+ * model's are fetched once per session. The model list also holds the organization's own custom models, which change
+ * when a config saves a new one, so it is fetched every time.
  */
 @Injectable({ providedIn: 'root' })
 export class ModelCatalogService {
@@ -27,8 +28,8 @@ export class ModelCatalogService {
     }
 
     /**
-     * Every model of `provider` and `kind` whose name contains `search`, recommended first; models past their
-     * deprecation date are left out.
+     * Every model of `provider` and `kind` whose name contains `search`: the organization's custom models first, then
+     * the catalog's, recommended first; models past their deprecation date are left out.
      */
     models(kind: ModelKind, provider: string, search: string): Observable<CatalogModel[]> {
         const params = new HttpParams({ fromObject: { kind, provider, search } });
