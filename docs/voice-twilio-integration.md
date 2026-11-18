@@ -201,7 +201,7 @@ Created once per call/conversation; captures the agent's config at session start
 | `file_size` | nullable |
 | `created_at` | auto_now_add |
 
-Every caller of `POST /conversation-recordings/` (the realtime service with the SYSTEM API key, or an org member / USER API key under the usual org check) must send a WAV of at most `REALTIME_MAX_CALL_DURATION` × 8000 bytes/s × 1.5, or the API answers 400. Files are stored under `MEDIA_ROOT` (`src/django_app/media`), which is the `media_data` volume in Docker. Deleting a recording, directly or through a cascade, removes its file once the deletion commits. Recordings older than `DJANGO_VOICE_RECORDING_RETENTION_DAYS` (default 30, at least 1, the same for every organization) are deleted by the daily purge that manager requests; the `RealtimeAgentChat` stays.
+Every caller of `POST /conversation-recordings/` (the realtime service with the SYSTEM API key, or an org member / USER API key under the usual org check) must send a WAV of at most `REALTIME_MAX_CALL_DURATION` × 8000 bytes/s × 1.5, or the API answers 400.
 
 ---
 

@@ -112,7 +112,6 @@ services:
       AVATAR_URL_SIGNING_SECRET: ${AVATAR_URL_SIGNING_SECRET:?}
       DJANGO_DEBUG: ${DJANGO_DEBUG:?}
       DJANGO_RECYCLE_BIN_RETENTION_DAYS: ${DJANGO_RECYCLE_BIN_RETENTION_DAYS:?}
-      DJANGO_VOICE_RECORDING_RETENTION_DAYS: ${DJANGO_VOICE_RECORDING_RETENTION_DAYS:?}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?}
       DJANGO_SESSION_CALLBACK_ALLOWED_HOSTS: ${DJANGO_SESSION_CALLBACK_ALLOWED_HOSTS:?}
       CHAT_ENABLED: ${CHAT_ENABLED:?}
@@ -209,8 +208,7 @@ services:
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
       PLUGINS_DEV_API_PORT: ${PLUGINS_DEV_API_PORT:?}
     volumes:
-      # MEDIA_ROOT (BASE_DIR / "media"): voice recordings live here and must outlive the container.
-      - media_data:/app/src/django_app/media
+      - media_data:/app/media
       # Approved plugins' SPA files, published here and served by epicstaff-nginx (read-only).
       - plugin_spa:/srv/plugin-spa
     networks:
@@ -712,6 +710,7 @@ services:
         bind:
           create_host_path: false
       - ./nginx/certs:/etc/nginx/certs:ro
+      - media_data:/usr/share/nginx/html/media:ro
       - plugin_spa:/srv/plugin-spa:ro
       # The login callback pages every plugin host serves under /.well-known/epicstaff/, and the
       # maintenance page it shows on its SPA paths while the plugin is being upgraded.

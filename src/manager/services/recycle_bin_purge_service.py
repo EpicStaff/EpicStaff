@@ -13,7 +13,7 @@ from services.redis_service import RedisService
 
 
 class RecycleBinPurgeService:
-    """Daily clock for the recycle-bin purge and the voice-recording retention.
+    """Daily clock for the recycle-bin purge.
 
     Manager has no ORM, object-storage or GraphRAG access, so it only adds a request
     to a Redis stream. One django_app consumer reads it through a consumer group and
