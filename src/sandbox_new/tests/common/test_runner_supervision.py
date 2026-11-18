@@ -7,7 +7,7 @@ not trigger the stop.
 
 import asyncio
 
-from common.bootstrap.lifespan import supervise
+from common.runner import supervise
 
 
 class StopRecorder:

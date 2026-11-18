@@ -1,0 +1,219 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+}
+
+.grid-table-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-height: 100%;
+    overflow: auto;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+}
+
+// ===== HEADER =====
+.grid-table-header {
+    display: grid;
+    align-items: center;
+    min-height: 2.25rem;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    width: fit-content;
+    min-width: 100%;
+    background: var(--color-background-body);
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+// ===== BODY =====
+.grid-table-body {
+    display: flex;
+    flex-direction: column;
+    width: fit-content;
+    min-width: 100%;
+}
+
+// ===== ROW =====
+.grid-table-row {
+    display: grid;
+    align-items: center;
+    min-height: 2.25rem;
+    width: fit-content;
+    min-width: 100%;
+    transition: background-color 0.15s ease;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    // The stripe and hover variants are translucent; the pinned-end cell picks them up through the
+    // `--pinned-cell-tint` custom property and layers them over its own opaque body background.
+    &:nth-child(odd) {
+        background: var(--color-table-row-stripe);
+        --pinned-cell-tint: var(--color-table-row-stripe);
+    }
+
+    &:hover {
+        background: var(--transparent-white-4);
+        --pinned-cell-tint: var(--transparent-white-4);
+    }
+}
+
+// ===== CELL =====
+.grid-table-cell {
+    display: flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+    height: 100%;
+    color: var(--text);
+    min-width: 0;
+    position: relative;
+
+    // Vertical separator between columns
+    + .grid-table-cell {
+        border-left: 1px solid var(--color-divider-subtle);
+    }
+
+    .grid-table-header & {
+        align-self: stretch;
+    }
+
+    &--body {
+        cursor: pointer;
+
+        &:hover {
+            background-color: var(--color-ks-hover-row);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
+        }
+    }
+
+    // End-pinned column: stays fixed on the right while the rest scrolls horizontally. Opaque, so the columns
+    // scrolling under it don't show through; the tint layer repeats the row's stripe/hover background on top
+    // of the body color. Pattern mirrors AppTableComponent's pinned columns.
+    &--pinned-end {
+        position: sticky;
+        right: 0;
+        background:
+            linear-gradient(var(--pinned-cell-tint, transparent), var(--pinned-cell-tint, transparent)),
+            var(--color-background-body);
+        z-index: 1;
+        // The vertical separator from the generic sibling rule moves to the pinned column's left edge so it
+        // looks like a divider between the sticky column and the scrolling content, not a floating gap.
+        border-left: 1px solid var(--color-divider-subtle);
+
+        .grid-table-header & {
+            // The header itself is sticky to the top; the pinned-end header must win on both axes.
+            z-index: 3;
+        }
+    }
+
+    // Action cell: an icon button, centred, no horizontal padding beyond the icon's breathing room.
+    &--action {
+        padding: 0.375rem 0.5rem;
+        justify-content: center;
+        color: var(--color-text-secondary);
+        transition: color 0.15s ease;
+
+        &:hover {
+            color: var(--accent-color);
+        }
+    }
+}
+
+.grid-table-action-icon {
+    display: inline-flex;
+    color: var(--accent-color);
+}
+
+// ===== HEADER LABEL =====
+.grid-table-col-label {
+    font-size: var(--text-body-bold-size);
+    font-weight: var(--text-body-bold-weight);
+    line-height: var(--text-body-bold-line-height);
+    color: var(--text);
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+// ===== RESIZE HANDLE =====
+.grid-table-resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 8px;
+    z-index: 2;
+    cursor: col-resize;
+    touch-action: none;
+    outline: none;
+
+    &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: -1px;
+        right: 0;
+        width: 2px;
+        background: transparent;
+        transition: background-color 0.15s ease;
+    }
+
+    &:is(:hover, :focus-visible, :active)::after {
+        background: var(--accent-color);
+    }
+}
+
+// ===== CELL TEXT =====
+.grid-table-cell-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+// ===== HIGHLIGHT =====
+// The <mark> elements come from the highlight pipe through [innerHTML], so they carry no view encapsulation attribute;
+// ::ng-deep reaches them, and the pipe's class keeps the rule off any other <mark> inside the host.
+:host ::ng-deep mark.grid-table-highlight {
+    background-color: var(--orange-600-alpha-60);
+    color: inherit;
+    padding: 0;
+    border-radius: 2px;
+}
+
+// ===== CELL POPOVER =====
+.grid-table-popover {
+    // Just above the sticky header and the column resize handles (both z-index 2). The popover is position: fixed,
+    // so this only has to win inside the table's stacking context.
+    z-index: 3;
+    overflow: auto;
+    background-color: var(--color-flow-card-bg);
+    border: 1px solid var(--color-divider-subtle);
+    box-shadow: var(--shadow-raised);
+    padding: 0.375rem 0.75rem;
+
+    &__text {
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--color-text-primary);
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+}

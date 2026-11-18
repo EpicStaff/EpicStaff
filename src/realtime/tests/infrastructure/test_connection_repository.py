@@ -145,3 +145,45 @@ def test_an_unused_connection_key_expires(repo, clock, elapsed, found):
     clock["now"] += elapsed
 
     assert (repo.get_connection("key1") is not None) is found
+
+
+def test_an_expired_key_is_reported_dropped_once_even_if_nobody_asks_for_it(repo, clock):
+    repo.save_connection("a1", _make_data("a1"))
+    clock["now"] += 5
+
+    repo.purge_expired()
+
+    assert repo.take_dropped_keys() == ["a1"]
+    assert repo.take_dropped_keys() == []
+
+
+def test_an_expired_key_found_by_a_lookup_is_still_reported_dropped(repo, clock):
+    repo.save_connection("a1", _make_data("a1"))
+    clock["now"] += 5
+
+    assert repo.get_connection("a1") is None
+
+    assert repo.take_dropped_keys() == ["a1"]
+
+
+def test_keys_evicted_by_the_org_cap_and_the_global_cap_are_reported_dropped(repo):
+    for key in ("a1", "a2", "a3"):
+        repo.save_connection(key, _make_data(key, org_id=1))
+    assert repo.take_dropped_keys() == ["a1"]
+
+    for org_id, key in [(2, "b1"), (3, "c1"), (4, "d1")]:
+        repo.save_connection(key, _make_data(key, org_id=org_id))
+    assert repo.take_dropped_keys() == ["a2"]
+
+
+def test_a_consumed_or_re_saved_key_is_not_reported_dropped(repo, clock):
+    repo.save_connection("used", _make_data("used"))
+    repo.delete_connection("used")
+    repo.save_connection("again", _make_data("again"))
+    repo.save_connection("again", _make_data("again"))
+    repo.delete_connection("never-existed")
+    clock["now"] += 5
+
+    repo.purge_expired()
+
+    assert repo.take_dropped_keys() == ["again"]

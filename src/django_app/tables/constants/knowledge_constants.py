@@ -101,3 +101,13 @@ DRIFT_N_DEPTH_MIN = 1
 DRIFT_N_DEPTH_MAX = 10
 LOCAL_SEARCH_N_MIN = 1
 LOCAL_SEARCH_N_MAX = 10
+
+# Graph index read endpoints (table data, visualization). knowledge_new validates the
+# same bounds under the same names in application/graph_index_read_limits.py.
+GRAPH_TABLE_MIN_PAGE = 1
+GRAPH_TABLE_DEFAULT_PAGE = 1
+GRAPH_TABLE_MIN_PAGE_SIZE = 1
+GRAPH_TABLE_MAX_PAGE_SIZE = 100
+GRAPH_TABLE_DEFAULT_PAGE_SIZE = 10
+GRAPH_SEARCH_MAX_LENGTH = 200
+GRAPH_VISUALIZATION_MIN_MAX_ENTITIES = 1

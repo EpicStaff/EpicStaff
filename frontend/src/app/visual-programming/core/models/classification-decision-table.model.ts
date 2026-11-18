@@ -20,11 +20,9 @@ export interface ClassificationDecisionTableData {
     pre_computation_code: string | null;
     pre_input_map?: Record<string, string>;
     pre_output_variable_path?: string | null;
-    pre_use_storage?: boolean;
     post_computation_code?: string | null;
     post_input_map?: Record<string, string>;
     post_output_variable_path?: string | null;
-    post_use_storage?: boolean;
     pre_computation?: ComputationConfig;
     post_computation?: ComputationConfig;
     condition_groups: ConditionGroup[];

@@ -1,23 +1,33 @@
 from .rag import (
     DocumentIdRewriteInputSchema,
+    EntityDetailOutputSchema,
+    GraphTableDataOutputSchema,
+    GraphTableSummaryOutputSchema,
+    GraphVisualizationOutputSchema,
     IndexEstimateInputSchema,
     IndexEstimateOutputSchema,
     IndexInputSchema,
     MetricsOutputSchema,
     PrechunkInputSchema,
     PrechunkOutputSchema,
+    RelationshipDetailOutputSchema,
     SearchInputSchema,
     SearchOutputSchema,
 )
 
 __all__ = [
     "DocumentIdRewriteInputSchema",
+    "EntityDetailOutputSchema",
+    "GraphTableDataOutputSchema",
+    "GraphTableSummaryOutputSchema",
+    "GraphVisualizationOutputSchema",
     "IndexEstimateInputSchema",
     "IndexEstimateOutputSchema",
     "IndexInputSchema",
     "MetricsOutputSchema",
     "PrechunkInputSchema",
     "PrechunkOutputSchema",
+    "RelationshipDetailOutputSchema",
     "SearchInputSchema",
     "SearchOutputSchema",
 ]

@@ -1,13 +1,23 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from application.graph_index_read_limits import (
+    GRAPH_TABLE_DEFAULT_PAGE,
+    GRAPH_TABLE_DEFAULT_PAGE_SIZE,
+    GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
+)
 from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
     "Command",
     "ExportGraphArtifacts",
+    "GetEntityDetail",
+    "GetGraphTableData",
+    "GetGraphTableSummary",
+    "GetGraphVisualization",
     "GetIndexEstimate",
     "GetMetrics",
+    "GetRelationshipDetail",
     "RemoveRag",
     "RestoreGraphArtifacts",
     "RewriteGraphDocumentIds",
@@ -62,6 +72,43 @@ class RemoveRag(Command):
 @dataclass(frozen=True)
 class GetMetrics(Command):
     rag_id: int
+
+
+@dataclass(frozen=True)
+class GetGraphVisualization(Command):
+    rag_id: int
+    max_entities: int = GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES
+    search: str | None = None
+
+
+@dataclass(frozen=True)
+class GetGraphTableData(Command):
+    rag_id: int
+    table_name: str
+    page: int = GRAPH_TABLE_DEFAULT_PAGE
+    page_size: int = GRAPH_TABLE_DEFAULT_PAGE_SIZE
+    search: str | None = None
+    # Optional exact-match filter on a single column. Both filter_column and
+    # filter_value must be set together; the match is applied before `search`.
+    filter_column: str | None = None
+    filter_value: str | None = None
+
+
+@dataclass(frozen=True)
+class GetGraphTableSummary(Command):
+    rag_id: int
+
+
+@dataclass(frozen=True)
+class GetEntityDetail(Command):
+    rag_id: int
+    entity_id: str
+
+
+@dataclass(frozen=True)
+class GetRelationshipDetail(Command):
+    rag_id: int
+    relationship_id: str
 
 
 @dataclass(frozen=True)
