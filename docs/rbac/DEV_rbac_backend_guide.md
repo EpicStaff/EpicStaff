@@ -328,6 +328,9 @@ Behavior:
 - Superadmin returns `True` before any DB work.
 - The required bit is looked up from `rbac_action_map` first, `DEFAULT_ACTION_MAP` second
   (`list/retrieve→READ, create→CREATE, update/partial_update→UPDATE, destroy→DELETE`).
+- Viewsets over a flow's content (node, edge and note viewsets) use
+  `FLOW_CONTENT_ACTION_MAP` instead: every write is `UPDATE`, because adding or removing
+  a node edits the flow, the same as the bulk save. A new node viewset must use it too.
 - **A custom `@action` that is not in either map is denied for every non-superadmin.**
   This is deliberate default-deny: every custom action must be mapped explicitly.
 - Resolution: `OrgContextService` → `PermissionResolver.resolve(user, org_id)` →
