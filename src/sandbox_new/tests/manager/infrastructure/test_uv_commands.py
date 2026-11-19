@@ -93,3 +93,16 @@ async def test_every_predefined_package_is_reinstalled(commands, venv_path, tmp_
         command[index + 1] for index, option in enumerate(command) if option == "--reinstall-package"
     }
     assert reinstalled == {"dotdict", "epicstaff-storage"}
+
+
+async def test_a_library_with_extras_reaches_the_resolver_as_written(monkeypatch, venv_path):
+    sent: list[str | None] = []
+
+    async def record(*args: str, input=None, **kwargs):
+        sent.append(input)
+
+    monkeypatch.setattr(UVProvider, "run", record)
+
+    await UVProvider.apply(venv_path, "requests[socks,security]>=2.0, <3")
+
+    assert sent[0] == "requests[socks,security]>=2.0, <3"

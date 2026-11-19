@@ -419,3 +419,5 @@ async def test_a_venv_refused_before_the_build_is_never_marked_processing(
     await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
 
     assert uv_provider.init_venv_calls == []
+
+
