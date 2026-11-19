@@ -2,8 +2,10 @@ import { AuthorshipFields, CreatePythonCodeRequest, GetPythonCodeRequest } from 
 
 import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
+import { StorageGrantFields } from './storage-grants.model';
 
-export interface GetWebhookTriggerNodeRequest extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
+export interface GetWebhookTriggerNodeRequest
+    extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto, StorageGrantFields {
     id: number;
     created_at: string;
     node_name: string;
@@ -17,11 +19,9 @@ export interface GetWebhookTriggerNodeRequest extends AuthorshipFields, NodeIden
     webhook_trigger: number | null;
     /** Payload used by "Run with test payload"; a JSON object, `{}` when unset. */
     test_payload: Record<string, unknown>;
-    /** Whether the code gets the flow's file storage (`epicstaff_storage`). */
-    use_storage: boolean;
 }
 
-export interface CreateWebhookTriggerNodeRequest {
+export interface CreateWebhookTriggerNodeRequest extends StorageGrantFields {
     node_name: string;
     graph: number;
     python_code: CreatePythonCodeRequest;
@@ -32,5 +32,4 @@ export interface CreateWebhookTriggerNodeRequest {
     /** Bulk save accepts only the id of an existing trigger; triggers are created through `/webhook-triggers/`. */
     webhook_trigger: number | null;
     test_payload: Record<string, unknown>;
-    use_storage: boolean;
 }

@@ -1,3 +1,4 @@
+import contextlib
 import requests
 from bs4 import BeautifulSoup
 
@@ -6,7 +7,6 @@ from bs4 import BeautifulSoup
 # manually -- sandbox tools have no imports from the rest of the codebase /
 # other tools, only main.py's source text is uploaded and executed).
 def _ssrf_guard(url: str):
-    import ipaddress
     import socket
 
     import httpx
@@ -34,19 +34,7 @@ def _ssrf_guard(url: str):
 
     for info in addr_infos:
         raw_ip = info[4][0]
-        try:
-            ip = ipaddress.ip_address(raw_ip)
-        except ValueError:
-            continue
-
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
+        if _is_internal_address(raw_ip):
             return (
                 False,
                 f"Error: refusing to fetch {url} — host '{host}' resolves to a "
@@ -54,6 +42,58 @@ def _ssrf_guard(url: str):
             )
 
     return True, None
+
+
+# Copied verbatim from web_fetch_tool/main.py together with
+# `_public_only_resolution` below, like `_ssrf_guard` above.
+def _is_internal_address(raw_ip: str) -> bool:
+    import ipaddress
+
+    try:
+        ip = ipaddress.ip_address(raw_ip)
+    except ValueError:
+        return False
+
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+# Rechecks every address an HTTP client is about to connect to. `_ssrf_guard`
+# resolves the host once and the client resolves it again to connect, so a DNS
+# name answering public first and internal second (rebinding) would pass the
+# guard alone. httpx and requests both resolve through socket.getaddrinfo, so
+# the addresses checked here are exactly the ones connected to.
+# shortcut: swaps socket.getaddrinfo for the whole process while active; safe
+# because each sandbox execution is its own single-threaded subprocess. Pin the
+# connection to the checked address instead if tools ever share a process.
+@contextlib.contextmanager
+def _public_only_resolution():
+    import socket
+
+    resolve = socket.getaddrinfo
+
+    def getaddrinfo(host, *args, **kwargs):
+        address_infos = resolve(host, *args, **kwargs)
+        for info in address_infos:
+            raw_ip = info[4][0]
+            if _is_internal_address(raw_ip):
+                raise socket.gaierror(
+                    f"refusing to connect to '{host}': it resolves to a "
+                    f"private/internal address ({raw_ip}). Blocked to prevent SSRF."
+                )
+        return address_infos
+
+    socket.getaddrinfo = getaddrinfo
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = resolve
 
 
 MAX_REDIRECTS = 3
@@ -78,12 +118,13 @@ def _guarded_get(url, headers=None, timeout=15):
         if not ok:
             return None, err
 
-        response = requests.get(
-            current_url,
-            headers=headers,
-            timeout=timeout,
-            allow_redirects=False,
-        )
+        with _public_only_resolution():
+            response = requests.get(
+                current_url,
+                headers=headers,
+                timeout=timeout,
+                allow_redirects=False,
+            )
 
         if 300 <= response.status_code < 400:
             location = response.headers.get("location")

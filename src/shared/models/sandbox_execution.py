@@ -2,6 +2,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .storage_scope import StorageAction
+
 __all__ = [
     "ExecutionRequest",
     "ExecutionStorageCredentials",
@@ -18,6 +20,10 @@ class ExecutionStorageCredentials(BaseModel):
 
     access_key: str = Field(min_length=1, repr=False)
     secret_key: str = Field(min_length=1, repr=False)
+    # The same scope fields as `StorageCredentials`: the sandbox hands them to the
+    # in-sandbox storage library, which refuses disallowed operations up front.
+    shared_actions: list[StorageAction] | None = None
+    own_paths: list[str] = Field(default_factory=list)
 
 
 class ExecutionRequest(BaseModel):

@@ -31,6 +31,20 @@ from tables.models.knowledge_models.graphrag_models import AgentGraphRag
 from tables.models.label_models import Label
 
 
+class StorageGrantFields(models.Model):
+    """What this node's code may do to the flow's attached files: read, write, delete.
+
+    A node created without them gets all False; the migration ticked them for existing nodes.
+    """
+
+    storage_grant_read = models.BooleanField(default=False)
+    storage_grant_write = models.BooleanField(default=False)
+    storage_grant_delete = models.BooleanField(default=False)
+
+    class Meta:
+        abstract = True
+
+
 class GraphManager(ActiveManager):
     def get_transitive_subflows(self, graph_id):
         """Return a queryset of all transitively referenced subgraphs using a recursive CTE."""
@@ -170,11 +184,12 @@ class CrewNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class PythonNode(GraphAuthorModel, BaseNode, NodeIdentityMixin, SoftDeleteFields):
+class PythonNode(
+    GraphAuthorModel, StorageGrantFields, BaseNode, NodeIdentityMixin, SoftDeleteFields
+):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="python_node_list")
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
     test_input = models.JSONField(default=dict, blank=True)
-    use_storage = models.BooleanField(default=False)
 
     class Meta:
         default_manager_name = "objects"
@@ -634,6 +649,7 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
 
 class WebhookTriggerNode(
     GraphAuthorModel,
+    StorageGrantFields,
     BaseGraphEntity,
     TestPayloadMixin,
     BaseGlobalNode,
@@ -652,7 +668,6 @@ class WebhookTriggerNode(
         related_name="webhook_trigger_nodes",
     )
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
-    use_storage = models.BooleanField(default=False)
 
     class Meta:
         default_manager_name = "objects"
@@ -884,8 +899,13 @@ class ClassificationDecisionTableNode(
     post_output_variable_path = models.CharField(
         max_length=512, null=True, default=None, blank=True
     )
-    pre_use_storage = models.BooleanField(default=False)
-    post_use_storage = models.BooleanField(default=False)
+    # One grant per code slot (see StorageGrantFields).
+    pre_storage_grant_read = models.BooleanField(default=False)
+    pre_storage_grant_write = models.BooleanField(default=False)
+    pre_storage_grant_delete = models.BooleanField(default=False)
+    post_storage_grant_read = models.BooleanField(default=False)
+    post_storage_grant_write = models.BooleanField(default=False)
+    post_storage_grant_delete = models.BooleanField(default=False)
     prompts = models.JSONField(default=dict, blank=True)
     default_llm_config = models.ForeignKey(
         "LLMConfig",

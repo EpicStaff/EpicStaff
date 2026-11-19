@@ -1,8 +1,80 @@
-from drf_spectacular.utils import OpenApiExample
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 from tables.serializers.search_config_serializers import (
     GraphRagSuggestInputSerializer,
     NaiveRagSuggestInputSerializer,
     SuggestOutputSerializer,
+)
+
+NAIVE_RAG_SUGGEST_409_RESPONSE = OpenApiResponse(
+    response=OpenApiTypes.STR,
+    description=(
+        "`rag_index_not_ready`: the collection's NaiveRag has not finished indexing. "
+        "Run indexing and retry once `rag_status` is `completed`."
+    ),
+    examples=[
+        OpenApiExample(
+            "Index not ready",
+            value={
+                "status_code": 409,
+                "code": "rag_index_not_ready",
+                "message": (
+                    "NaiveRAG index for collection 1 not ready. "
+                    "Run indexing and wait for rag_status='completed'."
+                ),
+            },
+            response_only=True,
+            status_codes=["409"],
+        ),
+    ],
+)
+
+GRAPH_RAG_SUGGEST_409_RESPONSE = OpenApiResponse(
+    response=OpenApiTypes.STR,
+    description=(
+        "`graph_rag_llm_not_configured`: the collection's GraphRag has no LLM config "
+        "(for example, its LLM config was deleted); set one and retry. Reported before "
+        "the index status. `rag_index_not_ready`: the GraphRag has not finished "
+        "indexing. `rag_error`: the knowledge service could not return the index "
+        "metrics; retry shortly."
+    ),
+    examples=[
+        OpenApiExample(
+            "LLM not configured",
+            value={
+                "status_code": 409,
+                "code": "graph_rag_llm_not_configured",
+                "message": "GraphRag for collection 1 has no LLM config.",
+            },
+            response_only=True,
+            status_codes=["409"],
+        ),
+        OpenApiExample(
+            "Index not ready",
+            value={
+                "status_code": 409,
+                "code": "rag_index_not_ready",
+                "message": (
+                    "GraphRAG index for collection 1 not ready. "
+                    "Run indexing and wait for rag_status='completed'."
+                ),
+            },
+            response_only=True,
+            status_codes=["409"],
+        ),
+        OpenApiExample(
+            "Metrics temporarily unavailable",
+            value={
+                "status_code": 409,
+                "code": "rag_error",
+                "message": (
+                    "GraphRAG metrics for collection 1 are temporarily unavailable. Retry shortly."
+                ),
+            },
+            response_only=True,
+            status_codes=["409"],
+        ),
+    ],
 )
 
 NAIVE_RAG_SUGGEST_PARAMS_POST = {
@@ -16,7 +88,7 @@ NAIVE_RAG_SUGGEST_PARAMS_POST = {
         "`user_custom_params` to lock specific fields."
     ),
     "request": NaiveRagSuggestInputSerializer,
-    "responses": {200: SuggestOutputSerializer},
+    "responses": {200: SuggestOutputSerializer, 409: NAIVE_RAG_SUGGEST_409_RESPONSE},
     "examples": [
         OpenApiExample(
             "Minimal — use all suggested defaults",
@@ -49,10 +121,11 @@ GRAPH_RAG_SUGGEST_PARAMS_POST = {
         "GraphRag.llm (the search-synthesis LLM), resolved server-side — no "
         "`llm_config_id` is required. Token fields are clamped to "
         "`safe_token_budget` unless the LLM model could not be resolved "
-        "by litellm (see `llm_resolution_warning`)."
+        "by litellm (see `llm_resolution_warning`). Requires the GraphRag to have "
+        "an LLM config."
     ),
     "request": GraphRagSuggestInputSerializer,
-    "responses": {200: SuggestOutputSerializer},
+    "responses": {200: SuggestOutputSerializer, 409: GRAPH_RAG_SUGGEST_409_RESPONSE},
     "examples": [
         OpenApiExample(
             "Basic search — defaults",

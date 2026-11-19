@@ -15,11 +15,12 @@ llm_start, llm_end, sandbox_dispatched, result_published; sandbox exec_start, ex
 sandbox_new exec_received, exec_held (venv_id), exec_queued (queued), exec_start (running),
 exec_launched, exec_exited (returncode, timed_out), exec_end (returncode), exec_expired
 (waited_s), exec_published (outcome: ok, failed, venv_failed, dispatch_failed, hold_timeout or
-overloaded), and, without session_id or execution_id: intake_refused (reason: cap, prediction,
-held_cap or in_progress; retry_after), once per HTTP 503 the intake gives, and every 5 s
-sandbox_gate (running, floor, max_concurrent, cpu_busy_percent and memory_used_percent -- None
-when unreadable --, queued -- running ones included --, held, drain_rate -- None on a cold
-start --); crew and agent also sandbox_rejected (attempt, retry_after_s), on each 503 followed by a
+overloaded, worker_lost), and, without session_id or execution_id: intake_refused (reason: cap,
+prediction, held_cap or in_progress; retry_after), once per HTTP 503 the intake gives, and every
+5 s one line per process: sandbox_intake from the manager (queued -- assigned/running included --,
+held, drain_rate -- None on a cold start --) and sandbox_gate from the worker (running, floor,
+max_concurrent, cpu_busy_percent and memory_used_percent -- None when unreadable --); crew and
+agent also sandbox_rejected (attempt, retry_after_s), on each 503 followed by a
 retry, and sandbox_lost, when the sandbox no longer knows an execution awaiting its result.
 """
 

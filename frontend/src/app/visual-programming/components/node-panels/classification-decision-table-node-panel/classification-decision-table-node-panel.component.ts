@@ -68,6 +68,7 @@ import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schem
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
 import { getClassificationTableVisualHeight, TABLE_NODE_WIDTH } from '../../../core/helpers/node-size.util';
+import { getNodeStorageGrants, storageGrantLockOf } from '../../../core/helpers/storage-grants.util';
 import { CdtSection, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import {
     ClassificationDecisionTableData,
@@ -108,9 +109,9 @@ import {
     ROUTE_DIFF_FIELDS,
 } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
-import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { routeTargetFormat } from '../shared/diff/route-target-format';
 import { NodeSaveErrorsComponent } from '../shared/node-save-errors/node-save-errors.component';
+import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 import {
     CDT_HEADER_COLLAPSE_AT,
     CDT_HEADER_COLLAPSE_MIN_SCROLLABLE,
@@ -150,7 +151,6 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         ButtonComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
-        NodeStorageSectionComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
         JsonEditorComponent,
@@ -162,6 +162,8 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         MissingReferenceNoteComponent,
         DiffFieldMarkComponent,
         CodeDiffViewComponent,
+        HintMessageComponent,
+        StorageGrantsFieldComponent,
         NodeSaveErrorsComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
@@ -196,11 +198,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.postCodeDiff() ? null : 'post_computation.code'
     );
     /** Changes tab of a version preview: a restore changes something shown on the tab, which flags its link. */
-    protected readonly preComputationChanged = computed(() =>
-        changesAnyFieldIn(this.panelDiff(), ['pre_computation', 'pre_use_storage'])
-    );
+    protected readonly preComputationChanged = computed(() => changesAnyFieldIn(this.panelDiff(), ['pre_computation']));
     protected readonly postComputationChanged = computed(() =>
-        changesAnyFieldIn(this.panelDiff(), ['post_computation', 'post_use_storage'])
+        changesAnyFieldIn(this.panelDiff(), ['post_computation'])
     );
     /** Any change of a prompt: the diff names a prompt and its fields by its item (`prompts[]`, `prompts[].prompt_text`). */
     protected readonly promptsChanged = computed(() => changesAnyFieldIn(this.panelDiff(), ['prompts[]']));
@@ -330,12 +330,16 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public postCode: string = '';
     protected preExecutionTimeout!: ExecutionTimeoutFormField;
     protected postExecutionTimeout!: ExecutionTimeoutFormField;
-    public preUseStorage = signal(false);
-    public postUseStorage = signal(false);
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
     public readonly canEditSecrets = computed(
         () => !this.isReadOnly() && this.permissionsService.canEditSecrets(ResourceCode.Flows)
     );
+    /** Why the pre-computation code and what steers it may not be edited (see `storageGrantLock`), else `null`. */
+    protected readonly preStorageGrantLock = computed(() => this.slotLock('pre'));
+    /** Why the post-computation code and what steers it may not be edited (see `storageGrantLock`), else `null`. */
+    protected readonly postStorageGrantLock = computed(() => this.slotLock('post'));
+    protected readonly isPreReadOnly = computed(() => this.isReadOnly() || this.preStorageGrantLock() !== null);
+    protected readonly isPostReadOnly = computed(() => this.isReadOnly() || this.postStorageGrantLock() !== null);
     public readonly preSecretsTooltip = computed(() =>
         this.canEditSecrets()
             ? `Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press ${codeSuggestionKeyLabel(this.isMac)} in the code editor to insert get_secret('name').`
@@ -351,8 +355,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
               : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
     );
     /**
-     * A block's code reads secrets and the user lacks Secrets:Use: that code and its storage toggle (which edits
-     * the code) are locked, the rest is not.
+     * A block's code reads secrets and the user lacks Secrets:Use: that code is locked, the rest is not.
      */
     protected readonly isPreCodeLocked = computed(
         () =>
@@ -583,8 +586,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         this.preCode = preComp.code || '';
         this.postCode = postComp.code || '';
-        this.preUseStorage.set(tableData.pre_use_storage ?? false);
-        this.postUseStorage.set(tableData.post_use_storage ?? false);
         this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
         this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
@@ -604,6 +605,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             default_llm_config: [tableData.default_llm_config || null],
             pre_execution_timeout: this.preExecutionTimeout.control,
             post_execution_timeout: this.postExecutionTimeout.control,
+            pre_storage_grants: [node.preStorageGrants],
+            post_storage_grants: [node.postStorageGrants],
         });
 
         this.initializeInputMapArray(form, 'pre_input_map', preComp.input_map || {});
@@ -674,9 +677,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         const tableData: ClassificationDecisionTableData = {
             pre_computation_code: this.preCode,
-            pre_use_storage: this.preUseStorage(),
             post_computation_code: this.postCode,
-            post_use_storage: this.postUseStorage(),
             pre_computation: {
                 // Keeps the stored fields the panel does not edit (entrypoint, global_kwargs).
                 ...currentNode.data.table?.pre_computation,
@@ -723,6 +724,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             // before `node()` has caught up with the move, so its copy would put the
             // explanations back under the keys they were just moved from.
             explanations: this.canvasNode()?.explanations ?? currentNode.explanations,
+            preStorageGrants: this.form.get('pre_storage_grants')?.value ?? undefined,
+            postStorageGrants: this.form.get('post_storage_grants')?.value ?? undefined,
             node_name: this.form.value.node_name,
             size: updatedSize,
             ports: updatedPorts,
@@ -731,6 +734,16 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 table: tableData,
             },
         };
+    }
+
+    private slotLock(slot: 'pre' | 'post'): string | null {
+        const savedNode = this.savedFlowStateService.savedNode(this.node().id);
+        return storageGrantLockOf(
+            savedNode ? getNodeStorageGrants(savedNode, slot) : undefined,
+            (resource, action) => this.permissionsService.can(resource, action),
+            () => this.permissionsService.isActivePermissionsLoaded(),
+            getNodeStorageGrants(this.node(), slot)
+        );
     }
 
     public setActiveTab(tab: TabType): void {
@@ -1222,56 +1235,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.postCode = code;
         this.notifyExternalChange();
         this.codeChange$.next();
-    }
-
-    // ── Storage toggle handlers ──
-
-    public onPreStorageToggle(value: boolean): void {
-        this.preUseStorage.set(value);
-        this.codeChange$.next();
-    }
-
-    public onPostStorageToggle(value: boolean): void {
-        this.postUseStorage.set(value);
-        this.codeChange$.next();
-    }
-
-    public insertPreStorageCode(code: string): void {
-        if (!this.preCode.includes('epicstaff_storage')) {
-            this.preCode = code + '\n\n' + this.preCode;
-            this.notifyExternalChange();
-            this.codeChange$.next();
-            this.cdr.markForCheck();
-        }
-    }
-
-    public removePreStorageCode(code: string): void {
-        const prefix = code + '\n\n';
-        if (this.preCode.startsWith(prefix)) {
-            this.preCode = this.preCode.slice(prefix.length);
-            this.notifyExternalChange();
-            this.codeChange$.next();
-            this.cdr.markForCheck();
-        }
-    }
-
-    public insertPostStorageCode(code: string): void {
-        if (!this.postCode.includes('epicstaff_storage')) {
-            this.postCode = code + '\n\n' + this.postCode;
-            this.notifyExternalChange();
-            this.codeChange$.next();
-            this.cdr.markForCheck();
-        }
-    }
-
-    public removePostStorageCode(code: string): void {
-        const prefix = code + '\n\n';
-        if (this.postCode.startsWith(prefix)) {
-            this.postCode = this.postCode.slice(prefix.length);
-            this.notifyExternalChange();
-            this.codeChange$.next();
-            this.cdr.markForCheck();
-        }
     }
 
     public onPreSecretsChange(values: number[]): void {

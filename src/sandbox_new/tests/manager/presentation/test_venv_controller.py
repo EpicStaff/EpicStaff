@@ -1,8 +1,8 @@
 """Responses of the venv controller.
 
 Mostly 2XX: error mapping would need a case per handler and every one of them costs a
-live HTTP test server. The one rejection covered here is the library invariant, because
-it is the only validation that happens after the body has already been parsed.
+live HTTP test server. The rejections covered here are the library invariants, because
+they are the only validation that happens after the body has already been parsed.
 """
 
 from datetime import UTC, datetime
@@ -293,3 +293,121 @@ def test_create_stores_and_returns_whether_a_library_is_custom(client, venv_repo
     body = response.json()
     assert [lib["is_custom"] for lib in body["libs"]] == [False, True]
     assert [lib.is_custom for lib in venv_repository.rows[body["id"]].libs] == [False, True]
+
+
+# One case per kind of refusal: which names and specifications are refused is pinned
+# by the domain tables.
+def test_create_rejects_a_library_name_uv_would_read_as_more_than_a_package(
+    client, venv_repository
+):
+    response = client.post(
+        "/venvs",
+        json={"name": "data", "libs": [{"name": "six\n-i http://internal-host:9/simple"}]},
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert venv_repository.rows == {}
+
+
+def test_create_rejects_a_specification_using_arbitrary_equality(client, venv_repository):
+    response = client.post(
+        "/venvs",
+        json={"name": "data", "libs": [{"name": "numpy", "specification": "===/etc"}]},
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "use '=='" in response.text
+    assert venv_repository.rows == {}
+
+
+def test_update_rejects_a_library_name_uv_would_read_as_more_than_a_package(
+    client, venv_repository
+):
+    stored = venv_repository.seed(make_venv(libs=[make_library(name="pandas")]))[0]
+
+    response = client.patch(
+        f"/venvs/{stored.id}", json={"libs": [{"name": "six\n-r /etc/passwd"}]}
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert [lib.name for lib in venv_repository.rows[stored.id].libs] == ["pandas"]
+
+
+def test_create_accepts_libraries_declared_with_extras(client, venv_repository):
+    response = client.post(
+        "/venvs",
+        json={
+            "name": "data",
+            "libs": [
+                {"name": "requests[socks]", "specification": ">=2.0"},
+                {"name": "httpx[http2,cli]", "specification": ">=0.27, <1"},
+            ],
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+    body = response.json()
+    assert [(lib["name"], lib["specification"]) for lib in body["libs"]] == [
+        ("requests[socks]", ">=2.0"),
+        ("httpx[http2,cli]", ">=0.27, <1"),
+    ]
+    assert [lib.requirement for lib in venv_repository.rows[body["id"]].libs] == [
+        "requests[socks]>=2.0",
+        "httpx[http2,cli]>=0.27, <1",
+    ]
+
+
+def test_create_refuses_a_version_bound_in_a_library_name(client, venv_repository):
+    """Export files of earlier releases carry `numpy>=1` as the name; the refusal says
+    where the version goes."""
+    response = client.post("/venvs", json={"name": "data", "libs": [{"name": "numpy>=1"}]})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "put a version in the specification" in response.text
+    assert venv_repository.rows == {}
+
+
+# The name's column holds 255 characters: a longer one is a 400, not a database error.
+def test_create_accepts_a_venv_name_as_long_as_its_column(client, venv_repository):
+    response = client.post("/venvs", json={"name": "v" * 255, "libs": []})
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+    assert venv_repository.rows[response.json()["id"]].name == "v" * 255
+
+
+def test_create_refuses_a_venv_name_longer_than_its_column(client, venv_repository):
+    response = client.post("/venvs", json={"name": "v" * 256, "libs": []})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "at most 255 characters" in response.text
+    assert venv_repository.rows == {}
+
+
+def test_update_accepts_a_venv_name_as_long_as_its_column(client, venv_repository):
+    stored = venv_repository.seed(make_venv(name="old"))[0]
+
+    response = client.patch(f"/venvs/{stored.id}", json={"name": "v" * 255})
+
+    assert response.status_code == status_codes.HTTP_200_OK
+    assert venv_repository.rows[stored.id].name == "v" * 255
+
+
+def test_update_refuses_a_venv_name_longer_than_its_column(client, venv_repository):
+    stored = venv_repository.seed(make_venv(name="old"))[0]
+
+    response = client.patch(f"/venvs/{stored.id}", json={"name": "v" * 256})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "at most 255 characters" in response.text
+    assert venv_repository.rows[stored.id].name == "old"
+
+
+def test_create_refuses_a_specification_with_an_empty_clause(client, venv_repository):
+    response = client.post(
+        "/venvs",
+        json={"name": "data", "libs": [{"name": "numpy", "specification": ">=1,,<2"}]},
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "has an empty clause" in response.text
+    assert venv_repository.rows == {}

@@ -34,6 +34,7 @@ class SubGraphNode:
         session_graph_builder=None,
         stop_event=None,
         storage_credentials: StorageCredentials | None = None,
+        storage_credentials_by_grant: dict[str, StorageCredentials] | None = None,
     ):
         self.unique_subgraph_list = unique_subgraph_list
         self.subgraph_node_data = subgraph_node_data
@@ -51,6 +52,7 @@ class SubGraphNode:
         self.session_graph_builder = session_graph_builder
         self.stop_event = stop_event
         self.storage_credentials = storage_credentials
+        self.storage_credentials_by_grant = storage_credentials_by_grant or {}
         self._compiled_subgraph: CompiledStateGraph | None = None
 
     def build(self, initial_state) -> CompiledStateGraph:
@@ -84,6 +86,7 @@ class SubGraphNode:
             unique_subgraph_list=self.unique_subgraph_list,
             initial_state=initial_state,
             storage_credentials=self.storage_credentials,
+            storage_credentials_by_grant=self.storage_credentials_by_grant,
             org_id=self.org_id,
             audit_retention_days=self.audit_retention_days,
         )

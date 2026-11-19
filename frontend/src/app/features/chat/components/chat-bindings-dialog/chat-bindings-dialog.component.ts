@@ -23,6 +23,7 @@ import {
     InputNumberComponent,
     SelectComponent,
     SelectItem,
+    StringListComponent,
     TabButtonComponent,
     TextareaComponent,
     ToggleSwitchComponent,
@@ -37,8 +38,9 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import { FlowsApiService } from '../../../flows/services/flows-api.service';
 import {
+    CHAT_ALLOWED_ORIGINS_MAX,
     CHAT_BINDING_DEFAULTS,
-    CHAT_DISPLAY_NAME_MAX,
+    CHAT_BOT_DISPLAY_NAME_DEFAULT,
     ChatBinding,
     ChatBindingInput,
     ChatBindingLimits,
@@ -51,6 +53,7 @@ import {
     ChatResponseTimeoutAction,
 } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
+import { allowedOriginError, normalizeOrigin } from '../../utils/allowed-origin.util';
 import { bindingPatch } from '../../utils/binding-patch.util';
 import { hasContractGaps } from '../../utils/contract-fix.util';
 import { normalizePublicName, publicNameError, validationReason } from '../../utils/public-name.util';
@@ -132,14 +135,6 @@ const TEXT_FIELD_LABELS: Record<TextField, string> = {
 };
 const TEXT_FIELDS = Object.keys(TEXT_FIELD_LABELS) as TextField[];
 
-// Allowed origins are typed in one field, comma separated; an origin holds neither a comma nor a space, so both split.
-const ORIGIN_SEPARATOR = /[\s,]+/;
-const ORIGIN_JOINER = ', ';
-
-function splitOrigins(text: string): string[] {
-    return text.split(ORIGIN_SEPARATOR).filter((origin) => origin !== '');
-}
-
 const DEFAULTS_MISSING_MESSAGE = "Couldn't fill in this desk's default settings. Close the dialog and try again.";
 const PAUSED_ON_SAVE_MESSAGE = 'Saved but paused: the flow does not meet the chat contract.';
 
@@ -206,6 +201,7 @@ export interface ChatBindingsDialogData {
         HintMessageComponent,
         InputNumberComponent,
         SelectComponent,
+        StringListComponent,
         TabButtonComponent,
         TextareaComponent,
         ToggleSwitchComponent,
@@ -295,17 +291,28 @@ export class ChatBindingsDialogComponent {
     protected readonly onExhaustedItems = ON_EXHAUSTED_ITEMS;
     protected readonly onResponseTimeoutItems = ON_RESPONSE_TIMEOUT_ITEMS;
     protected readonly styleOptions = STYLE_OPTIONS;
+    // Allowed origins: one per row, a pasted or typed list split at commas and whitespace (an origin has neither).
+    protected readonly originSeparators = /[\s,]+/;
+    // An origin the desk already had passes as it is: it was saved before origins were checked, and refusing it would
+    // block every other change to the desk. Only a new or edited origin is checked.
+    protected readonly originError = (value: string): string | null =>
+        this.savedOrigins.has(normalizeOrigin(value)) ? null : allowedOriginError(value);
+    protected readonly originsMax = CHAT_ALLOWED_ORIGINS_MAX;
+    protected readonly originsMaxText = `Up to ${CHAT_ALLOWED_ORIGINS_MAX} origins`;
     // Public because the spec drives it; the template binds it too.
     readonly form = new FormGroup({
         name: new FormControl('', { nonNullable: true, validators: [Validators.required, notWhitespaceValidator()] }),
-        bot_display_name: new FormControl('', { nonNullable: true, validators: this.publicName() }),
+        bot_display_name: new FormControl(CHAT_BOT_DISPLAY_NAME_DEFAULT, {
+            nonNullable: true,
+            validators: this.publicName(),
+        }),
         operator_display_name: new FormControl(CHAT_BINDING_DEFAULTS.operator_display_name, {
             nonNullable: true,
             validators: this.publicName(),
         }),
         graph_id: new FormControl<number | null>(null, { validators: [Validators.required] }),
-        // The text as typed; split into the binding's list on save (`splitOrigins`).
-        allowed_origins: new FormControl('', { nonNullable: true }),
+        // One origin per row; the list control trims them, drops the empty rows and validates them.
+        allowed_origins: new FormControl<string[]>([], { nonNullable: true }),
         identity_mode: new FormControl<ChatIdentityMode>('anonymous', { nonNullable: true }),
         history_window: new FormControl<number | null>(20, { validators: [Validators.required, Validators.min(0)] }),
         max_message_length: new FormControl<number | null>(4000, {
@@ -399,6 +406,8 @@ export class ChatBindingsDialogComponent {
     private readonly idPrefix = `bindings-dialog-${nextDialogId++}`;
     // What this dialog last saved, handed to the opener on close.
     private saved: ChatBinding | null = null;
+    // The origins the desk had when opened, normalized; `originError` lets them pass unchecked. Empty on create.
+    private savedOrigins: ReadonlySet<string> = new Set();
     /**
      * The seconds each duration control was filled with (the desk's, or the server's default on create). An untouched
      * control sends them as they are, so a value that is no whole number of units is never rounded into the PATCH.
@@ -436,14 +445,6 @@ export class ChatBindingsDialogComponent {
                 if (control.dirty) control.markAsTouched();
             });
         }
-        // On create the bot name follows the binding name until the user edits it.
-        this.form.controls.name.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((name) => {
-            const botName = this.form.controls.bot_display_name;
-            // Characters, not UTF-16 units: a cut through an emoji would leave half of it.
-            if (this.isCreating() && botName.pristine) {
-                botName.setValue([...name].slice(0, CHAT_DISPLAY_NAME_MAX).join(''));
-            }
-        });
         // Close after applies to Support only: on Ongoing it is out of the form's checks and shows as Never.
         this.form.controls.style.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((style) => {
             const closeAfter = this.form.controls.close_after_hours;
@@ -633,9 +634,8 @@ export class ChatBindingsDialogComponent {
         // Nullable controls reset to null, so the defaults are restated here; the server's come in `applyLimits`.
         this.form.reset({
             ...CHAT_BINDING_DEFAULTS,
-            allowed_origins: CHAT_BINDING_DEFAULTS.allowed_origins.join(ORIGIN_JOINER),
             name: '',
-            bot_display_name: '',
+            bot_display_name: CHAT_BOT_DISPLAY_NAME_DEFAULT,
             graph_id: null,
         });
     }
@@ -643,9 +643,11 @@ export class ChatBindingsDialogComponent {
     private fillFrom(binding: ChatBinding): void {
         // Stored errors first: the reset re-checks the flow live and replaces them with the current ones.
         this.contractErrors.set(binding.contract_errors);
-        // reset() reads only the keys the form has; id, public_key and the rest are ignored. The origins are typed as
-        // one text, and the durations in other units than the binding's seconds.
-        this.form.reset({ ...binding, allowed_origins: binding.allowed_origins.join(ORIGIN_JOINER) });
+        // Before the reset, which validates the origins against this set.
+        this.savedOrigins = new Set(binding.allowed_origins.map(normalizeOrigin));
+        // reset() reads only the keys the form has; id, public_key and the rest are ignored. The durations are typed in
+        // other units than the binding's seconds.
+        this.form.reset(binding);
         for (const field of DURATION_FIELDS) this.fillDuration(field, binding[field]);
     }
 
@@ -713,7 +715,7 @@ export class ChatBindingsDialogComponent {
             bot_display_name: raw.bot_display_name,
             operator_display_name: raw.operator_display_name,
             graph_id: raw.graph_id as number,
-            allowed_origins: splitOrigins(raw.allowed_origins),
+            allowed_origins: raw.allowed_origins,
             identity_mode: raw.identity_mode,
             history_window: raw.history_window as number,
             max_message_length: raw.max_message_length as number,

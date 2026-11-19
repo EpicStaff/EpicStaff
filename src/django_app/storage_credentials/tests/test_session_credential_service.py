@@ -15,7 +15,7 @@ from django.conf import settings
 from rbac.models import Organization
 from src.shared.models.graph_nodes import EndNodeData, GraphData, PythonNodeData
 from src.shared.models.sessions import SessionData
-from src.shared.models.storage_scope import StorageCredentials
+from src.shared.models.storage_scope import StorageAction, StorageCredentials
 from src.shared.models.tools import PythonCodeData
 from storage_credentials.exceptions import (
     CredentialScopeValidationError,
@@ -105,7 +105,7 @@ def _asyncio_run_stub(*credentials: tuple[str, str]):
 
     def run(coroutine):
         coroutine.close()
-        return next(remaining)
+        return [next(remaining)]
 
     return run
 
@@ -125,7 +125,7 @@ class TestIssueForSessionNoStorage(TestCase):
         session_data = _make_session_data(self.session.id, _make_graph())
 
         result = session_credential_service.issue_for_session(
-            session_data=session_data, session_orm=self.session, org=self.org
+            session_data=session_data, session_orm=self.session, org=self.org,
         )
 
         assert result is None
@@ -223,10 +223,12 @@ class TestIssueForSessionWithStorage(TestCase):
 
         mock_build_policy.assert_called_once_with(
             bucket=settings.STORAGE_BUCKET_NAME,
-            allowed_folders={
+            shared_folders={
                 f"org_{self.org.id}/path_a/",
                 f"org_{self.org.id}/path_b/",
             },
+            shared_actions=frozenset(StorageAction),
+            own_folders={f"org_{self.org.id}/sessions/{self.session.id}/"},
         )
 
     @mock.patch("storage_credentials.services.session_credential_service.asyncio.run")
@@ -242,12 +244,12 @@ class TestIssueForSessionWithStorage(TestCase):
         session_data = self._storage_session_data(self.session.id)
 
         with mock.patch(
-            "storage_credentials.models.TemporaryStorageAccount.objects.create",
+            "storage_credentials.models.TemporaryStorageAccount.objects.bulk_create",
             side_effect=Exception("DB write failed: Key (access_key)=(test_access) already exists"),
         ):
             with pytest.raises(TemporaryCredentialIssueError) as exc_info:
                 session_credential_service.issue_for_session(
-                    session_data=session_data, session_orm=self.session, org=self.org
+                    session_data=session_data, session_orm=self.session, org=self.org,
                 )
 
         detail = str(exc_info.value)
@@ -348,8 +350,10 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
 
         session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
 
+        # The session's own folder is always part of the account, next to the attached files.
         assert _object_resources(_minted_policy(gateway)) == [
-            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/flow_files/*"
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/flow_files/*",
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/sessions/{self.session.id}/*",
         ]
 
     def test_session_policy_ignores_node_declared_org_prefix_of_another_org(
@@ -377,7 +381,8 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
 
         resources = _object_resources(_minted_policy(gateway))
         assert resources == [
-            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/victim_files/*"
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/sessions/{self.session.id}/*",
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/victim_files/*",
         ]
         assert not any("org_999" in resource for resource in resources)
 
@@ -394,6 +399,8 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
             python_code_result=python_code_result,
             storage_allowed_paths=["test-runs/exec-org-prefix/"],
             org_id=self.org.id,
+            own_paths=["test-runs/exec-org-prefix/"],
+            shared_actions=frozenset(StorageAction),
         )
 
         assert credentials.access_key == "test_run_key"
@@ -452,6 +459,8 @@ class TestTemporaryCredentialExpiration(TestCase):
             python_code_result=self.python_code_result,
             storage_allowed_paths=["test-runs/exec-ttl/"],
             org_id=self.org.id,
+            own_paths=[],
+            shared_actions=frozenset(StorageAction),
         )
 
     def test_ttl_sets_the_lifetime_and_zero_or_less_means_none(self, mock_gateway_class, mock_org_store):
@@ -487,6 +496,8 @@ class TestScopeValidationRejectsBadPaths(TestCase):
             python_code_result=self.python_code_result,
             storage_allowed_paths=storage_allowed_paths,
             org_id=self.org.id,
+            own_paths=[],
+            shared_actions=frozenset(StorageAction),
         )
 
     def test_bad_paths_are_rejected_before_storage_is_contacted(self, mock_gateway_class, mock_org_store):
@@ -504,6 +515,27 @@ class TestScopeValidationRejectsBadPaths(TestCase):
                 assert not TemporaryStorageAccount.objects.filter(
                     python_code_result=self.python_code_result
                 ).exists()
+
+    def test_a_run_with_an_own_folder_and_no_attached_paths_is_granted_only_its_own_folder(
+        self, mock_gateway_class, mock_org_store
+    ):
+        org_creds = mock.MagicMock()
+        org_creds.access_key = "org_access_key"
+        org_creds.secret_key = "org_secret_key"
+        mock_org_store.get.return_value = org_creds
+        gateway = _stub_gateway(mock_gateway_class, "own_folder_key")
+
+        session_credential_service.issue_for_test_run(
+            python_code_result=self.python_code_result,
+            storage_allowed_paths=[],
+            org_id=self.org.id,
+            own_paths=["sessions/9/"],
+            shared_actions=frozenset(StorageAction),
+        )
+
+        assert _object_resources(_minted_policy(gateway)) == [
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/sessions/9/*"
+        ]
 
     def test_absolute_path_is_confined_to_the_org_prefix(
         self, mock_gateway_class, mock_org_store
