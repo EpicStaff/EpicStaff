@@ -1,4 +1,4 @@
-"""tables 0295 bounds LLMConfig.timeout and moves every stored timeout into the bounds.
+"""tables 0297 bounds LLMConfig.timeout and moves every stored timeout into the bounds.
 
 Invariant: after the migration every LLM config's timeout is null or a finite number from
 1 to 600 seconds. A NaN timeout becomes the field default (120), not the maximum, even
@@ -13,8 +13,8 @@ import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
-BEFORE = [("tables", "0294_transferjob_display_name_main_entities")]
-AFTER = [("tables", "0295_alter_llmconfig_timeout")]
+BEFORE = [("tables", "0296_merge_20261118_1445")]
+AFTER = [("tables", "0297_alter_llmconfig_timeout")]
 
 # (stored before the migration, expected after it)
 TIMEOUTS = [
