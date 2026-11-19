@@ -10,8 +10,12 @@ export const SCENE_BACKGROUND = 0x000000;
 export const MAX_PIXEL_RATIO = 2;
 
 /** Label pill colors (approximates --tooltip-bg and --color-text-primary). */
-export const LABEL_BACKGROUND_COLOR = 'rgba(30, 30, 34, 1)';
+export const LABEL_BACKGROUND_COLOR = 'rgba(0, 0, 0, 1)';
 export const LABEL_TEXT_COLOR = '#e8e8ec';
+/** Light outline around the pill, so it reads clearly on the dark scene background. */
+export const LABEL_BORDER_COLOR = 'rgba(200, 200, 210, 0.9)';
+export const LABEL_BORDER_WIDTH = 2;
+export const LABEL_FONT_WEIGHT = 600;
 
 /** Stable color palette for entity types — high-saturation, high-contrast hues. */
 export const TYPE_COLORS: readonly string[] = [
@@ -83,7 +87,7 @@ export const HIGHLIGHT_LINE_FLOATS_PER_EDGE = 6;
 export const EDGE_COLOR: ColorTuple = [0.5, 0.5, 0.55];
 
 /** Hover colors — the hovered node's outline and its connected edges. */
-export const HOVERED_BORDER_COLOR: ColorTuple = [0.42, 0.45, 0.98]; // accent / indigo
+export const HOVERED_BORDER_COLOR: ColorTuple = [0.408, 0.372, 1.0]; // accent purple (#685fff)
 export const HIGHLIGHT_EDGE_COLOR: ColorTuple = [0.75, 0.6, 0.15]; // deeper amber
 export const OUTLINE_SCALE = 1.35; // how much larger the outline ring is vs the node
 export const DOTS_PER_EDGE = 3;

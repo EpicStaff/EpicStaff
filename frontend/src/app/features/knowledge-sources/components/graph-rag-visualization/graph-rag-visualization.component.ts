@@ -122,6 +122,11 @@ export class GraphRagVisualizationComponent implements OnInit {
     readonly selectedEdgeIndex = signal<number | null>(null);
     readonly hoveredNodeTitle = signal<string | null>(null);
     readonly hoverPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
+    /**
+     * Title + screen-space position of the selected node's HTML label pill, bound together so the overlay
+     * never shows the new node's title at the old position for a frame when selection changes.
+     */
+    readonly selectedLabelOverlay = signal<{ title: string; x: number; y: number } | null>(null);
 
     readonly toolbarVisible = signal(false);
     readonly entityCount = signal(0);
@@ -228,7 +233,11 @@ export class GraphRagVisualizationComponent implements OnInit {
 
     /** Mirror the selected node into the scene so it keeps a border + persistent label while the panel is open. */
     private readonly selectedNodeSceneEffect = effect(() => {
-        this.sceneService.setSelectedNode(this.selectedNodeIndex());
+        const index = this.selectedNodeIndex();
+        this.sceneService.setSelectedNode(index);
+        // Clear the HTML label overlay synchronously on any selection change, so when switching between
+        // two nodes it never renders the new node's title at the previous node's screen position for a frame.
+        untracked(() => this.selectedLabelOverlay.set(null));
     });
 
     /** Keep the scene's color mode in sync with the toggle — otherwise the default-on state never reaches it. */
@@ -471,6 +480,9 @@ export class GraphRagVisualizationComponent implements OnInit {
                 // It was a click, not a drag — select the node
                 this.selectedNodeIndex.set(this.draggedNodeIndex);
                 this.selectedEdgeIndex.set(null);
+                // Hover suppresses itself on the selected node, but the HTML tooltip signal lingers until
+                // the next pointer move. Clear it now so it doesn't briefly overlay the selected-node pill.
+                this.hoveredNodeTitle.set(null);
             }
             this.releaseDraggedNode();
         } else if (this.clickedEdgeOnDown >= 0) {
@@ -574,7 +586,29 @@ export class GraphRagVisualizationComponent implements OnInit {
         if (this.destroyed || generation !== this.sceneGeneration) return;
 
         this.sceneService.initScene(canvas, container, this.is3D());
+        this.sceneService.setAfterRenderCallback(() => this.updateSelectedLabelPosition());
         await this.startSimulation();
+    }
+
+    /**
+     * Reproject the selected node to screen space each rendered frame, so its HTML label follows camera motion.
+     * Runs outside the Angular zone — re-enter it only when the position actually changes, to avoid change detection on every frame while idle.
+     */
+    private updateSelectedLabelPosition(): void {
+        const index = this.selectedNodeIndex();
+        const container = this.canvasContainer()?.nativeElement;
+        if (index === null || !container || !this.sceneService.isNodeIndexVisible(index)) {
+            if (this.selectedLabelOverlay() !== null) {
+                this.ngZone.run(() => this.selectedLabelOverlay.set(null));
+            }
+            return;
+        }
+        const node = this.sceneService.getNodes()[index];
+        const position = node ? this.sceneService.projectToScreen(index, container) : null;
+        if (!node || !position) return;
+        const current = this.selectedLabelOverlay();
+        if (current && current.title === node.title && current.x === position.x && current.y === position.y) return;
+        this.ngZone.run(() => this.selectedLabelOverlay.set({ title: node.title, x: position.x, y: position.y }));
     }
 
     /** Stop the simulation and dispose the scene; any in-flight initialization is abandoned. */
@@ -582,8 +616,10 @@ export class GraphRagVisualizationComponent implements OnInit {
         this.sceneGeneration++;
         this.simulationGeneration++;
         this.stopSimulation();
+        this.sceneService.setAfterRenderCallback(null);
         this.sceneService.dispose();
         this.sceneCanvas = null;
+        this.selectedLabelOverlay.set(null);
     }
 
     private async startSimulation(): Promise<void> {
@@ -654,8 +690,9 @@ export class GraphRagVisualizationComponent implements OnInit {
         if (nodeIndex >= 0) {
             this.sceneService.setHoveredEdge(null);
             this.sceneService.setHoveredNode(nodeIndex);
-            // The selected node already shows its title via a persistent sprite — skip the hover tooltip for it.
-            if (!this.labelsVisible() && nodeIndex !== this.selectedNodeIndex()) {
+            // The selected node already has its own HTML label overlay — skip the hover tooltip only for it.
+            // The sprite label of the hovered node is hidden in the scene, so the hover pill replaces it instead of stacking.
+            if (nodeIndex !== this.selectedNodeIndex()) {
                 this.setHoverTooltip(nodeIndex, containerRef.nativeElement);
             } else {
                 this.setHoverTooltip(null);

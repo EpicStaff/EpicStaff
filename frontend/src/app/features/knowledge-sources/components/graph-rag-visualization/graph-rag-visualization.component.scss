@@ -197,15 +197,18 @@
         height: 100%;
     }
 
+    // Same dark pill shape as the always-on labels (sprite labels), but with an accent-purple border
+    // and text so hover + selected stand out against the regular white-bordered labels around them.
     &__hover-tooltip {
         position: absolute;
         transform: translate(-50%, -100%);
         padding: 4px 10px;
-        border-radius: 6px;
-        background-color: color-mix(in srgb, var(--accent-color) 80%, transparent);
-        color: var(--color-text-primary);
+        border: 2px solid var(--accent-color);
+        border-radius: 999px;
+        background-color: #000;
+        color: var(--accent-color);
         font-size: var(--text-body-size);
-        font-weight: var(--text-body-weight);
+        font-weight: 600;
         line-height: var(--text-body-line-height);
         white-space: nowrap;
         pointer-events: none;

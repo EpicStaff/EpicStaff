@@ -178,6 +178,16 @@
                         {{ hoveredNodeTitle() }}
                     </div>
                 }
+                <!-- Selected-node label — identical style to the hover tooltip, persists while the detail panel is open -->
+                @if (selectedLabelOverlay(); as overlay) {
+                    <div
+                        class="visualization__hover-tooltip"
+                        [style.left.px]="overlay.x"
+                        [style.top.px]="overlay.y"
+                    >
+                        {{ overlay.title }}
+                    </div>
+                }
             </div>
 
             @if (viewState() === 'ready') {
