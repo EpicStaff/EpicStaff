@@ -1,0 +1,16 @@
+<div class="kpi-card__label">
+    <i
+        [class]="'ti ' + icon()"
+        aria-hidden="true"
+    ></i>
+    {{ label() }}
+</div>
+<div class="kpi-card__value">
+    {{ value() }}
+    @if (unit()) {
+        <span class="kpi-card__unit">{{ unit() }}</span>
+    }
+</div>
+<div class="kpi-card__footer">
+    <ng-content />
+</div>

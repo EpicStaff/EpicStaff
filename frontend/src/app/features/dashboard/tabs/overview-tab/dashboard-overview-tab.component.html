@@ -8,3 +8,27 @@
         { value: 3, label: 'no RAG' },
     ]"
 />
+
+<app-kpi-card
+    icon="ti-bolt"
+    label="Active triggers"
+    [value]="12"
+>
+    3 sessions waiting for user
+</app-kpi-card>
+<app-kpi-card
+    icon="ti-alert-circle"
+    label="Error rate"
+    value="4.2"
+    unit="%"
+>
+    52 failed sessions
+</app-kpi-card>
+
+<app-updated-at builtAt="2026-11-19T09:24:01Z" />
+<app-updated-at
+    builtAt="2026-11-19T09:24:01Z"
+    nextBuildAt="2026-11-19T18:30:00Z"
+/>
+
+<app-first-report-state />
