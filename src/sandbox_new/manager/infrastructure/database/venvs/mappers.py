@@ -12,16 +12,11 @@ from manager.infrastructure.database.venvs.tables import (
 class VenvMapper:
     @staticmethod
     def to_domain(row: VenvTable) -> Venv:
-        """Read a venv row, never failing on a library an earlier release stored.
-
-        Every list goes through here, the background build and cleanup loops
-        included, so one row refused here would stop them for every venv.
-        """
         raw_libs = row.libs if isinstance(row.libs, list) else json.loads(row.libs or "[]")
         return Venv(
             id=row.id,
             name=row.name,
-            libs=[Library.from_stored(lib) for lib in raw_libs],
+            libs=[Library(**lib) for lib in raw_libs],
             hash=row.hash,
             status=VenvStatus(row.status),
             error=row.error,

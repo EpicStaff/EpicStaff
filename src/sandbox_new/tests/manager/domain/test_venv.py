@@ -4,8 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from manager.domain.enums import VenvStatus
-from manager.domain.errors import VenvLibrariesRejectedError
-from manager.domain.models import Library, Venv, check_requirement
+from manager.domain.models import Library, Venv
 from tests.builders import make_library, make_venv
 
 
@@ -136,115 +135,6 @@ def test_a_custom_library_cannot_take_extras():
 
 
 @pytest.mark.parametrize(
-    "line",
-    [
-        "requests",
-        "requests>=2.0",
-        "requests>=1.0, <2",
-        "requests[socks,security]==2.31.0",
-        "zope-interface~=5.0",
-        "acme-core==1.0.0+local.1",
-    ],
-)
-def test_check_requirement_accepts_every_line_a_library_can_write(line):
-    assert check_requirement(line) == line
-
-
-@pytest.mark.parametrize(
-    "line",
-    [
-        "six\n-i http://internal-host:9/simple",
-        "requests>=2.0\n-r /etc/passwd",
-        "-e /etc",
-        "/etc",
-        "requests @ file:///etc",
-        "requests; python_version<'3'",
-        "requests[ socks]",
-        "requests --index-url http://evil",
-        "",
-    ],
-)
-def test_check_requirement_refuses_a_line_no_library_could_write(line):
-    with pytest.raises(ValueError):
-        check_requirement(line)
-
-
-# What an earlier release let a client store, read back from the database.
-LEGACY_LIBRARY = {"name": "numpy>=1", "specification": "", "version": None, "is_custom": False}
-
-
-def test_a_stored_library_the_rules_now_refuse_still_reads_with_the_reason():
-    library = Library.from_stored(LEGACY_LIBRARY)
-
-    assert library.name == "numpy>=1"
-    assert "Library name 'numpy>=1' is not a package name" in library.rejection
-    assert "put a version in the specification" in library.rejection
-
-
-def test_a_venv_does_not_count_a_rejected_library_as_a_repeat():
-    """A rejected library never builds, so it cannot clash with another entry."""
-    rejected = {"name": "numpy", "specification": "===1.0"}
-
-    venv = make_venv(
-        libs=[
-            make_library(name="numpy"),
-            Library.from_stored(rejected),
-            Library.from_stored(rejected),
-            Library.from_stored({"name": "numpy>=1"}),
-            Library.from_stored({"name": "numpy>=1"}),
-        ]
-    )
-
-    assert [lib.rejection is None for lib in venv.libs] == [True, False, False, False, False]
-
-
-def test_a_valid_stored_library_reads_as_an_ordinary_one():
-    library = Library.from_stored({"name": "Requests[Socks]", "specification": ">=2"})
-
-    assert library == make_library(name="requests[socks]", specification=">=2")
-    assert library.rejection is None
-
-
-def test_a_venv_holding_a_refused_stored_library_is_not_buildable():
-    venv = make_venv(libs=[make_library(name="pandas"), Library.from_stored(LEGACY_LIBRARY)])
-
-    with pytest.raises(VenvLibrariesRejectedError, match="numpy>=1"):
-        venv.assert_buildable()
-
-
-def test_a_refused_venv_names_each_entry_and_gives_each_reason_once():
-    venv = make_venv(
-        libs=[
-            Library.from_stored({"name": "numpy", "specification": "===1.0"}),
-            Library.from_stored({"name": "pandas", "specification": "===1.0"}),
-            Library.from_stored({"name": "numpy", "specification": "===1.0"}),
-            Library.from_stored({"name": "scipy>=1", "specification": ""}),
-        ]
-    )
-
-    with pytest.raises(VenvLibrariesRejectedError) as refused:
-        venv.assert_buildable()
-
-    message = str(refused.value)
-    assert message.count("uses arbitrary equality") == 1
-    assert "'numpy', 'pandas': Version specification '===1.0' uses arbitrary equality" in message
-    assert message.count("is not a package name") == 1
-    assert "'scipy>=1': Library name 'scipy>=1' is not a package name" in message
-
-
-def test_a_venv_of_valid_libraries_is_buildable():
-    make_venv(libs=[make_library(name="requests[socks]")]).assert_buildable()
-
-
-def test_replacing_the_libraries_makes_a_refused_venv_buildable_again():
-    venv = make_venv(libs=[Library.from_stored(LEGACY_LIBRARY)])
-
-    venv.set_libs([make_library(name="numpy", specification=">=1")])
-
-    venv.assert_buildable()
-
-
-@pytest.mark.parametrize(
     "specification",
     [
         ">=1.0\n",
@@ -279,27 +169,6 @@ ARBITRARY_EQUALITY_SPECIFICATIONS = [
 def test_library_refuses_arbitrary_equality_in_its_specification(specification):
     with pytest.raises(ValidationError, match=r"arbitrary equality \('==='\); use '=='"):
         make_library(specification=specification)
-
-
-@pytest.mark.parametrize(
-    "stored",
-    [
-        {"name": "numpy", "specification": "===1.0"},
-        {"name": "numpy", "specification": "=== --index-url=http://evil.example/simple"},
-    ],
-)
-def test_a_stored_library_with_arbitrary_equality_reads_as_rejected(stored):
-    library = Library.from_stored(stored)
-
-    assert "arbitrary equality" in library.rejection
-    with pytest.raises(VenvLibrariesRejectedError, match="arbitrary equality"):
-        make_venv(libs=[library]).assert_buildable()
-
-
-@pytest.mark.parametrize("line", ["numpy===1.0", "numpy>=1, === -r/etc/passwd"])
-def test_check_requirement_refuses_arbitrary_equality(line):
-    with pytest.raises(ValueError, match="arbitrary equality"):
-        check_requirement(line)
 
 
 # packaging skips an empty clause, uv refuses the line over it.
@@ -568,6 +437,7 @@ def test_venv_apply_resolved_versions_does_not_touch_the_build_status():
         ("pydantic", "pydantic"),
         ("Pydantic", "pydantic"),
         ("zope.interface", "zope-interface"),
+        ("requests[socks]", "requests[security]"),
     ],
 )
 def test_venv_rejects_the_same_library_declared_twice(first, second):
@@ -576,6 +446,17 @@ def test_venv_rejects_the_same_library_declared_twice(first, second):
             libs=[
                 make_library(name=first, specification="==2.0"),
                 make_library(name=second, specification="==2.1"),
+            ]
+        )
+
+
+def test_a_repeat_with_other_extras_is_named_by_its_package():
+    """Extras do not make another package, so the refusal names the package itself."""
+    with pytest.raises(ValidationError, match="Library 'requests' is declared more than once"):
+        make_venv(
+            libs=[
+                make_library(name="requests", specification=">=2"),
+                make_library(name="requests[socks]", specification=">=2"),
             ]
         )
 

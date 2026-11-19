@@ -482,7 +482,6 @@ def _proxied_service_error(error_type, status_code: int, body: str):
     [
         pytest.param(proxied_errors.ClientValidationError, 400, id="400"),
         pytest.param(proxied_errors.ClientValidationError, 422, id="422"),
-        pytest.param(proxied_errors.ClientConflictError, 409, id="409"),
     ],
 )
 def test_a_proxied_service_refusing_the_file_gives_the_creator_its_message(
@@ -512,6 +511,12 @@ def test_a_proxied_service_refusing_the_file_gives_the_creator_its_message(
         pytest.param(
             _proxied_service_error(proxied_errors.ClientForbiddenError, 403, "Not allowed."),
             id="403",
+        ),
+        # The sandbox answers 409 only for custom-library and wheel operations, never for
+        # a venv an import creates: one here is not the file's fault.
+        pytest.param(
+            _proxied_service_error(proxied_errors.ClientConflictError, 409, "In use."),
+            id="409",
         ),
         pytest.param(
             _proxied_service_error(proxied_errors.ClientRateLimitError, 429, "Slow down."),

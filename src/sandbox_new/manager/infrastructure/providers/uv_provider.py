@@ -15,7 +15,6 @@ from manager.domain.errors import (
     UVPackageNotFoundError,
     UVVersionNotFoundError,
 )
-from manager.domain.models import check_requirement
 from manager.domain.types import LibraryString
 
 __all__ = ["UVProvider"]
@@ -156,10 +155,6 @@ class UVProvider(AbstractUVProvider):
     async def apply(cls, venv_path: Path, *libs: LibraryString, wheelhouse: Path | None = None):
         if not venv_path.exists():
             raise ValueError(f"Venv is not initialized yet. Path: {venv_path}")
-        # Every line was built from a validated library; checked again because uv reads
-        # each one as a requirement file line, where an option or a path is honoured.
-        for library in libs:
-            check_requirement(library)
         python_binary = cls.get_python_binary(venv_path)
         lock_file = cls.get_lock_file(venv_path)
         # On both commands below, not only the compile: the lock pins a version that

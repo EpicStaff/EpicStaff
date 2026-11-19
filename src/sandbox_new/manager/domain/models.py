@@ -7,10 +7,9 @@ from uuid import UUID
 from foundation.base import Entity, ValueObject
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
-from pydantic import Field, PrivateAttr, ValidationError, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from manager.domain.enums import JobStatus, VenvStatus, WheelStatus
-from manager.domain.errors import VenvLibrariesRejectedError
 from manager.domain.types import LibraryString
 
 __all__ = [
@@ -24,7 +23,6 @@ __all__ = [
     "StorageCredentials",
     "Venv",
     "Wheel",
-    "check_requirement",
 ]
 
 DEFAULT_VENV_NAME = "default"
@@ -34,96 +32,11 @@ DISTRIBUTION_NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
 DISTRIBUTION_NAME_PATTERN = rf"^{DISTRIBUTION_NAME}$"
 # A distribution name, optionally followed by extras that are distribution names
 # themselves: `requests`, `requests[socks]`, `requests[socks,security]`. Used with
-# `fullmatch`, or as the prefix of a requirement line whose remainder is checked on
-# its own -- never anchored with `$`, which also matches before a trailing newline.
+# `fullmatch`, never anchored with `$`, which also matches before a trailing newline.
 LIBRARY_NAME_RE = re.compile(
     rf"{DISTRIBUTION_NAME}(?:\[{DISTRIBUTION_NAME}(?:,{DISTRIBUTION_NAME})*\])?"
 )
 VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_\.][a-z0-9]+)*)?$"
-
-
-def check_library_name(value: str, /) -> str:
-    """Accept a distribution name, optionally with extras, and nothing else.
-
-    The name starts one line of the requirements `uv pip compile` reads on stdin, so
-    a line break, a leading `-`, a path, a URL, a marker or a specifier in it would
-    hand uv a second requirement, an option or a local project.
-
-    Raises:
-        ValueError: The value is anything else.
-    """
-    if LIBRARY_NAME_RE.fullmatch(value) is None:
-        raise ValueError(
-            f"Library name {value!r} is not a package name. Use letters, digits and "
-            "'.', '_' or '-' between them, optionally followed by extras in brackets, "
-            "for example 'requests' or 'requests[socks,security]'; put a version in "
-            "the specification."
-        )
-    return value
-
-
-def check_specification(value: str, /) -> str:
-    """Accept a PEP 440 specifier set with no whitespace but plain spaces, no empty
-    clause and no `===`.
-
-    Raises:
-        ValueError: The value holds whitespace other than a plain space, has an empty
-            clause (a leading, trailing or doubled comma), is not a specifier set, or
-            has a clause using arbitrary equality (`===`).
-    """
-    # `SpecifierSet` reads any whitespace around an operator as padding, a line
-    # break included, so the break would reach uv inside the requirement line.
-    if any(character.isspace() and character != " " for character in value):
-        raise ValueError(
-            f"Version specification {value!r} must not contain whitespace other than "
-            "plain spaces: no line breaks, tabs or other space characters."
-        )
-    try:
-        specifiers = SpecifierSet(value)
-    except InvalidSpecifier as e:
-        raise ValueError(f"Invalid version specification: '{value}'") from e
-    # packaging skips an empty clause. uv refuses a leading or doubled comma, which
-    # would only surface as a failed build, and accepts a trailing one; all three are
-    # refused here so the rule stays one rule and the error comes at declaration.
-    if value.strip() and any(not clause.strip() for clause in value.split(",")):
-        raise ValueError(
-            f"Version specification {value!r} has an empty clause: remove the leading, "
-            "trailing or doubled comma, for example '>=1,<2'."
-        )
-    # Arbitrary equality takes any token as its version, `===/etc` and `=== -r/x`
-    # included, so the requirement line would hand uv whatever follows it.
-    if any(specifier.operator == "===" for specifier in specifiers):
-        raise ValueError(
-            f"Version specification {value!r} uses arbitrary equality ('==='); "
-            "use '==' to pin a version, for example '==1.0'."
-        )
-    return value
-
-
-def check_requirement(line: str, /) -> str:
-    """Accept a requirement line only in the shape `Library.requirement` writes one.
-
-    The two rules a library is held to, applied to the line they produce: a library
-    name, then a specifier set. Anything a valid library could not have produced
-    fails one of them.
-
-    Raises:
-        ValueError: The line is anything else.
-    """
-    name = LIBRARY_NAME_RE.match(line)
-    if name is None:
-        raise ValueError(f"Requirement {line!r} does not start with a package name.")
-    check_specification(line[name.end() :])
-    return line
-
-
-def _describe_rejection(error: ValidationError) -> str:
-    """The reasons a stored library fails validation, without pydantic's decoration."""
-    reasons = []
-    for detail in error.errors():
-        cause = detail.get("ctx", {}).get("error")
-        reasons.append(str(cause) if cause is not None else detail["msg"])
-    return "; ".join(reasons)
 
 
 class Library(ValueObject):
@@ -133,8 +46,6 @@ class Library(ValueObject):
     stdin, so neither `name` nor `specification` may carry anything uv would read as
     a second line, an option (`-i`, `-r`, `-e`) or a path: `name` is a distribution
     name with optional extras, without markers, a specifier or a URL.
-
-    A library read back from storage may predate these rules: see `from_stored`.
     """
 
     name: str
@@ -142,24 +53,6 @@ class Library(ValueObject):
     specification: str = ""
     version: str | None = Field(default=None, pattern=VERSION_PATTERN)
     is_custom: bool = False
-    _rejection: str | None = PrivateAttr(default=None)
-
-    @classmethod
-    def from_stored(cls, data: dict[str, Any], /) -> "Library":
-        """Read a library back from storage, including one these rules now refuse.
-
-        An earlier release stored names such as `numpy>=1`. Raising on such a row
-        would fail every read that touches it, the background build and cleanup loops
-        included, so the library is kept exactly as stored and marked rejected
-        instead: its venv still reads, lists and runs, but never builds while it
-        holds one (`Venv.assert_buildable`).
-        """
-        try:
-            return cls.model_validate(data)
-        except ValidationError as error:
-            library = cls.model_construct(**data)
-            library._rejection = _describe_rejection(error)
-            return library
 
     @field_validator("name")
     @classmethod
@@ -167,12 +60,45 @@ class Library(ValueObject):
         # Checked before canonicalizing, so the refusal names what was sent. A regex,
         # not `canonicalize_name(validate=True)`: packaging 24 lets that accept a name
         # followed by a newline.
-        return canonicalize_name(check_library_name(value))
+        if LIBRARY_NAME_RE.fullmatch(value) is None:
+            raise ValueError(
+                f"Library name {value!r} is not a package name. Use letters, digits and "
+                "'.', '_' or '-' between them, optionally followed by extras in brackets, "
+                "for example 'requests' or 'requests[socks,security]'; put a version in "
+                "the specification."
+            )
+        return canonicalize_name(value)
 
     @field_validator("specification")
     @classmethod
     def validate_version_specification(cls, value: str) -> str:
-        return check_specification(value)
+        # `SpecifierSet` reads any whitespace around an operator as padding, a line
+        # break included, so the break would reach uv inside the requirement line.
+        if any(character.isspace() and character != " " for character in value):
+            raise ValueError(
+                f"Version specification {value!r} must not contain whitespace other than "
+                "plain spaces: no line breaks, tabs or other space characters."
+            )
+        try:
+            specifiers = SpecifierSet(value)
+        except InvalidSpecifier as e:
+            raise ValueError(f"Invalid version specification: '{value}'") from e
+        # packaging skips an empty clause. uv refuses a leading or doubled comma, which
+        # would only surface as a failed build, and accepts a trailing one; all three are
+        # refused here so the rule stays one rule and the error comes at declaration.
+        if value.strip() and any(not clause.strip() for clause in value.split(",")):
+            raise ValueError(
+                f"Version specification {value!r} has an empty clause: remove the leading, "
+                "trailing or doubled comma, for example '>=1,<2'."
+            )
+        # Arbitrary equality takes any token as its version, `===/etc` and `=== -r/x`
+        # included, so the requirement line would hand uv whatever follows it.
+        if any(specifier.operator == "===" for specifier in specifiers):
+            raise ValueError(
+                f"Version specification {value!r} uses arbitrary equality ('==='); "
+                "use '==' to pin a version, for example '==1.0'."
+            )
+        return value
 
     @model_validator(mode="after")
     def reject_extras_on_a_custom_library(self) -> "Library":
@@ -184,10 +110,6 @@ class Library(ValueObject):
         Raises:
             ValueError: A custom library carries extras.
         """
-        # Pydantic runs this again when a venv takes the library in, constructed or
-        # not; a library already read back as rejected must not raise there.
-        if self.rejection is not None:
-            return self
         if self.is_custom and self.distribution_name != self.name:
             raise ValueError(
                 f"Custom library {self.name!r} cannot take extras; "
@@ -197,8 +119,7 @@ class Library(ValueObject):
 
     @model_validator(mode="after")
     def validate_version_against_specification(self) -> "Library":
-        # Re-run when a venv takes the library in; see reject_extras_on_a_custom_library.
-        if self.rejection is not None or self.version is None:
+        if self.version is None:
             return self
         if not SpecifierSet(self.specification).contains(self.version, prereleases=True):
             raise ValueError(
@@ -210,11 +131,6 @@ class Library(ValueObject):
     def distribution_name(self) -> str:
         """The package itself, without extras: what uv resolves and pins."""
         return self.name.partition("[")[0]
-
-    @property
-    def rejection(self) -> str | None:
-        """Why this stored library would be refused today; None when it is valid."""
-        return self._rejection
 
     @property
     def requirement(self) -> LibraryString:
@@ -253,23 +169,23 @@ class Venv(Entity):
     def reject_repeated_libraries(cls, value: list[Library]) -> list[Library]:
         """Reject a library declared twice, whatever spelling each entry used.
 
-        Two entries for one package give the resolver two requirements it cannot both
-        honour, and it fails the whole build over it. Names reach here canonicalized,
-        so `Pydantic` and `pydantic` count as the same package. They are compared in
-        full, extras included: `requests` next to `requests[socks]` is allowed. A
-        library read back rejected (`Library.from_stored`) is skipped: it never builds.
+        One entry per package: a build stamps the version it installed by package
+        name, so two entries would leave it unclear which one holds it, and each
+        would carry its own specification for the same package. Names reach here
+        canonicalized, so `Pydantic` and `pydantic` count as the same package.
+        Extras do not make another package: `requests` next to `requests[socks]` is
+        refused, and the two are declared as one entry, `requests[socks]`.
 
         Raises:
             ValueError: Some package is declared more than once.
         """
         seen: set[str] = set()
         for library in value:
-            # A rejected library never builds, so it cannot conflict with another.
-            if library.rejection is not None:
-                continue
-            if library.name in seen:
-                raise ValueError(f"Library '{library.name}' is declared more than once.")
-            seen.add(library.name)
+            if library.distribution_name in seen:
+                raise ValueError(
+                    f"Library '{library.distribution_name}' is declared more than once."
+                )
+            seen.add(library.distribution_name)
         return value
 
     def rename(self, value: str, /):
@@ -293,28 +209,6 @@ class Venv(Entity):
             else library
             for library in self.libs
         ]
-
-    def assert_buildable(self) -> None:
-        """Refuse to build while some library is one an older release stored.
-
-        Entries refused for exactly the same reasons are grouped, so the message names
-        each such group once rather than repeating it per entry.
-
-        Raises:
-            VenvLibrariesRejectedError: Some library is rejected; names each one.
-        """
-        entries_by_reason: dict[str, list[str]] = {}
-        for library in self.libs:
-            if library.rejection is not None:
-                entries = entries_by_reason.setdefault(library.rejection, [])
-                if library.name not in entries:
-                    entries.append(library.name)
-        if entries_by_reason:
-            reasons = " ".join(
-                f"{', '.join(repr(name) for name in names)}: {reason.rstrip('.')}."
-                for reason, names in entries_by_reason.items()
-            )
-            raise VenvLibrariesRejectedError(reasons=reasons)
 
     def uses_custom_library(self, name: str, /) -> bool:
         """Whether this venv names that stored library at all.

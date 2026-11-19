@@ -963,37 +963,11 @@ class TestV4ToV5:
 
         assert data[EntityType.VENV][0]["libs"] == [{"name": "httpx", "specification": ""}]
 
-    @pytest.mark.parametrize(
-        ("libraries", "expected"),
-        [
-            ("requests[socks]>=2", {"name": "requests[socks]", "specification": ">=2"}),
-            (
-                "requests[security,socks]",
-                {"name": "requests[security,socks]", "specification": ""},
-            ),
-            ("httpx[socks,http2]<1", {"name": "httpx[http2,socks]", "specification": "<1"}),
-        ],
-    )
-    def test_extras_stay_on_the_name(self, libraries, expected):
-        """The sandbox takes extras on the library name, so nothing is lost."""
-        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("x", libraries)]})
+    def test_extras_are_dropped(self):
+        """A venv library is a name and a specifier; there is nowhere to put extras."""
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("x", "requests[socks]>=2")]})
 
-        assert data[EntityType.VENV][0]["libs"] == [expected]
-
-    def test_a_library_with_extras_and_one_without_are_different_environments(self):
-        data = v4_to_v5(
-            {
-                EntityType.PYTHON_CODE_TOOL: [
-                    _tool("plain", "requests"),
-                    _tool("socks", "requests[socks]"),
-                ]
-            }
-        )
-
-        assert [venv["libs"] for venv in data[EntityType.VENV]] == [
-            [{"name": "requests", "specification": ""}],
-            [{"name": "requests[socks]", "specification": ""}],
-        ]
+        assert data[EntityType.VENV][0]["libs"] == [{"name": "requests", "specification": ">=2"}]
 
     @pytest.mark.parametrize(
         "libraries",

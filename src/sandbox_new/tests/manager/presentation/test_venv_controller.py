@@ -11,7 +11,6 @@ import pytest
 from litestar import status_codes
 
 from manager.domain.enums import VenvStatus
-from manager.domain.models import Library
 from tests.builders import make_library, make_venv
 
 
@@ -356,28 +355,6 @@ def test_create_accepts_libraries_declared_with_extras(client, venv_repository):
         "requests[socks]>=2.0",
         "httpx[http2,cli]>=0.27, <1",
     ]
-
-
-def test_a_venv_holding_a_library_an_older_release_stored_still_lists_and_retrieves(
-    client, venv_repository
-):
-    """It is shown as stored, so its owner can see what to replace."""
-    legacy, _ = venv_repository.seed(
-        make_venv(
-            name="legacy",
-            status=VenvStatus.COMPLETED,
-            libs=[Library.from_stored({"name": "numpy>=1", "specification": ""})],
-        ),
-        make_venv(name="valid"),
-    )
-
-    listed = client.get("/venvs")
-    retrieved = client.get(f"/venvs/{legacy.id}")
-
-    assert listed.status_code == status_codes.HTTP_200_OK
-    assert [venv["name"] for venv in listed.json()["result"]] == ["legacy", "valid"]
-    assert retrieved.status_code == status_codes.HTTP_200_OK
-    assert [lib["name"] for lib in retrieved.json()["libs"]] == ["numpy>=1"]
 
 
 def test_create_refuses_a_version_bound_in_a_library_name(client, venv_repository):

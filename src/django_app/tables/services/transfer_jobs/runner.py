@@ -7,12 +7,7 @@ from uuid import UUID
 
 from django.conf import settings
 from django.utils import timezone
-from foundation.transport.http.errors import (
-    ClientConflictError as ProxiedServiceConflictError,
-)
-from foundation.transport.http.errors import (
-    ClientValidationError as ProxiedServiceValidationError,
-)
+from foundation.transport.http.errors import ClientValidationError as ProxiedServiceValidationError
 from rbac.access.asserts import assert_org_permission
 from rbac.models.enums import Permission
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
@@ -83,10 +78,10 @@ def public_error(error: Exception, kind: str) -> dict:
             "code": "collection_changed",
             "message": "A graph index is being rebuilt; export again once it is ready.",
         }
-    if isinstance(error, (ProxiedServiceValidationError, ProxiedServiceConflictError)):
+    if isinstance(error, ProxiedServiceValidationError):
         # A proxied service, such as the sandbox, refused what the file declares: the
-        # creator gets its words. Any other 4xx (401, 403, 404, 429) is this gateway's
-        # own call going wrong, not the file, so it stays an internal error.
+        # creator gets its words. Any other 4xx (401, 403, 404, 409, 429) is this
+        # gateway's own call going wrong, not the file, so it stays an internal error.
         translated = client_error_as_api_exception(error)
         return {"code": "invalid_file", "message": flatten_error_detail(translated.detail)}
     if isinstance(error, ClientError):
