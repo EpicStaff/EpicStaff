@@ -49,8 +49,17 @@ async def test_a_job_without_storage_is_left_alone(tmp_path, step):
     await step(context)
 
     assert context.env == {}
+    assert context.always_masked == set()
     assert context.storage_mutations_path is None
     assert context.completed is False
+
+
+async def test_the_storage_keys_are_registered_to_be_masked_from_the_output(tmp_path, step):
+    context = storage_context(tmp_path)
+
+    await step(context)
+
+    assert context.always_masked == {ACCESS_KEY, SECRET_KEY}
 
 
 async def test_the_child_environment_is_built_from_the_credentials_on_the_job(tmp_path, step):
