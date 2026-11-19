@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from tables.views.dashboard_views import DashboardReportView
 from tables.views.default_config import (
     DefaultModelsAPIView,
 )
@@ -238,6 +239,11 @@ urlpatterns = [
         )
         for operation in ("read", "write", "delete")
     ],
+    path(
+        "dashboard/report/",
+        DashboardReportView.as_view({"get": "list"}),
+        name="dashboard-report",
+    ),
     path("default-models/", DefaultModelsAPIView.as_view(), name="default_models"),
     path(
         "execution-timeout-limits/",

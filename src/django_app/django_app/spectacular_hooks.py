@@ -108,6 +108,8 @@ TAG_MAP = [
     ("api/quickstart", "Quickstart"),
     # Audit
     ("api/audit", "Audit"),
+    # Dashboard
+    ("api/dashboard", "Dashboard"),
     # Key Value Tables
     ("api/key-value-tables", "Key Value Tables"),
     ("api/key-value-table-entries", "Key Value Tables"),
@@ -192,6 +194,7 @@ TAGS_ORDER = [
     "Recycle Bin",
     "Execution Timeout Limits",
     "Audit",
+    "Dashboard",
     "Defaults",
     "Quickstart",
     "Key Value Tables",
