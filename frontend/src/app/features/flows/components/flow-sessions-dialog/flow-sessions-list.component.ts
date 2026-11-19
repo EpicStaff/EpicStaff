@@ -26,7 +26,6 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
-import { downloadBlob } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -42,7 +41,9 @@ import {
     takeUntil,
 } from 'rxjs';
 
-import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
+import { ExportFormat } from '../../../../core/models/transfer-job.model';
+import { TransferExportService } from '../../../../core/services/transfer-export.service';
+import { TransferJobsService } from '../../../../core/services/transfer-jobs.service';
 import { ToastService } from '../../../../services/notifications';
 import { GraphDto } from '../../models/graph.model';
 import {
@@ -52,6 +53,7 @@ import {
     TriggerType,
 } from '../../services/flows-sessions.service';
 import { SessionDeletionService } from '../../services/session-deletion.service';
+import { sessionExportRequest } from '../../utils/session-export-request.util';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
 
 @Component({
@@ -100,7 +102,8 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     public isDeleting = signal(false);
     private cancelLoad$ = new Subject<void>();
     private readonly destroyRef = inject(DestroyRef);
-    private readonly importExportService = inject(ImportExportService);
+    private readonly transferJobs = inject(TransferJobsService);
+    private readonly transferExport = inject(TransferExportService);
     private readonly toastService = inject(ToastService);
     private readonly sessionDeletionService = inject(SessionDeletionService);
     private readonly pageSizeLimit = 100;
@@ -389,36 +392,22 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         this.deleteSessions(Array.from(this.selectedIds()));
     }
 
+    /** Exports the selected sessions, or every one the filters match, as a background job that outlives the dialog. */
     public onExport(format: ExportFormat): void {
         if (this.selectedIds().size === 0 && this.totalCount() === 0) {
             return;
         }
         this.isExporting.set(true);
         const activeStatuses = this.statusFilter().filter((s) => s !== 'all');
-        const obs$ =
-            this.selectedIds().size > 0
-                ? this.importExportService.bulkExportSessions(Array.from(this.selectedIds()), format)
-                : this.importExportService.exportAll(
-                      {
-                          graph: this.flow.id,
-                          status: activeStatuses.length > 0 ? activeStatuses : undefined,
-                          id_search: this.idSearch() || undefined,
-                      },
-                      format
-                  );
-
-        obs$.pipe(
-            finalize(() => this.isExporting.set(false)),
-            takeUntilDestroyed(this.destroyRef)
-        ).subscribe({
-            next: (blob) => {
-                downloadBlob(blob, `sessions_export_${Date.now()}.${format}`);
-                this.toastService.success('Sessions exported successfully');
-            },
-            error: () => {
-                this.toastService.error('Failed to export sessions');
-            },
-        });
+        const request = sessionExportRequest(
+            this.selectedIds(),
+            { graphId: this.flow.id, statuses: activeStatuses, idSearch: this.idSearch() },
+            format
+        );
+        const start = this.transferJobs
+            .startExport('sessions', request)
+            .pipe(finalize(() => this.isExporting.set(false)));
+        this.transferExport.export(start).subscribe();
     }
 
     public onExportItemSelected(item: ActionDropdownItem): void {

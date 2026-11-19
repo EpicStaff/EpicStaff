@@ -28,7 +28,9 @@ MAX_PAGE = 100
 
 def _caller(request: Request, operator: Operator) -> CallerCredentials:
     # chats_guard already resolved this token, so it is present.
-    return CallerCredentials(org_id=operator.org_id, bearer_token=bearer_token(request) or "")
+    return CallerCredentials(
+        org_id=operator.org_id, user_id=operator.user_id, bearer_token=bearer_token(request) or ""
+    )
 
 
 class OperatorController(Controller):
@@ -135,7 +137,7 @@ class OperatorController(Controller):
     async def delete_binding(
         self, binding_id: UUID, operator: Operator, bindings: BindingOrchestrator
     ) -> None:
-        await bindings.delete(binding_id, operator.org_id)
+        await bindings.delete(binding_id, operator.org_id, operator.user_id)
 
     @post(
         path="/bindings/{binding_id:uuid}/rotate-key",
@@ -146,7 +148,7 @@ class OperatorController(Controller):
         self, binding_id: UUID, operator: Operator, bindings: BindingOrchestrator
     ) -> schemas.BindingOutput:
         return schemas.BindingOutput.model_validate(
-            await bindings.rotate_key(binding_id, operator.org_id)
+            await bindings.rotate_key(binding_id, operator.org_id, operator.user_id)
         )
 
     @post(
@@ -158,7 +160,7 @@ class OperatorController(Controller):
         self, binding_id: UUID, operator: Operator, bindings: BindingOrchestrator
     ) -> schemas.BindingOutput:
         return schemas.BindingOutput.model_validate(
-            await bindings.pause(binding_id, operator.org_id)
+            await bindings.pause(binding_id, operator.org_id, operator.user_id)
         )
 
     @post(
@@ -383,6 +385,12 @@ class InboxStreamController(Controller):
     """Same path, no guard: EventSource cannot send headers, so the ticket minted under the guard is the credential.
 
     Litestar merges guards across layers, so the stream cannot opt out on `OperatorController`.
+
+    Membership and chats permission are checked only when the ticket is minted, not here or while
+    the stream is open. A member removed from the organization, or who loses chats `read`, keeps
+    an open stream until `CHAT_STREAM_MAX_LIFETIME`; the reconnect is then refused when it mints a new ticket. Worst case
+    `CHAT_IDENTITY_CACHE_TTL` + `CHAT_TICKET_TTL` + `CHAT_STREAM_MAX_LIFETIME` (plus up to one
+    `CHAT_STREAM_PING_INTERVAL`), about 32 minutes by default; see docs/chat/configuration.md.
     """
 
     path = "/chat/operator/v1"

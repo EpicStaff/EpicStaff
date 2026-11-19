@@ -9,6 +9,7 @@ from typing import Any
 import redis
 from clients.key_value import KeyValueClient
 from dotdict import DotDict
+from foundation.cryptographer import AbstractCryptographer
 from loguru import logger
 from models.graph_models import GraphMessage
 from services.agent_task_service import AgentTaskService
@@ -124,6 +125,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         session_timeout_channel: str,
         stop_session_channel: str,
         knowledge_search_service: KnowledgeSearchService,
+        secrets_cryptographer: AbstractCryptographer,
         agent_task_service: AgentTaskService | None = None,
         key_value_client: KeyValueClient | None = None,
         max_concurrent_sessions: int = 20,
@@ -135,6 +137,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             redis_service (RedisService): The service responsible for Redis operations.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
             session_schema_channel (str): The Redis channel for listening to session schema messages.
+            secrets_cryptographer (AbstractCryptographer): Decrypts the transport-sealed secrets of
+                the nodes that call an LLM from crew itself; passed to every session's graph builder.
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice.
             key_value_client (KeyValueClient | None): The client used by KeyValueNode to read/write/delete
@@ -147,6 +151,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         self.session_timeout_channel = session_timeout_channel
         self.stop_session_channel = stop_session_channel
         self.knowledge_search_service = knowledge_search_service
+        self.secrets_cryptographer = secrets_cryptographer
         self.agent_task_service = agent_task_service
         self.key_value_client = key_value_client
         self.session_graph_pool: dict[int, SessionCoroItem] = {}
@@ -191,6 +196,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 python_code_executor_service=self.python_code_executor_service,
                 knowledge_search_service=self.knowledge_search_service,
                 stop_event=stop_event,
+                secrets_cryptographer=self.secrets_cryptographer,
                 agent_task_service=self.agent_task_service,
                 key_value_client=self.key_value_client,
             )

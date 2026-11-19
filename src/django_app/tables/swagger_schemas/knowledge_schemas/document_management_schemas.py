@@ -469,8 +469,8 @@ DOCUMENTS_IMPORT_FROM_STORAGE_POST = {
                         "status_code": 400,
                         "code": UploadRejectedException.default_code,
                         "message": (
-                            "Upload rejected. Archive 'report.docx' expands to 60000000 "
-                            "bytes, over the limit of 52428800 bytes"
+                            "Upload rejected. Archive 'report.docx' expands to more than "
+                            "52428800 bytes"
                         ),
                     },
                     response_only=True,

@@ -106,7 +106,12 @@
         @if (readonly()) {
             <div class="control control--readonly readonly-chips">
                 @for (item of getControl('entity_types')?.value ?? []; track $index) {
-                    <span class="readonly-chip">{{ item }}</span>
+                    <span class="readonly-chip"
+                        >{{ item }}
+                        @if (!$last) {
+                            <span>,</span>
+                        }
+                    </span>
                 }
             </div>
         } @else {

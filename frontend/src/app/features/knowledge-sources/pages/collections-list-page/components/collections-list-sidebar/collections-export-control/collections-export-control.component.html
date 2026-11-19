@@ -1,0 +1,102 @@
+<div
+    class="export-control"
+    [class.export-control--select-mode]="selectMode()"
+>
+    @if (selectMode()) {
+        <button
+            #menuTrigger="cdkMenuTriggerFor"
+            type="button"
+            class="export-control__segment export-control__count"
+            [attr.aria-label]="'Selected ' + selectedCount() + ', selection options'"
+            matTooltip="Selection options"
+            [cdkMenuTriggerFor]="menu"
+            [cdkMenuPosition]="menuPositions"
+            [class.export-control__segment--open]="menuTrigger.isOpen()"
+        >
+            {{ selectedCount() }}
+        </button>
+        <button
+            #cancelButton
+            type="button"
+            class="export-control__segment"
+            aria-label="Cancel selection"
+            matTooltip="Cancel selection"
+            (click)="clear()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="16px"
+            />
+        </button>
+        <button
+            type="button"
+            class="export-control__segment export-control__confirm"
+            aria-label="Export selected"
+            [matTooltip]="confirmTooltip()"
+            [attr.aria-disabled]="!canExport() || null"
+            (click)="confirmExport()"
+        >
+            <app-svg-icon
+                icon="check"
+                size="16px"
+            />
+        </button>
+    } @else {
+        <button
+            #startButton
+            type="button"
+            class="export-control__segment"
+            aria-label="Export collections"
+            matTooltip="Export collections"
+            (click)="enterSelectMode()"
+        >
+            <app-svg-icon
+                icon="upload"
+                size="14px"
+            />
+        </button>
+        <button
+            #menuTrigger="cdkMenuTriggerFor"
+            type="button"
+            class="export-control__segment export-control__chevron"
+            aria-label="Selection options"
+            matTooltip="Selection options"
+            [cdkMenuTriggerFor]="menu"
+            [cdkMenuPosition]="menuPositions"
+            [class.export-control__segment--open]="menuTrigger.isOpen()"
+        >
+            <app-svg-icon
+                icon="chevron-down"
+                size="14px"
+                class="export-control__chevron-icon"
+                [class.export-control__chevron-icon--open]="menuTrigger.isOpen()"
+            />
+        </button>
+    }
+</div>
+
+<ng-template #menu>
+    <div
+        cdkMenu
+        class="export-control-menu"
+    >
+        @if (!selectMode()) {
+            <button
+                cdkMenuItem
+                type="button"
+                class="export-control-menu__item"
+                (cdkMenuItemTriggered)="enterSelectMode()"
+            >
+                Select
+            </button>
+        }
+        <button
+            cdkMenuItem
+            type="button"
+            class="export-control-menu__item"
+            (cdkMenuItemTriggered)="toggleSelectAll()"
+        >
+            {{ selectAllLabel() }}
+        </button>
+    </div>
+</ng-template>

@@ -1,5 +1,7 @@
 import asyncio
 
+from fastapi import Request
+from foundation.cryptographer import AbstractCryptographer, CryptographerError
 from loguru import logger
 from src.shared.models import BaseTunnelConfigData, WebhookConfigData
 
@@ -21,13 +23,52 @@ class AmbiguousWebhookPathError(Exception):
         )
 
 
-def _connection_fingerprint(config: BaseTunnelConfigData) -> dict:
+def _opened(sealed: str, cryptographer: AbstractCryptographer) -> object:
+    """Return the plaintext of a transport-sealed value, for comparison only.
+
+    A value that cannot be decrypted becomes a fresh object equal only to itself, so it
+    never compares equal and always counts as a change. Never log or store the result.
+    """
+    try:
+        return cryptographer.decrypt(sealed)
+    except CryptographerError:
+        return object()
+
+
+def _connection_fingerprint(
+    config: BaseTunnelConfigData, cryptographer: AbstractCryptographer
+) -> dict:
     """Fields that identify the tunnel's OWN connection parameters (name,
     auth token, domain, region, ...) -- as opposed to the inbound-request
     auth strategy (`auth`), which can change without needing to restart the
     tunnel itself (see `needs_auth_update` below).
+
+    A sealed `auth_token` is compared as plaintext: Django seals it afresh on every
+    publish, so its ciphertext changes even when the token does not. An undecryptable
+    token always counts as changed, so its config takes the restart path and its
+    registration reports the failure.
     """
-    return config.model_dump(exclude={"auth"})
+    fingerprint = config.model_dump(exclude={"auth"})
+    if fingerprint.get("auth_token"):
+        fingerprint["auth_token"] = _opened(fingerprint["auth_token"], cryptographer)
+    return fingerprint
+
+
+def _auth_fingerprint(
+    config: BaseTunnelConfigData, cryptographer: AbstractCryptographer
+) -> dict | None:
+    """The inbound-request auth strategy, its secret compared as plaintext.
+
+    Django reseals `auth.secret` on every publish, so comparing the configs as sent
+    would report an auth change on every sync. An undecryptable secret always counts
+    as changed.
+    """
+    if config.auth is None:
+        return None
+    fingerprint = config.auth.model_dump()
+    if fingerprint.get("secret"):
+        fingerprint["secret"] = _opened(fingerprint["secret"], cryptographer)
+    return fingerprint
 
 
 class UnregisteredWebhookPathError(Exception):
@@ -44,13 +85,20 @@ class UnregisteredWebhookPathError(Exception):
 
 
 class TunnelRegistry:
-    def __init__(self, redis_service=None):
+    def __init__(self, cryptographer: AbstractCryptographer, redis_service=None):
+        """Create an empty registry.
+
+        Args:
+            cryptographer: Opens the transport-sealed secrets of the configs: the ngrok
+                auth token a tunnel starts with, and the values the fingerprints compare.
+        """
         self._tunnel_pool: dict[str, tuple[AbstractTunnelProvider, BaseTunnelConfigData]] = {}
         self._lock = asyncio.Lock()
+        self._cryptographer = cryptographer
         self._redis_service = redis_service
 
     async def register(self, config: BaseTunnelConfigData):
-        tunnel = get_provider(config)
+        tunnel = get_provider(config, self._cryptographer)
 
         if self._redis_service:
 
@@ -138,12 +186,14 @@ class TunnelRegistry:
                 else:
                     tunnel, active_config = self._tunnel_pool[unique_id]
 
-                    if _connection_fingerprint(active_config) != _connection_fingerprint(
-                        expected_config
-                    ):
+                    if _connection_fingerprint(
+                        active_config, self._cryptographer
+                    ) != _connection_fingerprint(expected_config, self._cryptographer):
                         logger.info(f"Config for {unique_id} changed. Restarting...")
                         needs_restart = True
-                    elif active_config != expected_config:
+                    elif _auth_fingerprint(active_config, self._cryptographer) != _auth_fingerprint(
+                        expected_config, self._cryptographer
+                    ):
                         self._tunnel_pool[unique_id] = (tunnel, expected_config)
                         needs_auth_update = True
 
@@ -213,11 +263,6 @@ class TunnelRegistry:
         )
 
 
-_tunnel_registry: TunnelRegistry | None = None
-
-
-def get_tunnel_registry(redis_service=None) -> TunnelRegistry:
-    global _tunnel_registry
-    if _tunnel_registry is None:
-        _tunnel_registry = TunnelRegistry(redis_service=redis_service)
-    return _tunnel_registry
+def get_tunnel_registry(request: Request) -> TunnelRegistry:
+    """Return the registry the app created on startup."""
+    return request.app.state.tunnel_registry

@@ -76,7 +76,7 @@ class PythonCodeData(StorageScopedData):
     """
 
     secrets: dict[str, str] = Field(default_factory=dict)
-    """{name: plaintext}, filled on the resolved copy only.
+    """{name: transport-sealed value}, filled on the resolved copy only.
 
     NOT excluded: this is how the resolved value reaches crew — redis_service
     publishes `resolved.model_dump_json()`, and if this field were excluded
@@ -85,10 +85,12 @@ class PythonCodeData(StorageScopedData):
     This is safe because resolution happens only on the deep copy that
     SecretResolver.resolve_payload() returns, never on the caller's object.
     The caller's object stays unresolved (see redis_service.publish_session_data),
-    so its `secrets` is always the empty default — never plaintext; only the
-    published copy carries values. Nothing prevents future code from resolving
-    in place instead of on a copy; that discipline, not a Field flag, is what
-    keeps plaintext off the caller's object and out of anything persisted from it.
+    so its `secrets` is always the empty default; only the
+    published copy carries values, and those are ciphertext under the transport
+    key, which the sandbox opens at the point of use. Nothing prevents future
+    code from resolving in place instead of on a copy; that discipline, not a
+    Field flag, is what keeps secret values off the caller's object and out of
+    anything persisted from it.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -180,8 +182,9 @@ class CodeTaskData(StorageScopedData):
     """
 
     secrets: dict[str, str] = {}
-    """{name: plaintext} for the sandbox. NOT excluded: this message is never
-    persisted, and excluding it would silently deliver no secrets."""
+    """{name: transport-sealed value} for the sandbox, which opens them at the
+    point of use. NOT excluded: this message is never persisted, and excluding
+    it would silently deliver no secrets."""
 
     reply_to_crew_channel: bool = False
     """Publish the result to `crew_code_result_channel(CODE_RESULT_CHANNEL)`
@@ -212,7 +215,7 @@ class CodeTaskData(StorageScopedData):
     def log_summary(self) -> str:
         """A log-safe description of this task.
 
-        `secrets` holds resolved plaintext, so neither its values nor its keys
+        `secrets` holds transport-sealed values, so neither its values nor its keys
         are rendered — only its size, which is what actually helps when
         debugging ("did the node receive its declarations?"). Callers must log
         this instead of the message body. `storage_credentials.secret_key` is

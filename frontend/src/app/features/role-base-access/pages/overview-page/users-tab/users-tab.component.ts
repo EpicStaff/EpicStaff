@@ -1,6 +1,16 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    input,
+    linkedSignal,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
@@ -90,6 +100,9 @@ const STATUS_ITEMS: SelectItem[] = [
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UsersTabComponent {
+    /** `?search=`, bound from the URL: seeds the search box, as a link to one item does. */
+    readonly search = input<string>();
+
     // Takes the focus when an action removes or swaps the row button that had it.
     private readonly mainAction = viewChild<ButtonComponent>('mainAction');
 
@@ -108,7 +121,7 @@ export class UsersTabComponent {
     private aggregatedUsers = signal<AggregatedUser[]>([]);
 
     usersData = computed<TableRow[]>(() => this.aggregatedUsers().map((u) => this.mapToRow(u)));
-    searchTerm = signal('');
+    searchTerm = linkedSignal(() => this.search() ?? '');
     isLoading = signal(true);
     readonly orgFilterIds = signal<number[]>([]);
     readonly reloadTrigger = signal(0);

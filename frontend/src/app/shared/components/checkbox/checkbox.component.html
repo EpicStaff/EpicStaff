@@ -3,7 +3,7 @@
     [indeterminate]="indeterminate()"
     [checked]="checked()"
     [class.secondary]="color() === 'secondary'"
-    [disabled]="disabled()"
+    [disabled]="isDisabled()"
     [attr.aria-label]="ariaLabel()"
     [matTooltip]="ariaLabel() ?? ''"
     (change)="toggleCheckbox($event)"

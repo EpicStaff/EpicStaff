@@ -12,6 +12,7 @@ import {
     Injector,
     OnInit,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -26,9 +27,9 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { escapeHtml } from '@shared/utils';
+import { escapeHtml, takeQueryParams } from '@shared/utils';
 import { Observable, of } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { map, tap } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -37,7 +38,7 @@ import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-age
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
-import { AgentDefinition } from '../../models/agent-definition.model';
+import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../models/agent-definition.model';
 import { ExplorerSectionId, GroupAssignTarget } from '../../models/explorer.model';
 import { CreateSurfaceRequest } from '../../models/surface.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryConfig, SurfaceCategoryId } from '../../models/surface-category.model';
@@ -156,11 +157,13 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     );
 
     private readonly explorer = viewChild(ExplorerComponent);
+    private readonly agentDetail = viewChild(AgentDetailComponent);
     private readonly headerMenuTrigger = viewChild<string, ElementRef<HTMLButtonElement>>('headerMenuTrigger', {
         read: ElementRef,
     });
 
-    private preselectApplied = false;
+    // `?agentId=` and `?surfaceId=`, taken from the URL at init and applied once the agent list has loaded
+    private queryPreselect: Partial<Record<'agentId' | 'surfaceId', string>> = {};
     private sawLoading = false;
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
@@ -258,30 +261,26 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         });
 
         effect(() => {
-            if (this.preselectApplied) return;
             const loading = this.store.loading();
             if (loading) {
                 this.sawLoading = true;
                 return;
             }
-            if (!this.sawLoading) return;
-            this.preselectApplied = true;
-            this.applySurfaceIdPreselect();
+            // Only the end of a load reruns this: not the lists and selection the preselect reads and sets.
+            if (this.sawLoading) untracked(() => this.applyQueryPreselect());
         });
     }
 
-    private applySurfaceIdPreselect(): void {
-        const raw = this.route.snapshot.queryParamMap.get('surfaceId');
-        if (raw == null) return;
-        void this.router.navigate([], {
-            relativeTo: this.route,
-            queryParams: { surfaceId: null },
-            queryParamsHandling: 'merge',
-            replaceUrl: true,
-        });
-        const surfaceId = Number(raw);
-        if (!Number.isFinite(surfaceId)) return;
-        const surface = this.store.surfaces().find((s) => s.id === surfaceId);
+    /** `?agentId=` selects that agent; `?surfaceId=` opens that surface where it lives. An unknown id is ignored. */
+    private applyQueryPreselect(): void {
+        const { agentId, surfaceId } = this.queryPreselect;
+        this.queryPreselect = {};
+        if (agentId != null) {
+            const id = Number(agentId);
+            if (this.store.agents().some((agent) => agent.id === id)) this.store.selectAgent(id);
+        }
+        if (surfaceId == null) return;
+        const surface = this.store.surfaces().find((s) => s.id === Number(surfaceId));
         if (!surface) return;
         if (surface.owner_agent != null) {
             this.store.selectAgent(surface.owner_agent);
@@ -291,6 +290,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     ngOnInit(): void {
+        this.queryPreselect = takeQueryParams(this.route, this.router, ['agentId', 'surfaceId']);
         this.store.load();
     }
 
@@ -404,6 +404,48 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             });
         }
         this.hasUnsavedChanges.set(false);
+    }
+
+    onSelectedInstructionList(instructionList: AgentInstruction[]): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.updateInstructionList(agentId, instructionList);
+    }
+
+    onCreateSurfaceForSelected(event: { body: CreateSurfaceRequest; place: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.createSurfaceForAgent(agentId, event.body, event.place);
+    }
+
+    onSetSharedForSelected(event: { surfaceIds: number[]; category: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.setSharedSurfacesInCategory(event.surfaceIds, agentId, event.category);
+    }
+
+    onDropSharedForSelected(event: { surfaceId: number; category: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.dropSharedSurfaceOnAgent(event.surfaceId, agentId, event.category);
+    }
+
+    onSetSurfacePlacesForSelected(event: { surfaceId: number; places: AgentSurfacePlace[] }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.setSurfacePlaces(event.surfaceId, agentId, event.places);
+    }
+
+    onDetachSurfaceForSelected(surfaceId: number): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.detachSurfaceFromAgent(surfaceId, agentId);
+    }
+
+    onMakeAgentSpecificCopyForSelected(surfaceId: number): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.makeAgentSpecificCopy(surfaceId, agentId);
     }
 
     onCreateSurface(body: CreateSurfaceRequest): void {
@@ -664,13 +706,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     canDeactivate(): boolean | Observable<boolean> {
         if (!this.hasUnsavedChanges()) return true;
-        return this.unsavedChangesDialog.confirmUnsavedChanges().pipe(
-            map((result) => {
-                if (result === UNSAVED_CHANGES_RESULT.dontSave) {
-                    this.hasUnsavedChanges.set(false);
-                    return true;
-                }
-                return false;
+        return this.confirmLeaveAgent().pipe(
+            map((leave) => {
+                if (leave) this.hasUnsavedChanges.set(false);
+                return leave;
             })
         );
     }
@@ -717,14 +756,40 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             action();
             return;
         }
-        this.unsavedChangesDialog.confirmUnsavedChanges().subscribe((result) => {
-            if (result === UNSAVED_CHANGES_RESULT.dontSave) {
+        this.confirmLeaveAgent().subscribe((leave) => {
+            if (leave) {
                 this.hasUnsavedChanges.set(false);
                 action();
             } else {
                 onCancel?.();
             }
         });
+    }
+
+    /**
+     * Asks whether to drop the agent's unsaved edits; true to leave. There is no Save: a draft needs a name
+     * to be created, and an existing agent saves itself when its field loses focus. Staying on a draft
+     * points the user at the missing name.
+     */
+    private confirmLeaveAgent(): Observable<boolean> {
+        const drafting = this.store.isDraftingAgent();
+        return this.unsavedChangesDialog
+            .confirm({
+                title: drafting ? 'Agent not created' : 'Unsaved Changes',
+                message: drafting
+                    ? "This agent hasn't been created yet. Fix the name to save it, or discard it."
+                    : 'You have unsaved changes in this agent.',
+                dontSaveText: 'Discard & Leave',
+                cancelText: 'Keep Editing',
+                type: 'warning',
+                showSave: false,
+            })
+            .pipe(
+                map((result) => result === UNSAVED_CHANGES_RESULT.dontSave),
+                tap((leave) => {
+                    if (!leave && drafting) this.agentDetail()?.requireName();
+                })
+            );
     }
 
     private openExplorerAgentDetails({ node, trigger }: ExplorerTreeMenuEvent): void {

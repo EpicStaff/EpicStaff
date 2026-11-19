@@ -1,19 +1,16 @@
-"""`id_search` partial match on session id — GET /api/sessions/ and POST /api/sessions/export_all/."""
-
-import json
+"""`id_search` partial match on session id — GET /api/sessions/ and POST /api/sessions/export-jobs/."""
 
 import pytest
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 
-from tables.import_export.enums import EntityType
-from tables.models import Graph
+from tables.models import Graph, TransferJob
 from tables.models.session_models import Session
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 LIST_URL = reverse("session-list")
-EXPORT_ALL_URL = "/api/sessions/export_all/"
+EXPORT_ALL_URL = "/api/sessions/export-jobs/"
 
 # Ids are set explicitly so the substring relations are known. They sit far above
 # anything the sequence hands out during a test, so no auto id can match by accident.
@@ -71,9 +68,9 @@ def _listed_ids(response):
 
 
 def _exported_ids(response):
-    assert response.status_code == status.HTTP_200_OK, response.content
-    exported = json.loads(response.content)[EntityType.SESSION]
-    return {entry["session"]["id"] for entry in exported}
+    # The filters are resolved to ids when the job is created; the job exports those.
+    assert response.status_code == status.HTTP_202_ACCEPTED, response.content
+    return set(TransferJob.objects.get(pk=response.json()["job_id"]).request["ids"])
 
 
 @pytest.mark.django_db

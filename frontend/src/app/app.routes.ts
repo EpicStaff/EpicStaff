@@ -21,9 +21,9 @@ import {
     workspacePermissionGuard,
 } from './core/guards/workspace.guard';
 import { HIDE_SIDENAV_ON_PHONE } from './core/services/app-navigation-drawer.service';
-import { auditTrailEnabledGuard } from './features/audit/guards/audit-trail-enabled.guard';
 import { chatEnabledGuard } from './features/chat/guards/chat-enabled.guard';
 import { FILES_TAB } from './features/files/constants/files-tabs';
+import { storageTabGuard } from './features/files/guards/storage-tab.guard';
 import { availablePluginGuard } from './features/plugins/guards/available-plugin.guard';
 import { pluginsEnabledGuard } from './features/plugins/guards/plugins-enabled.guard';
 import { pluginPageMatcher } from './features/plugins/pages/plugin-host-page/plugin-page.matcher';
@@ -265,19 +265,19 @@ export const routes: Routes = [
                             // during a storage → knowledge drag. These routes own the URL and the guards.
                             {
                                 path: FILES_TAB.KnowledgeSources,
-                                canActivate: [permissionGuard],
+                                canActivate: [storageTabGuard],
                                 data: { permission: [ResourceCode.KnowledgeSources, ActionCode.Read] },
                                 children: [],
                             },
                             {
                                 path: FILES_TAB.Storage,
-                                canActivate: [permissionGuard],
+                                canActivate: [storageTabGuard],
                                 data: { permission: [ResourceCode.Files, ActionCode.Read] },
                                 children: [],
                             },
                             {
                                 path: FILES_TAB.KeyValueTables,
-                                canActivate: [permissionGuard],
+                                canActivate: [storageTabGuard],
                                 data: { permission: [ResourceCode.KeyValueTables, ActionCode.Read] },
                                 children: [],
                             },
@@ -346,12 +346,7 @@ export const routes: Routes = [
                     },
                     {
                         path: 'audit',
-                        loadComponent: () =>
-                            import('./features/audit/audit-sessions-browser.component').then(
-                                (m) => m.AuditSessionsBrowserComponent
-                            ),
-                        canActivate: [auditTrailEnabledGuard, permissionGuard],
-                        data: { permission: [ResourceCode.Audit, ActionCode.Read] },
+                        loadChildren: () => import('./features/audit/audit.routes').then((m) => m.AUDIT_ROUTES),
                     },
                     {
                         path: 'settings',

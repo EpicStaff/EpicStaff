@@ -6,7 +6,7 @@ from rbac.authorship import (
     AuthorSummarySerializerMixin,
     LastEditFieldsSerializerMixin,
 )
-from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField, OrgScopedUniqueValidator
 from rest_framework import serializers
 from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.realtime_models import (
@@ -142,6 +142,16 @@ class OpenAIRealtimeConfigSerializer(
         allow_null=True,
     )
 
+    custom_name = serializers.CharField(
+        max_length=250,
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=OpenAIRealtimeConfig.objects.all(),
+                message="An OpenAI realtime config with this name already exists.",
+            )
+        ],
+    )
+
     class Meta:
         model = OpenAIRealtimeConfig
         fields = [
@@ -172,6 +182,16 @@ class ElevenLabsRealtimeConfigSerializer(
         allow_null=True,
     )
 
+    custom_name = serializers.CharField(
+        max_length=250,
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=ElevenLabsRealtimeConfig.objects.all(),
+                message="An ElevenLabs realtime config with this name already exists.",
+            )
+        ],
+    )
+
     class Meta:
         model = ElevenLabsRealtimeConfig
         fields = [
@@ -197,6 +217,16 @@ class GeminiRealtimeConfigSerializer(
         source="api_key_secret",
         required=False,
         allow_null=True,
+    )
+
+    custom_name = serializers.CharField(
+        max_length=250,
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=GeminiRealtimeConfig.objects.all(),
+                message="A Gemini realtime config with this name already exists.",
+            )
+        ],
     )
 
     class Meta:
@@ -354,9 +384,9 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     endpoint
 
     `TwilioChannel.auth_token` is now a Secret reference (`auth_token_secret`), so
-    it must be resolved at the point of use rather than read as a plain model
-    attribute — a plain `ModelSerializer` field named "auth_token" would fail: the
-    model no longer has that attribute.
+    it is resolved and sealed with the transport key for the realtime service rather
+    than read as a plain model attribute; a plain `ModelSerializer` field named
+    "auth_token" would fail: the model no longer has that attribute.
     """
 
     webhook_trigger = _WebhookTriggerInternalSerializer(read_only=True)
@@ -368,7 +398,7 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     def get_auth_token(self, obj) -> str | None:
         if obj.auth_token_secret_id is None:
             return None
-        return secret_resolver.resolve(
+        return secret_resolver.resolve_sealed(
             secret_id=obj.auth_token_secret_id,
             org_id=obj.channel.org_id,
             context="TwilioChannel.auth_token",

@@ -14,6 +14,6 @@ until piccolo migrations forwards all; do
     sleep 5
 done
 
-# Exactly one process: the job queue, the execution registry and the monotonic queue
+# Exactly one manager process: the job queue, the execution registry and the queue
 # deadlines all live in this process's memory. Never add workers or replicas.
-exec uvicorn main:app --host 0.0.0.0 --port ${SANDBOX_PORT:?} --workers 1
+exec uvicorn manager.main:app --host 0.0.0.0 --port ${SANDBOX_PORT:?} --workers 1

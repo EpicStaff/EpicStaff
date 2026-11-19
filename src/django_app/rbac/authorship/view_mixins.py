@@ -4,7 +4,9 @@ from rbac.authorship.last_edit import LastEditTracker
 class LastEditDestroyViewSetMixin:
     """Record a deleted row's owner (a node's or edge's graph) as edited by the acting user.
 
-    Put it after the org-scoping mixin in a ModelViewSet's bases.
+    Put it after the org-scoping mixin in a ModelViewSet's bases. Only for a model whose
+    delete removes the row at once (not a SoftDeleteMixin recycle-bin root): see
+    `LastEditTracker.watch_delete`.
     """
 
     def perform_destroy(self, instance):

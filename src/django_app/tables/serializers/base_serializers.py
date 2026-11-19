@@ -13,6 +13,7 @@ from tables.models.webhook_models import (
     ProviderType,
     WebhookTrigger,
     WebhookTriggerAuthKind,
+    webhook_path_validator,
 )
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 from tables.services.webhook_trigger_service import validate_path_uniqueness
@@ -313,5 +314,7 @@ class WebhookTriggerNestedSerializer(
             "created_at",
         ]
         read_only_fields = ["created_by", "created_at"]
-        extra_kwargs = {"path": {"validators": []}}
+        # Replaces the generated validators to drop DRF's unique-path check, which
+        # `validate_path_uniqueness` does with its own message. The format check stays.
+        extra_kwargs = {"path": {"validators": [webhook_path_validator]}}
         validators = []

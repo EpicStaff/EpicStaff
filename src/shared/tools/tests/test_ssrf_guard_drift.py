@@ -171,3 +171,24 @@ class TestSsrfGuardDrift:
                 f"{tool_dir_name}/main.py's `_guarded_get` is not byte-"
                 f"identical to {canonical_name}'s."
             )
+
+    def test_connect_time_check_byte_identical_across_all_copies(self):
+        """`_is_internal_address` and `_public_only_resolution` re-run the
+        address check when the HTTP client connects, closing the DNS
+        rebinding gap `_ssrf_guard` alone leaves. They carry no tool-specific
+        wording, so every copy -- `notification_tool` included -- must match
+        `web_fetch_tool`'s byte for byte."""
+        import inspect
+
+        from conftest import load_tool_main
+
+        canonical = load_tool_main("web_fetch_tool")
+        for helper_name in ("_is_internal_address", "_public_only_resolution"):
+            canonical_source = inspect.getsource(getattr(canonical, helper_name))
+            for tool_dir_name in SSRF_GUARD_COPIES:
+                module = load_tool_main(tool_dir_name)
+                source = inspect.getsource(getattr(module, helper_name))
+                assert source == canonical_source, (
+                    f"{tool_dir_name}/main.py's `{helper_name}` is not byte-"
+                    "identical to web_fetch_tool's."
+                )

@@ -9,7 +9,7 @@ import pytest
 from django.db import connection
 from django.utils import timezone
 
-from tables.models import GraphSessionMessage, Session, SessionCallback
+from tables.models import GraphSessionMessage, Session, SessionCallback, StartNode
 from tables.services.secrets import secret_encryption
 from tables.services.session_callbacks.service import SessionCallbackService
 from tables.services.session_manager_service import SessionManagerService
@@ -87,10 +87,9 @@ def test_delivers_signed_payload_and_clears_secret(session):
 
 
 @pytest.mark.django_db
-def test_secret_given_at_run_is_stored_encrypted_and_signs_the_delivery(session_data):
-    session = SessionManagerService().create_session(
-        **session_data,
-        trigger=TriggerSpec.manual(),
+def test_secret_given_at_run_is_stored_encrypted_and_signs_the_delivery(graph):
+    session = _start_session(
+        graph,
         callback_url="http://chat:8000/cb",
         callback_secret=SECRET,
     )
@@ -269,10 +268,10 @@ def test_row_deleted_mid_send_does_not_crash(session):
 
 
 @pytest.mark.django_db
-def test_crashing_row_is_recorded_and_next_row_still_sent(session, session_data):
+def test_crashing_row_is_recorded_and_next_row_still_sent(session, graph):
     bad = _pending(session)
     SessionCallback.objects.filter(pk=bad.pk).update(url="http://chat:abc/cb")
-    other = SessionManagerService().create_session(**session_data, trigger=TriggerSpec.manual())
+    other = _start_session(graph)
     good = _pending(other)
     recorder = Recorder(200)
     now = timezone.now()
@@ -288,13 +287,18 @@ def test_crashing_row_is_recorded_and_next_row_still_sent(session, session_data)
     assert good.status == SessionCallback.Status.DELIVERED
 
 
-def _other_session(session_data):
-    return SessionManagerService().create_session(**session_data, trigger=TriggerSpec.manual())
+def _start_session(graph, **options):
+    return SessionManagerService().create_session(
+        graph,
+        start_node=StartNode.objects.get_or_create(graph=graph, defaults={"variables": {}})[0],
+        trigger=TriggerSpec.manual(),
+        **options,
+    )
 
 
 @pytest.mark.django_db
-def test_rows_of_one_batch_are_sent_concurrently(session, session_data):
-    callbacks = [_pending(session)] + [_pending(_other_session(session_data)) for _ in range(2)]
+def test_rows_of_one_batch_are_sent_concurrently(session, graph):
+    callbacks = [_pending(session)] + [_pending(_start_session(graph)) for _ in range(2)]
     # Serial sending never fills the barrier: it breaks after the timeout and the rows fail.
     in_flight = threading.Barrier(len(callbacks), timeout=5)
 
@@ -313,10 +317,10 @@ def test_rows_of_one_batch_are_sent_concurrently(session, session_data):
 
 
 @pytest.mark.django_db
-def test_crash_inside_send_still_records_the_other_rows(session, session_data):
+def test_crash_inside_send_still_records_the_other_rows(session, graph):
     bad = _pending(session)
     SessionCallback.objects.filter(pk=bad.pk).update(url="http://chat:8000/crash")
-    good = [_pending(_other_session(session_data)) for _ in range(2)]
+    good = [_pending(_start_session(graph)) for _ in range(2)]
 
     def crash_one(request):
         if request.url.path == "/crash":
@@ -338,9 +342,9 @@ def test_crash_inside_send_still_records_the_other_rows(session, session_data):
 
 
 @pytest.mark.django_db
-def test_row_waiting_for_result_does_not_block_the_others(session, session_data):
+def test_row_waiting_for_result_does_not_block_the_others(session, graph):
     waiting = _pending(session, status="end", end_node_result=None)
-    ready = _pending(_other_session(session_data))
+    ready = _pending(_start_session(graph))
     recorder = Recorder(200)
     now = timezone.now()
 

@@ -39,6 +39,7 @@
                     [checkedDocIds]="checkedDocIds()"
                     [indexMode]="indexMode()"
                     (toggleDoc)="toggleDoc($event)"
+                    (toggleAll)="toggleAllDocs()"
                     (pendingDelete)="markPendingDelete($event)"
                     (reIncludeFiles)="onReIncludeFiles()"
                 />

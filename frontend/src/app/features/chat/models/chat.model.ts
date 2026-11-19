@@ -109,6 +109,9 @@ export interface ChatBindingLimits {
     caps: ChatBindingCapped;
 }
 
+// The bot's displayed name a new desk starts with; the user may rename it.
+export const CHAT_BOT_DISPLAY_NAME_DEFAULT = 'Bot';
+
 // Every other create default comes from the server (`GET /bindings/limits`).
 export const CHAT_BINDING_DEFAULTS: Omit<
     ChatBindingInput,
@@ -139,6 +142,9 @@ export const CHAT_BINDING_DEFAULTS: Omit<
 
 // Both display names and an operator's alias; the server refuses longer ones (counted in characters, after trimming).
 export const CHAT_DISPLAY_NAME_MAX = 64;
+
+// A desk's allowed origins; mirrors the server's cap, which refuses a longer list.
+export const CHAT_ALLOWED_ORIGINS_MAX = 50;
 
 // `GET /bindings/my-aliases`: a name the user goes by on one desk instead of the desk's operator display name.
 export interface ChatMyAlias {
@@ -211,6 +217,8 @@ export interface ChatConversation {
     handoff_reason: string;
     // When the conversation left bot mode; null while the bot runs it. The human section's FIFO key.
     handoff_at: string | null;
+    // When the current holder took it; null while nobody holds it. A close keeps it, as it keeps the holder.
+    claimed_at: string | null;
     // Since when the visitor has waited for a person: set by a hand-off or by a visitor message after the last
     // operator reply; cleared by an operator reply, a return to the bot or a close (a take over keeps it).
     visitor_waiting_since: string | null;

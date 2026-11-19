@@ -8,7 +8,7 @@ from loguru import logger
 from pydantic import ValidationError
 from rbac.authorship import resolve_author
 from src.shared.models import CodeResultData, CodeTaskData
-from src.shared.models.storage_scope import StorageCredentials
+from src.shared.models.storage_scope import StorageAction, StorageCredentials, StorageGrant
 from storage_credentials.exceptions import StorageCredentialError
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
@@ -80,7 +80,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             declared=declared,
             binned=binned_secret_names(python_code),
         )
-        secrets = secret_resolver.resolve_named(
+        secrets = secret_resolver.resolve_named_sealed(
             names=sorted(declared),
             org_id=organization_id,
             context=f"PythonCode(id={python_code_id}).secrets",
@@ -119,6 +119,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_result=python_code_result,
             storage_allowed_paths=storage_allowed_paths,
             org_id=organization_id,
+            own_paths=storage_allowed_paths or [],
+            shared_actions=frozenset(),
         )
         if not ok:
             return execution_id
@@ -222,6 +224,9 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_result=python_code_result,
             storage_allowed_paths=resolved.storage_allowed_paths,
             org_id=resolved.org_id,
+            own_paths=[storage_path_for_test_run(target_type, target_id)],
+            # The slot's saved grant, as a real run gives it; one missing fails closed.
+            shared_actions=(resolved.storage_grant or StorageGrant()).actions,
         )
         if not ok:
             return execution_id
@@ -267,6 +272,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         python_code_result: PythonCodeResult,
         storage_allowed_paths: list[str] | None,
         org_id: int,
+        own_paths: list[str],
+        shared_actions: frozenset[StorageAction],
     ) -> tuple[StorageCredentials | None, bool]:
         """Mint storage credentials if needed. Returns (credentials, ok);
         ok=False means the execution already failed (ERROR, best-effort revoke)
@@ -279,6 +286,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                     python_code_result=python_code_result,
                     storage_allowed_paths=storage_allowed_paths,
                     org_id=org_id,
+                    own_paths=own_paths,
+                    shared_actions=shared_actions,
                 ),
                 True,
             )
@@ -345,6 +354,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         python_code_result: PythonCodeResult,
         storage_allowed_paths: list[str] | None,
         org_id: int,
+        own_paths: list[str],
+        shared_actions: frozenset[StorageAction],
     ):
         if not use_storage:
             return None
@@ -352,6 +363,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_result=python_code_result,
             storage_allowed_paths=storage_allowed_paths,
             org_id=org_id,
+            own_paths=own_paths,
+            shared_actions=shared_actions,
         )
 
     def _revoke_storage_credentials_safely(self, *, use_storage: bool, execution_id: str) -> None:
@@ -385,7 +398,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             )
         except ClientError as error:
             # The class name, never the error: it holds the sandbox response and,
-            # through it, the submitted body with resolved secret plaintext.
+            # through it, the submitted body with the sealed secret values.
             return self._fail_execution(
                 execution_id=execution_id,
                 use_storage=use_storage,

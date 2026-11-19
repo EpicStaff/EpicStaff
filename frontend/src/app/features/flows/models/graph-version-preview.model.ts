@@ -122,7 +122,6 @@ export interface SnapshotPythonNode extends SnapshotNodeBase<'PythonNode'> {
     input_map: Record<string, unknown>;
     output_variable_path: string | null;
     test_input: Record<string, string | number | boolean>;
-    use_storage?: boolean;
     python_code: SnapshotPythonCode;
 }
 
@@ -134,8 +133,6 @@ export interface SnapshotWebhookTriggerNode extends SnapshotNodeBase<'WebhookTri
     python_code: SnapshotPythonCode;
     /** Absent in versions saved before test payloads existed. */
     test_payload?: Record<string, unknown>;
-    /** Absent in versions saved before webhook trigger code could use storage. */
-    use_storage?: boolean;
 }
 
 export interface SnapshotTelegramTriggerNode extends SnapshotNodeBase<'TelegramTriggerNode'> {

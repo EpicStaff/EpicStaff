@@ -16,7 +16,6 @@ import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
-    ChipsInputComponent,
     ConfirmationDialogService,
     CopyFieldComponent,
     CustomInputComponent,
@@ -24,6 +23,7 @@ import {
     InputNumberComponent,
     SelectComponent,
     SelectItem,
+    StringListComponent,
     TabButtonComponent,
     TextareaComponent,
     ToggleSwitchComponent,
@@ -38,8 +38,9 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import { FlowsApiService } from '../../../flows/services/flows-api.service';
 import {
+    CHAT_ALLOWED_ORIGINS_MAX,
     CHAT_BINDING_DEFAULTS,
-    CHAT_DISPLAY_NAME_MAX,
+    CHAT_BOT_DISPLAY_NAME_DEFAULT,
     ChatBinding,
     ChatBindingInput,
     ChatBindingLimits,
@@ -52,6 +53,7 @@ import {
     ChatResponseTimeoutAction,
 } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
+import { allowedOriginError, normalizeOrigin } from '../../utils/allowed-origin.util';
 import { bindingPatch } from '../../utils/binding-patch.util';
 import { hasContractGaps } from '../../utils/contract-fix.util';
 import { normalizePublicName, publicNameError, validationReason } from '../../utils/public-name.util';
@@ -132,6 +134,8 @@ const TEXT_FIELD_LABELS: Record<TextField, string> = {
     operator_display_name: 'Displayed operator name',
 };
 const TEXT_FIELDS = Object.keys(TEXT_FIELD_LABELS) as TextField[];
+
+const DEFAULTS_MISSING_MESSAGE = "Couldn't fill in this desk's default settings. Close the dialog and try again.";
 const PAUSED_ON_SAVE_MESSAGE = 'Saved but paused: the flow does not meet the chat contract.';
 
 /** What a checked flow lacks for the chat contract; `gaps` is null when it lacks nothing (or was not found). */
@@ -191,13 +195,13 @@ export interface ChatBindingsDialogData {
         MatTooltip,
         AppSvgIconComponent,
         ButtonComponent,
-        ChipsInputComponent,
         ChatContractFixComponent,
         CopyFieldComponent,
         CustomInputComponent,
         HintMessageComponent,
         InputNumberComponent,
         SelectComponent,
+        StringListComponent,
         TabButtonComponent,
         TextareaComponent,
         ToggleSwitchComponent,
@@ -212,6 +216,7 @@ export class ChatBindingsDialogComponent {
         inject<ChatBindingsDialogData | null>(DIALOG_DATA, { optional: true })?.binding ?? null
     );
     readonly isSubmitting = signal(false);
+    // A new desk and its settings both open on General, the first tab: the desk's name and flow.
     readonly activeTab = signal<BindingTab>('general');
     readonly errorMessage = signal<string | null>(null);
     /** The server's refusals of named fields, said once for screen readers; each also shows under its field. */
@@ -277,20 +282,36 @@ export class ChatBindingsDialogComponent {
 
     readonly canUpdate = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Update));
 
-    protected readonly tabs = BINDING_TABS;
+    // Creating shows General alone (with no tab row): the rest starts from the server's defaults. The settings show
+    // every tab, General first.
+    protected readonly tabs = computed(() =>
+        this.isCreating() ? BINDING_TABS.filter(({ id }) => id === 'general') : BINDING_TABS
+    );
     protected readonly identityItems = IDENTITY_ITEMS;
     protected readonly onExhaustedItems = ON_EXHAUSTED_ITEMS;
     protected readonly onResponseTimeoutItems = ON_RESPONSE_TIMEOUT_ITEMS;
     protected readonly styleOptions = STYLE_OPTIONS;
+    // Allowed origins: one per row, a pasted or typed list split at commas and whitespace (an origin has neither).
+    protected readonly originSeparators = /[\s,]+/;
+    // An origin the desk already had passes as it is: it was saved before origins were checked, and refusing it would
+    // block every other change to the desk. Only a new or edited origin is checked.
+    protected readonly originError = (value: string): string | null =>
+        this.savedOrigins.has(normalizeOrigin(value)) ? null : allowedOriginError(value);
+    protected readonly originsMax = CHAT_ALLOWED_ORIGINS_MAX;
+    protected readonly originsMaxText = `Up to ${CHAT_ALLOWED_ORIGINS_MAX} origins`;
     // Public because the spec drives it; the template binds it too.
     readonly form = new FormGroup({
         name: new FormControl('', { nonNullable: true, validators: [Validators.required, notWhitespaceValidator()] }),
-        bot_display_name: new FormControl('', { nonNullable: true, validators: this.publicName() }),
+        bot_display_name: new FormControl(CHAT_BOT_DISPLAY_NAME_DEFAULT, {
+            nonNullable: true,
+            validators: this.publicName(),
+        }),
         operator_display_name: new FormControl(CHAT_BINDING_DEFAULTS.operator_display_name, {
             nonNullable: true,
             validators: this.publicName(),
         }),
         graph_id: new FormControl<number | null>(null, { validators: [Validators.required] }),
+        // One origin per row; the list control trims them, drops the empty rows and validates them.
         allowed_origins: new FormControl<string[]>([], { nonNullable: true }),
         identity_mode: new FormControl<ChatIdentityMode>('anonymous', { nonNullable: true }),
         history_window: new FormControl<number | null>(20, { validators: [Validators.required, Validators.min(0)] }),
@@ -385,6 +406,8 @@ export class ChatBindingsDialogComponent {
     private readonly idPrefix = `bindings-dialog-${nextDialogId++}`;
     // What this dialog last saved, handed to the opener on close.
     private saved: ChatBinding | null = null;
+    // The origins the desk had when opened, normalized; `originError` lets them pass unchecked. Empty on create.
+    private savedOrigins: ReadonlySet<string> = new Set();
     /**
      * The seconds each duration control was filled with (the desk's, or the server's default on create). An untouched
      * control sends them as they are, so a value that is no whole number of units is never rounded into the PATCH.
@@ -422,14 +445,6 @@ export class ChatBindingsDialogComponent {
                 if (control.dirty) control.markAsTouched();
             });
         }
-        // On create the bot name follows the binding name until the user edits it.
-        this.form.controls.name.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((name) => {
-            const botName = this.form.controls.bot_display_name;
-            // Characters, not UTF-16 units: a cut through an emoji would leave half of it.
-            if (this.isCreating() && botName.pristine) {
-                botName.setValue([...name].slice(0, CHAT_DISPLAY_NAME_MAX).join(''));
-            }
-        });
         // Close after applies to Support only: on Ongoing it is out of the form's checks and shows as Never.
         this.form.controls.style.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((style) => {
             const closeAfter = this.form.controls.close_after_hours;
@@ -607,10 +622,12 @@ export class ChatBindingsDialogComponent {
         );
     }
 
-    // A field on a hidden tab would block Save without the user seeing why.
+    // A field on a hidden tab would block Save without the user seeing why. Creating shows General alone, so an invalid
+    // field elsewhere is a default that never arrived (the limits failed to load) or was refused: said above the form.
     private showFirstInvalidTab(): void {
-        const tab = BINDING_TABS.find(({ controls }) => controls.some((name) => this.form.controls[name].invalid));
+        const tab = this.tabs().find(({ controls }) => controls.some((name) => this.form.controls[name].invalid));
         if (tab) this.activeTab.set(tab.id);
+        else if (this.form.invalid && this.isCreating()) this.errorMessage.set(DEFAULTS_MISSING_MESSAGE);
     }
 
     private fillDefaults(): void {
@@ -618,7 +635,7 @@ export class ChatBindingsDialogComponent {
         this.form.reset({
             ...CHAT_BINDING_DEFAULTS,
             name: '',
-            bot_display_name: '',
+            bot_display_name: CHAT_BOT_DISPLAY_NAME_DEFAULT,
             graph_id: null,
         });
     }
@@ -626,8 +643,10 @@ export class ChatBindingsDialogComponent {
     private fillFrom(binding: ChatBinding): void {
         // Stored errors first: the reset re-checks the flow live and replaces them with the current ones.
         this.contractErrors.set(binding.contract_errors);
-        // reset() reads only the keys the form has; id, public_key and the rest are ignored. The durations are typed
-        // in other units than the binding's seconds.
+        // Before the reset, which validates the origins against this set.
+        this.savedOrigins = new Set(binding.allowed_origins.map(normalizeOrigin));
+        // reset() reads only the keys the form has; id, public_key and the rest are ignored. The durations are typed in
+        // other units than the binding's seconds.
         this.form.reset(binding);
         for (const field of DURATION_FIELDS) this.fillDuration(field, binding[field]);
     }

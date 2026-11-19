@@ -82,7 +82,7 @@ export class RealtimeChannelService {
         return twilio;
     }
 
-    getPhoneNumbersForChannel(sid: string, authTokenSecretId: string): Observable<TwilioPhoneNumber[]> {
+    getPhoneNumbersForChannel(sid: string, authTokenSecretId: number): Observable<TwilioPhoneNumber[]> {
         const params = new HttpParams().set('sid', sid).set('auth_token_secret_id', authTokenSecretId);
 
         return this.http

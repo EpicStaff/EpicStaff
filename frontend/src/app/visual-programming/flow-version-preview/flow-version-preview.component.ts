@@ -13,7 +13,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AppSvgIconComponent, SpinnerComponent, TabButtonComponent } from '@shared/components';
+import { AppSvgIconComponent, RadioButtonComponent, SpinnerComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService } from '@shared/services';
 import { filter, fromEvent } from 'rxjs';
@@ -72,7 +72,7 @@ interface DiffCanvas extends PreviewCanvas {
  */
 @Component({
     selector: 'app-flow-version-preview',
-    imports: [FlowGraphComponent, AppSvgIconComponent, SpinnerComponent, TabButtonComponent],
+    imports: [FlowGraphComponent, AppSvgIconComponent, SpinnerComponent, RadioButtonComponent],
     providers: [...FLOW_EDITOR_STATE_PROVIDERS, { provide: FLOW_EDITOR_PREVIEW, useValue: true }],
     templateUrl: './flow-version-preview.component.html',
     styleUrl: './flow-version-preview.component.scss',
@@ -147,6 +147,10 @@ export class FlowVersionPreviewComponent {
      * which resets it.
      */
     protected readonly showChanges = signal(false);
+    protected readonly viewOptions = [
+        { value: false, label: 'Preview' },
+        { value: true, label: 'Changes' },
+    ];
     // What a restore of the version does to the live canvas, on one canvas. Kept apart from the plain
     // preview model, so a Preview / Changes switch only changes which canvas is bound. Read only
     // while the Changes tab is open, so the diff is not built for the plain preview.

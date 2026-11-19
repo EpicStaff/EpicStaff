@@ -6,11 +6,14 @@ import { Subject, throttleTime } from 'rxjs';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
+import { filesReadLockOf } from '../core/helpers/storage-grants.util';
 import { isTriggerNodeType } from '../core/helpers/trigger-node-type.util';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 
 export const TRIGGER_NODES_NEED_USE_MESSAGE =
     'Adding or changing trigger nodes (Webhook, Telegram, Schedule) needs the Use permission on flows.';
+
+export const FILE_NODES_NEED_FILES_READ_MESSAGE = 'You need Files: Read to use this node.';
 
 /**
  * Whether the visual-programming editor may change the flow: not for a user with Flows:Read
@@ -42,6 +45,7 @@ export class FlowReadOnlyService {
 
     private readonly blocked$ = new Subject<void>();
     private readonly triggerNodesBlocked$ = new Subject<void>();
+    private readonly fileNodesBlocked$ = new Subject<void>();
 
     constructor() {
         this.blocked$.pipe(throttleTime(3000), takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -54,11 +58,30 @@ export class FlowReadOnlyService {
         this.triggerNodesBlocked$
             .pipe(throttleTime(3000), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.toast.info(TRIGGER_NODES_NEED_USE_MESSAGE));
+        this.fileNodesBlocked$
+            .pipe(throttleTime(3000), takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.toast.info(FILE_NODES_NEED_FILES_READ_MESSAGE));
     }
 
     /** Whether a node of this type may not be created or changed in this editor. */
     public isNodeTypeReadOnly(type: NodeType): boolean {
-        return this.isReadOnly() || (isTriggerNodeType(type) && !this.canEditTriggerNodes());
+        return (
+            this.isReadOnly() || (isTriggerNodeType(type) && !this.canEditTriggerNodes()) || this.needsFilesRead(type)
+        );
+    }
+
+    /**
+     * Whether a node of this type always reads the flow's attached files and the user lacks Files:Read, so it may
+     * neither be created nor changed. Not about the editor being read-only.
+     */
+    public needsFilesRead(type: NodeType): boolean {
+        return (
+            filesReadLockOf(
+                type,
+                (resource, action) => this.perms.can(resource, action),
+                () => this.perms.isActivePermissionsLoaded()
+            ) !== null
+        );
     }
 
     /** Whether Python code reading these secrets may not be changed or copied here (see `isSecretCodeLocked`). */
@@ -75,6 +98,8 @@ export class FlowReadOnlyService {
     public notifyNodeTypeBlocked(type: NodeType): void {
         if (this.isReadOnly()) {
             this.notifyBlocked();
+        } else if (this.needsFilesRead(type)) {
+            this.fileNodesBlocked$.next();
         } else if (this.isNodeTypeReadOnly(type)) {
             this.triggerNodesBlocked$.next();
         }

@@ -6,7 +6,7 @@ from tables.models.session_models import Session
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 BULK_DELETE_URL = "/api/sessions/bulk_delete/"
-EXPORT_ALL_URL = "/api/sessions/export_all/"
+SESSION_EXPORT_JOBS_URL = "/api/sessions/export-jobs/"
 
 
 @pytest.fixture
@@ -122,6 +122,6 @@ def test_export_all_does_not_select_child_as_top_level_after_parent_deleted(
     assert delete_response.status_code == 204
 
     export_response = acme_admin_client.post(
-        EXPORT_ALL_URL, {"graph_id": acme_graph.id}, format="json"
+        SESSION_EXPORT_JOBS_URL, {"graph_id": acme_graph.id}, format="json"
     )
     assert export_response.status_code == 404

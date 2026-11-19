@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { DEFAULT_MATCH_SCOPE, EMPTY_AUDIT_FILTER } from '../../models/audit-filter.models';
+import { SESSION_FIELD_CATALOG } from '../../models/audit-filter-options';
 import { compileAuditFilter } from '../../utils/compile-audit-filter.util';
 import { AuditMatchScopeComponent } from './audit-match-scope.component';
 
@@ -38,7 +39,9 @@ describe('AuditMatchScopeComponent', () => {
         click(children);
 
         expect(fullHistory.checked).toBe(false);
-        expect(compileAuditFilter({ ...EMPTY_AUDIT_FILTER, matchScope: scope() }).matchScope).toEqual({
+        expect(
+            compileAuditFilter({ ...EMPTY_AUDIT_FILTER, matchScope: scope() }, SESSION_FIELD_CATALOG).matchScope
+        ).toEqual({
             ancestors: true,
             children: false,
             rows_before: 1,

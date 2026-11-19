@@ -10,6 +10,7 @@
 @if (mod() === 'segmented') {
     <div
         class="segmented"
+        [class.segmented--small]="size() === 'small'"
         [class.segmented--disabled]="isDisabled()"
         [style.--option-count]="options().length"
     >
@@ -42,8 +43,8 @@
 } @else {
     <div
         class="radio"
-        [class.small]="mod() === 'small'"
-        [class.default]="mod() === 'default'"
+        [class.small]="size() === 'small'"
+        [class.default]="size() === 'default'"
         [class.radio--disabled]="isDisabled()"
     >
         @for (option of options(); track option.value; let count = $count) {

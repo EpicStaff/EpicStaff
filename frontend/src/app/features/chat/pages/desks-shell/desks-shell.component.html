@@ -14,6 +14,18 @@
                 </span>
             </h1>
         </div>
+        @if (canCreate()) {
+            <div class="header-actions">
+                <app-button
+                    type="primary"
+                    leftIcon="plus-fit"
+                    iconSize="10px"
+                    (click)="createDesk()"
+                >
+                    Add Desk
+                </app-button>
+            </div>
+        }
     </header>
 }
 

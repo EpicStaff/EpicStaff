@@ -27,6 +27,9 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("TelegramTriggerNodeImportSerializer", "webhook_trigger"): (
         "Import creates new nodes: a new link to a binned trigger stays refused."
     ),
+    ("TwilioAuthTokenSecretSerializer", "auth_token_secret_id"): (
+        "It picks the secret for a phone-number lookup, not a stored link: a binned secret stays refused."
+    ),
     ("TwilioChannelSerializer", "channel"): (
         "The Twilio settings belong to their voice channel and go to the recycle bin with it, "
         "so they are never saved while that channel is binned."

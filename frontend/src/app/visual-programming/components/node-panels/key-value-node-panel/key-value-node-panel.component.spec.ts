@@ -1,6 +1,14 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, getDebugNode, signal, WritableSignal } from '@angular/core';
+import {
+    Component,
+    CUSTOM_ELEMENTS_SCHEMA,
+    forwardRef,
+    getDebugNode,
+    NgZone,
+    signal,
+    WritableSignal,
+} from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
     AbstractControl,
@@ -1607,7 +1615,7 @@ describe('KeyValueNodePanelComponent', () => {
 
             fixture.nativeElement.querySelector('.add-entry').click();
             fixture.detectChanges();
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => TestBed.tick());
             vi.advanceTimersByTime(250);
             fixture.detectChanges();
 
@@ -2451,7 +2459,7 @@ describe('KeyValueNodePanelComponent', () => {
                 );
 
                 pressEnter(fixture, fieldsOf(fixture, 0)[1]);
-                TestBed.tick();
+                TestBed.inject(NgZone).run(() => TestBed.tick());
 
                 expect(entriesOf(panel).getRawValue()).toEqual([
                     { key: 'a', value: 'variables.a' },
@@ -2468,7 +2476,7 @@ describe('KeyValueNodePanelComponent', () => {
             });
 
             pressEnter(fixture, fieldsOf(fixture, 0)[0]);
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => TestBed.tick());
 
             expect(entriesOf(panel).getRawValue()).toEqual([{ key: 'a' }, { key: '' }, { key: 'b' }]);
             expect(document.activeElement).toBe(fieldsOf(fixture, 1)[0]);
@@ -2514,7 +2522,7 @@ describe('KeyValueNodePanelComponent', () => {
                 expect(document.querySelectorAll('.vpf-item--highlighted').length).toBe(0);
 
                 expect(pressEnter(fixture, valueField).defaultPrevented).toBe(true);
-                TestBed.tick();
+                TestBed.inject(NgZone).run(() => TestBed.tick());
 
                 expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.');
                 // Read shows `variables.x = key`, so its variable moves on to the key; write's adds a row.
@@ -2561,7 +2569,7 @@ describe('KeyValueNodePanelComponent', () => {
                 expect(document.querySelector('app-var-picker-flat')).not.toBeNull();
 
                 expect(pressEnter(fixture, valueField).defaultPrevented).toBe(true);
-                TestBed.tick();
+                TestBed.inject(NgZone).run(() => TestBed.tick());
 
                 expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.nothing');
                 // Read shows `variables.x = key`, so its variable moves on to the key; write's adds a row.
@@ -2586,7 +2594,7 @@ describe('KeyValueNodePanelComponent', () => {
             );
 
             expect(pressEnter(fixture, fieldsOf(fixture, 499)[0]).defaultPrevented).toBe(true);
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => TestBed.tick());
 
             expect(entriesOf(panel).length).toBe(500);
             expect(hintsOf(fixture)).toEqual(['A Key-Value node can have at most 500 keys']);
@@ -2627,7 +2635,7 @@ describe('KeyValueNodePanelComponent', () => {
 
                 fixture.nativeElement.querySelector('.add-entry').click();
                 fixture.detectChanges();
-                TestBed.tick();
+                TestBed.inject(NgZone).run(() => TestBed.tick());
                 fixture.detectChanges();
                 expect(helpsOf(fixture)).toEqual([[], []]);
 

@@ -1,5 +1,15 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    input,
+    linkedSignal,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     AppTableCellDirective,
@@ -58,6 +68,9 @@ import { rbacErrorMessage } from '../../../utils';
     ],
 })
 export class RolesTabComponent {
+    /** `?search=`, bound from the URL: seeds the search box, as a link to one item does. */
+    readonly search = input<string>();
+
     // Takes the focus when a delete removes the row button that had it.
     private readonly mainAction = viewChild<ButtonComponent>('mainAction');
 
@@ -70,7 +83,7 @@ export class RolesTabComponent {
     private activeOrgService = inject(ActiveOrgService);
     protected rolesService = inject(RolesService);
 
-    readonly searchTerm = signal('');
+    readonly searchTerm = linkedSignal(() => this.search() ?? '');
     readonly isLoading = signal(true);
     readonly orgFilterIds = signal<number[]>([]);
     readonly reloadTrigger = signal(0);

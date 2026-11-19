@@ -1,11 +1,18 @@
 from django.db import IntegrityError, transaction
+from drf_spectacular.utils import extend_schema
 from rbac.access.effective import EffectivePermissions
 from rbac.access.resolver import PermissionResolver
-from rest_framework import status
+from rbac.authorship import resolve_author
+from rbac.models import ApiKey
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
+from src.shared.models import UserAction
+from tables.exceptions import TransferJobRequiresUserError
+from tables.models.base_models import SoftDeleteMixin
+from tables.models.user import User
 from tables.serializers.serializers import (
     BulkDeleteQuerySerializer,
     BulkDeleteRequestSerializer,
@@ -14,10 +21,23 @@ from tables.serializers.serializers import (
     ToolUsageDetailSerializer,
     ToolUsageSerializer,
 )
+from tables.serializers.transfer_job_serializers import (
+    ExportJobCreatedSerializer,
+    ExportJobCreateSerializer,
+)
 from tables.services.delete_services import BaseDeleteService
 from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
+from tables.services.transfer_jobs.export_definitions import ExportJobDefinition
+from tables.services.transfer_jobs.job_service import TransferJobService
 from tables.services.trigger_nodes import trigger_node_access
+from tables.throttles import TransferJobCreateThrottle
+from user_audit.context import mark_request_handled
+from user_audit.read_only import reads_only
+from user_audit.recorder import record_copy, record_user_action
 from utils.logger import logger
+
+# Starting a job is throttled on top of the project defaults, in one bucket with imports.
+EXPORT_JOB_THROTTLE_CLASSES = [*api_settings.DEFAULT_THROTTLE_CLASSES, TransferJobCreateThrottle]
 
 
 class CopyActionMixin:
@@ -26,6 +46,9 @@ class CopyActionMixin:
     Requires two class attributes:
         copy_service_class: Copy service to instantiate.
         copy_serializer_class: Serializer for the response.
+
+    Records the new copy as `copied`, the source's name as its previous name, like a
+    storage or document copy.
     """
 
     copy_service_class = None
@@ -49,6 +72,7 @@ class CopyActionMixin:
                 new_instance = self.copy_service_class().copy(
                     instance, name=name, user=request.user, **extra
                 )
+                record_copy(instance, new_instance)
         except IntegrityError:
             logger.warning(
                 "Copy of %s#%s raced on a unique constraint; client should retry.",
@@ -125,6 +149,12 @@ class BulkDeleteActionMixin:
         # usage when the delete runs.
         with transaction.atomic():
             service.assert_deletable(instance)
+            if not isinstance(instance, SoftDeleteMixin):
+                # Recorded while the row still exists, as on the bulk path: once it is gone
+                # the request's fallback record could not name it. A soft delete records itself.
+                record_user_action(
+                    action=UserAction.DELETED, org_id=service.org_id, target=instance
+                )
             super().perform_destroy(instance)
 
     @action(detail=False, methods=["post"], url_path="bulk-delete")
@@ -136,6 +166,8 @@ class BulkDeleteActionMixin:
 
         dry_run = query.validated_data["dry_run"]
         ids = body.validated_data["ids"]
+        # Each deleted row records itself; a dry run or a delete of nothing records nothing.
+        mark_request_handled()
         service = self.get_delete_service()
         result = service.preview(ids) if dry_run else service.delete(ids)
         logger.info(
@@ -233,6 +265,7 @@ class InspectActionMixin:
     """Adds a ``inspect_import`` action to an import-capable ViewSet."""
 
     @action(detail=False, methods=["post"], url_path="import/inspect")
+    @reads_only
     def inspect_import(self, request):
         serializer = InspectImportRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -240,3 +273,66 @@ class InspectActionMixin:
             serializer.validated_data["file"], org_id=self.get_active_org_id()
         )
         return Response(result, status=status.HTTP_200_OK)
+
+
+class ExportJobActionMixin:
+    """Adds an ``export_jobs`` action that queues a background export of the viewset's items.
+
+    Set `export_job_definition` (an entry of `EXPORT_JOB_DEFINITIONS`) and, when the
+    body holds more than `ids`, `export_job_request_serializer_class` to validate it.
+    Map `export_jobs` to the definition's `permission` in `rbac_action_map`, and give
+    the action its request schema with `@extend_schema_view`. A viewset whose body
+    needs resolving first (e.g. filters into ids) overrides `export_job_data`. The job
+    belongs to the requesting user, so a caller with no user row is refused before
+    anything else runs. Starting a job changes nothing a user-action record would
+    name, so it records none, like the export it queues.
+    """
+
+    export_job_definition: ExportJobDefinition
+    export_job_request_serializer_class: type[serializers.Serializer] = ExportJobCreateSerializer
+
+    @extend_schema(responses={202: ExportJobCreatedSerializer})
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="export-jobs",
+        throttle_classes=EXPORT_JOB_THROTTLE_CLASSES,
+    )
+    @reads_only
+    def export_jobs(self, request):
+        author = self.export_job_author()
+        serializer = self.export_job_request_serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self.start_export_job(
+            author, self.export_job_definition, self.export_job_data(serializer.validated_data)
+        )
+
+    def export_job_data(self, validated_data: dict) -> dict:
+        """The data the job is built from; the validated body unless a viewset resolves it."""
+        return validated_data
+
+    def export_job_author(self) -> User:
+        """The user an export job will belong to.
+
+        Raises:
+            TransferJobRequiresUserError: The caller has no user row (a system API key
+                or a plugin account), so no job could be owned by it.
+        """
+        author = resolve_author(self.request.user)
+        if author is None:
+            raise TransferJobRequiresUserError()
+        return author
+
+    def start_export_job(
+        self, author: User, definition: ExportJobDefinition, validated_data: dict
+    ) -> Response:
+        """Queue an export of `definition` for `author` and answer 202 `{job_id}`."""
+        auth = self.request.auth
+        job = TransferJobService().start_export(
+            user=author,
+            org_id=self.get_active_org_id(),
+            definition=definition,
+            validated_data=validated_data,
+            api_key=auth if isinstance(auth, ApiKey) else None,
+        )
+        return Response({"job_id": str(job.id)}, status=status.HTTP_202_ACCEPTED)

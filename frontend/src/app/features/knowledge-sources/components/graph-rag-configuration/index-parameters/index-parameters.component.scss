@@ -65,13 +65,6 @@
     }
 
     .readonly-chip {
-        display: flex;
-        align-items: center;
-        height: 40px;
-        padding: 4px 12px;
-        border-radius: 4px;
-        border: 1px solid var(--color-input-border);
-        background-color: var(--color-input-background);
         font-size: 0.875rem;
     }
 }
