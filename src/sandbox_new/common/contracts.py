@@ -9,7 +9,7 @@ any domain or application module -- those layers work with their own models.
 
 from typing import Any, Literal
 
-from foundation.schemas import Schema
+from foundation.schemas import ErrorDetailSchema, Schema
 from pydantic import Field
 
 __all__ = [
@@ -87,6 +87,9 @@ class ExecutionResultMessage(Schema):
     stdout: str = ""
     stderr: str = ""
     returncode: int = 0
+    # Set when the sandbox failed the job itself rather than the code failing: a fixed
+    # text fit to show the user, with stderr left to the code's own output.
+    error: ErrorDetailSchema | None = None
     mutations: StorageMutationsMessage | None = None
     # Echoed from the job so the publisher knows which result channel this one belongs on.
     reply_to_crew_channel: bool = False

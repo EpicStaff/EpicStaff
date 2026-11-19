@@ -394,7 +394,7 @@ async def test_stop_fails_submits_still_waiting(sandbox_factory):
             {},
             "use_storage requires storage_credentials",
             SandboxError,
-            "use_storage requires storage_credentials",
+            "The code couldn't run because of a server error.",
         ),
         (
             503,

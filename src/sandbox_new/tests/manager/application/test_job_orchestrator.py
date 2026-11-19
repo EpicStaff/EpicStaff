@@ -13,6 +13,7 @@ cannot be opened refuses the submission, naming the secret and nothing else.
 import asyncio
 
 import pytest
+from foundation.schemas import ErrorDetailSchema
 
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
@@ -517,7 +518,8 @@ async def test_a_job_held_until_its_hold_deadline_is_failed_and_finished(
     [published] = await publish_results(result_queue, registry)
 
     assert published.execution_id == "exec-1"
-    assert published.stderr == HOLD_TIMED_OUT_MESSAGE
+    assert published.error == ErrorDetailSchema(code="hold_timeout", detail=HOLD_TIMED_OUT_MESSAGE)
+    assert published.stderr == ""
     assert published.not_run_reason == "hold_timeout"
     assert published.ran is False
     assert dispatcher.dispatched == []

@@ -12,6 +12,8 @@ from common.contracts import (
     ExecutionResultMessage,
     StorageCredentialsMessage,
 )
+from foundation.schemas import ErrorDetailSchema
+
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
@@ -90,7 +92,8 @@ async def test_the_failure_sink_produces_a_failed_result_message():
 
     message = queue.get_nowait()
     assert message.execution_id == "exec-9"
-    assert message.stderr == "the venv failed to build"
+    assert message.error == ErrorDetailSchema(code="venv_failed", detail="the venv failed to build")
+    assert message.stderr == ""
     assert message.returncode == 1
     assert message.result is None
     assert message.ran is False

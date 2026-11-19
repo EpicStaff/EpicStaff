@@ -11,7 +11,7 @@ from loguru import logger
 from pydantic import ValidationError
 from services.graph.exceptions import InvalidStatePathError
 from services.graph.storage_credentials_picker import pick_storage_credentials
-from services.run_python_code_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService, code_failure_text
 from src.crew.models.graph_models import (
     GraphMessage,
 )
@@ -262,7 +262,7 @@ class ClassificationDecisionTableNodeSubgraph:
         )
 
         if result["returncode"] != 0:
-            raise ClassificationDecisionTableNodeError(f"{label} code: {result['stderr']}")
+            raise ClassificationDecisionTableNodeError(f"{label} code: {code_failure_text(result)}")
 
         if output_variable_path:
             output = json.loads(result["result_data"])
@@ -388,7 +388,7 @@ class ClassificationDecisionTableNodeSubgraph:
         )
 
         if result["returncode"] != 0:
-            raise ClassificationDecisionTableNodeError(f"{scope}: {result['stderr']}")
+            raise ClassificationDecisionTableNodeError(f"{scope}: {code_failure_text(result)}")
         try:
             evaluation = json.loads(result["result_data"])
             return evaluation["results"], evaluation["error"], evaluation["not_boolean"]
@@ -455,7 +455,7 @@ def main(**kwargs) -> dict:
 
         if result["returncode"] != 0:
             raise ClassificationDecisionTableNodeError(
-                f'Condition "{group_name}": {result["stderr"]}'
+                f'Condition "{group_name}": {code_failure_text(result)}'
             )
 
         try:

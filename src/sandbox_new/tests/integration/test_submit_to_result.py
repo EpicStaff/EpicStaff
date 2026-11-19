@@ -14,6 +14,7 @@ from pathlib import Path
 import fakeredis.aioredis
 import httpx
 import pytest
+from foundation.schemas import ErrorDetailSchema
 from foundation.transport.http import AsyncClient
 from foundation.utils.litestar import di, error_handler
 from litestar import Litestar
@@ -253,7 +254,10 @@ async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uo
     assert message.execution_id == EXECUTION_ID
     assert message.returncode == 1
     assert message.ran is False
-    assert message.stderr == "Couldn't install the libraries."
+    assert message.error == ErrorDetailSchema(
+        code="venv_failed", detail="Couldn't install the libraries."
+    )
+    assert message.stderr == ""
     assert (message.session_id, message.not_run_reason) == (7, "venv_failed")
 
 

@@ -17,6 +17,7 @@ from time import monotonic
 from urllib.parse import quote
 
 import httpx
+from foundation.schemas import ErrorResponseSchema, ErrorType
 from foundation.transport.http import (
     AsyncClient,
     ClientBadGatewayError,
@@ -28,9 +29,12 @@ from foundation.transport.http import (
     ClientTimeoutError,
     ClientUnavailableError,
 )
+from loguru import logger
+from pydantic import ValidationError
 
 from shared.models.sandbox_execution import ExecutionRequest
 from shared.sandbox_errors import (
+    SANDBOX_SERVER_ERROR_MESSAGE,
     SandboxError,
     SandboxExecutionLostError,
     SandboxOverloadedError,
@@ -108,7 +112,8 @@ class SandboxHttpClient(AsyncClient):
         Raises:
             SandboxOverloadedError: The sandbox was still full when the budget ran out.
             SandboxUnreachableError: The sandbox could not be reached within the budget.
-            SandboxError: The sandbox refused the execution; the message is its error body.
+            SandboxError: The sandbox refused the execution; the message is the `detail`
+                of a 4xx error envelope, or a fixed fact for any other answer.
         """
         payload = request.model_dump(mode="json")
         deadline = monotonic() + self.queue_timeout
@@ -130,7 +135,8 @@ class SandboxHttpClient(AsyncClient):
                 failure = SandboxUnreachableError()
                 requested_wait = 0.0
             except ClientHTTPStatusError as error:
-                raise SandboxError(error.response.text) from error
+                # `from None`: the httpx error holds the request, and with it the secrets.
+                raise _refusal(error.response) from None
 
             remaining = deadline - monotonic()
             if remaining <= 0:
@@ -224,6 +230,32 @@ class SandboxHttpClient(AsyncClient):
         except (SandboxExecutionLostError, ClientError):
             return False
         return True
+
+
+def _refusal(response: httpx.Response) -> SandboxError:
+    """Return the error for a refused submission, showing its `detail` only when it is the caller's.
+
+    A 5xx `detail` can be the raw text of an unhandled exception (foundation's fallback
+    handler), and a proxy answers with its own HTML page, so only a 4xx carrying a
+    `client_error` envelope is trusted to hold a fact meant for the user. Any other body
+    is logged, never shown.
+    """
+    if response.status_code < 500:
+        try:
+            envelope = ErrorResponseSchema.model_validate_json(response.content)
+        except ValidationError:
+            envelope = None
+        if envelope is not None and envelope.type is ErrorType.CLIENT_ERROR and envelope.errors:
+            refusal = envelope.errors[0]
+            return SandboxError(refusal.detail, code=refusal.code)
+    logger.warning(
+        "Sandbox answered {} {} with {}: {}",
+        response.request.method,
+        response.request.url.path,
+        response.status_code,
+        response.text,
+    )
+    return SandboxError(SANDBOX_SERVER_ERROR_MESSAGE)
 
 
 def _retry_after_seconds(response: httpx.Response) -> float:

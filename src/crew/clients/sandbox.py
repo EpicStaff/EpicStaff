@@ -252,7 +252,8 @@ def _refusal(response: httpx.Response) -> SandboxError:
         except ValidationError:
             envelope = None
         if envelope is not None and envelope.type is ErrorType.CLIENT_ERROR and envelope.errors:
-            return SandboxError(envelope.errors[0].detail)
+            refusal = envelope.errors[0]
+            return SandboxError(refusal.detail, code=refusal.code)
     _log_unshown_answer(response)
     return SandboxError(SANDBOX_SERVER_ERROR_MESSAGE)
 

@@ -32,7 +32,7 @@ class ResolveVenvStep:
                 venv_path,
                 context.job.execution_id,
             )
-            context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
+            context.fail("venv_missing", SANDBOX_SERVER_ERROR_MESSAGE)
             return
 
         context.python_executable = python_executable

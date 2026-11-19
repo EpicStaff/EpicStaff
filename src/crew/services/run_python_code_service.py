@@ -6,6 +6,7 @@ from typing import Any
 
 import settings
 from clients.sandbox import SandboxClient
+from foundation.schemas import ErrorDetailSchema
 from loguru import logger
 from models.state import State
 from pydantic import ValidationError
@@ -16,6 +17,7 @@ from src.shared.models import CodeResultData, ExecutionRequest, PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 from src.shared.redis_keys import crew_code_result_channel
 from src.shared.sandbox_errors import (
+    SANDBOX_SERVER_ERROR_MESSAGE,
     SandboxError,
     SandboxExecutionLostError,
     SandboxResultTimeoutError,
@@ -75,7 +77,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         by `subscribe_to_results` hands each result to the execution waiting for it.
         Every way the execution can fail without a result -- the sandbox stayed full,
         refused it, lost it, or became unreachable -- returns a synthesized
-        CodeResultData with returncode 1 and the reason as stderr. No result within
+        CodeResultData with returncode 1, an empty stderr and the failure as its
+        `error` (the SandboxError's code and message). No result within
         settings.CODE_RESULT_TIMEOUT (None waits as long as the sandbox still has the
         execution) returns returncode TIMEOUT_RETURNCODE. Callers branch on returncode
         like they already do for every other non-zero outcome.
@@ -144,7 +147,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 execution_id,
                 settings.CODE_RESULT_TIMEOUT,
             )
-            return _failed_result(execution_id, TIMEOUT_RETURNCODE, str(error))
+            return _failed_result(execution_id, TIMEOUT_RETURNCODE, error)
         except SandboxError as error:
             if isinstance(error, SandboxExecutionLostError):
                 logger.log(
@@ -154,9 +157,9 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                     session_id=python_code_data.session_id,
                     execution_id=execution_id,
                 )
-            # The class name only: the message is for the user, who gets it as stderr.
+            # The class name only: the message is for the user, who gets it as the error's detail.
             logger.error("Code execution {} failed ({})", execution_id, type(error).__name__)
-            return _failed_result(execution_id, 1, str(error))
+            return _failed_result(execution_id, 1, error)
         finally:
             self._pending_results.pop(execution_id, None)
 
@@ -204,12 +207,49 @@ def _log_rejected(
     )
 
 
-def _failed_result(execution_id: str, returncode: int, stderr: str) -> dict[str, Any]:
+def code_failure_text(code_result: dict[str, Any]) -> str:
+    """Return the text to show for a failed code result.
+
+    The code's own stderr comes first; a sandbox platform failure (`error`) adds its
+    `detail` on the line after it. A malformed `error` is logged and replaced with the
+    generic server-error text, so its content never reaches the user.
+    """
+    stderr = code_result["stderr"]
+    error = code_result.get("error")
+    if error is None:
+        return stderr
+    try:
+        detail = ErrorDetailSchema.model_validate(error).detail
+    except ValidationError:
+        logger.warning(
+            "Code result {} has an error without code and detail",
+            code_result.get("execution_id"),
+        )
+        detail = SANDBOX_SERVER_ERROR_MESSAGE
+    return f"{stderr}\n{detail}" if stderr else detail
+
+
+def streamed_execution_data(code_result: dict[str, Any]) -> dict[str, Any]:
+    """Return the code result as the running-graph UI expects it in a python message.
+
+    The UI shows its Error section from `error` as a string, so a `{code, detail}` dict
+    there would render an empty block: the shown failure text goes into `stderr` and
+    `error` is left out.
+    """
+    shown = {key: value for key, value in code_result.items() if key != "error"}
+    shown["stderr"] = code_failure_text(code_result)
+    return shown
+
+
+def _failed_result(execution_id: str, returncode: int, error: SandboxError) -> dict[str, Any]:
     """A result for an execution the sandbox never produced one for."""
     return CodeResultData(
         execution_id=execution_id,
         returncode=returncode,
         stdout="",
-        stderr=stderr,
+        stderr="",
         result_data=None,
+        error=ErrorDetailSchema(code=error.code, detail=str(error)).model_dump(
+            include={"code", "detail"}
+        ),
     ).model_dump()

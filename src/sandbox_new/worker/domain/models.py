@@ -11,6 +11,7 @@ outputs of the isolation domain services (see ``domain/services/isolation.py``).
 from typing import Any, Literal
 
 from foundation.base import ValueObject
+from foundation.schemas import ErrorDetailSchema
 from pydantic import Field
 
 from worker.domain.enums import NetworkPolicy
@@ -94,6 +95,9 @@ class ExecutionResult(ValueObject):
     stdout: str = ""
     stderr: str = ""
     returncode: int = 0
+    # Set when the worker failed the job itself rather than the code failing; stderr is
+    # then the code's output only.
+    error: ErrorDetailSchema | None = None
     # Echoed from the job; see ``Job.reply_to_crew_channel``.
     reply_to_crew_channel: bool = False
     # The job was really executed, as opposed to failed without running.

@@ -156,6 +156,12 @@ class CodeResultData(BaseModel):
     stderr: str
     stdout: str
     returncode: int = 0
+    # A sandbox platform failure as `{code, detail}`; None when the code ran. A plain dict
+    # because src/shared doesn't depend on foundation: services build and validate it with
+    # foundation's ErrorDetailSchema. Typed loosely so a key or value a newer producer adds
+    # never drops the whole result. stderr is never replaced by a platform failure: it keeps
+    # whatever the code wrote, and a timeout still appends its sentence there.
+    error: dict[str, Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 
 import pytest
+from foundation.schemas import ErrorDetailSchema
 
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
@@ -135,7 +136,10 @@ async def test_an_expired_job_is_failed_not_run_and_the_slot_is_reused(
     await runtime.run_until(lambda: len(result_sink.sent) == 2)
 
     result = runtime.results()["exec-1"]
-    assert result.stderr == "The server was too busy to run the code in time."
+    assert result.error == ErrorDetailSchema(
+        code="overloaded", detail="The server was too busy to run the code in time."
+    )
+    assert result.stderr == ""
     assert result.returncode == 1
     assert result.ran is False
     assert result.reply_to_crew_channel is True
@@ -173,7 +177,10 @@ async def test_a_run_that_raises_is_failed_and_frees_its_slot(result_sink, clock
     await runtime.run_until(lambda: len(result_sink.sent) == 2)
 
     results = runtime.results()
-    assert results["exec-1"].stderr == "The code couldn't run because of a server error."
+    assert results["exec-1"].error == ErrorDetailSchema(
+        code="server_error", detail="The code couldn't run because of a server error."
+    )
+    assert results["exec-1"].stderr == ""
     assert results["exec-1"].returncode == 1
     assert results["exec-1"].ran is False
     # A plain failed run, not an overload: no reason, so it is published as "failed".
@@ -192,6 +199,10 @@ async def test_an_undecodable_job_is_failed_and_the_loop_goes_on(result_sink, cl
 
     results = runtime.results()
     assert results["exec-bad"].returncode == 1
+    assert results["exec-bad"].error == ErrorDetailSchema(
+        code="server_error", detail="The code couldn't run because of a server error."
+    )
+    assert results["exec-bad"].stderr == ""
     assert results["exec-bad"].ran is False
     assert results["exec-bad"].reply_to_crew_channel is True
     assert (results["exec-bad"].session_id, results["exec-bad"].not_run_reason) == (5, None)

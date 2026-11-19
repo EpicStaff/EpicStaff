@@ -7,12 +7,15 @@ other service's results. Mutations go to their own channel and only when there i
 something to report, whichever result channel carried the result.
 """
 
+import asyncio
 import json
 
 import fakeredis.aioredis
 import pytest
 
 from common.contracts import ExecutionResultMessage, StorageMutationsMessage
+from foundation.schemas import ErrorDetailSchema
+from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
 from manager.infrastructure.transport.redis_result_publisher import RedisResultPublisher
 
 RESULT_CHANNEL = "code:results"
@@ -72,6 +75,7 @@ async def test_the_result_payload_uses_the_keys_consumers_already_read(redis, pu
         "stdout": "out",
         "stderr": "err",
         "returncode": 0,
+        "error": None,
     }
 
 
@@ -100,7 +104,14 @@ async def test_exec_published_reports_the_outcome_and_keeps_it_off_the_payload(
     )
 
     payload = await next_payload(pubsub)
-    assert set(payload) == {"execution_id", "result_data", "stdout", "stderr", "returncode"}
+    assert set(payload) == {
+        "execution_id",
+        "result_data",
+        "stdout",
+        "stderr",
+        "returncode",
+        "error",
+    }
     assert checkpoints == [
         {
             "checkpoint": "exec_published",
@@ -198,4 +209,56 @@ async def test_a_crew_result_still_reports_its_mutations_on_the_mutation_channel
         "org_prefix": "org1",
         "session_id": 7,
         "mutations": [{"path": "docs/a.txt"}],
+    }
+
+
+@pytest.mark.parametrize(
+    ("not_run_reason", "message"),
+    [
+        ("venv_failed", "Couldn't install the libraries."),
+        ("dispatch_failed", "The code couldn't run because of a server error."),
+        ("hold_timeout", "The libraries are still being installed."),
+        ("worker_lost", "Sandbox worker was lost; the job may not have finished."),
+        ("overloaded", "The server was too busy to run the code in time."),
+    ],
+)
+async def test_a_job_the_sandbox_failed_is_published_with_its_error_and_an_empty_stderr(
+    redis, publisher, not_run_reason, message
+):
+    pubsub = await subscribe(redis, RESULT_CHANNEL)
+    result_queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
+    await QueueJobFailureSink(result_queue).fail(
+        "exec-1",
+        message,
+        session_id=7,
+        not_run_reason=not_run_reason,
+        reply_to_crew_channel=False,
+    )
+
+    await publisher.publish(result_queue.get_nowait())
+
+    payload = await next_payload(pubsub)
+    assert payload["error"] == {"code": not_run_reason, "detail": message}
+    assert payload["stderr"] == ""
+    assert payload["returncode"] == 1
+
+
+async def test_a_worker_error_is_published_as_code_and_detail_only(redis, publisher):
+    pubsub = await subscribe(redis, CREW_RESULT_CHANNEL)
+
+    await publisher.publish(
+        ExecutionResultMessage(
+            execution_id="exec-1",
+            returncode=1,
+            error=ErrorDetailSchema(
+                code="server_error", detail="The code couldn't run because of a server error."
+            ),
+            reply_to_crew_channel=True,
+        )
+    )
+
+    payload = await next_payload(pubsub)
+    assert payload["error"] == {
+        "code": "server_error",
+        "detail": "The code couldn't run because of a server error.",
     }

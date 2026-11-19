@@ -5,6 +5,7 @@ outcome on the context, so the worker returns an error instead of going down.
 """
 
 import pytest
+from foundation.schemas import ErrorDetailSchema
 from loguru import logger
 
 from worker.application.context import ExecutionContext
@@ -29,6 +30,7 @@ async def raising_step(context: ExecutionContext) -> None:
 
 
 SERVER_ERROR = "The code couldn't run because of a server error."
+SERVER_ERROR_DETAIL = ErrorDetailSchema(code="server_error", detail=SERVER_ERROR)
 
 
 @pytest.fixture
@@ -68,7 +70,8 @@ async def test_a_raising_step_becomes_a_failed_outcome_with_a_fixed_text(logged)
     assert seen == []
     assert context.completed is True
     assert context.returncode == 1
-    assert context.stderr == SERVER_ERROR
+    assert context.error == SERVER_ERROR_DETAIL
+    assert context.stderr == ""
     assert "step blew up at /srv/executions/exec-1" in "".join(logged)
 
 
@@ -80,7 +83,8 @@ async def test_a_step_failing_after_the_child_wrote_stderr_keeps_what_the_child_
 
     context = await pipeline.run(make_context())
 
-    assert context.stderr == f"child wrote this\n{SERVER_ERROR}"
+    assert context.stderr == "child wrote this"
+    assert context.error == SERVER_ERROR_DETAIL
 
 
 async def test_a_pipeline_that_produces_no_result_fails_the_run():
@@ -90,36 +94,32 @@ async def test_a_pipeline_that_produces_no_result_fails_the_run():
     assert seen == ["a"]
     assert context.completed is True
     assert context.returncode == 1
-    assert context.stderr == SERVER_ERROR
+    assert context.error == SERVER_ERROR_DETAIL
 
 
 async def test_an_empty_pipeline_fails_the_run():
     context = await Pipeline().run(make_context())
 
     assert context.returncode == 1
-    assert context.stderr == SERVER_ERROR
+    assert context.error == SERVER_ERROR_DETAIL
 
 
-def test_fail_appends_to_an_existing_stderr():
+def test_fail_records_the_error_and_leaves_the_childs_stderr_as_it_was():
     context = make_context(stderr="child wrote this")
 
-    context.fail("and then the step blew up")
+    context.fail("venv_missing", "and then the step blew up")
 
-    assert context.stderr == "child wrote this\nand then the step blew up"
-
-
-def test_fail_on_an_empty_stderr_does_not_add_a_leading_newline():
-    context = make_context()
-
-    context.fail("step blew up")
-
-    assert context.stderr == "step blew up"
+    assert context.error == ErrorDetailSchema(
+        code="venv_missing", detail="and then the step blew up"
+    )
+    assert context.stderr == "child wrote this"
+    assert context.completed is True
 
 
 def test_fail_accepts_a_custom_return_code():
     context = make_context()
 
-    context.fail("timed out", returncode=124)
+    context.fail("server_error", "timed out", returncode=124)
 
     assert context.returncode == 124
     assert context.completed is True

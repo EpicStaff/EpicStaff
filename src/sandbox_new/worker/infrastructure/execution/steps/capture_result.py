@@ -35,11 +35,11 @@ class CaptureResultStep:
                 )
             except ControlFileTooLargeError as error:
                 logger.warning("Rejected result file of {}: {}", context.job.execution_id, error)
-                context.fail(_RESULT_TOO_LARGE)
+                context.fail("result_too_large", _RESULT_TOO_LARGE)
                 return
             except UnsafeControlFileError as error:
                 logger.error("Rejected result file of {}: {}", context.job.execution_id, error)
-                context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
+                context.fail("unsafe_control_file", SANDBOX_SERVER_ERROR_MESSAGE)
                 return
             except Exception:
                 logger.exception("Exception reading result file")

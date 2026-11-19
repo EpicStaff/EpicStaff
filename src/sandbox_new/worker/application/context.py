@@ -2,22 +2,36 @@
 
 Each step reads what earlier steps put here and writes what later steps need. It
 also carries the outcome: once the pipeline finishes, the orchestrator reads
-``returncode``/``stdout``/``stderr``/``result_data`` off the context to build the
-wire result. Errors are recorded here via ``fail`` rather than raised, so a failing
+``returncode``/``stdout``/``stderr``/``result_data``/``error`` off the context to build
+the wire result. Errors are recorded here via ``fail`` rather than raised, so a failing
 step ends the run cleanly instead of taking the worker down.
 """
 
 from pathlib import Path
+from typing import Literal
 
+from foundation.schemas import ErrorDetailSchema
 from pydantic import BaseModel, ConfigDict
 
 from worker.domain.models import IsolationPlan, Job, StorageMutations
 
-__all__ = ["UNSAFE_TO_RUN_MESSAGE", "ExecutionContext"]
+__all__ = ["UNSAFE_TO_RUN_MESSAGE", "ExecutionContext", "RunFailureCode"]
 
 # Failed with when the isolation a run needs is missing or could not be set up. Which
 # isolation, and how to change that, is the operator's business and goes to the log.
 UNSAFE_TO_RUN_MESSAGE = "This server can't run code safely right now, so the code wasn't run."
+
+# Why the sandbox failed a run itself; the ``code`` of the result's error. Stable: a
+# producer may tell failures apart by it, so a value is never renamed.
+type RunFailureCode = Literal[
+    "server_error",
+    "isolation_unavailable",
+    "storage_scope_missing",
+    "venv_missing",
+    "unsafe_control_file",
+    "result_too_large",
+    "result_undeliverable",
+]
 
 
 class ExecutionContext(BaseModel):
@@ -46,6 +60,8 @@ class ExecutionContext(BaseModel):
     stdout: str = ""
     stderr: str = ""
     result_data: str | None = None
+    # Set when the sandbox failed the run itself; stderr keeps only the child's output.
+    error: ErrorDetailSchema | None = None
     # Set once the run has reached a terminal state; the pipeline stops here.
     completed: bool = False
 
@@ -55,13 +71,16 @@ class ExecutionContext(BaseModel):
         """Mark the run finished with whatever outcome fields are already set."""
         self.completed = True
 
-    def fail(self, message: str, returncode: int = 1) -> None:
-        """Record a failure as the run's outcome and mark it finished.
+    def fail(self, code: RunFailureCode, message: str, returncode: int = 1) -> None:
+        """Record a failure of the sandbox as the run's error and mark the run finished.
+
+        Whatever the child already wrote to stderr stays there, unchanged.
 
         Args:
-            message: Shown to the user after whatever the child wrote to stderr. A fixed
-                text, never one built from an exception.
+            code: The error's code, naming why the run failed.
+            message: The error's detail, shown to the user. A fixed text, never one
+                built from an exception.
         """
-        self.stderr = f"{self.stderr}\n{message}" if self.stderr else message
+        self.error = ErrorDetailSchema(code=code, detail=message)
         self.returncode = returncode
         self.completed = True

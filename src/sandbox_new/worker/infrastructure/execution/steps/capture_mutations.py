@@ -41,7 +41,7 @@ class CaptureMutationsStep:
             mutations = json.loads(text)
         except UnsafeControlFileError as error:
             logger.error("Rejected storage mutations file of {}: {}", job.execution_id, error)
-            context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
+            context.fail("unsafe_control_file", SANDBOX_SERVER_ERROR_MESSAGE)
             return
         except Exception:
             logger.exception("Failed to read storage mutations for {}", job.execution_id)

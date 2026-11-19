@@ -8,6 +8,7 @@ storage access is incomplete rather than handing the child half a configuration.
 import json
 
 import pytest
+from foundation.schemas import ErrorDetailSchema
 
 from worker.application.steps import ConfigureStorageStep
 from worker.domain.models import StorageCredentials
@@ -115,7 +116,10 @@ async def test_storage_without_credentials_fails_the_job(tmp_path, step):
 
     assert context.completed is True
     assert context.returncode == 1
-    assert context.stderr == "The code couldn't run because of a server error."
+    assert context.error == ErrorDetailSchema(
+        code="storage_scope_missing", detail="The code couldn't run because of a server error."
+    )
+    assert context.stderr == ""
     assert context.env == {}
     assert context.storage_mutations_path is None
 
@@ -127,6 +131,9 @@ async def test_storage_without_an_org_prefix_fails_the_job(tmp_path, step):
 
     assert context.completed is True
     assert context.returncode == 1
-    assert context.stderr == "The code couldn't run because of a server error."
+    assert context.error == ErrorDetailSchema(
+        code="storage_scope_missing", detail="The code couldn't run because of a server error."
+    )
+    assert context.stderr == ""
     assert context.env == {}
     assert context.storage_mutations_path is None

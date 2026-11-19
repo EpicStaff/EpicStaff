@@ -3,12 +3,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 from django.utils import timezone
+from foundation.schemas import ErrorDetailSchema
 from foundation.transport.http import ClientError, ClientUnavailableError
 from loguru import logger
 from pydantic import ValidationError
 from rbac.authorship import resolve_author
 from src.shared.models import CodeResultData, CodeTaskData
 from src.shared.models.storage_scope import StorageAction, StorageCredentials, StorageGrant
+from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
 from storage_credentials.exceptions import StorageCredentialError
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
@@ -415,6 +417,14 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         return f"{formatted_time}@{short_uuid}"
 
     def save_execution_result(self, result: CodeResultData) -> bool:
+        """Finish the PENDING row of this execution with its result.
+
+        A sandbox platform failure (`result.error`) is stored as the row's stderr, the
+        text the test run shows.
+
+        Returns:
+            False when no PENDING row had this execution id.
+        """
         updated = PythonCodeResult.objects.filter(
             execution_id=result.execution_id,
             status=PythonCodeResult.Status.PENDING,
@@ -425,7 +435,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 else PythonCodeResult.Status.ERROR
             ),
             result_data=result.result_data,
-            stderr=result.stderr,
+            stderr=_shown_stderr(result.execution_id, stderr=result.stderr, error=result.error),
             stdout=result.stdout,
             returncode=result.returncode,
             finished_at=timezone.now(),
@@ -440,3 +450,20 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         )
         if stale_ids:
             PythonCodeResult.objects.filter(pk__in=list(stale_ids)).delete()
+
+
+def _shown_stderr(execution_id: str | None, *, stderr: str, error: dict[str, Any] | None) -> str:
+    """Return the failure text shown for a code result.
+
+    The code's own stderr comes first; a sandbox platform failure (`error`) adds its
+    `detail` on the line after it. A malformed `error` is logged and replaced with the
+    generic server-error text, so its content is never shown or stored.
+    """
+    if error is None:
+        return stderr
+    try:
+        detail = ErrorDetailSchema.model_validate(error).detail
+    except ValidationError:
+        logger.warning("Code result {} has an error without code and detail", execution_id)
+        detail = SANDBOX_SERVER_ERROR_MESSAGE
+    return f"{stderr}\n{detail}" if stderr else detail

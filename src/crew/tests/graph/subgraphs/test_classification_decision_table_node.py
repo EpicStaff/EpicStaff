@@ -2015,3 +2015,133 @@ async def test_undecryptable_system_one_key_routes_to_the_error_node_without_a_p
         'Prompt "company_check": api_key could not be decrypted.'
     )
     assert BROKEN_TOKEN not in json.dumps(published_messages(redis_service))
+
+
+_SANDBOX_LOST_DETAIL = "Sandbox worker was lost; the job may not have finished."
+
+
+async def fake_run_code_sandbox_lost(
+    self,
+    python_code_data,
+    inputs,
+    stop_event=None,
+    additional_global_kwargs=None,
+    storage_credentials=None,
+):
+    return {
+        "returncode": 1,
+        "result_data": None,
+        "stderr": "",
+        "error": {"code": "worker_lost", "detail": _SANDBOX_LOST_DETAIL},
+        "execution_id": "test",
+    }
+
+
+async def _expressions_ok_then_sandbox_lost(
+    self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None,
+    storage_credentials=None,
+):
+    if "expressions" in inputs:
+        return await fake_run_code(self, python_code_data, inputs, stop_event)
+    return await fake_run_code_sandbox_lost(self, python_code_data, inputs, stop_event)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("run_code", "node_data", "expected_details"),
+    [
+        pytest.param(
+            fake_run_code_sandbox_lost,
+            make_node_data(next_error_node="error_node").model_copy(
+                update={"pre_python_code": _FAILING_CODE}
+            ),
+            f"Pre-computation code: {_SANDBOX_LOST_DETAIL}",
+            id="computation-code",
+        ),
+        pytest.param(
+            fake_run_code_sandbox_lost,
+            make_node_data(
+                condition_groups=[
+                    ClassificationConditionGroupData(
+                        group_name="first", expression="False", next_node="wrong", order=0
+                    ),
+                    ClassificationConditionGroupData(
+                        group_name="last", expression="True", next_node="wrong", order=1
+                    ),
+                ],
+                next_error_node="error_node",
+            ),
+            f'Conditions "first" to "last": {_SANDBOX_LOST_DETAIL}',
+            id="condition-batch",
+        ),
+        pytest.param(
+            _expressions_ok_then_sandbox_lost,
+            _one_row_node(expression="True", manipulation="variables.total = 1"),
+            f'Condition "High score": {_SANDBOX_LOST_DETAIL}',
+            id="manipulation",
+        ),
+    ],
+)
+async def test_a_sandbox_failure_streams_its_error_detail_after_what_it_ran(
+    monkeypatch, run_code, node_data, expected_details
+):
+    monkeypatch.setattr(RunPythonCodeService, "run_code", run_code, raising=True)
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    await subgraph.ainvoke(make_state())
+
+    assert first_error_message(redis_service)["details"] == expected_details
+
+
+def _run_code_failing_with(stderr: str, error: dict):
+    async def run_code(
+        self,
+        python_code_data,
+        inputs,
+        stop_event=None,
+        additional_global_kwargs=None,
+        storage_credentials=None,
+    ):
+        return {
+            "returncode": 1,
+            "result_data": None,
+            "stderr": stderr,
+            "error": error,
+            "execution_id": "test",
+        }
+
+    return run_code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stderr", "error", "expected_details"),
+    [
+        pytest.param(
+            "child wrote this",
+            {"code": "result_too_large", "detail": "The function's return value is too big to save."},
+            "Pre-computation code: child wrote this\nThe function's return value is too big to save.",
+            id="code-wrote-then-sandbox-failed",
+        ),
+        pytest.param(
+            "",
+            {"code": "worker_lost", "detail": _SANDBOX_LOST_DETAIL, "attr": None},
+            f"Pre-computation code: {_SANDBOX_LOST_DETAIL}",
+            id="error-with-an-extra-field",
+        ),
+    ],
+)
+async def test_computation_code_shows_the_codes_stderr_before_the_sandbox_error(
+    monkeypatch, stderr, error, expected_details
+):
+    monkeypatch.setattr(
+        RunPythonCodeService, "run_code", _run_code_failing_with(stderr, error), raising=True
+    )
+    node_data = make_node_data(next_error_node="error_node").model_copy(
+        update={"pre_python_code": _FAILING_CODE}
+    )
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    await subgraph.ainvoke(make_state())
+
+    assert first_error_message(redis_service)["details"] == expected_details

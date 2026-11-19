@@ -186,3 +186,96 @@ async def test_unreadable_code_result_streams_the_server_error_fact_and_logs_the
         "Condition \"High score\": The code couldn't run because of a server error."
     ]
     assert any("internal-host" in record for record in captured_logs)
+
+
+SANDBOX_LOST_RESULT = {
+    "returncode": 1,
+    "result_data": None,
+    "stderr": "",
+    "error": {
+        "code": "worker_lost",
+        "detail": "Sandbox worker was lost; the job may not have finished.",
+    },
+    "execution_id": "test",
+}
+TRUE_RESULT = {"returncode": 0, "result_data": "true", "stderr": "", "error": None, "execution_id": "test"}
+
+
+class SequenceRunPythonCodeService:
+    """Return the given sandbox results one run_code call after another."""
+
+    def __init__(self, *results: dict):
+        self._results = list(results)
+
+    async def run_code(self, python_code_data, inputs, stop_event=None, storage_credentials=None):
+        return dict(self._results.pop(0))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("group", "results"),
+    [
+        pytest.param(
+            complex_group("High score", "True", "node_A"),
+            [SANDBOX_LOST_RESULT],
+            id="expression",
+        ),
+        pytest.param(
+            ConditionGroupData(
+                group_name="High score",
+                group_type="complex",
+                expression="True",
+                manipulation="variables['total'] = 1",
+                next_node="node_A",
+            ),
+            [TRUE_RESULT, SANDBOX_LOST_RESULT],
+            id="manipulation",
+        ),
+    ],
+)
+async def test_a_sandbox_failure_streams_its_error_detail_after_the_condition(group, results):
+    node_data = DecisionTableNodeData(
+        node_name="dt_node", conditional_group_list=[group], next_error_node="error_node"
+    )
+    subgraph, redis_service = build_subgraph(node_data, SequenceRunPythonCodeService(*results))
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert result["system_variables"]["nodes"]["dt_node"]["result_node"] == "error_node"
+    assert error_details(redis_service) == [
+        'Condition "High score": Sandbox worker was lost; the job may not have finished.'
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stderr", "error", "expected_details"),
+    [
+        pytest.param(
+            "child wrote this",
+            {"code": "unsafe_control_file", "detail": "The code couldn't run because of a server error."},
+            'Condition "High score": child wrote this\nThe code couldn\'t run because of a server error.',
+            id="code-wrote-then-sandbox-failed",
+        ),
+        pytest.param(
+            "",
+            {"code": "worker_lost", "detail": "Sandbox worker was lost; the job may not have finished.", "attr": None},
+            'Condition "High score": Sandbox worker was lost; the job may not have finished.',
+            id="error-with-an-extra-field",
+        ),
+    ],
+)
+async def test_a_condition_shows_the_codes_stderr_before_the_sandbox_error(
+    stderr, error, expected_details
+):
+    failed = {**SANDBOX_LOST_RESULT, "stderr": stderr, "error": error}
+    node_data = DecisionTableNodeData(
+        node_name="dt_node",
+        conditional_group_list=[complex_group("High score", "True", "node_A")],
+        next_error_node="error_node",
+    )
+    subgraph, redis_service = build_subgraph(node_data, SequenceRunPythonCodeService(failed))
+
+    await subgraph.ainvoke(make_state())
+
+    assert error_details(redis_service) == [expected_details]

@@ -6,6 +6,7 @@ services, and either records the plan or fails the context. A refusal must leave
 """
 
 import pytest
+from foundation.schemas import ErrorDetailSchema
 from loguru import logger
 
 from worker.application.steps import BuildIsolationPlan
@@ -70,7 +71,10 @@ async def test_a_kernel_without_landlock_refuses_when_isolation_is_required(cont
     assert context.isolation is None
     assert context.completed is True
     assert context.returncode == 1
-    assert context.stderr == UNSAFE
+    assert context.error == ErrorDetailSchema(
+        code="isolation_unavailable", detail=UNSAFE
+    )
+    assert context.stderr == ""
     assert "SANDBOX_REQUIRE_ISOLATION" in "".join(logged)
 
 
@@ -88,7 +92,10 @@ async def test_required_signal_isolation_on_an_old_kernel_refuses(context, logge
 
     assert context.isolation is None
     assert context.completed is True
-    assert context.stderr == UNSAFE
+    assert context.error == ErrorDetailSchema(
+        code="isolation_unavailable", detail=UNSAFE
+    )
+    assert context.stderr == ""
     assert "SANDBOX_REQUIRE_SIGNAL_ISOLATION=false" in "".join(logged)
 
 
@@ -99,7 +106,10 @@ async def test_storage_on_a_kernel_too_old_for_the_port_carve_out_refuses(contex
 
     assert context.isolation is None
     assert context.completed is True
-    assert context.stderr == UNSAFE
+    assert context.error == ErrorDetailSchema(
+        code="isolation_unavailable", detail=UNSAFE
+    )
+    assert context.stderr == ""
     assert "SANDBOX_BLOCK_NETWORK=false" in "".join(logged)
 
 

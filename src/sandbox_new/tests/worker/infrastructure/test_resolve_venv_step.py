@@ -4,6 +4,8 @@ Defense in depth, not the readiness gate: the manager already waits for the buil
 step only refuses to launch against a path that is not there.
 """
 
+from foundation.schemas import ErrorDetailSchema
+
 from worker.infrastructure.execution.steps import ResolveVenvStep
 from tests.builders import make_context, make_worker_job, write_executable
 
@@ -26,7 +28,10 @@ async def test_a_missing_venv_fails_the_job(tmp_path):
     assert context.python_executable is None
     assert context.completed is True
     assert context.returncode == 1
-    assert context.stderr == "The code couldn't run because of a server error."
+    assert context.error == ErrorDetailSchema(
+        code="venv_missing", detail="The code couldn't run because of a server error."
+    )
+    assert context.stderr == ""
 
 
 async def test_a_venv_directory_without_a_python_binary_fails_the_job(tmp_path):

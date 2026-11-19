@@ -5,6 +5,7 @@ whatever the run did, secrets are scrubbed on the way out, and a result is alway
 """
 
 import pytest
+from foundation.schemas import ErrorDetailSchema
 
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
@@ -136,7 +137,10 @@ async def test_a_failing_pipeline_step_still_produces_a_result(result_sink):
 
     result, _ = result_sink.sent[0]
     assert result.returncode == 1
-    assert result.stderr == "The code couldn't run because of a server error."
+    assert result.error == ErrorDetailSchema(
+        code="server_error", detail="The code couldn't run because of a server error."
+    )
+    assert result.stderr == ""
 
 
 async def test_a_run_is_marked_as_having_run(result_sink):
@@ -163,13 +167,40 @@ async def test_failing_a_job_sends_a_failed_result_without_running_it(result_sin
     [(result, mutations)] = result_sink.sent
     assert ran == []
     assert result.execution_id == "exec-1"
-    assert result.stderr == "Sandbox failed to run the job."
+    assert result.error == ErrorDetailSchema(
+        code="server_error", detail="Sandbox failed to run the job."
+    )
+    assert result.stderr == ""
     assert result.returncode == 1
     assert result.ran is False
     assert result.reply_to_crew_channel is True
     assert result.session_id == 7
     assert result.not_run_reason is None
     assert mutations is None
+
+
+@pytest.mark.parametrize(
+    ("not_run_reason", "expected_code"),
+    [("overloaded", "overloaded"), (None, "server_error")],
+)
+async def test_a_failed_job_carries_its_message_as_a_coded_error(
+    result_sink, not_run_reason, expected_code
+):
+    orchestrator = build(Pipeline(), result_sink)
+
+    await orchestrator.fail(
+        "exec-1",
+        "Sandbox failed to run the job.",
+        session_id=7,
+        reply_to_crew_channel=False,
+        not_run_reason=not_run_reason,
+    )
+
+    [(result, _)] = result_sink.sent
+    assert result.error == ErrorDetailSchema(
+        code=expected_code, detail="Sandbox failed to run the job."
+    )
+    assert result.stderr == ""
 
 
 async def failing_step(context):

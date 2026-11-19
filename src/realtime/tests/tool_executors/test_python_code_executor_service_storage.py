@@ -181,7 +181,11 @@ async def test_storage_tool_without_credentials_returns_no_files_error_without_s
     )
 
     assert result["returncode"] == 1
-    assert result["stderr"] == "No files are attached to this agent, so this tool can't use storage."
+    assert result["error"] == {
+        "code": "no_files_attached",
+        "detail": "No files are attached to this agent, so this tool can't use storage.",
+    }
+    assert result["stderr"] == ""
     assert result["stdout"] == ""
     assert sandbox_intake.bodies == []
     redis.async_subscribe.assert_not_called()
@@ -211,7 +215,11 @@ async def test_storage_tool_with_empty_own_scope_gets_no_files_error_even_with_c
     )
 
     assert result["returncode"] == 1
-    assert result["stderr"] == "No files are attached to this agent, so this tool can't use storage."
+    assert result["error"] == {
+        "code": "no_files_attached",
+        "detail": "No files are attached to this agent, so this tool can't use storage.",
+    }
+    assert result["stderr"] == ""
     assert sandbox_intake.bodies == []
     redis.async_subscribe.assert_not_called()
 
@@ -246,7 +254,11 @@ async def test_invalid_storage_scope_returns_error_result(sandbox_intake):
 
     assert isinstance(result, dict)
     assert result["returncode"] == 1
-    assert "Invalid storage scope" in result["stderr"]
+    assert result["error"] == {
+        "code": "invalid_storage_scope",
+        "detail": "Invalid storage scope for code execution.",
+    }
+    assert result["stderr"] == ""
     assert result["stdout"] == ""
     # Nothing reached the sandbox, and nothing was subscribed to.
     assert sandbox_intake.bodies == []

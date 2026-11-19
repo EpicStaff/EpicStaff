@@ -33,7 +33,7 @@ class ConfigureStorageStep:
                 "Job {} asks for storage without storage_org_prefix; refusing to execute it.",
                 job.execution_id,
             )
-            context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
+            context.fail("storage_scope_missing", SANDBOX_SERVER_ERROR_MESSAGE)
             return
 
         credentials = job.storage_credentials
@@ -42,7 +42,7 @@ class ConfigureStorageStep:
                 "Job {} asks for storage without storage_credentials; refusing to execute it.",
                 job.execution_id,
             )
-            context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
+            context.fail("storage_scope_missing", SANDBOX_SERVER_ERROR_MESSAGE)
             return
 
         context.storage_mutations_path = context.exec_dir / "storage_mutations.json"

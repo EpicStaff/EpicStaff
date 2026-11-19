@@ -49,7 +49,7 @@ class PrepareWorkspaceStep:
                     os.chown(directory, SANDBOX_UID, SANDBOX_GID)
             except OSError as error:
                 logger.error("Failed to chown execution dirs (EPERM?): {}", error)
-                context.fail(UNSAFE_TO_RUN_MESSAGE)
+                context.fail("isolation_unavailable", UNSAFE_TO_RUN_MESSAGE)
                 return
 
         context.home_dir = home_dir

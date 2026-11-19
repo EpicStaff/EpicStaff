@@ -118,7 +118,11 @@ async def test_returns_timeout_result_when_no_result_arrives(
 
     assert result["execution_id"] == sandbox.tasks[0]["execution_id"]
     assert result["returncode"] == 124
-    assert result["stderr"] == "The code's result didn't arrive in time."
+    assert result["error"] == {
+        "code": "result_timeout",
+        "detail": "The code's result didn't arrive in time.",
+    }
+    assert result["stderr"] == ""
     assert result["result_data"] is None
 
 

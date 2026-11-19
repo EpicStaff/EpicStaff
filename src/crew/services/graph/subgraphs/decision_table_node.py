@@ -8,7 +8,7 @@ from models.graph_models import GraphMessage
 from models.state import State
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
-from services.run_python_code_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService, code_failure_text
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.shared.models import (
     ConditionGroupData,
@@ -131,7 +131,7 @@ def main(**kwargs) -> bool:
         )
         if python_code_execution_data["returncode"] != 0:
             raise DecisionTableNodeDataError(
-                f'Condition "{group_name}": {python_code_execution_data["stderr"]}'
+                f'Condition "{group_name}": {code_failure_text(python_code_execution_data)}'
             )
 
         variables = self._read_result(python_code_execution_data, group_name)
@@ -165,7 +165,7 @@ def main(variables: dict) -> bool:
         )
         if python_code_execution_data["returncode"] != 0:
             raise DecisionTableNodeDataError(
-                f'Condition "{group_name}": {python_code_execution_data["stderr"]}'
+                f'Condition "{group_name}": {code_failure_text(python_code_execution_data)}'
             )
         result = self._read_result(python_code_execution_data, group_name)
         if result is None:

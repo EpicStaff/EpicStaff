@@ -57,7 +57,7 @@ class BuildIsolationPlan:
                 "{}. Set SANDBOX_REQUIRE_ISOLATION=false to run without it.",
                 execution_id,
             )
-            context.fail(UNSAFE_TO_RUN_MESSAGE)
+            context.fail("isolation_unavailable", UNSAFE_TO_RUN_MESSAGE)
             return
         if filesystem is FilesystemIsolationPolicy.UNCONFINED:
             logger.warning(
@@ -75,7 +75,7 @@ class BuildIsolationPlan:
                 abi,
                 execution_id,
             )
-            context.fail(UNSAFE_TO_RUN_MESSAGE)
+            context.fail("isolation_unavailable", UNSAFE_TO_RUN_MESSAGE)
             return
         if signal is SignalIsolationPolicy.UNISOLATED:
             logger.warning(
@@ -98,7 +98,7 @@ class BuildIsolationPlan:
                 abi,
                 execution_id,
             )
-            context.fail(UNSAFE_TO_RUN_MESSAGE)
+            context.fail("isolation_unavailable", UNSAFE_TO_RUN_MESSAGE)
             return
 
         jail = None

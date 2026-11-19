@@ -40,14 +40,14 @@ class Pipeline:
                 logger.opt(exception=error).error(
                     "Step {} of execution {} failed", _step_name(step), context.job.execution_id
                 )
-                context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
+                context.fail("server_error", SANDBOX_SERVER_ERROR_MESSAGE)
                 break
             if context.completed:
                 break
 
         if not context.completed:
             logger.error("Execution pipeline produced no result for {}", context.job.execution_id)
-            context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
+            context.fail("server_error", SANDBOX_SERVER_ERROR_MESSAGE)
 
         return context
 
