@@ -267,3 +267,13 @@ def test_query_count_does_not_grow_with_rows(admin_client, acme, surface):
         admin_client.get(_url(surface))
 
     assert len(large) == len(small)
+
+
+def test_without_surfaces_read_is_403(client_as, custom_role_user, acme, surface):
+    user = custom_role_user(
+        acme,
+        "no-surfaces@example.com",
+        {ResourceType.AGENTS: Permission.READ, ResourceType.FLOWS: Permission.READ},
+    )
+
+    assert _usage(client_as(user), acme, surface).status_code == 403

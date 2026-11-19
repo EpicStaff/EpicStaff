@@ -73,195 +73,202 @@
             }
 
             @if (!isCreating()) {
-                <div class="surface-card__actions">
-                    <button
-                        *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
-                        type="button"
-                        class="surface-card__used-by"
-                        (click)="onHeaderAction('openUsage', $event)"
-                    >
-                        Used by
-                        <app-svg-icon
-                            icon="arrow-up-right"
-                            size="12px"
-                        />
-                    </button>
-                    @if (sharedInAgent()) {
+                <div
+                    class="surface-card__actions"
+                    [class.surface-card__actions--with-usage]="showUsage()"
+                >
+                    @if (showUsage()) {
                         <button
                             *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
                             type="button"
-                            class="surface-card__action surface-card__action--accent"
-                            aria-label="Open in Shared Surfaces"
-                            matTooltip="Open in Shared Surfaces"
-                            matTooltipPosition="above"
-                            (click)="onHeaderAction('openSource', $event)"
+                            class="surface-card__used-by"
+                            (click)="onHeaderAction('openUsage', $event)"
                         >
+                            View usage
                             <app-svg-icon
-                                icon="external-link"
-                                size="14px"
-                            />
-                        </button>
-                        <button
-                            *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
-                            type="button"
-                            class="surface-card__action surface-card__action--accent"
-                            aria-label="Detach from this place"
-                            matTooltip="Detach from this place"
-                            matTooltipPosition="above"
-                            (click)="onDetachPlace($event)"
-                        >
-                            <app-svg-icon
-                                icon="x"
-                                size="24px"
+                                icon="arrow-up-right"
+                                size="12px"
                             />
                         </button>
                     }
-
-                    @if (showDelete()) {
-                        <button
-                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Delete]"
-                            type="button"
-                            class="surface-card__action surface-card__action--accent"
-                            aria-label="Delete surface"
-                            matTooltip="Delete surface"
-                            matTooltipPosition="above"
-                            (click)="onHeaderAction('delete', $event)"
-                        >
-                            <app-svg-icon
-                                icon="trash"
-                                size="14px"
-                            />
-                        </button>
-                    }
-
-                    @if (hasMenuItems()) {
-                        <div class="surface-card__menu-wrap">
+                    <div class="surface-card__icon-actions">
+                        @if (sharedInAgent()) {
                             <button
-                                #menuTrigger="cdkOverlayOrigin"
-                                cdkOverlayOrigin
+                                *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
                                 type="button"
                                 class="surface-card__action surface-card__action--accent"
-                                aria-label="More actions"
-                                aria-haspopup="menu"
-                                matTooltip="More actions"
-                                [attr.aria-expanded]="menuOpen()"
-                                (click)="toggleMenu($event)"
+                                aria-label="Open in Shared Surfaces"
+                                matTooltip="Open in Shared Surfaces"
+                                matTooltipPosition="above"
+                                (click)="onHeaderAction('openSource', $event)"
                             >
                                 <app-svg-icon
-                                    icon="dots-vertical"
+                                    icon="external-link"
                                     size="14px"
                                 />
                             </button>
-                            <ng-template
-                                cdkConnectedOverlay
-                                [cdkConnectedOverlayOrigin]="menuTrigger"
-                                [cdkConnectedOverlayOpen]="menuOpen()"
-                                [cdkConnectedOverlayPositions]="menuPositions"
-                                [cdkConnectedOverlayFlexibleDimensions]="true"
-                                (overlayOutsideClick)="closeMenu()"
-                                (detach)="closeMenu()"
+                            <button
+                                *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
+                                type="button"
+                                class="surface-card__action surface-card__action--accent"
+                                aria-label="Detach from this place"
+                                matTooltip="Detach from this place"
+                                matTooltipPosition="above"
+                                (click)="onDetachPlace($event)"
                             >
-                                <!-- Takes the focus on opening and hands it back to the ⋮ button when it closes (Escape closes the overlay). -->
-                                <div
-                                    class="surface-card__menu"
-                                    cdkTrapFocus
-                                    [cdkTrapFocusAutoCapture]="true"
+                                <app-svg-icon
+                                    icon="x"
+                                    size="24px"
+                                />
+                            </button>
+                        }
+
+                        @if (showDelete()) {
+                            <button
+                                *appHasPermission="[ResourceCode.Surfaces, ActionCode.Delete]"
+                                type="button"
+                                class="surface-card__action surface-card__action--accent"
+                                aria-label="Delete surface"
+                                matTooltip="Delete surface"
+                                matTooltipPosition="above"
+                                (click)="onHeaderAction('delete', $event)"
+                            >
+                                <app-svg-icon
+                                    icon="trash"
+                                    size="14px"
+                                />
+                            </button>
+                        }
+
+                        @if (hasMenuItems()) {
+                            <div class="surface-card__menu-wrap">
+                                <button
+                                    #menuTrigger="cdkOverlayOrigin"
+                                    cdkOverlayOrigin
+                                    type="button"
+                                    class="surface-card__action surface-card__action--accent"
+                                    aria-label="More actions"
+                                    aria-haspopup="menu"
+                                    matTooltip="More actions"
+                                    [attr.aria-expanded]="menuOpen()"
+                                    (click)="toggleMenu($event)"
                                 >
-                                    @if (showAgentSpecificMenu()) {
-                                        <button
-                                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
-                                            type="button"
-                                            class="surface-card__menu-item"
-                                            (click)="onHeaderAction('duplicate', $event)"
-                                        >
-                                            Duplicate
-                                        </button>
-                                        <button
-                                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Update]"
-                                            type="button"
-                                            class="surface-card__menu-item"
-                                            (click)="onHeaderAction('makeShared', $event)"
-                                        >
-                                            Make Shared
-                                        </button>
-                                    } @else if (showSharedInAgentMenu()) {
-                                        <button
-                                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
-                                            type="button"
-                                            class="surface-card__menu-item"
-                                            (click)="onHeaderAction('makeCopy', $event)"
-                                        >
-                                            Make Agent-Specific Copy
-                                        </button>
-                                    } @else if (showSharedSurfacesMenu()) {
-                                        <button
-                                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
-                                            type="button"
-                                            class="surface-card__menu-item"
-                                            (click)="onHeaderAction('duplicate', $event)"
-                                        >
-                                            Duplicate
-                                        </button>
-                                    }
-                                    @if (canViewDetails()) {
-                                        <!-- Read-only: anyone who sees the surface may see who authored it. -->
-                                        <button
-                                            type="button"
-                                            class="surface-card__menu-item"
-                                            (click)="onViewDetails($event)"
-                                        >
-                                            View Details
-                                        </button>
-                                    }
-                                    @if (showSharedInAgentMenu()) {
-                                        <div
-                                            *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
-                                            class="surface-card__places"
-                                            [class.surface-card__places--busy]="placesBusy()"
-                                            (click)="$event.stopPropagation()"
-                                        >
-                                            <label class="surface-card__place">
-                                                <app-checkbox
-                                                    ariaLabel="Everywhere"
-                                                    [checked]="everywhereChecked()"
-                                                    [disabled]="placesBusy()"
-                                                    (changed)="onToggleEverywhere($event)"
-                                                />
-                                                <span>Everywhere</span>
-                                            </label>
-                                            <label class="surface-card__place">
-                                                <app-checkbox
-                                                    ariaLabel="Flow"
-                                                    [checked]="flowChecked()"
-                                                    [disabled]="placesBusy() || everywhereChecked()"
-                                                    (changed)="onTogglePlace('flow', $event)"
-                                                />
-                                                <span>Flow</span>
-                                            </label>
-                                            <label class="surface-card__place">
-                                                <app-checkbox
-                                                    ariaLabel="Chat"
-                                                    [checked]="chatChecked()"
-                                                    [disabled]="placesBusy() || everywhereChecked()"
-                                                    (changed)="onTogglePlace('chat', $event)"
-                                                />
-                                                <span>Chat</span>
-                                            </label>
-                                            <label class="surface-card__place">
-                                                <app-checkbox
-                                                    ariaLabel="Realtime"
-                                                    [checked]="realtimeChecked()"
-                                                    [disabled]="placesBusy() || everywhereChecked()"
-                                                    (changed)="onTogglePlace('realtime', $event)"
-                                                />
-                                                <span>Realtime</span>
-                                            </label>
-                                        </div>
-                                    }
-                                </div>
-                            </ng-template>
-                        </div>
-                    }
+                                    <app-svg-icon
+                                        icon="dots-vertical"
+                                        size="14px"
+                                    />
+                                </button>
+                                <ng-template
+                                    cdkConnectedOverlay
+                                    [cdkConnectedOverlayOrigin]="menuTrigger"
+                                    [cdkConnectedOverlayOpen]="menuOpen()"
+                                    [cdkConnectedOverlayPositions]="menuPositions"
+                                    [cdkConnectedOverlayFlexibleDimensions]="true"
+                                    (overlayOutsideClick)="closeMenu()"
+                                    (detach)="closeMenu()"
+                                >
+                                    <!-- Takes the focus on opening and hands it back to the ⋮ button when it closes (Escape closes the overlay). -->
+                                    <div
+                                        class="surface-card__menu"
+                                        cdkTrapFocus
+                                        [cdkTrapFocusAutoCapture]="true"
+                                    >
+                                        @if (showAgentSpecificMenu()) {
+                                            <button
+                                                *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
+                                                type="button"
+                                                class="surface-card__menu-item"
+                                                (click)="onHeaderAction('duplicate', $event)"
+                                            >
+                                                Duplicate
+                                            </button>
+                                            <button
+                                                *appHasPermission="[ResourceCode.Surfaces, ActionCode.Update]"
+                                                type="button"
+                                                class="surface-card__menu-item"
+                                                (click)="onHeaderAction('makeShared', $event)"
+                                            >
+                                                Make Shared
+                                            </button>
+                                        } @else if (showSharedInAgentMenu()) {
+                                            <button
+                                                *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
+                                                type="button"
+                                                class="surface-card__menu-item"
+                                                (click)="onHeaderAction('makeCopy', $event)"
+                                            >
+                                                Make Agent-Specific Copy
+                                            </button>
+                                        } @else if (showSharedSurfacesMenu()) {
+                                            <button
+                                                *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
+                                                type="button"
+                                                class="surface-card__menu-item"
+                                                (click)="onHeaderAction('duplicate', $event)"
+                                            >
+                                                Duplicate
+                                            </button>
+                                        }
+                                        @if (canViewDetails()) {
+                                            <!-- Read-only: anyone who sees the surface may see who authored it. -->
+                                            <button
+                                                type="button"
+                                                class="surface-card__menu-item"
+                                                (click)="onViewDetails($event)"
+                                            >
+                                                View Details
+                                            </button>
+                                        }
+                                        @if (showSharedInAgentMenu()) {
+                                            <div
+                                                *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
+                                                class="surface-card__places"
+                                                [class.surface-card__places--busy]="placesBusy()"
+                                                (click)="$event.stopPropagation()"
+                                            >
+                                                <label class="surface-card__place">
+                                                    <app-checkbox
+                                                        ariaLabel="Everywhere"
+                                                        [checked]="everywhereChecked()"
+                                                        [disabled]="placesBusy()"
+                                                        (changed)="onToggleEverywhere($event)"
+                                                    />
+                                                    <span>Everywhere</span>
+                                                </label>
+                                                <label class="surface-card__place">
+                                                    <app-checkbox
+                                                        ariaLabel="Flow"
+                                                        [checked]="flowChecked()"
+                                                        [disabled]="placesBusy() || everywhereChecked()"
+                                                        (changed)="onTogglePlace('flow', $event)"
+                                                    />
+                                                    <span>Flow</span>
+                                                </label>
+                                                <label class="surface-card__place">
+                                                    <app-checkbox
+                                                        ariaLabel="Chat"
+                                                        [checked]="chatChecked()"
+                                                        [disabled]="placesBusy() || everywhereChecked()"
+                                                        (changed)="onTogglePlace('chat', $event)"
+                                                    />
+                                                    <span>Chat</span>
+                                                </label>
+                                                <label class="surface-card__place">
+                                                    <app-checkbox
+                                                        ariaLabel="Realtime"
+                                                        [checked]="realtimeChecked()"
+                                                        [disabled]="placesBusy() || everywhereChecked()"
+                                                        (changed)="onTogglePlace('realtime', $event)"
+                                                    />
+                                                    <span>Realtime</span>
+                                                </label>
+                                            </div>
+                                        }
+                                    </div>
+                                </ng-template>
+                            </div>
+                        }
+                    </div>
                 </div>
             }
         </div>

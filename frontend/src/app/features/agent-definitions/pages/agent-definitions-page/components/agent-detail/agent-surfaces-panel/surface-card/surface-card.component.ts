@@ -135,6 +135,7 @@ export class SurfaceCardComponent {
     hideInstructions = input<boolean>(false);
     hideDescriptions = input<boolean>(false);
     flat = input<boolean>(false);
+    showUsage = input<boolean>(true);
     // Full place-set this surface holds under the agent (for the place checkboxes).
     surfacePlaces = input<AgentSurfacePlace[]>([]);
     // True while a placement PATCH is in flight — disables the checkboxes and holds
