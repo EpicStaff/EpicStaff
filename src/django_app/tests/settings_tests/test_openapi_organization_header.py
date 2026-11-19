@@ -27,6 +27,11 @@ from django_app.settings.rest_framework import REST_FRAMEWORK as PRODUCTION_REST
 from rbac.access.gates import HasOrgPermission
 from rbac.scoping.mixins import OrgScopedResolverMixin
 from tables.views.storage_upload_stream_view import UPLOAD_STREAM_PATH
+from tables.views.transfer_import_upload_view import (
+    AGENT_DEFINITION_IMPORT_JOBS_ROUTE,
+    COLLECTION_IMPORT_JOBS_ROUTE,
+    FLOW_IMPORT_JOBS_ROUTE,
+)
 
 ORG_HEADER = "OrganizationId"
 KEY_SCHEMES = ("ApiKeyAuth", "PluginKeyAuth")
@@ -141,10 +146,13 @@ def test_optional_auth_operations_do_not_list_the_organization_header(operations
 @pytest.mark.parametrize(
     ("path", "method", "header_expected"),
     [
-        # The org-scoped views, including one documented by a postprocessing hook.
+        # The org-scoped views, including the raw ASGI ones documented by postprocessing hooks.
         ("/api/permissions/me/", "get", True),
         ("/api/graphs/", "get", True),
         (UPLOAD_STREAM_PATH, "post", True),
+        (FLOW_IMPORT_JOBS_ROUTE.path, "post", True),
+        (COLLECTION_IMPORT_JOBS_ROUTE.path, "post", True),
+        (AGENT_DEFINITION_IMPORT_JOBS_ROUTE.path, "post", True),
         ("/api/realtime-channels/", "get", True),
         ("/api/plugins/available/", "get", True),
         # Cross-org and per-user views: no request depends on the active org.

@@ -414,7 +414,7 @@ def add_import_job_upload_postprocessing_hook(result, generator, request, public
     paths[FLOW_IMPORT_JOBS_ROUTE.path] = {
         "post": {
             "operationId": "graphs_import_jobs_create",
-            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
             "description": _IMPORT_JOB_DESCRIPTION,
             "parameters": [
                 _FILE_NAME_PARAMETER,
@@ -450,7 +450,7 @@ def add_import_job_upload_postprocessing_hook(result, generator, request, public
     paths[COLLECTION_IMPORT_JOBS_ROUTE.path] = {
         "post": {
             "operationId": "source_collections_import_jobs_create",
-            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
             "description": _IMPORT_JOB_DESCRIPTION,
             "parameters": [_FILE_NAME_PARAMETER],
             "requestBody": _ZIP_BODY,
@@ -460,7 +460,7 @@ def add_import_job_upload_postprocessing_hook(result, generator, request, public
     paths[AGENT_DEFINITION_IMPORT_JOBS_ROUTE.path] = {
         "post": {
             "operationId": "agent_definitions_import_jobs_create",
-            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
             "description": _IMPORT_JOB_DESCRIPTION,
             "parameters": [
                 _FILE_NAME_PARAMETER,
