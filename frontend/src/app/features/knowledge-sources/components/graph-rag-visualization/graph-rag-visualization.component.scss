@@ -212,7 +212,9 @@
         line-height: var(--text-body-line-height);
         white-space: nowrap;
         pointer-events: none;
-        z-index: 20;
+        // Below the overlaid sidebars (z-index: 10) so a tooltip whose node projects under a
+        // sidebar is hidden by it instead of covering its contents.
+        z-index: 1;
     }
 
     // --- Detail panel (right overlay sidebar) ---

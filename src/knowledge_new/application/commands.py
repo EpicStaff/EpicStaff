@@ -76,9 +76,26 @@ class GetMetrics(Command):
 
 @dataclass(frozen=True)
 class GetGraphVisualization(Command):
+    """Request for one page of a paginated graph visualization.
+
+    The pool the slice is taken from is `max_entities * page_count` top entities; the
+    response returns the `page`-th slice of that pool and its share of the pool's edges.
+    The default (page=0, page_count=1) reproduces a single whole-pool request.
+    """
+
     rag_id: int
     max_entities: int = GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES
     search: str | None = None
+    page: int = 0
+    page_count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.page_count < 1:
+            raise ValueError("page_count must be at least 1.")
+        if self.page < 0 or self.page >= self.page_count:
+            raise ValueError(
+                f"page must be in [0, page_count) (got page={self.page}, page_count={self.page_count})."
+            )
 
 
 @dataclass(frozen=True)

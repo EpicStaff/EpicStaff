@@ -39,6 +39,7 @@ import {
     GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
     GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_KEY,
     GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_OPTIONS,
+    GRAPH_VISUALIZATION_MAX_TOTAL_ENTITIES,
     GRAPH_VISUALIZATION_MIN_ENTITIES,
     GRAPH_VISUALIZATION_SIDEBAR_WIDTH_KEY,
     GRAPH_VISUALIZATION_SIDEBAR_WIDTH_OPTIONS,
@@ -133,9 +134,16 @@ export class GraphRagVisualizationComponent implements OnInit {
     readonly totalEntityCount = signal(0);
     readonly relationshipCount = signal(0);
 
-    /** Never below the current value, so the control cannot clamp what is already displayed. */
+    /** Hard-capped at GRAPH_VISUALIZATION_MAX_TOTAL_ENTITIES: the backend splits a request into at most
+     * GRAPH_VISUALIZATION_MAX_PARALLEL_PAGES pages of GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST each,
+     * so nothing beyond that can be fetched — even if the graph has more entities. Within the cap,
+     * never below totalEntityCount or the current maxEntities so the control cannot clamp what is
+     * already displayed. */
     readonly sliderMax = computed(() =>
-        Math.max(this.totalEntityCount(), this.maxEntities(), GRAPH_VISUALIZATION_MIN_ENTITIES)
+        Math.min(
+            GRAPH_VISUALIZATION_MAX_TOTAL_ENTITIES,
+            Math.max(this.totalEntityCount(), this.maxEntities(), GRAPH_VISUALIZATION_MIN_ENTITIES)
+        )
     );
     readonly sliderStep = computed(() => {
         const total = this.totalEntityCount();

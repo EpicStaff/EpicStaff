@@ -1,8 +1,9 @@
-import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { forkJoin, map, Observable, retry, throwError, timer } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
+import { GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST } from '../constants/constants';
 import {
     CollectionGraphRag,
     CreateGraphRagForCollectionResponse,
@@ -98,6 +99,31 @@ export class GraphRagService {
     }
 
     getVisualizationData(ragId: number, maxEntities?: number, search?: string): Observable<GraphVisualizationData> {
+        // The backend caps a single visualization request at GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST
+        // entities. Larger totals are split across parallel requests that share the same top-N pool;
+        // each request returns one page of entities and its share of the pool's edges. Backend handler:
+        // src/knowledge_new/application/orchestrators/graph_visualization/strategies/graph.py.
+        const perRequestCap = GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST;
+        if (maxEntities === undefined || maxEntities <= perRequestCap) {
+            return this.requestVisualizationPage(ragId, maxEntities, search);
+        }
+
+        const total = maxEntities;
+        const pageCount = Math.ceil(total / perRequestCap);
+        const perPage = Math.ceil(total / pageCount);
+        const pageRequests = Array.from({ length: pageCount }, (_, page) =>
+            this.requestVisualizationPage(ragId, perPage, search, page, pageCount)
+        );
+        return forkJoin(pageRequests).pipe(map((pages) => this.mergeVisualizationPages(pages)));
+    }
+
+    private requestVisualizationPage(
+        ragId: number,
+        maxEntities: number | undefined,
+        search: string | undefined,
+        page?: number,
+        pageCount?: number
+    ): Observable<GraphVisualizationData> {
         let params = new HttpParams();
         if (maxEntities !== undefined) {
             params = params.set('max_entities', maxEntities.toString());
@@ -105,7 +131,35 @@ export class GraphRagService {
         if (search) {
             params = params.set('search', search);
         }
-        return this.http.get<GraphVisualizationData>(`${this.apiUrl}${ragId}/visualization/`, { params });
+        if (page !== undefined && pageCount !== undefined) {
+            params = params.set('page', page.toString()).set('page_count', pageCount.toString());
+        }
+        // One retry per page with a short backoff for transient server/network failures: forkJoin
+        // cancels siblings on the first error, so retrying a single 5XX saves the whole visualization.
+        // 4XX are user-input errors — retrying wastes 300 ms before the real error surfaces.
+        return this.http.get<GraphVisualizationData>(`${this.apiUrl}${ragId}/visualization/`, { params }).pipe(
+            retry({
+                count: 1,
+                delay: (err) =>
+                    err instanceof HttpErrorResponse && err.status >= 400 && err.status < 500
+                        ? throwError(() => err)
+                        : timer(300),
+            })
+        );
+    }
+
+    private mergeVisualizationPages(pages: GraphVisualizationData[]): GraphVisualizationData {
+        if (pages.length === 0) {
+            return { entities: [], relationships: [], total_entities: 0, total_relationships: 0 };
+        }
+        // Every page sees the same pool and reports its full-graph totals; take the max in case a
+        // page was served from a replica that reported stale counts.
+        return {
+            entities: pages.flatMap((page) => page.entities),
+            relationships: pages.flatMap((page) => page.relationships),
+            total_entities: Math.max(...pages.map((page) => page.total_entities)),
+            total_relationships: Math.max(...pages.map((page) => page.total_relationships)),
+        };
     }
 
     getEntityDetails(ragId: number, entityId: string): Observable<{ description: string }> {

@@ -20,6 +20,8 @@ from tables.constants.knowledge_constants import (
     GRAPH_TABLE_MAX_PAGE_SIZE,
     GRAPH_TABLE_MIN_PAGE,
     GRAPH_TABLE_MIN_PAGE_SIZE,
+    GRAPH_VISUALIZATION_MAX_MAX_ENTITIES,
+    GRAPH_VISUALIZATION_MAX_PAGE_COUNT,
     GRAPH_VISUALIZATION_MIN_MAX_ENTITIES,
     GRAPHRAG_MAX_CHUNK_OVERLAP,
     GRAPHRAG_MAX_CHUNK_SIZE,
@@ -608,10 +610,36 @@ class GraphRagVisualizationQuerySerializer(serializers.Serializer):
 
     max_entities = serializers.IntegerField(
         min_value=GRAPH_VISUALIZATION_MIN_MAX_ENTITIES,
+        max_value=GRAPH_VISUALIZATION_MAX_MAX_ENTITIES,
         required=False,
         help_text=(
-            "Most entities to return: search matches first, then the highest degree. "
-            "Omitted means knowledge_new's default limit applies. No upper cap."
+            "Most entities to return per page: search matches first, then the highest degree. "
+            "Omitted means knowledge_new's default limit applies."
         ),
     )
     search = _graph_search_field()
+    page = serializers.IntegerField(
+        min_value=0,
+        required=False,
+        help_text="Zero-based page index; must be less than page_count.",
+    )
+    page_count = serializers.IntegerField(
+        min_value=1,
+        max_value=GRAPH_VISUALIZATION_MAX_PAGE_COUNT,
+        required=False,
+        help_text=(
+            "Number of pages the top pool is partitioned into. The pool is "
+            "max_entities * page_count entities; each page returns its slice and share of edges."
+        ),
+    )
+
+    def validate(self, attrs: dict) -> dict:
+        page = attrs.get("page")
+        page_count = attrs.get("page_count")
+        if page is None and page_count is None:
+            return attrs
+        if page is None or page_count is None:
+            raise serializers.ValidationError("page and page_count must be sent together.")
+        if page >= page_count:
+            raise serializers.ValidationError("page must be less than page_count.")
+        return attrs

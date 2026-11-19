@@ -22,6 +22,8 @@ from application.graph_index_read_limits import (
     GRAPH_TABLE_MIN_PAGE,
     GRAPH_TABLE_MIN_PAGE_SIZE,
     GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
+    GRAPH_VISUALIZATION_MAX_MAX_ENTITIES,
+    GRAPH_VISUALIZATION_MAX_PAGE_COUNT,
     GRAPH_VISUALIZATION_MIN_MAX_ENTITIES,
 )
 from application.orchestrators.estimating import build_estimator
@@ -54,7 +56,7 @@ from foundation.cryptographer import AbstractCryptographer
 from infrastructure.graphrag.availability import is_graphrag_available
 from litestar import Controller, Request, delete, get, post, put, status_codes
 from litestar.connection import ASGIConnection
-from litestar.exceptions import HTTPException
+from litestar.exceptions import HTTPException, ValidationException
 from litestar.handlers.base import BaseRouteHandler
 from litestar.params import Parameter
 from litestar.response import Stream
@@ -268,11 +270,27 @@ class RagController(Controller):
         rag_id: int,
         uow: AbstractUnitOfWork,
         max_entities: Annotated[
-            int, Parameter(ge=GRAPH_VISUALIZATION_MIN_MAX_ENTITIES)
+            int,
+            Parameter(
+                ge=GRAPH_VISUALIZATION_MIN_MAX_ENTITIES, le=GRAPH_VISUALIZATION_MAX_MAX_ENTITIES
+            ),
         ] = GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
         search: Annotated[str | None, Parameter(max_length=GRAPH_SEARCH_MAX_LENGTH)] = None,
+        page: Annotated[int, Parameter(ge=0)] = 0,
+        page_count: Annotated[
+            int, Parameter(ge=1, le=GRAPH_VISUALIZATION_MAX_PAGE_COUNT)
+        ] = 1,
     ) -> schemas.GraphVisualizationOutputSchema:
-        command = GetGraphVisualization(rag_id=rag_id, max_entities=max_entities, search=search)
+        try:
+            command = GetGraphVisualization(
+                rag_id=rag_id,
+                max_entities=max_entities,
+                search=search,
+                page=page,
+                page_count=page_count,
+            )
+        except ValueError as exc:
+            raise ValidationException(str(exc)) from exc
         orchestrator = build_graph_visualization(strategy, uow)
         result = await orchestrator.execute(command)
         return schemas.GraphVisualizationOutputSchema.model_validate(result)

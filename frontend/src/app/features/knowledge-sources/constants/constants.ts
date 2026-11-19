@@ -36,6 +36,16 @@ export const GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES = 200;
 /** Fewest entities the visualization endpoint accepts; lower values are rejected with 400. */
 export const GRAPH_VISUALIZATION_MIN_ENTITIES = 1;
 
+/** Most entities a single visualization request may return; higher totals are split across parallel requests. */
+export const GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST = 1000;
+
+/** Most parallel pages a single visualization fetch may split into — matches the backend's page_count cap. */
+export const GRAPH_VISUALIZATION_MAX_PARALLEL_PAGES = 5;
+
+/** Most entities the visualization can show in total across all parallel requests. */
+export const GRAPH_VISUALIZATION_MAX_TOTAL_ENTITIES =
+    GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST * GRAPH_VISUALIZATION_MAX_PARALLEL_PAGES;
+
 /** Kept as 'graph-viz-sidebar' so widths users already saved still apply. */
 export const GRAPH_VISUALIZATION_SIDEBAR_WIDTH_KEY = 'graph-viz-sidebar';
 export const GRAPH_VISUALIZATION_SIDEBAR_WIDTH_OPTIONS = {

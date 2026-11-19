@@ -458,6 +458,8 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
                 rag_id=int(pk),
                 max_entities=query.validated_data.get("max_entities"),
                 search=query.validated_data.get("search") or None,
+                page=query.validated_data.get("page"),
+                page_count=query.validated_data.get("page_count"),
             )
         return Response(data)
 

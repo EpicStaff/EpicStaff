@@ -127,6 +127,8 @@ class KnowledgeClient:
         rag_id: int,
         max_entities: int | None = None,
         search: str | None = None,
+        page: int | None = None,
+        page_count: int | None = None,
     ) -> dict:
         """Fetch graph visualization data for a graph RAG."""
         url = f"rags/graph/{rag_id}/visualization/"
@@ -135,6 +137,10 @@ class KnowledgeClient:
             params["max_entities"] = max_entities
         if search:
             params["search"] = search
+        if page is not None:
+            params["page"] = page
+        if page_count is not None:
+            params["page_count"] = page_count
         response = self._request(method="get", url=url, params=params)
         return response.json()
 
