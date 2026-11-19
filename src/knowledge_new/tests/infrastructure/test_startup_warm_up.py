@@ -42,27 +42,12 @@ def test_failing_token_counter_warm_up_does_not_abort_startup():
 
 
 def test_failing_graphrag_preload_does_not_abort_startup():
-    with (
-        patch.object(lifespans, "is_graphrag_available", return_value=True),
-        patch.object(lifespans, "import_module", side_effect=ImportError("boom")),
-    ):
+    with patch.object(lifespans, "import_module", side_effect=ImportError("boom")):
         lifespans.preload_graphrag_modules()
 
 
-def test_graphrag_modules_are_not_imported_without_avx2():
-    with (
-        patch.object(lifespans, "is_graphrag_available", return_value=False),
-        patch.object(lifespans, "import_module") as import_module,
-    ):
-        lifespans.preload_graphrag_modules()
-    import_module.assert_not_called()
-
-
-def test_every_graphrag_module_is_imported_when_available():
-    with (
-        patch.object(lifespans, "is_graphrag_available", return_value=True),
-        patch.object(lifespans, "import_module") as import_module,
-    ):
+def test_every_graphrag_module_is_imported():
+    with patch.object(lifespans, "import_module") as import_module:
         lifespans.preload_graphrag_modules()
     assert [call.args[0] for call in import_module.call_args_list] == list(
         lifespans._GRAPHRAG_MODULES

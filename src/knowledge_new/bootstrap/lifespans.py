@@ -3,10 +3,6 @@ from collections.abc import Callable
 from importlib import import_module
 from typing import Literal
 
-from infrastructure.graphrag.availability import (
-    detect_graphrag_availability,
-    is_graphrag_available,
-)
 from infrastructure.naive.chunkers.strategies.token_chunker import load_gpt2_tokenizer
 from infrastructure.processing_run import (
     create_process_pool,
@@ -18,8 +14,8 @@ from loguru import logger
 
 __all__ = ["get_lifespans"]
 
-# Imported lazily by the factories so a CPU without AVX2 never loads graphrag; on a
-# capable CPU they are imported at startup instead of during the first request.
+# The factories import these lazily; importing them at startup moves the cost off the
+# first request.
 _GRAPHRAG_MODULES = (
     "infrastructure.database.repositories.graph",
     "application.orchestrators.indexing.strategies.graph_indexer",
@@ -62,15 +58,6 @@ def close_process_pool():
         process_pool.join()
 
 
-@on_startup
-def check_graphrag_availability():
-    if not detect_graphrag_availability():
-        logger.warning(
-            "AVX2 not detected on this CPU: GraphRAG is unavailable. "
-            "GraphRAG endpoints return HTTP 503."
-        )
-
-
 # The warm-up hooks below only move first-request latency to startup. The catch is
 # deliberately broad: a failed warm-up must never abort boot, and the lazy path
 # retries on first use (functools.cache does not cache exceptions).
@@ -79,8 +66,6 @@ def check_graphrag_availability():
 @on_startup
 def preload_graphrag_modules():
     """Move first-request latency to startup by importing the graphrag modules."""
-    if not is_graphrag_available():
-        return
     try:
         for module_name in _GRAPHRAG_MODULES:
             import_module(module_name)

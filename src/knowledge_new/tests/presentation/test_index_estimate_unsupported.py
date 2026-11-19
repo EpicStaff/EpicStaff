@@ -23,8 +23,7 @@ class _UnusedUow(AbstractUnitOfWork):
 
 
 @pytest.fixture
-def client(monkeypatch):
-    monkeypatch.setattr(rag_controller, "is_graphrag_available", lambda: True)
+def client():
     app = Litestar(
         route_handlers=[RagController],
         signature_types=[AbstractUnitOfWork],
