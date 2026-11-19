@@ -618,7 +618,7 @@ services:
       start_period: 5s
 
   epicstaff-nginx:
-    image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
+    image: nginx:1.31.9@sha256:08f354a3b44c422021a5c0f5efb3e27f8f90236b5447d3bac4053f5f50ab6760
     container_name: epicstaff-nginx
     ports:
       - "80:80"
