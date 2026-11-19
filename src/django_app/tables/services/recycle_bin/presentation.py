@@ -319,15 +319,19 @@ def _flow_trigger_details(ids: list[int], context: DetailContext) -> dict[int, l
 
 
 def _voice_channel_details(ids: list[int], context: DetailContext) -> dict[int, list[BinDetail]]:
-    """One notice per channel that won't come back answering calls as it did.
+    """One notice per channel about what its restore leaves out or checks.
 
     Deleting an agent clears the channel's link to it, so a channel can come
-    back with no agent. A phone number a live channel took meanwhile is dropped
-    on restore (restore_hooks.drop_taken_phone_number). A channel whose webhook
-    trigger is binned too keeps its link but takes no calls until that's restored;
-    the trigger is named only to a user who may read webhooks.
+    back with no agent. A phone number is checked by the restore itself
+    (restore_hooks.drop_unavailable_phone_number): with the channel's Twilio account
+    first, then against the live channels. The bin only says the check will happen,
+    in the same words whether or not the number is taken: a number is unique among the
+    live channels of every organization, so naming it taken would tell the caller
+    whether another org holds it. A channel whose webhook trigger is binned
+    too keeps its link but takes no calls until that's restored; the trigger is named
+    only to a user who may read webhooks.
     """
-    from tables.models import RealtimeChannel, TwilioChannel
+    from tables.models import RealtimeChannel
 
     # twilio__ joins through the base manager, so it reaches the binned Twilio rows.
     rows = list(
@@ -340,11 +344,6 @@ def _voice_channel_details(ids: list[int], context: DetailContext) -> dict[int, 
             "twilio__webhook_trigger__path",
         )
     )
-    taken_numbers = set(
-        TwilioChannel.objects.filter(
-            phone_number__in=[row[3] for row in rows if row[3]]
-        ).values_list("phone_number", flat=True)
-    )
     details: dict[int, list[BinDetail]] = {}
     for channel_id, agent_id, agent_definition_id, number, trigger_active, trigger_path in rows:
         notices = []
@@ -352,8 +351,10 @@ def _voice_channel_details(ids: list[int], context: DetailContext) -> dict[int, 
             notices.append(
                 "Without an agent: it won't answer calls until you pick one in Settings."
             )
-        if number in taken_numbers:
-            notices.append(f"Without its phone number: {number} is in use by another channel.")
+        # One notice whether or not a live channel holds the number: the holder may be
+        # a channel of another organization.
+        if number:
+            notices.append(f"Its phone number {number} is checked on restore.")
         # False only when it has a trigger and the trigger is binned (no trigger gives None).
         if trigger_active is False:
             trigger = f' "{trigger_path}"' if context.can_read(ResourceType.WEBHOOKS) else ""
