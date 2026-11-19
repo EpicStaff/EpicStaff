@@ -4,6 +4,9 @@ The contract that matters: the pipeline never raises. A failing step becomes a f
 outcome on the context, so the worker returns an error instead of going down.
 """
 
+import pytest
+from loguru import logger
+
 from worker.application.context import ExecutionContext
 from worker.application.pipeline import Pipeline
 from tests.builders import make_context, make_worker_job
@@ -22,7 +25,18 @@ async def complete_step(context: ExecutionContext) -> None:
 
 
 async def raising_step(context: ExecutionContext) -> None:
-    raise RuntimeError("step blew up")
+    raise RuntimeError("step blew up at /srv/executions/exec-1")
+
+
+SERVER_ERROR = "The code couldn't run because of a server error."
+
+
+@pytest.fixture
+def logged():
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="DEBUG")
+    yield lines
+    logger.remove(sink_id)
 
 
 async def test_steps_run_in_registration_order():
@@ -45,7 +59,7 @@ async def test_a_completed_context_stops_the_remaining_steps():
     assert context.returncode == 0
 
 
-async def test_a_raising_step_becomes_a_failed_outcome():
+async def test_a_raising_step_becomes_a_failed_outcome_with_a_fixed_text(logged):
     seen: list[str] = []
     pipeline = Pipeline().register(raising_step).register(record("after", seen))
 
@@ -54,7 +68,19 @@ async def test_a_raising_step_becomes_a_failed_outcome():
     assert seen == []
     assert context.completed is True
     assert context.returncode == 1
-    assert context.stderr == "step blew up"
+    assert context.stderr == SERVER_ERROR
+    assert "step blew up at /srv/executions/exec-1" in "".join(logged)
+
+
+async def test_a_step_failing_after_the_child_wrote_stderr_keeps_what_the_child_wrote():
+    async def child_output_step(context: ExecutionContext) -> None:
+        context.stderr = "child wrote this"
+
+    pipeline = Pipeline().register(child_output_step).register(raising_step)
+
+    context = await pipeline.run(make_context())
+
+    assert context.stderr == f"child wrote this\n{SERVER_ERROR}"
 
 
 async def test_a_pipeline_that_produces_no_result_fails_the_run():
@@ -64,14 +90,14 @@ async def test_a_pipeline_that_produces_no_result_fails_the_run():
     assert seen == ["a"]
     assert context.completed is True
     assert context.returncode == 1
-    assert "produced no result" in context.stderr
+    assert context.stderr == SERVER_ERROR
 
 
 async def test_an_empty_pipeline_fails_the_run():
     context = await Pipeline().run(make_context())
 
     assert context.returncode == 1
-    assert "produced no result" in context.stderr
+    assert context.stderr == SERVER_ERROR
 
 
 def test_fail_appends_to_an_existing_stderr():

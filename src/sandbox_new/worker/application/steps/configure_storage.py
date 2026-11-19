@@ -10,6 +10,9 @@ launched with broken or unscoped access.
 
 import json
 
+from loguru import logger
+from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
+
 from worker.application.context import ExecutionContext
 
 __all__ = ["ConfigureStorageStep"]
@@ -26,12 +29,20 @@ class ConfigureStorageStep:
             return
 
         if not job.storage_org_prefix:
-            context.fail("storage_org_prefix is required when use_storage is set")
+            logger.error(
+                "Job {} asks for storage without storage_org_prefix; refusing to execute it.",
+                job.execution_id,
+            )
+            context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
             return
 
         credentials = job.storage_credentials
         if credentials is None:
-            context.fail("storage_credentials are required when use_storage is set")
+            logger.error(
+                "Job {} asks for storage without storage_credentials; refusing to execute it.",
+                job.execution_id,
+            )
+            context.fail(SANDBOX_SERVER_ERROR_MESSAGE)
             return
 
         context.storage_mutations_path = context.exec_dir / "storage_mutations.json"

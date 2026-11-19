@@ -4,6 +4,7 @@ from langgraph.types import StreamWriter
 from models.state import State
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
+from services.graph.exceptions import NodeConfigurationError
 from services.graph.nodes.agent_output_variable import agent_output_variable_value
 from services.graph.nodes.agent_stream_events import AgentStreamEventForwarder
 from services.graph.nodes.base_node import BaseNode
@@ -16,6 +17,7 @@ from src.shared.prior_task_outputs import format_prior_task_outputs
 
 class TaskNode(BaseNode):
     TYPE = "TASK"
+    LABEL = "Task node"
 
     def __init__(
         self,
@@ -45,9 +47,11 @@ class TaskNode(BaseNode):
     async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
         agent_definition = self.task_node_data.agent_definition
         if agent_definition is None:
-            raise ValueError(f"TaskNode '{self.node_name}' requires an agent_definition")
+            raise NodeConfigurationError(f"{self._display_name()} has no agent chosen.")
         if agent_definition.llm is None:
-            raise ValueError(f"TaskNode '{self.node_name}' requires agent_definition.llm")
+            raise NodeConfigurationError(
+                f'Agent "{agent_definition.name}" in {self._display_name()} has no LLM.'
+            )
 
         rendered_instructions = render_instructions(self.task_node_data.instructions, input_)
         remembered = await self.remembered_outputs_store.fetch_all(self.session_id)

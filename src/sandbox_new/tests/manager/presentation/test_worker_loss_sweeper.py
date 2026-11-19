@@ -192,7 +192,7 @@ async def test_a_queued_job_past_its_deadline_is_failed_as_overloaded(
 
     failure = failure_sink.failures[0]
     assert failure.execution_id == "exec-queued"
-    assert failure.message == "Sandbox overloaded: the job waited 121 s in the queue and was not run."
+    assert failure.message == "The server was too busy to run the code in time."
     assert failure.not_run_reason == "overloaded"
     assert failure.session_id == 9
     assert failure.reply_to_crew_channel is True

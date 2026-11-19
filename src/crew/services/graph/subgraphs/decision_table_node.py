@@ -16,10 +16,11 @@ from src.shared.models import (
     PythonCodeData,
 )
 from src.shared.models.storage_scope import StorageCredentials
+from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
 
 
 class DecisionTableNodeDataError(Exception):
-    """Custom exception for errors related to DecisionTableNodeData."""
+    """A condition group failed; the message is the fact streamed to the user."""
 
 
 class DecisionTableNodeSubgraph:
@@ -78,6 +79,7 @@ class DecisionTableNodeSubgraph:
                 if not await self._execute_expression(
                     expression=condition.condition,
                     state=state,
+                    group_name=condition_group.group_name,
                 ):
                     condition_group_result = False
                     break
@@ -91,6 +93,7 @@ class DecisionTableNodeSubgraph:
             condition_group_result = await self._execute_expression(
                 expression=condition_group.expression,
                 state=state,
+                group_name=condition_group.group_name,
             )
 
         return condition_group_result
@@ -99,6 +102,7 @@ class DecisionTableNodeSubgraph:
         self,
         manipulation: str | None,
         state: State,
+        group_name: str,
     ) -> bool:
         if manipulation is None:
             return True
@@ -127,22 +131,25 @@ def main(**kwargs) -> bool:
         )
         if python_code_execution_data["returncode"] != 0:
             raise DecisionTableNodeDataError(
-                f"Manipulation execution failed with error: {python_code_execution_data['stderr']}"
+                f'Condition "{group_name}": {python_code_execution_data["stderr"]}'
             )
 
-        variables = json.loads(python_code_execution_data["result_data"])
+        variables = self._read_result(python_code_execution_data, group_name)
         state["variables"].update(variables)
 
     async def _execute_expression(
         self,
         expression: str,
         state: State,
+        group_name: str,
     ) -> bool:
+        # A result that isn't a boolean comes back as None, so crew can say so without
+        # reading the sandbox's stderr. The expression stays on line 3, where the line
+        # numbers in the user's own errors point.
         code = f"""
 def main(variables: dict) -> bool:
     result: bool = {expression}
-    assert isinstance(result, bool), "Expression must return a boolean value"
-    return result
+    return result if isinstance(result, bool) else None
 """
 
         python_code_data = PythonCodeData(
@@ -158,9 +165,28 @@ def main(variables: dict) -> bool:
         )
         if python_code_execution_data["returncode"] != 0:
             raise DecisionTableNodeDataError(
-                f"Expression execution failed with error: {python_code_execution_data['stderr']}"
+                f'Condition "{group_name}": {python_code_execution_data["stderr"]}'
             )
-        return json.loads(python_code_execution_data["result_data"]) or False
+        result = self._read_result(python_code_execution_data, group_name)
+        if result is None:
+            raise DecisionTableNodeDataError(
+                f'Condition "{group_name}" didn\'t give true or false.'
+            )
+        return result
+
+    def _read_result(self, python_code_execution_data: dict, group_name: str):
+        try:
+            return json.loads(python_code_execution_data["result_data"])
+        except (TypeError, ValueError) as error:
+            logger.opt(exception=error).error(
+                "Decision table {} got an unreadable code result {!r} (session_id={})",
+                self.node_name,
+                python_code_execution_data["result_data"],
+                self.session_id,
+            )
+            raise DecisionTableNodeDataError(
+                f'Condition "{group_name}": {SANDBOX_SERVER_ERROR_MESSAGE}'
+            ) from error
 
     def execution_order(self, state: State):
         return state["system_variables"]["nodes"][self.node_name]["execution_order"]
@@ -306,6 +332,7 @@ def main(variables: dict) -> bool:
                             await self._execute_manipulation(
                                 manipulation=condition_group.manipulation,
                                 state=state,
+                                group_name=condition_group.group_name,
                             )
                             msg = self.custom_session_message_writer.add_condition_group_manipulation_message(
                                 session_id=self.session_id,
@@ -319,8 +346,10 @@ def main(variables: dict) -> bool:
 
                         decision_node_variables["result_node"] = condition_group.next_node
                 except DecisionTableNodeDataError as e:
-                    error = f"Error executing condition group '{condition_group.group_name}': {e}"
-                    logger.error(error)
+                    error = str(e)
+                    logger.error(
+                        "Decision table '{}' routed to its error node: {}", self.node_name, error
+                    )
                     decision_node_variables["result_node"] = (
                         self.decision_table_node_data.next_error_node or END
                     )

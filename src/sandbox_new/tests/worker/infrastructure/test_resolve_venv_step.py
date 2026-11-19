@@ -26,7 +26,7 @@ async def test_a_missing_venv_fails_the_job(tmp_path):
     assert context.python_executable is None
     assert context.completed is True
     assert context.returncode == 1
-    assert context.stderr == "Execution environment is not available."
+    assert context.stderr == "The code couldn't run because of a server error."
 
 
 async def test_a_venv_directory_without_a_python_binary_fails_the_job(tmp_path):

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from utils.graph_utils import runtime_node_name
+from utils.graph_utils import node_label
 
 from tables.exceptions import KnowledgeNodeRunValidationError
 from tables.services.rag_registry import resolve_rag_in_collection
@@ -39,31 +39,24 @@ class KnowledgeNodeValidator:
         )
         self.validate(rag_type, rag_id, source_collection)
 
-    def validate_runnable(self, node_list) -> None:
+    def validate_runnable(self, node_list, *, flow_name: str | None = None) -> None:
         """Run-time completeness gate: a node must have a collection, a fully
         selected RAG, and a non-empty query (the FE composes the query text, so
         a mapped input alone is not enough).
 
         Save stays permissive (empty nodes are allowed) -- this is enforced only
         before a run, so an incompletely configured node can't start a session.
-        Collects every offending node and reports them together as a single flat
-        message (mirrors FileNodeValidator) so the FE gets a uniform error shape."""
-        issues = []
-        for node in node_list:
-            missing = []
-            if node.source_collection_id is None:
-                missing.append("source_collection")
-            if node.rag_type is None or node.rag_id is None:
-                missing.append("rag_type/rag_id")
-            if not (node.query or "").strip():
-                missing.append("query")
-            if missing:
-                node_name = runtime_node_name(
-                    node_name=node.node_name, node_number=node.node_number, node_id=node.id
-                )
-                issues.append(f"{node_name} ({', '.join(missing)})")
-        if issues:
+        Collects every offending node and reports them together in one message.
+        `flow_name` names a subflow in the error; None for the flow the user ran."""
+        incomplete_node_labels = [
+            node_label(node_name=node.node_name, node_number=node.node_number)
+            for node in node_list
+            if node.source_collection_id is None
+            or node.rag_type is None
+            or node.rag_id is None
+            or not (node.query or "").strip()
+        ]
+        if incomplete_node_labels:
             raise KnowledgeNodeRunValidationError(
-                f"KnowledgeNode is not fully configured to run. "
-                f"Issue with nodes: {'; '.join(issues)}"
+                node_labels=incomplete_node_labels, flow_name=flow_name
             )

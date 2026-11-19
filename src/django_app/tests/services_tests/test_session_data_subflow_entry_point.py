@@ -1,4 +1,4 @@
-"""A run whose subflow has nothing connected to its Start names that subflow and its node."""
+"""A run whose subflow has nothing connected to its Start names that subflow."""
 
 import pytest
 
@@ -32,7 +32,7 @@ def _build_session_data(service, graph, start_node):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("child_has_start_node", [True, False])
-def test_subflow_with_nothing_connected_to_start_is_named_with_its_node(
+def test_subflow_with_nothing_connected_to_start_is_named(
     default_org, service, child_has_start_node
 ):
     parent = Graph.objects.create(name="Parent", org=default_org)
@@ -48,14 +48,14 @@ def test_subflow_with_nothing_connected_to_start_is_named_with_its_node(
         _build_session_data(service, parent, parent_start)
 
     assert str(exc_info.value.detail) == (
-        'Flow "Child" (used by Subflow node "Parse #3") has no node connected to its Start.'
+        'No node connected to start node in flow "Child".'
     )
     assert exc_info.value.status_code == 400
     assert exc_info.value.get_codes() == "subflow_entry_point_missing"
 
 
 @pytest.mark.django_db
-def test_nested_subflow_names_the_flow_with_nothing_connected_and_the_node_inside_its_parent(
+def test_nested_subflow_names_the_flow_with_nothing_connected(
     default_org, service
 ):
     flow_a = Graph.objects.create(name="Flow A", org=default_org)
@@ -77,7 +77,7 @@ def test_nested_subflow_names_the_flow_with_nothing_connected_and_the_node_insid
         _build_session_data(service, flow_a, start_a)
 
     assert str(exc_info.value.detail) == (
-        'Flow "Flow C" (used by Subflow node "Run C #2") has no node connected to its Start.'
+        'No node connected to start node in flow "Flow C".'
     )
 
 

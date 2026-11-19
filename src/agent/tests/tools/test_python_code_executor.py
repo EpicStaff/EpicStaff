@@ -155,9 +155,9 @@ async def test_sandbox_task_carries_the_tool_configuration(python_code_overrides
             "partial output", True,
         ),
         (ConnectionError("SandboxClient stopped"), "SandboxClient stopped", True),
-        (SandboxOverloadedError(120), "Sandbox overloaded: no free capacity within 120 s.", True),
-        (SandboxExecutionLostError(), "The sandbox lost the execution (it restarted, or its result was not delivered).", True),
-        (SandboxResultTimeoutError(2100), "Timed out waiting for the result after 2100 s.", True),
+        (SandboxOverloadedError(120), "The server was too busy to run the code in time.", True),
+        (SandboxExecutionLostError(), "The code couldn't run because of a server error.", True),
+        (SandboxResultTimeoutError(2100), "The code's result didn't arrive in time.", True),
     ],
     ids=["success", "stderr", "nonzero-uses-stdout", "client-stopped", "sandbox-full", "execution-lost", "backstop"],
 )

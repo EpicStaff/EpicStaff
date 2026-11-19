@@ -2,7 +2,11 @@
 
 Builds the preamble that injects globals and secrets, calls the entrypoint, writes
 its return value to the result file, and translates a network denial into a clear
-message. This is mechanism, not policy: the real network/filesystem boundary is the
+message. The user's code is embedded as a string and compiled as ``<code>`` inside the
+wrapper's ``try``, so a syntax error in it is reported like any other error, with the
+line number in the user's code and no server path, and the code itself is never
+re-indented. The source is registered in ``linecache`` under ``<code>`` so that
+``inspect.getsource`` works on the user's functions, as JIT decorators need. This is mechanism, not policy: the real network/filesystem boundary is the
 kernel-enforced seccomp/Landlock filter the launcher installs before this source
 runs. Pure -- it only formats a string.
 """
@@ -23,11 +27,9 @@ def wrap_code(
     storage_mutations_path: Path | None = None,
 ) -> str:
     global_kwargs = global_kwargs or {}
-    code_lines = code.split("\n")
-    code_lines = ["    " + line for line in code_lines]
-    code = "\n".join(code_lines)
     wrapped_code = f"""
 import errno
+import linecache
 import os
 import socket
 import sys
@@ -87,7 +89,12 @@ try:
     for k, v in {global_kwargs}.items():
         globals()[k] = v
 
-{code}
+    __sys_user_code = {code!r}
+    # A None mtime keeps linecache.checkcache from evicting the entry: there is no file.
+    linecache.cache["<code>"] = (
+        len(__sys_user_code), None, __sys_user_code.splitlines(True), "<code>"
+    )
+    exec(compile(__sys_user_code, "<code>", "exec"), globals())
 
     __sys_dot_kwargs = DotDict({func_kwargs})
 

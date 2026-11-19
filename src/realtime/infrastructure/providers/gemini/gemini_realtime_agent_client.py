@@ -7,15 +7,11 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from application.tool_manager_service import ToolManagerService
+from domain.error_messages import TOOL_CALL_FAILED
 from domain.models.realtime_tool import RealtimeTool
 from google import genai
 from google.genai import types
 from loguru import logger
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
@@ -529,13 +525,18 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
             )
             result_str = str(tool_result)
         except Exception as e:
-            correlation_id = new_error_correlation_id()
             logger.exception(
-                f"Gemini: Tool execution failed [correlation_id={correlation_id}]: {e}"
+                "Gemini: Tool execution failed connection_key={} org_id={} user_id={}"
+                " model={} tool={} call_id={}: {}",
+                self.connection_key,
+                self.org_id,
+                self.user_id,
+                self.model,
+                tool_name,
+                call_id,
+                e,
             )
-            result_str = build_public_error_message(
-                PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
-            )
+            result_str = TOOL_CALL_FAILED
 
         if self._session is None:
             logger.warning(

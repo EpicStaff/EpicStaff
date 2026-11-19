@@ -48,17 +48,20 @@ import sys
 import landlock
 import seccomp
 
+# Kept here, not imported: this file runs as a script with only its own directory on
+# sys.path. Matches the isolation-plan step's refusal, which fails the same way earlier.
+_REFUSED = "This server can't run code safely right now, so the code wasn't run."
+
 
 def main() -> None:
     plan_json, venv_python, code_path = sys.argv[1], sys.argv[2], sys.argv[3]
     plan = json.loads(plan_json)
 
-    # Any failure here must produce exactly one clear stderr line naming what
-    # could not be applied, not a raw ctypes traceback: this process's stderr
-    # becomes CodeResultData.stderr and is shown to the user or handed to an
-    # LLM as a tool observation. It must also fail closed -- never execv into
-    # the untrusted job code when a requested restriction could not be
-    # applied.
+    # Any failure here must produce exactly one fixed stderr line, not a raw
+    # ctypes traceback: this process's stderr becomes CodeResultData.stderr and
+    # is shown to the user or handed to an LLM as a tool observation. It must
+    # also fail closed -- never execv into the untrusted job code when a
+    # requested restriction could not be applied.
     network = plan["network"]
     mode = network["mode"]
     allowed_tcp_ports = tuple(network["ports"]) if mode == "allow_ports" else None
@@ -73,33 +76,19 @@ def main() -> None:
                 allowed_tcp_ports=allowed_tcp_ports,
                 isolate_signals=plan["isolate_signals"],
             )
-    except landlock.LandlockUnavailableError:
-        print(
-            "Sandbox isolation unavailable: Landlock filesystem jail could not be applied.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    except landlock.LandlockNetworkUnavailableError:
-        print(
-            "Sandbox isolation unavailable: Landlock network restriction could not be applied.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    except landlock.LandlockSignalIsolationUnavailableError:
-        print(
-            "Sandbox isolation unavailable: Landlock signal isolation could not be applied.",
-            file=sys.stderr,
-        )
+    except (
+        landlock.LandlockUnavailableError,
+        landlock.LandlockNetworkUnavailableError,
+        landlock.LandlockSignalIsolationUnavailableError,
+    ):
+        print(_REFUSED, file=sys.stderr)
         sys.exit(1)
 
     try:
         if mode == "block_all":
             seccomp.block_network()
     except seccomp.SeccompUnavailableError:
-        print(
-            "Sandbox isolation unavailable: network block (seccomp) could not be applied.",
-            file=sys.stderr,
-        )
+        print(_REFUSED, file=sys.stderr)
         sys.exit(1)
 
     os.execv(venv_python, [venv_python, code_path])

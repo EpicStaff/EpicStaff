@@ -5,6 +5,10 @@ interpolated ``repr`` output, so substring assertions alone would happily pass o
 that cannot be parsed.
 """
 
+import json
+import subprocess
+import sys
+
 import pytest
 
 from worker.infrastructure.execution.code_wrapper import wrap_code
@@ -114,3 +118,71 @@ async def test_the_wrap_step_includes_the_mutation_tail_when_storage_is_in_play(
     await WrapCodeStep()(context)
 
     assert "epicstaff_storage" in (tmp_path / "code.py").read_text(encoding="utf-8")
+
+
+# The wrapper imports these two in-sandbox helpers first; stand-ins keep the run local.
+_HELPER_STUBS = {
+    "dotdict.py": "class DotDict(dict):\n    pass\n\n\nDotObject = DotList = object\n",
+    "epicstaff_secrets.py": "def get_secret(name):\n    return None\n",
+}
+
+
+def run_wrapped(tmp_path, code: str) -> subprocess.CompletedProcess:
+    for name, source in _HELPER_STUBS.items():
+        (tmp_path / name).write_text(source, encoding="utf-8")
+    code_path = tmp_path / "code.py"
+    code_path.write_text(wrap(tmp_path, code=code), encoding="utf-8")
+    return subprocess.run(
+        [sys.executable, str(code_path)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env={"PYTHONPATH": str(tmp_path)},
+        timeout=30,
+    )
+
+
+def test_a_syntax_error_names_the_line_in_the_user_code_and_no_server_path(tmp_path):
+    completed = run_wrapped(tmp_path, 'def main(value):\n    x = 1\n    print("x"\n')
+
+    assert completed.returncode == 1
+    assert completed.stderr.strip().endswith("(<code>, line 3)")
+    assert str(tmp_path) not in completed.stderr
+    assert "/tmp" not in completed.stderr
+
+
+def test_the_user_functions_source_can_be_read_back_with_inspect(tmp_path):
+    # JIT decorators such as numba.jit and torch.jit.script read their function's source.
+    code = "import inspect\n\ndef main(value):\n    return inspect.getsource(main)\n"
+
+    completed = run_wrapped(tmp_path, code)
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads((tmp_path / "output.txt").read_text(encoding="utf-8")) == (
+        "def main(value):\n    return inspect.getsource(main)\n"
+    )
+
+
+def test_a_runtime_error_in_the_user_code_is_printed_as_is(tmp_path):
+    completed = run_wrapped(tmp_path, "def main(value):\n    return undefined_name\n")
+
+    assert completed.returncode == 1
+    assert completed.stderr.strip() == "name 'undefined_name' is not defined"
+
+
+def test_a_triple_quoted_string_keeps_its_content(tmp_path):
+    code = 'TEXT = """first\nsecond\n  third"""\n\ndef main(value):\n    return TEXT\n'
+
+    completed = run_wrapped(tmp_path, code)
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads((tmp_path / "output.txt").read_text(encoding="utf-8")) == (
+        "first\nsecond\n  third"
+    )
+
+
+def test_the_entrypoint_receives_the_arguments_and_its_result_is_written(tmp_path):
+    completed = run_wrapped(tmp_path, SIMPLE_CODE)
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads((tmp_path / "output.txt").read_text(encoding="utf-8")) == {"echo": "x"}

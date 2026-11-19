@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from dotdict import DotDict
 from langgraph.graph import StateGraph
+from loguru import logger
 
 from models.state import State
 from services.graph.events import StopEvent
@@ -20,6 +21,7 @@ from src.crew.services.graph.subgraphs.decision_table_node import (
     DecisionTableNodeSubgraph,
 )
 from src.shared.models import ConditionGroupData, DecisionTableNodeData
+from tests.graph.test_graph_builder import FakePythonCodeExecutorService
 
 
 SANDBOX_STDERR = "Traceback: NameError at /opt/crew/secret_path.py, token sk-live-abcdef"
@@ -93,13 +95,29 @@ async def test_matching_condition_group_routes_to_its_next_node():
     assert result["system_variables"]["nodes"]["dt_node"]["result_node"] == "node_A"
 
 
+def error_details(redis_service: MagicMock) -> list[str]:
+    return [
+        message["details"]
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    ]
+
+
+@pytest.fixture
+def captured_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING")
+    yield records
+    logger.remove(sink_id)
+
+
 @pytest.mark.asyncio
-async def test_failing_condition_group_keeps_its_composed_message_for_the_client():
-    """The composed domain text reaches the client through public_details; the
-    sanitization of the raw exception must not replace it with a generic message."""
+async def test_failing_condition_group_names_the_condition_before_the_stderr():
+    """The sandbox's stderr is already the text meant for the user (the user's own
+    error or the sandbox's fixed platform text); the node only names the condition."""
     node_data = DecisionTableNodeData(
         node_name="dt_node",
-        conditional_group_list=[complex_group("broken", "undefined_name", "node_A")],
+        conditional_group_list=[complex_group("High score", "undefined_name", "node_A")],
         next_error_node="error_node",
     )
     subgraph, redis_service = build_subgraph(
@@ -109,12 +127,62 @@ async def test_failing_condition_group_keeps_its_composed_message_for_the_client
     result = await subgraph.ainvoke(make_state())
 
     assert result["system_variables"]["nodes"]["dt_node"]["result_node"] == "error_node"
-    error_message = next(
-        message
-        for message in published_messages(redis_service)
-        if message["message_type"] == "error"
+    assert error_details(redis_service) == [f'Condition "High score": {SANDBOX_STDERR}']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("group", "expected"),
+    [
+        pytest.param(
+            complex_group("High score", "scroe > 3", "node_A"),
+            "Condition \"High score\": name 'scroe' is not defined",
+            id="user-error-in-expression-kept-as-raised",
+        ),
+        pytest.param(
+            complex_group("High score", "'yes'", "node_A"),
+            "Condition \"High score\" didn't give true or false.",
+            id="expression-not-boolean",
+        ),
+        pytest.param(
+            ConditionGroupData(
+                group_name="High score",
+                group_type="complex",
+                expression="True",
+                manipulation="variables['total'] = undefined_total",
+                next_node="node_A",
+            ),
+            "Condition \"High score\": name 'undefined_total' is not defined",
+            id="user-error-in-manipulation-kept-as-raised",
+        ),
+    ],
+)
+async def test_condition_failure_streams_its_fact(group, expected):
+    node_data = DecisionTableNodeData(
+        node_name="dt_node", conditional_group_list=[group], next_error_node="error_node"
     )
-    assert error_message["details"] == (
-        "Error executing condition group 'broken': "
-        f"Expression execution failed with error: {SANDBOX_STDERR}"
+    subgraph, redis_service = build_subgraph(node_data, FakePythonCodeExecutorService())
+
+    result = await subgraph.ainvoke(make_state({"score": 5}))
+
+    assert result["system_variables"]["nodes"]["dt_node"]["result_node"] == "error_node"
+    assert error_details(redis_service) == [expected]
+
+
+@pytest.mark.asyncio
+async def test_unreadable_code_result_streams_the_server_error_fact_and_logs_the_data(captured_logs):
+    node_data = DecisionTableNodeData(
+        node_name="dt_node",
+        conditional_group_list=[complex_group("High score", "True", "node_A")],
+        next_error_node="error_node",
     )
+    subgraph, redis_service = build_subgraph(
+        node_data, StubRunPythonCodeService(0, result_data="<html>proxy at internal-host</html>")
+    )
+
+    await subgraph.ainvoke(make_state())
+
+    assert error_details(redis_service) == [
+        "Condition \"High score\": The code couldn't run because of a server error."
+    ]
+    assert any("internal-host" in record for record in captured_logs)

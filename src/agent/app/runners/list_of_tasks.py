@@ -131,8 +131,8 @@ class ListOfTasksRunner(Runner):
                 )
 
                 if result.stop_reason in FAILURE_STOP_REASONS:
-                    raise AgentServiceError(
-                        f"task '{task.name}' failed: {result.error or result.stop_reason}"
+                    raise AgentServiceError.from_failed_loop(
+                        f"task '{task.name}' failed: {result.error or result.stop_reason}", result
                     )
 
                 logger.debug(

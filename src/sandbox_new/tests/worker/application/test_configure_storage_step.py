@@ -115,7 +115,7 @@ async def test_storage_without_credentials_fails_the_job(tmp_path, step):
 
     assert context.completed is True
     assert context.returncode == 1
-    assert "storage_credentials are required" in context.stderr
+    assert context.stderr == "The code couldn't run because of a server error."
     assert context.env == {}
     assert context.storage_mutations_path is None
 
@@ -127,6 +127,6 @@ async def test_storage_without_an_org_prefix_fails_the_job(tmp_path, step):
 
     assert context.completed is True
     assert context.returncode == 1
-    assert "storage_org_prefix is required" in context.stderr
+    assert context.stderr == "The code couldn't run because of a server error."
     assert context.env == {}
     assert context.storage_mutations_path is None

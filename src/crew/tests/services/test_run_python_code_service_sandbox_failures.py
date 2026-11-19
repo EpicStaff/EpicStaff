@@ -31,8 +31,8 @@ def fast_status_checks(monkeypatch):
 @pytest.mark.parametrize(
     ("sandbox_state", "expected_stderr"),
     [
-        ("full", "Sandbox overloaded: no free capacity within 0 s."),
-        ("unreachable", "The sandbox is unreachable."),
+        ("full", "The server was too busy to run the code in time."),
+        ("unreachable", "The code couldn't run because of a server error."),
     ],
 )
 async def test_submit_the_sandbox_does_not_take_fails_the_execution(
@@ -63,8 +63,65 @@ async def test_execution_the_sandbox_lost_fails_instead_of_waiting_for_the_backs
 
     assert result["execution_id"] == sandbox.submitted["execution_id"]
     assert result["returncode"] == 1
-    assert result["stderr"] == (
-        "The sandbox lost the execution (it restarted, or its result was not delivered)."
+    assert result["stderr"] == "The code couldn't run because of a server error."
+
+
+HTML_BAD_GATEWAY = "<html><body>502 Bad Gateway from internal-proxy:8080</body></html>"
+SERVER_TRACEBACK = '{"type": "server_error", "errors": [{"code": "unknown", "detail": "/app/x.py"}]}'
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected_stderr"),
+    [
+        (
+            httpx.Response(
+                409,
+                json={
+                    "type": "client_error",
+                    "errors": [{"code": "venv_failed", "detail": "Venv 3 failed to build."}],
+                },
+            ),
+            "Venv 3 failed to build.",
+        ),
+        (
+            httpx.Response(500, text=SERVER_TRACEBACK),
+            "The code couldn't run because of a server error.",
+        ),
+        (
+            httpx.Response(500, text=HTML_BAD_GATEWAY),
+            "The code couldn't run because of a server error.",
+        ),
+        (httpx.Response(500), "The code couldn't run because of a server error."),
+    ],
+    ids=["4xx-envelope", "5xx-envelope", "5xx-html", "5xx-empty"],
+)
+async def test_a_refused_submit_shows_only_a_fact_the_sandbox_meant_for_the_user(
+    run_python_code_service, sandbox, make_python_code_data, answer, expected_stderr
+):
+    sandbox.submit_answer = answer
+
+    result = await asyncio.wait_for(
+        run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={}),
+        timeout=5,
+    )
+
+    assert (result["returncode"], result["stderr"]) == (1, expected_stderr)
+
+
+async def test_a_status_check_the_sandbox_refuses_fails_the_execution_with_the_generic_fact(
+    run_python_code_service, sandbox, make_python_code_data, fast_status_checks, monkeypatch
+):
+    monkeypatch.setattr(settings, "CODE_RESULT_TIMEOUT", None)
+    sandbox.status_answer = httpx.Response(401, text=HTML_BAD_GATEWAY)
+
+    result = await asyncio.wait_for(
+        run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={}),
+        timeout=5,
+    )
+
+    assert (result["returncode"], result["stderr"]) == (
+        1,
+        "The code couldn't run because of a server error.",
     )
 
 

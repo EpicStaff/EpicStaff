@@ -4,6 +4,7 @@ from langgraph.types import StreamWriter
 from loguru import logger
 from models.state import State
 from services.graph.events import StopEvent
+from services.graph.exceptions import InvalidStatePathError, NodeConfigurationError
 from services.graph.nodes.base_node import BaseNode
 from src.shared.models import TelegramTriggerNodeFieldData
 from utils import set_output_variables
@@ -11,6 +12,7 @@ from utils import set_output_variables
 
 class TelegramTriggerNode(BaseNode):
     TYPE = "TELEGRAM_TRIGGER"
+    LABEL = "Telegram Trigger node"
 
     def __init__(
         self,
@@ -35,18 +37,39 @@ class TelegramTriggerNode(BaseNode):
             # But this node is should map multiple outputs to state variables.
             # So we reuse it here to avoid code duplication.
             # I don't like it too, but whatever.
-            output = input_.get("telegram_payload", {}).get(field.parent, {}).get(field.field_name)
+            try:
+                output = (
+                    input_.get("telegram_payload", {}).get(field.parent, {}).get(field.field_name)
+                )
+            # The update holds something other than an object where the field path expects one.
+            except AttributeError as error:
+                raise NodeConfigurationError(
+                    f'{self._display_name()}: field "{field.parent}.{field.field_name}" '
+                    "can't be read from the update."
+                ) from error
 
             if output is None:
                 logger.debug(
                     f"Field '{field.field_name}' not found in '{field.parent}'"
                 )  # if user using 1 trigger for different telegram updates it's ok
 
-            set_output_variables(
-                state=state,
-                output_variable_path=field.variable_path,
-                output=output,
-            )
+            try:
+                set_output_variables(
+                    state=state,
+                    output_variable_path=field.variable_path,
+                    output=output,
+                )
+            # set_output_variables raises ValueError for a path outside `variables`.
+            except ValueError as error:
+                raise InvalidStatePathError(
+                    f'{self._display_name()}: variable path "{field.variable_path}" '
+                    "isn't a flow variable."
+                ) from error
+            # Raised when a segment of the path is missing or can't hold the next one.
+            except (IndexError, KeyError, TypeError, AttributeError) as error:
+                raise InvalidStatePathError(
+                    f'{self._display_name()}: variable path "{field.variable_path}" doesn\'t exist.'
+                ) from error
 
         return state
 

@@ -253,7 +253,7 @@ async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uo
     assert message.execution_id == EXECUTION_ID
     assert message.returncode == 1
     assert message.ran is False
-    assert "failed to build" in message.stderr
+    assert message.stderr == "Couldn't install the libraries."
     assert (message.session_id, message.not_run_reason) == (7, "venv_failed")
 
 

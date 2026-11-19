@@ -97,7 +97,7 @@ async def test_a_workspace_whose_chown_failed_is_still_removed_after_the_run(
 
     result, _ = result_sink.sent[0]
     assert result.returncode == 1
-    assert "could not chown execution dirs" in result.stderr
+    assert result.stderr == "This server can't run code safely right now, so the code wasn't run."
     assert not (tmp_path / "executions" / "exec-1").exists()
 
 

@@ -3,10 +3,11 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
 
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
+import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe';
 
 @Component({
     selector: 'app-error-message',
-    imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent, RuntimeNodeLabelPipe],
     template: `
         <div class="session-message error-container">
             <div
@@ -31,7 +32,11 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                         class="message-toggle"
                         [attr.aria-expanded]="isMessageExpanded"
                     >
-                        Error
+                        @if (message.name) {
+                            {{ message.name | runtimeNodeLabel }} failed
+                        } @else {
+                            Error
+                        }
                     </button>
                 </h3>
             </div>

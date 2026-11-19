@@ -177,7 +177,7 @@ async def test_submit_does_not_ask_for_status_when_no_attempt_went_unanswered(cl
 async def test_submit_raises_overloaded_once_the_queue_budget_is_spent(clock, connect):
     sandbox = ScriptedSandbox(post=[overloaded(retry_after="5")])
 
-    with pytest.raises(SandboxOverloadedError, match=r"within 12 s"):
+    with pytest.raises(SandboxOverloadedError, match="The server was too busy to run the code in time."):
         await connect(sandbox, queue_timeout=12).submit(make_request())
 
     assert clock.sleeps == [5, 5, 2]
@@ -447,7 +447,7 @@ async def test_wait_raises_result_timeout_after_the_backstop(connect, fast_statu
     sandbox = ScriptedSandbox(get=[known()])
     result = asyncio.get_running_loop().create_future()
 
-    with pytest.raises(SandboxResultTimeoutError, match=r"after 0\.05 s"):
+    with pytest.raises(SandboxResultTimeoutError, match="The code's result didn't arrive in time."):
         await connect(sandbox).wait_for_result(EXECUTION_ID, result, backstop=0.05)
 
 

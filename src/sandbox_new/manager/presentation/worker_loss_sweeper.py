@@ -42,7 +42,7 @@ __all__ = ["HEARTBEAT_SILENCE_SECONDS", "WorkerLossSweeper"]
 HEARTBEAT_SILENCE_SECONDS = 60.0
 
 # The same wording the worker uses when it expires a job itself.
-_EXPIRED_MESSAGE = "Sandbox overloaded: the job waited {waited} s in the queue and was not run."
+_EXPIRED_MESSAGE = "The server was too busy to run the code in time."
 
 
 class WorkerLossSweeper:
@@ -116,7 +116,7 @@ class WorkerLossSweeper:
             )
             await self._failure_sink.fail(
                 job.execution_id,
-                _EXPIRED_MESSAGE.format(waited=waited),
+                _EXPIRED_MESSAGE,
                 session_id=job.session_id,
                 not_run_reason="overloaded",
                 reply_to_crew_channel=job.reply_to_crew_channel,

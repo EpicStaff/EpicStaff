@@ -7,6 +7,14 @@ class KnowledgeSearchError(Exception): ...
 class KeyValueNodeError(Exception): ...
 
 
+class NodeConfigurationError(Exception):
+    """A node can't run with the settings the flow author gave it.
+
+    The message names only the node and the missing or wrong setting, so it is safe to
+    show to the user.
+    """
+
+
 class InvalidStatePathError(Exception):
     """A flow state path the flow author wrote cannot be read or written.
 

@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NodeType } from '@shared/models';
+import { httpFailureReason } from '@shared/utils';
 
 import { PartialExportRequest } from '../../core/services/import-export.service';
 import { TransferExportService } from '../../core/services/transfer-export.service';
@@ -235,13 +236,12 @@ export class FlowImportExportService {
                         );
                     }
                 },
-                error: (err: HttpErrorResponse) => {
-                    const rawMessage =
-                        (err.error as Record<string, string>)?.['message'] ??
-                        (err.error as Record<string, string>)?.['detail'] ??
-                        null;
-                    this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
-                },
+                error: (err: HttpErrorResponse) =>
+                    this.toastService.error(
+                        `Couldn't import the nodes. ${httpFailureReason(err)}`,
+                        3000,
+                        'bottom-right'
+                    ),
             });
     }
 }

@@ -135,9 +135,7 @@ async def test_an_expired_job_is_failed_not_run_and_the_slot_is_reused(
     await runtime.run_until(lambda: len(result_sink.sent) == 2)
 
     result = runtime.results()["exec-1"]
-    assert result.stderr == (
-        "Sandbox overloaded: the job waited 121 s in the queue and was not run."
-    )
+    assert result.stderr == "The server was too busy to run the code in time."
     assert result.returncode == 1
     assert result.ran is False
     assert result.reply_to_crew_channel is True
@@ -175,7 +173,7 @@ async def test_a_run_that_raises_is_failed_and_frees_its_slot(result_sink, clock
     await runtime.run_until(lambda: len(result_sink.sent) == 2)
 
     results = runtime.results()
-    assert results["exec-1"].stderr == "Sandbox failed to run the job."
+    assert results["exec-1"].stderr == "The code couldn't run because of a server error."
     assert results["exec-1"].returncode == 1
     assert results["exec-1"].ran is False
     # A plain failed run, not an overload: no reason, so it is published as "failed".

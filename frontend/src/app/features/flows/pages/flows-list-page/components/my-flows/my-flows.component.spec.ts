@@ -496,3 +496,57 @@ describe('MyFlowsComponent export action', () => {
         expect(includeKnowledgeBox().checked).toBe(true);
     });
 });
+
+describe('MyFlowsComponent run action', () => {
+    const REPORT_FLOW: GetGraphLightRequest = { id: 9, uuid: 'uuid-9', name: 'Report', description: '' };
+
+    function runFailingWith(error: HttpErrorResponse): ReturnType<typeof vi.fn> {
+        const toastError = vi.fn();
+        TestBed.configureTestingModule({
+            providers: [
+                provideRouter([]),
+                {
+                    provide: FlowsStorageService,
+                    useValue: {
+                        filteredFlows: signal([]),
+                        isFlowsLoaded: signal(false),
+                        selectMode: signal(false),
+                        selectedFlowIds: signal([]),
+                        getFlows: () => of([]),
+                    },
+                },
+                { provide: LabelsStorageService, useValue: { activeLabelFilter: signal('all') } },
+                { provide: FlowsApiService, useValue: {} },
+                { provide: RunGraphService, useValue: { runGraph: () => throwError(() => error) } },
+                { provide: ToastService, useValue: { success: vi.fn(), error: toastError } },
+                { provide: ConfirmationDialogService, useValue: {} },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
+                { provide: TransferExportService, useValue: {} },
+            ],
+        });
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const fixture = TestBed.createComponent(MyFlowsComponent);
+        fixture.detectChanges();
+        fixture.componentInstance.handleFlowCardAction({ action: 'run', flow: REPORT_FLOW });
+        return toastError;
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it.each([
+        [
+            'the reason the server gave',
+            new HttpErrorResponse({ status: 400, error: { message: 'No node connected to start node' } }),
+            'Couldn\'t run "Report". No node connected to start node',
+        ],
+        [
+            'an unreachable server',
+            new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') }),
+            'Couldn\'t run "Report". The server couldn\'t be reached.',
+        ],
+    ])('names the flow and states %s', (_case, error, expected) => {
+        const toastError = runFailingWith(error);
+
+        expect(toastError).toHaveBeenCalledExactlyOnceWith(expected);
+    });
+});

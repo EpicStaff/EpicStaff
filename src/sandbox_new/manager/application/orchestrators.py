@@ -18,6 +18,7 @@ from litestar.datastructures import UploadFile
 from loguru import logger
 from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from src.shared.bench_log import BENCH_LEVEL
+from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
 
 from manager import settings
 from manager.application.holding import JobHoldingRegistry
@@ -63,14 +64,12 @@ from manager.domain.models import (
 from manager.domain.services import offer_wheels, order_by_version
 from manager.domain.types import NotRunReason
 
-_VENV_BUILD_FAILED_MESSAGE = "Execution environment failed to build; the job was not run."
-_DISPATCH_FAILED_MESSAGE = "The job could not be handed to the worker and was not run."
+# The build's own error stays on the venv row: uv's output is raw text, not a fact for the user.
+_VENV_BUILD_FAILED_MESSAGE = "Couldn't install the libraries."
 # Read in pieces so that an upload is never held in memory whole.
 _UPLOAD_CHUNK_SIZE = 1024 * 1024
 
-_HOLD_TIMED_OUT_MESSAGE = (
-    "The execution environment did not finish building in time; the job was not run."
-)
+_HOLD_TIMED_OUT_MESSAGE = "The libraries are still being installed."
 
 __all__ = [
     "CustomLibraryCRUDOrchestrator",
@@ -509,7 +508,7 @@ class JobOrchestrator:
         except Exception as error:
             # Type only: a validation error's text would quote the job's secrets.
             logger.error("Failed to dispatch job {}: {}", job.execution_id, type(error).__name__)
-            await self._fail(job, _DISPATCH_FAILED_MESSAGE, not_run_reason="dispatch_failed")
+            await self._fail(job, SANDBOX_SERVER_ERROR_MESSAGE, not_run_reason="dispatch_failed")
 
     def _open_secrets(self, execution_id: str, secrets: dict[str, Any]) -> dict[str, str]:
         opened: dict[str, str] = {}

@@ -136,7 +136,7 @@ async def test_a_failing_pipeline_step_still_produces_a_result(result_sink):
 
     result, _ = result_sink.sent[0]
     assert result.returncode == 1
-    assert "resolve venv blew up" in result.stderr
+    assert result.stderr == "The code couldn't run because of a server error."
 
 
 async def test_a_run_is_marked_as_having_run(result_sink):

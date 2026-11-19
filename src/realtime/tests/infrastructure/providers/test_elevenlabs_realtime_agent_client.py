@@ -11,7 +11,7 @@ import pytest
 from infrastructure.providers.elevenlabs.elevenlabs_realtime_agent_client import (
     ElevenLabsRealtimeAgentClient,
 )
-from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
+from tests.conftest import SECRET_SENTINEL
 
 
 @pytest.fixture
@@ -47,17 +47,16 @@ async def test_tool_failure_reaches_provider_and_browser_without_the_exception_t
 
     await client.call_tool("call_1", "search_tool", {"query": "hi"})
 
-    (result,) = _provider_tool_results(client)
-    assert result.startswith("Tool execution failed")
+    assert _provider_tool_results(client) == ["The tool call failed."]
     for call in client.send_server.await_args_list + client.send_client.await_args_list:
         assert SECRET_SENTINEL not in str(call.args[0])
-    # The browser shows the same reference, and support finds the detail under it in the logs.
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(result).group(1)
     (browser_output,) = [
         call.args[0]["item"]["output"]
         for call in client.send_client.await_args_list
         if call.args[0].get("type") == "conversation.item.created"
     ]
-    assert correlation_id in browser_output
-    (log,) = [message for message in captured_log_messages if correlation_id in message]
-    assert SECRET_SENTINEL in log
+    assert browser_output == "The tool call failed."
+    # Support finds the detail in the logs by the connection and the tool.
+    (log,) = [message for message in captured_log_messages if SECRET_SENTINEL in message]
+    assert "conn_1" in log
+    assert "search_tool" in log

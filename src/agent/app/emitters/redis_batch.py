@@ -12,6 +12,7 @@ from __future__ import annotations
 from loguru import logger
 
 from app.emitters.base import Emitter
+from app.exceptions import AGENT_FAILED, AgentServiceError, loop_error_detail
 from app.llm.client import LLMChunk
 from app.logging_utils import format_exception_for_log, redact_payload, redact_value
 from shared.bench_log import BENCH_LEVEL
@@ -119,6 +120,7 @@ class RedisStreamBatchEmitter(Emitter):
 
     async def on_final(self, result: LoopResult) -> None:
         """Publish a single ``agent.result`` envelope containing the loop summary."""
+        error = loop_error_detail(result)
         envelope = StreamEnvelope(
             type="agent.result",
             correlation_id=self._correlation_id,
@@ -129,7 +131,7 @@ class RedisStreamBatchEmitter(Emitter):
                 "iterations": result.iterations,
                 "stop_reason": result.stop_reason,
                 "token_usage": result.token_usage.model_dump(),
-                "error": result.error,
+                "error": error.model_dump() if error is not None else None,
                 "warnings": self._warnings,
                 "tasks": (
                     [task.model_dump() for task in result.tasks]
@@ -155,11 +157,19 @@ class RedisStreamBatchEmitter(Emitter):
         logger.info("published agent.result correlation_id={}", self._correlation_id)
 
     async def on_error(self, error: Exception) -> None:
-        """Publish a single ``agent.error`` envelope carrying the error message."""
+        """Publish a single ``agent.error`` envelope carrying a user-safe ``{code, detail}``.
+
+        The detail an ``AgentServiceError`` carries is sent; any other failure sends the
+        generic "The agent failed." The exception's own text is only logged.
+        """
+        detail = error.error if isinstance(error, AgentServiceError) else None
         envelope = StreamEnvelope(
             type="agent.error",
             correlation_id=self._correlation_id,
-            payload={"error": str(error), "warnings": self._warnings},
+            payload={
+                "error": (detail or AGENT_FAILED).model_dump(),
+                "warnings": self._warnings,
+            },
         )
         await self._publish(envelope)
         logger.log(

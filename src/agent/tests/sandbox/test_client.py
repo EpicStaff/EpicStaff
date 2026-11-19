@@ -401,7 +401,7 @@ async def test_stop_fails_submits_still_waiting(sandbox_factory):
             {"Retry-After": "0"},
             "full",
             SandboxOverloadedError,
-            "Sandbox overloaded: no free capacity within 0 s.",
+            "The server was too busy to run the code in time.",
         ),
     ],
     ids=["refused", "full"],

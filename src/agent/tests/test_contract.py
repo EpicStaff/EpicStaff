@@ -11,6 +11,7 @@ import pytest
 from app.data_loader import DataLoader
 from app.exceptions import DataLoadError
 from app.emitters.redis_batch import RedisStreamBatchEmitter
+from foundation.schemas import ErrorDetailSchema
 from shared.models.agent_service import AgentRequest, LoopResult, RunType, TokenUsage
 
 # ---------------------------------------------------------------------------
@@ -254,3 +255,42 @@ async def test_agent_result_payload_key_set_includes_tasks():
         "warnings",
         "tasks",
     }
+
+
+async def test_agent_result_error_is_a_code_and_detail_object():
+    """Crew shows ``error.detail`` of a failed 'agent.result' to the user, so the value
+    is foundation's ``ErrorDetailSchema`` dump, never the raw exception text.
+
+    'agent.knowledge_search' keeps its own plain-string ``error`` on purpose: it is the
+    live event of one search the agent can recover from, not the run's failure. The
+    two shapes are deliberate.
+    """
+    published: list[dict] = []
+    fake_client = MagicMock()
+
+    async def capture_publish(stream, fields, maxlen=None, approximate=True, ttl_s=None) -> None:
+        published.append(fields)
+
+    fake_client.publish = capture_publish
+    emitter = RedisStreamBatchEmitter(
+        client=fake_client,
+        result_stream_prefix="agent.results",
+        correlation_id="corr-1",
+        result_stream_ttl_s=3600,
+    )
+    result = LoopResult(
+        final_text=None,
+        tool_invocations=0,
+        iterations=1,
+        stop_reason="llm_error",
+        token_usage=TokenUsage(),
+        error='The provider has no model "gpt-4o".',
+        error_code="llm_model_not_found",
+    )
+
+    await emitter.on_final(result)
+
+    payload = json.loads(published[0]["payload"])
+    assert ErrorDetailSchema.model_validate(payload["error"]) == ErrorDetailSchema(
+        code="llm_model_not_found", detail='The provider has no model "gpt-4o".'
+    )

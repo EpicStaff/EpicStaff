@@ -1,5 +1,3 @@
-import re
-
 import pytest
 from dotdict import DotDict
 from loguru import logger
@@ -8,10 +6,12 @@ from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
 from services.graph.exceptions import InvalidStatePathError, ReturnCodeError, StopSession
 from services.graph.nodes.base_node import BaseNode
+from services.graph.nodes.python_node import PythonNode
 from src.shared.flow_templates import RefusedPlaceholderError, render_template
+from src.shared.models import PythonCodeData
+from tests.graph.test_graph_builder import FakePythonCodeExecutorService
 
-SECRET_TEXT = "postgres://admin:sup3rs3cret@internal-db.epicstaff.local:5432/crewdb"
-GENERIC_DETAILS_PATTERN = r"^Node execution failed \(reference: [0-9a-f]{12}\)$"
+SECRET_TEXT = "postgres://admin:secret-key-123@internal-db.epicstaff.local:5432/crewdb"
 SANDBOX_STDERR = "Traceback: NameError at /opt/crew/secret_path.py, token sk-live-abcdef"
 
 
@@ -72,8 +72,8 @@ def captured_logs():
 
 
 @pytest.mark.asyncio
-async def test_failing_node_streams_generic_details_and_reraises(captured_logs):
-    node = LeakyNode(session_id=7, node_name="leaky", stop_event=StopEvent())
+async def test_failing_node_streams_the_node_failed_fact_and_reraises(captured_logs):
+    node = LeakyNode(session_id=7, node_name="Save lead #3 #57", stop_event=StopEvent())
     messages = []
 
     with pytest.raises(RuntimeError):
@@ -83,52 +83,22 @@ async def test_failing_node_streams_generic_details_and_reraises(captured_logs):
         message for message in messages if message.message_data.message_type == "error"
     ]
     assert len(error_messages) == 1
-    details = error_messages[0].message_data.details
-
-    assert re.match(GENERIC_DETAILS_PATTERN, details)
-    assert SECRET_TEXT not in details
-    assert "RuntimeError" not in details
-    assert "connection refused" not in details
+    assert error_messages[0].message_data.details == 'Node "Save lead #3" failed.'
 
 
 @pytest.mark.asyncio
-async def test_raw_error_is_logged_with_the_streamed_correlation_id(captured_logs):
-    node = LeakyNode(session_id=7, node_name="leaky", stop_event=StopEvent())
+async def test_raw_error_goes_to_the_log_with_session_and_node(captured_logs):
+    node = LeakyNode(session_id=7, node_name="Save lead #3 #57", stop_event=StopEvent())
     messages = []
 
     with pytest.raises(RuntimeError):
         await node.run(build_state(), writer=messages.append)
 
-    details = next(
-        message.message_data.details
-        for message in messages
-        if message.message_data.message_type == "error"
-    )
-    correlation_id = re.search(r"reference: ([0-9a-f]{12})", details).group(1)
-
-    matching_logs = [record for record in captured_logs if correlation_id in record]
-    assert len(matching_logs) == 1
-    assert SECRET_TEXT in matching_logs[0]
-    assert "leaky" in matching_logs[0]
-    assert "session_id=7" in matching_logs[0]
-
-
-@pytest.mark.asyncio
-async def test_each_failure_gets_its_own_correlation_id(captured_logs):
-    node = LeakyNode(session_id=7, node_name="leaky", stop_event=StopEvent())
-    details = []
-
-    for _ in range(2):
-        messages = []
-        with pytest.raises(RuntimeError):
-            await node.run(build_state(), writer=messages.append)
-        details.extend(
-            message.message_data.details
-            for message in messages
-            if message.message_data.message_type == "error"
-        )
-
-    assert details[0] != details[1]
+    assert len(captured_logs) == 1
+    assert SECRET_TEXT in captured_logs[0]
+    assert "Save lead #3 #57" in captured_logs[0]
+    assert "session_id=7" in captured_logs[0]
+    assert "reference" not in captured_logs[0]
 
 
 def test_public_details_replace_the_generic_message_and_add_no_log_of_their_own(captured_logs):
@@ -191,7 +161,8 @@ async def test_refused_template_placeholder_is_streamed_verbatim(captured_logs):
 
 
 @pytest.mark.asyncio
-async def test_stop_session_gets_an_empty_error_card_not_the_generic_message(captured_logs):
+async def test_a_stopped_node_streams_no_error_card(captured_logs):
+    # A stop isn't a failure: the session ends as stopped, and a card would read "<node> failed".
     node = StoppedNode(session_id=7, node_name="stopped", stop_event=StopEvent())
     messages = []
 
@@ -201,25 +172,22 @@ async def test_stop_session_gets_an_empty_error_card_not_the_generic_message(cap
     error_messages = [
         message for message in messages if message.message_data.message_type == "error"
     ]
-    assert len(error_messages) == 1
-    assert error_messages[0].message_data.details == ""
+    assert error_messages == []
     assert captured_logs == []
 
 
-def test_error_passed_as_string_is_also_sanitized(captured_logs):
+def test_error_passed_as_string_is_also_kept_out_of_the_stream(captured_logs):
     messages = []
 
     CustomSessionMessageWriter.add_error_message(
         session_id=7,
-        node_name="leaky",
+        node_name="Save lead #3 #57",
         writer=messages.append,
         error=f"Error executing condition group 'group_a': {SECRET_TEXT}",
         execution_order=0,
     )
 
-    details = messages[0].message_data.details
-    assert re.match(GENERIC_DETAILS_PATTERN, details)
-    assert SECRET_TEXT not in details
+    assert messages[0].message_data.details == 'Node "Save lead #3" failed.'
     assert SECRET_TEXT in captured_logs[0]
 
 
@@ -260,6 +228,50 @@ async def test_underscore_state_path_fails_before_execute_with_a_public_message(
         f"Variable path '{rejected_path}' is not allowed: path segments cannot start with '_'."
     )
     assert captured_logs == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("output_variable_path", "variables", "expected"),
+    [
+        (
+            "variables.tags[5]",
+            {"tags": ["x"]},
+            'Output path "variables.tags[5]" of Python node "Clean data #2" doesn\'t exist.',
+        ),
+        (
+            "variables.name.first",
+            {"name": "Ann"},
+            'Output path "variables.name.first" of Python node "Clean data #2" doesn\'t exist.',
+        ),
+    ],
+    ids=["index-out-of-range", "name-on-a-string"],
+)
+async def test_output_path_that_does_not_exist_streams_the_fact(
+    captured_logs, output_variable_path, variables, expected
+):
+    node = PythonNode(
+        session_id=7,
+        node_name="Clean data #2 #41",
+        stop_event=StopEvent(),
+        input_map={},
+        output_variable_path=output_variable_path,
+        python_code_executor_service=FakePythonCodeExecutorService(),
+        python_code_data=PythonCodeData(code="def main():\n    return 1\n", entrypoint="main"),
+    )
+    state = build_state()
+    state["variables"] = DotDict(variables)
+    messages = []
+
+    with pytest.raises(InvalidStatePathError):
+        await node.run(state, writer=messages.append)
+
+    error_messages = [
+        message
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+    assert [message.message_data.details for message in error_messages] == [expected]
 
 
 @pytest.mark.asyncio
