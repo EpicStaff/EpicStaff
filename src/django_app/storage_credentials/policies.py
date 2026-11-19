@@ -64,11 +64,11 @@ def build_org_user_policy(bucket: str, org_prefix: str) -> dict[str, Any]:
     """Policy for the long-lived, org-level storage IAM user.
 
     Grants S3 access to its own `org_<id>/*` prefix plus the admin actions
-    needed to mint, revoke, and list its own (never another org's) service
-    accounts. `admin:CreateServiceAccount`/`RemoveServiceAccount` are safe
-    here specifically because `miniopy-async`'s `add_service_account` cannot
-    target another principal, and the storage backend itself refuses cross-user
-    minting independent of policy.
+    used to mint, revoke, and list service accounts. MinIO/RustFS cannot scope
+    admin actions by resource, so this policy does not limit them to the org's
+    own accounts. The real boundary is that only Django holds these credentials
+    (a `system=True` Secret read only by `storage_credentials`), and Django
+    already holds the storage root keys.
     """
     normalized_prefix = org_prefix.strip().rstrip("/")
     if not normalized_prefix:
