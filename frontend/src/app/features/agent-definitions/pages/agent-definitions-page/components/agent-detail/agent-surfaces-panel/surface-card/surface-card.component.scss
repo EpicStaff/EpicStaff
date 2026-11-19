@@ -158,6 +158,27 @@
     }
 }
 
+.surface-card__used-by {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 4px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--accent-color);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:is(:hover, :focus-visible) {
+        background-color: var(--color-ghost-btn-hover);
+    }
+}
+
 .surface-card__action {
     display: inline-flex;
     align-items: center;

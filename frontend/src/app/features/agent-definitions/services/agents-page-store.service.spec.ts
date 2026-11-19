@@ -872,6 +872,28 @@ describe('AgentsPageStore surface usage', () => {
         expect(store.selectedSurfaceUsage.value()?.flows[0].flowName).toBe('flow of 10');
     });
 
+    it('loads the usage of any surface for the dialog, again on each open, and lets go on close', async () => {
+        const getUsage = vi.fn((id: number) => of(flowUsage(`flow of ${id}`)));
+        const store = loadStore({
+            agents: [],
+            surfaces: [surface(10, 'CRM access', null), surface(11, 'Billing', null)],
+            getUsage,
+        });
+
+        const usage = store.openSurfaceUsage(11);
+        await settle();
+        expect(getUsage).toHaveBeenCalledExactlyOnceWith(11);
+        expect(usage.value()?.flows[0].flowName).toBe('flow of 11');
+
+        store.openSurfaceUsage(11);
+        await settle();
+        expect(getUsage).toHaveBeenCalledTimes(2);
+
+        store.closeSurfaceUsage();
+        await settle();
+        expect(usage.value()).toBeUndefined();
+    });
+
     it('drops the answer of the previous surface when another is selected', async () => {
         const pending = new Subject<SurfaceUsage>();
         const getUsage = (id: number): Observable<SurfaceUsage> => (id === 10 ? pending : of(flowUsage('flow of 11')));

@@ -100,8 +100,34 @@
                 <ul class="usage-list">
                     @for (flow of loaded.flows; track flow.flowId) {
                         <li class="usage-flow">
-                            <div class="usage-row">
-                                <span class="usage-row__name">{{ flow.flowName }}</span>
+                            <div class="usage-row usage-row--flow">
+                                <button
+                                    type="button"
+                                    class="usage-row__chevron-btn"
+                                    [attr.aria-label]="isFlowExpanded(flow.flowId) ? 'Collapse' : 'Expand'"
+                                    [attr.aria-expanded]="isFlowExpanded(flow.flowId)"
+                                    [matTooltip]="isFlowExpanded(flow.flowId) ? 'Collapse' : 'Expand'"
+                                    (click)="toggleFlow(flow.flowId)"
+                                >
+                                    <app-svg-icon
+                                        class="usage-row__chevron"
+                                        [class.usage-row__chevron--open]="isFlowExpanded(flow.flowId)"
+                                        icon="chevron-down-filled"
+                                        size="8px"
+                                    />
+                                </button>
+                                <button
+                                    type="button"
+                                    class="usage-row__toggle"
+                                    tabindex="-1"
+                                    (click)="toggleFlow(flow.flowId)"
+                                >
+                                    <span class="usage-row__name">{{ flow.flowName }}</span>
+                                    <span class="usage-row__place"
+                                        >· {{ flow.nodes.length }}
+                                        {{ flow.nodes.length === 1 ? 'node' : 'nodes' }}</span
+                                    >
+                                </button>
                                 <button
                                     type="button"
                                     class="usage-row__open"
@@ -115,26 +141,30 @@
                                     />
                                 </button>
                             </div>
-                            @for (node of flow.nodes; track node.nodeId) {
-                                <div class="usage-row usage-row--node">
-                                    <span class="usage-row__name">
-                                        {{ node.nodeName }}
-                                        @if (node.agentName) {
-                                            <span class="usage-row__place">· {{ node.agentName }}</span>
-                                        }
-                                    </span>
-                                    <button
-                                        type="button"
-                                        class="usage-row__open"
-                                        [attr.aria-label]="'Open ' + node.nodeName + ' in ' + flow.flowName"
-                                        [matTooltip]="'Open ' + node.nodeName"
-                                        (click)="openFlow(flow.flowId, node.nodeId)"
-                                    >
-                                        <app-svg-icon
-                                            icon="arrow-up-right"
-                                            size="14px"
-                                        />
-                                    </button>
+                            @if (isFlowExpanded(flow.flowId)) {
+                                <div class="usage-flow__nodes">
+                                    @for (node of flow.nodes; track node.nodeId) {
+                                        <div class="usage-row usage-row--node">
+                                            <span class="usage-row__name">
+                                                {{ node.nodeName }}
+                                                @if (node.agentName) {
+                                                    <span class="usage-row__place">· {{ node.agentName }}</span>
+                                                }
+                                            </span>
+                                            <button
+                                                type="button"
+                                                class="usage-row__open"
+                                                [attr.aria-label]="'Open ' + node.nodeName + ' in ' + flow.flowName"
+                                                [matTooltip]="'Open ' + node.nodeName"
+                                                (click)="openFlow(flow.flowId, node.nodeId)"
+                                            >
+                                                <app-svg-icon
+                                                    icon="arrow-up-right"
+                                                    size="14px"
+                                                />
+                                            </button>
+                                        </div>
+                                    }
                                 </div>
                             }
                         </li>

@@ -100,6 +100,7 @@ export class AgentSurfacesPanelComponent {
     readonly duplicateSurface = output<number>();
     readonly makeAgentSpecificCopy = output<number>();
     readonly openSource = output<number>();
+    readonly openUsage = output<number>();
     readonly renameSurface = output<{ id: number; name: string }>();
     readonly surfaceChange = output<{ id: number; patch: PartialUpdateSurfaceRequest }>();
     readonly viewSummary = output<{ place: SurfaceCategoryId; surfaceIds: number[] }>();

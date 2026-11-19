@@ -550,6 +550,30 @@ describe('AgentDefinitionsPageComponent deleting a surface', () => {
     });
 });
 
+describe('AgentDefinitionsPageComponent usage opened from a surface card', () => {
+    it('shows the usage of that surface and lets the store go when the dialog closes', () => {
+        const { fixture } = render(true);
+        const usage = signal(undefined);
+        const openSurfaceUsage = vi.fn(() => usage);
+        const closeSurfaceUsage = vi.fn();
+        Object.assign(fixture.debugElement.injector.get(AgentsPageStore), { openSurfaceUsage, closeSurfaceUsage });
+        const closed = new Subject<number | undefined>();
+        const open = vi
+            .spyOn(TestBed.inject(Dialog), 'open')
+            .mockReturnValue({ closed } as unknown as ReturnType<Dialog['open']>);
+
+        fixture.componentInstance.onOpenSurfaceUsage(42);
+
+        expect(openSurfaceUsage).toHaveBeenCalledExactlyOnceWith(42);
+        expect(open.mock.calls[0][1]?.data).toEqual({ usage });
+        expect(closeSurfaceUsage).not.toHaveBeenCalled();
+
+        closed.next(undefined);
+
+        expect(closeSurfaceUsage).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe('AgentDefinitionsPageComponent saving the agent', () => {
     const payload = {
         id: AGENT.id,

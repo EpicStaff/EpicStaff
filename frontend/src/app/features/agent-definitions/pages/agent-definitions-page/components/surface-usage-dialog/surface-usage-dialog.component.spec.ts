@@ -57,7 +57,7 @@ const squash = (text: string | null | undefined): string => text?.replace(/\s+/g
 /** Each row's visible texts (name, place), so the check does not depend on whitespace between spans. */
 const rowTexts = (host: HTMLElement): string[] =>
     Array.from(host.querySelectorAll('.usage-row')).map((row) =>
-        Array.from(row.querySelectorAll(':scope > span'))
+        Array.from(row.querySelectorAll(':scope > span, :scope > .usage-row__toggle > span'))
             .map((cell) => squash(cell.textContent))
             .join(' ')
     );
@@ -90,19 +90,57 @@ describe('SurfaceUsageDialogComponent', () => {
         fixture.detectChanges();
 
         expect(host.querySelector('.usage-dialog__state')).toBeNull();
-        expect(rowTexts(host)).toContain('My flow');
+        expect(rowTexts(host)).toContain('My flow · 2 nodes');
     });
 
-    it('lists an agent row per place and a flow with one sub-row per node, naming the node agent when there is one', async () => {
+    it('lists an agent row per place and a flow row with its node count, nodes hidden by default', async () => {
         const { host } = await render(of(USAGE));
 
-        expect(rowTexts(host)).toEqual([
-            'Researcher Every-Place Surface',
-            'Researcher Chat',
-            'My flow',
-            'Summarize · Researcher',
-            'Plain task',
-        ]);
+        expect(rowTexts(host)).toEqual(['Researcher Every-Place Surface', 'Researcher Chat', 'My flow · 2 nodes']);
+        expect(host.querySelector('.usage-row--node')).toBeNull();
+        expect(host.querySelector('.usage-flow__nodes')).toBeNull();
+        expect(host.querySelector('.usage-row__chevron-btn')?.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('says "1 node" for a flow with a single node', async () => {
+        const single: SurfaceUsage = {
+            ...USAGE,
+            flows: [{ flowId: 8, flowName: 'Solo', nodes: [{ nodeId: 1, nodeName: 'Only', agentName: null }] }],
+        };
+        const { host } = await render(of(single));
+
+        expect(rowTexts(host)).toContain('Solo · 1 node');
+    });
+
+    it('shows the node rows under a divider when expanded and hides them on the next toggle', async () => {
+        const { fixture, host } = await render(of(USAGE));
+        const chevron = host.querySelector<HTMLButtonElement>('.usage-row__chevron-btn')!;
+
+        chevron.click();
+        fixture.detectChanges();
+
+        expect(host.querySelector('.usage-flow__nodes')).not.toBeNull();
+        expect(rowTexts(host).slice(2)).toEqual(['My flow · 2 nodes', 'Summarize · Researcher', 'Plain task']);
+        expect(chevron.getAttribute('aria-expanded')).toBe('true');
+        expect(chevron.getAttribute('aria-label')).toBe('Collapse');
+
+        chevron.click();
+        fixture.detectChanges();
+
+        expect(host.querySelector('.usage-row--node')).toBeNull();
+        expect(chevron.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('toggles the flow when its name is clicked', async () => {
+        const { fixture, host } = await render(of(USAGE));
+
+        host.querySelector<HTMLButtonElement>('.usage-row__toggle')!.click();
+        fixture.detectChanges();
+        expect(host.querySelectorAll('.usage-row--node')).toHaveLength(2);
+
+        host.querySelector<HTMLButtonElement>('.usage-row__toggle')!.click();
+        fixture.detectChanges();
+        expect(host.querySelector('.usage-row--node')).toBeNull();
     });
 
     it('counts each agent once however many places it holds the surface in', async () => {
@@ -133,7 +171,9 @@ describe('SurfaceUsageDialogComponent', () => {
 
     it('opens the node in its flow in a new tab', async () => {
         const open = vi.spyOn(window, 'open').mockReturnValue(null);
-        const { host } = await render(of(USAGE));
+        const { fixture, host } = await render(of(USAGE));
+        host.querySelector<HTMLButtonElement>('.usage-row__chevron-btn')!.click();
+        fixture.detectChanges();
 
         host.querySelector<HTMLButtonElement>('[aria-label="Open Summarize in My flow"]')!.click();
 
@@ -142,11 +182,13 @@ describe('SurfaceUsageDialogComponent', () => {
 
     it('opens the flow itself without a node', async () => {
         const open = vi.spyOn(window, 'open').mockReturnValue(null);
-        const { host } = await render(of(USAGE));
+        const { fixture, host } = await render(of(USAGE));
 
         host.querySelector<HTMLButtonElement>('[aria-label="Open My flow"]')!.click();
+        fixture.detectChanges();
 
         expect(open).toHaveBeenCalledExactlyOnceWith('/flows/7', '_blank', 'noopener');
+        expect(host.querySelector('.usage-row--node')).toBeNull();
     });
 
     it('closes with the agent id so the page can select that agent', async () => {

@@ -11,6 +11,7 @@ import {
     inject,
     Injector,
     OnInit,
+    ResourceRef,
     signal,
     untracked,
     viewChild,
@@ -42,7 +43,12 @@ import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../mode
 import { ExplorerSectionId, GroupAssignTarget } from '../../models/explorer.model';
 import { CreateSurfaceRequest } from '../../models/surface.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryConfig, SurfaceCategoryId } from '../../models/surface-category.model';
-import { surfaceUsageAgentCount, surfaceUsageFlowCount, surfaceUsageTotal } from '../../models/surface-usage.model';
+import {
+    SurfaceUsage,
+    surfaceUsageAgentCount,
+    surfaceUsageFlowCount,
+    surfaceUsageTotal,
+} from '../../models/surface-usage.model';
 import { BranchTreeNode } from '../../models/tree-node.model';
 import { AgentsPageStore } from '../../services/agents-page-store.service';
 import { SurfaceCatalogsStore } from '../../services/surface-catalogs-store.service';
@@ -458,22 +464,11 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     onOpenUsage(): void {
         // Flow-editor changes made since the last load must show up.
         this.store.selectedSurfaceUsage.reload();
-        this.dialog
-            .open<number | undefined, SurfaceUsageDialogData>(SurfaceUsageDialogComponent, {
-                width: 'calc(100vw - 2rem)',
-                height: 'calc(100vh - 2rem)',
-                maxWidth: '100vw',
-                panelClass: 'surface-usage-dialog-panel',
-                injector: this.injector,
-                data: { usage: this.store.selectedSurfaceUsage },
-            })
-            .closed.subscribe((agentId) => {
-                if (typeof agentId !== 'number') return;
-                this.guardUnsaved(() => {
-                    this.storageFacade.selectedFile.set(null);
-                    this.store.selectAgent(agentId);
-                });
-            });
+        this.openUsageDialog(this.store.selectedSurfaceUsage);
+    }
+
+    onOpenSurfaceUsage(surfaceId: number): void {
+        this.openUsageDialog(this.store.openSurfaceUsage(surfaceId), () => this.store.closeSurfaceUsage());
     }
 
     onViewSummary(event: { place: SurfaceCategoryId; surfaceIds: number[] }): void {
@@ -570,6 +565,26 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     /** Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away. */
+    private openUsageDialog(usage: ResourceRef<SurfaceUsage | undefined>, onClosed?: () => void): void {
+        this.dialog
+            .open<number | undefined, SurfaceUsageDialogData>(SurfaceUsageDialogComponent, {
+                width: 'calc(100vw - 2rem)',
+                height: 'calc(100vh - 2rem)',
+                maxWidth: '100vw',
+                panelClass: 'surface-usage-dialog-panel',
+                injector: this.injector,
+                data: { usage },
+            })
+            .closed.subscribe((agentId) => {
+                onClosed?.();
+                if (typeof agentId !== 'number') return;
+                this.guardUnsaved(() => {
+                    this.storageFacade.selectedFile.set(null);
+                    this.store.selectAgent(agentId);
+                });
+            });
+    }
+
     private closeHeaderMenuToTrigger(): void {
         this.headerMenuTrigger()?.nativeElement.focus();
         this.closeHeaderMenu();

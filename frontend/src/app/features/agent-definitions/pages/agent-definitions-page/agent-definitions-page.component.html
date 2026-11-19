@@ -239,6 +239,7 @@
                             (duplicateSurface)="store.duplicateSurface($event)"
                             (makeAgentSpecificCopy)="onMakeAgentSpecificCopyForSelected($event)"
                             (openSurfaceSource)="store.openSharedSurfaceSource($event)"
+                            (openSurfaceUsage)="onOpenSurfaceUsage($event)"
                             (renameSurface)="store.updateSurface($event.id, { name: $event.name })"
                             (surfaceChange)="store.updateSurface($event.id, $event.patch)"
                             (viewSummary)="onViewSummary($event)"

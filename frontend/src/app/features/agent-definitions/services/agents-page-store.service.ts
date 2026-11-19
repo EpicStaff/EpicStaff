@@ -1,5 +1,5 @@
 ﻿import { HttpErrorResponse } from '@angular/common/http';
-import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
+import { computed, DestroyRef, inject, Injectable, ResourceRef, signal } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 import { ExportOptionsDialogService } from '@shared/services';
@@ -481,6 +481,28 @@ export class AgentsPageStore {
         },
         stream: ({ params }) => this.surfacesApi.getUsage(params.surfaceId),
     });
+
+    private readonly usageDialogSurfaceId = signal<number | null>(null);
+
+    private readonly usageDialogResource = rxResource({
+        params: () => this.usageDialogSurfaceId() ?? undefined,
+        stream: ({ params: surfaceId }) => this.surfacesApi.getUsage(surfaceId),
+    });
+
+    /** Live usage of any surface, for the dialog opened from a card; fetched afresh on every call. */
+    openSurfaceUsage(surfaceId: number): ResourceRef<SurfaceUsage | undefined> {
+        if (this.usageDialogSurfaceId() === surfaceId) {
+            this.usageDialogResource.reload();
+        } else {
+            this.usageDialogSurfaceId.set(surfaceId);
+        }
+        return this.usageDialogResource;
+    }
+
+    /** Stops holding the usage of the surface the dialog showed. */
+    closeSurfaceUsage(): void {
+        this.usageDialogSurfaceId.set(null);
+    }
 
     /** Null after a failed load, which is reported to the user. */
     loadSurfaceUsage(surfaceId: number): Observable<SurfaceUsage | null> {

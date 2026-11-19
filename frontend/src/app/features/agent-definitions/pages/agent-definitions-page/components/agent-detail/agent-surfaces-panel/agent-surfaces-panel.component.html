@@ -218,6 +218,7 @@
                                 (renameSurface)="renameSurface.emit({ id: surface.id, name: $event })"
                                 (surfaceChange)="surfaceChange.emit({ id: surface.id, patch: $event })"
                                 (openSource)="openSource.emit(surface.id)"
+                                (openUsage)="openUsage.emit(surface.id)"
                                 (detach)="detachSurface.emit(surface.id)"
                                 (makeShared)="makeSharedSurface.emit(surface.id)"
                                 (makeAgentSpecificCopy)="makeAgentSpecificCopy.emit(surface.id)"

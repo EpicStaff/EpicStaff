@@ -74,6 +74,18 @@
 
             @if (!isCreating()) {
                 <div class="surface-card__actions">
+                    <button
+                        *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
+                        type="button"
+                        class="surface-card__used-by"
+                        (click)="onHeaderAction('openUsage', $event)"
+                    >
+                        Used by
+                        <app-svg-icon
+                            icon="arrow-up-right"
+                            size="12px"
+                        />
+                    </button>
                     @if (sharedInAgent()) {
                         <button
                             *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"

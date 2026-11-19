@@ -254,6 +254,42 @@ function viewDetailsItem(overlay: HTMLElement): HTMLButtonElement | null {
     );
 }
 
+describe('SurfaceCardComponent "Used by" action', () => {
+    const usedByButton = (host: HTMLElement): HTMLButtonElement | null => host.querySelector('.surface-card__used-by');
+
+    it('asks for the usage without expanding or collapsing the card', () => {
+        const { fixture, host } = renderMenu({ canWrite: true });
+        const requested = vi.fn();
+        fixture.componentInstance.openUsage.subscribe(requested);
+        const expandedBefore = fixture.componentInstance.expanded();
+
+        usedByButton(host)!.click();
+
+        expect(requested).toHaveBeenCalledTimes(1);
+        expect(fixture.componentInstance.expanded()).toBe(expandedBefore);
+    });
+
+    it('is offered on a shared surface as well', () => {
+        const { host } = renderMenu({ canWrite: true, isShared: true });
+
+        expect(usedByButton(host)?.textContent).toContain('Used by');
+    });
+
+    it('is hidden without permission to read surfaces', () => {
+        const { host } = renderMenu({ canWrite: false });
+
+        expect(usedByButton(host)).toBeNull();
+    });
+
+    it('is hidden while the surface is still being created', () => {
+        const { fixture, host } = renderMenu({ canWrite: true });
+        fixture.componentRef.setInput('isCreating', true);
+        fixture.detectChanges();
+
+        expect(usedByButton(host)).toBeNull();
+    });
+});
+
 describe('SurfaceCardComponent more menu "View Details"', () => {
     it('follows Duplicate on a shared surface opened from Shared Surfaces', () => {
         const { fixture, overlay } = renderMenu({ canWrite: true, isShared: true, showMeta: true });

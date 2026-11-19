@@ -1,5 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject, ResourceRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, ResourceRef, signal } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
@@ -36,6 +36,7 @@ export class SurfaceUsageDialogComponent {
         return usage ? surfaceUsageFlowCount(usage) : 0;
     });
     protected readonly total = computed(() => this.agentCount() + this.flowCount());
+    protected readonly expandedFlowIds = signal<ReadonlySet<number>>(new Set());
 
     close(): void {
         this.dialogRef.close();
@@ -43,6 +44,18 @@ export class SurfaceUsageDialogComponent {
 
     retry(): void {
         this.data.usage.reload();
+    }
+
+    isFlowExpanded(flowId: number): boolean {
+        return this.expandedFlowIds().has(flowId);
+    }
+
+    toggleFlow(flowId: number): void {
+        this.expandedFlowIds.update((expanded) => {
+            const next = new Set(expanded);
+            if (!next.delete(flowId)) next.add(flowId);
+            return next;
+        });
     }
 
     openAgent(agentId: number): void {

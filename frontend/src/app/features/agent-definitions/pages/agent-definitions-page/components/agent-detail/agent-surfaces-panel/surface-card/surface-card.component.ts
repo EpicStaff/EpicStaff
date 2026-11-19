@@ -149,6 +149,7 @@ export class SurfaceCardComponent {
     readonly renameSurface = output<string>();
     readonly createDraft = output<CreateSurfaceRequest>();
     readonly openSource = output<void>();
+    readonly openUsage = output<void>();
     readonly detach = output<void>();
     readonly makeShared = output<void>();
     readonly makeAgentSpecificCopy = output<void>();
@@ -300,7 +301,7 @@ export class SurfaceCardComponent {
     }
 
     onHeaderAction(
-        action: 'openSource' | 'detach' | 'makeShared' | 'makeCopy' | 'duplicate' | 'delete',
+        action: 'openSource' | 'openUsage' | 'detach' | 'makeShared' | 'makeCopy' | 'duplicate' | 'delete',
         event: MouseEvent
     ): void {
         event.stopPropagation();
@@ -310,6 +311,9 @@ export class SurfaceCardComponent {
         switch (action) {
             case 'openSource':
                 this.openSource.emit();
+                break;
+            case 'openUsage':
+                this.openUsage.emit();
                 break;
             case 'detach':
                 this.detach.emit();
