@@ -3923,9 +3923,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-11-07T09:05:47Z UTC -->
-<!-- commit: 618a918a420c867551b6ea1450f759baac90d133 -->
-<!-- lock-hashes: agent:33485be7b40d1c4d, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:3b8a9513930f183b, django_app:9edcfe4f5547fa9d, es_plugins:dbaccc6cdbe28892, foundation:42ce6227dbb12b91, knowledge_new:2a1b626c6c054648, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:465ed704a7143a7e, sandbox:117c57af453053a0, sandbox_new:6d8bd33d7277129b, shared:4fe7d63d599aa036, webhook:241b4e1b204ef7f8 -->
+<!-- generated: 2026-11-18T16:47:29Z UTC -->
+<!-- commit: 7152070ff9b544bd0af0aaf5fc1facf8602f2f39 -->
+<!-- lock-hashes: agent:0c689df76182ac6e, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:cda89198106b5fd2, django_app:2dab19b63cdf77d8, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:7a6820ead7c8032f, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:4fe7d63d599aa036, webhook:be4edcbb5252064a -->
 
 ## Backend (Python)
 
@@ -3937,7 +3937,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 |---|---|
 | MIT License | 76 |
 | MIT | 74 |
-| BSD-3-Clause | 30 |
+| BSD-3-Clause | 31 |
 | Apache Software License | 27 |
 | Apache-2.0 | 25 |
 | BSD License | 25 |
@@ -3970,7 +3970,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | MPL-2.0 AND MIT | 1 |
 | PSF-2.0 | 1 |
 | The Unlicense (Unlicense) | 1 |
-| **Total** | **310** |
+| **Total** | **311** |
 
 ### Python package index
 
@@ -4115,9 +4115,9 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `jsonschema` | 4.26.0 | MIT | Copyright (c) 2013 Julian Berman |
 | `jsonschema-path` | 0.5.0 | Apache Software License | copyright notice that is included in or attached to the work |
 | `jsonschema-specifications` | 2025.9.1 | MIT | Copyright (c) 2022 Julian Berman |
-| `lance-namespace` | 0.9.0 | Apache-2.0 | Copyright (c) LanceDB Devs <dev@lancedb.com> |
-| `lance-namespace-urllib3-client` | 0.9.0 | Apache-2.0 | Copyright (c) Lance Devs <dev@lance.org> |
-| `lancedb` | 0.34.0 | Apache Software License | copyright notice that is included in or attached to the work |
+| `lance-namespace` | 0.13.0 | Apache-2.0 | Copyright (c) LanceDB Devs <dev@lancedb.com> |
+| `lance-namespace-urllib3-client` | 0.13.0 | Apache-2.0 | Copyright (c) Lance Devs <dev@lance.org> |
+| `lancedb-compat` | 0.41.0 | Apache Software License | copyright notice that is included in or attached to the work |
 | `langchain-core` | 1.6.2 | MIT License | Copyright (c) LangChain, Inc. |
 | `langchain-protocol` | 0.0.18 | MIT License | Copyright (c) 2026 LangChain, Inc. |
 | `langchain-protocol` | 0.0.19 | MIT License | Copyright (c) 2026 LangChain, Inc. |
@@ -4203,6 +4203,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pyasn1` | 0.6.4 | BSD-2-Clause | Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com> |
 | `pyasn1_modules` | 0.4.2 | BSD License | Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com> |
 | `pycparser` | 3.0 | BSD-3-Clause | Copyright (c) 2008-2022, Eli Bendersky |
+| `pycparser` | 3.12 | BSD-3-Clause | Copyright (c) 2008-2027, Eli Bendersky |
 | `pycryptodome` | 3.23.0 | BSD License; Public Domain | Copyright (c) Helder Eijs |
 | `pycryptodome` | 3.24.1 | BSD License; Public Domain | Copyright (c) Helder Eijs |
 | `pydantic` | 2.13.4 | MIT | Copyright (c) 2017 to present Pydantic Services Inc. and individual contributors. |
@@ -14585,7 +14586,7 @@ THE SOFTWARE.
 
 > No NOTICE file shipped by upstream.
 
-#### lance-namespace@0.9.0
+#### lance-namespace@0.13.0
 
 - **License:** Apache-2.0
 - **Author:** LanceDB Devs <dev@lancedb.com>
@@ -14593,7 +14594,7 @@ THE SOFTWARE.
 > No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
 
-#### lance-namespace-urllib3-client@0.9.0
+#### lance-namespace-urllib3-client@0.13.0
 
 - **License:** Apache-2.0
 - **Author:** Lance Devs <dev@lance.org>
@@ -14601,7 +14602,7 @@ THE SOFTWARE.
 > No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
 
-#### lancedb@0.34.0
+#### lancedb-compat@0.41.0
 
 - **License:** Apache Software License
 - **Author:** LanceDB Devs <dev@lancedb.com>
@@ -29050,6 +29051,47 @@ POSSIBILITY OF SUCH DAMAGE.
 pycparser -- A C parser in Python
 
 Copyright (c) 2008-2022, Eli Bendersky
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this 
+  list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright notice, 
+  this list of conditions and the following disclaimer in the documentation 
+  and/or other materials provided with the distribution.
+* Neither the name of the copyright holder nor the names of its contributors may 
+  be used to endorse or promote products derived from this software without 
+  specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE 
+GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) 
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT 
+OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+</pre>
+
+</details>
+
+> No NOTICE file shipped by upstream.
+
+#### pycparser@3.12
+
+- **License:** BSD-3-Clause
+- **Author:** Eli Bendersky <eliben@gmail.com>
+
+<details><summary>License text</summary>
+
+<pre>
+pycparser -- A C parser in Python
+
+Copyright (c) 2008-2027, Eli Bendersky
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
