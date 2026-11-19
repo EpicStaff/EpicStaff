@@ -55,6 +55,13 @@ class SurfaceViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.Mod
         "knowledge__graph_drift_search_config",
     )
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.action == "usage":
+            # Usage reads only the surface and its owner; the detail prefetches would be wasted queries.
+            return queryset.prefetch_related(None)
+        return queryset
+
     def get_serializer_class(self):
         if self.action in ("list", "retrieve"):
             return SurfaceReadSerializer

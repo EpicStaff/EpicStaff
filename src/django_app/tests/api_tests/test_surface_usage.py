@@ -269,6 +269,23 @@ def test_query_count_does_not_grow_with_rows(admin_client, acme, surface):
     assert len(large) == len(small)
 
 
+def test_does_not_load_surface_contents(admin_client, acme, surface):
+    _seed_usage(acme, surface)
+    admin_client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+    with CaptureQueriesContext(connection) as queries:
+        admin_client.get(_url(surface))
+
+    content_tables = (
+        "agents_surfacepythontool",
+        "agents_surfacemcptool",
+        "agents_surfacestorageitem",
+        "agents_surfaceknowledge",
+        "rbac_resourcelastedit",
+    )
+    loaded = [table for table in content_tables if any(table in query["sql"] for query in queries)]
+    assert loaded == []
+
+
 def test_without_surfaces_read_is_403(client_as, custom_role_user, acme, surface):
     user = custom_role_user(
         acme,
