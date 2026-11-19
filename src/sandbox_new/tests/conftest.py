@@ -155,7 +155,8 @@ def venvs_dir(tmp_path, monkeypatch):
     staging.mkdir()
     monkeypatch.setattr(settings, "VENVS_DIR", root)
     monkeypatch.setattr(settings, "VENV_STAGING_DIR", staging)
-    monkeypatch.setattr(settings, "PREDEFINED_VENV_PACKAGES", (tmp_path / "shared" / "dotdict",))
+    monkeypatch.setattr(settings, "PREDEFINED_VENV_PACKAGES", ("dotdict",))
+    monkeypatch.setattr(settings, "PREDEFINED_WHEELHOUSE_DIR", tmp_path / "predefined_wheelhouse")
     return root
 
 
