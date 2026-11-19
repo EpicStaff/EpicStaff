@@ -12,6 +12,7 @@ from agents.models import AgentDefinition
 from agents.models.surface_models import Surface
 from agents.services.surface_service import SurfaceService
 from rbac.models import OrganizationUser
+from rbac.models.enums import Permission, ResourceType
 from tables.models.label_models import Label
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -321,3 +322,70 @@ def test_deleting_group_ungroups_its_agents_and_surfaces(acme_client, acme, acme
     surface.refresh_from_db()
     assert agent.group_id is None
     assert surface.group_id is None
+
+
+# ---- agent-labels read access for surface readers ----
+
+
+@pytest.fixture
+def labels_client_as(client_as, custom_role_user, acme):
+    """Factory -> a client for an acme member whose role holds exactly `permissions`."""
+
+    def _make(permissions):
+        user = custom_role_user(acme, "labels-reader@example.com", permissions)
+        client = client_as(user)
+        client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+        return client
+
+    return _make
+
+
+def test_surfaces_reader_without_agents_permission_can_list_and_retrieve_agent_labels(
+    labels_client_as, acme_group
+):
+    client = labels_client_as({ResourceType.SURFACES: Permission.READ})
+
+    listed = client.get(AGENT_LABELS_URL)
+    retrieved = client.get(f"{AGENT_LABELS_URL}{acme_group.id}/")
+
+    assert listed.status_code == 200
+    assert acme_group.id in {row["id"] for row in _rows(listed)}
+    assert retrieved.status_code == 200
+    assert retrieved.data["id"] == acme_group.id
+
+
+def test_surfaces_reader_cannot_write_agent_labels(labels_client_as, acme_group):
+    client = labels_client_as({ResourceType.SURFACES: Permission.READ})
+    detail_url = f"{AGENT_LABELS_URL}{acme_group.id}/"
+
+    assert client.post(AGENT_LABELS_URL, {"name": "New"}, format="json").status_code == 403
+    assert client.patch(detail_url, {"name": "Renamed"}, format="json").status_code == 403
+    assert client.delete(detail_url).status_code == 403
+    acme_group.refresh_from_db()
+    assert acme_group.name == "Sales"
+
+
+def test_user_with_neither_agents_nor_surfaces_read_cannot_list_agent_labels(labels_client_as):
+    client = labels_client_as({ResourceType.FLOWS: Permission.READ})
+
+    assert client.get(AGENT_LABELS_URL).status_code == 403
+
+
+def test_agents_reader_still_lists_agent_labels_but_cannot_write(labels_client_as, acme_group):
+    client = labels_client_as({ResourceType.AGENTS: Permission.READ})
+
+    assert client.get(AGENT_LABELS_URL).status_code == 200
+    assert client.post(AGENT_LABELS_URL, {"name": "New"}, format="json").status_code == 403
+
+
+def test_surfaces_reader_gets_404_for_other_orgs_agent_label(labels_client_as, beta_group):
+    client = labels_client_as({ResourceType.SURFACES: Permission.READ})
+
+    assert client.get(f"{AGENT_LABELS_URL}{beta_group.id}/").status_code == 404
+
+
+def test_surfaces_read_does_not_open_other_label_trees(labels_client_as):
+    client = labels_client_as({ResourceType.SURFACES: Permission.READ})
+
+    assert client.get("/api/labels/").status_code == 403
+    assert client.get("/api/tool-labels/").status_code == 403

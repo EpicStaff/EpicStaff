@@ -126,7 +126,12 @@ export const routes: Routes = [
                             ),
                         canDeactivate: [UnsavedChangesGuard],
                         canActivate: [permissionGuard],
-                        data: { permission: [ResourceCode.Agents, ActionCode.Read] },
+                        data: {
+                            anyPermission: [
+                                [ResourceCode.Agents, ActionCode.Read],
+                                [ResourceCode.Surfaces, ActionCode.Read],
+                            ],
+                        },
                     },
                     // Legacy CrewAI routes. `**` only acts as a wildcard when it is the
                     // whole path, so it has to live in children — `path: 'projects/**'`

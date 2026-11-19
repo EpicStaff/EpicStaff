@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Provider, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ExportOptions, LabelColor, LabelDto } from '@shared/models';
+import { ActionCode, ExportOptions, LabelColor, LabelDto, ResourceCode } from '@shared/models';
 import { ExportOptionsDialogService } from '@shared/services';
 import { EMPTY, Observable, of, Subject, throwError } from 'rxjs';
 
@@ -54,6 +54,8 @@ function loadStore(rows: {
     surfaces?: Surface[];
     groups?: LabelDto[];
     getUsage?: (id: number) => Observable<SurfaceUsage>;
+    /** False for a role with Surfaces READ but no Agents READ; the agents endpoint then answers 403. */
+    canReadAgents?: boolean;
 }): AgentsPageStore {
     const surfaces = rows.surfaces ?? [];
     TestBed.configureTestingModule({
@@ -62,7 +64,8 @@ function loadStore(rows: {
             {
                 provide: AgentDefinitionsApiService,
                 useValue: {
-                    getAgentDefinitions: () => of(rows.agents),
+                    getAgentDefinitions: () =>
+                        rows.canReadAgents === false ? throwError(() => new Error('forbidden')) : of(rows.agents),
                     partialUpdate: (id: number, body: Partial<AgentDefinition>) =>
                         of({ ...rows.agents.find((row) => row.id === id)!, ...body }),
                     create: (body: CreateAgentDefinitionRequest) => of(agent(99, body.name, body.group ?? null)),
@@ -81,7 +84,17 @@ function loadStore(rows: {
                 provide: AgentGroupsApiService,
                 useValue: { getLabels: () => of(rows.groups ?? []), deleteLabel: () => of(undefined) },
             },
-            { provide: PermissionsService, useValue: { can: () => true } },
+            {
+                provide: PermissionsService,
+                useValue: {
+                    can: (resource: ResourceCode, action: ActionCode) =>
+                        !(
+                            rows.canReadAgents === false &&
+                            resource === ResourceCode.Agents &&
+                            action === ActionCode.Read
+                        ),
+                },
+            },
             { provide: ProfileService, useValue: { currentUserSignal: signal({ id: 7 }) } },
             { provide: ToastService, useValue: { success: () => undefined, error: () => undefined } },
             { provide: SurfaceCatalogsStore, useValue: {} },
@@ -358,6 +371,7 @@ function storeOverFakeBackend(providers: Provider[] = []): { store: AgentsPageSt
             provideHttpClientTesting(),
             { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
             AgentsPageStore,
+            { provide: PermissionsService, useValue: { can: () => true } },
             // Only reloaded after a failed surface save, which these tests never make.
             { provide: SurfaceCatalogsStore, useValue: {} },
             ...providers,
@@ -968,5 +982,57 @@ describe('AgentsPageStore surface usage', () => {
 
         expect(result).toBeNull();
         expect(error).toHaveBeenCalledOnce();
+    });
+});
+
+describe('AgentsPageStore for a role without Agents READ', () => {
+    beforeEach(() => localStorage.clear());
+    afterEach(() => localStorage.clear());
+
+    it('loads the shared surfaces without asking for agents and reports no agents error', () => {
+        const store = loadStore({
+            agents: [],
+            surfaces: [surface(10, 'Web search', null), surface(11, 'Owned', null, 1)],
+            canReadAgents: false,
+        });
+
+        expect(store.agentsError()).toBeNull();
+        expect(store.agents()).toEqual([]);
+        expect(labels(store.surfacesTree())).toEqual(['Web search']);
+    });
+
+    it('shows only the Shared Surfaces section, open, even when the saved filter lists Agents', () => {
+        localStorage.setItem('agents-explorer/visibleSections', JSON.stringify(['agents', 'surfaces']));
+        const store = loadStore({ agents: [], canReadAgents: false });
+
+        expect(store.isSectionVisible('agents')).toBe(false);
+        expect(store.isSectionVisible('surfaces')).toBe(true);
+        expect(store.isSectionExpanded('surfaces')).toBe(true);
+        expect(store.isSectionExpanded('agents')).toBe(false);
+    });
+
+    it.each([[JSON.stringify(['agents'])], [JSON.stringify([])]])(
+        'never leaves the explorer blank: saved filter %s still shows Shared Surfaces',
+        (saved) => {
+            localStorage.setItem('agents-explorer/visibleSections', saved);
+            const store = loadStore({ agents: [], canReadAgents: false });
+
+            expect([...store.visibleSections()]).toEqual(['surfaces']);
+        }
+    );
+
+    it('keeps Shared Surfaces when the filter is saved with no sections', () => {
+        const store = loadStore({ agents: [], canReadAgents: false });
+
+        store.setVisibleSections(new Set());
+
+        expect([...store.visibleSections()]).toEqual(['surfaces']);
+    });
+
+    it('keeps the Agents section for a role with Agents READ', () => {
+        const store = loadStore({ agents: [agent(1, 'Alpha', null)] });
+
+        expect(store.isSectionVisible('agents')).toBe(true);
+        expect(store.isSectionExpanded('agents')).toBe(true);
     });
 });

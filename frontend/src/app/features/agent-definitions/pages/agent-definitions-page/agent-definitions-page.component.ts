@@ -291,7 +291,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         const surface = this.store.surfaces().find((s) => s.id === Number(surfaceId));
         if (!surface) return;
         if (surface.owner_agent != null) {
-            this.store.selectAgent(surface.owner_agent);
+            const ownerId = surface.owner_agent;
+            if (this.store.agents().some((agent) => agent.id === ownerId)) this.store.selectAgent(ownerId);
         } else {
             this.store.openSharedSurfaceSource(surface.id);
         }

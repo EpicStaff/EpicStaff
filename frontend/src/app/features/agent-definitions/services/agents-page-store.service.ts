@@ -25,11 +25,11 @@ import {
 import {
     AgentFocus,
     AgentSelection,
-    EXPLORER_SECTIONS,
     ExplorerSectionId,
     ExplorerSelection,
     GroupAssignTarget,
     NO_SELECTION,
+    permittedExplorerSections,
 } from '../models/explorer.model';
 import {
     CombinedSurface,
@@ -96,9 +96,9 @@ function isNode(node: BranchTreeNode | null): node is BranchTreeNode {
 function loadVisibleSections(): Set<ExplorerSectionId> {
     const permissionService = inject(PermissionsService);
 
-    const permittedSections = EXPLORER_SECTIONS.filter((s) =>
-        permissionService.can(s.resourceCode, ActionCode.Read)
-    ).map((s) => s.id);
+    const sections = permittedExplorerSections((resource, action) => permissionService.can(resource, action));
+    const permittedSections = sections.map((section) => section.id);
+    const lockedSections = sections.filter((section) => section.locked).map((section) => section.id);
 
     try {
         const raw = localStorage.getItem(VISIBLE_SECTIONS_STORAGE_KEY);
@@ -106,7 +106,7 @@ function loadVisibleSections(): Set<ExplorerSectionId> {
         const parsed = JSON.parse(raw) as ExplorerSectionId[];
         const valid = parsed.filter((id) => permittedSections.includes(id));
         const set = new Set(valid);
-        set.add('agents');
+        lockedSections.forEach((id) => set.add(id));
         return set;
     } catch {
         return new Set(permittedSections);
@@ -160,7 +160,9 @@ export class AgentsPageStore {
     readonly selectedNode = signal<ExplorerSelection>(NO_SELECTION);
     readonly showSidebar = signal<boolean>(true);
 
-    readonly expandedSections = signal<Set<ExplorerSectionId>>(new Set(['agents']));
+    readonly expandedSections = signal<Set<ExplorerSectionId>>(
+        new Set([this.permissionService.can(ResourceCode.Agents, ActionCode.Read) ? 'agents' : 'surfaces'])
+    );
 
     readonly visibleSections = signal<Set<ExplorerSectionId>>(loadVisibleSections());
 
@@ -222,7 +224,9 @@ export class AgentsPageStore {
 
     setVisibleSections(ids: Set<ExplorerSectionId>): void {
         const next = new Set(ids);
-        next.add('agents');
+        permittedExplorerSections((resource, action) => this.permissionService.can(resource, action))
+            .filter((section) => section.locked)
+            .forEach((section) => next.add(section.id));
         this.visibleSections.set(next);
         this.persistVisibleSections();
     }
@@ -815,12 +819,14 @@ export class AgentsPageStore {
         this.agentsError.set(null);
         this.surfacesError.set(null);
 
-        const agents$ = this.agentsApi.getAgentDefinitions().pipe(
-            catchError((err) => {
-                this.agentsError.set(this.extractError(err, 'Failed to load agents'));
-                return of<AgentDefinition[]>([]);
-            })
-        );
+        const agents$ = this.permissionService.can(ResourceCode.Agents, ActionCode.Read)
+            ? this.agentsApi.getAgentDefinitions().pipe(
+                  catchError((err) => {
+                      this.agentsError.set(this.extractError(err, 'Failed to load agents'));
+                      return of<AgentDefinition[]>([]);
+                  })
+              )
+            : of<AgentDefinition[]>([]);
         const surfaces$ = this.surfacesApi.getSurfaces().pipe(
             catchError((err) => {
                 this.surfacesError.set(this.extractError(err, 'Failed to load surfaces'));

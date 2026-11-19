@@ -216,6 +216,34 @@ describe('AgentDefinitionsPageComponent ?agentId= deep link', () => {
 
         expect(store.selectAgent).not.toHaveBeenCalled();
     });
+
+    describe('?surfaceId= of an agent-owned surface', () => {
+        function renderWithOwnedSurface(ownerAgentId: number): AgentsPageStore {
+            const { fixture } = render(false, { surfaceId: '5' });
+            const store = fixture.debugElement.injector.get(AgentsPageStore);
+            (store.surfaces as WritableSignal<Surface[]>).set([
+                { id: 5, name: 'Owned', owner_agent: ownerAgentId } as Partial<Surface> as Surface,
+            ]);
+            const loading = store.loading as WritableSignal<boolean>;
+            loading.set(true);
+            fixture.detectChanges();
+            loading.set(false);
+            fixture.detectChanges();
+            return store;
+        }
+
+        it('selects the owning agent when it is loaded', () => {
+            const store = renderWithOwnedSurface(AGENT.id);
+
+            expect(store.selectAgent).toHaveBeenCalledExactlyOnceWith(AGENT.id);
+        });
+
+        it('selects nothing when the owning agent is not loaded, as for a viewer without agent access', () => {
+            const store = renderWithOwnedSurface(42);
+
+            expect(store.selectAgent).not.toHaveBeenCalled();
+        });
+    });
 });
 
 describe('AgentDefinitionsPageComponent agent header menu "View Details"', () => {

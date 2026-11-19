@@ -122,7 +122,7 @@ const PAGE_BY_NAME = new Map<string, (name: string) => PageLink>([
 const PAGE_BY_ID = new Map<string, (id: string) => PageLink>([
     ['flow', (id) => ({ url: flowUrl(id), guard: readable(ResourceCode.Flows) })],
     ['agent', (id) => ({ url: `/agents?agentId=${id}`, guard: readable(ResourceCode.Agents) })],
-    ['surface', (id) => ({ url: `/agents?surfaceId=${id}`, guard: readable(ResourceCode.Agents) })],
+    ['surface', (id) => ({ url: `/agents?surfaceId=${id}`, guard: readable(ResourceCode.Surfaces) })],
     ['desk', (id) => ({ url: `/chat-bindings/${id}`, guard: chatPage })],
     ['custom tool', (id) => ({ url: `/tools/custom?toolId=${id}`, guard: readable(ResourceCode.Tools) })],
     ['MCP tool', (id) => ({ url: `/tools/mcp?toolId=${id}`, guard: readable(ResourceCode.Tools) })],
