@@ -3,11 +3,11 @@
 import pytest
 from loguru import logger
 
-from rbac.governance.organization_run_admission import OrganizationInactiveError
 from rbac.models import Organization
 from tables.models import Graph, PythonCode, Session
 from tables.models.graph_models import StartNode, WebhookTriggerNode
 from tables.models.webhook_models import WebhookTrigger
+from tables.services.organization_run_admission import OrganizationInactiveError
 from tables.services.run_admission import (
     RunKind,
     RunSubject,

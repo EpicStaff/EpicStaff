@@ -1,12 +1,11 @@
 """A deactivated organization starts no run until it is reactivated, a superadmin's included.
 
-Registered as a run-admission check (`tables.services.run_admission`) in `RbacConfig.ready()`.
+Registered as a run-admission check (`tables.services.run_admission`) in `TablesConfig.ready()`.
 Runs that already started are not stopped.
 """
 
-from tables.services.run_admission import RunAdmissionRefusedError, RunSubject
-
 from rbac.models import Organization
+from tables.services.run_admission import RunAdmissionRefusedError, RunSubject
 
 
 class OrganizationInactiveError(RunAdmissionRefusedError):
