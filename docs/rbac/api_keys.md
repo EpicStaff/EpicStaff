@@ -433,6 +433,9 @@ permission_denied`:
 
 `POST /api/auth/reset-user/` and `POST /api/auth/admin/password-reset/`
 are JWT-only as well (`DenyApiKeyAuth`, any key type).
+Writes to the global provider catalog (`POST/PUT/PATCH/DELETE /api/providers/`)
+are JWT-only as well (`DenyApiKeyAuth`, any key type, a superadmin's too); reads
+stay open to keys.
 
 ### Admin pages with an API key
 
