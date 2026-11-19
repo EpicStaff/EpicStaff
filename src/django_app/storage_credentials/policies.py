@@ -38,6 +38,9 @@ _S3_OBJECT_ACTIONS = {
     StorageAction.DELETE: "s3:DeleteObject",
 }
 
+# IAM reads * and ? in a Resource or s3:prefix as wildcards, and ${...} as a policy variable.
+_IAM_SPECIAL_SEQUENCES = ("*", "?", "${")
+
 
 def _normalize_path(path: str) -> str:
     stripped = path.strip()
@@ -48,6 +51,12 @@ def _normalize_path(path: str) -> str:
         )
     if normalized.startswith(".."):
         raise CredentialScopeValidationError(f"This file path isn't allowed: '{path}'.")
+    if any(sequence in normalized for sequence in _IAM_SPECIAL_SEQUENCES):
+        org_relative_path = stripped.split("/", 1)[-1]
+        raise CredentialScopeValidationError(
+            "Files a flow uses can't have '*', '?' or '${' in their names. "
+            f"Rename '{org_relative_path}'."
+        )
     return f"{normalized}/*" if stripped.endswith("/") else normalized
 
 
@@ -140,7 +149,8 @@ def build_temporary_policy(
     backend rejects a policy over a size limit (see `_assert_policy_fits`).
 
     Raises:
-        CredentialScopeValidationError: no folder is left to grant.
+        CredentialScopeValidationError: no folder is left to grant, or a path holds an IAM
+            wildcard or policy variable (`*`, `?`, `${`).
         TemporaryPolicyTooLargeError: the policy exceeds the backend's size limit.
     """
     granted_shared_actions = frozenset(shared_actions) if shared_folders else frozenset()
