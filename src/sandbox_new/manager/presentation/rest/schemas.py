@@ -2,12 +2,11 @@ import tarfile
 import zipfile
 from datetime import datetime
 from pathlib import PurePosixPath
-from typing import Self
+from typing import Any, Literal, Self
 
 from foundation.schemas import Schema
 from litestar.datastructures import UploadFile
 from pydantic import ConfigDict, Field, field_validator, model_validator
-from src.shared.models.sandbox_execution import ExecutionRequest, ExecutionStorageCredentials
 
 from manager.domain.enums import ExecutionStatus, VenvStatus, WheelStatus
 from manager.domain.models import (
@@ -38,6 +37,10 @@ __all__ = [
     "WheelRetrieveSchema",
     "WheelUploadSchema",
 ]
+
+# The worker names each execution's workspace directory after its id, so the id must
+# stay a plain name: no dot or slash that could point the directory anywhere else.
+EXECUTION_ID_PATTERN = r"^[A-Za-z0-9_@-]{1,128}$"
 
 
 class LibraryWriteSchema(Schema):
@@ -119,27 +122,51 @@ class VenvUpdateSchema(Schema):
     libs: list[LibraryWriteSchema] | None = None
 
 
-class StorageCredentialsSchema(ExecutionStorageCredentials):
-    """Object-store credentials the caller issued for this execution."""
+class StorageCredentialsSchema(Schema):
+    """Object-store credentials the caller issued for this execution.
+
+    Plaintext, so both keys are kept out of `repr()` and therefore out of log lines.
+    """
+
+    access_key: str = Field(min_length=1, repr=False)
+    secret_key: str = Field(min_length=1, repr=False)
+    # The values of the producers' `StorageAction` (src/shared/models/storage_scope.py).
+    shared_actions: list[Literal["read", "write", "delete"]] | None = None
+    own_paths: list[str] = Field(default_factory=list)
 
     def to_domain(self) -> StorageCredentials:
         return StorageCredentials(
             access_key=self.access_key,
             secret_key=self.secret_key,
-            shared_actions=(
-                None
-                if self.shared_actions is None
-                else [str(action) for action in self.shared_actions]
-            ),
+            shared_actions=None if self.shared_actions is None else list(self.shared_actions),
             own_paths=self.own_paths,
         )
 
 
-class ExecutionSubmitSchema(ExecutionRequest):
-    """The submission body; its fields are the producers' `ExecutionRequest` contract."""
+class ExecutionSubmitSchema(Schema):
+    """The body of `POST /executions`.
 
-    # Re-declared only to parse into the subclass that maps to the domain.
+    Producers build it from `ExecutionRequest` (src/shared/models/sandbox_execution.py),
+    so the field set must stay the same as theirs. `secrets` carries transport-sealed
+    values, `storage_credentials` plaintext; both are kept out of `repr()`.
+    """
+
+    execution_id: str = Field(pattern=EXECUTION_ID_PATTERN)
+    # Optional: tool paths at session start can submit without a session.
+    session_id: int | None = None
+    code: str
+    entrypoint: str
+    global_kwargs: dict[str, Any] = Field(default_factory=dict)
+    func_kwargs: dict[str, Any] = Field(default_factory=dict)
+    secrets: dict[str, Any] = Field(default_factory=dict, repr=False)
+    venv_id: int | None = None
+    use_storage: bool = False
+    storage_allowed_paths: list[str] = Field(default_factory=list)
+    storage_org_prefix: str | None = None
     storage_credentials: StorageCredentialsSchema | None = Field(default=None, repr=False)
+    timeout: float | None = None
+    # Asks for the result on crew's private result channel instead of the shared one.
+    reply_to_crew_channel: bool = False
 
     @model_validator(mode="after")
     def require_everything_storage_needs(self) -> Self:
