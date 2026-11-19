@@ -13,6 +13,10 @@ AVATAR_URL_SIGNING_SECRET = env.secret("AVATAR_URL_SIGNING_SECRET")
 # Do not set to 0 in production — credentials will never expire if revocation fails.
 STORAGE_TEMP_CREDENTIALS_TTL_HOURS = env.int("STORAGE_TEMP_CREDENTIALS_TTL_HOURS", default=24)
 
+# The storage backend (RustFS) rejects a service-account policy larger than 4096 bytes of
+# compact JSON, so django refuses to mint one that big instead of letting the backend fail.
+STORAGE_TEMPORARY_POLICY_MAX_BYTES = 4096
+
 # `default` keeps serving FileFields that still live on local disk (realtime
 # recordings). Avatars live in the bucket under `system/`, outside every `org_<id>/`
 # prefix, so no organization's scoped credentials can read or overwrite them.

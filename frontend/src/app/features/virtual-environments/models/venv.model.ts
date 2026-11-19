@@ -91,6 +91,9 @@ export interface Venv {
     created_at: string | null;
     // Personal: whether the venv is a favorite of the user who asked for the list.
     is_favorite: boolean;
+    // Non-null when code with storage-grant boxes the user lacks runs in this venv: the server
+    // refuses any change of its libraries, and the text says why. Renaming is still allowed.
+    libs_lock?: string | null;
 }
 
 export interface CreateVenvRequest {

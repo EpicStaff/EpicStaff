@@ -5,6 +5,21 @@ from tables.import_export.constants import IMPORT_VERSION
 from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
 
 
+def file_version(data: dict) -> int:
+    """Return an export file's version; a file from before the version field is version 1.
+
+    Raises:
+        UnsupportedImportVersionError: The version is not a whole number.
+    """
+    version = data.get("version", 1)
+    # bool is a subclass of int: `"version": true` must not import as version 1.
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise UnsupportedImportVersionError(
+            f"File version must be a whole number, got {json.dumps(version)}"
+        )
+    return version
+
+
 class VersionConverter:
     """
     Applies a chain of conversions to bring import data
@@ -46,13 +61,7 @@ class VersionConverter:
                 - if data["version"] > IMPORT_VERSION
                 - if no convertion path exists for an intermediate version
         """
-        version = data.get("version", 1)  # old files default to v1
-
-        # bool is a subclass of int: `"version": true` must not import as version 1.
-        if not isinstance(version, int) or isinstance(version, bool):
-            raise UnsupportedImportVersionError(
-                f"File version must be a whole number, got {json.dumps(version)}"
-            )
+        version = file_version(data)
 
         if version > IMPORT_VERSION:
             raise UnsupportedImportVersionError(

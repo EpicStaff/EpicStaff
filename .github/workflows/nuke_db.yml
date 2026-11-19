@@ -7,9 +7,10 @@ on:
         description: 'Select target server'
         required: true
         type: choice
+        # Not test3: its branch instance resets through the deploy's reset_database input, and its
+        # developer instance is never reset.
         options:
           - test2
-          - test3
       confirm_nuke:
         description: 'Type "NUKE" to confirm reset'
         required: true

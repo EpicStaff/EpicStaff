@@ -3,8 +3,10 @@ from collections import defaultdict
 from copy import deepcopy
 
 from agents.models import (
+    AgentInlineSurfaceKnowledge,
     AgentInlineSurfaceMcpTool,
     AgentInlineSurfacePythonTool,
+    InlineSurfaceKnowledge,
     InlineSurfaceMcpTool,
     InlineSurfacePythonTool,
     Surface,
@@ -40,6 +42,10 @@ from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.models.label_models import Label
 from tables.services.node_number_service import NodeNumberService, source_order_key
 from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
+from tables.services.storage_grants.actor import grant_actor_for
+from tables.services.storage_grants.capping import cap_grant_data
+from tables.services.storage_grants.slots import FILE_NODE_MODELS
+from tables.services.storage_grants.write_checks import assert_can_write_file_node
 
 # Every reverse relation on Graph that holds its content (nodes, notes, edges).
 GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list")
@@ -141,6 +147,23 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
         deps[EntityType.VENV].discard(None)
+
+        # Collections the flow's knowledge nodes and inline surfaces search. Like the
+        # environments above, the node strategies collect the same for a partial export.
+        deps[EntityType.SOURCE_COLLECTION] = (
+            set(instance.knowledge_node_list.values_list("source_collection_id", flat=True))
+            | set(
+                InlineSurfaceKnowledge.objects.filter(
+                    inline_surface__task_node__graph=instance
+                ).values_list("collection_id", flat=True)
+            )
+            | set(
+                AgentInlineSurfaceKnowledge.objects.filter(
+                    agent_inline_surface__agent_node__graph=instance
+                ).values_list("collection_id", flat=True)
+            )
+        )
+        deps[EntityType.SOURCE_COLLECTION].discard(None)
 
         return deps
 
@@ -484,12 +507,23 @@ class GraphStrategy(EntityImportExportStrategy):
         )
         kept_uuids = KeptNodeUuids(graph) if keep_node_uuids else None
         created_nodes = []
+        # Imported flags are capped to what the importer may hand out, so a file cannot
+        # grant more than its importer could set by hand.
+        grant_actor = grant_actor_for(user, graph)
 
         for (entity_type, node_data), node_number in nodes_to_create:
             old_id = node_data.get("id")
             # Taken out even when it is not kept, so a node serializer that one day
             # accepts `uuid` cannot write it behind keep_node_uuids=False.
             node_uuid = node_data.pop("uuid", None)
+
+            strategy = entity_registry.get_strategy(entity_type)
+            node_model = strategy.serializer_class.Meta.model
+            # A user is checked for creating a node that reads the flow's files; an import
+            # with no acting user is internal and has no one whose permissions could be short.
+            if user is not None and node_model in FILE_NODE_MODELS:
+                assert_can_write_file_node(grant_actor)
+            node_data = cap_grant_data(node_data, grant_actor, model=node_model)
 
             # Node strategies resolve their parent graph via
             # id_mapper.get_or_none(GRAPH, node_data["graph"]). For a full-graph
@@ -503,8 +537,10 @@ class GraphStrategy(EntityImportExportStrategy):
             if not id_mapper.has_mapping(EntityType.GRAPH, node_data["graph"]):
                 id_mapper.map(EntityType.GRAPH, node_data["graph"], graph.id, was_created=False)
 
-            strategy = entity_registry.get_strategy(entity_type)
-            node = strategy.create_entity(node_data, id_mapper, user=user, node_number=node_number)
+            # The graph's org: a node relinks to collections and other rows of that org.
+            node = strategy.create_entity(
+                node_data, id_mapper, user=user, node_number=node_number, org_id=graph.org_id
+            )
             if node:
                 created_nodes.append(node)
 

@@ -41,28 +41,29 @@ def test_only_a_resolved_close_names_an_operator_and_it_always_does(reason, by_u
 
 def test_closing_ends_the_wait_and_frees_the_run_slot_but_keeps_who_had_it():
     run_id = new_id()
-    conversation = make_conversation(BINDING, mode="human", assigned_operator_id=3, handoff_reason="run error", visitor_waiting_since=EARLIER, run_state=RunState.STARTING, active_run_id=run_id, active_since=EARLIER, late_reply_run_id=new_id())
+    conversation = make_conversation(BINDING, mode="human", assigned_operator_id=3, claimed_at=EARLIER, handoff_reason="run error", visitor_waiting_since=EARLIER, run_state=RunState.STARTING, active_run_id=run_id, active_since=EARLIER, late_reply_run_id=new_id())
     handoff_at = conversation.handoff_at
     conversation.close(CloseReason.RESOLVED, NOW, by_user_id=4)
     assert (conversation.visitor_waiting_since, conversation.run_state, conversation.active_run_id, conversation.active_since, conversation.late_reply_run_id) == (None, RunState.IDLE, None, None, None)
     # A snapshot of who had it: the inbox still shows the holder and the hand-off.
-    assert (conversation.mode, conversation.assigned_operator_id, conversation.handoff_at, conversation.handoff_reason) == (Mode.HUMAN, 3, handoff_at, "run error")
+    assert (conversation.mode, conversation.assigned_operator_id, conversation.claimed_at, conversation.handoff_at, conversation.handoff_reason) == (Mode.HUMAN, 3, EARLIER, handoff_at, "run error")
     assert conversation.operator_ids == {3, 4}
 
 
 @pytest.mark.parametrize("change", [
     lambda conversation: conversation.change_mode(Mode.AWAITING_HUMAN, NOW),
     lambda conversation: conversation.return_to_bot(NOW),
+    lambda conversation: conversation.claim(4, NOW),
     lambda conversation: conversation.record_message(_message(conversation)),
     lambda conversation: conversation.ensure_open(),
-], ids=["change mode", "return to bot", "record a message", "ensure open"])
+], ids=["change mode", "return to bot", "claim", "record a message", "ensure open"])
 def test_a_closed_conversation_refuses_every_change_with_its_reason(change):
     conversation = make_closed(BINDING, reason=CloseReason.ENDED, mode="human", assigned_operator_id=3, last_message_at=EARLIER)
-    before = (conversation.mode, conversation.last_message_at, conversation.assigned_operator_id)
+    before = (conversation.mode, conversation.last_message_at, conversation.assigned_operator_id, conversation.claimed_at)
     with pytest.raises(ConversationClosedError) as refused:
         change(conversation)
     assert (refused.value.code, refused.value.status_code, refused.value.extra) == ("conversation_closed", 409, {"close_reason": "ended"})
-    assert (conversation.mode, conversation.last_message_at, conversation.assigned_operator_id) == before
+    assert (conversation.mode, conversation.last_message_at, conversation.assigned_operator_id, conversation.claimed_at) == before
 
 
 def test_usage_still_counts_on_a_closed_conversation():
@@ -75,5 +76,5 @@ def test_usage_still_counts_on_a_closed_conversation():
 def test_returning_to_the_bot_lets_go_of_the_holder_the_wait_and_the_hand_off(mode):
     conversation = make_conversation(BINDING, mode=mode, handoff_reason="the flow asked for a human", visitor_waiting_since=EARLIER, late_reply_run_id=new_id())
     conversation.return_to_bot(NOW)
-    assert (conversation.mode, conversation.assigned_operator_id, conversation.handoff_at, conversation.visitor_waiting_since) == (Mode.BOT, None, None, None)
+    assert (conversation.mode, conversation.assigned_operator_id, conversation.claimed_at, conversation.handoff_at, conversation.visitor_waiting_since) == (Mode.BOT, None, None, None, None)
     assert (conversation.handoff_reason, conversation.late_reply_run_id, conversation.is_open) == ("", None, True)

@@ -28,18 +28,18 @@ from utils.logger import logger
 _UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
 
 
-def _flatten_detail(detail) -> str:
+def flatten_error_detail(detail) -> str:
     """Render DRF's nested error detail as plain text, one message per error."""
     if isinstance(detail, dict):
         return "; ".join(
-            _flatten_detail(value)
+            flatten_error_detail(value)
             if key in _UNLABELLED_KEYS
-            else f"{key}: {_flatten_detail(value)}"
+            else f"{key}: {flatten_error_detail(value)}"
             for key, value in detail.items()
         )
 
     if isinstance(detail, (list, tuple)):
-        return "; ".join(_flatten_detail(item) for item in detail)
+        return "; ".join(flatten_error_detail(item) for item in detail)
 
     return str(detail)
 
@@ -86,7 +86,7 @@ def _upstream_message(text: str) -> str:
     return detail if isinstance(detail, str) and detail else text
 
 
-def _client_error_as_api_exception(exc: ClientError) -> APIException:
+def client_error_as_api_exception(exc: ClientError) -> APIException:
     """Translate a transport error from a proxied microservice into a DRF exception.
 
     An upstream 4xx is the caller's own request coming back refused, so it keeps its
@@ -207,7 +207,7 @@ def custom_exception_handler(exc, context):
         # serializer would report, so the 400 message names the field.
         exc = ValidationError(exc.field_errors())
     elif isinstance(exc, ClientError):
-        exc = _client_error_as_api_exception(exc)
+        exc = client_error_as_api_exception(exc)
     elif isinstance(exc, OutboundClientError):
         exc = _outbound_client_error_as_api_exception(exc)
     elif _is_database_pool_exhausted(exc):
@@ -221,7 +221,7 @@ def custom_exception_handler(exc, context):
         response.data = {
             "status_code": exc.status_code,
             "code": exc.default_code,
-            "message": _flatten_detail(detail),
+            "message": flatten_error_detail(detail),
         }
         errors = getattr(exc, "errors", None)
         if isinstance(errors, list):

@@ -18,11 +18,11 @@
         margin-top: 6px;
         padding: 0.625rem;
         border-radius: 4px;
-        border-left: 3px solid var(--color-ks-status-processing);
-        background-color: var(--transparent-orange-8);
+        border-left: 3px solid var(--color-warning);
+        background-color: var(--color-warning-background);
         font-size: 0.875rem;
         line-height: var(--text-body-line-height);
-        color: var(--color-ks-status-processing);
+        color: var(--color-warning);
     }
 
     &__model-deprecated {

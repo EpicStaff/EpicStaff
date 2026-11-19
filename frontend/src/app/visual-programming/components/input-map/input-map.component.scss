@@ -40,6 +40,11 @@
     gap: 0.75rem;
     width: 100%;
     min-width: 0;
+
+    // With no rows the list would still take a slot in the container's gap, doubling the space above Add Input.
+    &:empty {
+        display: none;
+    }
 }
 
 .input-map-item {
@@ -304,9 +309,9 @@
         min-height: 0;
         font-size: 0.75rem;
         border-radius: 5px;
-        border-left: 3px solid var(--color-status-warning);
-        background-color: color-mix(in srgb, var(--color-status-warning) 8%, transparent);
-        color: var(--color-status-warning);
+        border-left: 3px solid var(--color-warning);
+        background-color: var(--color-warning-background);
+        color: var(--color-warning);
         padding: 0.25rem 0.5rem;
         transform: translateY(-100%);
         opacity: 0;

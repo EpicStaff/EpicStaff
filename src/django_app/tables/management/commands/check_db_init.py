@@ -10,8 +10,8 @@ class Command(BaseCommand):
     help = "Wait for Postgres database to be ready before starting the app."
 
     def handle(self, *args, **options):
-        db_user = env.str("DB_USER")
-        db_password = env.str("DB_PASSWORD")
+        db_user = env.str("DJANGO_DB_USER")
+        db_password = env.str("DJANGO_DB_PASSWORD")
         db_host = env.str("DB_HOST")
         db_port = env.int("DB_PORT")
         db_name = env.str("DB_NAME")
@@ -28,8 +28,8 @@ class Command(BaseCommand):
                     pass
                 logger.success("Postgres is ready!")
                 return  # success
-            except psycopg.OperationalError:
-                logger.warning(f"Trying again to connect to Postgres: {attempt}/150")
+            except psycopg.OperationalError as error:
+                logger.warning(f"Trying again to connect to Postgres: {attempt}/150 ({error})")
                 time.sleep(2)
 
         logger.error(

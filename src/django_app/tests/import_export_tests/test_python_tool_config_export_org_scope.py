@@ -7,7 +7,6 @@ agent or a flow, must never carry another organisation's configs.
 """
 
 import json
-from io import BytesIO
 
 import pytest
 
@@ -19,6 +18,7 @@ from tables.models.python_models import PythonCode, PythonCodeTool, PythonCodeTo
 
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.transfer_job_helpers import export_via_job
 
 ACME_SECRET = "sk-acme-own-key"
 BETA_SECRET = "sk-beta-foreign-key"
@@ -104,23 +104,12 @@ def _assert_only_acme_config(export_data: dict, tool_id: int) -> None:
 @pytest.mark.django_db
 @pytest.mark.usefixtures("acme_config", "beta_config")
 class TestBuiltInToolConfigExportIsOrgScoped:
-    def test_single_export_carries_only_own_org_config_without_org_field(
-        self, client, builtin_tool
-    ):
-        response = client.get(f"/api/python-code-tool/{builtin_tool.id}/export/")
-
-        assert response.status_code == 200
-        _assert_only_acme_config(json.loads(response.content), builtin_tool.id)
-
-    def test_bulk_export_carries_only_own_org_config_without_org_field(
-        self, client, builtin_tool
-    ):
-        response = client.post(
-            "/api/python-code-tool/bulk-export/", {"ids": [builtin_tool.id]}, format="json"
+    def test_export_job_carries_only_own_org_config_without_org_field(self, client, builtin_tool):
+        exported = export_via_job(
+            client, "/api/python-code-tool/export-jobs/", {"ids": [builtin_tool.id]}
         )
 
-        assert response.status_code == 200
-        _assert_only_acme_config(json.loads(response.content), builtin_tool.id)
+        _assert_only_acme_config(exported.envelope, builtin_tool.id)
 
     def test_agent_export_carries_only_own_org_config_of_dependency_tool(
         self, export_service, acme, builtin_tool, acme_agent_using_builtin_tool
@@ -149,14 +138,13 @@ class TestBuiltInToolConfigExportIsOrgScoped:
     def test_partial_export_carries_only_own_org_config_of_dependency_tool(
         self, client, builtin_tool, acme_agent_node
     ):
-        response = client.post(
-            f"/api/graphs/{acme_agent_node.graph_id}/partial-export/",
+        exported = export_via_job(
+            client,
+            f"/api/graphs/{acme_agent_node.graph_id}/partial-export-jobs/",
             {"agent_node_list": [acme_agent_node.id]},
-            format="json",
         )
 
-        assert response.status_code == 200
-        _assert_only_acme_config(json.loads(response.content), builtin_tool.id)
+        _assert_only_acme_config(exported.envelope, builtin_tool.id)
 
     def test_export_without_org_carries_no_config(self, export_service, builtin_tool):
         export_data = export_service.export_entities(
@@ -189,28 +177,19 @@ def acme_custom_tool_with_config(acme):
     return tool
 
 
-def _as_upload(content: bytes) -> BytesIO:
-    upload = BytesIO(content)
-    upload.name = "python_tool.json"
-    return upload
-
-
 @pytest.mark.django_db
 def test_custom_tool_config_round_trips_into_importing_org(
     client, acme, acme_custom_tool_with_config
 ):
-    export_response = client.get(
-        f"/api/python-code-tool/{acme_custom_tool_with_config.id}/export/"
+    exported = export_via_job(
+        client, "/api/python-code-tool/export-jobs/", {"ids": [acme_custom_tool_with_config.id]}
     )
-    assert export_response.status_code == 200
-    assert _exported_configs(
-        json.loads(export_response.content), acme_custom_tool_with_config.id
-    ) == [("acme-custom-config", {"api_key": ACME_SECRET})]
+    assert _exported_configs(exported.envelope, acme_custom_tool_with_config.id) == [
+        ("acme-custom-config", {"api_key": ACME_SECRET})
+    ]
 
     import_response = client.post(
-        "/api/python-code-tool/import/",
-        {"file": _as_upload(export_response.content)},
-        format="multipart",
+        "/api/python-code-tool/import/", {"file": exported.upload()}, format="multipart"
     )
 
     assert import_response.status_code == 200, import_response.data

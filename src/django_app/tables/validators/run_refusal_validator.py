@@ -36,6 +36,7 @@ A template field crew starts rendering goes into both.
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import Any
 
+from rest_framework.exceptions import ValidationError
 from src.shared.flow_templates import PlaceholderKind, inspect_template
 from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND
 from src.shared.state_path import (
@@ -164,6 +165,17 @@ def find_run_refusals_in_export(export_data: Mapping[str, Any]) -> list[str]:
     for node_type in NodeType:
         messages += _node_entry_messages(export_data.get(node_type), "")
     return messages
+
+
+def assert_no_run_refusals_in_export(export_data: Mapping[str, Any]) -> None:
+    """Refuse an import file holding a flow crew would refuse to run.
+
+    Raises:
+        ValidationError: One message per refusal, as `find_run_refusals_in_export` lists them.
+    """
+    run_refusals = find_run_refusals_in_export(export_data)
+    if run_refusals:
+        raise ValidationError({"detail": run_refusals})
 
 
 def _node_entry_messages(nodes: Any, location: str) -> list[str]:

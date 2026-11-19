@@ -7,7 +7,8 @@ import { catchError, from, switchMap, throwError } from 'rxjs';
  * A download asks for `responseType: 'blob'`, so Angular hands the error body over as a Blob
  * as well, and every reader in the app then finds an object with nothing in it and falls back
  * to "Http failure response". Read once here, before any other interceptor sees the error, so
- * a refused export tells the user why it was refused.
+ * a refused download (an audit export file, a stored file, a knowledge document, a plugin)
+ * tells the user why it was refused.
  */
 export const blobErrorInterceptor: HttpInterceptorFn = (req, next) =>
     next(req).pipe(

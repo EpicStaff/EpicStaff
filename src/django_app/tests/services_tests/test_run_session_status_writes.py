@@ -43,7 +43,9 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService, received_
     monkeypatch.setattr(
         session_manager.redis_service,
         "publish_session_data",
-        lambda *, session_data, org_id, storage_credentials=None: received_count,
+        lambda *, session_data, org_id, storage_credentials=None, storage_credentials_by_grant=None: (
+            received_count
+        ),
     )
 
 
@@ -72,7 +74,9 @@ def test_run_session_logs_variable_keys_not_values(
 def test_status_written_by_crew_during_publish_is_kept(
     graph, session_manager, monkeypatch
 ):
-    def publish_and_finish_like_a_fast_crew(*, session_data, org_id, storage_credentials=None):
+    def publish_and_finish_like_a_fast_crew(
+        *, session_data, org_id, storage_credentials=None, storage_credentials_by_grant=None
+    ):
         Session.objects.filter(graph=graph).update(status=Session.SessionStatus.END)
         return 1
 
@@ -89,7 +93,7 @@ def test_status_written_by_crew_during_publish_is_kept(
 
 @pytest.mark.django_db
 def test_failure_before_publish_marks_session_error(graph, session_manager, monkeypatch):
-    def fail(*, session_data, org_id, storage_credentials=None):
+    def fail(*, session_data, org_id, storage_credentials=None, storage_credentials_by_grant=None):
         raise RuntimeError("redis is down")
 
     monkeypatch.setattr(session_manager.redis_service, "publish_session_data", fail)

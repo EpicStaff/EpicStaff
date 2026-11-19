@@ -9,6 +9,7 @@ duplicating the recreation logic across the two node types.
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.surface_knowledge import create_knowledge
 from tables.models import AgentNode, AgentNodeTask
 
 
@@ -17,9 +18,11 @@ def create_inline_surface(
     owner_kwargs: dict,
     python_tool_model,
     mcp_tool_model,
+    knowledge_model,
     tool_fk_name: str,
     inline_surface_data: dict | None,
     id_mapper: IDMapper,
+    org_id: int | None,
 ) -> None:
     if not inline_surface_data:
         return
@@ -62,6 +65,14 @@ def create_inline_surface(
         )
 
     mcp_tool_model.objects.bulk_create(mcp_rows, ignore_conflicts=True)
+
+    create_knowledge(
+        knowledge_model,
+        {tool_fk_name: inline_surface},
+        inline_surface_data.get("knowledge", []),
+        id_mapper,
+        org_id,
+    )
 
 
 def assign_node_surface_list(node, surface_ids: list, id_mapper: IDMapper) -> None:

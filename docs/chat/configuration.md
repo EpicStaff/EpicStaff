@@ -63,10 +63,10 @@ Duration values: seconds, or `<n>s|m|h|d`. Rate values: `<count>/<s|m|h|d>`.
 | `CHAT_RUN_TIMEOUT` | `30m` | A run still running after this is stopped. |
 | `CHAT_EVENT_RETENTION` | `7d` | Conversation events older than this are pruned. |
 | `CHAT_CALLBACK_MAX_SKEW` | `5m` | Largest accepted clock difference on a signed callback. |
-| `CHAT_IDENTITY_CACHE_TTL` | `1m` | Operator identity cache; a revoked membership works until it expires. |
+| `CHAT_IDENTITY_CACHE_TTL` | `1m` | Operator identity cache; a revoked membership still passes new requests until the cache expires. |
 | `CHAT_VISITOR_TOKEN_IDLE_TTL` | `30d` | An unused visitor token expires after this. |
 | `CHAT_TICKET_TTL` | `1m` | Validity of a single-use stream ticket. |
-| `CHAT_STREAM_MAX_LIFETIME` | `30m` | An SSE stream is closed after this; the client reconnects. |
+| `CHAT_STREAM_MAX_LIFETIME` | `30m` | An SSE stream is closed after this; the client reconnects. Membership and chats permission are checked only when the stream ticket is minted, so an inbox stream opened before a removal is noticed stays open until this limit; the reconnect is then refused. Worst case `CHAT_IDENTITY_CACHE_TTL` + `CHAT_TICKET_TTL` + `CHAT_STREAM_MAX_LIFETIME` (plus up to one `CHAT_STREAM_PING_INTERVAL`), about 32 minutes by default. Lowering it shortens that window at the cost of more reconnects. |
 | `CHAT_STREAM_PING_INTERVAL` | `15s` | SSE keep-alive; keep it below any proxy idle timeout. |
 
 Whole seconds and greater than 0 unless the description in `src/env.yaml` says fractional or
