@@ -42,9 +42,6 @@ import { SystemOneConfigFormComponent } from '../system-one-config-form/system-o
 
 export type ConfigTab = 'llm' | 'realtime' | 'embedding' | 'system_one';
 
-const DUPLICATE_EMBEDDING_NAME_MESSAGE =
-    'An embedding configuration with this name already exists. Please choose a different name.';
-
 @Component({
     selector: 'app-add-configuration-dialog',
     templateUrl: './add-configuration-dialog.component.html',
@@ -297,23 +294,12 @@ export class AddConfigurationDialogComponent implements OnInit {
             this.embeddingForm.markAllAsTouched();
             return;
         }
-        // Cleared before the duplicate-name check, so an old refusal does not sit beside its toast.
         this.errorMessage.set(null);
-
-        const trimmedName = custom_name.trim();
-        const normalizedName = trimmedName.toLowerCase();
-        const isDuplicate = this.embeddingConfigStorage
-            .configs()
-            .some((config) => config.custom_name.toLowerCase() === normalizedName);
-        if (isDuplicate) {
-            this.toast.error(DUPLICATE_EMBEDDING_NAME_MESSAGE);
-            return;
-        }
 
         const request: CreateEmbeddingConfigRequest = {
             model,
             api_key_secret_id,
-            custom_name: trimmedName,
+            custom_name: custom_name.trim(),
             extra_headers,
         };
         this.isSubmitting.set(true);
