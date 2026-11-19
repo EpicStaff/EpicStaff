@@ -19,7 +19,7 @@ jobs:
   # required check stays pending forever and the pull request can never merge.
   # A job skipped by `if:` still reports a conclusion, so gating has to be here.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       fe: ${{ steps.filter.outputs.fe }}
       fe_deps: ${{ steps.filter.outputs.fe_deps }}
@@ -184,7 +184,7 @@ jobs:
   check-cla-version:
     needs: changes
     if: needs.changes.outputs.cla == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -208,7 +208,7 @@ jobs:
   # Deliberately ungated: cheap, and a docs-only pull request is exactly where an
   # unsigned contributor or a pasted CDN link turns up.
   check-cla:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # cla_check.py reads the head commit's statuses for the one cla.yml sets.
     permissions:
       contents: read
@@ -238,7 +238,7 @@ jobs:
           CLA_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
   check-external-urls:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -250,7 +250,7 @@ jobs:
   # tree. The leading class skips applied migration names like
   # `0150_merge_est_1999`, which cannot be renamed.
   check-ticket-references:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -273,7 +273,7 @@ jobs:
   # pull request that does touch one fixes it. Runs on every pull request because
   # it is cheap and the hooks themselves pick which files they apply to.
   pre-commit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -323,7 +323,7 @@ jobs:
   # The sha is left out because it changes when a pull request is rebased or
   # squash-merged, and an entry that names it stops matching.
   secret-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -368,7 +368,7 @@ jobs:
   # default is one the setup wizard does not fill. Needs only PyYAML, so no venv;
   # runs on every PR because it is cheap.
   check-env-conventions:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -394,7 +394,7 @@ jobs:
   check-backend-notices:
     needs: changes
     if: needs.changes.outputs.be_deps == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -416,7 +416,7 @@ jobs:
   check-rbac-boundary:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -448,7 +448,7 @@ jobs:
   frontend-checks:
     needs: changes
     if: needs.changes.outputs.fe == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -519,7 +519,7 @@ jobs:
   backend-tests:
     needs: changes
     if: needs.changes.outputs.py_services != '[]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       # One failing service should not hide the state of the others.
       fail-fast: false
@@ -612,7 +612,7 @@ jobs:
   sandbox-tests:
     needs: changes
     if: needs.changes.outputs.sandbox == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container:
       # Same interpreter version and the same /usr/local prefix as
       # Dockerfile.sandbox's python:3.12.10-slim base, but the full Debian
@@ -689,7 +689,7 @@ jobs:
   sandbox-new-import-contracts:
     needs: changes
     if: needs.changes.outputs.sandbox_new == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # Matches the service Dockerfiles: without this uv may fetch its own
       # interpreter instead of the one set up below.
@@ -731,7 +731,7 @@ jobs:
   chat-tests:
     needs: changes
     if: needs.changes.outputs.chat == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         # Same image as the chatdb compose service, pinned to its multi-arch index digest.
@@ -791,7 +791,7 @@ jobs:
   retention-purge-tests:
     needs: changes
     if: needs.changes.outputs.retention == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       redis:
@@ -862,7 +862,7 @@ jobs:
   es-plugins-database-tests:
     needs: changes
     if: needs.changes.outputs.plugins_db == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A normal run takes under two minutes; a hang fails here instead of after six hours.
     timeout-minutes: 10
     env:
@@ -913,7 +913,7 @@ jobs:
   plugin-sdk-checks:
     needs: changes
     if: needs.changes.outputs.plugins_js == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # Matches the service Dockerfiles: without this uv may fetch its own
       # interpreter instead of the one set up below.
@@ -1011,7 +1011,7 @@ jobs:
   nginx-templates:
     needs: changes
     if: needs.changes.outputs.nginx == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -1028,7 +1028,7 @@ jobs:
   nginx-plugin-labs:
     needs: changes
     if: needs.changes.outputs.nginx_plugin_labs == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -1057,7 +1057,7 @@ jobs:
   plugin-node-lab:
     needs: changes
     if: needs.changes.outputs.plugin_node_lab == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -1133,7 +1133,7 @@ jobs:
       - plugin-node-lab
       - build
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Fail if any check failed or was cancelled
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')

@@ -33,7 +33,7 @@ x-lab-service: &lab-service
 
 services:
   nginx:
-    image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
+    image: nginx:1.31.9@sha256:08f354a3b44c422021a5c0f5efb3e27f8f90236b5447d3bac4053f5f50ab6760
     environment:
       <<: *lab-secret
       NGINX_ENTRYPOINT_QUIET_LOGS: "1"
@@ -134,7 +134,7 @@ services:
   # A load balancer that ends TLS in front of nginx (lb/default.conf), at a fixed address. The
   # tools container reaches nginx both through it and directly, as a client that bypasses it.
   lb:
-    image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
+    image: nginx:1.31.9@sha256:08f354a3b44c422021a5c0f5efb3e27f8f90236b5447d3bac4053f5f50ab6760
     command:
       - sh
       - -c
