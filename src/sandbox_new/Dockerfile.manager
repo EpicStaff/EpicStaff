@@ -3,7 +3,7 @@
 # carries no sandboxuser, no ffmpeg/git for tools and no iptables.
 
 # --- Stage 1: Builder ---
-FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
+FROM python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS builder
 
 # Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
 # sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
@@ -44,7 +44,7 @@ COPY ./sandbox_new/ /app/src/sandbox/
 COPY ./shared /app/src/shared
 
 # --- Stage 2: Runtime ---
-FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
+FROM python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS runtime
 
 # uv is needed at RUNTIME, not just at build: the manager builds every per-job
 # virtualenv by shelling out to `uv` (UVProvider). The builder-stage uv lives in
