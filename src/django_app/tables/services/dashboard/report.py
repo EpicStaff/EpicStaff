@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from decimal import Decimal
 
 from agents.models import AgentDefinition
@@ -5,7 +6,6 @@ from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
 from loguru import logger
-from plugins.models import GrantState, PluginGrant
 from rbac.models import Organization, OrganizationUser, Role
 from tables.models import (
     BaseRagType,
@@ -31,6 +31,13 @@ from tables.models import (
     WebhookTriggerNode,
 )
 from tables.models.knowledge_models import GraphRag, NaiveRag
+
+_plugin_counter: Callable[[int], int] | None = None
+
+
+def register_plugin_counter(counter: Callable[[int], int]) -> None:
+    global _plugin_counter
+    _plugin_counter = counter
 
 
 def count_totals(org_id: int) -> dict[str, int]:
@@ -58,9 +65,7 @@ def count_totals(org_id: int) -> dict[str, int]:
         ),
         "tools_python": PythonCodeTool.objects.filter(org_id=org_id, built_in=False).count(),
         "tools_mcp": McpTool.objects.filter(org_id=org_id).count(),
-        "plugins": PluginGrant.objects.filter(
-            org_id=org_id, state__in=(GrantState.ACTIVE, GrantState.UPGRADING)
-        ).count(),
+        "plugins": _plugin_counter(org_id) if _plugin_counter else 0,
     }
 
 

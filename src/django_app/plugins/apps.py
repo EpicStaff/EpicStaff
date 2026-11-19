@@ -10,10 +10,12 @@ class PluginsConfig(AppConfig):
     def ready(self):
         from rbac.governance.organization_deletion import register_participant
         from rbac.governance.role_assignment_checks import register_role_assignment_check
+        from tables.services.dashboard.report import register_plugin_counter
         from tables.services.run_admission import register_run_admission_check
 
         from plugins import checks  # noqa: F401
         from plugins.access.role_assignment_check import PluginRoleAssignmentCheck
+        from plugins.dashboard import count_installed_plugins
         from plugins.organization_deletion import PluginsOrganizationDeletion
         from plugins.ownership.ownership_recorder import connect_ownership_recorder
         from plugins.runs.run_guard import PluginRunGuard
@@ -27,6 +29,7 @@ class PluginsConfig(AppConfig):
         # Whether or not the plugin platform is on: switching it off must never let a
         # suspended plugin's resources run again.
         register_run_admission_check(PluginRunGuard())
+        register_plugin_counter(count_installed_plugins)
 
         # Grace periods and deletions run whether or not the platform is on: a grace period
         # is a promise about EpicStaff's data. Only under a web server, never in a migration
