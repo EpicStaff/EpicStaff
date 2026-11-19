@@ -2,7 +2,6 @@ from django.forms.models import model_to_dict
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rbac.access.asserts import assert_org_permission
-from rbac.access.gates import IsSuperadminOrReadOnly
 from rbac.access.principals import is_plugin_credential
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import resolve_active_org_id
@@ -24,13 +23,12 @@ from user_audit.recorder import record_user_action
 
 
 class BaseDefaultConfigAPIView(APIView):
-    """A Base model for all default config api views.
+    """Shared get/put for default config api views.
 
-    Any authenticated user may read the default config; only a superadmin may
-    modify it (write-lockdown).
+    Sets no permission gate: each subclass declares its own permission_classes
+    and authorizes reads and writes itself.
     """
 
-    permission_classes = [IsSuperadminOrReadOnly]
     model = None
     serializer = None
 

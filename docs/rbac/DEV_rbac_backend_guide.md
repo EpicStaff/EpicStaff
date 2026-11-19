@@ -418,11 +418,11 @@ See `roles_and_permissions.md` → "Running flows: `use` on `flows`" for the end
 
 - `IsSuperadmin` — org CRUD, cross-org user admin, grant/revoke superadmin, reset-user,
   admin password reset.
-- `IsSuperadminOrReadOnly` — global singletons exposed as plain APIViews (default-config
-  singletons, voice settings): any authenticated user reads, superadmin writes.
-- `SuperadminWriteMixin` (`rbac/scoping/mixins.py`) — same idea for ViewSets (global
-  registry/catalog rows): safe actions need `IsAuthenticated`, write actions (plus any
-  action named in `superadmin_write_actions`) need `IsSuperadmin`. Not org-scoped.
+- `SuperadminWriteMixin` (`rbac/scoping/mixins.py`) — global registry/catalog ViewSets
+  (the provider catalog): safe actions need `IsAuthenticated`, so API keys may read; write
+  actions (plus any action named in `superadmin_write_actions`) need `DenyApiKeyAuth` +
+  `IsSuperadmin` — a superadmin's session only, never the system key or a superadmin's own
+  key, because a global write reaches every organization. Not org-scoped.
 
 `CrossOrgResourceService` (`rbac/governance/cross_org_base.py`) is the base every cross-org
 admin surface (roles, memberships, organizations, API keys) extends for its precise per-org
@@ -825,8 +825,9 @@ service, and never trust ids in the payload without an org-scoped fetch.
 
 ### 8.6 Global (non-org) resource
 
-Registry/catalog/config singletons: `SuperadminWriteMixin` (ViewSet) or
-`IsSuperadminOrReadOnly` (APIView). Do not org-scope. If ordinary org members must be able
+Registry/catalog rows: `SuperadminWriteMixin` (ViewSet; writes are session-only). A global
+plain APIView pairs `[IsAuthenticated, DenyApiKeyAuth, IsSuperadmin]` on its write methods.
+Do not org-scope. If ordinary org members must be able
 to write it, it is not global — scope it instead.
 
 ### 8.7 Import/export & background paths
@@ -885,7 +886,7 @@ path — the default org is only for bootstrap and data migrations.
 | API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys, scoped by the key's own org) | `rbac/governance/api_keys.py`, `rbac/views/api_keys_admin.py` |
 | Self-service API keys (one org per key, cap 5 per user and org) + key-org lookup | `rbac/identity/api_keys/service.py`, `rbac/views/api_keys.py`, `rbac/access/principals.py` (`user_api_key_org_id`) |
 | Admin read limit for a USER API key | `rbac/views/cross_org_base.py` (`CrossOrgAdminViewSet.requested_org_ids`, `key_org_ids`, `require_key_org`) |
-| Permission gate (ViewSet) | `rbac/access/gates.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
+| Permission gate (ViewSet) | `rbac/access/gates.py` (`HasOrgPermission`, `IsSuperadmin`, `DenyApiKeyAuth`) |
 | Permission gate (APIView) | `rbac/access/asserts.py` |
 | Session/SSE and graph co-editing WS authorization | `tables/services/session_access.py`, `tables/views/sse_views.py`, `tables/graph_collab/consumers.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |
 | Org resolution | `rbac/access/org_context.py` |
