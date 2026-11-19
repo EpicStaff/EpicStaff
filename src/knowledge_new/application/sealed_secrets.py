@@ -26,14 +26,14 @@ def open_sealed_secrets[TCommand: (RunIndex, RunSearch)](
     return replace(
         command,
         embedding_api_key=_open_api_key(
-            command.embedding_api_key, "embedding_api_key", cryptographer
+            command.embedding_api_key, "embedding API key", cryptographer
         ),
-        llm_api_key=_open_api_key(command.llm_api_key, "llm_api_key", cryptographer),
+        llm_api_key=_open_api_key(command.llm_api_key, "LLM API key", cryptographer),
         embedding_extra_headers=_open_headers(
-            command.embedding_extra_headers, "embedding_extra_headers", cryptographer
+            command.embedding_extra_headers, "embedding request headers", cryptographer
         ),
         llm_extra_headers=_open_headers(
-            command.llm_extra_headers, "llm_extra_headers", cryptographer
+            command.llm_extra_headers, "LLM request headers", cryptographer
         ),
     )
 

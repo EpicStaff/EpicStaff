@@ -28,6 +28,9 @@ def get_error_handlers() -> dict[type[Exception], Callable[[Request, Exception],
     return _error_handlers
 
 
+_SERVER_ERROR_DETAIL = "The request failed because of a server error."
+
+
 def create_response(request: Request, status_code: int, code: str, error: Exception) -> Response:
     return Response(
         content={
@@ -98,7 +101,10 @@ def handle_rag_in_processing(request, error: Exception) -> Response:
 
 @registry(KnowledgeError)
 def handle_server_error(request, error: Exception) -> Response:
+    # The raw error can name internals (repository calls, storage keys), so it goes to
+    # the log only.
     logger.exception("Unhandled domain error: {}", error)
-    return create_response(
-        request, status_codes.HTTP_500_INTERNAL_SERVER_ERROR, "internal_error", error
+    return Response(
+        content={"code": "internal_error", "detail": _SERVER_ERROR_DETAIL},
+        status_code=status_codes.HTTP_500_INTERNAL_SERVER_ERROR,
     )

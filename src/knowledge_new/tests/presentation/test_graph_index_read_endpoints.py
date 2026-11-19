@@ -150,7 +150,7 @@ def test_every_read_of_a_never_indexed_graph_answers_409(client, path):
     assert response.status_code == 409
     assert response.json() == {
         "code": "graph_not_indexed",
-        "detail": "Graph index output not available for RAG(id=7). Run indexing first.",
+        "detail": "The graph isn't indexed yet.",
     }
 
 

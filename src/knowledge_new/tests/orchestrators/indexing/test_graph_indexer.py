@@ -17,6 +17,7 @@ from domain.errors import (
 from domain.models import EmbeddingConfig, GraphPricingConfig, Rag
 from domain.usage import IndexingRunUsage
 from graphrag_input import TextDocument
+from loguru import logger
 from tests.orchestrators.conftest import CRYPTOGRAPHER, seal, sealed_marker
 
 
@@ -284,6 +285,35 @@ async def test_indexing_errors_raise_exception_group_and_mark_rag_failed(monkeyp
 
     assert repo.status_updates == [(frozenset({7}), DocumentStatusEnum.FAILED)]
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.FAILED]
+
+
+async def test_failed_workflows_store_a_fixed_fact_and_log_every_raw_error(monkeypatch):
+    rag = _new_rag()
+    repo = FakeGraphRagRepo(rag=rag, config=_make_config(), documents=[_text_document(7)])
+
+    async def fake_build_index(**kwargs):
+        return [
+            _result("extract_graph", ValueError("LLM answered 429: quota for org-abc exceeded")),
+            _result("embed_text", OSError("lancedb path /srv/rag_1 is read-only")),
+        ]
+
+    monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
+    logged: list[str] = []
+    sink_id = logger.add(logged.append, level="DEBUG", diagnose=False)
+    try:
+        with pytest.raises(ExceptionGroup):
+            await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+                _make_request(frozenset({7}))
+            )
+    finally:
+        logger.remove(sink_id)
+
+    assert rag.status == IndexStatusEnum.FAILED
+    assert rag.error_message == "Indexing failed because of a server error."
+    log = "".join(logged)
+    assert "RunIndex(rag_id=1, document_ids=frozenset({7}))" in log
+    assert "ValueError: LLM answered 429: quota for org-abc exceeded" in log
+    assert "OSError: lancedb path /srv/rag_1 is read-only" in log
 
 
 async def test_missing_rag_raises_and_marks_nothing(monkeypatch):
@@ -610,14 +640,14 @@ async def test_absent_llm_api_key_reaches_the_completion_model_as_none(monkeypat
 @pytest.mark.parametrize(
     ("field", "command_fields"),
     [
-        ("embedding_api_key", {"embedding_api_key": "sk-never-sealed"}),
-        ("llm_api_key", {"llm_api_key": "sk-never-sealed"}),
+        ("embedding API key", {"embedding_api_key": "sk-never-sealed"}),
+        ("LLM API key", {"llm_api_key": "sk-never-sealed"}),
         (
-            "embedding_extra_headers",
+            "embedding request headers",
             {"embedding_extra_headers": {"X-Key": "epicstaff_secret(sk-never-sealed)"}},
         ),
         (
-            "llm_extra_headers",
+            "LLM request headers",
             {"llm_extra_headers": {"X-Key": "epicstaff_secret(sk-never-sealed)"}},
         ),
     ],

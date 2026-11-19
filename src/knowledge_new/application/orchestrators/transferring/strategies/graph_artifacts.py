@@ -64,7 +64,7 @@ class GraphArtifactExportOrchestrator(AbstractArtifactExportOrchestrator):
         if rag is None:
             raise RagNotFoundError(rag_id=command.rag_id)
         if rag.status == IndexStatusEnum.PROCESSING:
-            raise RagInProcessingError(f"RAG(id={command.rag_id}) is being indexed.")
+            raise RagInProcessingError("The knowledge source is being indexed.")
         if rag.status != IndexStatusEnum.COMPLETED or rag.slot is None:
             raise GraphArtifactsNotReadyError(rag_id=command.rag_id)
 
@@ -105,7 +105,11 @@ class GraphArtifactRestoreOrchestrator(AbstractArtifactRestoreOrchestrator):
                         f"{slot_prefix}{member.name}", tar.extractfile(member), member.size
                     )
         except tarfile.TarError as error:
-            raise InvalidArtifactArchiveError(reason=f"not a readable tar ({error})") from error
+            # The tarfile text stays out of the reason the caller sees; execute() logs it
+            # through the chained cause.
+            raise InvalidArtifactArchiveError(
+                reason="the file isn't a readable tar archive"
+            ) from error
 
     async def on_error(self, command: RestoreGraphArtifacts, error: Exception) -> None:
         await self.artifact_store.clear(_rag_prefix(command.rag_id))

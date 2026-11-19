@@ -150,9 +150,9 @@ async def test_sealed_header_markers_reach_the_embedding_provider_decrypted(
 @pytest.mark.parametrize(
     ("field", "command_fields"),
     [
-        ("embedding_api_key", {"embedding_api_key": "sk-never-sealed"}),
+        ("embedding API key", {"embedding_api_key": "sk-never-sealed"}),
         (
-            "embedding_extra_headers",
+            "embedding request headers",
             {"embedding_extra_headers": {"X-Key": "epicstaff_secret(sk-never-sealed)"}},
         ),
     ],

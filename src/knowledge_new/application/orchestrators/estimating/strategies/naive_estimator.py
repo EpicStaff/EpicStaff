@@ -32,7 +32,7 @@ class NaiveEstimateOrchestrator(AbstractEstimateOrchestrator):
                 rag_id=rag.id, ids=command.document_ids
             )
         if not documents:
-            raise DocumentNotFoundError(f"No Document found for RAG(id={rag.id}).")
+            raise DocumentNotFoundError("The knowledge source has no documents.")
 
         # The indexer runs after the overrides are saved, so judge each document by them.
         # Preview chunks were made with the stored settings, so an override drops them.
