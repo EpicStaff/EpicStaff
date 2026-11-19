@@ -15,7 +15,7 @@ from infrastructure.providers.openai.event_handlers.agent_server_event_handler i
     HIDDEN_ITEM_ID_PREFIX,
 )
 from infrastructure.providers.openai.openai_realtime_agent_client import OpenaiRealtimeAgentClient
-from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
+from tests.conftest import SECRET_SENTINEL
 
 
 @pytest.fixture
@@ -64,13 +64,12 @@ async def test_tool_failure_reaches_openai_without_the_exception_text(client, ca
     await client.call_tool("call_1", "search_tool", {"query": "hi"})
 
     (item_create,) = _sent(client)
-    output = item_create["item"]["output"]
-    assert output.startswith("Tool execution failed")
+    assert item_create["item"]["output"] == "The tool call failed."
     assert SECRET_SENTINEL not in str(item_create)
-    # Support can still find the detail in the logs under the reference the model saw.
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(output).group(1)
-    (log,) = [message for message in captured_log_messages if correlation_id in message]
-    assert SECRET_SENTINEL in log
+    # Support finds the detail in the logs by the connection and the tool.
+    (log,) = [message for message in captured_log_messages if SECRET_SENTINEL in message]
+    assert "conn_1" in log
+    assert "search_tool" in log
 
 
 @pytest.mark.parametrize(

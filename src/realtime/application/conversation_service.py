@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 
+from domain.error_messages import MESSAGE_PROCESSING_FAILED
 from domain.models.chat_mode import ChatMode
 from domain.ports.i_chat_mode_controller import IChatModeController
 from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
@@ -14,11 +15,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 from infrastructure.providers.factory import RealtimeAgentClientFactory
 from loguru import logger
 from src.shared.models import RealtimeAgentChatData
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
 from utils.shorten import shorten_dict
 from utils.tokenizer import Tokenizer
 
@@ -216,17 +212,17 @@ class ConversationService(IChatModeController):
                     raise
 
                 except Exception as e:
-                    correlation_id = new_error_correlation_id()
                     logger.exception(
-                        f"Error processing message [correlation_id={correlation_id}]: {e}"
+                        "Error processing message connection_key={} org_id={} user_id={}"
+                        " rt_agent_definition_id={}: {}",
+                        self.realtime_agent_chat_data.connection_key,
+                        self.realtime_agent_chat_data.org_id,
+                        self.realtime_agent_chat_data.user_id,
+                        self.realtime_agent_chat_data.rt_agent_definition_id,
+                        e,
                     )
                     await self.client_websocket.send_json(
-                        {
-                            "type": "error",
-                            "message": build_public_error_message(
-                                PublicErrorMessage.MESSAGE_PROCESSING_FAILED, correlation_id
-                            ),
-                        }
+                        {"type": "error", "message": MESSAGE_PROCESSING_FAILED}
                     )
 
         except WebSocketDisconnect:

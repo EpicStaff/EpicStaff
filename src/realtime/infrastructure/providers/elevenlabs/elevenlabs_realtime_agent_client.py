@@ -7,13 +7,9 @@ from typing import Any
 
 import websockets
 from application.tool_manager_service import ToolManagerService
+from domain.error_messages import TOOL_CALL_FAILED
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
 from starlette.websockets import WebSocketDisconnect
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
@@ -298,11 +294,17 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                 call_arguments=tool_arguments,
             )
         except Exception as e:
-            correlation_id = new_error_correlation_id()
-            logger.exception(f"Tool execution failed [correlation_id={correlation_id}]: {e!s}")
-            tool_result = build_public_error_message(
-                PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
+            logger.exception(
+                "ElevenLabs: Tool execution failed connection_key={} org_id={} user_id={}"
+                " tool={} call_id={}: {}",
+                self.connection_key,
+                self.org_id,
+                self.user_id,
+                tool_name,
+                call_id,
+                e,
             )
+            tool_result = TOOL_CALL_FAILED
         await self.send_function_result(call_id, tool_result)
 
     async def request_response(self, data: dict | None = None) -> None:

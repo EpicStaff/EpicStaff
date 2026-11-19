@@ -14,7 +14,7 @@ from application.conversation_service import ConversationService
 from application.tool_manager_service import ToolManagerService
 from infrastructure.providers.factory import RealtimeAgentClientFactory
 from infrastructure.providers.gemini.gemini_realtime_agent_client import GeminiRealtimeAgentClient
-from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
+from tests.conftest import SECRET_SENTINEL
 from tests.infrastructure.providers.gemini_live_fakes import (
     SESSION_RECORD_PATCH,
     patch_gemini_clock,
@@ -174,23 +174,20 @@ async def test_process_message_failure_sends_fixed_error_without_exception_text(
 
     error_payloads = _error_payloads(service)
     assert len(error_payloads) == 1
-    assert error_payloads[0]["message"].startswith("Failed to process the message")
-    assert PUBLIC_ERROR_REFERENCE.search(error_payloads[0]["message"])
+    assert error_payloads[0]["message"] == "The message couldn't be processed."
     for call in service.client_websocket.send_json.await_args_list:
         assert SECRET_SENTINEL not in str(call.args[0])
 
 
 @pytest.mark.asyncio
-async def test_process_message_failure_logs_detail_under_the_sent_correlation_id(
+async def test_process_message_failure_logs_detail_with_the_connection_key(
     service, captured_log_messages
 ):
     await _run_until_disconnect(service)
 
-    message = _error_payloads(service)[0]["message"]
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(message).group(1)
-    matching_logs = [log for log in captured_log_messages if correlation_id in log]
+    matching_logs = [log for log in captured_log_messages if SECRET_SENTINEL in log]
     assert len(matching_logs) == 1
-    assert SECRET_SENTINEL in matching_logs[0]
+    assert "test_key" in matching_logs[0]
 
 
 # ---------------------------------------------------------------------------

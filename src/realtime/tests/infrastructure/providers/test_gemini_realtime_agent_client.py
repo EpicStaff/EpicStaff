@@ -21,7 +21,7 @@ from websockets.http11 import Response
 
 from domain.models.realtime_tool import RealtimeTool
 from infrastructure.providers.gemini.gemini_realtime_agent_client import GeminiRealtimeAgentClient
-from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
+from tests.conftest import SECRET_SENTINEL
 from tests.infrastructure.providers.gemini_live_fakes import (
     HANG,
     FakeSession,
@@ -669,12 +669,11 @@ async def test_tool_failure_reaches_gemini_without_the_exception_text(live, capt
     await client.call_tool("c1", "echo", {"text": "hi"})
 
     (response,) = live.sessions[0].tool_responses
-    result = response.response["result"]
-    assert result.startswith("Tool execution failed") and SECRET_SENTINEL not in result
+    assert response.response["result"] == "The tool call failed."
     assert live.sessions[0].turns == []
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(result).group(1)
-    (log,) = [message for message in captured_log_messages if correlation_id in message]
-    assert SECRET_SENTINEL in log
+    (log,) = [message for message in captured_log_messages if SECRET_SENTINEL in message]
+    assert "conn_1" in log
+    assert "echo" in log
 
 
 async def test_close_is_idempotent_and_safe_to_race(live):

@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import Any, ClassVar
 
+from domain.error_messages import KNOWLEDGE_SEARCH_FAILED
 from domain.models.realtime_tool import RealtimeTool, ToolParameters
 from loguru import logger
 from src.shared.knowledge.client import KnowledgeClient
@@ -9,11 +10,6 @@ from src.shared.models import (
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
     RagSearchConfig,
-)
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
 )
 
 from .base_tool_executor import BaseToolExecutor
@@ -65,16 +61,16 @@ class KnowledgeSearchToolExecutor(BaseToolExecutor):
                 target, query, timeout=DEFAULT_KNOWLEDGE_SEARCH_TIMEOUT
             )
         except Exception as error:
-            correlation_id = new_error_correlation_id()
             logger.warning(
-                "Knowledge search failed rag_id={} correlation_id={} error={}",
+                "Knowledge search failed rag_type={} rag_id={} knowledge_collection_id={}"
+                " error_type={} error={}",
+                self.rag_type,
                 self.rag_id,
-                correlation_id,
+                self.knowledge_collection_id,
+                type(error).__name__,
                 error,
             )
-            return build_public_error_message(
-                PublicErrorMessage.KNOWLEDGE_SEARCH_FAILED, correlation_id
-            )
+            return KNOWLEDGE_SEARCH_FAILED
 
         if isinstance(result, str):
             knowledges = result
