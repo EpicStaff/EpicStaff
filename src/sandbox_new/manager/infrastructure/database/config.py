@@ -1,6 +1,7 @@
-import settings
 from piccolo.conf.apps import AppRegistry
 from piccolo.engine.postgres import PostgresEngine
+
+from manager import settings
 
 DB = PostgresEngine(
     config={

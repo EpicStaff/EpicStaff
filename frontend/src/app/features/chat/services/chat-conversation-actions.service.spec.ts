@@ -25,6 +25,7 @@ const conversation = (overrides: Partial<ChatConversation> = {}): ChatConversati
     last_message_preview: 'hello',
     handoff_reason: '',
     handoff_at: '2026-10-10T10:00:00Z',
+    claimed_at: null,
     visitor_number: 1,
     chat_user_id: null,
     assigned_operator_name: null,

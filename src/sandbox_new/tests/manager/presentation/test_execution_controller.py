@@ -9,8 +9,11 @@ read; held jobs do not fill it. A job that would be held answers 503 once the he
 is reached. The status endpoint answers for every execution the sandbox still knows, and 404
 for the rest -- that 404 is how a waiting producer learns to stop waiting. A secret the
 sandbox cannot decrypt is refused with 400, the answer naming the secret but not its value.
+An execution id names the worker's workspace directory, so one that is not a plain name
+(a dot, a slash, empty, too long) is refused with 400 before anything is queued.
 """
 
+import pytest
 from litestar import status_codes
 
 from manager.domain.enums import VenvStatus
@@ -62,6 +65,46 @@ def test_submit_with_an_undecryptable_secret_is_rejected_naming_only_the_secret(
     assert "gAAAAAforged" not in response.text
     assert dispatcher.dispatched == []
     assert registry.status("exec-1") is None
+
+
+@pytest.mark.parametrize(
+    "execution_id",
+    [
+        "3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f",  # uuid4: agent, crew, realtime
+        "19-11-2026_12-30-45-123@ab12",  # django_app's time-based id
+        "a" * 128,
+    ],
+)
+def test_submit_accepts_the_execution_id_formats_producers_send(
+    client, venv_repository, dispatcher, execution_id
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={**SUBMISSION, "execution_id": execution_id, "venv_id": venv.id},
+    )
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    assert [job.execution_id for job in dispatcher.dispatched] == [execution_id]
+
+
+@pytest.mark.parametrize(
+    "execution_id", ["", ".", "..", "../x", "/", "/venvs", "a/b", "a.b", "a" * 129]
+)
+def test_submit_rejects_an_execution_id_that_is_not_a_plain_name(
+    client, venv_repository, dispatcher, registry, execution_id
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={**SUBMISSION, "execution_id": execution_id, "venv_id": venv.id},
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert dispatcher.dispatched == []
+    assert registry.status(execution_id) is None
 
 
 def test_an_accepted_submission_logs_exec_received(client, venv_repository, checkpoints):
@@ -129,6 +172,33 @@ def test_submit_with_storage_carries_the_storage_fields_to_the_worker(
     assert job.storage_org_prefix == "org1"
     assert job.storage_credentials.access_key == "AK123"
     assert job.storage_credentials.secret_key == "SK456"
+
+
+def test_submit_with_storage_carries_the_credential_scope_onto_the_job(
+    client, venv_repository, dispatcher
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={
+            **SUBMISSION,
+            "venv_id": venv.id,
+            "use_storage": True,
+            "storage_allowed_paths": ["docs/", "sessions/7/"],
+            "storage_org_prefix": "org1",
+            "storage_credentials": {
+                **CREDENTIALS,
+                "shared_actions": ["read", "delete"],
+                "own_paths": ["sessions/7/"],
+            },
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    credentials = dispatcher.dispatched[0].storage_credentials
+    assert credentials.shared_actions == ["read", "delete"]
+    assert credentials.own_paths == ["sessions/7/"]
 
 
 def test_submit_with_storage_but_no_credentials_is_rejected(

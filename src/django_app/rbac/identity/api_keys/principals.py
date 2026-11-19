@@ -4,9 +4,11 @@ from rbac.models import ApiKey
 class SystemServicePrincipal:
     """Synthetic request.user for system API keys.
 
-    Satisfies IsAuthenticated (is_authenticated) and every superadmin gate
-    (is_superadmin) without a User row. Deliberately has NO `email`/`pk` —
-    user-context endpoints (profile) reject it via their user-identity checks.
+    Satisfies IsAuthenticated (is_authenticated) and IsSuperadmin
+    (is_superadmin) without a User row. Session-only gates (DenyApiKeyAuth,
+    e.g. global catalog writes via SuperadminWriteMixin) still reject it.
+    Deliberately has NO `email`/`pk` — user-context endpoints (profile)
+    reject it via their user-identity checks.
     """
 
     is_authenticated = True

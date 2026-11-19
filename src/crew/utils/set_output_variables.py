@@ -35,8 +35,8 @@ def set_output_variables(state: State, output_variable_path: str | None, output:
         # This prevents e.g. message_history={chat_A: [...]} from wiping chat_B's
         # entries when two sessions for different chats save concurrently.
         # Keys go through item access, not getattr/setattr: output keys are data (a webhook
-        # payload may carry `_id` or `__typename`), and attribute access on `_properties`,
-        # `_setters` or `__dict__` would write into the DotDict's internals instead.
+        # payload may carry `_id` or `__typename`), and getattr finds DotDict attributes such
+        # as `update` or `__dict__` before a key of the same name.
         for out_key, out_val in output.items():
             existing = value.get(out_key)
             if (

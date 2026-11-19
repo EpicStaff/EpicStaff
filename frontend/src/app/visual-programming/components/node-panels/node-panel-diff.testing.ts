@@ -134,7 +134,10 @@ export function openPanelOnChangesTab<TPanel>(
             provideHttpClientTesting(),
             provideLoadedExecutionTimeoutLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: true },
-            { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => false } },
+            {
+                provide: PermissionsService,
+                useValue: { can: () => true, canEditSecrets: () => false, isActivePermissionsLoaded: () => true },
+            },
             // The flow graph provides these to the panels.
             KeyValueEntryDraftsService,
             { provide: PythonCodeRunService, useValue: {} },

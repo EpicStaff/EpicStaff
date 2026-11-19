@@ -74,6 +74,19 @@ Regenerate the lock for one service only.
 make uv-lock-crew
 ```
 
+### `make uv-lock-predefined`
+
+Regenerate `src/sandbox_new/predefined-requirements.txt`: the hash-pinned third-party
+dependencies of the shared packages every sandbox venv gets (`dotdict`,
+`epicstaff_secrets`, `epicstaff_common`, `epicstaff_storage`). The sandbox manager image
+downloads exactly these, so venvs are built without the network. Run after editing the
+`dependencies` of one of those packages; `make uv-lock` runs it too. A dependency missing
+from the file fails the `sandbox_new` image build.
+
+```bash
+make uv-lock-predefined
+```
+
 ---
 
 ## Local Django Development
@@ -140,9 +153,6 @@ make django-manage CMD=shell
 
 # Create a superuser
 make django-manage CMD=createsuperuser
-
-# Collect static files
-make django-manage CMD="collectstatic --noinput"
 ```
 
 ### `make django-tests ARGS=<pytest-args>`

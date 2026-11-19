@@ -353,13 +353,7 @@
                             aria-haspopup="listbox"
                             [attr.aria-expanded]="toolsDropdown.isOpen()"
                         >
-                            <span class="picker__toggle-label">
-                                @if (selectedTools().length === 0) {
-                                    Select tools
-                                } @else {
-                                    {{ selectedTools().length }} tool(s) selected
-                                }
-                            </span>
+                            <span class="picker__toggle-label">{{ toolPickerLabel() }}</span>
                             <app-svg-icon
                                 class="picker__toggle-chevron"
                                 [class.picker__toggle-chevron--open]="toolsExpanded()"
@@ -372,8 +366,9 @@
 
                 @if (selectedTools().length > 0) {
                     <div class="res-table">
-                        <div class="res-table__head">
+                        <div class="res-table__head res-table__head--access">
                             <span class="res-table__col-resource">Resource</span>
+                            <span class="res-table__col-access">Access</span>
                             <span class="res-table__col-action">
                                 @if (!readOnly()) {
                                     <button
@@ -403,6 +398,30 @@
                                     @if (!hideDescriptions()) {
                                         <span class="res-row__desc">{{ tool.description }}</span>
                                     }
+                                </span>
+                                <span class="res-row__access">
+                                    <button
+                                        type="button"
+                                        class="perm-cell"
+                                        [class.perm-cell--allow]="toolMode(toolKey(tool)) === 'allow'"
+                                        [class.perm-cell--deny]="toolMode(toolKey(tool)) === 'deny'"
+                                        [attr.aria-label]="tool.name + ': ' + toolMode(toolKey(tool))"
+                                        [matTooltip]="tool.name + ': ' + toolMode(toolKey(tool))"
+                                        [disabled]="readOnly()"
+                                        (click)="toggleToolMode(toolKey(tool), $event)"
+                                    >
+                                        @if (toolMode(toolKey(tool)) === 'allow') {
+                                            <app-svg-icon
+                                                icon="checkbox-tick"
+                                                size="16px"
+                                            />
+                                        } @else {
+                                            <app-svg-icon
+                                                icon="x-tight"
+                                                size="8px"
+                                            />
+                                        }
+                                    </button>
                                 </span>
                                 @if (!readOnly()) {
                                     <button
@@ -595,8 +614,8 @@
                                                     />
                                                 } @else if (frow.perms[col.key] === 'deny') {
                                                     <app-svg-icon
-                                                        icon="x"
-                                                        size="10px"
+                                                        icon="x-tight"
+                                                        size="8px"
                                                     />
                                                 }
                                             </button>
@@ -660,8 +679,8 @@
                                                 />
                                             } @else if (row.row.perms[col.key] === 'deny') {
                                                 <app-svg-icon
-                                                    icon="x"
-                                                    size="10px"
+                                                    icon="x-tight"
+                                                    size="8px"
                                                 />
                                             }
                                         </button>

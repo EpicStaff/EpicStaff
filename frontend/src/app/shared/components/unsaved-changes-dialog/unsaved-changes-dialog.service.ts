@@ -37,7 +37,7 @@ export class UnsavedChangesDialogService {
         );
     }
 
-    confirmUnsavedChanges(onSave?: () => Observable<boolean>): Observable<UnsavedChangesResult> {
+    confirmUnsavedFlowChanges(onSave?: () => Observable<boolean>): Observable<UnsavedChangesResult> {
         return this.confirm({
             title: 'Unsaved Changes',
             message: 'You have unsaved changes in your flow. What would you like to do?',

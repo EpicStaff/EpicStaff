@@ -4,11 +4,13 @@ from domain.ports.repositories import AbstractGraphRagRepository
 from domain.usage import IndexingRunUsage, merge_indexing_usage
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
+from graphrag_storage import StorageConfig
 from infrastructure.database.mappers.graph import (
     graph_document_orm_to_text_document,
     graph_rag_orm_to_graphrag_config,
     graph_rag_orm_to_pricing_config,
     graph_rag_orm_to_rag,
+    graph_rag_output_storage_config,
     graph_rag_update_values,
 )
 from infrastructure.database.models import (
@@ -152,6 +154,14 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
             resolved_slot = slot if slot is not None else rag.slot
             return graph_rag_orm_to_graphrag_config(rag, slot=resolved_slot)
         return None
+
+    async def get_output_storage_config(self, rag_id: int) -> StorageConfig | None:
+        slot = await self._session.scalar(
+            select(GraphRag.slot).where(GraphRag.graph_rag_id == rag_id)
+        )
+        if slot is None:
+            return None
+        return graph_rag_output_storage_config(rag_id, slot=slot)
 
     async def get_pricing_config(self, rag_id: int) -> GraphPricingConfig | None:
         result = await self._session.execute(

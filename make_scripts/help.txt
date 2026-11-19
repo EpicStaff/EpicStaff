@@ -21,6 +21,11 @@
    Regenerate the lock for one service only.
    Example: make uv-lock-crew
 
+ make uv-lock-predefined
+   Regenerate src/sandbox_new/predefined-requirements.txt (also run by
+   make uv-lock). Run after editing a dependency of a shared package
+   that every sandbox venv gets.
+
  LOCAL DJANGO DEVELOPMENT
 ----------------------------------------------------------------
  make django-tests ARGS=<pytest-args>

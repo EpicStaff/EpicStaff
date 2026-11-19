@@ -6,7 +6,9 @@ import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
+import { FirstSetupRequest } from '@shared/models';
 import { APP_STORAGE } from '@shared/services';
+import { Observable } from 'rxjs';
 
 import { authInterceptor } from '../../core/interceptors/auth.interceptor';
 import { AppReturnUrlService } from '../../features/plugins/services/app-return-url.service';
@@ -14,13 +16,15 @@ import { ConfigService } from '../config';
 import { AuthService } from './auth.service';
 import { PermissionsService } from './permissions.service';
 import { ProfileService } from './profile.service';
+import { SessionEndService } from './session-end.service';
 
-describe('AuthService sign-out', () => {
+describe('AuthService signing in and out', () => {
     let authService: AuthService;
     let httpMock: HttpTestingController;
     let returnUrl: AppReturnUrlService;
     let clearCurrentUser: ReturnType<typeof vi.fn>;
     let navigate: ReturnType<typeof vi.spyOn>;
+    let sessionEnds: number;
 
     beforeEach(() => {
         clearCurrentUser = vi.fn();
@@ -40,6 +44,8 @@ describe('AuthService sign-out', () => {
         httpMock = TestBed.inject(HttpTestingController);
         returnUrl = TestBed.inject(AppReturnUrlService);
         navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+        sessionEnds = 0;
+        TestBed.inject(SessionEndService).ended$.subscribe(() => sessionEnds++);
 
         authService.storeAccessToken('access-token');
         returnUrl.record('/flows/my');
@@ -61,6 +67,7 @@ describe('AuthService sign-out', () => {
         expect(clearCurrentUser).toHaveBeenCalled();
         expect(returnUrl.url()).toBe('/agents');
         expect(sessionStorage.getItem('epicstaff.appReturnUrl')).toBeNull();
+        expect(sessionEnds).toBeGreaterThan(0);
         expect(navigate).toHaveBeenCalledWith(['/login']);
     });
 
@@ -69,11 +76,37 @@ describe('AuthService sign-out', () => {
 
         expect(clearCurrentUser).toHaveBeenCalled();
         expect(returnUrl.url()).toBe('/agents');
+        // Work waiting on the session, such as a background job's wait, stops now too.
+        expect(sessionEnds).toBeGreaterThan(0);
         expect(navigate).not.toHaveBeenCalled();
 
         httpMock.expectOne('/api/auth/logout/').flush(null);
 
         expect(authService.getAccessToken()).toBeNull();
         expect(navigate).toHaveBeenCalledWith(['/login']);
+    });
+
+    // A sign-in must not wipe what the browser kept: the active organization is one of those storages, and losing it
+    // sends a bookmarked link into another organization.
+    it.each([
+        {
+            route: 'sign-in',
+            start: (auth: AuthService): Observable<unknown> => auth.login('next@example.com', 'password', false),
+            url: '/api/auth/login/',
+            response: { access: 'next-access-token' },
+        },
+        {
+            route: 'first-time setup',
+            start: (auth: AuthService): Observable<unknown> => auth.runSetup({} as FirstSetupRequest),
+            url: '/api/auth/first-setup/',
+            response: { access: 'next-access-token', organization: { id: 1 } },
+        },
+    ])('keeps what is stored on $route', ({ start, url, response }) => {
+        start(authService).subscribe();
+        httpMock.expectOne(url).flush(response);
+
+        expect(returnUrl.url()).toBe('/flows/my');
+        expect(sessionStorage.getItem('epicstaff.appReturnUrl')).not.toBeNull();
+        expect(authService.getAccessToken()).toBe('next-access-token');
     });
 });

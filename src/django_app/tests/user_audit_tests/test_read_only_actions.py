@@ -16,11 +16,12 @@ from django.urls import ResolverMatch, get_resolver
 from django.urls.resolvers import URLPattern, URLResolver
 from rest_framework import status
 
-from tables.models import Graph, SourceCollection
+from tables.models import Graph, SourceCollection, TransferJob
 from tables.models.knowledge_models import BaseRagType, NaiveRag
 from tables.services.storage_service.manager import StorageManager
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
+from tests.transfer_job_helpers import export_via_job
 from user_audit.middleware import (
     FALLBACK_EXCLUDED_ACTIONS,
     FALLBACK_EXCLUDED_VIEWS,
@@ -142,6 +143,8 @@ HOOK_RECORDED_ROUTES = frozenset(
         "POST api/graphs/import/",
         "POST api/mcp-tools/import/",
         "POST api/python-code-tool/import/",
+        # TransferJobService.remove_jobs records each export or import job it deletes.
+        "POST api/transfer-jobs/clear/",
         # DocumentManagementService records each uploaded, copied or deleted document
         # under its collection.
         "POST api/documents/bulk-delete/",
@@ -466,9 +469,11 @@ def test_import_inspect_records_nothing(
     admin_client, acme, sent_events, django_capture_on_commit_callbacks
 ):
     flow = Graph.objects.create(name="Billing flow", org=acme)
-    exported = admin_client.get(f"/api/graphs/{flow.id}/export/")
-    assert exported.status_code == status.HTTP_200_OK, exported.content
-    upload = SimpleUploadedFile("flow.json", exported.content, content_type="application/json")
+    exported = export_via_job(
+        admin_client, "/api/graphs/export-jobs/", {"ids": [flow.id], "include_knowledge": False}
+    )
+    assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+    upload = SimpleUploadedFile("flow.zip", exported.archive, content_type="application/zip")
 
     _post_records_nothing(
         admin_client,

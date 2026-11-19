@@ -3,12 +3,14 @@ import json
 from typing import Any
 
 from dotdict import DotDict
+from foundation.cryptographer import AbstractCryptographer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 from loguru import logger
 from pydantic import ValidationError
 from services.graph.exceptions import InvalidStatePathError
+from services.graph.storage_credentials_picker import pick_storage_credentials
 from services.run_python_code_service import RunPythonCodeService
 from src.crew.models.graph_models import (
     GraphMessage,
@@ -17,6 +19,11 @@ from src.crew.models.state import State
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
+from src.crew.services.secret_decryption import (
+    SecretDecryptionError,
+    decrypt_llm_data,
+    decrypt_system_one_config,
+)
 from src.shared.flow_templates import RefusedPlaceholderError, render_template
 from src.shared.models import PythonCodeData
 from src.shared.models.graph_nodes import (
@@ -124,20 +131,26 @@ class ClassificationDecisionTableNodeSubgraph:
         node_data: ClassificationDecisionTableNodeData,
         graph_builder: StateGraph,
         stop_event: StopEvent,
+        secrets_cryptographer: AbstractCryptographer,
         redis_service=None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         storage_credentials: StorageCredentials | None = None,
+        storage_credentials_by_grant: dict[str, StorageCredentials] | None = None,
+        graph_id: int | None = None,
     ):
         self.node_data = node_data
         self._graph_builder = graph_builder
         self.session_id = session_id
         self.node_name = node_data.node_name
         self.stop_event = stop_event
+        self.secrets_cryptographer = secrets_cryptographer
         self.redis_service = redis_service
         self.custom_session_message_writer = (
             custom_session_message_writer or CustomSessionMessageWriter()
         )
         self.storage_credentials = storage_credentials
+        self.storage_credentials_by_grant = storage_credentials_by_grant or {}
+        self.graph_id = graph_id
 
     async def _publish_message(self, graph_message: GraphMessage):
         """Add a GraphMessage directly to the graph message stream.
@@ -235,7 +248,13 @@ class ClassificationDecisionTableNodeSubgraph:
             python_code_data=python_code,
             inputs=inputs,
             stop_event=self.stop_event,
-            storage_credentials=self.storage_credentials,
+            # Each code slot runs with the account of its own grant.
+            storage_credentials=pick_storage_credentials(
+                python_code.storage_grant,
+                self.graph_id,
+                self.storage_credentials,
+                self.storage_credentials_by_grant,
+            ),
         )
 
         if result["returncode"] != 0:
@@ -500,7 +519,14 @@ def main(**kwargs) -> dict:
             )
 
         try:
-            result, usage = await evaluate(config, state_sent, questions)
+            decrypted_config = decrypt_system_one_config(config, self.secrets_cryptographer)
+        except SecretDecryptionError as error:
+            raise ClassificationDecisionTableNodeError(
+                f"System One entry '{prompt_id}': {error}"
+            ) from None
+
+        try:
+            result, usage = await evaluate(decrypted_config, state_sent, questions)
         except SystemOneError as error:
             logger.opt(exception=error).error(
                 "System One call failed for prompt '{}' in node '{}'", prompt_id, self.node_name
@@ -551,9 +577,16 @@ def main(**kwargs) -> dict:
         )
 
         try:
+            decrypted_llm_data = decrypt_llm_data(llm_data, self.secrets_cryptographer)
+        except SecretDecryptionError as error:
+            raise ClassificationDecisionTableNodeError(
+                f"LLM config of prompt '{prompt_id}': {error}"
+            ) from None
+
+        try:
             result, usage = await run_json_llm(
                 prompt=rendered_prompt,
-                llm=llm_data,
+                llm=decrypted_llm_data,
                 output_schema=prompt_config.output_schema,
             )
         except Exception as e:

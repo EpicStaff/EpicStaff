@@ -8,6 +8,17 @@ os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 
 from django_app.settings import *  # noqa: E402
 
+# The suite creates and drops its own database, which needs CREATEDB: the crewdb superuser
+# has it, django_app's own role (DJANGO_DB_USER) does not.
+DATABASES = {
+    **DATABASES,
+    "default": {
+        **DATABASES["default"],
+        "USER": env.str("DB_USER"),
+        "PASSWORD": env.str("DB_PASSWORD"),
+    },
+}
+
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,
     # Real JWT/API-key authentication so `auth_client` (Authorization: Bearer

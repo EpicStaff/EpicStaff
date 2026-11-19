@@ -1,5 +1,6 @@
 from agents.models import (
     AgentInlineSurface,
+    AgentInlineSurfaceKnowledge,
     AgentInlineSurfaceMcpTool,
     AgentInlineSurfacePythonTool,
 )
@@ -48,6 +49,9 @@ class AgentNodeStrategy(EntityImportExportStrategy):
             deps[EntityType.MCP_TOOL] = list(
                 inline_surface.mcp_tools.values_list("mcp_tool_id", flat=True)
             )
+            deps[EntityType.SOURCE_COLLECTION] = list(
+                inline_surface.knowledge.values_list("collection_id", flat=True)
+            )
 
         return deps
 
@@ -78,9 +82,11 @@ class AgentNodeStrategy(EntityImportExportStrategy):
             {"agent_node": agent_node},
             AgentInlineSurfacePythonTool,
             AgentInlineSurfaceMcpTool,
+            AgentInlineSurfaceKnowledge,
             "agent_inline_surface",
             inline_surface_data,
             id_mapper,
+            kwargs.get("org_id"),
         )
         create_agent_node_tasks(agent_node, tasks_data)
 

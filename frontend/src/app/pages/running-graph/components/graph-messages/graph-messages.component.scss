@@ -41,9 +41,9 @@
             transition: all 0.3s ease;
 
             &.reconnecting {
-                background-color: var(--amber-620-alpha-10);
-                color: var(--amber-620);
-                border: 1px solid var(--amber-620-alpha-20);
+                background-color: var(--color-warning-background);
+                color: var(--color-warning);
+                border: 1px solid var(--amber-alpha-20);
             }
 
             &.disconnected {

@@ -23,6 +23,7 @@ from tables.models import (
     Session,
     SourceCollection,
     StorageFile,
+    TransferJob,
 )
 from tables.models.default_models import DefaultModels
 from tables.services.quickstart_service import QuickstartService
@@ -663,6 +664,28 @@ def test_a_deleted_audit_filter_preset_is_named(
     assert not AuditFilterPreset.objects.filter(pk=preset.pk).exists()
     assert _deleted_event(sent_events) == (
         "deleted", "audit filter preset", str(preset.pk), "Failed runs", None, None
+    )
+
+
+def test_a_removed_export_job_is_named_as_its_list_shows_it(
+    token_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
+):
+    job = TransferJob.objects.create(
+        org=acme,
+        created_by=admin_acme,
+        kind=TransferJob.Kind.EXPORT,
+        main_entity=TransferJob.MainEntity.FLOW,
+        status=TransferJob.Status.COMPLETED,
+        request={"ids": [1]},
+        display_name="Billing flow",
+        file_name="flow_billing_flow_2026-01-01.zip",
+    )
+
+    _delete(token_client, f"/api/transfer-jobs/{job.pk}/", django_capture_on_commit_callbacks)
+
+    assert not TransferJob.objects.filter(pk=job.pk).exists()
+    assert _deleted_event(sent_events) == (
+        "deleted", "export or import job", str(job.pk), "Billing flow", None, None
     )
 
 

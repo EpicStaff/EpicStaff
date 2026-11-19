@@ -13,13 +13,13 @@ from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-import settings
 from foundation.cryptographer import AbstractCryptographer, CryptographerError
 from litestar.datastructures import UploadFile
 from loguru import logger
 from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from src.shared.bench_log import BENCH_LEVEL
 
+from manager import settings
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.ports import (
@@ -288,7 +288,11 @@ class VenvBuildOrchestrator:
         # Mandatory shared packages (dotdict, epicstaff_secrets, ...) go into every venv
         # -- freshly built or reused -- so existing venvs also pick them up on the next
         # build. They are intentionally kept out of venv.libs.
-        await self.uv_provider.install_local(venv_path, *settings.PREDEFINED_VENV_PACKAGES)
+        await self.uv_provider.install_local(
+            venv_path,
+            *settings.PREDEFINED_VENV_PACKAGES,
+            wheelhouse=settings.PREDEFINED_WHEELHOUSE_DIR,
+        )
 
         venv.apply_resolved_versions(resolved_versions)
         return venv
@@ -407,9 +411,7 @@ class JobOrchestrator:
             logger.info("Execution {} is already known; not enqueued again", execution_id)
             return known_status
 
-        logger.info('BEFORE SECRETS: {}', secrets)
         secrets = self._open_secrets(execution_id, secrets)
-        logger.info('AFTER SECRETS: {}', secrets)
 
         # Reserved before the first await, so a concurrent re-POST sees the id as known.
         self.registry.reserve(execution_id)

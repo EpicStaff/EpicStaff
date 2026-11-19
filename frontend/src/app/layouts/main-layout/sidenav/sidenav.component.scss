@@ -204,9 +204,21 @@ $logo-padding-bottom: 0.75rem;
         // On the icon wrapper's top-right corner, 2px inside it.
         .sidenav-badge {
             @include count-badge.pill;
+            --count-badge-outline: var(--color-sidenav-background);
             position: absolute;
             top: 2px;
             right: 2px;
+        }
+
+        // Exports or imports are still running: the app's accent purple, on the icon box's top-right corner.
+        .sidenav-jobs-dot {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--accent-color);
         }
 
         // A sibling of the item's link (links cannot nest). Its 24px target (WCAG 2.5.8) sits on the icon box's

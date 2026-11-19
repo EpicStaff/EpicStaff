@@ -202,18 +202,27 @@ class UVProvider(AbstractUVProvider):
         return resolved
 
     @classmethod
-    async def install_local(cls, venv_path: Path, *packages: Path):
+    async def install_local(cls, venv_path: Path, *packages: str, wheelhouse: Path):
         if not packages:
             return
         python_binary = cls.get_python_binary(venv_path)
+        # Our packages never change their version, so without a forced reinstall a
+        # venv that already has one would keep the copy from an older image.
+        reinstall = [option for package in packages for option in ("--reinstall-package", package)]
         await cls.run(
             "pip",
             "install",
             "--no-config",
             "--no-progress",
+            "--offline",
+            "--no-index",
+            "--no-build",
+            "--find-links",
+            str(wheelhouse),
             "--python",
             str(python_binary),
-            *(str(package) for package in packages),
+            *reinstall,
+            *packages,
         )
 
     @classmethod

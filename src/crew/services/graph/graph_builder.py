@@ -1,4 +1,5 @@
 from clients.key_value import KeyValueClient
+from foundation.cryptographer import AbstractCryptographer
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -20,6 +21,7 @@ from services.graph.nodes.task_node import TaskNode
 from services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
 from services.graph.remembered_outputs import RememberedOutputsStore
+from services.graph.storage_credentials_picker import storage_credentials_for
 from services.graph.subgraphs.decision_table_node import (
     DecisionTableNodeSubgraph,
 )
@@ -36,7 +38,7 @@ from src.shared.models import (
     SessionData,
     SubGraphData,
 )
-from src.shared.models.storage_scope import StorageCredentials
+from src.shared.models.storage_scope import FILE_NODE_STORAGE_GRANT, StorageCredentials
 
 
 class SessionGraphBuilder:
@@ -47,6 +49,7 @@ class SessionGraphBuilder:
         python_code_executor_service: RunPythonCodeService,
         knowledge_search_service: KnowledgeSearchService,
         stop_event: StopEvent,
+        secrets_cryptographer: AbstractCryptographer,
         agent_task_service: AgentTaskService | None = None,
         key_value_client: KeyValueClient | None = None,
     ):
@@ -57,6 +60,8 @@ class SessionGraphBuilder:
             session_id (int): The unique identifier for the session.
             redis_service (RedisService): The service responsible for Redis operations.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
+            secrets_cryptographer (AbstractCryptographer): Decrypts the transport-sealed secrets of
+                the nodes that call an LLM from crew itself (Classification Decision Table prompts).
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice. Required if the graph schema contains task nodes.
             key_value_client (KeyValueClient | None): The client used by KeyValueNode to read/write/delete
@@ -69,6 +74,7 @@ class SessionGraphBuilder:
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
         self.key_value_client = key_value_client
+        self.secrets_cryptographer = secrets_cryptographer
         self.remembered_outputs_store = RememberedOutputsStore(redis_service=redis_service)
 
         self._graph_builder = StateGraph(State)
@@ -123,6 +129,8 @@ class SessionGraphBuilder:
         self,
         node_data: ClassificationDecisionTableNodeData,
         storage_credentials: StorageCredentials | None = None,
+        storage_credentials_by_grant: dict[str, StorageCredentials] | None = None,
+        graph_id: int | None = None,
     ) -> str:
         subgraph_builder = StateGraph(State)
         builder = ClassificationDecisionTableNodeSubgraph(
@@ -130,8 +138,11 @@ class SessionGraphBuilder:
             node_data=node_data,
             graph_builder=subgraph_builder,
             stop_event=self.stop_event,
+            secrets_cryptographer=self.secrets_cryptographer,
             redis_service=self.redis_service,
             storage_credentials=storage_credentials,
+            storage_credentials_by_grant=storage_credentials_by_grant or {},
+            graph_id=graph_id,
         )
         subgraph: CompiledStateGraph = builder.build()
 
@@ -157,6 +168,7 @@ class SessionGraphBuilder:
         org_id: int,
         audit_retention_days: int,
         storage_credentials: StorageCredentials | None = None,
+        storage_credentials_by_grant: dict[str, StorageCredentials] | None = None,
     ) -> str:
         """
         Adds a subgraph node to the graph builder.
@@ -173,6 +185,7 @@ class SessionGraphBuilder:
             session_graph_builder=self,
             stop_event=stop_event,
             storage_credentials=storage_credentials,
+            storage_credentials_by_grant=storage_credentials_by_grant or {},
             org_id=org_id,
             audit_retention_days=audit_retention_days,
         )
@@ -232,7 +245,7 @@ class SessionGraphBuilder:
                 task_node_data=task_node_data,
                 agent_task_service=self.agent_task_service,
                 remembered_outputs_store=self.remembered_outputs_store,
-                storage_credentials=session_data.storage_credentials,
+                storage_credentials=storage_credentials_for(session_data, None),
             )
             self.add_node(task_node)
 
@@ -255,7 +268,7 @@ class SessionGraphBuilder:
                 stop_event=self.stop_event,
                 agent_node_data=agent_node_data,
                 agent_task_service=self.agent_task_service,
-                storage_credentials=session_data.storage_credentials,
+                storage_credentials=storage_credentials_for(session_data, None),
             )
             self.add_node(agent_node)
 
@@ -268,7 +281,9 @@ class SessionGraphBuilder:
                 input_map=python_node_data.input_map,
                 output_variable_path=python_node_data.output_variable_path,
                 stop_event=self.stop_event,
-                storage_credentials=session_data.storage_credentials,
+                storage_credentials=storage_credentials_for(
+                    session_data, python_node_data.python_code.storage_grant
+                ),
             )
             self.add_node(python_node)
 
@@ -302,7 +317,7 @@ class SessionGraphBuilder:
                 storage_allowed_paths=file_extractor_node_data.storage_allowed_paths,
                 storage_org_prefix=file_extractor_node_data.storage_org_prefix,
                 org_id=file_extractor_node_data.org_id,
-                storage_credentials=session_data.storage_credentials,
+                storage_credentials=storage_credentials_for(session_data, FILE_NODE_STORAGE_GRANT),
             )
             self.add_node(file_extractor_node)
 
@@ -330,7 +345,7 @@ class SessionGraphBuilder:
                 storage_allowed_paths=audio_transcription_node_data.storage_allowed_paths,
                 storage_org_prefix=audio_transcription_node_data.storage_org_prefix,
                 org_id=audio_transcription_node_data.org_id,
-                storage_credentials=session_data.storage_credentials,
+                storage_credentials=storage_credentials_for(session_data, FILE_NODE_STORAGE_GRANT),
             )
             self.add_node(audio_transcription_node)
 
@@ -346,6 +361,8 @@ class SessionGraphBuilder:
             self.add_classification_decision_table_node(
                 node_data=ct_node_data,
                 storage_credentials=session_data.storage_credentials,
+                storage_credentials_by_grant=session_data.storage_credentials_by_grant,
+                graph_id=schema.graph_id,
             )
 
         for subgraph_node_data in schema.subgraph_node_list:
@@ -354,6 +371,7 @@ class SessionGraphBuilder:
                 unique_subgraph_list=session_data.unique_subgraph_list,
                 stop_event=self.stop_event,
                 storage_credentials=session_data.storage_credentials,
+                storage_credentials_by_grant=session_data.storage_credentials_by_grant,
                 org_id=session_data.org_id,
                 audit_retention_days=session_data.audit_retention_days,
             )
@@ -366,7 +384,9 @@ class SessionGraphBuilder:
                     stop_event=self.stop_event,
                     python_code_executor_service=self.python_code_executor_service,
                     python_code_data=webhook_trigger_node_data.python_code,
-                    storage_credentials=session_data.storage_credentials,
+                    storage_credentials=storage_credentials_for(
+                        session_data, webhook_trigger_node_data.python_code.storage_grant
+                    ),
                 )
             )
         for telegram_trigger_node_data in schema.telegram_trigger_node_data_list:

@@ -55,7 +55,7 @@ async def test_build_passes_the_library_strings_to_the_provider(uow, uv_provider
 async def test_build_installs_the_predefined_packages_into_the_final_venv(
     uow, uv_provider, venvs_dir
 , file_storage):
-    import settings
+    from manager import settings
 
     stored = uow.venv_repo.seed(make_venv())[0]
 
@@ -65,6 +65,7 @@ async def test_build_installs_the_predefined_packages_into_the_final_venv(
     venv_path, packages = uv_provider.install_local_calls[0]
     assert venv_path == venvs_dir / f"venv-{built.hash}"
     assert packages == settings.PREDEFINED_VENV_PACKAGES
+    assert uv_provider.install_local_wheelhouses == [settings.PREDEFINED_WHEELHOUSE_DIR]
 
 
 async def test_build_marks_the_venv_processing_before_it_starts(uow, uv_provider, venvs_dir, file_storage):
@@ -418,3 +419,5 @@ async def test_a_venv_refused_before_the_build_is_never_marked_processing(
     await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
 
     assert uv_provider.init_venv_calls == []
+
+
