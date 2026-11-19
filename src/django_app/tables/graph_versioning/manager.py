@@ -22,6 +22,7 @@ from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
     _DEPENDENCY_MODELS,
     _EXCLUDED_GRAPH_SCALARS,
+    _GRANT_MODEL_BY_NODE_TYPE,
     _ORG_CHECKED_DEPENDENCY_TYPES,
     _VENV_CODE_FIELDS_BY_NODE_TYPE,
 )
@@ -52,6 +53,9 @@ from tables.services.persistent_variables_service import (
 )
 from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
+from tables.services.storage_grants.actor import GrantActor
+from tables.services.storage_grants.capping import cap_grant_data_reporting
+from tables.services.storage_grants.errors import describe_permissions
 
 _TELEGRAM_BOT_KEY_FIELD = "telegram_bot_api_key_secret"
 
@@ -949,6 +953,40 @@ class GraphVersioningManager:
                     }
                 )
 
+        return warnings
+
+    @staticmethod
+    def storage_grant_capped_warnings(snapshot_nodes: list[dict], actor: GrantActor) -> list[dict]:
+        """One warning per code slot whose storage boxes the actor's permissions will untick.
+
+        Creating the nodes of a snapshot caps their grant flags to what ``actor`` holds
+        (``cap_grant_data``); this reports what that drops, so the user learns which
+        boxes to re-tick. Anchored like the other node warnings: ``node_id`` is the
+        snapshot node id, for ``change_old_warnings_ids``. Run on the filtered snapshot,
+        so only nodes that are recreated are reported.
+        """
+        warnings: list[dict] = []
+        for node in snapshot_nodes:
+            node_type = node.get("node_type")
+            model = _GRANT_MODEL_BY_NODE_TYPE.get(node_type)
+            if model is None:
+                continue
+            _, dropped_slots = cap_grant_data_reporting(node, actor, model=model)
+            for dropped in dropped_slots:
+                warnings.append(
+                    {
+                        "type": "storage_grant_capped",
+                        "node_name": node.get("node_name") or node_type,
+                        "node_type": node_type,
+                        "node_id": node.get("id"),
+                        "field": dropped.code_field,
+                        "dropped_grants": [action.value for action in dropped.actions],
+                        "missing_permissions": [
+                            describe_permissions([permission])
+                            for permission in actor.missing_permissions(dropped.actions)
+                        ],
+                    }
+                )
         return warnings
 
     def _clean_system_one_config_refs(

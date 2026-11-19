@@ -17,16 +17,18 @@ class AuthorshipReleaseService:
     def release(self, user_id: int, org_id: int) -> int:
         """Clear `user_id` as author and as last editor of every row in `org_id`.
 
-        Last edits keep their time. Soft-deleted rows are included. Returns the number of
-        author and last-edit rows released.
+        Rows the user owns (`created_by` NOT NULL) are deleted instead. Last edits keep their
+        time. Soft-deleted rows are included. Returns the number of author and last-edit rows
+        released, deleted owned rows included.
         """
         return self._release_matching(user_id, lambda lookup: Q(**{lookup: org_id}))
 
     def release_outside_memberships(self, user_id: int) -> int:
         """Clear the user as author and last editor in every org they are not a member of.
 
-        Rows without an organization are kept, soft-deleted rows are included. Returns
-        the number of author and last-edit rows released.
+        Rows the user owns there are deleted, as in `release`. Rows without an organization
+        are kept, soft-deleted rows are included. Returns the number of author and last-edit
+        rows released, deleted owned rows included.
         """
         member_org_ids = OrganizationUser.objects.filter(user_id=user_id).values("org_id")
         return self._release_matching(
@@ -39,11 +41,16 @@ class AuthorshipReleaseService:
     def _release_matching(self, user_id: int, org_condition: Callable[[str], Q]) -> int:
         released = 0
         for model, org_lookup in self._tracked_models():
-            released += (
-                model._base_manager.filter(org_condition(org_lookup))
-                .filter(created_by_id=user_id)
-                .update(created_by=None)
+            rows = model._base_manager.filter(org_condition(org_lookup)).filter(
+                created_by_id=user_id
             )
+            if model._meta.get_field("created_by").null:
+                released += rows.update(created_by=None)
+            else:
+                # A NOT NULL `created_by` marks the row's owner (filter presets, private or
+                # shared): the row is deleted with the owner's access, as CASCADE deletes it
+                # with the owner.
+                released += rows.delete()[0]
         return released + self._release_last_edits(user_id, org_condition)
 
     @staticmethod

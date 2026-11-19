@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
+import { CustomInputComponent, HintMessageComponent, ValidationErrorsComponent } from '@shared/components';
 
 import { FileExtractorNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -14,6 +14,7 @@ import { inputMapFromRows } from '../../input-map/input-map-rows';
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
+        HintMessageComponent,
         InputMapComponent,
         ValidationErrorsComponent,
         DiffFieldMarkComponent,

@@ -1,9 +1,11 @@
 """Behavior of the job consumer.
 
-Every job it takes ends with a result. A job past its queue deadline is failed without
-taking a slot; a job whose deadline passes while it waits for one is failed, not run; a
-run that raises is answered with a failed result and frees its slot; a message that does
-not decode is failed by its execution id. One bad job or turn never ends the loop.
+A slot is taken before anything is pulled -- the pull is the capacity signal -- so
+nothing is pulled while every slot is busy. Every job it takes ends with a result: one
+already past its queue deadline when pulled is failed on the held slot, which is then
+reused for the next pull; a run that raises is answered with a failed result and frees
+its slot; a message that does not decode is failed by its execution id. One bad job or
+turn never ends the loop.
 
 Driven through the real orchestrator and the real admission gate; only the clock, the
 load reading and the result transport are stand-ins.
@@ -121,15 +123,16 @@ async def test_a_single_slot_runs_one_job_at_a_time(result_sink, clock):
     assert runtime.executed == ["exec-1", "exec-2"]
 
 
-async def test_an_expired_job_is_failed_without_waiting_for_a_slot(result_sink, clock, checkpoints):
-    gate = build_gate(1)
-    await gate.acquire()
+async def test_an_expired_job_is_failed_not_run_and_the_slot_is_reused(
+    result_sink, clock, checkpoints
+):
     source = FakeJobSource(
-        queued_job(clock, "exec-1", waited=QUEUE_TIMEOUT + 1, reply_to_crew_channel=True)
+        queued_job(clock, "exec-1", waited=QUEUE_TIMEOUT + 1, reply_to_crew_channel=True),
+        queued_job(clock, "exec-2"),
     )
-    runtime = Runtime(source, result_sink, gate, clock)
+    runtime = Runtime(source, result_sink, build_gate(1), clock)
 
-    await runtime.run_until(lambda: result_sink.sent)
+    await runtime.run_until(lambda: len(result_sink.sent) == 2)
 
     result = runtime.results()["exec-1"]
     assert result.stderr == (
@@ -138,49 +141,27 @@ async def test_an_expired_job_is_failed_without_waiting_for_a_slot(result_sink, 
     assert result.returncode == 1
     assert result.ran is False
     assert result.reply_to_crew_channel is True
-    assert runtime.executed == []
-    assert exec_starts(checkpoints) == []
+    # The expired job never started; the slot it was failed on ran exec-2 instead.
+    assert runtime.executed == ["exec-2"]
+    assert [item["execution_id"] for item in exec_starts(checkpoints)] == ["exec-2"]
 
 
-async def test_a_job_that_expires_while_waiting_for_a_slot_is_failed_not_run(
-    result_sink, clock
-):
+async def test_nothing_is_pulled_while_every_slot_is_busy(result_sink, clock):
+    """The pull is the capacity signal: the manager counts a waiting long-poll as a free
+    slot, so pulling ahead of one would lie to its admission control."""
     gate = build_gate(1)
     await gate.acquire()
-    source = FakeJobSource(queued_job(clock, "exec-1", waited=QUEUE_TIMEOUT - 10))
+    source = FakeJobSource(queued_job(clock, "exec-1"))
     runtime = Runtime(source, result_sink, gate, clock)
 
-    async def expire_then_free_the_slot():
-        await asyncio.sleep(0.02)
-        clock.advance(11)
+    async with runtime.running():
+        await asyncio.sleep(0.05)
+        assert source.gets == 0
+
         gate.release()
+        await wait_until(lambda: result_sink.sent)
 
-    freeing = asyncio.create_task(expire_then_free_the_slot())
-    await runtime.run_until(lambda: result_sink.sent)
-    await freeing
-
-    result = runtime.results()["exec-1"]
-    assert result.stderr == (
-        "Sandbox overloaded: the job waited 121 s in the queue and was not run."
-    )
-    assert runtime.executed == []
-    assert gate.has_free_slot() is True
-
-
-async def test_the_wait_for_a_slot_ends_when_the_queue_timeout_runs_out(result_sink, clock):
-    """Waiting past the head job's deadline would also delay failing every expired job
-    queued behind it."""
-    gate = build_gate(1)
-    await gate.acquire()
-    source = FakeJobSource(queued_job(clock, "exec-1", waited=QUEUE_TIMEOUT - 0.05))
-    runtime = Runtime(source, result_sink, gate, clock)
-
-    await runtime.run_until(lambda: result_sink.sent)
-
-    result = runtime.results()["exec-1"]
-    assert result.stderr.startswith("Sandbox overloaded:")
-    assert result.ran is False
-    assert runtime.executed == []
+    assert runtime.executed == ["exec-1"]
 
 
 async def test_a_run_that_raises_is_failed_and_frees_its_slot(result_sink, clock):
@@ -264,3 +245,36 @@ async def test_a_finished_execution_no_longer_counts_as_running(result_sink, clo
         ("exec-1", 1),
         ("exec-2", 1),
     ]
+async def test_held_executions_are_reported_until_the_result_is_handed_over(clock):
+    """The heartbeat reconciliation stands on this set: a job must be reported from the
+    moment its pull completes, through the run, through the result hand-over -- or the
+    manager fails a running job as worker-lost and drops its real result."""
+
+    class GatedSink:
+        def __init__(self):
+            self.entered = asyncio.Event()
+            self.release = asyncio.Event()
+            self.sent = []
+
+        async def send(self, result, mutations=None):
+            self.entered.set()
+            await self.release.wait()
+            self.sent.append((result, mutations))
+
+    run_blocker = asyncio.Event()
+    sink = GatedSink()
+    source = FakeJobSource(queued_job(clock, "exec-1"))
+    runtime = Runtime(source, sink, build_gate(1), clock, blocker=run_blocker)
+    consumer = runtime.consumer
+
+    async with runtime.running():
+        await wait_until(lambda: runtime.executed == ["exec-1"])
+        assert consumer.held_execution_ids() == {"exec-1"}
+
+        run_blocker.set()
+        await wait_until(lambda: sink.entered.is_set())
+        assert consumer.held_execution_ids() == {"exec-1"}
+
+        sink.release.set()
+        await wait_until(lambda: bool(sink.sent))
+        await wait_until(lambda: consumer.held_execution_ids() == set())

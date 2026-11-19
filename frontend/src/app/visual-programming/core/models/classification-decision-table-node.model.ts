@@ -2,6 +2,7 @@ import { AuthorshipFields, DeclaredSecretRef, SystemOnePromptKind, SystemOneQues
 
 import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
+import { CdtStorageGrantFields } from './storage-grants.model';
 
 export interface PromptConfigBackend {
     id: number;
@@ -82,7 +83,8 @@ export interface CDTPythonCodeBlock {
     execution_timeout?: number;
 }
 
-export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
+export interface GetClassificationDecisionTableNodeRequest
+    extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto, CdtStorageGrantFields {
     id: number;
     created_at: string;
     graph: number;
@@ -90,11 +92,9 @@ export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFie
     pre_python_code: CDTPythonCodeBlock | null;
     pre_input_map: Record<string, string>;
     pre_output_variable_path: string | null;
-    pre_use_storage: boolean;
     post_python_code: CDTPythonCodeBlock | null;
     post_input_map: Record<string, string>;
     post_output_variable_path: string | null;
-    post_use_storage: boolean;
     prompt_configs: PromptConfigBackend[];
     default_llm_config: number | null;
     default_next_node_id: number | null;
@@ -104,17 +104,15 @@ export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFie
     metadata?: unknown;
 }
 
-export interface CreateClassificationDecisionTableNodeRequest {
+export interface CreateClassificationDecisionTableNodeRequest extends CdtStorageGrantFields {
     graph: number;
     node_name: string;
     pre_python_code: CDTPythonCodeBlock | null;
     pre_input_map: Record<string, string> | null;
     pre_output_variable_path: string | null;
-    pre_use_storage: boolean;
     post_python_code: CDTPythonCodeBlock | null;
     post_input_map: Record<string, string> | null;
     post_output_variable_path: string | null;
-    post_use_storage: boolean;
     prompt_configs: CreatePromptConfigRequest[];
     default_llm_config: number | null;
     default_next_node_id?: number | null;

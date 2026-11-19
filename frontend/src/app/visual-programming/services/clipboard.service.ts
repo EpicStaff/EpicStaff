@@ -1,10 +1,12 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { ICurrentSelection } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { generatePortsForNode, parsePortId } from '../core/helpers/helpers';
 import { isNumberedNodeType } from '../core/helpers/node-number.util';
+import { capNodeStorageGrants } from '../core/helpers/storage-grants.util';
 import { AgentNodeTaskUi } from '../core/models/agent-node.model';
 import { CdtSection } from '../core/models/cdt-section.model';
 import { ConnectionModel } from '../core/models/connection.model';
@@ -34,6 +36,8 @@ export interface PasteResult {
 })
 export class ClipboardService {
     private clipboard: ClipboardData | null = null;
+
+    private readonly permissions = inject(PermissionsService);
 
     constructor(private flowService: FlowService) {}
 
@@ -151,8 +155,9 @@ export class ClipboardService {
             const newPorts: ViewPort[] = generatePortsForNode(newNodeId, oldNode.type, newData);
 
             // The copy keeps its name (names may repeat); the number, which tells the two apart, is new.
+            // A copy never carries more file access than the user holds, as the server's copy does.
             return {
-                ...oldNode,
+                ...capNodeStorageGrants(oldNode, (resource, action) => this.permissions.can(resource, action)),
                 id: newNodeId,
                 backendId: null,
                 nodeUuid: generateUuid(),
