@@ -80,6 +80,14 @@ def is_plugin_credential(request) -> bool:
     )
 
 
+def is_personal_or_system_api_key(request) -> bool:
+    """Return whether the request authenticated with a USER or SYSTEM API key.
+
+    A plugin credential is not an `ApiKey`, so it never qualifies.
+    """
+    return isinstance(getattr(request, "auth", None), ApiKey)
+
+
 def user_api_key_org_id(request) -> int | None:
     """Return the org of the request's USER API key, or None for any other credential.
 

@@ -234,12 +234,11 @@ def _check_python_code_write(
     # prefetched it (the graph bulk save does).
     current_secret_ids = None
     if "secrets" in python_code_data or principal_of(actor) is not None:
-        current_secret_ids = _declared_secret_ids(persisted_python_code)
-        secret_use_service.check_references(
+        current_secret_ids = check_python_code_secret_selection(
             actor,
+            persisted_python_code,
+            python_code_data,
             field_path=(attribute, "secret_ids"),
-            current=current_secret_ids,
-            incoming=python_code_data.get("secrets", current_secret_ids),
         )
     # New code is gated by the reference check above: declaring any secret changes the set.
     if persisted_python_code is None:
@@ -259,6 +258,36 @@ def _check_python_code_write(
         incoming=incoming_value,
     )
     return secret_ids_after_write
+
+
+def check_python_code_secret_selection(
+    actor: SecretActor | None,
+    python_code,
+    python_code_data: dict,
+    *,
+    field_path: tuple[str, ...],
+) -> frozenset:
+    """Gate the secrets a PythonCode declares; return what it declares now, binned secrets included.
+
+    Changing the selection needs secrets:USE; a pinned-org principal must also be
+    allowed to reference every secret selected after the write.
+
+    Args:
+        python_code: The persisted PythonCode, or None when the write creates it.
+        python_code_data: Its validated data; without `secrets` the selection is unchanged.
+        field_path: Where a denial is reported.
+
+    Raises:
+        SecretUseDeniedError: See `SecretUseService.check_references`.
+    """
+    current_secret_ids = _declared_secret_ids(python_code)
+    secret_use_service.check_references(
+        actor,
+        field_path=field_path,
+        current=current_secret_ids,
+        incoming=python_code_data.get("secrets", current_secret_ids),
+    )
+    return current_secret_ids
 
 
 def check_python_node_write(actor: SecretActor | None, instance, data: dict) -> None:

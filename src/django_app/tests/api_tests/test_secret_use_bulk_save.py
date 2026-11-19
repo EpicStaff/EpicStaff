@@ -205,11 +205,10 @@ class TestBulkSaveUnderTheGuard:
         )
         assert response.status_code == 200, response.json()
 
-    # Precedence: the serializer validates the payload's shape, including that the
-    # code reads only declared secrets, before the secret Use check runs at the
-    # write point. So when both would reject a payload, the caller sees the
-    # undeclared-secret error.
-    def test_undeclared_secret_error_wins_when_both_checks_would_fail(
+    # Precedence: the undeclared-secret error names the selected secrets, so a
+    # selection the caller may not make is refused first. Otherwise a caller without
+    # Use could send secret ids one at a time and read each name back.
+    def test_the_use_refusal_wins_over_the_undeclared_secret_error(
         self, no_use_client, graph, python_node, other_secret
     ):
         payload = _payload(graph, python_node, secret_ids=[other_secret.id])
@@ -222,11 +221,11 @@ class TestBulkSaveUnderTheGuard:
         )
 
         assert response.status_code == 400
-        message = response.json()["errors"]["python_node_list"][0]["errors"][
-            "python_code"
-        ]["secret_ids"][0]
-        assert 'get_secret("SOMETHING_UNDECLARED")' in message
-        assert "permission" not in message
+        errors = response.json()["errors"]["python_node_list"]
+        assert errors[0]["index"] == 0
+        message = errors[0]["errors"]["python_code"]["secret_ids"][0]
+        assert 'requires the "Use" permission on Secrets' in message
+        assert "BULKUSE_OTHER_KEY" not in str(response.json())
 
 
 @pytest.fixture
