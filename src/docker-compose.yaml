@@ -272,6 +272,7 @@ services:
         aliases:
           - djangoapp
           - django
+      sandbox-producer-network: {}
     depends_on:
       volume-permissions:
         condition: service_completed_successfully
@@ -325,6 +326,7 @@ services:
       REALTIME_CODE_RESULT_TIMEOUT: ${REALTIME_CODE_RESULT_TIMEOUT:?}
     networks:
       - backend-network
+      - sandbox-producer-network
     depends_on:
       crewdb:
         condition: service_healthy
@@ -420,6 +422,7 @@ services:
       - crew_pgdata:/var/lib/postgresql/data
     networks:
       - backend-network
+      - sandbox-producer-network
     healthcheck:
       test: >
         bash -c '
@@ -437,9 +440,10 @@ services:
     logging: *bounded-logs
     restart: unless-stopped
     networks:
-      # Deliberately NOT on sandbox-network: that network carries the worker that runs
+      # Deliberately NOT on sandbox-worker-network: that network carries the worker that runs
       # user code, and nothing on it needs Redis (the legacy sandbox's pub/sub did).
       - backend-network
+      - sandbox-producer-network
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redis_data:/data
@@ -506,6 +510,7 @@ services:
       CREW_SANDBOX_TIMEOUT: ${CREW_SANDBOX_TIMEOUT:?}
     networks:
       - backend-network
+      - sandbox-producer-network
     tty: true
     stdin_open: true
     depends_on:
@@ -591,7 +596,7 @@ services:
       - rustfs_data:/data
     networks:
       - backend-network
-      - sandbox-network
+      - sandbox-worker-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${STORAGE_PORT:?}/minio/health/live || exit 1"]
       interval: 10s
@@ -892,6 +897,7 @@ services:
         condition: service_healthy
     networks:
       - backend-network
+      - sandbox-producer-network
 
   # Audit trail stack (opensearch, auditor). Gated behind profiles: ["auditor"]: they start only when
   # COMPOSE_PROFILES includes "auditor"; either audit switch set to true then makes them do work.
@@ -1303,8 +1309,11 @@ services:
     command: ./entrypoint.sh
     init: true
     networks:
-      - backend-network
-      - sandbox-network
+      # Reached only by the code-execution producers (sandbox-producer-network) and by
+      # its worker (sandbox-worker-network); not on backend-network, so no other service
+      # can submit code.
+      - sandbox-producer-network
+      - sandbox-worker-network
     # Not django_app: it is the other way round now. A django_app data migration
     # moves the libraries Python code used to carry into venvs through this API,
     # so this service and its own migrations have to be up before django_app runs.
@@ -1365,7 +1374,7 @@ services:
     command: ./worker_entrypoint.sh
     init: true
     networks:
-      - sandbox-network
+      - sandbox-worker-network
     depends_on:
       sandbox_new:
         condition: service_healthy
@@ -1454,7 +1463,13 @@ networks:
   mcp-network:
     driver: bridge
     external: true
-  sandbox-network:
+  # The sandbox worker, which runs user code, and the only services it may reach:
+  # the sandbox manager and storage. Anything added here is visible to the worker.
+  sandbox-worker-network:
+    driver: bridge
+  # The sandbox manager and the code-execution producers that submit to it
+  # (django_app, crew, agent, realtime), plus the manager's database (crewdb) and Redis.
+  sandbox-producer-network:
     driver: bridge
   # Plugin backends, the plugin node and nginx (as epicstaff-api) only; no outside access.
   # A fixed subnet, so nginx can deny it on 80/443 and allow only it on the internal listener.

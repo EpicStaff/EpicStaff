@@ -16,7 +16,7 @@ RustFS starts automatically as a core service (compose service name `storage`). 
 docker compose up
 ```
 
-The `storage-init` service creates the bucket on first start. The RustFS web console is disabled (`RUSTFS_CONSOLE_ENABLE=false`), because the service is reachable from `sandbox-network`.
+The `storage-init` service creates the bucket on first start. The RustFS web console is disabled (`RUSTFS_CONSOLE_ENABLE=false`), because the service is reachable from `sandbox-worker-network`.
 
 ---
 
