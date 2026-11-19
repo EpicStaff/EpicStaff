@@ -17,13 +17,15 @@ VENV_STAGING_DIR = VENVS_DIR / "builds"
 # epicstaff_secrets) plus the shared tool helpers (epicstaff_common). They are NOT
 # optional libraries: every venv must have them or no execution can run, so they are
 # installed on every venv build, never exposed through a venv's `libs`.
-SHARED_DIR = (BASE_DIR / ".." / "shared").resolve()
 PREDEFINED_VENV_PACKAGES = (
-    SHARED_DIR / "dotdict",
-    SHARED_DIR / "epicstaff_secrets",
-    SHARED_DIR / "epicstaff_common",
-    SHARED_DIR / "epicstaff_storage",
+    "dotdict",
+    "epicstaff-secrets",
+    "epicstaff-common",
+    "epicstaff-storage",
 )
+# Wheels of those packages and their dependencies, built into the image by
+# Dockerfile.manager, so a venv build installs them without the network.
+PREDEFINED_WHEELHOUSE_DIR = BASE_DIR / "predefined_wheelhouse"
 
 # Seconds a job may wait for its venv to finish building before it is failed instead of
 # run. Keep it below the producers' result backstops (CREW_CODE_RESULT_TIMEOUT,

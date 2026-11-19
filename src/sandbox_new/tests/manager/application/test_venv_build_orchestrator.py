@@ -65,6 +65,7 @@ async def test_build_installs_the_predefined_packages_into_the_final_venv(
     venv_path, packages = uv_provider.install_local_calls[0]
     assert venv_path == venvs_dir / f"venv-{built.hash}"
     assert packages == settings.PREDEFINED_VENV_PACKAGES
+    assert uv_provider.install_local_wheelhouses == [settings.PREDEFINED_WHEELHOUSE_DIR]
 
 
 async def test_build_marks_the_venv_processing_before_it_starts(uow, uv_provider, venvs_dir, file_storage):

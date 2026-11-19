@@ -288,7 +288,11 @@ class VenvBuildOrchestrator:
         # Mandatory shared packages (dotdict, epicstaff_secrets, ...) go into every venv
         # -- freshly built or reused -- so existing venvs also pick them up on the next
         # build. They are intentionally kept out of venv.libs.
-        await self.uv_provider.install_local(venv_path, *settings.PREDEFINED_VENV_PACKAGES)
+        await self.uv_provider.install_local(
+            venv_path,
+            *settings.PREDEFINED_VENV_PACKAGES,
+            wheelhouse=settings.PREDEFINED_WHEELHOUSE_DIR,
+        )
 
         venv.apply_resolved_versions(resolved_versions)
         return venv
