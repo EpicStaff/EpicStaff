@@ -14,12 +14,16 @@ auth check runs first, so the same requests get 401/404 and the body is never lo
 
 import pytest
 from src.shared.models import LocalhostConfigData, WebhookTriggerAuthData
+from transport_secrets import seal
 
 NOT_JSON = b"this is not json at all {["
 
 
 def _auth(secret: str) -> WebhookTriggerAuthData:
-    return WebhookTriggerAuthData(kind="webhook", header_name="EPICSTAFF_API_KEY", secret=secret)
+    """The auth config as Django sends it: the secret sealed for transport."""
+    return WebhookTriggerAuthData(
+        kind="webhook", header_name="EPICSTAFF_API_KEY", secret=seal(secret)
+    )
 
 
 async def _register(registry, path: str, auth=None, org_id: int = 1) -> LocalhostConfigData:
