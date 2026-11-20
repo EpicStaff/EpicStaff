@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 from collections import defaultdict
 from collections.abc import AsyncIterator
 
+import httpx
 import litellm
 from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
 from src.shared.models import LLMConfigData
@@ -14,6 +17,7 @@ from .base import (
     BaseLLMClient,
     DoneEvent,
     LLMProviderError,
+    LLMTimeoutError,
     StreamEvent,
     TokenEvent,
     ToolCallEvent,
@@ -64,6 +68,34 @@ def _provider_error_from(exc: BaseException) -> tuple[str | None, str] | None:
             if isinstance(linked, BaseException)
         )
     return None
+
+
+def _is_timeout(exc: BaseException) -> bool:
+    """Tell whether an exception, or one in its chain, is a timeout.
+
+    A read that times out mid-stream reaches us wrapped: litellm turns the
+    `httpx.ReadTimeout` into an `APIConnectionError` inside a `MidStreamFallbackError`,
+    so only the chain shows it was a timeout.
+    """
+    pending: list[BaseException] = [exc]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop(0)
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        if isinstance(current, TimeoutError | litellm.Timeout | httpx.TimeoutException):
+            return True
+        pending.extend(
+            linked
+            for linked in (
+                getattr(current, "original_exception", None),
+                current.__cause__,
+                current.__context__,
+            )
+            if isinstance(linked, BaseException)
+        )
+    return False
 
 
 class LiteLLMClient(BaseLLMClient):
@@ -160,6 +192,8 @@ class LiteLLMClient(BaseLLMClient):
         # set on the config for agents could cut that reply short.
         kwargs.update(config.to_litellm_kwargs(provider=self._routed_provider, exclude={"stop"}))
         # Not litellm's own default: it and REQUEST_TIMEOUT have changed between versions.
+        # httpx applies it to each read, so a provider that keeps sending keepalives never
+        # hits it; stream_completion's time limit bounds the whole call.
         kwargs.setdefault("timeout", LLM_CONFIG_TIMEOUT_MAX_SECONDS)
         # Structured-output requests pass an output_schema, which becomes the
         # response_format sent to the model. The provider litellm routes to decides
@@ -203,22 +237,43 @@ class LiteLLMClient(BaseLLMClient):
             *messages,
         ]
 
-    async def _provider_chunks(self, kwargs: dict) -> AsyncIterator:
-        """Yield litellm's stream chunks, turning a provider failure into LLMProviderError.
+    async def _provider_chunks(self, kwargs: dict, deadline: float) -> AsyncIterator:
+        """Yield litellm's stream chunks, turning a provider failure into a domain error.
 
         Only the call and the fetching of the next chunk sit inside the `try`, so the
-        caller's own chunk handling is never mistaken for a provider failure.
+        caller's own chunk handling is never mistaken for a provider failure. The
+        deadline wraps each of those awaits, not the whole loop: SSEMixin fetches every
+        chunk of the Flow Assistant stream in a task of its own, and `asyncio.timeout_at`
+        cancels only the task that entered it, so a timeout spanning a `yield` never fires.
         """
+        response = None
         try:
-            response = await litellm.acompletion(**kwargs)
-            async for chunk in response:
+            async with asyncio.timeout_at(deadline):
+                response = await litellm.acompletion(**kwargs)
+            chunks = aiter(response)
+            while True:
+                try:
+                    async with asyncio.timeout_at(deadline):
+                        chunk = await anext(chunks)
+                except StopAsyncIteration:
+                    return
                 yield chunk
         except Exception as exc:
+            provider = self._routed_provider or self._provider_name
+            # The call's time limit, or the config's timeout, which litellm applies to each
+            # read and reports as its own exception types, none a builtin TimeoutError.
+            if _is_timeout(exc):
+                if isinstance(exc, TimeoutError) and response is not None:
+                    # litellm closes the stream on its own errors, not when our time limit
+                    # cancels it. A failed close must not replace the timeout.
+                    with contextlib.suppress(Exception):
+                        await response.aclose()
+                raise LLMTimeoutError(provider) from exc
             provider_error = _provider_error_from(exc)
             if provider_error is None:
                 raise
             raise LLMProviderError(
-                provider=self._routed_provider or self._provider_name,
+                provider=provider,
                 code=provider_error[0],
                 message=provider_error[1],
             ) from exc
@@ -227,7 +282,12 @@ class LiteLLMClient(BaseLLMClient):
         self,
         messages: list[dict],
         tools: list[ToolSpec],
+        *,
+        time_limit_seconds: float | None = None,
     ) -> AsyncIterator[StreamEvent]:
+        if time_limit_seconds is None:
+            time_limit_seconds = LLM_CONFIG_TIMEOUT_MAX_SECONDS
+        deadline = asyncio.get_running_loop().time() + time_limit_seconds
         kwargs = self._build_kwargs(messages, tools)
         logger.debug("LiteLLMClient calling model {}", kwargs.get("model"))
 
@@ -243,7 +303,7 @@ class LiteLLMClient(BaseLLMClient):
         reasoning_observed = False
         last_finish_reason: str | None = None
 
-        async for chunk in self._provider_chunks(kwargs):
+        async for chunk in self._provider_chunks(kwargs, deadline):
             finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
             if finish_reason:
                 last_finish_reason = finish_reason
