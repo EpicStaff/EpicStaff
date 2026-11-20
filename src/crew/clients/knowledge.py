@@ -1,33 +1,33 @@
-from typing import Literal, Self
-
 import httpx
+from foundation.transport.http import AsyncClient
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import FoundChunk, SearchConfig, SearchOutcome, SearchUsage
 
-from clients.errors import (
-    ClientBadGatewayError,
-    ClientNotAvailableError,
-    ClientTimeoutError,
-    ClientValidationError,
-)
+# knowledge_new's uvicorn closes a keep-alive connection after 5 s idle (its default). Ours must
+# expire first: a request sent on a connection the server is closing at that moment is reset
+# and surfaces as httpx.ReadError.
+KEEPALIVE_EXPIRY_SECONDS = 2.0
 
 
-class KnowledgeClient:
-    HOST = "http://knowledge_new:8100"
+class KnowledgeClient(AsyncClient):
+    """Async client for knowledge_new's search API, shared by every session crew runs.
 
-    def __init__(self, host: str = HOST):
-        self._client = httpx.Client(base_url=host)
+    Built like any httpx client (`base_url`, `transport`, ...); the connection limits are
+    fixed here because they follow from how knowledge_new serves connections.
+    """
 
-    def __enter__(self) -> Self:
-        return self
+    def __init__(self, *, base_url: str, **httpx_options) -> None:
+        super().__init__(
+            base_url=base_url,
+            limits=httpx.Limits(
+                max_connections=100,
+                max_keepalive_connections=20,
+                keepalive_expiry=KEEPALIVE_EXPIRY_SECONDS,
+            ),
+            **httpx_options,
+        )
 
-    def __exit__(self, *exc_info) -> None:
-        self.close()
-
-    def close(self) -> None:
-        self._client.close()
-
-    def search_with_usage(
+    async def search_with_usage(
         self,
         strategy: RAGStrategy,
         rag_id: int,
@@ -39,10 +39,15 @@ class KnowledgeClient:
         embedding_extra_headers: dict[str, str] | None = None,
         llm_extra_headers: dict[str, str] | None = None,
     ) -> SearchOutcome:
-        """Search a RAG, returning its result with the embedding usage knowledge_new reports."""
-        response = self._request(
-            method="post",
-            url=f"rags/{strategy}/{rag_id}/search/",
+        """Search a RAG, returning its result with the embedding usage knowledge_new reports.
+
+        Raises:
+            ClientTimeoutError: knowledge_new did not answer within `timeout` seconds.
+            ClientConnectionError: knowledge_new could not be reached.
+            ClientHTTPStatusError: knowledge_new answered with a non-2xx status.
+        """
+        response = await self.post(
+            f"rags/{strategy}/{rag_id}/search/",
             json={
                 "query": query,
                 "search_config": search_config.model_dump(mode="json"),
@@ -58,26 +63,3 @@ class KnowledgeClient:
         if isinstance(result, list):
             result = [FoundChunk(**d) for d in result]
         return SearchOutcome(result=result, usage=SearchUsage(**body.get("usage", {})))
-
-    def _request(
-        self,
-        method: Literal["get", "post", "put", "patch", "delete"],
-        url: str,
-        json: dict,
-        timeout: float,
-    ) -> httpx.Response:
-        try:
-            response = getattr(self._client, method)(url=url, json=json, timeout=timeout)
-        except httpx.TimeoutException as e:
-            raise ClientTimeoutError("Knowledge service timed out.") from e
-        except httpx.RequestError as e:
-            raise ClientNotAvailableError("Knowledge service is unreachable.") from e
-
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            if response.status_code >= 500:
-                raise ClientBadGatewayError(response.text) from e
-            raise ClientValidationError(response.text) from e
-
-        return response

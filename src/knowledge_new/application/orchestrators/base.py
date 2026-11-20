@@ -18,6 +18,7 @@ class AbstractOrchestrator[TCommand, TResult](abc.ABC):
         except asyncio.CancelledError:
             logger.info("{} cancelled for command {}.", type(self).__name__, command)
             await asyncio.shield(self.on_cancel(command))
+            raise
         except RepositoryError as e:
             logger.exception("{} failed during DB access: {}", type(self).__name__, e)
             raise

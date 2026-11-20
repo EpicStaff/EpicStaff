@@ -97,6 +97,12 @@ to leave the system with zero active organizations → **400
 Deactivating an org removes it from delegated admins' scope — only a superadmin
 can manage or reactivate an inactive org.
 
+Deactivating an org also stops it from starting new runs until it is reactivated: manual
+flow runs and test runs, webhook, Telegram and schedule triggers, voice channels, realtime
+conversations and code test-runs. A superadmin's runs are refused too, with **409
+`organization_inactive`**; a refused trigger is logged at most once a day per trigger node. Sessions
+already running are not stopped.
+
 ## DELETE `/api/admin/organizations/{id}/` (superadmin)
 
 Permanently removes an organization **and everything it owns**. Irreversible,

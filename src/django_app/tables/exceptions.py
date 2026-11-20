@@ -227,6 +227,31 @@ class RestoreConflictError(CustomAPIExeption):
     default_detail = "Something else just took this item's name. Try the restore again."
 
 
+class TwilioUnavailableError(CustomAPIExeption):
+    """Twilio gave no usable answer, so a phone number is unproven and nothing is changed.
+
+    A 503, not a field error: an outage or a rate limit is nothing the user's input can fix.
+    """
+
+    status_code = 503
+    default_code = "twilio_unavailable"
+
+
+class RestoreNeedsTwilioAuthTokenError(CustomAPIExeption):
+    """A voice channel's restore can't check its phone number: the Twilio auth token is unreadable.
+
+    409 like the other restore refusals: nothing is restored, and the number is kept so
+    a restore after the token's own restore can still prove it.
+    """
+
+    status_code = 409
+    default_code = "restore_needs_twilio_auth_token"
+    default_detail = (
+        "The channel's Twilio auth token can't be read, so its phone number can't be checked. "
+        "If the token is in the recycle bin, restore it first."
+    )
+
+
 class CrossOrgCascadeError(CustomAPIExeption):
     """A delete would change a row of another organization than the one it started in.
 

@@ -8,7 +8,7 @@
     },
     "db_uri": {
       "type": "string",
-      "description": "SQLAlchemy connection URI of the PostgreSQL database, e.g. postgresql+psycopg2://user:password@host:5432/database. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "description": "Connection URI of the PostgreSQL database, e.g. postgresql://user:password@host:5432/database. Use a role that may only read the data the agent needs. Read-only mode stops writes in this connection, but only the role's privileges stop what reaches outside it, such as dblink, COPY ... TO PROGRAM and server file access (pg_read_file). So the role must not be a superuser or a member of pg_execute_server_program, pg_read_server_files or pg_write_server_files. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
       "input_type": "user_input"
     },
     "read_only": {

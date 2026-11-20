@@ -158,6 +158,7 @@ export class AgentDetailComponent implements OnInit {
     readonly duplicateSurface = output<number>();
     readonly makeAgentSpecificCopy = output<number>();
     readonly openSurfaceSource = output<number>();
+    readonly openSurfaceUsage = output<number>();
     readonly renameSurface = output<{ id: number; name: string }>();
     readonly surfaceChange = output<{ id: number; patch: PartialUpdateSurfaceRequest }>();
     readonly viewSummary = output<{ place: SurfaceCategoryId; surfaceIds: number[] }>();

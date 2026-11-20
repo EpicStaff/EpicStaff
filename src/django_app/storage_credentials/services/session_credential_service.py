@@ -278,7 +278,7 @@ class SessionCredentialService:
             CredentialScopeValidationError: A request has neither `allowed_paths` nor an
                 own folder, or a path escapes the org prefix, or nothing is left to grant
                 because an account may do nothing to the shared folders and the run has
-                no folder of its own.
+                no folder of its own, or a path holds an IAM wildcard or policy variable.
             TemporaryPolicyTooLargeError: too many files are attached for one policy.
             TemporaryCredentialIssueError: minting or persisting failed.
         """

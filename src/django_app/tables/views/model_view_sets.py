@@ -23,7 +23,7 @@ from drf_spectacular.utils import (
     extend_schema_view,
     inline_serializer,
 )
-from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.action_map import DEFAULT_ACTION_MAP, FLOW_CONTENT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
     DenyPersonalAndSystemApiKeys,
@@ -541,11 +541,11 @@ class SystemOneConfigReadWriteViewSet(
 
 class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
     # No rbac_resource_type: Provider is a global catalog (no org column).
-    # SuperadminWriteMixin gates writes to superadmin (seeded via the
-    # upload_models command) and provides the permission classes:
-    # [IsAuthenticated()] for reads, [IsAuthenticated(), IsSuperadmin()]
-    # for writes. Reads are intentionally global-readable — the frontend
-    # lists providers here (LLMProvidersService.getProviders).
+    # SuperadminWriteMixin gates writes to a superadmin's session (rows are
+    # seeded via the upload_models command; no API key may write them) and
+    # provides the permission classes. Reads are intentionally
+    # global-readable — the frontend lists providers here
+    # (LLMProvidersService.getProviders).
     uses_organization_context = False
     queryset = Provider.objects.all()
     serializer_class = ProviderSerializer
@@ -1453,6 +1453,7 @@ class PythonNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = PythonNode.objects.prefetch_related(*authorship_prefetches())
     serializer_class = PythonNodeSerializer
@@ -1468,6 +1469,7 @@ class FileExtractorNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = FileExtractorNode.objects.prefetch_related(*authorship_prefetches())
     serializer_class = FileExtractorNodeSerializer
@@ -1481,6 +1483,7 @@ class KnowledgeNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = KnowledgeNode.objects.select_related(
         "naive_search_config",
@@ -1514,6 +1517,7 @@ class AudioTranscriptionNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = AudioTranscriptionNode.objects.prefetch_related(*authorship_prefetches())
     serializer_class = AudioTranscriptionNodeSerializer
@@ -1527,7 +1531,7 @@ class TaskNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
+    rbac_action_map = {**FLOW_CONTENT_ACTION_MAP, "combine": Permission.READ}
     org_filter_path = "graph__org_id"
     queryset = TaskNode.objects.select_related("inline_surface").prefetch_related(
         *authorship_prefetches(),
@@ -1573,7 +1577,7 @@ class AgentNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
+    rbac_action_map = {**FLOW_CONTENT_ACTION_MAP, "combine": Permission.READ}
     org_filter_path = "graph__org_id"
     queryset = AgentNode.objects.select_related("inline_surface").prefetch_related(
         *authorship_prefetches(),
@@ -1616,6 +1620,7 @@ class AgentNodeViewSet(
 class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "agent_node__graph__org_id"
     queryset = AgentNodeTask.objects.all()
     serializer_class = AgentNodeTaskSerializer
@@ -1665,6 +1670,7 @@ class EdgeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = Edge.objects.all()
     serializer_class = EdgeSerializer
@@ -2202,6 +2208,7 @@ class StartNodeModelViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = StartNode.objects.prefetch_related(*authorship_prefetches())
     serializer_class = StartNodeSerializer
@@ -2215,6 +2222,7 @@ class EndNodeModelViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = EndNode.objects.prefetch_related(*authorship_prefetches())
     serializer_class = EndNodeSerializer
@@ -2228,6 +2236,7 @@ class SubGraphNodeModelViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = SubGraphNode.objects.prefetch_related(
         *authorship_prefetches(),
@@ -2245,6 +2254,7 @@ class DecisionTableNodeModelViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = DecisionTableNode.objects.prefetch_related(*authorship_prefetches())
     serializer_class = DecisionTableNodeSerializer
@@ -2360,7 +2370,7 @@ class ClassificationDecisionTableNodeModelViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
-        **DEFAULT_ACTION_MAP,
+        **FLOW_CONTENT_ACTION_MAP,
         "export_jobs": Permission.EXPORT,
         "explain": Permission.READ,
         "explanations": Permission.UPDATE,
@@ -2645,6 +2655,7 @@ class WebhookTriggerNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = WebhookTriggerNode.objects.select_related(
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
@@ -2772,7 +2783,7 @@ class TelegramTriggerNodeViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
-        **DEFAULT_ACTION_MAP,
+        **FLOW_CONTENT_ACTION_MAP,
         "webhook_info": Permission.READ,
         "register_webhook": Permission.UPDATE,
     }
@@ -2820,6 +2831,7 @@ class ScheduleTriggerNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = ScheduleTriggerNode.objects.prefetch_related(*authorship_prefetches())
     serializer_class = ScheduleTriggerNodeSerializer
@@ -2835,6 +2847,7 @@ class GraphNoteViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = FLOW_CONTENT_ACTION_MAP
     org_filter_path = "graph__org_id"
     queryset = GraphNote.objects.prefetch_related(*authorship_prefetches())
     serializer_class = GraphNoteSerializer

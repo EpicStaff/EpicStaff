@@ -56,11 +56,16 @@ class FakeSandbox:
             "name": data["name"],
             "libs": data["libs"],
             "status": "declared",
+            "scope": data.get("scope"),
         }
         self.venvs[self._next_id] = venv
         return venv
 
     def retrieve(self, venv_id: str) -> dict:
+        return self.venvs[int(venv_id)]
+
+    def update(self, venv_id: str, data: dict) -> dict:
+        self.venvs[int(venv_id)].update(data)
         return self.venvs[int(venv_id)]
 
     def list(self, *, ids, search=None, order=None, limit=None, offset=None) -> dict:

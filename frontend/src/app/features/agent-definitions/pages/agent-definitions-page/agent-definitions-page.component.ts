@@ -11,6 +11,7 @@ import {
     inject,
     Injector,
     OnInit,
+    ResourceRef,
     signal,
     untracked,
     viewChild,
@@ -29,7 +30,7 @@ import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml, takeQueryParams } from '@shared/utils';
 import { Observable, of } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
+import { finalize, map, switchMap, tap } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -42,6 +43,12 @@ import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../mode
 import { ExplorerSectionId, GroupAssignTarget } from '../../models/explorer.model';
 import { CreateSurfaceRequest } from '../../models/surface.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryConfig, SurfaceCategoryId } from '../../models/surface-category.model';
+import {
+    SurfaceUsage,
+    surfaceUsageAgentCount,
+    surfaceUsageFlowCount,
+    surfaceUsageTotal,
+} from '../../models/surface-usage.model';
 import { BranchTreeNode } from '../../models/tree-node.model';
 import { AgentsPageStore } from '../../services/agents-page-store.service';
 import { SurfaceCatalogsStore } from '../../services/surface-catalogs-store.service';
@@ -71,7 +78,6 @@ import {
     SurfaceSummaryDialogData,
 } from './components/surface-summary-dialog/surface-summary-dialog.component';
 import {
-    SurfaceUsage,
     SurfaceUsageDialogComponent,
     SurfaceUsageDialogData,
 } from './components/surface-usage-dialog/surface-usage-dialog.component';
@@ -162,20 +168,22 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         read: ElementRef,
     });
 
+    // Surfaces whose delete confirmation is being prepared or shown: a repeat click must not stack a second one.
+    private readonly surfaceDeletesInFlight = new Set<number>();
     // `?agentId=` and `?surfaceId=`, taken from the URL at init and applied once the agent list has loaded
     private queryPreselect: Partial<Record<'agentId' | 'surfaceId', string>> = {};
     private sawLoading = false;
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
 
-    protected readonly selectedSurfaceUsage = computed<SurfaceUsage | null>(() => {
-        const sv = this.store.selectedSurfaceView();
-        return sv ? this.store.surfaceUsage(sv.surface.id) : null;
-    });
+    protected readonly selectedSurfaceUsageFailed = computed<boolean>(
+        () => this.store.selectedSurfaceUsage.error() !== undefined
+    );
 
-    protected readonly selectedSurfaceUsageCount = computed<number>(() => {
-        const u = this.selectedSurfaceUsage();
-        return u ? u.agents.length + u.flows.length + u.chats.length : 0;
+    /** Null until the server has answered; the "Used by" button shows an ellipsis meanwhile. */
+    protected readonly selectedSurfaceUsageCount = computed<number | null>(() => {
+        const usage = this.store.selectedSurfaceUsage;
+        return usage.hasValue() ? surfaceUsageTotal(usage.value()) : null;
     });
 
     protected readonly selectedSurfacePlace = computed<SurfaceCategoryConfig | null>(() => {
@@ -454,24 +462,13 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     onOpenUsage(): void {
-        const usage = this.selectedSurfaceUsage();
-        if (!usage) return;
-        this.dialog
-            .open<number | undefined, SurfaceUsageDialogData>(SurfaceUsageDialogComponent, {
-                width: 'calc(100vw - 2rem)',
-                height: 'calc(100vh - 2rem)',
-                maxWidth: '100vw',
-                panelClass: 'surface-usage-dialog-panel',
-                injector: this.injector,
-                data: { usage },
-            })
-            .closed.subscribe((agentId) => {
-                if (typeof agentId !== 'number') return;
-                this.guardUnsaved(() => {
-                    this.storageFacade.selectedFile.set(null);
-                    this.store.selectAgent(agentId);
-                });
-            });
+        // Flow-editor changes made since the last load must show up.
+        this.store.selectedSurfaceUsage.reload();
+        this.openUsageDialog(this.store.selectedSurfaceUsage);
+    }
+
+    onOpenSurfaceUsage(surfaceId: number): void {
+        this.openUsageDialog(this.store.openSurfaceUsage(surfaceId), () => this.store.closeSurfaceUsage());
     }
 
     onViewSummary(event: { place: SurfaceCategoryId; surfaceIds: number[] }): void {
@@ -568,6 +565,26 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     /** Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away. */
+    private openUsageDialog(usage: ResourceRef<SurfaceUsage | undefined>, onClosed?: () => void): void {
+        this.dialog
+            .open<number | undefined, SurfaceUsageDialogData>(SurfaceUsageDialogComponent, {
+                width: 'calc(100vw - 2rem)',
+                height: 'calc(100vh - 2rem)',
+                maxWidth: '100vw',
+                panelClass: 'surface-usage-dialog-panel',
+                injector: this.injector,
+                data: { usage },
+            })
+            .closed.subscribe((agentId) => {
+                onClosed?.();
+                if (typeof agentId !== 'number') return;
+                this.guardUnsaved(() => {
+                    this.storageFacade.selectedFile.set(null);
+                    this.store.selectAgent(agentId);
+                });
+            });
+    }
+
     private closeHeaderMenuToTrigger(): void {
         this.headerMenuTrigger()?.nativeElement.focus();
         this.closeHeaderMenu();
@@ -737,18 +754,31 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         const surface = this.store.surfaces().find((s) => s.id === surfaceId);
         if (!surface) return of(false);
 
-        const usageRaw = this.store.surfaceUsage(surfaceId);
-        const shared = surface.owner_agent == null;
-        const usage = {
-            agents: shared ? usageRaw.agents.length : 0,
-            flows: usageRaw.flows.length,
-            chats: usageRaw.chats.length,
-        };
-        const dialog = buildDeleteSurfaceDialog(surface, usage, shared, this.recycleBinSettings.retentionDays());
+        if (this.surfaceDeletesInFlight.has(surfaceId)) return of(false);
+        this.surfaceDeletesInFlight.add(surfaceId);
 
-        return this.confirmationDialog
-            .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })
-            .pipe(map((result) => result === true));
+        const shared = surface.owner_agent == null;
+        // Fetched fresh: the surface may not be the selected one, and a stale or missing count would understate the impact.
+        return this.store.loadSurfaceUsage(surfaceId).pipe(
+            switchMap((usageRaw) => {
+                if (!usageRaw) return of(false);
+                const usage = {
+                    agents: shared ? surfaceUsageAgentCount(usageRaw) : 0,
+                    flows: surfaceUsageFlowCount(usageRaw),
+                    chats: 0,
+                };
+                const dialog = buildDeleteSurfaceDialog(
+                    surface,
+                    usage,
+                    shared,
+                    this.recycleBinSettings.retentionDays()
+                );
+                return this.confirmationDialog
+                    .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })
+                    .pipe(map((result) => result === true));
+            }),
+            finalize(() => this.surfaceDeletesInFlight.delete(surfaceId))
+        );
     }
 
     private guardUnsaved(action: () => void, onCancel?: () => void): void {
