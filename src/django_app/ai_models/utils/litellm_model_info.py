@@ -139,7 +139,7 @@ def _invalidate_litellm_model_cost_caches() -> None:
     # An in-place update of litellm.model_cost leaves litellm's lookups stale: the LRU
     # caches behind get_model_info and _get_model_info_helper, and its lowercase key
     # map. This private litellm function clears all three; it is relied on at the
-    # pinned litellm version (1.100.5) and must be re-checked when litellm is upgraded.
+    # pinned litellm version (1.108.12) and must be re-checked when litellm is upgraded.
     litellm.utils._invalidate_model_cost_lowercase_map()
 
 

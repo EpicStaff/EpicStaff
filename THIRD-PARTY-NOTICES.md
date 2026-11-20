@@ -3702,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-11-07T09:05:47Z UTC -->
-<!-- commit: 618a918a420c867551b6ea1450f759baac90d133 -->
-<!-- lock-hashes: agent:33485be7b40d1c4d, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:3b8a9513930f183b, django_app:9edcfe4f5547fa9d, es_plugins:dbaccc6cdbe28892, foundation:42ce6227dbb12b91, knowledge_new:2a1b626c6c054648, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:465ed704a7143a7e, sandbox:117c57af453053a0, sandbox_new:6d8bd33d7277129b, shared:4fe7d63d599aa036, webhook:241b4e1b204ef7f8 -->
+<!-- generated: 2026-11-20T13:59:18Z UTC -->
+<!-- commit: d2bb50fb2eadf0202b17368f14064010c2a63677 -->
+<!-- lock-hashes: agent:3e12e25ce99cfee0, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:1947bf1b2335dc88, django_app:805fe4f0a2c9d63a, es_plugins:dbaccc6cdbe28892, foundation:42ce6227dbb12b91, knowledge_new:37d654b333427d0c, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:465ed704a7143a7e, sandbox:117c57af453053a0, sandbox_new:6d8bd33d7277129b, shared:4fe7d63d599aa036, webhook:241b4e1b204ef7f8 -->
 
 ## Backend (Python)
 
@@ -3907,7 +3907,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `langgraph-sdk` | 0.4.4 | MIT | Copyright (c) 2024 LangChain, Inc. |
 | `langsmith` | 0.10.15 | MIT | Copyright (c) LangChain <support@langchain.dev> |
 | `langsmith` | 0.12.2 | MIT | Copyright (c) LangChain <support@langchain.dev> |
-| `litellm` | 1.108.1 | MIT | Copyright (c) 2023 Berri AI |
+| `litellm` | 1.108.12 | MIT | Copyright (c) 2023 Berri AI |
 | `litestar` | 2.24.0 | MIT License | Copyright (c) 2021, 2022, 2023, 2024, 2025, 2026 Litestar Org. |
 | `litestar-htmx` | 0.5.0 | MIT License | Copyright (c) 2021, 2022, 2023, 2024 Litestar Org. |
 | `loguru` | 0.7.2 | MIT License | Copyright (c) 2017 |
@@ -14864,7 +14864,7 @@ SOFTWARE.
 > No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
 
-#### litellm@1.108.1
+#### litellm@1.108.12
 
 - **License:** MIT
 - **Author:** BerriAI
