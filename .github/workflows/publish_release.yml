@@ -138,7 +138,7 @@ jobs:
           fi
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
 
       # The compose file is what tells a customer WHICH digests to run. Every image
       # is signed (build-and-push.yml), but without a signature over this file an

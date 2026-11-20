@@ -228,9 +228,9 @@ class CountingCustomLibraryRepository(FakeCustomLibraryRepository):
         super().__init__()
         self.list_by_names_calls = 0
 
-    async def list_by_names(self, names):
+    async def list_by_names(self, scope, names):
         self.list_by_names_calls += 1
-        return await super().list_by_names(names)
+        return await super().list_by_names(scope, names)
 
 
 class CountingWheelRepository(FakeWheelRepository):
@@ -243,9 +243,16 @@ class CountingWheelRepository(FakeWheelRepository):
         return await super().list_by_library_ids(ids)
 
 
-def publish(uow, file_storage, name: str, versions: dict[str, WheelStatus]) -> CustomLibrary:
+def publish(
+    uow,
+    file_storage,
+    name: str,
+    versions: dict[str, WheelStatus],
+    *,
+    scope: str | None = None,
+) -> CustomLibrary:
     """A stored library whose versions are in the given states, with files to download."""
-    library = uow.custom_library_repo.seed(CustomLibrary(name=name))[0]
+    library = uow.custom_library_repo.seed(CustomLibrary(name=name, scope=scope))[0]
     for index, (version, status) in enumerate(versions.items()):
         built = status is WheelStatus.COMPLETED
         wheel = uow.wheel_repo.seed(
@@ -421,3 +428,26 @@ async def test_a_venv_refused_before_the_build_is_never_marked_processing(
     assert uv_provider.init_venv_calls == []
 
 
+async def test_a_venv_installs_the_library_of_its_own_scope(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    """Two tenants may each store an `acme-core`; a venv gets its own tenant's."""
+    publish(uow, file_storage, "acme-core", {"9.9.9": WheelStatus.COMPLETED}, scope="org-2")
+    publish(uow, file_storage, "acme-core", {"1.4.2": WheelStatus.COMPLETED}, scope="org-1")
+    stored = uow.venv_repo.seed(make_venv(scope="org-1", libs=[custom("acme-core")]))[0]
+
+    await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
+
+    assert uv_provider.wheelhouse_contents[0] == ["acme_core-1.4.2-py3-none-any.whl"]
+
+
+async def test_a_venv_does_not_find_a_library_of_another_scope(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    publish(uow, file_storage, "acme-core", {"1.4.2": WheelStatus.COMPLETED}, scope="org-2")
+    stored = uow.venv_repo.seed(make_venv(scope="org-1", libs=[custom("acme-core")]))[0]
+
+    await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
+
+    assert uow.venv_repo.rows[stored.id].status is VenvStatus.FAILED
+    assert uv_provider.apply_calls == []

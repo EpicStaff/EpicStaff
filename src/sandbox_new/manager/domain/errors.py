@@ -7,6 +7,7 @@ __all__ = [
     "CustomLibraryNotFoundError",
     "CustomLibraryNotPublishedError",
     "CustomLibraryStillBuildingError",
+    "DefaultVenvProtectedError",
     "ExecutionNotFoundError",
     "NotFoundError",
     "SandboxOverloadedError",
@@ -91,6 +92,14 @@ class WheelNotFoundError(NotFoundError):
 
 class CustomLibraryNameTakenError(ConflictError):
     default_message: str = "CustomLibrary(name='{name}') already exists."
+
+
+class DefaultVenvProtectedError(ConflictError):
+    """The shared fallback venv is built by the sandbox itself and changed by no one."""
+
+    default_message: str = (
+        "Venv(id={venv_id}) is the default venv and cannot be changed or removed."
+    )
 
 
 class WheelVersionTakenError(ConflictError):
