@@ -59,6 +59,7 @@ from litestar.handlers.base import BaseRouteHandler
 from litestar.params import Parameter
 from litestar.response import Stream
 from presentation.rest import schemas
+from presentation.rest.disconnect import cancel_on_disconnect
 
 
 def require_graphrag_available(connection: ASGIConnection, _: BaseRouteHandler) -> None:
@@ -110,6 +111,7 @@ class RagController(Controller):
     )
     async def search(
         self,
+        request: Request,
         strategy: RAGStrategy,
         rag_id: int,
         data: schemas.SearchInputSchema,
@@ -126,7 +128,8 @@ class RagController(Controller):
             llm_extra_headers=data.llm_extra_headers,
         )
         orchestrator = build_search(strategy, uow, cryptographer)
-        result = await orchestrator.execute(command)
+        async with cancel_on_disconnect(request):
+            result = await orchestrator.execute(command)
         return schemas.SearchOutputSchema.model_validate(result)
 
     @post(
