@@ -4,14 +4,12 @@ Builds the preamble that injects globals and secrets, runs the user code, calls 
 entrypoint, writes its return value to the result file, and translates a network denial
 into a clear message.
 
-The code goes in as a string literal parsed on its own, never spliced in as text:
-re-indenting it would let a line break the parser sees but the splice misses (a bare
-carriage return, a form feed) move a line out of the block the reviewed source shows it
-in. The entrypoint is pasted into the source as the function to call, so before any of
-the code runs the source refuses an entrypoint the code does not bind at its top level;
-otherwise it could name a builtin (`open`) or a wrapper import (`get_secret`) and run
-code the reviewed source never shows. That check parses the code, so it runs here, under
-the child's timeout and in its own process, not in the manager.
+The code goes in as a string literal, never spliced in as text: re-indenting it lets a
+line break the splice misses (a bare carriage return, a form feed) move a line out of the
+block the reviewed source shows it in. Before the code runs, the source refuses an
+entrypoint the code does not bind at its top level, so it cannot name a builtin (`open`)
+or a wrapper import (`get_secret`). That check parses the code, so it runs here, in the
+child under its timeout, not in the manager.
 
 This is mechanism, not policy: the real network/filesystem boundary is the
 kernel-enforced seccomp/Landlock filter the launcher installs before this source runs.
@@ -38,10 +36,10 @@ def wrap_code(
 import errno
 import os
 import socket
-import ast
 import sys
 import json
-import traceback
+import ast as __sys_ast
+import traceback as __sys_traceback
 
 # Message-quality aid only, NOT a security control -- the real boundary is
 # the kernel-enforced seccomp/Landlock filter launcher.py installs before
@@ -94,23 +92,19 @@ def __sys_is_network_denial(exc):
 def __sys_top_level_names(tree):
     names = set()
     for statement in tree.body:
-        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(statement, (__sys_ast.FunctionDef, __sys_ast.AsyncFunctionDef)):
             names.add(statement.name)
-        elif isinstance(statement, ast.Assign):
-            names.update(t.id for t in statement.targets if isinstance(t, ast.Name))
+        elif isinstance(statement, __sys_ast.Assign):
+            names.update(t.id for t in statement.targets if isinstance(t, __sys_ast.Name))
         # An annotation without a value binds nothing; the name would resolve elsewhere.
         elif (
-            isinstance(statement, ast.AnnAssign)
+            isinstance(statement, __sys_ast.AnnAssign)
             and statement.value is not None
-            and isinstance(statement.target, ast.Name)
+            and isinstance(statement.target, __sys_ast.Name)
         ):
             names.add(statement.target.id)
-        elif isinstance(statement, (ast.Import, ast.ImportFrom)):
-            names.update(
-                alias.asname or alias.name.partition(".")[0]
-                for alias in statement.names
-                if alias.name != "*"
-            )
+        elif isinstance(statement, (__sys_ast.Import, __sys_ast.ImportFrom)):
+            names.update(alias.asname or alias.name.partition(".")[0] for alias in statement.names)
     return names
 
 
@@ -122,7 +116,7 @@ try:
 
     __sys_code = {code!r}
     # Compiling the parsed tree, not the text again, keeps parser warnings to one copy.
-    __sys_tree = ast.parse(__sys_code, "<code>")
+    __sys_tree = __sys_ast.parse(__sys_code, "<code>")
     if {entrypoint!r} not in __sys_top_level_names(__sys_tree):
         print(
             "entrypoint " + repr({entrypoint!r}) + " is not defined at the top level of code",
@@ -135,7 +129,7 @@ try:
 
     __sys_dot_kwargs = DotDict({func_kwargs})
 
-    sys_result_variable = {entrypoint}(**__sys_dot_kwargs)
+    sys_result_variable = globals()[{entrypoint!r}](**__sys_dot_kwargs)
     with open(r'{result_file_path.as_posix()}', 'w', encoding='utf-8') as file:
         file.write(json.dumps(sys_result_variable))
 except SyntaxError as e:
@@ -145,7 +139,7 @@ except SyntaxError as e:
         __sys_lines = __sys_code.replace("\\r\\n", "\\n").replace("\\r", "\\n").split("\\n")
         if e.lineno <= len(__sys_lines):
             e.text = __sys_lines[e.lineno - 1]
-    print("".join(traceback.format_exception_only(e)), end="", file=sys.stderr)
+    print("".join(__sys_traceback.format_exception_only(e)), end="", file=sys.stderr)
     sys.exit(1)
 except OSError as e:
     __sys_candidate = getattr(e, "reason", e)

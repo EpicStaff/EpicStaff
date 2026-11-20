@@ -58,7 +58,7 @@ def test_awkward_arguments_still_compile(tmp_path, func_kwargs):
 def test_the_entrypoint_is_called_with_the_arguments(tmp_path):
     source = wrap(tmp_path, entrypoint="handler", func_kwargs={"value": "x"})
 
-    assert "sys_result_variable = handler(**__sys_dot_kwargs)" in source
+    assert "sys_result_variable = globals()['handler'](**__sys_dot_kwargs)" in source
     assert "{'value': 'x'}" in source
 
 

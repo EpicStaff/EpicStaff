@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 from django.utils import timezone
 from foundation.transport.http import (
     ClientError,
@@ -461,8 +462,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             PythonCodeResult.objects.filter(pk__in=list(stale_ids)).delete()
 
 
-def _refusal_reasons(response) -> str:
-    """The `detail` strings of the sandbox's 400 envelope, which never echoes the submitted body."""
+def _refusal_reasons(response: httpx.Response) -> str:
+    """Join the `detail` strings of the sandbox's 400 envelope, which never echoes the submitted body."""
     try:
         body = response.json()
     except ValueError:
