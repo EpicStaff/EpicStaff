@@ -1,0 +1,14 @@
+@use '../../../../../styles/header-layout' as header;
+
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    padding: 1.5rem header.$page-inset-left;
+}
+
+.overview__kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+}

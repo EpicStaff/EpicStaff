@@ -10,6 +10,12 @@
 
     .header {
         @include header.pageHeader();
+
+        .header-titles {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+        }
     }
 
     .tabs {

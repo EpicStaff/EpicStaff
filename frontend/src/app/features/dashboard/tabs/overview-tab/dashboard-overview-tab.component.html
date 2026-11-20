@@ -1,4 +1,25 @@
-<app-resource-card
+@if (resource.error()) {
+    <app-fetch-error-state
+        title="Could not load the dashboard"
+        (retry)="resource.reload()"
+    />
+} @else if (!resource.hasValue()) {
+    <app-loading-spinner />
+} @else if (report(); as report) {
+    <div class="overview__kpis">
+        <app-kpi-card
+            icon="ti-bolt"
+            label="Active triggers"
+            [value]="report.active_triggers.length"
+        >
+            {{ waitingCount() }} {{ waitingCount() === 1 ? 'session' : 'sessions' }} waiting for user
+        </app-kpi-card>
+    </div>
+} @else {
+    <app-first-report-state />
+}
+
+<!-- <app-resource-card
     icon="ti-books"
     label="Knowledge"
     [value]="22"
@@ -31,4 +52,4 @@
     nextBuildAt="2026-11-19T18:30:00Z"
 />
 
-<app-first-report-state />
+<app-first-report-state /> -->

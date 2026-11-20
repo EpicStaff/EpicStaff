@@ -2,6 +2,12 @@
     <header class="header">
         <div class="header-titles">
             <h1 class="title">Dashboard</h1>
+            @if (report(); as report) {
+                <app-updated-at
+                    [builtAt]="report.built_at"
+                    [nextBuildAt]="report.next_build_at"
+                />
+            }
         </div>
         <app-dashboard-toolbar class="header-actions" />
     </header>
