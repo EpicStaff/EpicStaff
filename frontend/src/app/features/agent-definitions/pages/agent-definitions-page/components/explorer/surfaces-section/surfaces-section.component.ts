@@ -4,6 +4,7 @@ import { FetchErrorStateComponent } from '@shared/components';
 import { BranchTreeNode, nodeKey } from '../../../../../models/tree-node.model';
 import { AgentsPageStore } from '../../../../../services/agents-page-store.service';
 import { ExplorerGroupBlockComponent } from '../group-block/group-block.component';
+import { NewGroupInputComponent } from '../new-group-input/new-group-input.component';
 import {
     ExplorerTreeAttachSurfaceEvent,
     ExplorerTreeMenuEvent,
@@ -13,7 +14,7 @@ import {
 
 @Component({
     selector: 'app-surfaces-section',
-    imports: [TreeNodeComponent, FetchErrorStateComponent, ExplorerGroupBlockComponent],
+    imports: [TreeNodeComponent, FetchErrorStateComponent, ExplorerGroupBlockComponent, NewGroupInputComponent],
     templateUrl: './surfaces-section.component.html',
     styleUrls: ['./surfaces-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

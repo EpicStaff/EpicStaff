@@ -158,3 +158,41 @@ describe('isTreeNodeMenuItemAllowed', () => {
         ]);
     });
 });
+
+describe('New group menu item gating', () => {
+    const SURFACE_UPDATE = `${ResourceCode.Surfaces}:${ActionCode.Update}`;
+    const surfaceRow: ExplorerMenuSubject = { kind: 'surface', surfaceId: 10, label: 'CRM access', groupId: null };
+    const agentRow: ExplorerMenuSubject = { kind: 'agent', agentId: 5, label: 'Closer', children: [], groupId: null };
+
+    /** What the explorer shows: the items the user is allowed to pick. */
+    const shown = (subject: ExplorerMenuSubject, granted: string[]): string[] => {
+        const user = userWith(...granted);
+        return outline(groupMenuItems(subject, GROUPS).filter((item) => user.can(item.resource, item.action)));
+    };
+
+    it.each<[string, ExplorerMenuSubject, string[], string[]]>([
+        [
+            'a surfaces-only user on a surface row: Move to group, no New group…',
+            surfaceRow,
+            [SURFACE_UPDATE],
+            ['Move to group > Sales, Support'],
+        ],
+        [
+            'a user with Agents:Create on a surface row: New group… too',
+            surfaceRow,
+            [SURFACE_UPDATE, AGENT_CREATE],
+            ['Move to group > Sales, Support', 'New group…'],
+        ],
+        ['Surfaces:Create alone does not offer New group…', surfaceRow, [SURFACE_CREATE], []],
+        ['an agent row without Agents:Create: no New group…', agentRow, [AGENT_READ], []],
+    ])('%s', (_description, subject, granted, expected) => {
+        expect(shown(subject, granted)).toEqual(expected);
+    });
+
+    it('offers the Agents section header New group only with Agents:Create', () => {
+        const header: ExplorerMenuSubject = { kind: 'section-header', section: 'agents' };
+
+        expect(shown(header, [AGENT_READ])).toEqual(['Collapse all', 'Expand all']);
+        expect(shown(header, [AGENT_CREATE])).toEqual(['New group']);
+    });
+});

@@ -1,0 +1,25 @@
+<div class="new-group">
+    <input
+        #newGroupInput
+        class="new-group__input"
+        type="text"
+        placeholder="Group name"
+        aria-label="New group name"
+        [class.new-group__input--error]="newGroupError()"
+        [disabled]="creatingGroup()"
+        (input)="newGroupError.set(null)"
+        (keydown.enter)="createGroup(newGroupInput.value)"
+        (keydown.escape)="cancelNewGroup()"
+        (blur)="onNewGroupBlur(newGroupInput.value)"
+    />
+    @if (newGroupError(); as error) {
+        <div
+            class="new-group__error"
+            role="alert"
+        >
+            {{ error }}
+        </div>
+    } @else {
+        <div class="new-group__help">Enter to create, Esc to cancel</div>
+    }
+</div>

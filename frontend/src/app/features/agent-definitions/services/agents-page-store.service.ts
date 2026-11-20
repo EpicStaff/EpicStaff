@@ -70,8 +70,9 @@ const SURFACE_PATCH_DEBOUNCE_MS = 400;
 /** Collapsed group blocks, per user: `<prefix>/<user id>` holds an array of `groupBlockKey`s. */
 const COLLAPSED_GROUPS_STORAGE_PREFIX = 'agents-explorer/collapsedGroups';
 
-/** The inline "new group" input in the Agents section; `assign` is moved into the group once it exists. */
+/** The inline "new group" input, shown in `section`; `assign` is moved into the group once it exists. */
 export interface NewGroupDraft {
+    section: GroupedSectionId;
     assign: GroupAssignTarget | null;
 }
 
@@ -706,11 +707,17 @@ export class AgentsPageStore {
         this.setCollapsedGroups(next);
     }
 
-    /** Opens the inline "new group" input at the top of the Agents section. */
-    startNewGroup(assign: GroupAssignTarget | null = null): void {
+    /**
+     * Opens the inline "new group" input at the top of `section`, by default the one `assign` lives in:
+     * Shared Surfaces for a surface, Agents otherwise. There is a single draft at a time.
+     */
+    startNewGroup(
+        assign: GroupAssignTarget | null = null,
+        section: GroupedSectionId = assign?.kind === 'surface' ? 'surfaces' : 'agents'
+    ): void {
         this.renamingGroupId.set(null);
-        this.newGroupDraft.set({ assign });
-        if (!this.isSectionExpanded('agents')) this.toggleSection('agents');
+        this.newGroupDraft.set({ section, assign });
+        if (!this.isSectionExpanded(section)) this.toggleSection(section);
     }
 
     cancelNewGroup(): void {
