@@ -114,3 +114,34 @@ def test_unknown_provider_has_no_connection_fields(factory):
     schema = factory.connection_schema("nobody")
 
     assert schema["properties"] == {} and not _valid(schema, {"base_url": "x"})
+
+
+@pytest.fixture
+def committed_factory():
+    return ConfigSchemaFactory(CatalogRepository.default(), ValueTypeRegistry())
+
+
+def test_fireworks_model_offers_its_tuning_settings_unset(committed_factory):
+    model = "fireworks_ai/gpt-oss-120b"
+    schema = committed_factory.parameters_schema(ModelKind.LLM, "fireworks_ai", model)
+    properties = schema["properties"]
+
+    for name in (
+        "mirostat_target",
+        "mirostat_lr",
+        "safe_tokenization",
+        "reasoning_history",
+        "context_length_exceeded_behavior",
+        "prompt_truncate_len",
+    ):
+        assert properties[name]["default"] is None
+    assert properties["safe_tokenization"]["type"] == ["boolean", "null"]
+    assert properties["context_length_exceeded_behavior"]["enum"] == ["error", "truncate", None]
+    # Truncating the prompt is capped by the model's input window, not by its output limit.
+    input_window = CatalogRepository.default().model(ModelKind.LLM, "fireworks_ai", model).limits[
+        "max_input_tokens"
+    ]
+    assert properties["prompt_truncate_len"]["maximum"] == input_window
+    assert _valid(schema, {"prompt_truncate_len": input_window, "safe_tokenization": None})
+    assert not _valid(schema, {"prompt_truncate_len": input_window + 1})
+    assert not _valid(schema, {"mirostat_target": 10.5})

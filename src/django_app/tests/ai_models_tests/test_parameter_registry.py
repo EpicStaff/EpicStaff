@@ -96,6 +96,40 @@ def test_hidden_names_are_never_settings(registry):
     assert all(registry.parameter(name) is None for name in registry.hidden_names)
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "mirostat_target",
+        "mirostat_lr",
+        "safe_tokenization",
+        "reasoning_history",
+        "context_length_exceeded_behavior",
+        "prompt_truncate_len",
+    ],
+)
+def test_provider_tuning_settings_are_offered_unset_by_default(registry, name):
+    assert name not in registry.hidden_names
+    assert registry.parameter(name).default is None
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "ignore_eos",
+        "store",
+        "prompt_cache_retention",
+        "max_retries",
+        "cache_control",
+        "context_management",
+        "k",
+        "retrieval_method",
+        "filter_kb_content_by_query_metadata",
+    ],
+)
+def test_runtime_and_policy_settings_stay_hidden(registry, name):
+    assert name in registry.hidden_names
+
+
 def test_recommended_models_come_from_the_seed(registry):
     assert registry.is_recommended("openai", "gpt-4o")
     assert registry.is_recommended("gemini", "gemini/gemini-2.5-flash")

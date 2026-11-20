@@ -110,6 +110,29 @@ parameters:
     minimum: 0
     maximum: 2
     step: 0.01
+  # mirostat_target and mirostat_lr: the Fireworks AI API reference (the only provider
+  # reporting them) documents no range. 0-10 and 0-1 are our bounds: common Mirostat
+  # targets are around 3-5 and the common learning rate is 0.1.
+  mirostat_target:
+    value_type: number
+    control: slider
+    label: Mirostat target
+    help_text: Target perplexity for Mirostat sampling, which keeps output surprise near this value. Not set turns Mirostat off.
+    group: sampling
+    default: null
+    minimum: 0
+    maximum: 10
+    step: 0.1
+  mirostat_lr:
+    value_type: number
+    control: slider
+    label: Mirostat learning rate
+    help_text: How fast Mirostat adjusts towards its target. Has no effect without a Mirostat target.
+    group: sampling
+    default: null
+    minimum: 0
+    maximum: 1
+    step: 0.01
   seed:
     value_type: integer
     control: stepper
@@ -133,6 +156,28 @@ parameters:
     maximum: 2147483647
     step: 100
     limit_from: max_output_tokens
+  # context_length_exceeded_behavior and prompt_truncate_len: from the Fireworks AI API
+  # reference, the only provider reporting them.
+  context_length_exceeded_behavior:
+    value_type: choice
+    control: select
+    label: When context is exceeded
+    help_text: "What happens when the prompt plus max tokens exceed the context window: truncate lowers max tokens to fit (the provider's default), error fails the request."
+    group: output
+    default: null
+    options: [error, truncate]
+  prompt_truncate_len:
+    value_type: integer
+    control: stepper
+    label: Truncate prompt to
+    help_text: Cuts a longer chat prompt down to this many tokens by silently dropping its start.
+    group: advanced
+    default: null
+    minimum: 1
+    # Applies only to models that do not report max_input_tokens.
+    maximum: 2147483647
+    step: 1
+    limit_from: max_input_tokens
   stop:
     value_type: text_list
     control: chips
@@ -166,6 +211,15 @@ parameters:
     default: null
     # Every level LiteLLM knows; each model narrows this to the levels it accepts.
     options: [none, minimal, low, medium, high, xhigh, max]
+  # From the Fireworks AI API reference; LiteLLM reports it for Fireworks reasoning models only.
+  reasoning_history:
+    value_type: choice
+    control: select
+    label: Reasoning history
+    help_text: How the model's earlier reasoning is kept in the prompt of later turns. Models accept different values (e.g. DeepSeek V4 only interleaved); a value the model does not take is rejected.
+    group: reasoning
+    default: null
+    options: [disabled, interleaved, preserved]
   verbosity:
     value_type: choice
     control: select
@@ -180,6 +234,15 @@ parameters:
     control: json
     label: Logit bias
     help_text: Maps token ids to a bias from -100 to 100 that makes those tokens more or less likely.
+    group: advanced
+    default: null
+  # From the Fireworks AI API reference. Null, not false: the provider turns it on by
+  # default where the model supports it, and an explicit true fails where it does not.
+  safe_tokenization:
+    value_type: boolean
+    control: toggle
+    label: Safe tokenization
+    help_text: Special tokens typed in user content are never read as real special tokens, which guards against prompt injection. On by default where the model supports it; Truncate prompt to is not applied while it is on.
     group: advanced
     default: null
   task_type:
@@ -201,87 +264,83 @@ parameters:
     maximum: 3072
     step: 1
 
-# Arguments the runtime sets itself; never shown to users.
+# Settings LiteLLM reports that are never offered on a config. Each group heading gives the
+# reason; the comment after a name says what it does. To offer one, move it to `parameters`
+# with its range or options.
 hidden:
-  - tools
-  - tool_choice
-  - messages
-  - stream
-  - stream_options
-  - response_format
-  - functions
-  - function_call
-  - n
-  - user
-  - extra_headers
-  - parallel_tool_calls
-  # How tool calls are mixed and returned; the runtime owns tools.
-  - include_server_side_tool_invocations
-  # Per-request payloads: input, output modalities and passthrough bodies belong to one call.
-  - audio
-  - modalities
-  - prediction
-  - speculation
-  - web_search_options
-  - extra_body
-  - model
-  - prompt
-  - instruction_override
-  - kb_filters
-  # Per-request identifiers and tags (user ids, cache routing keys, metadata).
-  - metadata
-  - requestMetadata
-  - safety_identifier
-  - prompt_cache_key
-  - prompt_cache_isolation_key
-  # Latency and price tier of a request.
-  - service_tier
-  - speed
-  - realtime
-  # Change the response shape the runtime parses, like response_format and stream.
-  - diffusing
-  - echo
-  - echo_last
-  - raw_output
-  - perf_metrics_in_response
-  - return_token_ids
-  - sampling_mask
-  - encoding_format
-  - timestamp_granularities
-  - reasoning_summary
-  - reasoning_summary_wait
-  - reasoning_split
-  - include_functions_info
-  - include_guardrails_info
-  - include_retrieval_info
-  - provide_citations
-  # LiteLLM translates max_tokens to and from max_completion_tokens per provider.
-  - max_completion_tokens
-  # LiteLLM translates reasoning_effort into thinking / output_config.effort per provider;
-  # output_config.format is structured output, set with response_format.
-  - thinking
-  - output_config
-  # timeout is a config column, never a catalog setting.
-  - timeout
-  # The realtime service sends the voice agent's own language per session.
-  - language
-  # Not offered yet: no documented range, or a policy choice (retention, caching, context handling,
-  # retries) rather than tuning. To offer one, move it to `parameters` with its range or options.
-  - mirostat_target
-  - mirostat_lr
-  - prompt_truncate_len
-  - context_length_exceeded_behavior
-  - ignore_eos
-  - safe_tokenization
-  - reasoning_history
-  - store
-  - prompt_cache_retention
-  - cache_control
-  - context_management
-  - max_retries
-  - k
-  - retrieval_method
-  - filter_kb_content_by_query_metadata
+  # The runtime sets these on every call; a stored value would collide with what it sends.
+  - model  # comes from the config's model
+  - messages  # the conversation the agent loop builds
+  - prompt  # text-completion input; the runtime sends messages instead
+  - tools  # the agent's tool definitions
+  - tool_choice  # whether and which tool the model must call
+  - functions  # older form of tools
+  - function_call  # older form of tool_choice
+  - parallel_tool_calls  # several tool calls in one turn; the agent loop decides
+  - include_server_side_tool_invocations  # Gemini: returns its built-in tool calls in the answer
+  - stream  # the runtime picks streaming per call
+  - stream_options  # the runtime asks for usage in the stream to count cost
+  - response_format  # structured output, set per task
+  - n  # several answers per call; the runtime reads only the first
+  - user  # end-user id, per request
+  - extra_body  # raw passthrough body; would bypass every settings check
+  # Payloads for one call, not for every call made with the config.
+  - audio  # voice and format of audio output
+  - modalities  # output types (text, audio) of one call
+  - prediction  # expected output text of one edit request
+  - speculation  # Fireworks: draft text or tokens for speculative decoding
+  - web_search_options  # web search for one request
+  - instruction_override  # Gradient AI: system instruction for one request
+  - kb_filters  # Gradient AI: knowledge base filters for one request
+  # Identifiers and tags of one request.
+  - metadata  # request tags for logging
+  - requestMetadata  # Bedrock: request tags
+  - safety_identifier  # OpenAI: hashed end-user id for abuse detection
+  - prompt_cache_key  # routes one conversation to the same cache entry
+  - prompt_cache_isolation_key  # Fireworks: separates cache entries per tenant
+  # Price and latency tier: a billing choice, not tuning.
+  - service_tier  # OpenAI flex / priority processing; Fireworks priority
+  - speed  # Anthropic fast mode and similar premium speeds
+  - realtime  # Inception: low-latency mode
+  # Change the answer the runtime parses: it expects plain text and tool calls only.
+  - diffusing  # Inception: streams the intermediate diffusion steps
+  - echo  # Fireworks: repeats the prompt before the answer
+  - echo_last  # Fireworks: repeats the last N prompt tokens before the answer
+  - raw_output  # Fireworks: raw model output instead of the parsed answer
+  - perf_metrics_in_response  # Fireworks: adds performance metrics to the response
+  - return_token_ids  # Fireworks: adds token ids to the answer
+  - sampling_mask  # Fireworks: adds sampling mask data per token
+  - encoding_format  # embedding vector format (float / base64); the runtime reads floats
+  - timestamp_granularities  # transcription timestamps
+  - reasoning_summary  # Anthropic / Inception: shape of the returned reasoning summary
+  - reasoning_summary_wait  # Inception: waits for the reasoning summary
+  - reasoning_split  # MiniMax: returns reasoning in a separate field
+  - include_functions_info  # Gradient AI: adds function call details
+  - include_guardrails_info  # Gradient AI: adds guardrail details
+  - include_retrieval_info  # Gradient AI: adds retrieval details
+  - provide_citations  # Gradient AI: adds citations
+  # Already covered by an offered setting or a config field.
+  - max_completion_tokens  # LiteLLM translates max_tokens to it per provider
+  - thinking  # LiteLLM translates reasoning_effort to it; exact budgets are not offered
+  - output_config  # reasoning_effort sets its effort; its format part is response_format
+  - extra_headers  # the config's own extra_headers field
+  - timeout  # the config's own timeout field
+  - language  # the realtime service sends the voice agent's language per session
+  # Would break runs or bypass a rule.
+  - ignore_eos  # Fireworks: ignores the end token and generates until max_tokens; benchmarking only
+  - max_retries  # retries belong to the agent's retry policy and each agent's max_retry_limit
+  - cache_control  # marks single message and tool blocks for caching; nothing to attach it to on a config
+  - context_management  # Anthropic server-side compaction; changes the history the agent loop keeps
+  # A decision, not tuning.
+  - store  # OpenAI keeps prompts and answers for 30 days; a data retention policy, not offered
+  # LiteLLM reports it for ~40 providers that reuse OpenAI's settings list, and a setting
+  # cannot be offered for one provider only yet. OpenAI-only: GPT-5.5 takes only 24h, GPT-5.6+
+  # replaces it with prompt_cache_options.ttl.
+  - prompt_cache_retention  # how long OpenAI keeps a cached prompt prefix (in_memory / 24h)
+  # Only Gradient AI reports these, and it is not a registered provider: nobody could pick them.
+  - k  # number of knowledge base results
+  - retrieval_method  # how the knowledge base query is rewritten
+  - filter_kb_content_by_query_metadata  # filters knowledge base results by query metadata
 
 # The provider picker offers only the providers listed here, because each needs checked connection fields.
 providers:

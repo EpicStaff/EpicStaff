@@ -76,7 +76,11 @@ interface LoadedConfig {
 
 const KIND_LABELS: Record<ModelConfigKind, string> = { llm: 'LLM', embedding: 'Embedding' };
 /** Select options shown by name instead of their raw value. */
-const OPTION_LABELS: Record<string, Record<string, string>> = { reasoning_effort: REASONING_EFFORT_LABELS };
+const OPTION_LABELS: Record<string, Record<string, string>> = {
+    reasoning_effort: REASONING_EFFORT_LABELS,
+    reasoning_history: { disabled: 'Off', interleaved: 'Interleaved', preserved: 'Preserved' },
+    context_length_exceeded_behavior: { error: 'Fail the request', truncate: 'Shorten the answer' },
+};
 const MODEL_SEARCH_DEBOUNCE_MS = 300;
 const DUPLICATE_EMBEDDING_NAME_MESSAGE =
     'An embedding configuration with this name already exists. Please choose a different name.';
