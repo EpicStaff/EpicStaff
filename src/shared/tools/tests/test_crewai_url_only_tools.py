@@ -4,13 +4,12 @@ or a file:// URL gets an error and no local file is opened."""
 import builtins
 import subprocess
 import tempfile
-import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from conftest import FakeResponse, load_tool
+from conftest import FakeResponse, load_tool, make_fake_requests_get
 
 IMAGE_URL = "https://example.com/picture.png"
 SECRET = "SECRET-LOCAL-CONTENT"
@@ -96,34 +95,17 @@ def test_local_source_is_refused_without_opening_it(
     assert vision_api_image_urls == []
 
 
-class _FakeUrlopenResponse:
-    def __init__(self, body: bytes):
-        self._body = body
-
-    def read(self) -> bytes:
-        return self._body
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc_info):
-        return False
-
-
 def _serve_txt(monkeypatch, url):
     monkeypatch.setattr(
-        urllib.request,
-        "urlopen",
-        lambda requested: _FakeUrlopenResponse(b"first line\nneedle in a line\n") if requested == url else None,
+        "requests.get",
+        make_fake_requests_get({url: FakeResponse(text="first line\nneedle in a line\n")}),
     )
 
 
 def _serve_xml(monkeypatch, url):
     monkeypatch.setattr(
         "requests.get",
-        lambda requested, timeout: FakeResponse(text="<root><item>needle in xml</item></root>")
-        if requested == url
-        else FakeResponse(status_code=404),
+        make_fake_requests_get({url: FakeResponse(text="<root><item>needle in xml</item></root>")}),
     )
 
 
