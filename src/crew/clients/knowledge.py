@@ -1,4 +1,4 @@
-from typing import Literal, Self
+from typing import Literal
 
 import httpx
 from src.shared.enums.knowledge_new import RAGStrategy
@@ -11,23 +11,30 @@ from clients.errors import (
     ClientValidationError,
 )
 
+# knowledge_new's uvicorn closes a keep-alive connection after 5 s idle (its default). Ours must
+# expire first: a request sent on a connection the server is closing at that moment is reset
+# and surfaces as httpx.ReadError.
+KEEPALIVE_EXPIRY_SECONDS = 2.0
+
 
 class KnowledgeClient:
-    HOST = "http://knowledge_new:8100"
+    """Async client for knowledge_new's search API, shared by every session crew runs."""
 
-    def __init__(self, host: str = HOST):
-        self._client = httpx.Client(base_url=host)
+    def __init__(self, base_url: str, transport: httpx.AsyncBaseTransport | None = None):
+        self._client = httpx.AsyncClient(
+            base_url=base_url,
+            transport=transport,
+            limits=httpx.Limits(
+                max_connections=100,
+                max_keepalive_connections=20,
+                keepalive_expiry=KEEPALIVE_EXPIRY_SECONDS,
+            ),
+        )
 
-    def __enter__(self) -> Self:
-        return self
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
-    def __exit__(self, *exc_info) -> None:
-        self.close()
-
-    def close(self) -> None:
-        self._client.close()
-
-    def search_with_usage(
+    async def search_with_usage(
         self,
         strategy: RAGStrategy,
         rag_id: int,
@@ -40,7 +47,7 @@ class KnowledgeClient:
         llm_extra_headers: dict[str, str] | None = None,
     ) -> SearchOutcome:
         """Search a RAG, returning its result with the embedding usage knowledge_new reports."""
-        response = self._request(
+        response = await self._request(
             method="post",
             url=f"rags/{strategy}/{rag_id}/search/",
             json={
@@ -59,7 +66,7 @@ class KnowledgeClient:
             result = [FoundChunk(**d) for d in result]
         return SearchOutcome(result=result, usage=SearchUsage(**body.get("usage", {})))
 
-    def _request(
+    async def _request(
         self,
         method: Literal["get", "post", "put", "patch", "delete"],
         url: str,
@@ -67,7 +74,7 @@ class KnowledgeClient:
         timeout: float,
     ) -> httpx.Response:
         try:
-            response = getattr(self._client, method)(url=url, json=json, timeout=timeout)
+            response = await getattr(self._client, method)(url=url, json=json, timeout=timeout)
         except httpx.TimeoutException as e:
             raise ClientTimeoutError("Knowledge service timed out.") from e
         except httpx.RequestError as e:

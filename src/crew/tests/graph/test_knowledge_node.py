@@ -26,19 +26,16 @@ class FakeKnowledgeClient:
         )
     ]
 
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc_info):
-        pass
-
     search_usage: SearchUsage = SearchUsage()
 
-    def search_with_usage(self, **kwargs):
+    async def search_with_usage(self, **kwargs):
         return SearchOutcome(result=self.search_result, usage=self.search_usage)
+
+
+def make_service(knowledge_client=None) -> KnowledgeSearchService:
+    return KnowledgeSearchService(
+        redis_service=MagicMock(), knowledge_client=knowledge_client or FakeKnowledgeClient()
+    )
 
 
 def make_node(
@@ -60,11 +57,8 @@ def make_node(
     )
 
 
-def test_execute_emits_naive_extracted_chunks_message_shape(monkeypatch):
-    monkeypatch.setattr(
-        "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
-    )
-    service = KnowledgeSearchService(redis_service=MagicMock())
+def test_execute_emits_naive_extracted_chunks_message_shape():
+    service = make_service()
     writer = MagicMock()
 
     asyncio.run(
@@ -105,10 +99,7 @@ def test_execute_emits_naive_extracted_chunks_message_shape(monkeypatch):
 @pytest.mark.parametrize("answer", ["graph answer", ""])
 def test_execute_emits_graph_extracted_chunks_message_shape(monkeypatch, answer):
     monkeypatch.setattr(FakeKnowledgeClient, "search_result", answer)
-    monkeypatch.setattr(
-        "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
-    )
-    service = KnowledgeSearchService(redis_service=MagicMock())
+    service = make_service()
     node = make_node(
         service,
         rag_type_id="graph:7",
@@ -137,17 +128,14 @@ def test_execute_emits_graph_extracted_chunks_message_shape(monkeypatch, answer)
     }
 
 
-def test_execute_forwards_extra_headers_to_the_search(monkeypatch):
+def test_execute_forwards_extra_headers_to_the_search():
     received = {}
 
     class CapturingKnowledgeClient(FakeKnowledgeClient):
-        def search_with_usage(self, **kwargs):
+        async def search_with_usage(self, **kwargs):
             received.update(kwargs)
             return SearchOutcome(result=[])
 
-    monkeypatch.setattr(
-        "services.knowledge_search_service.KnowledgeClient", CapturingKnowledgeClient
-    )
     node = KnowledgeNode(
         session_id=1,
         node_name="knowledge_1",
@@ -158,7 +146,7 @@ def test_execute_forwards_extra_headers_to_the_search(monkeypatch):
         rag_type_id="graph:7",
         query="hello world",
         rag_search_config=GraphRagSearchConfig(search_params=GraphRagBasicSearchParams()),
-        knowledge_search_service=KnowledgeSearchService(redis_service=MagicMock()),
+        knowledge_search_service=make_service(CapturingKnowledgeClient()),
         embedder_extra_headers={"X-Emb": "emb-resolved"},
         llm_extra_headers={"X-Llm": "llm-resolved"},
     )
@@ -175,13 +163,10 @@ def test_execute_adds_search_embedding_usage_to_the_message_token_usage(monkeypa
         "search_usage",
         SearchUsage(embedding_tokens=12, embedding_cost_usd=0.0002),
     )
-    monkeypatch.setattr(
-        "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
-    )
     writer = MagicMock()
 
     asyncio.run(
-        make_node(KnowledgeSearchService(redis_service=MagicMock())).execute(
+        make_node(make_service()).execute(
             state={}, writer=writer, execution_order=3, input_={}
         )
     )
@@ -207,13 +192,10 @@ def test_execute_adds_graph_search_llm_usage_to_the_message_token_usage(monkeypa
             llm_cost_usd=0.003,
         ),
     )
-    monkeypatch.setattr(
-        "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
-    )
     writer = MagicMock()
 
     asyncio.run(
-        make_node(KnowledgeSearchService(redis_service=MagicMock())).execute(
+        make_node(make_service()).execute(
             state={}, writer=writer, execution_order=3, input_={}
         )
     )
@@ -240,19 +222,16 @@ def test_empty_search_usage_has_no_token_usage():
     assert SearchUsage().to_token_usage() == {}
 
 
-def search_query(monkeypatch, query_template: str, input_: dict) -> str:
+def search_query(query_template: str, input_: dict) -> str:
     """Run the node with `query_template` and return the query sent to the knowledge service."""
     received = {}
 
     class CapturingKnowledgeClient(FakeKnowledgeClient):
-        def search_with_usage(self, **kwargs):
+        async def search_with_usage(self, **kwargs):
             received.update(kwargs)
             return SearchOutcome(result=[])
 
-    monkeypatch.setattr(
-        "services.knowledge_search_service.KnowledgeClient", CapturingKnowledgeClient
-    )
-    node = make_node(KnowledgeSearchService(redis_service=MagicMock()))
+    node = make_node(make_service(CapturingKnowledgeClient()))
     node.query_template = query_template
 
     asyncio.run(node.execute(state={}, writer=MagicMock(), execution_order=1, input_=input_))
@@ -279,8 +258,8 @@ def search_query(monkeypatch, query_template: str, input_: dict) -> str:
         "key-path",
     ],
 )
-def test_query_is_rendered_from_the_input(monkeypatch, query_template, expected_query):
-    query = search_query(monkeypatch, query_template, {"topic": "cats", "q": {"text": "dogs"}})
+def test_query_is_rendered_from_the_input(query_template, expected_query):
+    query = search_query(query_template, {"topic": "cats", "q": {"text": "dogs"}})
 
     assert query == expected_query
 
@@ -289,7 +268,7 @@ class RecordingKnowledgeSearchService:
     def __init__(self):
         self.searches = []
 
-    def search_knowledges(self, **kwargs):
+    async def search_knowledges(self, **kwargs):
         self.searches.append(kwargs)
         return []
 
