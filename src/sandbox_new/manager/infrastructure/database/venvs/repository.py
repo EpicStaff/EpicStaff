@@ -82,16 +82,18 @@ class PiccoloVenvRepository(AbstractVenvRepository):
         rows = await VenvTable.objects().where(VenvTable.hash.is_in(list(hashes)))
         return [VenvMapper.to_domain(row) for row in rows]
 
-    async def list_using_custom_library(self, name: str) -> builtins.list[Venv]:
-        """Every venv whose `libs` holds an entry with this name marked custom.
+    async def list_using_custom_library(self, scope: str | None, name: str) -> builtins.list[Venv]:
+        """Every venv of this scope whose `libs` holds an entry with this name marked
+        custom.
 
         `@>` asks Postgres whether the JSONB array contains an element with these
         fields, so the whole venv table never crosses the wire. Raw SQL because
         Piccolo has no containment operator of its own.
         """
         rows = await VenvTable.raw(
-            "SELECT * FROM venv WHERE libs @> {}",
+            "SELECT * FROM venv WHERE libs @> {} AND scope IS NOT DISTINCT FROM {}",
             json.dumps([{"name": name, "is_custom": True}]),
+            scope,
         )
         return [VenvMapper.to_domain(VenvTable(**row)) for row in rows]
 
@@ -111,6 +113,7 @@ class PiccoloVenvRepository(AbstractVenvRepository):
             status=obj.status,
             error=obj.error,
             is_default=obj.is_default,
+            scope=obj.scope,
         )
         await row.save()
         return VenvMapper.to_domain(row)
@@ -124,6 +127,7 @@ class PiccoloVenvRepository(AbstractVenvRepository):
                     VenvTable.hash: obj.hash,
                     VenvTable.status: obj.status,
                     VenvTable.error: obj.error,
+                    VenvTable.scope: obj.scope,
                 }
             )
             .where(VenvTable.id == obj.id)
@@ -133,6 +137,13 @@ class PiccoloVenvRepository(AbstractVenvRepository):
 
     async def remove(self, obj: Venv) -> None:
         await VenvTable.delete().where(VenvTable.id == obj.id)
+
+
+def _in_scope(scope: str | None):
+    """The library rows of one scope, where no scope is a scope of its own."""
+    if scope is None:
+        return CustomLibraryTable.scope.is_null()
+    return CustomLibraryTable.scope == scope
 
 
 class PiccoloCustomLibraryRepository(AbstractCustomLibraryRepository):
@@ -171,24 +182,30 @@ class PiccoloCustomLibraryRepository(AbstractCustomLibraryRepository):
         )
         return CustomLibraryMapper.to_domain(row) if row is not None else None
 
-    async def retrieve_by_name(self, name: str) -> CustomLibrary | None:
+    async def retrieve_by_name(self, scope: str | None, name: str) -> CustomLibrary | None:
         row = await CustomLibraryTable.objects().get(
-            (CustomLibraryTable.name == name) & (CustomLibraryTable.is_deleted.eq(False))
+            _in_scope(scope)
+            & (CustomLibraryTable.name == name)
+            & (CustomLibraryTable.is_deleted.eq(False))
         )
         return CustomLibraryMapper.to_domain(row) if row is not None else None
 
-    async def list_by_names(self, names: builtins.list[str]) -> builtins.list[CustomLibrary]:
+    async def list_by_names(
+        self, scope: str | None, names: builtins.list[str]
+    ) -> builtins.list[CustomLibrary]:
         # Guarded: an empty `IN ()` would be dropped and the query would answer with
         # every library rather than none.
         if not names:
             return []
         rows = await CustomLibraryTable.objects().where(
-            CustomLibraryTable.name.is_in(names) & CustomLibraryTable.is_deleted.eq(False)
+            _in_scope(scope)
+            & CustomLibraryTable.name.is_in(names)
+            & CustomLibraryTable.is_deleted.eq(False)
         )
         return [CustomLibraryMapper.to_domain(row) for row in rows]
 
     async def create(self, obj: CustomLibrary) -> CustomLibrary:
-        row = CustomLibraryTable(name=obj.name, is_deleted=obj.is_deleted)
+        row = CustomLibraryTable(name=obj.name, scope=obj.scope, is_deleted=obj.is_deleted)
         await row.save()
         return CustomLibraryMapper.to_domain(row)
 
@@ -198,6 +215,7 @@ class PiccoloCustomLibraryRepository(AbstractCustomLibraryRepository):
             await CustomLibraryTable.update(
                 {
                     CustomLibraryTable.name: obj.name,
+                    CustomLibraryTable.scope: obj.scope,
                     CustomLibraryTable.is_deleted: obj.is_deleted,
                 }
             )

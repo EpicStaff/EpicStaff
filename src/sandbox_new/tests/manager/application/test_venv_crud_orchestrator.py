@@ -180,3 +180,19 @@ async def test_remove_of_the_default_venv_is_refused_and_not_committed(uow):
         await VenvCRUDOrchestrator(uow).remove(stored.id)
     assert stored.id in uow.venv_repo.rows
     assert uow.commits == 0
+
+
+async def test_create_stores_the_scope(uow):
+    venv = await VenvCRUDOrchestrator(uow).create("data", [], scope="org-1")
+
+    assert uow.venv_repo.rows[venv.id].scope == "org-1"
+
+
+async def test_update_of_the_scope_alone_does_not_rebuild(uow):
+    """The scope says where custom libraries are looked up, not what was built."""
+    stored = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    venv = await VenvCRUDOrchestrator(uow).update(stored.id, name=None, libs=None, scope="org-1")
+
+    assert venv.scope == "org-1"
+    assert venv.status is VenvStatus.COMPLETED

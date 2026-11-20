@@ -37,8 +37,9 @@ class AbstractVenvRepository(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def list_using_custom_library(self, name: str) -> builtins.list[Venv]:
-        """Return every venv that names this custom library, whatever its build state.
+    async def list_using_custom_library(self, scope: str | None, name: str) -> builtins.list[Venv]:
+        """Return every venv of this scope that names this custom library, whatever
+        its build state.
 
         Not narrowed to one version: what counts as use differs between deleting a
         library and deleting one of its wheels, so the caller decides and this hands
@@ -93,12 +94,15 @@ class AbstractCustomLibraryRepository(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def retrieve_by_name(self, name: str) -> CustomLibrary | None:
-        """Return the library with this canonical name, for the uniqueness check."""
+    async def retrieve_by_name(self, scope: str | None, name: str) -> CustomLibrary | None:
+        """Return the library of this scope with this canonical name, for the
+        uniqueness check."""
 
     @abc.abstractmethod
-    async def list_by_names(self, names: builtins.list[str]) -> builtins.list[CustomLibrary]:
-        """Return the libraries among these names, in one call.
+    async def list_by_names(
+        self, scope: str | None, names: builtins.list[str]
+    ) -> builtins.list[CustomLibrary]:
+        """Return the libraries of this scope among these names, in one call.
 
         A venv may name several, and resolving them one at a time would be one query
         per entry on a tick that runs every five seconds. A name nobody stored is

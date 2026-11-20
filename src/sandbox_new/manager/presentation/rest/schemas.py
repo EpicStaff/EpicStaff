@@ -2,7 +2,7 @@ import tarfile
 import zipfile
 from datetime import datetime
 from pathlib import PurePosixPath
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from foundation.schemas import Schema
 from litestar.datastructures import UploadFile
@@ -80,9 +80,15 @@ class LibraryRetrieveSchema(Schema):
         )
 
 
+# The opaque namespace the gateway puts a venv or a custom library in; the sandbox
+# only compares it. Absent leaves the row without one.
+Scope = Annotated[str, Field(min_length=1, max_length=255)]
+
+
 class VenvCreateSchema(Schema):
     name: str
     libs: list[LibraryWriteSchema]
+    scope: Scope | None = None
 
 
 class VenvListSchema(Schema):
@@ -120,6 +126,8 @@ class VenvUpdateSchema(Schema):
     # An absent `libs` leaves the declared libraries alone; a list replaces all of them.
     name: str | None = None
     libs: list[LibraryWriteSchema] | None = None
+    # An absent `scope` leaves the venv where it is.
+    scope: Scope | None = None
 
 
 class StorageCredentialsSchema(Schema):
@@ -300,6 +308,12 @@ class CustomLibraryCreateSchema(WheelUploadSchema):
     first successful build produces. The upload itself is validated exactly like any
     other version's.
     """
+
+    scope: Scope | None = None
+
+
+class CustomLibraryUpdateSchema(Schema):
+    scope: Scope
 
 
 class CustomLibraryRetrieveSchema(Schema):

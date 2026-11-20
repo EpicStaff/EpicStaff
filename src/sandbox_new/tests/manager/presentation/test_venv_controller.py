@@ -435,3 +435,19 @@ def test_create_refuses_a_specification_with_an_empty_clause(client, venv_reposi
     assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
     assert "has an empty clause" in response.text
     assert venv_repository.rows == {}
+
+
+def test_create_stores_the_scope(client, venv_repository):
+    response = client.post("/venvs", json={"name": "data", "libs": [], "scope": "org-1"})
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+    assert venv_repository.rows[response.json()["id"]].scope == "org-1"
+
+
+def test_update_moves_the_venv_to_a_scope(client, venv_repository):
+    stored = venv_repository.seed(make_venv(name="data"))[0]
+
+    response = client.patch(f"/venvs/{stored.id}", json={"scope": "org-1"})
+
+    assert response.status_code == status_codes.HTTP_200_OK
+    assert venv_repository.rows[stored.id].scope == "org-1"

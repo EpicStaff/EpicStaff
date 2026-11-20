@@ -38,6 +38,7 @@ def make_venv(
     status: VenvStatus = VenvStatus.DECLARED,
     error: str | None = None,
     is_default: bool = False,
+    scope: str | None = None,
     created_at: datetime | None = None,
     updated_at: datetime | None = None,
 ) -> Venv:
@@ -49,6 +50,7 @@ def make_venv(
         status=status,
         error=error,
         is_default=is_default,
+        scope=scope,
         created_at=created_at,
         updated_at=updated_at,
     )
