@@ -224,16 +224,16 @@ async def test_lifespan_shutdown_is_bounded_when_the_listener_is_stuck_in_regist
     config = NgrokConfigData(name="hook", org_id=1, auth_token=seal("test-token"))
     listener_finished = asyncio.Event()
 
-    async def listener_stuck_in_register(redis_service, tunnel_registry):
+    async def listener_stuck_in_register(_listener):
         try:
-            await tunnel_registry.register(config)
+            await registry.register(config)
         finally:
             listener_finished.set()
 
     async def wait_for_blocked_start():
         assert await asyncio.to_thread(connect_started.wait, 5)
 
-    with patch("app.main.listen_redis", new=listener_stuck_in_register):
+    with patch("app.main.TunnelConfigListener.run", new=listener_stuck_in_register):
         try:
             await _run_lifespan(registry, timeout=3, while_running=wait_for_blocked_start)
         finally:

@@ -516,14 +516,15 @@ async def _enter_lifespan(while_running=None):
 
 
 class _RecordingListener:
-    """listen_redis stand-in that records when the listener, the only registrar, starts."""
+    """TunnelConfigListener.run stand-in that records when the listener, the only
+    registrar, starts."""
 
     def __init__(self, events: list[str]):
         self.events = events
         self.started = asyncio.Event()
         self.started_for_threads = threading.Event()
 
-    async def __call__(self, redis_service, tunnel_registry):
+    async def __call__(self):
         self.events.append("listener")
         self.started.set()
         self.started_for_threads.set()
@@ -546,7 +547,7 @@ async def test_startup_sweeps_before_the_listener_can_register_tunnels(lifespan_
             "app.main.remove_stale_working_directories",
             side_effect=sweep_waiting_for_an_early_listener,
         ),
-        patch("app.main.listen_redis", new=listener),
+        patch("app.main.TunnelConfigListener.run", new=listener),
     ):
         await _enter_lifespan(while_running=listener.wait_started)
 
@@ -562,7 +563,7 @@ async def test_startup_continues_when_the_sweep_raises(lifespan_dependencies):
             "app.main.remove_stale_working_directories",
             side_effect=RuntimeError("sweep failed"),
         ),
-        patch("app.main.listen_redis", new=listener),
+        patch("app.main.TunnelConfigListener.run", new=listener),
     ):
         await _enter_lifespan(while_running=listener.wait_started)
 
