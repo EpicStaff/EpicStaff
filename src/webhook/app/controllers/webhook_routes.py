@@ -7,18 +7,27 @@ from loguru import logger
 
 from app.core.settings import settings
 from app.services.redis_service import (
-    NoWebhookSubscriberError,
     RedisService,
+    WebhookDeliveryUnavailableError,
     get_redis_service,
+)
+from app.services.tunnel_config_listener import (
+    TunnelConfigListener,
+    get_tunnel_config_listener,
 )
 from app.services.tunnel_registry import (
     AmbiguousWebhookPathError,
     TunnelRegistry,
+    UnavailableWebhookPathError,
     UnregisteredWebhookPathError,
     get_tunnel_registry,
 )
 
 router = APIRouter()
+
+# Sent with every 503 a sender should retry; senders such as Telegram redeliver only after
+# a non-2xx.
+RETRY_AFTER_SECONDS = "30"
 
 
 @router.post("/webhooks/{custom_path:path}", summary="Receives a generic webhook")
@@ -29,12 +38,32 @@ async def handle_webhook(
     redis: RedisService = Depends(get_redis_service),
     registry: TunnelRegistry = Depends(get_tunnel_registry),
 ):
+    if not registry.has_full_config_set():
+        logger.warning(
+            "Webhook PATH: {} | webhook configs not synced with Django yet.", custom_path
+        )
+        # Not 404: until the first sync the path may well exist, and senders treat a 404
+        # as a wrong URL rather than retrying.
+        raise HTTPException(
+            status_code=503,
+            detail="Webhook configs are not synced with Django yet",
+            headers={"Retry-After": RETRY_AFTER_SECONDS},
+        )
+
     try:
         config_id, config = await registry.resolve_by_path(custom_path)
     except UnregisteredWebhookPathError as e:
         logger.warning(str(e))
         raise HTTPException(
             status_code=404, detail=f"No webhook registered for path '{custom_path}'"
+        ) from e
+    except UnavailableWebhookPathError as e:
+        logger.warning(str(e))
+        # Not 404 for the same reason as before the first sync: the path exists in Django.
+        raise HTTPException(
+            status_code=503,
+            detail="Webhook is temporarily unavailable",
+            headers={"Retry-After": RETRY_AFTER_SECONDS},
         ) from e
     except AmbiguousWebhookPathError as e:
         logger.error(str(e))
@@ -87,14 +116,14 @@ async def handle_webhook(
             payload=payload,
             config_id=config_id,
         )
-    except NoWebhookSubscriberError as e:
+    except WebhookDeliveryUnavailableError as e:
         logger.warning("Webhook PATH: {} | CONFIG ID: {} | {}", custom_path, config_id, str(e))
-        # Senders such as Telegram redeliver only after a non-2xx; a 200 here would
-        # acknowledge an event nobody received.
+        # A 200 here would acknowledge an event nobody received: no listener was
+        # subscribed, or Redis itself failed or timed out.
         raise HTTPException(
             status_code=503,
             detail="Webhook receiver is temporarily unavailable",
-            headers={"Retry-After": "30"},
+            headers={"Retry-After": RETRY_AFTER_SECONDS},
         ) from e
 
     if custom_path in settings.webhook_empty_json_paths_set:
@@ -104,6 +133,18 @@ async def handle_webhook(
 
 
 @router.get("/")
-async def index():
-    """Health check route."""
+async def index(listener: TunnelConfigListener = Depends(get_tunnel_config_listener)):
+    """Health check route.
+
+    Fails once the tunnel config listener has gone too long without applying a config set
+    from Django over Redis: the registry then no longer follows Django, so rotated secrets
+    and deleted webhooks keep working and new webhooks are unknown. Configs of an applied
+    set that failed to register do not fail it: their paths answer 503 on their own, and
+    one organization's broken config must not mark the whole service unhealthy.
+    """
+    if not listener.is_healthy():
+        raise HTTPException(
+            status_code=503,
+            detail="No webhook config set from Django was applied over Redis for too long.",
+        )
     return {"message": "Webhook service is running."}
