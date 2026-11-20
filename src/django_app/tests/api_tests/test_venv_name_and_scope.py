@@ -1,6 +1,7 @@
-"""The sandbox scope of a venv is always the active organization's.
+"""A venv name is unique within an organization, and the sandbox scope is the org's.
 
-The sandbox knows no organizations, so the gateway sets `scope` from the active
+The sandbox knows no organizations, so both rules live in the gateway: the name check
+reads the names of the org's own venvs, and `scope` is always set from the active
 organization, whatever the caller sent. The sandbox is the only thing replaced.
 """
 
@@ -60,3 +61,45 @@ def test_a_rename_cannot_move_a_venv_to_another_scope(
 
     assert response.status_code == status.HTTP_200_OK
     assert "scope" not in sandbox.venvs[4711]
+
+
+@pytest.mark.django_db
+def test_create_refuses_a_name_the_org_already_has(auth_client, default_org, sandbox):
+    upstream_venv(sandbox, default_org, name="data", venv_id=4711)
+
+    response = auth_client.post("/api/venvs/", {"name": "data", "libs": []}, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "venv_name_taken"
+    assert list(sandbox.venvs) == [4711]
+    assert SandboxVenvBinding.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_create_allows_a_name_another_org_has(auth_client, other_org, sandbox):
+    upstream_venv(sandbox, other_org, name="data", venv_id=4711)
+
+    response = auth_client.post("/api/venvs/", {"name": "data", "libs": []}, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.django_db
+def test_rename_refuses_a_name_another_venv_of_the_org_has(auth_client, default_org, sandbox):
+    upstream_venv(sandbox, default_org, name="data", venv_id=4711)
+    binding = upstream_venv(sandbox, default_org, name="scratch", venv_id=4712)
+
+    response = auth_client.patch(f"/api/venvs/{binding.pk}/", {"name": "data"}, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "venv_name_taken"
+    assert sandbox.venvs[4712]["name"] == "scratch"
+
+
+@pytest.mark.django_db
+def test_a_venv_keeps_its_own_name_on_rename(auth_client, default_org, sandbox):
+    binding = upstream_venv(sandbox, default_org, name="data", venv_id=4711)
+
+    response = auth_client.patch(f"/api/venvs/{binding.pk}/", {"name": "data"}, format="json")
+
+    assert response.status_code == status.HTTP_200_OK

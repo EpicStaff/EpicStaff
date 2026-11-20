@@ -239,6 +239,20 @@ class TestImport:
 
         assert len(id_mapper.get_created_ids(EntityType.VENV)) == 1
 
+    def test_an_environment_named_like_one_of_the_org_is_renamed(
+        self, default_org, target_org, sandbox, regular_user
+    ):
+        """Not reused, since its libraries differ, and a venv name is unique in an org."""
+        source = upstream_venv(sandbox, default_org, venv_id=4711)
+        export_data = export_tool(tool_in(default_org, source), default_org)
+        upstream_venv(sandbox, target_org, libs=[], venv_id=4712)
+
+        id_mapper, _ = import_into(export_data, target_org, user=regular_user)
+
+        [new_binding_id] = id_mapper.get_created_ids(EntityType.VENV)
+        new_binding = SandboxVenvBinding.objects.get(pk=new_binding_id)
+        assert sandbox.venvs[int(new_binding.resource_id)]["name"] == "scraper-venv-2"
+
     def test_the_created_environment_is_put_in_the_importing_orgs_scope(
         self, default_org, target_org, sandbox, regular_user
     ):

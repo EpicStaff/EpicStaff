@@ -162,7 +162,8 @@ class TestImportJob:
                 EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
             )
         )
-        sandbox.refusals["broken-venv"] = REFUSAL
+        # The org already has a venv of that name, so the import creates it renamed.
+        sandbox.refusals["broken-venv-2"] = REFUSAL
         store = TransferArchiveStore(backend=FakeStorageBackend())
         job = TransferJob.objects.create(
             org=default_org,
@@ -184,12 +185,12 @@ class TestImportJob:
         job.refresh_from_db()
         assert job.status == TransferJob.Status.FAILED
         assert job.error == {"code": "invalid_file", "message": REFUSAL}
-        # The flow's venvs are imported in no fixed order, so `scraper-venv` is created
+        # The flow's venvs are imported in no fixed order, so `scraper-venv-2` is created
         # before the refusal or not at all; whatever the job created upstream is removed.
         created_by_job = {venv_id for venv_id in sandbox.venvs if venv_id not in (4711, 4712)}
         assert {int(removed_id) for removed_id in sandbox.removed} == created_by_job
         assert [sandbox.venvs[venv_id]["name"] for venv_id in created_by_job] in (
             [],
-            ["scraper-venv"],
+            ["scraper-venv-2"],
         )
         assert set(SandboxVenvBinding.objects.values_list("pk", flat=True)) == bindings_before

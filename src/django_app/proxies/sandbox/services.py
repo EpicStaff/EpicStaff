@@ -16,9 +16,11 @@ binding is gone.
 
 from collections.abc import Iterable
 
+from django.db import transaction
 from django.db.models import Q, QuerySet
 from loguru import logger
 from packaging.utils import canonicalize_name
+from rbac.models import Organization
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     PythonNode,
@@ -28,7 +30,7 @@ from tables.models.python_models import PythonCodeTool
 
 from proxies.models import AbstractBinding
 from proxies.sandbox.clients import SandboxCustomLibraryClient, SandboxVenvClient
-from proxies.sandbox.errors import UnknownCustomLibraryError, VenvInUseError
+from proxies.sandbox.errors import UnknownCustomLibraryError, VenvInUseError, VenvNameTakenError
 from proxies.sandbox.models import SandboxCustomLibraryBinding, SandboxVenvBinding
 
 __all__ = ["CustomLibraryService", "VenvService", "sandbox_scope"]
@@ -151,22 +153,27 @@ class VenvService:
         Raises:
             UnknownCustomLibraryError: Some declared stored library is not this
                 organization's. Rendered as 400.
+            VenvNameTakenError: The organization already has a venv of this name.
+                Rendered as 400.
         """
         self._assert_custom_libraries_owned(data, org_id)
         payload = {**_without_scope(data), "scope": sandbox_scope(org_id)}
-        with self.client_class() as client:
-            venv = client.create(payload)
+        with transaction.atomic():
+            self._lock_names(org_id)
+            self._assert_name_free(payload.get("name"), org_id)
+            with self.client_class() as client:
+                venv = client.create(payload)
 
-        if created_venv_ids is not None:
-            created_venv_ids.append(venv["id"])
+            if created_venv_ids is not None:
+                created_venv_ids.append(venv["id"])
 
-        # TODO: bind the venv and the binding in one transaction -- if this write
-        # fails the upstream venv is orphaned (compensation/atomic deferred).
-        binding = SandboxVenvBinding.objects.create(
-            org_id=org_id,
-            created_by=created_by,
-            resource_id=str(venv["id"]),
-        )
+            # TODO: bind the venv and the binding in one transaction -- if this write
+            # fails the upstream venv is orphaned (compensation/atomic deferred).
+            binding = SandboxVenvBinding.objects.create(
+                org_id=org_id,
+                created_by=created_by,
+                resource_id=str(venv["id"]),
+            )
         return binding, venv
 
     def update(self, binding: SandboxVenvBinding, data: dict) -> dict:
@@ -175,10 +182,19 @@ class VenvService:
         Raises:
             UnknownCustomLibraryError: Some declared stored library is not this
                 organization's. Rendered as 400.
+            VenvNameTakenError: The new name is another venv's of the organization.
+                Rendered as 400.
         """
         self._assert_custom_libraries_owned(data, binding.org_id)
-        with self.client_class() as client:
-            return client.update(binding.resource_id, _without_scope(data))
+        payload = _without_scope(data)
+        with transaction.atomic():
+            if "name" in payload:
+                self._lock_names(binding.org_id)
+                self._assert_name_free(
+                    payload["name"], binding.org_id, except_resource_id=binding.resource_id
+                )
+            with self.client_class() as client:
+                return client.update(binding.resource_id, payload)
 
     def delete(self, binding: SandboxVenvBinding) -> str | None:
         """Delete an environment nothing runs in any more, upstream and here.
@@ -226,6 +242,43 @@ class VenvService:
                     logger.exception(
                         "Could not remove venv {} created by work that rolled back", venv_id
                     )
+
+    def names_in_org(self, org_id: int, *, except_resource_id: str | None = None) -> set[str]:
+        """The names of the organization's venvs, leaving out one of them if asked."""
+        bindings = SandboxVenvBinding.objects.filter(org_id=org_id)
+        if except_resource_id is not None:
+            bindings = bindings.exclude(resource_id=except_resource_id)
+        _page, pairs = self.list_page(bindings)
+        return {venv.get("name") for venv, _binding in pairs}
+
+    @staticmethod
+    def _lock_names(org_id: int | None) -> None:
+        """Hold the organization's row until the caller's transaction ends.
+
+        The names live in the sandbox, so no constraint here can keep two of them
+        apart: two requests checking the same name at once would both find it free.
+        Locking the organization makes the check and the write one step per org.
+        """
+        if org_id is not None:
+            list(Organization.objects.select_for_update().filter(pk=org_id).values_list("pk"))
+
+    def _assert_name_free(
+        self, name, org_id: int | None, *, except_resource_id: str | None = None
+    ) -> None:
+        """Refuse a venv name the organization already uses.
+
+        Without an organization there is nothing the name has to be unique in. A name
+        that is not a string is left for the sandbox to refuse.
+
+        Raises:
+            VenvNameTakenError: Another venv of the organization has this name.
+        """
+        if org_id is None or not isinstance(name, str):
+            return
+        if name in self.names_in_org(org_id, except_resource_id=except_resource_id):
+            raise VenvNameTakenError(
+                f"This organization already has a virtual environment named '{name}'."
+            )
 
     def _assert_custom_libraries_owned(self, data: dict, org_id: int | None) -> None:
         """Refuse a venv that names a stored library the organization does not have.
