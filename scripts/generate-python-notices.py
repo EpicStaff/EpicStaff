@@ -371,9 +371,10 @@ def is_internal_placeholder_package(version: str, entry: dict) -> bool:
     return spdx.upper() == "UNKNOWN" and license_text.upper() == "UNKNOWN"
 
 
-def collect_packages() -> dict[tuple[str, str], dict]:
+def collect_packages() -> tuple[dict[tuple[str, str], dict], list[str]]:
     """Scan each service's .venv with pip-licenses and return a deduplicated
-    dict keyed by (normalized_name, version)."""
+    dict keyed by (normalized_name, version), plus the services that could
+    not be scanned."""
     packages: dict[tuple[str, str], dict] = {}
     skipped: list[str] = []
 
@@ -438,10 +439,7 @@ def collect_packages() -> dict[tuple[str, str], dict]:
                 "url": (entry.get("URL") or "").strip(),
             }
 
-    if skipped:
-        log(f"services skipped (bootstrap failed or no pyproject.toml): {', '.join(skipped)}")
-
-    return packages
+    return packages, skipped
 
 
 def derive_copyright(pkg: dict) -> str:
@@ -676,7 +674,12 @@ def main() -> int:
     provenance = {"sha": sha, "date": date, "lock_hashes": lock_hashes_str}
     log(f"provenance: commit={sha[:12]}, date={date}")
 
-    packages = collect_packages()
+    packages, skipped = collect_packages()
+    # Every entry in SERVICES has a pyproject.toml, so a skipped service failed
+    # to sync or scan: notices without its packages would under-report what ships.
+    if skipped:
+        log(f"error: could not scan {', '.join(skipped)} -- THIRD-PARTY-NOTICES.md was not changed")
+        return 1
     body = build_markdown(packages, provenance)
 
     try:
