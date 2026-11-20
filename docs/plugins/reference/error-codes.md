@@ -59,7 +59,8 @@ back.
 | `invalid_authorize_request` | 400 | A [plugin login](token-exchange.md) authorize request with a missing, repeated or malformed parameter, or one the protocol does not name (such as `redirect_uri` or `return_path`). Answered as JSON, never as a redirect; `loc` is the parameter's name |
 | `invalid_grant` | 400 | A token exchange whose code is unknown, expired (codes live 60 s) or already used, whose `code_verifier` does not match the code's challenge, that does not come from the plugin's own origin, or whose person changed their password after the code was issued. A failed exchange still uses up the code |
 | `plugin_access_denied` | 403 | A token exchange for a person who lost access to the plugin in that organization after the code was issued, or for a plugin that stopped running since |
-| `plugin_origin_refused` | 403 | A request from a plugin page (an `Origin` in the plugins base domain) to anything but the token exchange, `/api/plugin-public/*` included: plugin pages cannot call EpicStaff's API. The authorize navigation is not refused. Also a request with `Origin: null` to any `/api/auth/` endpoint or the password-change confirm, other than `GET`, `HEAD` and `OPTIONS`. See [what a plugin page cannot do](token-exchange.md#what-a-plugin-page-cannot-do) |
+| `plugin_host_not_served_here` | 503 | The plugin's host does not prove that this EpicStaff serves it (see [the host check](../operator/enable-plugins.md#the-host-check)): `plugin-authorize` answers it as JSON on EpicStaff's own origin, with no redirect and the message "<host> is served by another server, not this EpicStaff: check DNS for that name.", and approving a package (an upgrade included) is refused with it for the same reason |
+| `plugin_origin_refused` | 403 | A request from a plugin page (an `Origin` that matches the deployment's `PLUGINS_HOST_TEMPLATE`) to anything but the token exchange, `/api/plugin-public/*` included: plugin pages cannot call EpicStaff's API. The authorize navigation is not refused. Also a request with `Origin: null` to any `/api/auth/` endpoint or the password-change confirm, other than `GET`, `HEAD` and `OPTIONS`. See [what a plugin page cannot do](token-exchange.md#what-a-plugin-page-cannot-do) |
 | `service_account_not_authenticated` | 401 | A plugin backend's `Authorization: PluginKey <key>` that EpicStaff does not accept: an unknown, revoked or replaced key (a replaced key works for 10 minutes after the next one is minted), a key whose organization is inactive or whose grant does not hold keys (only `granting`, `active` and `upgrading` do), or a request that did not come through the plugins network. Comes with `WWW-Authenticate: PluginKey` on the `/api/plugin-runtime/` endpoints. Read the key from the runtime file again and retry once; see the [service account API](service-account-api.md) |
 | `invalid_on_behalf_of` | 400 | `X-EpicStaff-On-Behalf-Of` is not a user id: a decimal positive whole number below 2^63 |
 | `on_behalf_of_not_allowed` | 403 | The person `X-EpicStaff-On-Behalf-Of` names may not use the plugin in the service account's organization: unknown, deactivated, no member, no `read` on the plugin, or the grant is not active (always while the install hook runs). One answer for every reason |
@@ -84,7 +85,7 @@ back.
 
 ## Gateway codes
 
-What a client of a plugin's own address (`https://<id>.<plugins base domain>/api/**`) gets when
+What a client of a plugin's own address (`https://<plugin host>/api/**`) gets when
 the gateway refuses its request. The request never reaches the plugin.
 
 | Code | Status | When |

@@ -3,7 +3,7 @@
 #   docker compose -f docker-compose.yaml -f docker-compose.plugins-dev.yaml --env-file ./.env up -d
 #
 # PLUGINS_DEV_MODE itself stays in .env; django_app and epicstaff-nginx refuse it unless
-# DJANGO_DEBUG=true, EpicStaff and PLUGINS_BASE_DOMAIN use .localhost names, and this file is in
+# DJANGO_DEBUG=true, EpicStaff and PLUGINS_HOST_TEMPLATE use .localhost names, and this file is in
 # the command. This file holds only what docker-compose.yaml must never have. It opens:
 #   - host.docker.internal for django_app: the one name it resolves for a development target, to
 #     the address it gives nginx. Docker Desktop has the name built in; on Linux, host-gateway is

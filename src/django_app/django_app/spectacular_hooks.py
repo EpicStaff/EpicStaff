@@ -117,6 +117,7 @@ TAG_MAP = [
     ("api/plugins", "Plugins"),
     ("api/plugin-nodes", "Plugins"),
     ("api/plugin-public", "Plugins"),
+    ("api/plugin-gateway", "Plugins"),
     ("api/plugin-runtime", "Plugins"),
     ("api/admin/plugins", "Plugins"),
     ("api/admin/plugin-role-permissions", "Plugins"),
