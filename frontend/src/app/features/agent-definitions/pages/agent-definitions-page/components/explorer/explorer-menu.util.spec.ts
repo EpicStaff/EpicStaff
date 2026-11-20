@@ -103,6 +103,7 @@ describe('agentsSectionMenuItems', () => {
 
 const AGENT_CREATE = `${ResourceCode.Agents}:${ActionCode.Create}`;
 const SURFACE_CREATE = `${ResourceCode.Surfaces}:${ActionCode.Create}`;
+const SURFACE_READ = `${ResourceCode.Surfaces}:${ActionCode.Read}`;
 const AGENT_READ = `${ResourceCode.Agents}:${ActionCode.Read}`;
 
 /** A user holding exactly the given `resource:action` permissions. */
@@ -194,5 +195,39 @@ describe('New group menu item gating', () => {
 
         expect(shown(header, [AGENT_READ])).toEqual(['Collapse all', 'Expand all']);
         expect(shown(header, [AGENT_CREATE])).toEqual(['New group']);
+    });
+
+    describe('the Shared Surfaces section header', () => {
+        const header: ExplorerMenuSubject = { kind: 'section-header', section: 'surfaces' };
+
+        it.each<[string, string[], string[]]>([
+            ['Surfaces:Read alone: only Collapse all and Expand all', [SURFACE_READ], ['Collapse all', 'Expand all']],
+            ['Agents:Create alone: only New group', [AGENT_CREATE], ['New group']],
+            [
+                'both: New group, Collapse all, Expand all',
+                [AGENT_CREATE, SURFACE_READ],
+                ['New group', 'Collapse all', 'Expand all'],
+            ],
+            ['Agents:Read does not offer Collapse all or Expand all', [AGENT_READ], []],
+            ['Surfaces:Create does not offer anything', [SURFACE_CREATE], []],
+        ])('with %s', (_description, granted, expected) => {
+            expect(shown(header, granted)).toEqual(expected);
+        });
+
+        it('offers no export or import item', () => {
+            const user = userWith(AGENT_CREATE, SURFACE_READ, `${ResourceCode.Agents}:${ActionCode.Export}`);
+
+            expect(
+                outline(groupMenuItems(header, GROUPS).filter((item) => user.can(item.resource, item.action)))
+            ).not.toContain('Export…');
+        });
+
+        it('hides Collapse all and Expand all while there are no groups, like the Agents header', () => {
+            const user = userWith(AGENT_CREATE, SURFACE_READ);
+
+            expect(outline(groupMenuItems(header, []).filter((item) => user.can(item.resource, item.action)))).toEqual([
+                'New group',
+            ]);
+        });
     });
 });

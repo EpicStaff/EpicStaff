@@ -273,6 +273,52 @@ describe('AgentsPageStore moveSelectionToGroup (the breadcrumb group crumb)', ()
     });
 });
 
+describe('AgentsPageStore section header group actions', () => {
+    beforeEach(() => localStorage.clear());
+    afterEach(() => localStorage.clear());
+
+    function storeWithTwoGroups(): AgentsPageStore {
+        return loadStore({
+            agents: [agent(1, 'Lead qualifier', SALES)],
+            surfaces: [surface(10, 'CRM access', SALES)],
+            groups: [group(SALES, 'Sales'), group(SUPPORT, 'Support')],
+        });
+    }
+
+    const collapsedState = (store: AgentsPageStore): Record<string, boolean[]> => ({
+        agents: [SALES, SUPPORT].map((id) => store.isGroupCollapsed('agents', id)),
+        surfaces: [SALES, SUPPORT].map((id) => store.isGroupCollapsed('surfaces', id)),
+    });
+
+    it('collapses every Shared Surfaces group and leaves the Agents groups alone', () => {
+        const store = storeWithTwoGroups();
+
+        store.setAllGroupsCollapsed('surfaces', true);
+
+        expect(collapsedState(store)).toEqual({ agents: [false, false], surfaces: [true, true] });
+    });
+
+    it('expands every Shared Surfaces group and keeps the Agents groups collapsed', () => {
+        const store = storeWithTwoGroups();
+        store.setAllGroupsCollapsed('agents', true);
+        store.setAllGroupsCollapsed('surfaces', true);
+
+        store.setAllGroupsCollapsed('surfaces', false);
+
+        expect(collapsedState(store)).toEqual({ agents: [true, true], surfaces: [false, false] });
+    });
+
+    it('opens the new group input in Shared Surfaces, expanding the section', () => {
+        const store = storeWithTwoGroups();
+        if (store.isSectionExpanded('surfaces')) store.toggleSection('surfaces');
+
+        store.startNewGroup(null, 'surfaces');
+
+        expect(store.newGroupDraft()).toEqual({ section: 'surfaces', assign: null });
+        expect(store.isSectionExpanded('surfaces')).toBe(true);
+    });
+});
+
 describe('AgentsPageStore deleteGroup', () => {
     beforeEach(() => localStorage.clear());
     afterEach(() => localStorage.clear());

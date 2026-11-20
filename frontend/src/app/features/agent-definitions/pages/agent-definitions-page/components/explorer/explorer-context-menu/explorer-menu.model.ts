@@ -25,10 +25,10 @@ export interface GroupHeaderMenuSubject {
     groupId: number;
 }
 
-/** The Agents section header's ⋮. */
+/** The ⋮ of the Agents or Shared Surfaces section header. */
 export interface SectionHeaderMenuSubject {
     kind: 'section-header';
-    section: 'agents';
+    section: GroupedSectionId;
 }
 
 /** What an explorer menu was opened on. */

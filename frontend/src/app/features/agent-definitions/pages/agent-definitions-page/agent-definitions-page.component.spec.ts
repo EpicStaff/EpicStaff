@@ -33,7 +33,7 @@ import { SurfacesApiService } from '../../services/surfaces-api.service';
 import { AgentDefinitionsPageComponent } from './agent-definitions-page.component';
 import { AgentDetailComponent } from './components/agent-detail/agent-detail.component';
 import { DetailHeaderComponent } from './components/detail-header/detail-header.component';
-import { AGENTS_SECTION_MENU_ACTION } from './components/explorer/explorer-menu.util';
+import { AGENTS_SECTION_MENU_ACTION, GROUP_MENU_ACTION } from './components/explorer/explorer-menu.util';
 
 const AGENT: AgentDefinition = {
     id: 3,
@@ -492,6 +492,47 @@ describe('AgentDefinitionsPageComponent Agents section menu', () => {
 
         expect(startAgentExport).toHaveBeenCalledOnce();
         expect(importAgents).not.toHaveBeenCalled();
+    });
+});
+
+describe('AgentDefinitionsPageComponent group items of a section header menu', () => {
+    function chooseHeaderItem(
+        fixture: ComponentFixture<AgentDefinitionsPageComponent>,
+        section: 'agents' | 'surfaces',
+        action: string
+    ): { startNewGroup: ReturnType<typeof vi.fn>; setAllGroupsCollapsed: ReturnType<typeof vi.fn> } {
+        const store = { startNewGroup: vi.fn(), setAllGroupsCollapsed: vi.fn() };
+        Object.assign(fixture.debugElement.injector.get(AgentsPageStore), store);
+        fixture.componentInstance.onExplorerTreeMenu({
+            node: { kind: 'section-header', section },
+            action,
+            trigger: document.createElement('button'),
+        });
+        return store;
+    }
+
+    it.each(['agents', 'surfaces'] as const)(
+        'New group on the %s header starts the group input in that section',
+        (section) => {
+            const { fixture } = render(true);
+
+            const { startNewGroup } = chooseHeaderItem(fixture, section, GROUP_MENU_ACTION.newGroup);
+
+            expect(startNewGroup).toHaveBeenCalledExactlyOnceWith(null, section);
+        }
+    );
+
+    it.each([
+        ['surfaces', GROUP_MENU_ACTION.collapseAll, true],
+        ['surfaces', GROUP_MENU_ACTION.expandAll, false],
+        ['agents', GROUP_MENU_ACTION.collapseAll, true],
+        ['agents', GROUP_MENU_ACTION.expandAll, false],
+    ] as const)('%s header %s collapses/expands only that section', (section, action, collapsed) => {
+        const { fixture } = render(true);
+
+        const { setAllGroupsCollapsed } = chooseHeaderItem(fixture, section, action);
+
+        expect(setAllGroupsCollapsed).toHaveBeenCalledExactlyOnceWith(section, collapsed);
     });
 });
 

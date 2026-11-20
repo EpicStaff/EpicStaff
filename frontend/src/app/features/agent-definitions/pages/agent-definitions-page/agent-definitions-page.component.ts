@@ -617,7 +617,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             return true;
         }
         if (action === GROUP_MENU_ACTION.newGroup) {
-            this.store.startNewGroup(this.groupAssignTarget(node));
+            this.store.startNewGroup(
+                this.groupAssignTarget(node),
+                node.kind === 'section-header' ? node.section : undefined
+            );
             return true;
         }
         if (node.kind === 'section-header') {
