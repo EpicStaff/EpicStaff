@@ -69,18 +69,19 @@ def test_existing_rows_keep_an_unknown_creation_time(case, default_org):
     state_before = loader.project_state(case.previous)
     # The migration's own models: the live registry may no longer have them under this label.
     state_after = loader.project_state(case.migration)
-    _drop_columns_added_by(migration, state_after)
     app_label, model_name = case.model_label.split(".")
-    HistoricalModel = state_before.apps.get_model(app_label, model_name)
-    existing = HistoricalModel.objects.create(
-        org_id=default_org.id, **{case.name_field: "pre-existing"}
-    )
+    db_table = state_before.apps.get_model(app_label, model_name)._meta.db_table
+    # The live model, found by its table: some of these models have moved to another app since.
+    Model = next(model for model in apps.get_models() if model._meta.db_table == db_table)
+    # Created through the live model, whose columns match the table today: the historical
+    # model still has columns later migrations dropped. Dropping the migration's columns
+    # afterwards leaves the row as it was before the migration ran.
+    existing = Model._base_manager.create(org_id=default_org.id, **{case.name_field: "pre-existing"})
+    _drop_columns_added_by(migration, state_after)
 
     with connection.schema_editor() as editor:
         migration.apply(state_before, editor)
 
-    # The live model, found by its table: some of these models have moved to another app since.
-    Model = next(model for model in apps.get_models() if model._meta.db_table == HistoricalModel._meta.db_table)
     assert Model._base_manager.get(pk=existing.pk).created_at is None
     created = Model.objects.create(org=default_org, **{case.name_field: "created-after"})
     assert created.created_at is not None
