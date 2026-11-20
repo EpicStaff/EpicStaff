@@ -45,6 +45,7 @@ from tables.validators.execution_timeout_validator import normalize_execution_ti
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
+from tables.validators.python_entrypoint_validator import validate_python_entrypoint
 
 
 class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
@@ -88,7 +89,7 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
         read_only_fields = ["id"]
         extra_kwargs = {
             "code": {"allow_blank": True},
-            "entrypoint": {"allow_blank": True},
+            "entrypoint": {"allow_blank": True, "validators": [validate_python_entrypoint]},
         }
 
     def validate_execution_timeout(self, value: int) -> int:

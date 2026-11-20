@@ -11,6 +11,8 @@ for the rest -- that 404 is how a waiting producer learns to stop waiting. A sec
 sandbox cannot decrypt is refused with 400, the answer naming the secret but not its value.
 An execution id names the worker's workspace directory, so one that is not a plain name
 (a dot, a slash, empty, too long) is refused with 400 before anything is queued.
+An entrypoint that is not a plain Python name, or is a keyword, is refused with 400 the
+same way. Whether the code binds it is checked by the worker, not here.
 """
 
 import pytest
@@ -105,6 +107,42 @@ def test_submit_rejects_an_execution_id_that_is_not_a_plain_name(
     assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
     assert dispatcher.dispatched == []
     assert registry.status(execution_id) is None
+
+
+INJECTED_ENTRYPOINT = '(lambda f, *_: f)(main, "filler", __import__("os").system("id"))'
+
+
+@pytest.mark.parametrize("entrypoint", ["main", "run", "_handler2"])
+def test_submit_accepts_an_entrypoint_that_is_a_plain_name(
+    client, venv_repository, dispatcher, entrypoint
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions", json={**SUBMISSION, "entrypoint": entrypoint, "venv_id": venv.id}
+    )
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    assert [job.entrypoint for job in dispatcher.dispatched] == [entrypoint]
+
+
+@pytest.mark.parametrize(
+    "entrypoint",
+    [INJECTED_ENTRYPOINT, "obj.method", "main()", "main\n", " main", "1main", "", "class", "None"],
+)
+def test_submit_rejects_an_entrypoint_that_is_not_a_plain_name(
+    client, venv_repository, dispatcher, registry, entrypoint
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions", json={**SUBMISSION, "entrypoint": entrypoint, "venv_id": venv.id}
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "entrypoint must be a Python function name" in response.text
+    assert dispatcher.dispatched == []
+    assert registry.status("exec-1") is None
 
 
 def test_an_accepted_submission_logs_exec_received(client, venv_repository, checkpoints):

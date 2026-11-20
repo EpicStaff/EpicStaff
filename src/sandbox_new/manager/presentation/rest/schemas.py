@@ -1,3 +1,4 @@
+import keyword
 import tarfile
 import zipfile
 from datetime import datetime
@@ -200,6 +201,18 @@ class ExecutionSubmitSchema(Schema):
         if missing:
             raise ValueError(f"use_storage requires {' and '.join(missing)}")
         return self
+
+    @field_validator("entrypoint")
+    @classmethod
+    def require_a_plain_function_name(cls, entrypoint: str) -> str:
+        """Reject an entrypoint that is not a plain Python name.
+
+        The worker pastes it into the generated source as the function to call. Whether
+        the code binds it is checked there, in the child, because that needs a parse.
+        """
+        if not entrypoint.isidentifier() or keyword.iskeyword(entrypoint):
+            raise ValueError("entrypoint must be a Python function name")
+        return entrypoint
 
 
 class ExecutionAcceptedSchema(Schema):

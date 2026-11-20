@@ -2,8 +2,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 from django.utils import timezone
-from foundation.transport.http import ClientError, ClientUnavailableError
+from foundation.transport.http import (
+    ClientError,
+    ClientUnavailableError,
+    ClientValidationError,
+)
 from loguru import logger
 from pydantic import ValidationError
 from rbac.authorship import resolve_author
@@ -403,6 +408,14 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 stderr=self._SANDBOX_BUSY_STDERR,
                 log_args=(type(error).__name__,),
             )
+        except ClientValidationError as error:
+            return self._fail_execution(
+                execution_id=execution_id,
+                use_storage=use_storage,
+                log_message=self._SUBMIT_FAILED_LOG,
+                stderr=_refusal_reasons(error.response) or self._INVALID_REQUEST_STDERR,
+                log_args=(type(error).__name__,),
+            )
         except ClientError as error:
             # The class name, never the error: it holds the sandbox response and,
             # through it, the submitted body with the sealed secret values.
@@ -447,3 +460,17 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         )
         if stale_ids:
             PythonCodeResult.objects.filter(pk__in=list(stale_ids)).delete()
+
+
+def _refusal_reasons(response: httpx.Response) -> str:
+    """Join the `detail` strings of the sandbox's 400 envelope, which never echoes the submitted body."""
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    errors = body.get("errors") if isinstance(body, dict) else None
+    return "\n".join(
+        str(error["detail"])
+        for error in errors or []
+        if isinstance(error, dict) and error.get("detail")
+    )
