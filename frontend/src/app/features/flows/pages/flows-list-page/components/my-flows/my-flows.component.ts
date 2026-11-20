@@ -326,18 +326,9 @@ export class MyFlowsComponent implements AfterViewChecked {
             },
             error: (err) => {
                 console.error(`Error running flow ${flow.id}`, err);
-
-                // Extract error message from backend response
-                let errorMessage = 'Failed to run flow';
-                if (err.error && err.error.message) {
-                    errorMessage = err.error.message;
-                } else if (err.error && typeof err.error === 'string') {
-                    errorMessage = err.error;
-                } else if (err.message) {
-                    errorMessage = err.message;
-                }
-
-                this.toastService.error(`Error running flow "${flow.name}": ${errorMessage}`);
+                this.toastService.error(
+                    `Error running flow "${flow.name}": ${extractHttpErrorMessage(err, 'Failed to run flow')}`
+                );
             },
         });
     }
