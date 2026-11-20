@@ -189,7 +189,9 @@ class VenvController(Controller):
             "so renaming a built venv does not rebuild it."
         ),
         response_description="The venv as stored after the change.",
-        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
+        responses=error_responses(
+            not_found="No venv with this id.", conflict="The venv is the shared default."
+        ),
     )
     async def update(
         self, id: int, data: schemas.VenvUpdateSchema, uow: AbstractUnitOfWork
@@ -198,6 +200,7 @@ class VenvController(Controller):
 
         Raises:
             VenvNotFoundError: No venv with this id, rendered as 404.
+            DefaultVenvProtectedError: The venv is the shared default, rendered as 409.
         """
         orchestrator = VenvCRUDOrchestrator(uow)
         libs = None if data.libs is None else [lib.to_domain() for lib in data.libs]
@@ -213,13 +216,16 @@ class VenvController(Controller):
             "space comes back a little later."
         ),
         response_description="The venv was deleted.",
-        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
+        responses=error_responses(
+            not_found="No venv with this id.", conflict="The venv is the shared default."
+        ),
     )
     async def remove(self, id: int, uow: AbstractUnitOfWork) -> None:
         """Delete a venv, leaving its directory for the housekeeping task.
 
         Raises:
             VenvNotFoundError: No venv with this id, rendered as 404.
+            DefaultVenvProtectedError: The venv is the shared default, rendered as 409.
         """
         orchestrator = VenvCRUDOrchestrator(uow)
         await orchestrator.remove(id)

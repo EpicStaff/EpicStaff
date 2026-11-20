@@ -8,7 +8,7 @@ import pytest
 
 from manager.application.orchestrators import VenvCRUDOrchestrator
 from manager.domain.enums import VenvStatus
-from manager.domain.errors import VenvNotFoundError
+from manager.domain.errors import DefaultVenvProtectedError, VenvNotFoundError
 from tests.builders import make_library, make_venv
 
 
@@ -159,3 +159,24 @@ async def test_create_never_stores_a_default_venv(uow):
     venv = await VenvCRUDOrchestrator(uow).create("default", [])
 
     assert not uow.venv_repo.rows[venv.id].is_default
+
+
+async def test_update_of_the_default_venv_is_refused_and_not_committed(uow):
+    stored = uow.venv_repo.seed(make_venv(name="default", is_default=True))[0]
+
+    with pytest.raises(DefaultVenvProtectedError):
+        await VenvCRUDOrchestrator(uow).update(
+            stored.id, name="renamed", libs=[make_library(name="numpy")]
+        )
+    assert uow.venv_repo.rows[stored.id].name == "default"
+    assert uow.venv_repo.rows[stored.id].libs == []
+    assert uow.commits == 0
+
+
+async def test_remove_of_the_default_venv_is_refused_and_not_committed(uow):
+    stored = uow.venv_repo.seed(make_venv(name="default", is_default=True))[0]
+
+    with pytest.raises(DefaultVenvProtectedError):
+        await VenvCRUDOrchestrator(uow).remove(stored.id)
+    assert stored.id in uow.venv_repo.rows
+    assert uow.commits == 0

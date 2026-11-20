@@ -150,6 +150,24 @@ def test_create_cannot_mark_a_venv_as_the_default(client, venv_repository):
     assert not any(row.is_default for row in venv_repository.rows.values())
 
 
+def test_update_of_the_default_venv_returns_409(client, venv_repository):
+    stored = venv_repository.seed(make_venv(name="default", is_default=True))[0]
+
+    response = client.patch(f"/venvs/{stored.id}", json={"name": "mine"})
+
+    assert response.status_code == status_codes.HTTP_409_CONFLICT
+    assert venv_repository.rows[stored.id].name == "default"
+
+
+def test_remove_of_the_default_venv_returns_409(client, venv_repository):
+    stored = venv_repository.seed(make_venv(name="default", is_default=True))[0]
+
+    response = client.delete(f"/venvs/{stored.id}")
+
+    assert response.status_code == status_codes.HTTP_409_CONFLICT
+    assert stored.id in venv_repository.rows
+
+
 def test_remove_returns_204_and_deletes_the_venv(client, venv_repository):
     stored = venv_repository.seed(make_venv())[0]
 

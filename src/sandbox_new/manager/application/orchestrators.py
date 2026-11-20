@@ -39,6 +39,7 @@ from manager.domain.errors import (
     CustomLibraryNotFoundError,
     CustomLibraryNotPublishedError,
     CustomLibraryStillBuildingError,
+    DefaultVenvProtectedError,
     SecretNotDecryptableError,
     UnsupportedUploadError,
     UVBuildError,
@@ -137,10 +138,18 @@ class VenvCRUDOrchestrator:
         return venv
 
     async def update(self, id: int, name: str | None, libs: List[Library] | None) -> Venv:
+        """Rename the venv, replace its libraries, or both.
+
+        Raises:
+            VenvNotFoundError: No venv with this id.
+            DefaultVenvProtectedError: The venv is the shared default.
+        """
         async with self.uow:
             venv = await self.uow.venv_repo.retrieve(id=id)
             if venv is None:
                 raise VenvNotFoundError(venv_id=id)
+            if venv.is_default:
+                raise DefaultVenvProtectedError(venv_id=id)
 
             if name is not None and venv.name != name:
                 venv.rename(name)
@@ -155,10 +164,18 @@ class VenvCRUDOrchestrator:
         return venv
 
     async def remove(self, id: int):
+        """Delete the venv.
+
+        Raises:
+            VenvNotFoundError: No venv with this id.
+            DefaultVenvProtectedError: The venv is the shared default.
+        """
         async with self.uow:
             venv = await self.uow.venv_repo.retrieve(id=id)
             if venv is None:
                 raise VenvNotFoundError(venv_id=id)
+            if venv.is_default:
+                raise DefaultVenvProtectedError(venv_id=id)
             await self.uow.venv_repo.remove(venv)
             await self.uow.commit()
         logger.info("Removed venv {}", id)
