@@ -1,3 +1,5 @@
+import math
+
 from rest_framework import serializers
 
 from tables.models import (
@@ -10,6 +12,10 @@ from tables.models import (
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
     SystemOneConfig,
+)
+from tables.models.llm_models import (
+    LLM_CONFIG_TIMEOUT_MAX_SECONDS,
+    LLM_CONFIG_TIMEOUT_MIN_SECONDS,
 )
 from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
@@ -51,6 +57,20 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
         return fields
 
 
+class LLMConfigTimeoutImportField(serializers.FloatField):
+    """Clamp a timeout onto the model's bounds instead of rejecting it.
+
+    Exports from before the timeout was bounded can carry any value, NaN and Infinity
+    included, and one rejected config would roll back the whole import.
+    """
+
+    def to_internal_value(self, data):
+        timeout = super().to_internal_value(data)
+        if math.isnan(timeout):
+            return LLMConfig._meta.get_field("timeout").get_default()
+        return min(max(timeout, LLM_CONFIG_TIMEOUT_MIN_SECONDS), LLM_CONFIG_TIMEOUT_MAX_SECONDS)
+
+
 class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigImportSerializer):
     model_class = LLMModel
     provider_field = "llm_provider"
@@ -58,6 +78,7 @@ class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigIm
     config_model = LLMConfig
 
     model = serializers.PrimaryKeyRelatedField(read_only=True)
+    timeout = LLMConfigTimeoutImportField(allow_null=True, required=False)
 
     class Meta(BaseConfigImportSerializer.Meta):
         model = LLMConfig

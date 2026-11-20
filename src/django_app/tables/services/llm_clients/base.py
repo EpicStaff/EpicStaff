@@ -38,6 +38,18 @@ class LLMProviderError(Exception):
         super().__init__(f"{provider} error ({code}): {message}")
 
 
+class LLMTimeoutError(TimeoutError):
+    """Raised when a call ran past its time limit or the config's timeout.
+
+    A ``TimeoutError``, so callers that treat their own deadline as "too slow" handle
+    this one the same way.
+    """
+
+    def __init__(self, provider: str) -> None:
+        self.provider = provider
+        super().__init__(f"{provider} did not answer in time")
+
+
 class InvalidLLMConfigError(Exception):
     """Raised when a stored LLM config holds a value no client can send.
 
@@ -128,6 +140,8 @@ class BaseLLMClient(ABC):
         self,
         messages: list[dict],
         tools: list[ToolSpec],
+        *,
+        time_limit_seconds: float | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream a completion turn.
 
@@ -135,4 +149,12 @@ class BaseLLMClient(ABC):
         - TokenEvent for each streaming text chunk
         - ToolCallEvent when the model invokes a tool
         - DoneEvent once the turn is complete (text or tool calls)
+
+        Args:
+            time_limit_seconds: How long the whole call may take, from sending the request
+                to the last chunk, however steadily the provider keeps sending. ``None``
+                leaves it to the client's own bound.
+
+        Raises:
+            LLMTimeoutError: The call ran past its time limit or the config's timeout.
         """
