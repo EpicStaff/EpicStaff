@@ -130,7 +130,7 @@ last good one.
 | `secret_setting(key)` | A secret setting, or `None` when it is not set |
 | `settings`, `secret_settings` | All of them, as read-only mappings |
 | `plugin_identifier`, `plugin_version` | The running plugin |
-| `public_url` | The plugin's public address: build external callback addresses from it |
+| `public_url` | The plugin's public address: build external callback addresses from it. It differs per deployment and changes when the deployment changes domain, so read it when you need it and never store it. It is always the current address; the `EPICSTAFF_PLUGIN_PUBLIC_URL` environment variable is fixed when the process starts |
 | `epicstaff_public_url`, `epicstaff_api_url`, `issuer` | EpicStaff's addresses and context issuer |
 | `service_account(org_id)` | The plugin's service account in the organization (`key`, `org_name`, `grant_state`), or `None`. Read it per call: keys rotate |
 | `jwks`, `public_paths`, `service_accounts` | As in the runtime file |

@@ -7,6 +7,6 @@ export const environment = {
     isChatEnabled: true,
     chatApiUrl: '/chat/',
     isAuditTrailEnabled: true,
-    // Needs PLUGINS_ENABLED on the backend and nginx (plugin hosts under PLUGINS_BASE_DOMAIN).
+    // Needs PLUGINS_ENABLED on the backend and nginx (plugin hosts named by PLUGINS_HOST_TEMPLATE).
     isPluginsEnabled: false,
 };
