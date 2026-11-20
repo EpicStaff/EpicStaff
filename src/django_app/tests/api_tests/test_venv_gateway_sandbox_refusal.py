@@ -52,7 +52,8 @@ def test_create_forwards_libraries_exactly_as_written(client, venv_sandbox, libs
     response = client.post("/api/venvs/", {"name": "data", "libs": libs}, format="json")
 
     assert response.status_code == status.HTTP_201_CREATED
-    assert venv_sandbox.create.call_args.args[0] == {"name": "data", "libs": libs}
+    sent = venv_sandbox.create.call_args.args[0]
+    assert (sent["name"], sent["libs"]) == ("data", libs)
 
 
 def test_create_answers_the_sandbox_refusal_unchanged(client, acme, venv_sandbox):

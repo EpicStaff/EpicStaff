@@ -8,8 +8,10 @@ sandbox -- instead of assembling it once in each of them.
 
 Payloads going upstream are passed through untouched, the way the rest of the
 gateway treats them: a field the sandbox learns about reaches it without a change
-here. What this module adds is the local half -- the binding, the rules only this
-database can answer, and the cleanup of an environment whose binding is gone.
+here. The one exception is `scope`, which this side sets from the organization and
+never takes from a caller. What this module adds is the local half -- the binding,
+the rules only this database can answer, and the cleanup of an environment whose
+binding is gone.
 """
 
 from collections.abc import Iterable
@@ -29,10 +31,24 @@ from proxies.sandbox.clients import SandboxCustomLibraryClient, SandboxVenvClien
 from proxies.sandbox.errors import UnknownCustomLibraryError, VenvInUseError
 from proxies.sandbox.models import SandboxCustomLibraryBinding, SandboxVenvBinding
 
-__all__ = ["CustomLibraryService", "VenvService"]
+__all__ = ["CustomLibraryService", "VenvService", "sandbox_scope"]
 
 #: How many owners a refusal names before the rest become a count.
 MAX_NAMED_OWNERS = 5
+
+
+def sandbox_scope(org_id: int | None) -> str | None:
+    """The scope the sandbox keeps an organization's venvs and custom libraries in.
+
+    The sandbox knows no organizations: it only compares this value, so a custom
+    library name is unique, and found by a venv build, within one organization.
+    """
+    return str(org_id) if org_id is not None else None
+
+
+def _without_scope(data: dict) -> dict:
+    """The payload minus a caller's `scope`: only this side decides where a row lives."""
+    return {key: value for key, value in data.items() if key != "scope"}
 
 
 def pair_with_bindings(
@@ -137,8 +153,9 @@ class VenvService:
                 organization's. Rendered as 400.
         """
         self._assert_custom_libraries_owned(data, org_id)
+        payload = {**_without_scope(data), "scope": sandbox_scope(org_id)}
         with self.client_class() as client:
-            venv = client.create(data)
+            venv = client.create(payload)
 
         if created_venv_ids is not None:
             created_venv_ids.append(venv["id"])
@@ -161,7 +178,7 @@ class VenvService:
         """
         self._assert_custom_libraries_owned(data, binding.org_id)
         with self.client_class() as client:
-            return client.update(binding.resource_id, data)
+            return client.update(binding.resource_id, _without_scope(data))
 
     def delete(self, binding: SandboxVenvBinding) -> str | None:
         """Delete an environment nothing runs in any more, upstream and here.
@@ -365,7 +382,7 @@ class CustomLibraryService:
             The new binding and the library the sandbox stored.
         """
         with self.client_class() as client:
-            library = client.create(file)
+            library = client.create(file, scope=sandbox_scope(org_id))
 
         # TODO: bind the library and the binding in one transaction -- if this write
         # fails the upstream library is orphaned (compensation/atomic deferred).
