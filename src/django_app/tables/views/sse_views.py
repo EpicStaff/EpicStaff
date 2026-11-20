@@ -47,6 +47,8 @@ class _HeldGraphMessage:
 
 
 class RunSessionSSEViewSwagger(APIView):
+    uses_organization_context = False
+
     @extend_schema(**RUN_SESSION_SSE_GET)
     def get(self, request, *args, **kwargs):
         pass  # Just for docs
