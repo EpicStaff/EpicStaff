@@ -19,6 +19,7 @@ from tables.models.realtime_models import (
 )
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from tests.voice_recording_files import wav_upload
 
 
 @pytest.fixture
@@ -204,91 +205,42 @@ def test_conversation_recording_cross_org_list_excludes_other_org(
     assert returned_ids == {own.id}
 
 
-def _fake_audio_file():
-    from django.core.files.uploadedfile import SimpleUploadedFile
-
-    return SimpleUploadedFile("clip.wav", b"fake-audio-bytes", content_type="audio/wav")
-
-
 @pytest.mark.django_db
-def test_conversation_recording_create_rejects_direct_ref_to_other_orgs_chat(
-    client_org_admin, org_b
+@pytest.mark.parametrize(
+    ("caller", "chat_org", "chat_reference"),
+    [
+        ("client_org_admin", "org_a", "rt_agent_chat"),
+        ("client_org_admin", "org_b", "rt_agent_chat"),
+        ("client_org_admin", "org_b", "connection_key"),
+        ("client_member", "org_a", "rt_agent_chat"),
+    ],
+    ids=[
+        "admin-own-chat",
+        "admin-other-orgs-chat-by-id",
+        "admin-other-orgs-chat-by-connection-key",
+        "member-own-chat",
+    ],
+)
+def test_conversation_recording_create_is_refused_to_a_jwt_session(
+    request, caller, chat_org, chat_reference
 ):
-    """A caller must not be able to attach a recording to another org's
-    RealtimeAgentChat by supplying its id directly as `rt_agent_chat`."""
-    other_chat = _chat(org_b)
+    """Only realtime, with the SYSTEM key, creates recordings: whatever the
+    role and whichever org owns the chat, a logged-in user gets 403."""
+    client = request.getfixturevalue(caller)
+    chat = _chat(request.getfixturevalue(chat_org))
+    reference = chat.id if chat_reference == "rt_agent_chat" else chat.connection_key
 
-    resp = client_org_admin.post(
+    resp = client.post(
         "/api/conversation-recordings/",
         {
-            "rt_agent_chat": other_chat.id,
+            chat_reference: reference,
             "recording_type": ConversationRecording.RecordingType.INBOUND,
-            "file": _fake_audio_file(),
-        },
-        format="multipart",
-    )
-    assert resp.status_code == 404
-    assert not ConversationRecording.objects.filter(rt_agent_chat=other_chat).exists()
-
-
-@pytest.mark.django_db
-def test_conversation_recording_create_rejects_connection_key_of_other_orgs_chat(
-    client_org_admin, org_b
-):
-    """The connection_key resolution path (used by the realtime service)
-    must be subject to the same parent-org check as a direct FK reference."""
-    other_chat = _chat(org_b)
-
-    resp = client_org_admin.post(
-        "/api/conversation-recordings/",
-        {
-            "connection_key": other_chat.connection_key,
-            "recording_type": ConversationRecording.RecordingType.INBOUND,
-            "file": _fake_audio_file(),
-        },
-        format="multipart",
-    )
-    assert resp.status_code == 404
-    assert not ConversationRecording.objects.filter(rt_agent_chat=other_chat).exists()
-
-
-@pytest.mark.django_db
-def test_conversation_recording_create_allowed_for_own_orgs_chat(
-    client_org_admin, org_a
-):
-    own_chat = _chat(org_a)
-
-    resp = client_org_admin.post(
-        "/api/conversation-recordings/",
-        {
-            "rt_agent_chat": own_chat.id,
-            "recording_type": ConversationRecording.RecordingType.INBOUND,
-            "file": _fake_audio_file(),
-        },
-        format="multipart",
-    )
-    assert resp.status_code == 201, resp.data
-    assert ConversationRecording.objects.filter(rt_agent_chat=own_chat).exists()
-
-
-@pytest.mark.django_db
-def test_conversation_recording_create_denied_for_member(client_member, org_a):
-    """VOICE is read-only for Member (seeded bitmask=2) — a Member
-    must not be able to create a recording even for their own org's chat,
-    now that `ConversationRecordingViewSet` wires `HasOrgPermission`."""
-    own_chat = _chat(org_a)
-
-    resp = client_member.post(
-        "/api/conversation-recordings/",
-        {
-            "rt_agent_chat": own_chat.id,
-            "recording_type": ConversationRecording.RecordingType.INBOUND,
-            "file": _fake_audio_file(),
+            "file": wav_upload(),
         },
         format="multipart",
     )
     assert resp.status_code == 403, resp.data
-    assert not ConversationRecording.objects.filter(rt_agent_chat=own_chat).exists()
+    assert not ConversationRecording.objects.filter(rt_agent_chat=chat).exists()
 
 
 def _viewer(django_user_model, org, email):

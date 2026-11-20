@@ -34,6 +34,21 @@ PENDING_CONNECTION_SWEEP_INTERVAL_SECONDS = humanize.to_time("1m")
 STREAM_TOKEN_TTL_SECONDS = humanize.to_time("2m")
 MAX_CALL_DURATION_SECONDS = humanize.to_time("30m")
 
+# A Twilio media stream is µ-law, 8 kHz, mono: one byte per sample.
+_RECORDING_AUDIO_BYTES_PER_SECOND = 8000
+# Outbound audio also keeps provider audio that an interruption cleared from playback, so a
+# direction can hold more audio than the call's wall-clock duration.
+_RECORDING_SIZE_MARGIN = 1.5
+# The canonical header `_build_ulaw_wav` writes before the audio. Not imported from there:
+# core must not depend on the application layer.
+_WAV_HEADER_BYTES = 44
+# Raw audio one call direction may buffer. Its WAV file stays below the size django_app
+# accepts (DJANGO_MAX_VOICE_RECORDING_SIZE), which would otherwise refuse the whole recording.
+MAX_RECORDING_AUDIO_BYTES = (
+    int(MAX_CALL_DURATION_SECONDS * _RECORDING_AUDIO_BYTES_PER_SECOND * _RECORDING_SIZE_MARGIN)
+    - _WAV_HEADER_BYTES
+)
+
 # Off by default: `realtime_session_item` has no retention and is readable with the org's
 # voice permission, and turning this on writes one row per audio frame.
 PERSIST_RAW_AUDIO = env.bool("REALTIME_PERSIST_RAW_AUDIO", False)

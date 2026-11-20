@@ -201,6 +201,8 @@ Created once per call/conversation; captures the agent's config at session start
 | `file_size` | nullable |
 | `created_at` | auto_now_add |
 
+Only the realtime service creates recordings: `POST /conversation-recordings/` requires the SYSTEM API key, and any other caller (a JWT session or a USER API key) gets 403. The file must be a WAV of at most `DJANGO_MAX_VOICE_RECORDING_SIZE` (default `22mb`), or the API answers 400. realtime caps each direction of a 30-minute call below that: 30 min × 8000 bytes/s × 1.5 = 21,600,000 bytes, WAV header included (`MAX_RECORDING_AUDIO_BYTES` in `src/realtime/core/config.py`).
+
 ---
 
 ## Django Backend API
@@ -460,7 +462,7 @@ When the AI provider emits `input_audio_buffer.speech_started` (OpenAI) or `inte
 
 On WebSocket close `VoiceCallService`:
 1. Records `end_reason` (`completed` / `cancelled` / `error`).
-2. Builds inbound and outbound µ-law WAV files from the accumulated audio buffers (`_build_ulaw_wav`).
+2. Builds inbound and outbound µ-law WAV files from the accumulated audio buffers (`_build_ulaw_wav`). Each direction stops buffering at `MAX_RECORDING_AUDIO_BYTES`, so its WAV stays below `DJANGO_MAX_VOICE_RECORDING_SIZE`, with one warning; the rest of that direction is not recorded.
 3. **POST `/conversation-recordings/`** for each file (with `connection_key`).
 4. **POST `/realtime-agent-chats/end/`** with `duration_seconds` and `end_reason`.
 
@@ -532,7 +534,7 @@ Note: the channel write path relies on the **60s TTL** expiry.
 | Garbled phone audio | `input_audio_format` / `output_audio_format` not `g711_ulaw` on the Twilio path. The stream handler forces these via the `init-realtime` `config` override |
 | Stale channel after edit | Per-channel cache has 60s TTL. Restart the service or wait it out |
 | Pydantic error in `redis_listener` | A required `RealtimeAgentChatData` field (`rt_model_name`, `rt_api_key`) was null. Ensure the provider config has both set |
-| Recordings or end metadata missing | `VoiceCallService` POSTs with `connection_key`; a missing `RealtimeAgentChat` row returns 404 and the recording is dropped. Confirm the chat row exists |
+| Recordings or end metadata missing | `VoiceCallService` POSTs with `connection_key`; a refused recording is logged at error level and dropped. A missing `RealtimeAgentChat` row returns 400 on the recording and 404 on `end`: confirm the chat row exists. A 400 on `file` means the WAV was over the size limit or not a WAV |
 | Phone numbers not loading in dialog | `account_sid` and `auth_token` must both be present. Numbers are fetched lazily — open the dropdown to trigger. Cache resets when credentials change |
 | Browser WS closes with `1011` | `connection_key` not found in `ConnectionRepository` — Redis snapshot never arrived. Check Redis connectivity and that `init-realtime` returned `201` before opening the WS |
 
