@@ -11,6 +11,7 @@ from tables.models import (
     DashboardLiveSession,
     DashboardRagType,
     DashboardReport,
+    DashboardSessionDailyStat,
     Graph,
     ScheduleTriggerNode,
     Session,
@@ -144,6 +145,17 @@ def test_second_build_replaces_rows_instead_of_adding(org, flow):
     assert DashboardActiveTrigger.objects.filter(org=org).count() == 1
     assert DashboardKnowledgeUsage.objects.filter(org=org).count() == 2
     assert second.built_at > first.built_at
+
+
+def test_build_counts_finished_sessions_and_remembers_the_day(org, flow):
+    _session(flow, Session.SessionStatus.END)
+
+    report = build_report(org.id)
+
+    assert report.rolled_up_through == timezone.now().date()
+    assert list(
+        DashboardSessionDailyStat.objects.filter(org=org).values_list("session_count", flat=True)
+    ) == [1]
 
 
 def test_one_failing_org_does_not_stop_the_others(org, other_org, monkeypatch):

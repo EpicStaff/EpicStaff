@@ -5,7 +5,11 @@ import pytest
 from rbac.models import Organization
 from tables.models import DURATION_BUCKET_COUNT, DashboardSessionDailyStat, Graph, Session
 from tables.models.session_models import SessionPrincipal, SessionTrigger
-from tables.services.dashboard.rollup import earliest_finished_day, roll_up_days
+from tables.services.dashboard.rollup import (
+    earliest_finished_day,
+    roll_up_days,
+    roll_up_since_last_build,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -199,3 +203,38 @@ def test_earliest_finished_day(org, flow):
     _session(flow, finished_at=_at(DAY - timedelta(days=5), hour=23, minute=59))
 
     assert earliest_finished_day(org.id) == DAY - timedelta(days=5)
+
+
+def test_first_run_counts_every_day_from_the_oldest_session(org, flow):
+    oldest_day = DAY - timedelta(days=10)
+    _session(flow, finished_at=_at(oldest_day))
+    _session(flow, finished_at=_at(DAY))
+
+    roll_up_since_last_build(org.id, rolled_up_through=None, today=DAY)
+
+    assert {stat.day for stat in _stats(org)} == {oldest_day, DAY}
+
+
+def test_next_run_recounts_only_yesterday_and_today(org, flow):
+    old_day = DAY - timedelta(days=3)
+    yesterday = DAY - timedelta(days=1)
+    old = _session(flow, finished_at=_at(old_day))
+    roll_up_since_last_build(org.id, rolled_up_through=None, today=DAY)
+
+    old.delete()
+    _session(flow, finished_at=_at(yesterday))
+    roll_up_since_last_build(org.id, rolled_up_through=DAY, today=DAY)
+
+    assert {stat.day: stat.session_count for stat in _stats(org)} == {
+        old_day: 1,
+        yesterday: 1,
+    }
+
+
+def test_run_after_a_pause_recounts_from_the_last_counted_day(org, flow):
+    missed_day = DAY - timedelta(days=4)
+    _session(flow, finished_at=_at(missed_day))
+
+    roll_up_since_last_build(org.id, rolled_up_through=DAY - timedelta(days=5), today=DAY)
+
+    assert {stat.day for stat in _stats(org)} == {missed_day}

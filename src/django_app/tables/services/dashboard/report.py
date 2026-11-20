@@ -31,6 +31,7 @@ from tables.models import (
     WebhookTriggerNode,
 )
 from tables.models.knowledge_models import GraphRag, NaiveRag
+from tables.services.dashboard.rollup import roll_up_since_last_build
 
 _plugin_counter: Callable[[int], int] | None = None
 
@@ -173,6 +174,15 @@ def collect_knowledge_usage(org_id: int) -> list[DashboardKnowledgeUsage]:
 
 
 def build_report(org_id: int) -> DashboardReport:
+    now = timezone.now()
+    today = now.date()
+    rolled_up_through = (
+        DashboardReport.objects.filter(org_id=org_id)
+        .values_list("rolled_up_through", flat=True)
+        .first()
+    )
+    roll_up_since_last_build(org_id, rolled_up_through, today)
+
     totals = count_totals(org_id)
     triggers = collect_active_triggers(org_id)
     live_sessions = collect_live_sessions(org_id)
@@ -180,7 +190,8 @@ def build_report(org_id: int) -> DashboardReport:
 
     with transaction.atomic():
         report, _ = DashboardReport.objects.update_or_create(
-            org_id=org_id, defaults={"built_at": timezone.now(), **totals}
+            org_id=org_id,
+            defaults={"built_at": now, "rolled_up_through": today, **totals},
         )
         for model, rows in (
             (DashboardActiveTrigger, triggers),

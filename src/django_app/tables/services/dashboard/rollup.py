@@ -61,6 +61,16 @@ def earliest_finished_day(org_id: int) -> date | None:
     return first.astimezone(UTC).date() if first else None
 
 
+def roll_up_since_last_build(org_id: int, rolled_up_through: date | None, today: date) -> None:
+    if rolled_up_through is None:
+        day = earliest_finished_day(org_id) or today
+    else:
+        day = min(rolled_up_through, today - timedelta(days=1))
+    while day <= today:
+        roll_up_days(org_id, day, day)
+        day += timedelta(days=1)
+
+
 def roll_up_days(org_id: int, first_day: date, last_day: date) -> None:
     start = datetime.combine(first_day, time.min, tzinfo=UTC)
     end = datetime.combine(last_day + timedelta(days=1), time.min, tzinfo=UTC)
