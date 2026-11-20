@@ -3,14 +3,8 @@ import json
 import pytest
 
 from agents.models import AgentDefinition
-from tables.models import (
-    Graph,
-    LLMConfig,
-    LLMModel,
-    Provider,
-    Secret,
-    Session,
-)
+from tables.models import Graph, Secret, Session
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.models.graph_models import AgentNode, Edge, StartNode
 from rbac.models import Organization
 from src.shared.models.storage_scope import StorageCredentials

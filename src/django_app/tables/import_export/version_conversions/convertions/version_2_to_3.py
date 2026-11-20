@@ -3,6 +3,11 @@ from loguru import logger
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.version_conversions.base import VersionConverter
+from tables.import_export.version_conversions.convertions.version_5_to_6 import (
+    EMBEDDING_SETTING_COLUMNS,
+    LLM_CONFIG_ENDPOINT_COLUMNS,
+    LLM_SETTING_COLUMNS,
+)
 from tables.models import McpTool, PythonCodeTool
 
 _GENERIC_CONFIG_ENTITY_TYPES = (
@@ -21,6 +26,10 @@ _ENTITY_TYPE_FALLBACK_MODELS = {
 
 _ENTITY_TYPE_EXTRA_ALLOWED_FIELDS = {
     EntityType.PYTHON_CODE_TOOL: {"python_code", "python_code_tool_config"},
+    # Columns the current models lack because v5->v6 folds them into `parameters` and
+    # `connection`; stripping them here would lose them before that conversion runs.
+    EntityType.LLM_CONFIG: {*LLM_SETTING_COLUMNS, *LLM_CONFIG_ENDPOINT_COLUMNS.values()},
+    EntityType.EMBEDDING_CONFIG: set(EMBEDDING_SETTING_COLUMNS),
 }
 
 _STALE_FIELD_STRIPPED_ENTITY_TYPES = (

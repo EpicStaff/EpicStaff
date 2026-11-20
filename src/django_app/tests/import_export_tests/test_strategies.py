@@ -8,7 +8,8 @@ from rest_framework.exceptions import ValidationError
 
 from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
-from tables.models import AgentNode, Graph, LLMConfig, LLMModel, McpTool, PythonCodeTool, WebhookTrigger
+from tables.models import AgentNode, Graph, McpTool, PythonCodeTool, WebhookTrigger
+from ai_models.models import LLMConfig, LLMModel
 from agents.models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -91,7 +92,7 @@ def fallback_llm_config(agent_definition, default_org):
     return LLMConfig.objects.create(
         custom_name="fallback config",
         model=agent_definition.llm_config.model,
-        temperature=0.9,
+        parameters={"temperature": 0.9},
         org=default_org,
     )
 
@@ -979,7 +980,7 @@ class TestLLMConfigStrategy:
         data = strategy.export_entity(config)
 
         assert data["custom_name"] == "MyGPT-4o"
-        assert data["temperature"] == 0.5
+        assert data["parameters"] == {"temperature": 0.5}
 
     def test_create_entity(
         self, exportable_agent_definition, export_service, default_org
@@ -1002,7 +1003,7 @@ class TestLLMConfigStrategy:
         assert LLMConfig.objects.count() == config_count_before + 1
         assert new_config.custom_name == "MyGPT-4o #2"
 
-    def test_reasoning_effort_round_trips(
+    def test_parameters_and_connection_round_trip(
         self, exportable_agent_definition, export_service, default_org
     ):
         source_config = exportable_agent_definition.llm_config
@@ -1010,7 +1011,9 @@ class TestLLMConfigStrategy:
             name="gpt-5-mini", llm_provider=source_config.model.llm_provider, org=None
         )
         LLMConfig.objects.filter(pk=source_config.pk).update(
-            model=reasoning_model, reasoning_effort="high"
+            model=reasoning_model,
+            parameters={"reasoning_effort": "high"},
+            connection={"base_url": "https://gateway.example/v1"},
         )
         export_data = export_service.export_entities(
             EntityType.AGENT_DEFINITION,
@@ -1018,7 +1021,8 @@ class TestLLMConfigStrategy:
             policy=UNRESTRICTED_EXPORT_POLICY,
         ).data
         config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
-        assert config_data["reasoning_effort"] == "high"
+        assert config_data["parameters"] == {"reasoning_effort": "high"}
+        assert config_data["connection"] == {"base_url": "https://gateway.example/v1"}
 
         new_config = _get_strategy(EntityType.LLM_CONFIG).create_entity(
             config_data, _build_identity_mapper(export_data), org_id=default_org.id
@@ -1026,7 +1030,8 @@ class TestLLMConfigStrategy:
 
         new_config.refresh_from_db()
         assert new_config.pk != source_config.pk
-        assert new_config.reasoning_effort == "high"
+        assert new_config.parameters == {"reasoning_effort": "high"}
+        assert new_config.connection == {"base_url": "https://gateway.example/v1"}
 
     def test_create_entity_rejects_malformed_extra_headers(
         self, exportable_agent_definition, export_service, default_org
@@ -1046,7 +1051,7 @@ class TestLLMConfigStrategy:
 
         assert "extra_headers" in excinfo.value.detail
 
-    def test_find_existing_misses_on_reasoning_effort(
+    def test_find_existing_misses_on_other_parameters(
         self, exportable_agent_definition, export_service, default_org
     ):
         export_data = export_service.export_entities(
@@ -1055,7 +1060,7 @@ class TestLLMConfigStrategy:
             policy=UNRESTRICTED_EXPORT_POLICY,
         ).data
         config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
-        config_data["reasoning_effort"] = "low"
+        config_data["parameters"] = {"temperature": 0.9}
 
         found = _get_strategy(EntityType.LLM_CONFIG).find_existing(
             config_data, _build_identity_mapper(export_data), org_id=default_org.id
@@ -1476,8 +1481,7 @@ def test_llm_model_import_does_not_rename_around_another_orgs_name(org_a_ie, org
     """Uniquification must be scoped to the target org: org A owning 'shared-name'
     must not force org B's import to become 'shared-name (1)'."""
     from tables.import_export.strategies.llm_models import LLMModelStrategy
-    from tables.models import Provider
-    from tables.models.llm_models import LLMModel
+    from ai_models.models import LLMModel, Provider
 
     provider = Provider.objects.create(name="openai")
     LLMModel.objects.create(
@@ -1502,8 +1506,7 @@ def test_llm_model_import_does_not_rename_around_another_orgs_name(org_a_ie, org
 @pytest.mark.django_db
 def test_llm_model_import_still_uniquifies_within_the_target_org(org_a_ie):
     from tables.import_export.strategies.llm_models import LLMModelStrategy
-    from tables.models import Provider
-    from tables.models.llm_models import LLMModel
+    from ai_models.models import LLMModel, Provider
 
     provider = Provider.objects.create(name="openai")
     LLMModel.objects.create(
@@ -1525,7 +1528,7 @@ def test_llm_model_import_without_an_org_falls_back_to_the_default_org(default_o
     """ImportService declares org_id as optional, and org=NULL + is_custom=True
     would be invisible to every org and immutable under the write lockdown."""
     from tables.import_export.strategies.llm_models import LLMModelStrategy
-    from tables.models import Provider
+    from ai_models.models import Provider
 
     Provider.objects.create(name="openai")
 
@@ -1543,7 +1546,7 @@ def test_llm_model_import_cannot_mint_a_predefined_row(org_a_ie):
     """LLMModelImportSerializer excludes only llm_provider and created_by, so a
     crafted payload can otherwise set predefined=True."""
     from tables.import_export.strategies.llm_models import LLMModelStrategy
-    from tables.models import Provider
+    from ai_models.models import Provider
 
     Provider.objects.create(name="openai")
 

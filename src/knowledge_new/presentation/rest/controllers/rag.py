@@ -98,6 +98,10 @@ class RagController(Controller):
             llm_api_key=data.llm_api_key,
             embedding_extra_headers=data.embedding_extra_headers,
             llm_extra_headers=data.llm_extra_headers,
+            embedding_connection=data.embedding_connection,
+            embedding_parameters=data.embedding_parameters,
+            llm_connection=data.llm_connection,
+            llm_parameters=data.llm_parameters,
         )
         orchestrator = build_indexer(strategy, uow, cryptographer)
         task = asyncio.create_task(orchestrator.execute(command))
@@ -126,6 +130,10 @@ class RagController(Controller):
             llm_api_key=data.llm_api_key,
             embedding_extra_headers=data.embedding_extra_headers,
             llm_extra_headers=data.llm_extra_headers,
+            embedding_connection=data.embedding_connection,
+            embedding_parameters=data.embedding_parameters,
+            llm_connection=data.llm_connection,
+            llm_parameters=data.llm_parameters,
         )
         orchestrator = build_search(strategy, uow, cryptographer)
         async with cancel_on_disconnect(request):

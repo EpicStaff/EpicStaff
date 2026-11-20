@@ -1,8 +1,8 @@
 from copy import deepcopy
 
+from ai_models.models import EmbeddingModel, LLMModel, Provider
 from django.db.models import Q
 from rbac.authorship import resolve_author
-from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -18,20 +18,7 @@ from tables.import_export.utils import (
     ensure_unique_identifier,
     resolve_import_organization,
 )
-from tables.models import (
-    EmbeddingModel,
-    LLMModel,
-    Provider,
-    RealtimeModel,
-    RealtimeTranscriptionModel,
-)
-from tables.services.secrets.exceptions import ModelEndpointNotSettableError
-from tables.services.secrets.pinned_principal_rules import (
-    EMBEDDING_MODEL_ENDPOINT_FIELDS,
-    LLM_MODEL_ENDPOINT_FIELDS,
-    assert_endpoints_untouched,
-    pinned_principal_of_user,
-)
+from tables.models import RealtimeModel, RealtimeTranscriptionModel
 
 
 class BaseProviderModelStrategy(EntityImportExportStrategy):
@@ -39,8 +26,6 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
     serializer_class = None
     tag_entity = None
     provider_field = "provider"
-    # The fields that decide where the model sends requests: never set by a plugin.
-    endpoint_fields: tuple[str, ...] = ()
 
     def get_instance(self, entity_id: int):
         return self.model_class.objects.filter(id=entity_id).first()
@@ -63,18 +48,6 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
         return Q(is_custom=False) | Q(org_id=org_id)
 
     def create_entity(self, data, id_mapper: IDMapper, **kwargs):
-        # The organization's configs may come to use an imported model with their own keys.
-        try:
-            assert_endpoints_untouched(
-                principal=pinned_principal_of_user(kwargs.get("user")),
-                instance=None,
-                values=data,
-                fields=self.endpoint_fields,
-            )
-        except ModelEndpointNotSettableError as denial:
-            # Raised as a validation error, like every other rejection of an import
-            # strategy, so a caller handling the strategy's errors sees one kind.
-            raise ValidationError(denial.field_errors()) from denial
         organization = resolve_import_organization(kwargs.get("org_id"))
         if "name" in data:
             existing_names = self.model_class.objects.filter(org=organization).values_list(
@@ -139,7 +112,6 @@ class LLMModelStrategy(BaseProviderModelStrategy):
     model_class = LLMModel
     serializer_class = LLMModelImportSerializer
     provider_field = "llm_provider"
-    endpoint_fields = LLM_MODEL_ENDPOINT_FIELDS
 
 
 class EmbeddingModelStrategy(BaseProviderModelStrategy):
@@ -148,7 +120,6 @@ class EmbeddingModelStrategy(BaseProviderModelStrategy):
     model_class = EmbeddingModel
     serializer_class = EmbeddingModelImportSerializer
     provider_field = "embedding_provider"
-    endpoint_fields = EMBEDDING_MODEL_ENDPOINT_FIELDS
 
 
 class RealtimeModelStrategy(BaseProviderModelStrategy):

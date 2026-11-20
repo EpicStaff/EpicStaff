@@ -50,12 +50,6 @@ export class LLMModelsService {
             .pipe(map((response) => response.results));
     }
 
-    getLLMModelById(id: number): Observable<LLMModel> {
-        return this.http.get<LLMModel>(`${this.apiUrl}${id}/`, {
-            headers: this.headers,
-        });
-    }
-
     updateModel(id: number, data: Partial<LLMModel>): Observable<LLMModel> {
         return this.http.put<LLMModel>(`${this.apiUrl}${id}/`, data, {
             headers: this.headers,

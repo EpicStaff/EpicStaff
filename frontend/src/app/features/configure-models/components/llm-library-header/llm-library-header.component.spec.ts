@@ -56,7 +56,9 @@ describe('LlmLibraryHeaderComponent toolbar layout', () => {
         const element = fixture.nativeElement as HTMLElement;
         const stacked = !!element.querySelector('.header--stacked');
         const selectIcon = !!element.querySelector('.bulk-select--icon-only');
-        const actionIcon = !!element.querySelector('.header-right > app-button .btn--icon-only');
+        const actionIcon = !!element.querySelector(
+            '.header-right > app-button .btn--icon-only, .header-right > .add-button--icon-only'
+        );
         if (!stacked) return selectIcon && actionIcon ? 'icons' : 'labels';
         if (selectIcon) return 'stacked-icons';
         return actionIcon ? 'stacked-action-icon' : 'stacked';
@@ -64,12 +66,12 @@ describe('LlmLibraryHeaderComponent toolbar layout', () => {
 
     // The controls are not measured here (no layout in jsdom): the switches come from the estimated widths.
     it.each([
-        [false, 1054, 'labels'],
-        [false, 1053, 'icons'],
+        [false, 997, 'labels'],
+        [false, 996, 'icons'],
         [false, 768, 'icons'],
         [false, 767, 'stacked'],
-        [false, 449, 'stacked'],
-        [false, 448, 'stacked-action-icon'],
+        [false, 392, 'stacked'],
+        [false, 391, 'stacked-action-icon'],
         [false, 309, 'stacked-action-icon'],
         [false, 308, 'stacked-icons'],
         [true, 1075, 'labels'],
@@ -88,5 +90,36 @@ describe('LlmLibraryHeaderComponent toolbar layout', () => {
         setHeaderWidth(fixture, width);
 
         expect(layoutOf(fixture)).toBe(layout);
+    });
+
+    // A scripted Enter is not a trusted event, so no browser click follows it here and CDK opens the menu on the keydown
+    // itself. What decides a real Enter (one toggle, by the click the button makes of it) is that the trigger is the
+    // native button: that, and where the focus goes on closing, is what these pin.
+    it('opens the Add Model menu with Enter and keeps it open, on the button that says it has a menu', () => {
+        const fixture = render(false);
+        const trigger = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('[aria-haspopup="menu"]')!;
+        expect(trigger.tagName).toBe('BUTTON');
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+        trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+        fixture.detectChanges();
+
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        expect(document.querySelectorAll('.add-menu__item').length).toBeGreaterThan(0);
+    });
+
+    it('puts the focus back on Add Model when its menu is closed with Escape', () => {
+        const fixture = render(false);
+        const trigger = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('[aria-haspopup="menu"]')!;
+        trigger.click();
+        fixture.detectChanges();
+        const item = document.querySelector<HTMLElement>('.add-menu__item')!;
+        item.focus();
+
+        item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+        fixture.detectChanges();
+
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(trigger);
     });
 });

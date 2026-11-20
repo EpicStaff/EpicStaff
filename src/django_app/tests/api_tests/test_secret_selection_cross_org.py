@@ -8,10 +8,9 @@ org-scoped field class, DRF would happily attach any org's secret.
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import LLMConfig, McpTool, Secret
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
+from tables.models import McpTool, Secret
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel
 from tables.models.llm_models import (
-    LLMModel,
     RealtimeConfig,
     RealtimeModel,
     RealtimeTranscriptionConfig,

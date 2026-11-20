@@ -323,6 +323,31 @@ async def test_extra_headers_injected_into_both_graphrag_models(
     assert completion_call_args["extra_headers"] == {"X-Llm": "Bearer llm-resolved"}
 
 
+async def test_request_connection_and_settings_reach_both_graphrag_models(
+    orchestrator, index_tables, searcher
+):
+    calls = searcher(GraphSearchMethodEnum.BASIC)
+
+    await orchestrator.execute(
+        _request(
+            GraphBasicSearchConfig(),
+            embedding_connection={"api_base": "http://emb-gateway/v1"},
+            llm_connection={"api_base": "http://llm-gateway/v1", "aws_region_name": "eu-west-1"},
+            embedding_parameters={"dimensions": 256},
+            llm_parameters={"temperature": 0.1},
+        )
+    )
+
+    config = calls[0]["config"]
+    embedding_model = config.embedding_models["default_embedding_model"]
+    completion_model = config.completion_models["default_completion_model"]
+    assert embedding_model.api_base == "http://emb-gateway/v1"
+    assert completion_model.api_base == "http://llm-gateway/v1"
+    assert completion_model.call_args["aws_region_name"] == "eu-west-1"
+    assert embedding_model.call_args["dimensions"] == 256
+    assert completion_model.call_args["temperature"] == 0.1
+
+
 async def test_no_extra_headers_leaves_call_args_without_headers(
     orchestrator, index_tables, searcher
 ):

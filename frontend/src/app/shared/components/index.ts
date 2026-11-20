@@ -75,6 +75,8 @@ export * from './rag-tab/rag-tab.component';
 export * from './range-slider/range-slider.component';
 export * from './round-button/round-button.component';
 export * from './route-tabs';
+export * from './schema-form/schema-field/schema-field.component';
+export * from './schema-form/schema-form.component';
 export * from './search/search.component';
 export * from './section-header/section-header.component';
 export * from './select/select.component';

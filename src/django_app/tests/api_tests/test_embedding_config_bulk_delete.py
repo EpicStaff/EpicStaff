@@ -7,7 +7,7 @@ empty.
 
 import pytest
 
-from tables.models import EmbeddingConfig
+from ai_models.models import EmbeddingConfig
 from tables.models.knowledge_models.collection_models import (
     BaseRagType,
     SourceCollection,

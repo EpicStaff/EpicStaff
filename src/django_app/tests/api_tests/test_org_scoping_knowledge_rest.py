@@ -11,7 +11,7 @@ from rbac.models.role import RolePermission
 from tables.models import SourceCollection, DocumentMetadata, StorageFile
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
-from tables.models.embedding_models import EmbeddingConfig
+from ai_models.models import EmbeddingConfig
 from tables.models.knowledge_models import BaseRagType, GraphRag, NaiveRag
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole

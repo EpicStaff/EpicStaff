@@ -13,7 +13,7 @@ from loguru import logger
 from rest_framework import status
 
 from tables.clients.errors import ClientBadGatewayError
-from tables.models import LLMConfig, LLMModel, Provider
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.models.knowledge_models import BaseRagType, GraphRag, SourceCollection
 from tests.rbac_cross_org_fixtures import beta  # noqa: F401
 

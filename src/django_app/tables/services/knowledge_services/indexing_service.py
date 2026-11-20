@@ -1,5 +1,13 @@
 from typing import Any
 
+from ai_models.services.config_parameters import (
+    embedding_config_parameters,
+    llm_config_parameters,
+)
+from ai_models.services.connection_arguments import (
+    embedding_config_connection,
+    llm_config_connection,
+)
 from django.db import transaction
 from loguru import logger
 from tables.exceptions import (
@@ -66,7 +74,9 @@ class IndexingService:
         # Get NaiveRag instance
         try:
             naive_rag = NaiveRag.objects.select_related(
-                "base_rag_type", "base_rag_type__source_collection", "embedder"
+                "base_rag_type",
+                "base_rag_type__source_collection",
+                "embedder__model__embedding_provider",
             ).get(naive_rag_id=naive_rag_id)
         except NaiveRag.DoesNotExist as e:
             raise NaiveRagNotFoundException(naive_rag_id) from e
@@ -113,6 +123,10 @@ class IndexingService:
             "llm_api_key_secret_id": None,
             "embedder_extra_headers": naive_rag.embedder.extra_headers,
             "llm_extra_headers": None,
+            "embedder_connection": embedding_config_connection(naive_rag.embedder),
+            "embedder_parameters": embedding_config_parameters(naive_rag.embedder),
+            "llm_connection": None,
+            "llm_parameters": None,
         }
 
     @staticmethod
@@ -131,8 +145,8 @@ class IndexingService:
             graph_rag = GraphRag.objects.select_related(
                 "base_rag_type",
                 "base_rag_type__source_collection",
-                "embedder",
-                "llm",
+                "embedder__model__embedding_provider",
+                "llm__model__llm_provider",
                 "index_config",
             ).get(graph_rag_id=graph_rag_id)
         except GraphRag.DoesNotExist as e:
@@ -195,6 +209,10 @@ class IndexingService:
             "llm_api_key_secret_id": graph_rag.llm.api_key_secret_id,
             "embedder_extra_headers": graph_rag.embedder.extra_headers,
             "llm_extra_headers": graph_rag.llm.extra_headers,
+            "embedder_connection": embedding_config_connection(graph_rag.embedder),
+            "embedder_parameters": embedding_config_parameters(graph_rag.embedder),
+            "llm_connection": llm_config_connection(graph_rag.llm),
+            "llm_parameters": llm_config_parameters(graph_rag.llm),
         }
 
     @staticmethod

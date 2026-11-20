@@ -4,7 +4,8 @@ from rest_framework.exceptions import ValidationError
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.strategies.configs import SystemOneConfigStrategy
-from tables.models import LLMConfig, SystemOneConfig
+from tables.models import SystemOneConfig
+from ai_models.models import LLMConfig
 from tables.services.secrets import secret_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

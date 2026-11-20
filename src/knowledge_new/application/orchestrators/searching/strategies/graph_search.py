@@ -20,7 +20,12 @@ from graphrag.config.models.local_search_config import LocalSearchConfig
 from graphrag.data_model import DataReader
 from graphrag_storage import create_storage
 from graphrag_storage.tables.table_provider_factory import create_table_provider
-from infrastructure.graphrag.model_headers import set_extra_headers
+from infrastructure.database.mappers.embedding_arguments import embedding_call_arguments
+from infrastructure.database.mappers.graph import graph_rag_cache_config
+from infrastructure.graphrag.model_access import (
+    apply_request_access,
+    completion_call_arguments,
+)
 from infrastructure.graphrag.usage_metrics import track_usage
 from infrastructure.grounding_guard import apply_grounding_guard
 from infrastructure.prompt_patching import patch_graphrag_prompts
@@ -120,14 +125,27 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
             pricing = await self._get_pricing(command.rag_id)
 
         secrets = open_sealed_secrets(command, self.cryptographer)
-        config.embedding_models["default_embedding_model"].api_key = secrets.embedding_api_key
-        config.completion_models["default_completion_model"].api_key = secrets.llm_api_key
-        set_extra_headers(
-            config.embedding_models["default_embedding_model"],
-            secrets.embedding_extra_headers,
+        embedding_model = config.embedding_models["default_embedding_model"]
+        completion_model = config.completion_models["default_completion_model"]
+        embedding_arguments = embedding_call_arguments(command.embedding_parameters)
+        completion_arguments = completion_call_arguments(completion_model, command.llm_parameters)
+        apply_request_access(
+            embedding_model,
+            api_key=secrets.embedding_api_key,
+            extra_headers=secrets.embedding_extra_headers,
+            connection=secrets.embedding_connection,
+            call_arguments=embedding_arguments,
         )
-        set_extra_headers(
-            config.completion_models["default_completion_model"], secrets.llm_extra_headers
+        apply_request_access(
+            completion_model,
+            api_key=secrets.llm_api_key,
+            extra_headers=secrets.llm_extra_headers,
+            connection=secrets.llm_connection,
+            call_arguments=completion_arguments,
+        )
+        config.cache = graph_rag_cache_config(
+            command.rag_id,
+            [(completion_model, completion_arguments), (embedding_model, embedding_arguments)],
         )
 
         if command.search_config.method not in self._SEARCH_MAP:

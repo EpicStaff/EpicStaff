@@ -1,5 +1,8 @@
 from copy import deepcopy
 
+from ai_models.domain.specs import ModelKind
+from ai_models.models import EmbeddingConfig, LLMConfig
+from ai_models.services.config_validation import ConfigValidationService
 from django.db.models import Q
 from rbac.authorship import resolve_author
 from rest_framework.exceptions import ValidationError
@@ -18,20 +21,19 @@ from tables.import_export.serializers.configs import (
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import create_filters, ensure_unique_identifier
-from tables.models import (
-    EmbeddingConfig,
-    LLMConfig,
-    RealtimeConfig,
-    RealtimeTranscriptionConfig,
-    SystemOneConfig,
-)
+from tables.models import RealtimeConfig, RealtimeTranscriptionConfig, SystemOneConfig
 from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
 from tables.services.secrets import SecretUseDeniedError
-from tables.services.secrets.secret_use_checks import check_config_import
+from tables.services.secrets.exceptions import ModelEndpointNotSettableError
+from tables.services.secrets.secret_use_checks import (
+    SecretUseCheck,
+    check_embedding_config_write,
+    check_llm_config_write,
+)
 from tables.services.secrets.secret_use_service import SecretActor
 
 
@@ -42,8 +44,9 @@ class BaseConfigStrategy(EntityImportExportStrategy):
 
     config_model = None
     serializer_class = None
-    # Header dict fields whose `epicstaff_secret(<name>)` markers reference secrets by name.
-    marker_fields: tuple[str, ...] = ()
+    # The API write path's Secret Use check of this config type, run on every config the
+    # import creates; None for a type whose import carries no secret.
+    secret_use_check: SecretUseCheck | None = None
 
     @property
     def model_class(self):
@@ -112,12 +115,15 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         return serializer.save(created_by=resolve_author(kwargs.get("user")))
 
     def _check_secret_use(self, data: dict, *, user, org_id: int | None) -> None:
+        if self.secret_use_check is None:
+            return
         # Import has no request to read the actor from. Without a user there is no
         # one to hold secrets:USE, so a config with markers is denied.
         actor = SecretActor(user=user, org_id=org_id) if user is not None else None
         try:
-            check_config_import(actor, data, marker_fields=self.marker_fields)
-        except SecretUseDeniedError as denial:
+            # Import always creates the config, so every marker and endpoint in it is new.
+            self.secret_use_check(actor, None, data)
+        except (SecretUseDeniedError, ModelEndpointNotSettableError) as denial:
             # Raised as a validation error, like every other rejection in this
             # strategy, so a caller handling the strategy's errors sees one kind.
             # It leaves the import's transaction, rolling it back.
@@ -201,21 +207,71 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         }
 
 
-class LLMConfigStrategy(BaseConfigStrategy):
+class BaseCatalogConfigStrategy(BaseConfigStrategy):
+    """A config whose `parameters` and `connection` the model catalog governs.
+
+    The file's values are fitted to the config's model before they are stored: settings
+    the model does not take and connection fields its provider does not declare are
+    dropped, and values are kept as they are. So a file from an older catalog, or an older
+    export version, imports, and a second import of it reuses the config.
+    """
+
+    model_kind: ModelKind
+
+    def find_existing(self, data, id_mapper, org_id: int | None = None):
+        # As it is, the entry matches a config a catalog update made stale since the
+        # export; fitted, it matches the config an earlier import of the same file created.
+        return super().find_existing(data, id_mapper, org_id) or super().find_existing(
+            self._fitted(data, *self._catalog_names(data, id_mapper)), id_mapper, org_id
+        )
+
+    def create_entity(self, data, id_mapper: IDMapper, **kwargs):
+        provider, model_name = self._catalog_names(data, id_mapper)
+        data = self._fitted(data, provider, model_name)
+        ConfigValidationService().validate_import(
+            provider, data["parameters"], data["connection"], kwargs.get("org_id")
+        )
+        return super().create_entity(data, id_mapper, **kwargs)
+
+    def _fitted(self, data: dict, provider: str, model_name: str) -> dict:
+        service = ConfigValidationService()
+        parameters = data.get("parameters", {})
+        connection = data.get("connection", {})
+        # A part that is no object is left for validate_import to refuse.
+        if isinstance(parameters, dict):
+            parameters = service.drop_unsupported(self.model_kind, provider, model_name, parameters)
+        if isinstance(connection, dict):
+            connection = service.drop_undeclared_connection_fields(provider, connection)
+        return {**data, "parameters": parameters, "connection": connection}
+
+    def _catalog_names(self, data: dict, id_mapper: IDMapper) -> tuple[str, str]:
+        """Return the provider and model name of the model row the entry maps to; empty without one."""
+        model = (
+            self.model_class.objects.select_related(self.provider_field)
+            .filter(pk=id_mapper.get_or_none(self.model_entity_type, data.get(self.model_fk_field)))
+            .first()
+        )
+        provider = getattr(model, self.provider_field, None)
+        return (provider.name if provider else ""), (model.name if model else "")
+
+
+class LLMConfigStrategy(BaseCatalogConfigStrategy):
     entity_type = EntityType.LLM_CONFIG
     model_entity_type = EntityType.LLM_MODEL
     tag_entity = EntityType.LLM_CONFIG_TAG
     config_model = LLMConfig
     serializer_class = LLMConfigImportSerializer
-    marker_fields = ("extra_headers",)
+    model_kind = ModelKind.LLM
+    secret_use_check = staticmethod(check_llm_config_write)
 
 
-class EmbeddingConfigStrategy(BaseConfigStrategy):
+class EmbeddingConfigStrategy(BaseCatalogConfigStrategy):
     entity_type = EntityType.EMBEDDING_CONFIG
     model_entity_type = EntityType.EMBEDDING_MODEL
     config_model = EmbeddingConfig
     serializer_class = EmbeddingConfigImportSerializer
-    marker_fields = ("extra_headers",)
+    model_kind = ModelKind.EMBEDDING
+    secret_use_check = staticmethod(check_embedding_config_write)
 
 
 class RealtimeConfigStrategy(BaseConfigStrategy):
@@ -297,7 +353,7 @@ class GeminiRealtimeConfigStrategy(BaseProviderRealtimeConfigStrategy):
 
 
 class SystemOneConfigStrategy(BaseProviderRealtimeConfigStrategy):
-    # No check_config_import: the entity carries no secret and no header markers to gate.
+    # No Secret Use check: the entity's secret never travels in a file, and it has no markers.
     entity_type = EntityType.SYSTEM_ONE_CONFIG
     config_model = SystemOneConfig
     serializer_class = SystemOneConfigImportSerializer

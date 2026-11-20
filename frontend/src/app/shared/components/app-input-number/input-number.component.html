@@ -28,7 +28,10 @@
             (mousedown)="$event.preventDefault()"
             (click)="onStep(-1)"
         >
-            −
+            <app-svg-icon
+                icon="minus-fit"
+                [size]="stepIconSize()"
+            />
         </button>
     }
 
@@ -71,7 +74,10 @@
             (mousedown)="$event.preventDefault()"
             (click)="onStep(1)"
         >
-            +
+            <app-svg-icon
+                icon="plus-fit"
+                [size]="stepIconSize()"
+            />
         </button>
     }
 </div>

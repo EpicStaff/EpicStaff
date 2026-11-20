@@ -1,3 +1,4 @@
+from ai_models.utils.litellm_model_info import resolve_context_window
 from drf_spectacular.utils import extend_schema
 from pydantic import ValidationError
 from rbac.access.asserts import assert_org_permission
@@ -35,7 +36,6 @@ from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
     GRAPH_RAG_SUGGEST_PARAMS_POST,
     NAIVE_RAG_SUGGEST_PARAMS_POST,
 )
-from tables.utils.litellm_model_info import resolve_context_window
 from user_audit.read_only import reads_only
 
 

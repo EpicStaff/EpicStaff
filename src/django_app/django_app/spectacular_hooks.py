@@ -47,6 +47,7 @@ TAG_MAP = [
     # Providers
     ("api/providers", "Providers"),
     # LLM & Embeddings
+    ("api/ai-models", "AI Models"),
     ("api/llm-models", "LLM Models"),
     ("api/llm-configs", "LLM Configs"),
     ("api/embedding-models", "Embedding Models"),
@@ -161,6 +162,7 @@ TAGS_ORDER = [
     "Sessions",
     "Run Session",
     "Providers",
+    "AI Models",
     "LLM Models",
     "LLM Configs",
     "Embedding Models",

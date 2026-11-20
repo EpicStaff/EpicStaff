@@ -424,6 +424,24 @@ async def test_embedding_extra_headers_reach_the_embedding_provider(embedding_ap
     assert embedding_api.await_args.kwargs["extra_headers"] == {"X-Gateway-Key": "resolved-value"}
 
 
+async def test_request_settings_and_connection_reach_the_embedding_provider(
+    embedding_api, monkeypatch
+):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
+
+    await _index(
+        repo,
+        7,
+        embedding_connection={"api_base": "http://gateway/v1"},
+        embedding_parameters={"dimensions": 256},
+    )
+
+    request = embedding_api.await_args.kwargs
+    assert request["api_base"] == "http://gateway/v1"
+    assert request["dimensions"] == 256
+
+
 async def test_sealed_header_markers_reach_the_embedding_provider_decrypted(
     embedding_api, monkeypatch
 ):

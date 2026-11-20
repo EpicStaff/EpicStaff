@@ -1,5 +1,6 @@
 from typing import Any
 
+from ai_models.models import EmbeddingConfig
 from django.db import transaction
 from loguru import logger
 from src.shared.models import UserAction
@@ -15,7 +16,6 @@ from tables.exceptions import (
     InvalidChunkParametersException,
     NaiveRagNotFoundException,
 )
-from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import (
     BaseRagType,
     DocumentMetadata,

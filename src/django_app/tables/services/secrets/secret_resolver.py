@@ -23,9 +23,10 @@ _NAMED_NAMES_FIELD = "secret_names"
 _NAMED_VALUES_FIELD = "secrets"
 
 # Third convention: `epicstaff_secret(<name>)` markers embedded in the string
-# values of any header dict whose field name ends with "extra_headers"
-# (`extra_headers`, `embedder_extra_headers`, `rag_llm_extra_headers`, ...).
-_HEADER_FIELD_SUFFIX = "extra_headers"
+# values of any dict whose field name ends with one of these: header dicts
+# (`extra_headers`, `embedder_extra_headers`, `rag_llm_extra_headers`, ...) and a
+# model config's provider `connection` fields (e.g. an AWS access key id).
+_MARKER_FIELD_SUFFIXES = ("extra_headers", "connection")
 
 
 def extract_secret_marker_names(headers: dict | None) -> set[str]:
@@ -165,7 +166,7 @@ class SecretResolver:
                 self._fill_named(model=model, org_id=org_id)
                 continue
 
-            if field_name.endswith(_HEADER_FIELD_SUFFIX):
+            if field_name.endswith(_MARKER_FIELD_SUFFIXES):
                 self._fill_header_markers(model=model, field_name=field_name, org_id=org_id)
                 continue
 
@@ -243,7 +244,7 @@ class SecretResolver:
             raise SecretResolutionError(
                 detail=(
                     f"{context}: unknown secret name(s) {sorted(missing)} "
-                    f"referenced in a header marker."
+                    f"referenced in a secret marker."
                 )
             )
 
@@ -259,7 +260,7 @@ class SecretResolver:
         }
 
     def _fill_header_markers(self, *, model: BaseModel, field_name: str, org_id: int) -> None:
-        """Replace each marker name in a header dict with its secret's value, sealed for transport."""
+        """Replace each marker name in a header or connection dict with its secret's value, sealed for transport."""
         headers = getattr(model, field_name)
         if not headers:
             return

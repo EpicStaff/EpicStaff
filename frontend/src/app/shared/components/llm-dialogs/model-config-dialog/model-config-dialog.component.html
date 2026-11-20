@@ -1,0 +1,253 @@
+<div
+    class="dialog"
+    (appEnterSubmit)="onSave()"
+    [appEnterSubmitDisabled]="isSaveDisabled()"
+>
+    <div class="dialog__header">
+        <h2 class="dialog__title">{{ title }}</h2>
+        <app-icon-button
+            icon="x"
+            ariaLabel="Close dialog"
+            size="2rem"
+            tooltip="Close"
+            (onClick)="onCancel()"
+        />
+    </div>
+
+    <app-error-banner
+        class="dialog__banner"
+        [message]="errorMessage()"
+    />
+
+    @if (!isLoading()) {
+        <div
+            class="dialog__body"
+            [formGroup]="form"
+        >
+            <section class="dialog__section">
+                <div>
+                    <app-custom-input
+                        formControlName="custom_name"
+                        label="Configuration Name"
+                        placeholder="e.g. Support assistant"
+                        tooltipText="A friendly name to identify this configuration across the app"
+                        autocomplete="off"
+                        [required]="true"
+                    />
+                    <app-validation-errors [control]="form.controls.custom_name" />
+                </div>
+                <div>
+                    <app-select
+                        class="dialog__provider"
+                        formControlName="provider"
+                        label="Provider"
+                        variant="boxed"
+                        placeholder="Select a provider"
+                        tooltipText="The AI provider this configuration uses"
+                        searchPlaceholder="Search providers..."
+                        [required]="true"
+                        [showSearch]="true"
+                        [items]="providerItems()"
+                        (changed)="onProviderChange()"
+                    />
+                    <app-validation-errors [control]="form.controls.provider" />
+                </div>
+                <div>
+                    <app-select
+                        class="dialog__model"
+                        formControlName="model_name"
+                        label="Model"
+                        variant="boxed"
+                        placeholder="Select a model"
+                        tooltipText="The provider's model this configuration uses"
+                        searchPlaceholder="Search models..."
+                        [required]="true"
+                        [showSearch]="true"
+                        [allowCustomValue]="allowsCustomModel()"
+                        [items]="modelItems()"
+                        (searchChange)="onModelSearch($event)"
+                        (changed)="onModelChange()"
+                    />
+                    @if (allowsCustomModel()) {
+                        <app-hint-message
+                            >Not listed? Type the model's name in the search and pick it.</app-hint-message
+                        >
+                    }
+                    <app-validation-errors [control]="form.controls.model_name" />
+                </div>
+            </section>
+
+            @if (schemas(); as current) {
+                <section class="dialog__section">
+                    <h3 class="dialog__section-title">Connection</h3>
+                    <div>
+                        <app-select
+                            formControlName="api_key_secret_id"
+                            label="API Key"
+                            variant="boxed"
+                            placeholder="Select a secret"
+                            tooltipText="The stored secret holding this provider's API key"
+                            searchPlaceholder="Search a secret..."
+                            [required]="!isLlm"
+                            [showSearch]="true"
+                            [items]="secretItems()"
+                        />
+                        <app-binned-secret-note [selected]="form.controls.api_key_secret_id.value" />
+                        @if (!form.controls.api_key_secret_id.value) {
+                            <app-hint-message>
+                                Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                            </app-hint-message>
+                        }
+                        <app-validation-errors [control]="form.controls.api_key_secret_id" />
+                    </div>
+                    @if (hasConnectionFields()) {
+                        <app-schema-form
+                            class="dialog__connection"
+                            path="connection"
+                            [schema]="current.connection"
+                            [value]="connection()"
+                            [errors]="fieldErrors()"
+                            [placeholders]="connectionPlaceholders"
+                            (valueChange)="onConnectionChange($event)"
+                        />
+                    }
+                    @if (isLlm) {
+                        <div>
+                            <app-input-number
+                                formControlName="timeout"
+                                label="Timeout (seconds)"
+                                tooltipText="How long to wait for the model to respond before the request is cancelled"
+                                [min]="1"
+                                [max]="600"
+                                [stepSize]="DEFAULT_STEP_SIZE"
+                                [alwaysShowSteps]="true"
+                            />
+                            <app-validation-errors [control]="form.controls.timeout" />
+                        </div>
+                    }
+                    <app-key-value-list
+                        formControlName="extra_headers"
+                        label="Header Configuration"
+                        tooltipText="Custom HTTP headers sent with every API request, e.g. for proxies or extra auth"
+                        namePlaceholder="Header name"
+                        valuePlaceholder="Header value"
+                        addLabel="Add Header"
+                    />
+                </section>
+
+                @if (hasSettings() || changes().length > 0 || needsReview()) {
+                    <section class="dialog__section">
+                        <div class="dialog__section-header">
+                            <h3 class="dialog__section-title">Settings</h3>
+                            @if (hasSettings()) {
+                                <app-button
+                                    type="ghost"
+                                    mod="small"
+                                    (click)="onSetDefaults()"
+                                >
+                                    Set defaults
+                                </app-button>
+                            }
+                        </div>
+                        <!-- One note: why the config needs review, then what fitting it to the model changed. -->
+                        @if (needsReview() || changes().length > 0) {
+                            <app-warning-note
+                                class="dialog__changes"
+                                role="status"
+                            >
+                                @if (needsReview()) {
+                                    <span class="dialog__note-heading">This configuration needs review.</span>
+                                    @if (reviewReasons().length > 0) {
+                                        <ul class="dialog__change-list">
+                                            @for (reason of reviewReasons(); track $index) {
+                                                <li>{{ reason }}</li>
+                                            }
+                                        </ul>
+                                    }
+                                }
+                                @if (changes().length > 0) {
+                                    <span class="dialog__note-heading">{{
+                                        changesFromStored()
+                                            ? 'The stored configuration was changed to fit the model:'
+                                            : 'Changed for the new model:'
+                                    }}</span>
+                                    <ul class="dialog__change-list">
+                                        @for (change of changes(); track change.name) {
+                                            <li>{{ change.text }}</li>
+                                        }
+                                    </ul>
+                                }
+                            </app-warning-note>
+                        }
+                        @if (hasSettings()) {
+                            <app-schema-form
+                                #parametersForm
+                                class="dialog__parameters"
+                                path="parameters"
+                                [schema]="current.parameters"
+                                [value]="parameters()"
+                                [errors]="fieldErrors()"
+                                [optionLabels]="optionLabels"
+                                (valueChange)="onParametersChange($event)"
+                            />
+                        }
+                    </section>
+                }
+
+                @if (isLlm) {
+                    <section
+                        class="dialog__section"
+                        formGroupName="pricing"
+                    >
+                        <h3 class="dialog__section-title">Pricing</h3>
+                        <div>
+                            <app-input-number
+                                formControlName="input_price_per_million"
+                                placeholder="Provider default"
+                                label="Input price (USD / 1M tokens)"
+                                [min]="0"
+                                [allowDecimal]="true"
+                                [alwaysShowSteps]="true"
+                                [tooltipText]="TOKEN_PRICE_HINT"
+                            />
+                            <app-validation-errors [control]="form.controls.pricing.controls.input_price_per_million" />
+                        </div>
+                        <div>
+                            <app-input-number
+                                formControlName="output_price_per_million"
+                                placeholder="Provider default"
+                                label="Output price (USD / 1M tokens)"
+                                [min]="0"
+                                [allowDecimal]="true"
+                                [alwaysShowSteps]="true"
+                                [tooltipText]="TOKEN_PRICE_HINT"
+                            />
+                            <app-validation-errors
+                                [control]="form.controls.pricing.controls.output_price_per_million"
+                            />
+                        </div>
+                        @if (form.controls.pricing.hasError('pricePair') && form.controls.pricing.touched) {
+                            <app-validation-errors [control]="form.controls.pricing" />
+                        }
+                    </section>
+                }
+            }
+        </div>
+    }
+
+    <div class="dialog__footer">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="isSaveDisabled()"
+            (click)="onSave()"
+        >
+            {{ saveLabel }}
+        </app-button>
+    </div>
+</div>

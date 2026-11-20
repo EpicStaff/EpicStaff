@@ -1,13 +1,7 @@
+from ai_models.models import EmbeddingModelTag, LLMConfigTag, LLMModelTag
 from rest_framework import serializers
 
-from tables.models import (
-    AgentTag,
-    CrewTag,
-    EmbeddingModelTag,
-    GraphTag,
-    LLMConfigTag,
-    LLMModelTag,
-)
+from tables.models import AgentTag, CrewTag, GraphTag
 
 
 class BaseTagImportSerializer(serializers.ModelSerializer):

@@ -9,9 +9,8 @@ from rest_framework.test import APIClient
 
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
-from tables.models import Provider
-from tables.models.embedding_models import EmbeddingModel
-from tables.models.llm_models import LLMModel, RealtimeModel, RealtimeTranscriptionModel
+from ai_models.models import EmbeddingModel, LLMModel, Provider
+from tables.models.llm_models import RealtimeModel, RealtimeTranscriptionModel
 
 REGISTRIES = [
     ("llm-models", "llm_provider", LLMModel),

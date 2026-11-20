@@ -9,11 +9,11 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from agents.models import AgentDefinition
+from ai_models.models import DefaultModels
 from django.db.models import Exists, ForeignKey, OuterRef
 from django.db.models.functions import Lower
 from django.utils import timezone
 from tables.models import (
-    DefaultModels,
     Graph,
     RealtimeAgentDefinition,
     RealtimeChannel,

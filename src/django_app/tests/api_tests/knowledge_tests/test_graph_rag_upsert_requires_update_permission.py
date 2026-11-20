@@ -14,7 +14,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from rbac.models.enums import Permission, ResourceType
-from tables.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from tables.models.knowledge_models import (
     BaseRagType,
     DocumentContent,
@@ -85,7 +85,7 @@ def embedder_config_1(embedding_model_1, default_org):
         custom_name="embedder-1",
         defaults={
             "model": embedding_model_1,
-            "task_type": "retrieval_document",
+            "parameters": {"task_type": "retrieval_document"},
             "org": default_org,
         },
     )
@@ -99,7 +99,7 @@ def embedder_config_2(embedding_model_2, default_org):
         custom_name="embedder-2",
         defaults={
             "model": embedding_model_2,
-            "task_type": "retrieval_document",
+            "parameters": {"task_type": "retrieval_document"},
             "org": default_org,
         },
     )
@@ -183,7 +183,7 @@ def beta_collection(beta, openai_provider_fixture, llm_model_1, embedding_model_
     beta_embedder = EmbeddingConfig.objects.create(
         custom_name="beta-embedder",
         model=embedding_model_1,
-        task_type="retrieval_document",
+        parameters={"task_type": "retrieval_document"},
         org=beta,
     )
     beta_llm = LLMConfig.objects.create(

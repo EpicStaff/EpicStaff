@@ -243,6 +243,8 @@ class ToolRegistryBuilder:
             search_config=entry.search_config,
             embedder_api_key=entry.embedder.config.api_key,
             embedder_extra_headers=entry.embedder.config.extra_headers,
+            embedder_connection=entry.embedder.config.connection,
+            embedder_parameters=entry.embedder.config.parameters,
         )
         spec = ToolSpec(
             name=candidate,
@@ -278,6 +280,10 @@ class ToolRegistryBuilder:
                 llm_api_key=entry.llm.config.api_key if entry.llm else None,
                 embedder_extra_headers=entry.embedder.config.extra_headers,
                 llm_extra_headers=entry.llm.config.extra_headers if entry.llm else None,
+                embedder_connection=entry.embedder.config.connection,
+                llm_connection=entry.llm.config.connection if entry.llm else None,
+                embedder_parameters=entry.embedder.config.parameters,
+                llm_parameters=entry.llm.config.parameters if entry.llm else None,
             )
 
         methods = sorted(targets.keys())

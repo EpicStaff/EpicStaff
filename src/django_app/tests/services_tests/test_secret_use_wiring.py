@@ -22,10 +22,7 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.serializers import BaseSerializer, ListSerializer
 from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
 from tables.services.secrets import secret_use_checks
-from tables.views.secret_use import (
-    ModelEndpointsGuardedViewSetMixin,
-    SecretUseCheckedViewSetMixin,
-)
+from tables.views.secret_use import SecretUseCheckedViewSetMixin
 from tests.services_tests.test_secret_reference_coverage import (
     KNOWN_SKIPS,
     SECRET_USE_CHECK_BY_SERIALIZER,
@@ -41,7 +38,8 @@ SECRET_USE_CHECK_BY_VIEWSET: dict[str, str] = {
     "PythonNodeViewSet": "check_python_node_write",
     "WebhookTriggerNodeViewSet": "check_webhook_trigger_node_write",
     "PythonCodeToolViewSet": "check_python_code_tool_write",
-    # No Secret field: the check gates `base_url` while a config of the model carries a secret.
+    # No Secret field: the check gates a rename that moves where the model's configs,
+    # and the secrets they carry, send requests.
     "LLMModelReadWriteViewSet": "check_llm_model_write",
     "EmbeddingModelReadWriteViewSet": "check_embedding_model_write",
 }
@@ -58,8 +56,9 @@ CUSTOM_WRITE_PATHS: dict[str, str] = {
 }
 # Not routed through a viewset serializer, so out of reach of the discovery below:
 # QuickstartView.post builds QuickstartSerializer itself and calls check_quickstart
-# (tests/api_tests/test_secret_use_fk_fields.py), and the config import strategies call
-# check_config_import (tests/import_export_tests/test_config_marker_import_secret_use.py).
+# (tests/api_tests/test_secret_use_fk_fields.py), and the LLM and embedding config import
+# strategies call the API's check_llm_config_write and check_embedding_config_write
+# (tests/import_export_tests/test_config_marker_import_secret_use.py).
 
 #: Classes allowed between a viewset and SecretUseCheckedViewSetMixin in its MRO, each
 #: with why it cannot stop the secret check from running. Any other class there that
@@ -69,9 +68,6 @@ DELEGATING_MIXINS_BEFORE_SECRET_CHECK: dict[type, str] = {
     # is a 403 before the secret check counts its configs. It defines no perform_create
     # and its perform_update calls super(), so the secret check still runs.
     BuiltInWriteProtectedMixin: "perform_update calls super(); no perform_create",
-    # On the same two viewsets, first, so a plugin's endpoint change is the 400 validation
-    # gave before the built-in 403. It only raises; both its overrides call super().
-    ModelEndpointsGuardedViewSetMixin: "perform_create and perform_update call super()",
 }
 
 #: The bulk-save check of every node type whose bulk serializer, or a serializer nested
