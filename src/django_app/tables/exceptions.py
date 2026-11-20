@@ -767,6 +767,31 @@ class ConfigProviderMissingError(CustomAPIExeption):
         )
 
 
+class ConfigNeedsReviewError(CustomAPIExeption):
+    """Raised when a run would send a config's stored settings that its model does not accept.
+
+    A catalog update can lower a model's limit, drop a choice or drop a setting under a
+    config that stored it. The run refuses instead of sending something other than what
+    the user set. One class for both kinds: only the label in the message differs.
+    """
+
+    status_code = 400
+    default_detail = "The config's settings need review before it can run."
+    default_code = "config_needs_review"
+
+    def __init__(self, config_kind: str, config_name: str, problems: list[str]):
+        self.config_kind = config_kind
+        self.config_name = config_name
+        self.problems = problems
+        super().__init__(
+            f"{config_kind} config '{config_name}' has settings its model does not accept: "
+            # A problem line may end with its own period.
+            f"{'; '.join(problem.rstrip('.') for problem in problems)}. "
+            "Edit the config in Settings → AI Models and try again.",
+            code=self.default_code,
+        )
+
+
 class ConfigValidationError(CustomAPIExeption):
     """Raised when a model config's `parameters` or `connection` break the model catalog.
 

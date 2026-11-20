@@ -8,7 +8,7 @@ from ai_models.domain.specs import ModelKind
 from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from ai_models.repository import CatalogRepository
 from ai_models.services.config_validation import ConfigValidationService
-from tables.exceptions import ConfigValidationError
+from tables.exceptions import ConfigNeedsReviewError, ConfigValidationError
 from tables.services.converter_service import ConverterService
 from tables.services.llm_clients import get_llm_client
 from tables.services.secrets import secret_resolver, secret_service
@@ -73,36 +73,69 @@ def test_a_setting_only_the_catalog_names_reaches_litellm(monkeypatch, default_o
     }
 
 
-def test_only_settings_the_catalog_allows_now_are_sent(runtime_catalog, default_org):
+def test_set_settings_are_sent_as_stored(runtime_catalog, default_org):
     config = _config(
         default_org,
         "openai",
         "gpt-4o-mini",
-        parameters={"temperature": 0.3, "max_tokens": 1000, "top_p": 0.9, "seed": None},
+        # gpt-4o-mini does not take seed, but a "not set" one is never sent, so never refused.
+        parameters={"temperature": 0.3, "max_tokens": 1000, "seed": None},
     )
 
     data = ConverterService().convert_llm_config_data(config)
 
-    # gpt-4o-mini no longer takes top_p; a "not set" seed is not sent either.
     assert data.parameters == {"temperature": 0.3, "max_tokens": 1000}
 
 
-def test_an_out_of_range_stored_value_is_sent_as_the_nearest_limit(runtime_catalog, default_org):
-    # The catalog caps Anthropic's temperature at 1; the stored 1.5 runs as 1 and stays stored.
-    config = _config(default_org, "anthropic", "claude-sonnet", parameters={"temperature": 1.5, "top_p": 0.9})
+@pytest.mark.parametrize(
+    ("provider_name", "model_name", "parameters", "setting"),
+    [
+        # The catalog caps Anthropic's temperature at 1.
+        ("anthropic", "claude-sonnet", {"temperature": 1.5, "top_p": 0.9}, "temperature"),
+        ("openai", "gpt-4o", {"max_tokens": 499}, "max_tokens"),
+        ("openai", "gpt-4o", {"max_tokens": 16385}, "max_tokens"),
+        # gpt-4o offers reasoning_effort low and high only.
+        ("openai", "gpt-4o", {"reasoning_effort": "medium"}, "reasoning_effort"),
+        ("openai", "gpt-4o-mini", {"temperature": 0.3, "top_p": 0.9}, "top_p"),
+    ],
+    ids=["above-the-model-limit", "below-the-minimum", "above-the-output-limit", "choice-not-offered", "setting-not-taken"],
+)
+def test_a_setting_the_model_does_not_accept_refuses_the_run(
+    runtime_catalog, default_org, provider_name, model_name, parameters, setting
+):
+    config = _config(default_org, provider_name, model_name, parameters=parameters)
 
-    llm_data = ConverterService().convert_llm_config_to_pydantic(config)
+    with pytest.raises(ConfigNeedsReviewError) as refusal:
+        ConverterService().convert_llm_config_to_pydantic(config)
 
-    assert llm_data.config.parameters == {"temperature": 1, "top_p": 0.9}
-    assert llm_data.config.to_litellm_kwargs(provider="anthropic", exclude={"timeout"}) == {"temperature": 1}
+    message = str(refusal.value.detail)
+    assert refusal.value.status_code == 400
+    assert refusal.value.detail.code == "config_needs_review"
+    assert message.startswith(f"LLM config '{provider_name}-{model_name}' has settings its model does not accept: ")
+    assert [problem.split(":")[0] for problem in refusal.value.problems] == [setting]
+    assert message.endswith("Edit the config in Settings → AI Models and try again.")
     config.refresh_from_db()
-    assert config.parameters["temperature"] == 1.5
+    assert config.parameters == parameters
+
+
+@pytest.mark.parametrize(
+    ("provider_name", "model_name", "parameters"),
+    [
+        ("anthropic", "claude-sonnet", {"temperature": 1, "max_tokens": 4096}),
+        ("openai", "gpt-4o", {"max_tokens": 500, "reasoning_effort": "low"}),
+        # Deprecated: the config shows "needs review", but its settings still fit.
+        ("openai", "gpt-3.5-turbo-0301", {"seed": 7}),
+    ],
+    ids=["at-the-model-limit", "at-the-minimum", "deprecated-model"],
+)
+def test_settings_the_model_accepts_are_sent_unchanged(runtime_catalog, default_org, provider_name, model_name, parameters):
+    config = _config(default_org, provider_name, model_name, parameters=parameters)
+
+    assert ConverterService().convert_llm_config_to_pydantic(config).config.parameters == parameters
 
 
 def test_a_custom_model_sends_its_provider_s_common_settings(runtime_catalog, default_org):
-    config = _config(
-        default_org, "openai", "my-fine-tune", parameters={"temperature": 0.2, "seed": 7, "top_p": 0.5}
-    )
+    config = _config(default_org, "openai", "my-fine-tune", parameters={"temperature": 0.2, "seed": 7})
 
     assert ConverterService().convert_llm_config_data(config).parameters == {"temperature": 0.2, "seed": 7}
 
@@ -203,21 +236,42 @@ def test_the_session_payload_carries_settings_and_connection_but_no_secret_id(ru
     assert "api_key_secret_id" not in dumped
 
 
-def test_an_embedding_config_sends_its_allowed_settings_and_connection(runtime_catalog, default_org):
+def _embedding_config(org, parameters):
     provider = Provider.objects.get_or_create(name="openai")[0]
-    model = EmbeddingModel.objects.create(name="text-embedding-3-small", embedding_provider=provider)
-    config = EmbeddingConfig.objects.create(
+    model = EmbeddingModel.objects.get_or_create(name="text-embedding-3-small", embedding_provider=provider)[0]
+    return EmbeddingConfig.objects.create(
         custom_name="embedder",
         model=model,
-        org=default_org,
-        parameters={"dimensions": 256, "task_type": "RETRIEVAL_QUERY"},
+        org=org,
+        parameters=parameters,
         connection={"base_url": "https://embeddings.example"},
     )
+
+
+def test_an_embedding_config_sends_its_settings_and_connection(runtime_catalog, default_org):
+    config = _embedding_config(default_org, {"dimensions": 256})
 
     embedder = ConverterService().convert_embedding_config_to_pydantic(config).config
 
     assert embedder.parameters == {"dimensions": 256}
     assert embedder.connection == {"api_base": "https://embeddings.example"}
+
+
+@pytest.mark.parametrize(
+    ("parameters", "setting"),
+    [({"dimensions": 3073}, "dimensions"), ({"dimensions": 256, "task_type": "RETRIEVAL_QUERY"}, "task_type")],
+    ids=["above-the-maximum", "setting-not-taken"],
+)
+def test_an_embedding_config_with_a_setting_its_model_does_not_accept_refuses_the_run(
+    runtime_catalog, default_org, parameters, setting
+):
+    config = _embedding_config(default_org, parameters)
+
+    with pytest.raises(ConfigNeedsReviewError) as refusal:
+        ConverterService().convert_embedding_config_to_pydantic(config)
+
+    assert str(refusal.value.detail).startswith("Embedding config 'embedder' has settings its model does not accept: ")
+    assert [problem.split(":")[0] for problem in refusal.value.problems] == [setting]
 
 
 def test_an_azure_deployment_routes_the_django_call_to_it(default_org):

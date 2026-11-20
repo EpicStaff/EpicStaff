@@ -151,7 +151,7 @@ def embedding_config(embedding_model: EmbeddingModel, default_org) -> EmbeddingC
     embedding_config = EmbeddingConfig(
         custom_name="MyEmbedder",
         model=embedding_model,
-        parameters={"task_type": "retrieval_document"},
+        parameters={"dimensions": 256},
         org=default_org,
     )
     embedding_config.save()

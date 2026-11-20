@@ -370,8 +370,8 @@ class ConverterService(metaclass=SingletonMeta):
 
         # The LLM config is where the user sets temperature; the agent's
         # default_temperature only covers an LLM config that leaves it unset.
-        # Read through the catalog like every run path, so a temperature the model no
-        # longer takes is not sent.
+        # Read through the catalog like every run path, so a config whose settings the
+        # model no longer accepts refuses the session.
         llm_temperature = (
             llm_config_parameters(ad.llm_config).get("temperature")
             if ad.llm_config is not None
@@ -644,6 +644,7 @@ class ConverterService(metaclass=SingletonMeta):
         Raises:
             ConfigProviderMissingError: The config's model has no provider, because
                 the provider was deleted.
+            ConfigNeedsReviewError: A stored setting is one the model does not accept.
         """
         if not config or not config.model:
             return None
@@ -676,11 +677,14 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_llm_config_data(self, config: LLMConfig) -> LLMConfigData:
         """Convert an LLMConfig that has a model into its LLMConfigData.
 
-        Sends only the settings the model catalog allows for the model now, a value a
-        catalog update put out of range as the nearest limit: a stale config keeps
-        running. A model whose provider was deleted (NULL) converts without raising, with
-        no settings and only the connection keys sent before the catalog existed. Issues
-        no query when the caller selected `model__llm_provider`.
+        Sends the stored settings that are set, as they are. A model whose provider was
+        deleted (NULL) converts without raising, with no settings and only the connection
+        keys sent before the catalog existed. Issues no query when the caller selected
+        `model__llm_provider`.
+
+        Raises:
+            ConfigNeedsReviewError: A stored setting is one the model does not accept: a
+                catalog update lowered its limit, dropped the choice or dropped the setting.
         """
         provider = config.model.llm_provider
         provider_name = provider.name if provider else ""
@@ -708,6 +712,7 @@ class ConverterService(metaclass=SingletonMeta):
         Raises:
             ConfigProviderMissingError: The config has no model, or its model has no
                 provider, because the model or provider was deleted.
+            ConfigNeedsReviewError: A stored setting is one the model does not accept.
         """
         if not embedding_config:
             return None

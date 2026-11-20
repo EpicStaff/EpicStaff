@@ -31,11 +31,12 @@ def schema_factory(repository: CatalogRepository) -> ConfigSchemaFactory:
 class ConfigValidationService:
     """The one rule every write path follows for a config's settings and connection.
 
-    `validate` is strict, for writes. `review_reasons`, `allowed_parameters` and
-    `drop_unsupported` are lenient, for stored configs a catalog update made stale:
-    those keep running and only show "needs review". An import is fitted like a stale
-    config (`drop_unsupported`, `drop_undeclared_connection_fields`) and is strict only
-    on what no config may store (`validate_import`).
+    `validate` is strict, for writes. `review_reasons` and `drop_unsupported` are lenient,
+    for stored configs a catalog update made stale: those show "needs review", and a run
+    refuses one only for its settings (`parameter_problems`). An import is fitted like a
+    stale config (`drop_unsupported`, `drop_undeclared_connection_fields`) and is strict
+    only on what no config may store (`validate_import`). `allowed_parameters` fits
+    values a create path chose itself (quickstart) to the model.
     """
 
     def __init__(self, repository: CatalogRepository | None = None) -> None:
@@ -162,11 +163,7 @@ class ConfigValidationService:
             model.deprecation_date is not None and model.deprecation_date < datetime.now(UTC).date()
         ):
             reasons.append("Deprecated model.")
-        reasons.extend(
-            _reason_lines(
-                _errors(self._schemas.parameters_schema(kind, provider, model_name), parameters)
-            )
-        )
+        reasons.extend(self.parameter_problems(kind, provider, model_name, parameters))
         connection_schema = self._schemas.connection_schema(provider)
         reasons.extend(_reason_lines(_errors(connection_schema, connection)))
         if isinstance(connection, dict):
@@ -179,15 +176,27 @@ class ConfigValidationService:
             )
         return reasons
 
+    def parameter_problems(
+        self, kind: ModelKind, provider: str, model_name: str, parameters: object
+    ) -> list[str]:
+        """Return one `name: reason` line per setting the model does not accept; empty when all fit.
+
+        Names a value outside the model's range, a choice the model does not offer and a
+        setting the model does not take.
+        """
+        return _reason_lines(
+            _errors(self._schemas.parameters_schema(kind, provider, model_name), parameters)
+        )
+
     def allowed_parameters(
         self, kind: ModelKind, provider: str, model_name: str, parameters: dict
     ) -> dict:
-        """Return the settings a run may send, each fitted to what the catalog allows now.
+        """Return `parameters` fitted to what the catalog allows for the model.
 
-        Leaves out "not set" settings, settings the model does not take and a choice the
-        model no longer offers; a number outside the model's range is sent as the nearest
-        limit (a stored temperature of 10 on a model that now allows 8 is sent as 8). The
-        stored value is not changed, so the config still shows "needs review".
+        For values a create path chose itself, not a user's (quickstart's overrides): leaves
+        out "not set" settings, settings the model does not take and a choice the model
+        does not offer; a number outside the model's range becomes the nearest limit. A run
+        never fits a stored config; it refuses one `parameter_problems` names.
         """
         properties = self._schemas.parameters_schema(kind, provider, model_name)["properties"]
         allowed = {}

@@ -24,6 +24,7 @@ from tables.models.realtime_models import (
     RealtimeAgentDefinition,
 )
 from tables.models.secret_models import Secret
+from tables.exceptions import ConfigNeedsReviewError
 from tables.services.converter_service import ConverterService
 from tables.services.secrets import secret_encryption
 from tests.fixtures import *  # noqa: F401,F403 — wikipedia_agent, default_org, etc.
@@ -199,7 +200,7 @@ def test_convert_rt_agent_definition_chat_to_pydantic_takes_temperature_from_llm
 
 
 @pytest.mark.django_db
-def test_convert_rt_agent_definition_chat_to_pydantic_skips_a_temperature_the_model_does_not_take(
+def test_convert_rt_agent_definition_chat_to_pydantic_refuses_a_temperature_the_model_does_not_take(
     converter, default_org, llm_config, monkeypatch
 ):
     # A catalog update took temperature away from the model after the config stored it.
@@ -239,6 +240,7 @@ def test_convert_rt_agent_definition_chat_to_pydantic_skips_a_temperature_the_mo
         openai_config=config,
     )
 
-    data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
+    with pytest.raises(ConfigNeedsReviewError) as refusal:
+        converter.convert_rt_agent_definition_chat_to_pydantic(chat)
 
-    assert data.temperature == 1.2
+    assert refusal.value.problems == ["temperature: Not supported for this provider and model."]

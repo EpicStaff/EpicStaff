@@ -353,12 +353,12 @@ def test_review_reasons_flag_the_model(service, provider, model, custom_model, e
     assert service.review_reasons(LLM, provider, model, {}, {}, custom_model=custom_model) == expected
 
 
-def test_allowed_parameters_filters_for_runtime(service):
+def test_allowed_parameters_fits_values_to_the_model(service):
     allowed = service.allowed_parameters(
         LLM, "anthropic", "claude-sonnet", {"temperature": 1.5, "top_p": None, "frequency_penalty": 0.0}
     )
 
-    # Anthropic allows temperature up to 1: the stale 1.5 is sent as the nearest limit.
+    # Anthropic allows temperature up to 1: 1.5 becomes the nearest limit.
     assert allowed == {"temperature": 1}
 
 
@@ -375,8 +375,24 @@ def test_allowed_parameters_filters_for_runtime(service):
         ({"reasoning_effort": "medium"}, {}),
     ],
 )
-def test_allowed_parameters_fit_stale_values_to_the_model(service, parameters, expected):
+def test_allowed_parameters_fit_out_of_range_values_to_the_model(service, parameters, expected):
     assert service.allowed_parameters(LLM, "openai", "gpt-4o", parameters) == expected
+
+
+@pytest.mark.parametrize(
+    ("parameters", "expected"),
+    [
+        ({}, []),
+        ({"temperature": 0.4, "max_tokens": 16384, "reasoning_effort": "high"}, []),
+        ({"max_tokens": 16385}, ["max_tokens: 16385 is greater than the maximum of 16384"]),
+        ({"max_tokens": 499}, ["max_tokens: 499 is less than the minimum of 500"]),
+        ({"reasoning_effort": "medium"}, ["reasoning_effort: 'medium' is not one of ['low', 'high', None]"]),
+        ({"frequency_penalty": 0.0}, ["frequency_penalty: Not supported for this provider and model."]),
+    ],
+    ids=["nothing-set", "all-fit", "above-the-model-limit", "below-the-minimum", "choice-not-offered", "not-taken"],
+)
+def test_parameter_problems_name_each_setting_the_model_does_not_accept(service, parameters, expected):
+    assert service.parameter_problems(LLM, "openai", "gpt-4o", parameters) == expected
 
 
 def test_drop_unsupported_keeps_out_of_range_values(service):

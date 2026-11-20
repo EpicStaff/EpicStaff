@@ -671,6 +671,35 @@ async def test_stream_reply_rejects_stored_config_with_malformed_extra_headers(
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
+async def test_stream_reply_refuses_a_config_whose_settings_the_model_does_not_accept(
+    graph, gpt4_model, user_a, org_a, default_role, db
+):
+    from asgiref.sync import sync_to_async
+
+    from tables.exceptions import LLMConfigInvalidError
+
+    stale_config = await sync_to_async(LLMConfig.objects.create)(
+        custom_name="stale-temperature",
+        model=gpt4_model,
+        org=org_a,
+        parameters={"temperature": 5},
+    )
+    user_message = "hi"
+    conversation = await _create_conversation_for_stream(
+        graph, stale_config, user_a, org_a, default_role, user_message
+    )
+
+    with pytest.raises(LLMConfigInvalidError) as excinfo:
+        async for _event in FlowAssistantService().stream_reply(conversation, user_message):
+            pass
+
+    assert str(excinfo.value.detail).startswith(
+        "LLM config 'stale-temperature' has settings its model does not accept: temperature"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 async def test_stream_yields_tokens_and_done(
     graph, llm_config, user_a, org_a, default_role, db
 ):

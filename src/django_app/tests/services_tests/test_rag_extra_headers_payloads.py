@@ -23,6 +23,7 @@ from tables.models.knowledge_models.graphrag_models import (
     GraphRagIndexConfig,
 )
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
+from tables.exceptions import ConfigNeedsReviewError
 from tables.services.converter_service import ConverterService, NodeRagCredentials
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import secret_resolver, secret_service
@@ -51,8 +52,7 @@ def _embedder(org, extra_headers=None):
         org=org,
         extra_headers=extra_headers or {},
         connection={"base_url": "http://gateway:8080/v1"},
-        # `task_type` is not a setting of an OpenAI embedding model: a stale stored key.
-        parameters={"dimensions": 256, "task_type": "retrieval_document"},
+        parameters={"dimensions": 256},
     )
 
 
@@ -73,8 +73,7 @@ def _llm(org, extra_headers=None):
         org=org,
         extra_headers=extra_headers or {},
         connection=LLM_CONNECTION,
-        # `temperature` is not a setting of a custom Bedrock model: a stale stored key.
-        parameters={"max_tokens": 512, "temperature": 0.1},
+        parameters={"max_tokens": 512},
     )
 
 
@@ -130,7 +129,7 @@ def test_graph_knowledge_node_carries_embedder_and_llm_headers(org, collection):
     assert data.llm_extra_headers == LLM_HEADERS
     assert data.embedder_connection == {"api_base": "http://gateway:8080/v1"}
     assert data.llm_connection == LLM_CONNECTION_ARGUMENTS
-    # Only the settings the model catalog allows travel; knowledge_new sends what it gets.
+    # knowledge_new sends the settings as it gets them.
     assert data.embedder_parameters == {"dimensions": 256}
     assert data.llm_parameters == {"max_tokens": 512}
     # The dump is what gets persisted: markers, never plaintext.
@@ -407,3 +406,115 @@ def _index_config():
 def _link_document(graph_rag, collection):
     document = DocumentMetadata.objects.create(source_collection=collection, file_name="a.txt")
     GraphRagDocument.objects.create(graph_rag=graph_rag, document=document)
+
+
+# ---- A RAG config whose settings its model does not accept refuses every path ----
+
+
+def _make_settings_stale(rag):
+    """Store settings the models do not accept, as a catalog update leaves them."""
+    rag.embedder.parameters = {"dimensions": 256, "task_type": "retrieval_document"}
+    rag.embedder.save(update_fields=["parameters"])
+    if getattr(rag, "llm", None) is not None:
+        rag.llm.parameters = {"max_tokens": 512, "temperature": 0.1}
+        rag.llm.save(update_fields=["parameters"])
+
+
+@pytest.mark.django_db
+def test_knowledge_node_refuses_an_embedder_the_model_does_not_accept(org, collection):
+    graph_rag = _graph_rag(org, collection)
+    _make_settings_stale(graph_rag)
+    node = KnowledgeNode.objects.create(
+        graph=Graph.objects.create(org=org, name="stale-flow"),
+        source_collection=collection,
+        rag_type="graph",
+        rag_id=graph_rag.graph_rag_id,
+        query="q",
+    )
+
+    with pytest.raises(ConfigNeedsReviewError) as refusal:
+        ConverterService().convert_knowledge_node_to_pydantic(node, resolver=lambda node_id: "knowledge")
+
+    assert str(refusal.value.detail).startswith("Embedding config 'emb-cfg' has settings its model does not accept: task_type")
+
+
+@pytest.mark.django_db
+def test_knowledge_node_refuses_a_graph_rag_llm_the_model_does_not_accept(org, collection):
+    graph_rag = _graph_rag(org, collection)
+    graph_rag.llm.parameters = {"max_tokens": 512, "temperature": 0.1}
+    graph_rag.llm.save(update_fields=["parameters"])
+    node = KnowledgeNode.objects.create(
+        graph=Graph.objects.create(org=org, name="stale-llm-flow"),
+        source_collection=collection,
+        rag_type="graph",
+        rag_id=graph_rag.graph_rag_id,
+        query="q",
+    )
+
+    with pytest.raises(ConfigNeedsReviewError) as refusal:
+        ConverterService().convert_knowledge_node_to_pydantic(node, resolver=lambda node_id: "knowledge")
+
+    assert str(refusal.value.detail).startswith("LLM config 'llm-cfg' has settings its model does not accept: temperature")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("build_rag", "resolve"),
+    [
+        (_naive_rag, lambda service, collection_id: service._resolve_naive_rag(
+            collection_id, {"search_limit": 5, "similarity_threshold": 0.5}
+        )),
+        (_graph_rag, lambda service, collection_id: service._resolve_graph_rag(
+            collection_id, {"graph_basic_search_config": {}}
+        )),
+    ],
+    ids=["naive", "graph"],
+)
+def test_realtime_rag_resolution_refuses_settings_the_model_does_not_accept(org, collection, build_rag, resolve):
+    _make_settings_stale(build_rag(org, collection))
+
+    with pytest.raises(ConfigNeedsReviewError):
+        resolve(RealtimeSurfaceService(converter_service=ConverterService()), collection.pk)
+
+
+@pytest.mark.django_db
+def test_indexing_refuses_a_naive_rag_embedder_the_model_does_not_accept(indexing_client, knowledge_client, acme):
+    collection = SourceCollection.objects.create(collection_name="Stale naive KB", org=acme)
+    naive_rag = _naive_rag(acme, collection)
+    _make_settings_stale(naive_rag)
+    DocumentMetadata.objects.create(source_collection=collection, file_name="a.txt")
+
+    response = indexing_client.post(
+        "/api/process-rag-indexing/",
+        {"rag_id": naive_rag.naive_rag_id, "rag_type": "naive", "document_config_ids": [1]},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.data["code"] == "config_needs_review"
+    assert response.data["message"].startswith(
+        "Embedding config 'emb-cfg' has settings its model does not accept: task_type"
+    )
+    knowledge_client.index.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_indexing_refuses_a_graph_rag_llm_the_model_does_not_accept(indexing_client, knowledge_client, acme):
+    collection = SourceCollection.objects.create(collection_name="Stale graph KB", org=acme)
+    graph_rag = _graph_rag(acme, collection)
+    graph_rag.index_config = _index_config()
+    graph_rag.save(update_fields=["index_config"])
+    _link_document(graph_rag, collection)
+    graph_rag.llm.parameters = {"max_tokens": 512, "temperature": 0.1}
+    graph_rag.llm.save(update_fields=["parameters"])
+
+    response = indexing_client.post(
+        "/api/process-rag-indexing/",
+        {"rag_id": graph_rag.graph_rag_id, "rag_type": "graph", "document_config_ids": [1]},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.data["code"] == "config_needs_review"
+    assert "LLM config 'llm-cfg'" in response.data["message"]
+    knowledge_client.index.assert_not_called()

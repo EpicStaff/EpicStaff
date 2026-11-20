@@ -22,6 +22,7 @@ from django.db import close_old_connections, transaction
 from django.db.models import Max
 from django.utils import timezone
 from tables.exceptions import (
+    ConfigNeedsReviewError,
     LLMConfigInvalidError,
     LLMConfigMissingError,
 )
@@ -308,7 +309,7 @@ class FlowAssistantService:
                 # credential can get.
                 principal=None,
             )
-        except (UnsupportedLLMProviderError, InvalidLLMConfigError) as exc:
+        except (UnsupportedLLMProviderError, InvalidLLMConfigError, ConfigNeedsReviewError) as exc:
             raise LLMConfigInvalidError(str(exc)) from exc
 
         graph_id = flow_assistant.graph_id
