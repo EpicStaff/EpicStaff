@@ -187,11 +187,14 @@ async def test_the_name_of_a_removed_library_can_be_taken_again_at_once(uow):
     assert isinstance(second, CustomLibrary)
 
 
-def declare(uow, name: str, *, custom: bool = True, version: str | None = None):
+def declare(
+    uow, name: str, *, custom: bool = True, version: str | None = None, scope: str | None = None
+):
     """A venv naming `name`, as a stored library or as an ordinary package."""
     return uow.venv_repo.seed(
         Venv(
             name=f"uses {name}",
+            scope=scope,
             libs=[
                 Library(
                     name=name, specification=">=1", version=version, is_custom=custom
@@ -244,3 +247,78 @@ async def test_a_library_nothing_uses_is_still_removed_with_its_wheels(uow):
     await orchestrator.remove(library.id)
 
     assert await uow.wheel_repo.list(library.id) == []
+
+
+async def test_create_allows_a_name_another_scope_already_has(uow):
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    first = await orchestrator.create("acme-core", scope="org-1")
+
+    second = await orchestrator.create("acme-core", scope="org-2")
+
+    assert second.id != first.id
+    assert uow.custom_library_repo.rows[second.id].scope == "org-2"
+
+
+async def test_create_refuses_a_name_taken_in_the_same_scope(uow):
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    await orchestrator.create("acme-core", scope="org-1")
+
+    with pytest.raises(CustomLibraryNameTakenError):
+        await orchestrator.create("acme-core", scope="org-1")
+    assert uow.commits == 1
+
+
+async def test_create_for_puts_the_library_in_the_scope_given(uow):
+    library = await CustomLibraryCRUDOrchestrator(uow).create_for(
+        "acme_core-1.0.0-py3-none-any.whl", scope="org-1"
+    )
+
+    assert uow.custom_library_repo.rows[library.id].scope == "org-1"
+
+
+async def test_a_venv_of_another_scope_does_not_block_removal(uow):
+    """Each scope's `acme-core` is its own library, so only venvs of the library's
+    own scope can be holding it."""
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    library = await orchestrator.create("acme-core", scope="org-1")
+    declare(uow, "acme-core", scope="org-2")
+
+    await orchestrator.remove(library.id)
+
+    assert [row.id for row in await uow.custom_library_repo.list_deleted()] == [library.id]
+
+
+async def test_a_venv_of_the_same_scope_blocks_removal(uow):
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    library = await orchestrator.create("acme-core", scope="org-1")
+    declare(uow, "acme-core", scope="org-1")
+
+    with pytest.raises(CustomLibraryInUseError):
+        await orchestrator.remove(library.id)
+
+
+async def test_update_moves_the_library_to_a_scope(uow):
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    library = await orchestrator.create("acme-core")
+
+    moved = await orchestrator.update(library.id, "org-1")
+
+    assert moved.scope == "org-1"
+    assert uow.custom_library_repo.rows[library.id].scope == "org-1"
+    assert uow.commits == 2
+
+
+async def test_update_refuses_a_scope_where_the_name_is_taken(uow):
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    await orchestrator.create("acme-core", scope="org-1")
+    library = await orchestrator.create("acme-core")
+
+    with pytest.raises(CustomLibraryNameTakenError):
+        await orchestrator.update(library.id, "org-1")
+    assert uow.custom_library_repo.rows[library.id].scope is None
+    assert uow.commits == 2
+
+
+async def test_update_raises_for_a_library_that_is_not_there(uow):
+    with pytest.raises(CustomLibraryNotFoundError):
+        await CustomLibraryCRUDOrchestrator(uow).update(404, "org-1")

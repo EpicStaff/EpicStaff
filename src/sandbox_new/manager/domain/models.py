@@ -160,6 +160,12 @@ class Venv(Entity):
     hash: str | None = None
     status: VenvStatus = VenvStatus.DECLARED
     error: str | None = None
+    # The shared fallback for code submitted without a venv. Found by this flag, never
+    # by name: a name is something any tenant can type.
+    is_default: bool = Field(default=False, frozen=True)
+    # The namespace the venv's custom libraries are looked up in: the gateway passes an
+    # opaque value per tenant, the sandbox only compares it. None for the default venv.
+    scope: str | None = Field(default=None, min_length=1, max_length=255)
     # Assigned by the database, never by the domain: unset until the venv is stored.
     created_at: datetime | None = Field(default=None, frozen=True)
     updated_at: datetime | None = Field(default=None, frozen=True)
@@ -194,6 +200,9 @@ class Venv(Entity):
     def set_libs(self, value: list[Library], /):
         self.libs = value
         self.mark_as_declared()
+
+    def set_scope(self, value: str, /):
+        self.scope = value
 
     def apply_resolved_versions(self, versions: dict[str, str], /):
         """Record what the build installed, keyed by canonical name.
@@ -319,6 +328,8 @@ class CustomLibrary(Entity):
     # Deletion is a mark, not a statement: the artifacts in the object store outlive
     # the call, and a background task removes them and the row afterwards.
     is_deleted: bool = False
+    # The namespace the name is unique in, the same opaque value a venv carries.
+    scope: str | None = Field(default=None, min_length=1, max_length=255)
     # Assigned by the database, never by the domain: unset until the library is stored.
     created_at: datetime | None = Field(default=None, frozen=True)
     updated_at: datetime | None = Field(default=None, frozen=True)
@@ -339,6 +350,9 @@ class CustomLibrary(Entity):
         if self.name is not None:
             raise ValueError("This library already has a name.")
         self.name = value
+
+    def set_scope(self, value: str, /):
+        self.scope = value
 
     def mark_as_deleted(self):
         self.is_deleted = True

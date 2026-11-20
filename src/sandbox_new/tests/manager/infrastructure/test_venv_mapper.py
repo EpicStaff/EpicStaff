@@ -26,6 +26,7 @@ def make_row(**overrides):
         "hash": "1abc",
         "status": "completed",
         "error": None,
+        "is_default": False,
         "created_at": datetime(2026, 10, 14, 11, 17, 37, tzinfo=UTC),
         "updated_at": datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
     }
@@ -52,6 +53,11 @@ def test_to_domain_reads_libraries_given_as_a_json_string():
 
 def test_to_domain_treats_a_null_libraries_column_as_empty():
     assert VenvMapper.to_domain(make_row(libs=None)).libs == []
+
+
+def test_to_domain_carries_the_default_flag():
+    assert VenvMapper.to_domain(make_row(is_default=True)).is_default
+    assert not VenvMapper.to_domain(make_row()).is_default
 
 
 def test_to_domain_carries_the_error_text():
