@@ -6,7 +6,8 @@ view holds a worker thread until it does. A batch the deadline cuts off, while i
 or still queued behind the concurrency limit, counts as failed: its steps come back as
 failures while the batches that finished keep their explanations. When every batch is cut
 off the request fails as timed_out (504), with or without an API key on the config: a slow
-keyless model is not told it lacks a key.
+keyless model is not told it lacks a key. The same holds when every batch hits the LLM
+config's own per-request timeout, which litellm raises as `litellm.Timeout`.
 
 Only the LLM provider call (`litellm.acompletion`) is replaced; the view, service, secret
 resolution and LiteLLMClient run for real.
@@ -18,6 +19,7 @@ import time
 from types import SimpleNamespace
 from unittest import mock
 
+import litellm
 import pytest
 from rest_framework import status
 
@@ -157,5 +159,26 @@ def test_every_batch_cut_off_fails_the_request_as_timed_out(
     response, elapsed = _post_timed(acme_client, cdt_node, config, all_steps)
 
     assert elapsed < ANSWERED_WITHIN_SECONDS
+    assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT, response.content
+    assert response.json()["code"] == "cdt_explain_timed_out"
+
+
+def _config_timeout_firing(**kwargs):
+    # What litellm raises when the LLM config's per-request timeout runs out.
+    raise litellm.Timeout(
+        message="Request timed out.", model=kwargs["model"], llm_provider="openai"
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("config_fixture", ["llm_config", "keyless_llm_config"])
+def test_the_configs_own_timeout_on_every_batch_fails_the_request_as_timed_out(
+    request, acme_client, cdt_node, config_fixture
+):
+    config = request.getfixturevalue(config_fixture)
+
+    with mock.patch("litellm.acompletion", side_effect=_config_timeout_firing):
+        response = acme_client.post(_url(cdt_node.id), _body(config.id), format="json")
+
     assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT, response.content
     assert response.json()["code"] == "cdt_explain_timed_out"

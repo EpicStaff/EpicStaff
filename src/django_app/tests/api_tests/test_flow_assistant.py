@@ -11,6 +11,7 @@ import json
 import uuid
 from unittest.mock import MagicMock, patch
 
+import litellm
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -3308,6 +3309,46 @@ async def test_provider_error_without_code_is_hidden(
     assert frames[0]["data"]["detail"] == (
         "The model provider rejected the request (groq). "
         "Check the LLM configuration or contact an admin."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_config_timeout_ends_the_stream_in_a_timeout_error_frame(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    # The real LiteLLMClient runs; only the provider call is replaced.
+    import fakeredis
+    from asgiref.sync import ThreadSensitiveContext
+
+    from tables.views.flow_assistant_views import FlowAssistantStreamView
+
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, "hi"
+    )
+    view = FlowAssistantStreamView()
+    view.user = user_a
+    view.kwargs = {"graph_id": graph.id, "conversation_id": conversation.pk}
+
+    async def acompletion_timing_out(**kwargs):
+        raise litellm.Timeout(
+            message="Request timed out.", model=kwargs["model"], llm_provider="openai"
+        )
+
+    with (
+        patch("litellm.acompletion", side_effect=acompletion_timing_out),
+        patch("tables.services.flow_assistant.helpers.RedisService") as MockRedisService,
+    ):
+        MockRedisService.return_value = MagicMock(
+            redis_client=fakeredis.FakeRedis(decode_responses=False)
+        )
+        async with ThreadSensitiveContext():
+            assert await view.authorize(request=None) is None
+            frames = [frame async for frame in view.get_live_updates(pubsub=None)]
+
+    assert [frame["event"] for frame in frames] == ["error"]
+    assert frames[0]["data"]["detail"] == (
+        "The model did not answer in time. Try again or choose a faster model."
     )
 
 
