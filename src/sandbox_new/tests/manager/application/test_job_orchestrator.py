@@ -205,8 +205,11 @@ async def test_submit_against_a_failed_venv_reports_a_failure(
 
 
 async def test_submit_without_a_venv_id_uses_the_default_venv(uow, orchestrator, dispatcher):
-    uow.venv_repo.seed(make_venv(name="data", status=VenvStatus.COMPLETED, hash="9zzz"))
-    uow.venv_repo.seed(make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc"))
+    # A tenant's venv named `default`, stored first, must not be taken for the fallback.
+    uow.venv_repo.seed(make_venv(name="default", status=VenvStatus.COMPLETED, hash="9zzz"))
+    uow.venv_repo.seed(
+        make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc", is_default=True)
+    )
 
     await orchestrator.submit(venv_id=None, **SUBMISSION)
 

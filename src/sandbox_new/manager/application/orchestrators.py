@@ -51,6 +51,7 @@ from manager.domain.errors import (
     WheelVersionTakenError,
 )
 from manager.domain.models import (
+    DEFAULT_VENV_NAME,
     SOURCE_ARCHIVE_SUFFIXES,
     WHEEL_SUFFIX,
     CustomLibrary,
@@ -124,6 +125,15 @@ class VenvCRUDOrchestrator:
             venv = await self.uow.venv_repo.create(venv)
             await self.uow.commit()
         logger.info("Declared venv {} ({}) with {} libraries", venv.id, venv.name, len(venv.libs))
+        return venv
+
+    async def create_default(self) -> Venv:
+        """Declare the shared fallback venv, with no libraries of its own."""
+        venv = Venv(name=DEFAULT_VENV_NAME, is_default=True)
+        async with self.uow:
+            venv = await self.uow.venv_repo.create(venv)
+            await self.uow.commit()
+        logger.info("Declared the default venv {}", venv.id)
         return venv
 
     async def update(self, id: int, name: str | None, libs: List[Library] | None) -> Venv:

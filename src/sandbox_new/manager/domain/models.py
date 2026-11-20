@@ -160,6 +160,9 @@ class Venv(Entity):
     hash: str | None = None
     status: VenvStatus = VenvStatus.DECLARED
     error: str | None = None
+    # The shared fallback for code submitted without a venv. Found by this flag, never
+    # by name: a name is something any tenant can type.
+    is_default: bool = Field(default=False, frozen=True)
     # Assigned by the database, never by the domain: unset until the venv is stored.
     created_at: datetime | None = Field(default=None, frozen=True)
     updated_at: datetime | None = Field(default=None, frozen=True)

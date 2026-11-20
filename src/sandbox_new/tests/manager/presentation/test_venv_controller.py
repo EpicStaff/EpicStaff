@@ -144,6 +144,12 @@ def test_update_of_libraries_returns_the_venv_to_declared(client, venv_repositor
     assert response.json()["status"] == "declared"
 
 
+def test_create_cannot_mark_a_venv_as_the_default(client, venv_repository):
+    client.post("/venvs", json={"name": "default", "libs": [], "is_default": True})
+
+    assert not any(row.is_default for row in venv_repository.rows.values())
+
+
 def test_remove_returns_204_and_deletes_the_venv(client, venv_repository):
     stored = venv_repository.seed(make_venv())[0]
 

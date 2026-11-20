@@ -6,7 +6,7 @@ import json
 from piccolo.querystring import QueryString
 
 from manager.domain.enums import VenvOrder, VenvStatus, WheelStatus
-from manager.domain.models import DEFAULT_VENV_NAME, CustomLibrary, Venv, Wheel
+from manager.domain.models import CustomLibrary, Venv, Wheel
 from manager.domain.ports import (
     AbstractCustomLibraryRepository,
     AbstractVenvRepository,
@@ -99,12 +99,9 @@ class PiccoloVenvRepository(AbstractVenvRepository):
         row = await VenvTable.objects().get(VenvTable.id == id)
         return VenvMapper.to_domain(row) if row is not None else None
 
-    async def retrieve_by_name(self, name: str) -> Venv | None:
-        row = await VenvTable.objects().get(VenvTable.name == name)
-        return VenvMapper.to_domain(row) if row is not None else None
-
     async def retrieve_default(self) -> Venv | None:
-        return await self.retrieve_by_name(DEFAULT_VENV_NAME)
+        row = await VenvTable.objects().get(VenvTable.is_default.eq(True))
+        return VenvMapper.to_domain(row) if row is not None else None
 
     async def create(self, obj: Venv) -> Venv:
         row = VenvTable(
@@ -113,6 +110,7 @@ class PiccoloVenvRepository(AbstractVenvRepository):
             hash=obj.hash,
             status=obj.status,
             error=obj.error,
+            is_default=obj.is_default,
         )
         await row.save()
         return VenvMapper.to_domain(row)

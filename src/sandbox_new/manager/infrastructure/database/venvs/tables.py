@@ -21,6 +21,8 @@ class VenvTable(Table, tablename="venv"):
     hash = Varchar(null=True, default=None)
     status = Varchar(length=20, choices=VenvStatus, default=VenvStatus.DECLARED)
     error = Text(null=True, default=None)
+    # A partial unique index (see the migration) allows at most one row to be set.
+    is_default = Boolean(default=False)
     created_at = Timestamptz(default=TimestamptzNow())
     updated_at = Timestamptz(default=TimestamptzNow())
 

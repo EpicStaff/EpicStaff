@@ -131,7 +131,9 @@ def test_submit_against_a_building_venv_is_accepted_and_held(
 
 
 def test_submit_without_a_venv_id_uses_the_default_venv(client, venv_repository, dispatcher):
-    venv_repository.seed(make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc"))
+    venv_repository.seed(
+        make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc", is_default=True)
+    )
 
     response = client.post("/executions", json=SUBMISSION)
 
@@ -140,7 +142,9 @@ def test_submit_without_a_venv_id_uses_the_default_venv(client, venv_repository,
 
 
 def test_submit_without_a_session_id_is_accepted(client, venv_repository, dispatcher):
-    venv_repository.seed(make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc"))
+    venv_repository.seed(
+        make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc", is_default=True)
+    )
 
     response = client.post("/executions", json={**SUBMISSION, "session_id": None})
 

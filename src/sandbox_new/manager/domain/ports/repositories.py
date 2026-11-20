@@ -50,12 +50,8 @@ class AbstractVenvRepository(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def retrieve_by_name(self, name: str) -> Venv | None:
-        pass
-
-    @abc.abstractmethod
     async def retrieve_default(self) -> Venv | None:
-        pass
+        """Return the venv marked as the shared default, if one is stored."""
 
     @abc.abstractmethod
     async def create(self, obj: Venv) -> Venv:

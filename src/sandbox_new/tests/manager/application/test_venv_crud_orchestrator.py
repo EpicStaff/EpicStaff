@@ -133,7 +133,29 @@ async def test_retrieve_default_returns_none_when_there_is_no_default(uow):
     assert await VenvCRUDOrchestrator(uow).retrieve_default() is None
 
 
-async def test_retrieve_default_finds_the_venv_named_default(uow):
+async def test_retrieve_default_finds_the_flagged_venv_not_a_tenant_venv_of_that_name(uow):
+    uow.venv_repo.seed(make_venv(name="default"))
+    flagged = uow.venv_repo.seed(make_venv(name="default", is_default=True))[0]
+
+    assert (await VenvCRUDOrchestrator(uow).retrieve_default()).id == flagged.id
+
+
+async def test_retrieve_default_ignores_a_venv_only_named_default(uow):
     uow.venv_repo.seed(make_venv(name="default"))
 
-    assert (await VenvCRUDOrchestrator(uow).retrieve_default()).name == "default"
+    assert await VenvCRUDOrchestrator(uow).retrieve_default() is None
+
+
+async def test_create_default_stores_a_flagged_venv_without_libraries(uow):
+    venv = await VenvCRUDOrchestrator(uow).create_default()
+
+    assert uow.venv_repo.rows[venv.id].is_default
+    assert venv.libs == []
+    assert uow.commits == 1
+    assert (await VenvCRUDOrchestrator(uow).retrieve_default()).id == venv.id
+
+
+async def test_create_never_stores_a_default_venv(uow):
+    venv = await VenvCRUDOrchestrator(uow).create("default", [])
+
+    assert not uow.venv_repo.rows[venv.id].is_default
