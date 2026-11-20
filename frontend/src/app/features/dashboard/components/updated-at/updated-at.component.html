@@ -1,0 +1,4 @@
+<span [title]="builtAt() | date: 'medium'">Updated {{ builtAgo() }}</span>
+@if (nextBuildAt()) {
+    <span>· next update at {{ nextBuildAt() | date: 'HH:mm' }}</span>
+}

@@ -1,0 +1,26 @@
+:host {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.dashboard-toolbar__divider {
+    width: 1px;
+    height: 20px;
+    background: var(--color-divider-subtle);
+}
+
+.dashboard-toolbar__period {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dashboard-toolbar__label {
+    color: var(--color-text-secondary);
+}
+
+.dashboard-toolbar__unit {
+    width: 100px;
+}

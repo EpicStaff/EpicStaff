@@ -1,0 +1,42 @@
+@if (resource.error()) {
+    <app-fetch-error-state
+        title="Could not load the dashboard"
+        (retry)="resource.reload()"
+    />
+} @else if (!resource.hasValue()) {
+    <app-loading-spinner />
+} @else if (report(); as report) {
+    <div class="overview__kpis">
+        <app-kpi-card
+            icon="ti-bolt"
+            label="Active triggers"
+            [value]="report.active_triggers.length"
+        >
+            {{ waitingSessions().length }} {{ waitingSessions().length === 1 ? 'session' : 'sessions' }} waiting for
+            user
+        </app-kpi-card>
+    </div>
+
+    <app-active-triggers-card
+        [triggers]="report.active_triggers"
+        [waitingSessions]="waitingSessions()"
+    />
+    <section>
+        <div class="overview__section-head">
+            <h2 class="overview__section-title">Resources</h2>
+            <span class="overview__section-desc">Totals in this organization.</span>
+        </div>
+        <div class="overview__resources">
+            @for (card of resourceCards(); track card.label) {
+                <app-resource-card
+                    [icon]="card.icon"
+                    [label]="card.label"
+                    [value]="card.value"
+                    [details]="card.details"
+                />
+            }
+        </div>
+    </section>
+} @else {
+    <app-first-report-state />
+}

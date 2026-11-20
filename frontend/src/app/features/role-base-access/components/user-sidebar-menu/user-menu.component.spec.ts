@@ -27,7 +27,10 @@ describe('UserMenuComponent organization switch', () => {
                 { provide: ToastService, useValue: { error: vi.fn() } },
                 { provide: UnsavedChangesRegistry, useValue: { canLeave: () => of(true) } },
                 { provide: ProfileService, useValue: { switchOrg: () => of(undefined) } },
-                { provide: PermissionsService, useValue: { canAccessWorkspace: () => false } },
+                {
+                    provide: PermissionsService,
+                    useValue: { canAccessWorkspace: () => false, canOpenDashboard: () => false },
+                },
                 { provide: AuthService, useValue: {} },
                 ...rules.map((rule) => ({ provide: ORG_SWITCH_URL_RULES, useValue: rule, multi: true })),
             ],

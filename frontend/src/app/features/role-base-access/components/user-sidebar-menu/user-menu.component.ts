@@ -38,7 +38,9 @@ export class UserMenuComponent {
     organizations = computed<FullMembership[]>(() => this.user().memberships);
 
     canVisitWorkspace = computed(() => this.permissionService.canAccessWorkspace());
+    canVisitDashboard = computed(() => this.permissionService.canOpenDashboard());
 
+    isDashboardRoute = computed(() => this.currentUrl().startsWith('/dashboard'));
     isWorkspaceRoute = computed(() => this.currentUrl().startsWith('/workspace'));
 
     isProfileRoute = computed(() => this.currentUrl().startsWith('/profile'));
@@ -98,6 +100,11 @@ export class UserMenuComponent {
     onWorkspaceClick(): void {
         this.isUserMenuOpen.set(false);
         void this.router.navigate(['/workspace']);
+    }
+
+    onDashboardClick(): void {
+        this.isUserMenuOpen.set(false);
+        void this.router.navigate(['/dashboard']);
     }
 
     onProfileClick(): void {

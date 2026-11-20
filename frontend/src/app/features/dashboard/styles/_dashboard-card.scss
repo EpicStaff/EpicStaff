@@ -1,0 +1,31 @@
+@mixin card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    padding: 20px 24px;
+    border: 1px solid var(--color-dashboard-card-bg);
+    border-radius: 10px;
+    background: var(--color-dashboard-card-bg);
+}
+
+@mixin card-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+
+    .ti {
+        color: var(--accent-color);
+        font-size: 18px;
+    }
+}
+
+@mixin card-value {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--color-text-primary);
+}

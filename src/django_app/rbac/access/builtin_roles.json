@@ -26,7 +26,8 @@
       "custom_libraries": [ "create", "read", "update", "delete" ],
       "chats": [ "create", "read", "update", "delete", "use" ],
       "audit": [ "read", "export" ],
-      "user_audit": [ "read", "export" ]
+      "user_audit": [ "read", "export" ],
+      "dashboard": [ "read" ]
     }
   },
   "Member": {

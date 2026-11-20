@@ -1,0 +1,17 @@
+<div class="resource-card__name">
+    <i
+        [class]="'ti ' + icon()"
+        aria-hidden="true"
+    ></i>
+    {{ label() }}
+</div>
+<span class="resource-card__value">{{ value() | number }}</span>
+@if (details().length) {
+    <div class="resource-card__details">
+        @for (detail of details(); track detail.label) {
+            <span
+                ><b>{{ detail.value }}</b> {{ detail.label }}</span
+            >
+        }
+    </div>
+}

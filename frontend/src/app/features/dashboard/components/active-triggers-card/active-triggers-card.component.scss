@@ -1,0 +1,136 @@
+@use '../../styles/dashboard-card';
+
+:host {
+    @include dashboard-card.card;
+}
+
+.active-triggers-card__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+}
+
+.active-triggers-card__title {
+    @include dashboard-card.card-label;
+}
+
+.active-triggers-card__count {
+    color: var(--accent-color);
+}
+
+.active-triggers-card__summary {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+.active-triggers-card__table-wrap {
+    max-height: 320px;
+    overflow: auto;
+    border: 1px solid var(--color-table-border);
+    border-radius: 10px;
+    background: var(--color-background-body);
+}
+
+.active-triggers-card__table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+
+    th,
+    td {
+        padding: 0 8px;
+        text-align: left;
+        white-space: nowrap;
+        border-left: 1px solid var(--color-table-border);
+    }
+
+    th {
+        position: sticky;
+        top: 0;
+        height: 40px;
+        font-size: 14px;
+        font-weight: 400;
+        color: var(--color-text-primary);
+        background: var(--color-background-body);
+        border-bottom: 4px solid var(--color-table-border);
+    }
+
+    td {
+        height: 28px;
+        font-size: 12px;
+        border-top: 1px solid var(--color-table-border);
+    }
+
+    tr > :first-child {
+        border-left: 0;
+    }
+
+    tbody tr:first-child td {
+        border-top: 0;
+    }
+
+    tbody tr:nth-child(even) td {
+        background: var(--color-table-row-stripe);
+    }
+
+    tbody tr:hover td {
+        background: var(--color-table-row-hover);
+    }
+}
+
+.active-triggers-card__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    .ti {
+        font-size: 16px;
+    }
+
+    &--schedule .ti {
+        color: var(--color-trigger-schedule);
+    }
+
+    &--webhook .ti {
+        color: var(--color-trigger-webhook);
+    }
+
+    &--telegram .ti {
+        color: var(--color-trigger-telegram);
+    }
+
+    &--waiting .ti {
+        color: var(--color-status-waiting);
+    }
+}
+
+.active-triggers-card__muted {
+    color: var(--color-text-secondary);
+}
+
+.active-triggers-card__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--success-color);
+
+    &::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    &--waiting {
+        color: var(--color-status-waiting);
+    }
+}
+
+.active-triggers-card__empty {
+    margin: 0;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+}

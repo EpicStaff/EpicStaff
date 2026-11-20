@@ -1,0 +1,36 @@
+<app-icon-button
+    icon="refresh"
+    size="1.75rem"
+    ariaLabel="Refresh data"
+    tooltip="Refresh data"
+    (onClick)="filtersService.refresh()"
+/>
+<span
+    class="dashboard-toolbar__divider"
+    aria-hidden="true"
+></span>
+
+<div
+    class="dashboard-toolbar__period"
+    role="group"
+    aria-label="Period"
+>
+    <span class="dashboard-toolbar__label">Last</span>
+    <app-number-stepper
+        size="sm"
+        ariaLabel="Period length"
+        [alwaysShowButtons]="true"
+        [integer]="true"
+        [min]="1"
+        [value]="filters().period"
+        (changed)="onPeriodChange($event)"
+    />
+    <app-select
+        class="dashboard-toolbar__unit"
+        mod="small"
+        tooltip="Period unit"
+        [items]="unitItems"
+        [selectedValue]="filters().unit"
+        (changed)="onUnitChange($event)"
+    />
+</div>
